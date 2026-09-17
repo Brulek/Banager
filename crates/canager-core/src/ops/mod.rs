@@ -64,6 +64,15 @@ impl OperationManager {
     pub fn cancel(&self, op_id: OpId) {
         let mut records = self.records.lock().unwrap();
         if let Some(r) = records.get_mut(&op_id) {
+            // Only a still-pending op can be cancelled. Once it has moved
+            // past Running (Verifying/Done) — or is already
+            // CancelRequested/Cancelling — cancelling again must be a
+            // no-op: forcing it back to CancelRequested here would corrupt
+            // a finished record and make `wait()` (which only returns on
+            // Done) hang forever.
+            if !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
+                return;
+            }
             r.status = OpStatus::CancelRequested;
             r.cancel.cancel();
             drop(records);
@@ -132,7 +141,9 @@ impl OperationManager {
                 break;
             }
             if cancel.is_cancelled() {
-                self.finish(op_id, Outcome::Unconfirmed, false);
+                // Never actually started (still waiting for a lock held by
+                // another op), so nothing on the system changed.
+                self.finish(op_id, Outcome::NoChange, false);
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -192,16 +203,22 @@ impl OperationManager {
         let reconciled = adapter.reconcile(&instance, &key).await;
 
         let final_outcome = match exec_result {
-            Ok(Outcome::Unconfirmed) => match reconciled {
-                Ok(r) => {
-                    let present_means_success = plan.request.kind != OpKind::Uninstall;
-                    if r.present == present_means_success {
-                        Outcome::Succeeded
-                    } else {
-                        Outcome::Unconfirmed
-                    }
-                }
-                Err(_) => Outcome::Unconfirmed,
+            // A cancelled/timed-out execute only tells us the artifact's
+            // *current* presence, not whether this op caused it. That is
+            // proof of success for Install (wasn't there, now is) and
+            // Uninstall (was there, now isn't) — but never for Upgrade,
+            // since the artifact was already present before the op ran, so
+            // presence afterward proves nothing either way.
+            Ok(Outcome::Unconfirmed) => match plan.request.kind {
+                OpKind::Upgrade => Outcome::Unconfirmed,
+                OpKind::Install => match reconciled {
+                    Ok(r) if r.present => Outcome::Succeeded,
+                    _ => Outcome::Unconfirmed,
+                },
+                OpKind::Uninstall => match reconciled {
+                    Ok(r) if !r.present => Outcome::Succeeded,
+                    _ => Outcome::Unconfirmed,
+                },
             },
             Ok(other) => other,
             Err(e) => Outcome::Failed {
