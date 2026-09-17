@@ -5,6 +5,7 @@
 pub mod events;
 pub mod model;
 pub mod runner;
+pub mod adapters;
 
 pub use events::*;
 pub use model::*;

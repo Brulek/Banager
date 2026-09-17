@@ -1,0 +1,7 @@
+schema_version = 1
+id = "brew"
+name = "Homebrew"
+kind = "package_manager"
+platforms = ["macos"]
+homepage = "https://brew.sh"
+verified_versions = ["7.0.3"]
