@@ -73,9 +73,19 @@ pub trait Adapter: Send + Sync {
     fn meta(&self) -> &AdapterMeta;
     fn capabilities(&self) -> Capabilities;
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance>;
-    async fn inventory(&self, inst: &ManagerInstance) -> Result<Vec<InstalledArtifact>, AdapterError>;
-    async fn check_updates(&self, inst: &ManagerInstance) -> Result<Vec<UpdateCandidate>, AdapterError>;
-    async fn search(&self, inst: &ManagerInstance, query: &str) -> Result<Vec<SearchHit>, AdapterError>;
+    async fn inventory(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError>;
+    async fn check_updates(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<Vec<UpdateCandidate>, AdapterError>;
+    async fn search(
+        &self,
+        inst: &ManagerInstance,
+        query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError>;
     async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError>;
     async fn execute(
         &self,
@@ -84,7 +94,11 @@ pub trait Adapter: Send + Sync {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError>;
-    async fn reconcile(&self, inst: &ManagerInstance, key: &ArtifactKey) -> Result<Reconciled, AdapterError>;
+    async fn reconcile(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError>;
 }
 
 #[cfg(test)]

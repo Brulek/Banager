@@ -2,10 +2,10 @@
 //! engine. This crate must never depend on `tauri` — see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3.
 
+pub mod adapters;
 pub mod events;
 pub mod model;
 pub mod runner;
-pub mod adapters;
 
 pub use events::*;
 pub use model::*;
