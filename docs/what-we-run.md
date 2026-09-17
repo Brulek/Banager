@@ -14,9 +14,10 @@ search query, checked by `validate_package_name` against
     HOMEBREW_NO_INSTALL_CLEANUP=1
     NO_COLOR=1
 
-Cask install/upgrade additionally passes through `SUDO_ASKPASS` when that
-variable is already set in Canager's own process environment — Canager
-never sets it on its own behalf.
+Install and upgrade (formula and cask) pass through `SUDO_ASKPASS` when it
+is already set in Canager's process environment; it only has any effect
+for casks whose installer scripts invoke `sudo` — Canager never sets it on
+its own behalf.
 
 Canager refuses to run any `brew` command at all when the current
 process's effective user ID is 0 (root).
