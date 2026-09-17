@@ -1,0 +1,52 @@
+# What Canager Runs (Phase 0–1: Homebrew only)
+
+Canager never invokes a shell. Every command below is a fixed argv array
+run directly against the resolved Homebrew binary (one of
+`BrewAdapter::CANDIDATE_PATHS`). The only user-controlled input in any of
+these commands is a single validated argument — a formula/cask name or a
+search query, checked by `validate_package_name` against
+`^[A-Za-z0-9@._+/-]+$`, and never allowed to start with `-`.
+
+## Environment applied to every invocation
+
+    HOMEBREW_NO_AUTO_UPDATE=1
+    HOMEBREW_NO_ENV_HINTS=1
+    HOMEBREW_NO_INSTALL_CLEANUP=1
+    NO_COLOR=1
+
+Cask install/upgrade additionally passes through `SUDO_ASKPASS` when that
+variable is already set in Canager's own process environment — Canager
+never sets it on its own behalf.
+
+Canager refuses to run any `brew` command at all when the current
+process's effective user ID is 0 (root).
+
+## Read-only commands (background checks; never require a password)
+
+| Purpose | Argv | Timeout |
+|---|---|---|
+| Detect a Homebrew install | `<brew> --version` | 30 s |
+| List installed formulae + casks | `<brew> info --installed --json=v2` | 120 s |
+| Refresh Homebrew's local package index (TTL: 6 hours) | `<brew> update` | 120 s |
+| List outdated formulae + casks | `<brew> outdated --json=v2` | 120 s |
+| Search by name | `<brew> search {query}` | 30 s |
+| Search by name + description | `<brew> search --desc {query}` | 30 s |
+| List installed formulae depending on a formula (uninstall-safety check) | `<brew> uses --installed {name}` | 120 s |
+
+## Write commands (only run after the user reviews and confirms a plan preview)
+
+| Purpose | Argv | Timeout | Needs a password |
+|---|---|---|---|
+| Install a formula | `<brew> install --formula {name}` | 1800 s | No |
+| Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
+| Uninstall a formula or cask | `<brew> uninstall {name}` | 1800 s | No |
+| Upgrade one formula or cask | `<brew> upgrade {name}` | 1800 s | Sometimes (casks only) |
+
+Canager never passes `--ignore-dependencies` to `brew uninstall`, and never
+runs a bare `brew upgrade` — upgrades are always one invocation per
+confirmed artifact, never "upgrade everything" in a single command.
+
+`<brew>` above is always the absolute path `BrewAdapter::detect` found on
+disk (one of `/opt/homebrew/bin/brew`, `/usr/local/bin/brew`,
+`/home/linuxbrew/.linuxbrew/bin/brew`), never a bare `brew` resolved
+through a shell `PATH` lookup.
