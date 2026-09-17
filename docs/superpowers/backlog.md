@@ -41,6 +41,8 @@
 - `src-tauri/Cargo.toml`：`fix-path-env` 是无 `rev` 的 git 依赖，仅靠 Cargo.lock 钉住；应加 `rev`。
 - GitHub Actions 提示 checkout@v4 / setup-node@v4 / pnpm action-setup@v4 使用即将弃用的 Node 20 运行时；GitHub 定下时间表后升级。
 
+- `src-tauri/Cargo.toml` 的 `[profile.release]` 在 workspace 中被 Cargo 忽略（每次 cargo 命令都打印 "profiles for the non root package will be ignored"），意味着 create-tauri-app 给的 release 优化（lto、opt-level、strip 等）目前对发布构建**不生效**；应把该段移到根 `Cargo.toml`。首个正式发布前必须处理，否则体积目标失真。
+
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
 - 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/canager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
