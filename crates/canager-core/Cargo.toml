@@ -7,5 +7,10 @@ description = "Pure-Rust core library for Canager: model, adapters, runner, oper
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+libc = "0.2"
 
 [dev-dependencies]
