@@ -29,7 +29,10 @@ async fn main() {
         let artifacts = adapter.inventory(inst).await.expect("inventory failed");
         println!("  {} installed artifacts", artifacts.len());
 
-        let outdated = adapter.check_updates(inst).await.expect("check_updates failed");
+        let outdated = adapter
+            .check_updates(inst)
+            .await
+            .expect("check_updates failed");
         println!("  {} outdated artifacts", outdated.len());
         for candidate in outdated.iter().take(10) {
             println!(
