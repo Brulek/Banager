@@ -129,7 +129,10 @@ pub enum Outcome {
     NoChange,
     PartialSuccess,
     NeedsAttention(String),
-    Failed { exit_code: Option<i32>, summary: String },
+    Failed {
+        exit_code: Option<i32>,
+        summary: String,
+    },
     Unconfirmed,
 }
 

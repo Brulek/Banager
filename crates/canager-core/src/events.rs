@@ -11,9 +11,19 @@ pub enum Stream {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationEvent {
-    Status { op_id: OpId, status: OpStatus },
-    Log { op_id: OpId, stream: Stream, line: String },
-    Finished { op_id: OpId, outcome: Outcome },
+    Status {
+        op_id: OpId,
+        status: OpStatus,
+    },
+    Log {
+        op_id: OpId,
+        stream: Stream,
+        line: String,
+    },
+    Finished {
+        op_id: OpId,
+        outcome: Outcome,
+    },
 }
 
 pub trait EventSink: Send + Sync {
