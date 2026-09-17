@@ -76,8 +76,16 @@ impl CommandRunner for RealRunner {
 
         let mut stdout_buf: Vec<u8> = Vec::new();
         let mut stderr_buf: Vec<u8> = Vec::new();
-        let mut stdout_all = String::new();
-        let mut stderr_all = String::new();
+        // Full-transcript byte accumulators. These collect every raw byte
+        // read from each stream, independent of `stdout_buf`/`stderr_buf`
+        // (which are drained line-by-line for `on_line`). Decoding happens
+        // once, after the loop, from the complete byte sequence — never
+        // per-`read()`-chunk — so a multi-byte UTF-8 character split across
+        // two `read()` calls at an arbitrary byte offset is still decoded
+        // correctly instead of turning into two separate replacement
+        // characters (U+FFFD) at the split point.
+        let mut stdout_all_bytes: Vec<u8> = Vec::new();
+        let mut stderr_all_bytes: Vec<u8> = Vec::new();
         // Separate read buffers for stdout/stderr: both branches of the
         // `tokio::select!` below hold a `.read(&mut _)` future live at the
         // same time, so a single shared buffer would need two concurrent
@@ -113,7 +121,7 @@ impl CommandRunner for RealRunner {
                         Ok(0) => stdout_done = true,
                         Ok(n) => {
                             stdout_buf.extend_from_slice(&stdout_read_buf[..n]);
-                            stdout_all.push_str(&String::from_utf8_lossy(&stdout_read_buf[..n]));
+                            stdout_all_bytes.extend_from_slice(&stdout_read_buf[..n]);
                             for line in drain_lines(&mut stdout_buf) {
                                 if let Some(cb) = &on_line {
                                     cb(Stream::Stdout, line);
@@ -128,7 +136,7 @@ impl CommandRunner for RealRunner {
                         Ok(0) => stderr_done = true,
                         Ok(n) => {
                             stderr_buf.extend_from_slice(&stderr_read_buf[..n]);
-                            stderr_all.push_str(&String::from_utf8_lossy(&stderr_read_buf[..n]));
+                            stderr_all_bytes.extend_from_slice(&stderr_read_buf[..n]);
                             for line in drain_lines(&mut stderr_buf) {
                                 if let Some(cb) = &on_line {
                                     cb(Stream::Stderr, line);
@@ -147,6 +155,13 @@ impl CommandRunner for RealRunner {
         } else {
             child.wait().await.ok().and_then(|status| status.code())
         };
+
+        // Decode the full transcript once from the accumulated bytes (not
+        // per-chunk) so a multi-byte UTF-8 character split across a read
+        // boundary decodes correctly instead of corrupting into replacement
+        // characters on both sides of the split.
+        let stdout_all = String::from_utf8_lossy(&stdout_all_bytes).into_owned();
+        let stderr_all = String::from_utf8_lossy(&stderr_all_bytes).into_owned();
 
         Ok(CommandOutput {
             exit_code,
@@ -216,6 +231,36 @@ mod tests {
             .await
             .expect("spawn /bin/sh");
         assert_eq!(output.exit_code, Some(3));
+    }
+
+    #[tokio::test]
+    async fn test_full_transcript_reassembles_multibyte_utf8_split_across_reads() {
+        // U+4E03 ('七') encodes as the 3 UTF-8 bytes 0xE4 0xB8 0x83 (octal
+        // \344 \270 \203). Write the first two bytes, then sleep long enough
+        // that the runner's `read()` returns just those two bytes as their
+        // own chunk, then write the final byte in a second chunk — forcing
+        // the character to straddle a `read()` boundary. Decoding each raw
+        // chunk independently would turn this into two U+FFFD replacement
+        // characters instead of the original character.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "printf '\\344\\270'; sleep 0.3; printf '\\203'".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+
+        assert_eq!(output.exit_code, Some(0));
+        assert_eq!(output.stdout, "\u{4e03}");
+        assert!(!output.stdout.contains('\u{fffd}'));
     }
 
     #[tokio::test]
