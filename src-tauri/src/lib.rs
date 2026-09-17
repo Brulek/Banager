@@ -6,6 +6,12 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if fix_path_env::fix().is_err() {
+        eprintln!("[canager] failed to fix PATH; falling back to the process's default PATH");
+    }
+    let host_env = canager_core::runner::HostEnv::discover();
+    println!("[canager] discovered PATH dirs: {:?}", host_env.path_dirs);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

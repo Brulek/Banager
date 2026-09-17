@@ -4,9 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod mock;
+pub mod path_env;
 pub mod real;
 
 pub use mock::MockRunner;
+pub use path_env::{resolve_exe, HostEnv};
 pub use real::RealRunner;
 
 #[derive(Clone, Debug)]
