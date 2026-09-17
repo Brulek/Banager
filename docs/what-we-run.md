@@ -40,8 +40,10 @@ process's effective user ID is 0 (root).
 |---|---|---|---|
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
-| Uninstall a formula or cask | `<brew> uninstall {name}` | 1800 s | No |
-| Upgrade one formula or cask | `<brew> upgrade {name}` | 1800 s | Sometimes (casks only) |
+| Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
+| Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | No |
+| Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
+| Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 
 Canager never passes `--ignore-dependencies` to `brew uninstall`, and never
 runs a bare `brew upgrade` — upgrades are always one invocation per

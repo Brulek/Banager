@@ -102,8 +102,12 @@ async fn live_install_inventory_uninstall_hello() {
     );
     assert_eq!(
         uninstall_plan.args,
-        vec!["uninstall".to_string(), "hello".to_string()],
-        "uninstall argv preview must be exactly `brew uninstall hello`"
+        vec![
+            "uninstall".to_string(),
+            "--formula".to_string(),
+            "hello".to_string()
+        ],
+        "uninstall argv preview must be exactly `brew uninstall --formula hello`"
     );
     let outcome = Adapter::execute(
         &adapter,

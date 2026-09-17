@@ -115,7 +115,7 @@ trait Adapter {
 - 环境：`HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1 NO_COLOR=1`。
 - 列出：`brew info --installed --json=v2`。formulae：`name`、版本取 `installed` 数组中 `linked_keg` 对应项（数组按时间升序，`[0]` 是最老版本）、`installed_on_request` / `installed_as_dependency` → 安装原因、`desc`、`homepage`。casks：`token`、`installed`（字符串）、`auto_updates`、`desc`、`name[0]`；cask 无安装原因字段，一律视为用户安装。
 - 查更新：先按 TTL（6 小时）`brew update`，再 `brew outdated --json=v2`（顶层 `formulae` / `casks`）。设置项"包含自更新的应用"对应 `--greedy`，默认关，界面解释"Chrome 这类应用自己更新，勾选后也会列出"。
-- 安装：`brew install --formula {id}` / `brew install --cask {token}`。卸载：`brew uninstall {id}`，**永不**加 `--ignore-dependencies`；卸载前用 `brew uses --installed {id}` 列出会受影响的包，有则默认阻止。升级：`brew upgrade {id}`；"全部更新"= 对界面上勾选的每一项分别执行，不跑裸 `brew upgrade`。
+- 安装：`brew install --formula {id}` / `brew install --cask {token}`。卸载：`brew uninstall --formula|--cask {id}`，**永不**加 `--ignore-dependencies`；卸载前用 `brew uses --installed {id}` 列出会受影响的包，有则默认阻止。升级：`brew upgrade --formula|--cask {id}`；"全部更新"= 对界面上勾选的每一项分别执行，不跑裸 `brew upgrade`。
 - 搜索：`brew search {query}` + `brew search --desc {query}` 两次；按 `==> Formulae` / `==> Casks` 分节解析，条目格式 `name: desc`。
 - 需要管理员密码的 cask（含 `pkg` 或 `sudo` 的安装）：Homebrew 官方支持 `SUDO_ASKPASS`（manpage："If set, pass the -A option when calling sudo"，Homebrew 7.0.3 已核对），指向应用内置的原生密码对话框 helper；**阶段 1 spike** 只需验证 helper 在 GUI 无 TTY 下的行为，不成立则此类 cask 标"需在终端安装"并提供一键打开终端。
 - 缓存：`brew info --installed` 在包多时耗时数秒，只在刷新时跑；界面先读 SQLite。

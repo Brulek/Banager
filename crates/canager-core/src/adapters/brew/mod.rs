@@ -271,6 +271,10 @@ impl BrewAdapter {
                 })
             }
             OpKind::Uninstall => {
+                let flag = match req.artifact_kind {
+                    ArtifactKind::Cask => "--cask",
+                    _ => "--formula",
+                };
                 let uses_output = self
                     .run_brew(
                         inst,
@@ -298,7 +302,7 @@ impl BrewAdapter {
                 Ok(Plan {
                     request: req.clone(),
                     program: inst.exe_path.clone(),
-                    args: vec!["uninstall".to_string(), req.name.clone()],
+                    args: vec!["uninstall".to_string(), flag.to_string(), req.name.clone()],
                     env: self.env_vec(),
                     needs_password: false,
                     locks: vec![lock],
@@ -309,6 +313,10 @@ impl BrewAdapter {
                 })
             }
             OpKind::Upgrade => {
+                let flag = match req.artifact_kind {
+                    ArtifactKind::Cask => "--cask",
+                    _ => "--formula",
+                };
                 let needs_password = matches!(req.artifact_kind, ArtifactKind::Cask);
                 let mut env = self.env_vec();
                 if let Ok(askpass) = std::env::var("SUDO_ASKPASS") {
@@ -317,7 +325,7 @@ impl BrewAdapter {
                 Ok(Plan {
                     request: req.clone(),
                     program: inst.exe_path.clone(),
-                    args: vec!["upgrade".to_string(), req.name.clone()],
+                    args: vec!["upgrade".to_string(), flag.to_string(), req.name.clone()],
                     env,
                     needs_password,
                     locks: vec![lock],
@@ -743,6 +751,7 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["uninstall", "--formula", "jq"]);
         assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
         assert_eq!(
             plan.warnings,
@@ -772,8 +781,70 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["uninstall", "--formula", "jq"]);
         assert!(plan.affected.is_empty());
         assert!(plan.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_cask_passes_cask_flag() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uses", "--installed", "docker"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "docker".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        // `docker` exists as both a formula and a cask; without `--cask`
+        // here `brew uninstall docker` would act on the wrong one.
+        assert_eq!(plan.args, vec!["uninstall", "--cask", "docker"]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_formula_passes_formula_flag() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["upgrade", "--formula", "jq"]);
+        assert!(!plan.needs_password);
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_cask_passes_cask_flag() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "docker".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        // Same ambiguous-name hazard as uninstall: `docker` is both a
+        // formula and a cask.
+        assert_eq!(plan.args, vec!["upgrade", "--cask", "docker"]);
+        assert!(plan.needs_password);
     }
 
     #[tokio::test]
