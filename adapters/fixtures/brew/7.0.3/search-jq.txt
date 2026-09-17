@@ -1,0 +1,10 @@
+gojq
+ijq
+jq
+jq-lsp
+jqfmt
+jql
+jqp
+
+j
+jquake
