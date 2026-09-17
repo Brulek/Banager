@@ -1,6 +1,8 @@
 node_modules/
 target/
 dist/
+dist-ssr/
 .DS_Store
 *.log
+*.local
 .superpowers/

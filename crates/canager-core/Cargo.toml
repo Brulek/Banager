@@ -1,0 +1,9 @@
+[package]
+name = "canager-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust core library for Canager: model, adapters, runner, operation engine. Must never depend on tauri."
+
+[dependencies]
+
+[dev-dependencies]
