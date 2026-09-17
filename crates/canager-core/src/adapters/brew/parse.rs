@@ -1,0 +1,271 @@
+use crate::adapters::AdapterError;
+use crate::model::{
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateCandidate,
+    UpdateChannel,
+};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct InfoInstalledRoot {
+    #[serde(default)]
+    formulae: Vec<FormulaInfo>,
+    #[serde(default)]
+    casks: Vec<CaskInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FormulaInfo {
+    name: String,
+    #[serde(default)]
+    desc: Option<String>,
+    #[serde(default)]
+    homepage: Option<String>,
+    #[serde(default)]
+    linked_keg: Option<String>,
+    #[serde(default)]
+    installed: Vec<FormulaInstalledEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FormulaInstalledEntry {
+    version: String,
+    #[serde(default)]
+    installed_on_request: bool,
+    #[serde(default)]
+    time: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CaskInfo {
+    token: String,
+    #[serde(default)]
+    name: Vec<String>,
+    #[serde(default)]
+    desc: Option<String>,
+    #[serde(default)]
+    homepage: Option<String>,
+    #[serde(default)]
+    installed: Option<String>,
+    #[serde(default)]
+    auto_updates: Option<bool>,
+}
+
+/// Parses `brew info --installed --json=v2`. For each formula, picks the
+/// `installed` entry whose `version` matches `linked_keg` (falling back to
+/// the last entry in the chronological array if no match, e.g. an unlinked
+/// keg-only formula). Homebrew's JSON records only a single
+/// `installed_on_request` boolean per installed entry (there is no separate
+/// "installed as dependency" field): `true` -> `Requested`, `false` ->
+/// `Dependency`; `Unknown` is reserved for the case where a formula has no
+/// installed entry to pick from at all. Casks have no install-reason field
+/// in brew's JSON, so they are always `Requested`.
+pub fn parse_info_installed(
+    json: &str,
+    instance_id: &str,
+) -> Result<Vec<InstalledArtifact>, AdapterError> {
+    let root: InfoInstalledRoot =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+
+    let mut out = Vec::new();
+
+    for f in root.formulae {
+        let picked = f
+            .installed
+            .iter()
+            .find(|entry| Some(&entry.version) == f.linked_keg.as_ref())
+            .or_else(|| f.installed.last());
+
+        let (version, reason, installed_at) = match picked {
+            Some(entry) => {
+                let reason = if entry.installed_on_request {
+                    InstallReason::Requested
+                } else {
+                    InstallReason::Dependency
+                };
+                (entry.version.clone(), reason, entry.time)
+            }
+            None => (String::new(), InstallReason::Unknown, None),
+        };
+
+        out.push(InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind: ArtifactKind::Formula,
+                name: f.name.clone(),
+            },
+            display_name: f.name,
+            version,
+            reason,
+            description: f.desc,
+            homepage: f.homepage,
+            size_bytes: None,
+            installed_at,
+            path: None,
+            auto_updates: false,
+        });
+    }
+
+    for c in root.casks {
+        let display_name = c.name.into_iter().next().unwrap_or_else(|| c.token.clone());
+        out.push(InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind: ArtifactKind::Cask,
+                name: c.token,
+            },
+            display_name,
+            version: c.installed.unwrap_or_default(),
+            reason: InstallReason::Requested,
+            description: c.desc,
+            homepage: c.homepage,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: c.auto_updates.unwrap_or(false),
+        });
+    }
+
+    Ok(out)
+}
+
+#[derive(Debug, Deserialize)]
+struct OutdatedRoot {
+    #[serde(default)]
+    formulae: Vec<OutdatedItem>,
+    #[serde(default)]
+    casks: Vec<OutdatedItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OutdatedItem {
+    name: String,
+    #[serde(default)]
+    installed_versions: Vec<String>,
+    current_version: String,
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pinned_version: Option<String>,
+}
+
+/// Parses `brew outdated --json=v2`. Pinned items get a `"pinned"` warning
+/// (Canager can still show them, but shouldn't silently upgrade past a pin).
+pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    let root: OutdatedRoot =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+
+    let mut out = Vec::new();
+
+    let items = root
+        .formulae
+        .into_iter()
+        .map(|i| (i, ArtifactKind::Formula))
+        .chain(root.casks.into_iter().map(|i| (i, ArtifactKind::Cask)));
+
+    for (item, kind) in items {
+        let current = item.installed_versions.last().cloned().unwrap_or_default();
+        let mut warnings = Vec::new();
+        if item.pinned {
+            warnings.push("pinned".to_string());
+        }
+        out.push(UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind,
+                name: item.name,
+            },
+            current,
+            target: item.current_version,
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Parses `brew search` / `brew search --desc` output.
+///
+/// `brew search --desc` prints explicit `==> Formulae` / `==> Casks` section
+/// headers, so lines are attributed to whichever section header preceded
+/// them. Plain `brew search` (no `--desc`), however, prints **no** section
+/// headers at all when the output is not a TTY — real fixture output looks
+/// like a flat list of names with a single blank line separating the
+/// formula names from the cask names (confirmed against `brew search jq`
+/// on a real Mac; see `adapters/fixtures/brew/7.0.3/search-jq.txt`). To
+/// handle both shapes, a text with no headers anywhere treats the first
+/// blank-line-delimited group of names as formulae and every subsequent
+/// group as casks; a text with headers uses them as usual. Blank lines,
+/// `If you meant` and `Error:` lines are ignored either way.
+pub fn parse_search(text: &str, adapter_id: &str) -> Vec<SearchHit> {
+    let has_headers = text
+        .lines()
+        .any(|l| matches!(l.trim(), "==> Formulae" | "==> Casks"));
+
+    let mut hits = Vec::new();
+    let mut current_kind: Option<ArtifactKind> = None;
+    let mut block_has_content = false;
+
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.starts_with("If you meant") || line.starts_with("Error:") {
+            continue;
+        }
+        if line == "==> Formulae" {
+            current_kind = Some(ArtifactKind::Formula);
+            continue;
+        }
+        if line == "==> Casks" {
+            current_kind = Some(ArtifactKind::Cask);
+            continue;
+        }
+        if line.is_empty() {
+            if !has_headers && block_has_content {
+                // Headerless format: the blank line marks the end of the
+                // formula group and the start of the cask group.
+                current_kind = Some(ArtifactKind::Cask);
+            }
+            block_has_content = false;
+            continue;
+        }
+        if !has_headers && current_kind.is_none() {
+            // Headerless format: the first group of names is formulae.
+            current_kind = Some(ArtifactKind::Formula);
+        }
+        block_has_content = true;
+        let Some(kind) = current_kind else {
+            continue;
+        };
+        let (name, description) = match line.split_once(':') {
+            Some((n, d)) => (n.trim().to_string(), Some(d.trim().to_string())),
+            None => (line.to_string(), None),
+        };
+        hits.push(SearchHit {
+            adapter_id: adapter_id.to_string(),
+            kind,
+            name,
+            description,
+        });
+    }
+
+    hits
+}
+
+/// Parses `brew uses --installed {name}`: one whitespace-separated formula
+/// name per token (brew prints one per line, but splitting on all whitespace
+/// is robust to either layout).
+pub fn parse_uses(text: &str) -> Vec<String> {
+    text.split_whitespace().map(|s| s.to_string()).collect()
+}
+
+/// Parses `brew --version`'s first line, e.g. "Homebrew 7.0.3", returning
+/// just the version.
+pub fn parse_version(text: &str) -> Option<String> {
+    let first_line = text.lines().next()?;
+    let mut parts = first_line.split_whitespace();
+    let _label = parts.next()?; // "Homebrew"
+    let version = parts.next()?;
+    Some(version.to_string())
+}

@@ -1,0 +1,60 @@
+---
+source: crates/canager-core/tests/brew_fixtures.rs
+expression: result
+---
+[
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "gojq",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "ijq",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jq",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jq-lsp",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jqfmt",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jql",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Formula",
+    "name": "jqp",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Cask",
+    "name": "j",
+    "description": null
+  },
+  {
+    "adapter_id": "brew",
+    "kind": "Cask",
+    "name": "jquake",
+    "description": null
+  }
+]
