@@ -299,3 +299,59 @@ pub fn parse_version(text: &str) -> Option<String> {
     let version = parts.next()?;
     Some(version.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Real `brew outdated --json=v2` fixtures never carry `full_name`
+    // (confirmed against `adapters/fixtures/brew/*/outdated.json`), so the
+    // fallback in `parse_outdated` — using `full_name` when present,
+    // `name` otherwise — is untested by the fixture-driven snapshot tests.
+    // These two inline-JSON cases cover both branches directly: a tapped
+    // formula (where `full_name` disambiguates from a same-named formula
+    // in another tap) and a plain formula with no `full_name` at all.
+
+    #[test]
+    fn parse_outdated_uses_full_name_when_present() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "full_name": "myorg/tap/jq",
+                    "installed_versions": ["1.6"],
+                    "current_version": "1.7",
+                    "pinned": false,
+                    "pinned_version": null
+                }
+            ],
+            "casks": []
+        }"#;
+
+        let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key.name, "myorg/tap/jq");
+    }
+
+    #[test]
+    fn parse_outdated_falls_back_to_name_when_full_name_absent() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "installed_versions": ["1.6"],
+                    "current_version": "1.7",
+                    "pinned": false,
+                    "pinned_version": null
+                }
+            ],
+            "casks": []
+        }"#;
+
+        let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key.name, "jq");
+    }
+}

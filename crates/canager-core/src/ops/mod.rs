@@ -214,31 +214,6 @@ impl OperationManager {
     }
 
     async fn run_operation(self: Arc<Self>, op_id: OpId, plan: Plan, cancel: CancellationToken) {
-        // Acquire a concurrency permit *before* waiting for resource locks —
-        // this is the cross-resource cap (max 3 concurrently active ops of
-        // any kind), separate from and outside the per-resource locking
-        // below. Cancellation must still be honored while waiting here: an
-        // op cancelled before it ever got a permit never touched anything,
-        // so nothing to release.
-        let _permit: OwnedSemaphorePermit = tokio::select! {
-            biased;
-            _ = cancel.cancelled() => {
-                self.finish(op_id, Outcome::NoChange, false);
-                return;
-            }
-            permit = self.semaphore.clone().acquire_owned() => {
-                match permit {
-                    Ok(p) => p,
-                    Err(_) => {
-                        // The semaphore was closed (manager torn down);
-                        // treat exactly like a cancellation.
-                        self.finish(op_id, Outcome::NoChange, false);
-                        return;
-                    }
-                }
-            }
-        };
-
         // Wait for every lock this plan needs, polling every 50 ms. Only
         // mark `acquired` once every lock in `plan.locks` was free and has
         // now been inserted into `held` — otherwise a later step could
@@ -294,6 +269,54 @@ impl OperationManager {
             self.finish(op_id, Outcome::NoChange, true);
             return;
         }
+
+        // Acquire a concurrency permit only *now*, after the resource lock
+        // is already ours — this is the cross-resource cap (max 3
+        // concurrently active ops of any kind), and per the `semaphore`
+        // field's doc comment it must cap operations *actually running*
+        // `execute`, not operations merely queued behind another op's
+        // resource lock. Acquiring it earlier (before the lock-wait loop
+        // above) would let two ops stuck waiting for the same lock each
+        // hoard a permit while doing nothing, starving a third, unrelated
+        // op on a completely different, free lock — spec §6 requires same
+        // lock serial, different locks parallel, at most 3 concurrent, not
+        // "at most 3 queued".
+        //
+        // An op can now hold its resource lock while waiting here for a
+        // permit. This cannot deadlock: permits are only ever held by ops
+        // that are actively executing (never by an op blocked waiting on a
+        // lock or another permit), so every permit holder is guaranteed to
+        // finish and release it independently of anything this waiting op
+        // holds. The wait graph is a DAG — lock-wait → lock-held →
+        // permit-wait → permit-held → release — with no cycle back through
+        // a resource this op already owns.
+        //
+        // Cancellation must still be honored while waiting here: an op
+        // cancelled at this stage already holds its resource lock, so
+        // — unlike the pre-lock cancellation branches above, which never
+        // touched anything — it must release that lock before finishing.
+        // Routing through `finish(..., true)` delegates the actual release
+        // to this op's `LockRelease` (already stashed above), the same
+        // exactly-once mechanism `LockGuard`'s panic-safety `Drop` uses, so
+        // this can never race or double-release.
+        let _permit: OwnedSemaphorePermit = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                self.finish(op_id, Outcome::NoChange, true);
+                return;
+            }
+            permit = self.semaphore.clone().acquire_owned() => {
+                match permit {
+                    Ok(p) => p,
+                    Err(_) => {
+                        // The semaphore was closed (manager torn down);
+                        // treat exactly like a cancellation.
+                        self.finish(op_id, Outcome::NoChange, true);
+                        return;
+                    }
+                }
+            }
+        };
 
         self.set_status(op_id, OpStatus::Running);
 
