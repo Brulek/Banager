@@ -43,6 +43,15 @@
 
 - `src-tauri/Cargo.toml` 的 `[profile.release]` 在 workspace 中被 Cargo 忽略（每次 cargo 命令都打印 "profiles for the non root package will be ignored"），意味着 create-tauri-app 给的 release 优化（lto、opt-level、strip 等）目前对发布构建**不生效**；应把该段移到根 `Cargo.toml`。首个正式发布前必须处理，否则体积目标失真。
 
+## Codex 评审（2026-09-18）推迟项
+
+Codex 独立评审发现 3 项 P1 + 9 项 P2，控制者逐条核实属实；其中 10 项已在本分支修复（见 `.superpowers/sdd/codex-fix-report.md`）。以下 4 项推迟：
+
+- **M3**：`adapters/brew/parse.rs` 两个根结构体对 `formulae`/`casks` 都用 `#[serde(default)]`，因此 `{}` 或只含未知字段的对象会被解析成「空集合」而非报错，把格式异常解释为「没装任何东西」或「全部最新」；`installed_on_request` 缺失时默认 false，把未知安装原因归类为依赖（应为 `Unknown`）。改法：对 JSON v2 要求必要顶层字段存在，区分合法空数组与字段缺失；补 `{}`、缺分区、字段类型错误、截断 JSON 的断言。
+- **M4**：`ops/mod.rs` 的 `cancel()` 从不读 `plan.cancel_policy`，执行路径也不按该字段分支，`NoCancel` 计划运行中仍会收到取消令牌。当前 BrewAdapter 只产生 `KillThenReconcile`，故暂不影响；后续适配器用到 `NoCancel` 前必须实现，并补策略矩阵测试。
+- **N1**：`brew/mod.rs` 的 detect 单测虽用 MockRunner，仍查询真实文件系统并硬编码「恰好一个实例且为 /opt/homebrew」；Intel Mac、无 Homebrew、双 Homebrew 环境都会失败。改法：把候选路径与存在性检查抽成可注入依赖，分别测零/一/双实例，真实路径验证移入显式门控的集成测试。
+- **N2**：`release.yml` 安装两个编译目标并产出 universal 包，但没有 spec §10 要求的 Intel runner 启动冒烟；交叉编译成功不等于 x86_64 半边能跑。发布验收前补 Intel 启动验证，或明确记为未完成的验收项。
+
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
 - 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/canager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。

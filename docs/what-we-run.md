@@ -41,7 +41,7 @@ process's effective user ID is 0 (root).
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 | Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
-| Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | No |
+| Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — some cask uninstalls invoke `sudo` (e.g. removing a `pkgutil` receipt, a launch daemon, or a kernel extension) |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 
