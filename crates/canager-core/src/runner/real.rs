@@ -58,6 +58,19 @@ impl CommandRunner for RealRunner {
             return Err(RunnerError::NotFound(spec.program.clone()));
         }
 
+        if cancel.is_cancelled() {
+            // Cancelled before we ever spawned anything — report it the same
+            // way an in-flight cancellation would, but without starting a
+            // process at all.
+            return Ok(CommandOutput {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: true,
+            });
+        }
+
         let mut cmd = Command::new(&spec.program);
         cmd.args(&spec.args);
         cmd.envs(spec.env.iter().cloned());
@@ -279,6 +292,43 @@ mod tests {
             .expect("spawn /bin/sh");
         assert!(output.timed_out);
         assert_eq!(output.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_before_spawn_never_starts_process() {
+        // A token that is already cancelled *before* `run` is called at all
+        // must short-circuit before `spawn()` — proven here by targeting a
+        // command that would otherwise leave an observable trace (creating a
+        // file) if it ran.
+        let marker = std::env::temp_dir().join(format!(
+            "canager-cancel-before-spawn-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&marker);
+
+        let runner = RealRunner::new();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), format!("touch {}", marker.display())],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+        };
+        let output = runner
+            .run(spec, None, cancel)
+            .await
+            .expect("run must not error, just report cancelled");
+
+        assert!(output.cancelled);
+        assert_eq!(output.exit_code, None);
+        assert!(!marker.exists(), "the process must never have been spawned");
     }
 
     #[tokio::test]

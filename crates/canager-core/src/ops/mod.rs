@@ -5,8 +5,9 @@ use crate::model::{
     ResourceLock,
 };
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 pub struct OpRecord {
@@ -17,13 +18,79 @@ pub struct OpRecord {
     pub cancel: CancellationToken,
 }
 
+/// Releases a specific op's resource locks from the shared `held` set
+/// exactly once, no matter how many times `release_once` is called or from
+/// where. Two independent things can trigger a release for the same op:
+/// `finish()` on its normal completion path, and `LockGuard`'s `Drop` impl
+/// as a panic-safety net if the task unwinds before `finish` is ever
+/// reached. Routing both through the same `AtomicBool`-guarded instance
+/// means whichever fires first does the real work and the other is a no-op,
+/// so a panic can never cause a *different*, still-running op's lock to be
+/// evicted by a stale second release.
+struct LockRelease {
+    held: Arc<Mutex<HashSet<ResourceLock>>>,
+    locks: Vec<ResourceLock>,
+    released: AtomicBool,
+}
+
+impl LockRelease {
+    fn release_once(&self) {
+        if self.released.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let mut held = self.held.lock().unwrap();
+        for l in &self.locks {
+            held.remove(l);
+        }
+    }
+}
+
+/// RAII guard that releases its `LockRelease` when dropped. Held as a plain
+/// local variable across the rest of `run_operation`, including across the
+/// `.await` on `adapter.execute(...)`: if that future panics, unwinding
+/// through `run_operation`'s stack drops this guard like any other local,
+/// releasing the lock even though `finish()` is never reached. On the
+/// normal (non-panicking) path `finish()` already releases the lock via the
+/// same `LockRelease`, so this `Drop` just finds `released` already `true`
+/// and does nothing.
+struct LockGuard(Arc<LockRelease>);
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        self.0.release_once();
+    }
+}
+
+/// Internal bookkeeping for one submitted operation. Deliberately a
+/// different type from the public `OpRecord` (a Core Interface type whose
+/// fields are contractual): `record()` builds a fresh `OpRecord` from this
+/// on demand, so extra internal-only state like `lock_release` never leaks
+/// into the public shape.
+struct OpInternal {
+    id: OpId,
+    plan: Plan,
+    status: OpStatus,
+    outcome: Option<Outcome>,
+    cancel: CancellationToken,
+    /// `Some` once this op has actually acquired its resource locks (set
+    /// right after the lock-wait loop below succeeds). `finish()` routes its
+    /// own release through this instead of touching `held` directly, so it
+    /// can never race with `LockGuard`'s panic-safety release.
+    lock_release: Option<Arc<LockRelease>>,
+}
+
 pub struct OperationManager {
     adapters: HashMap<AdapterId, Arc<dyn Adapter>>,
     instances: Mutex<HashMap<InstanceId, ManagerInstance>>,
     sink: Arc<dyn EventSink>,
     held: Arc<Mutex<HashSet<ResourceLock>>>,
-    records: Arc<Mutex<HashMap<OpId, OpRecord>>>,
+    records: Arc<Mutex<HashMap<OpId, OpInternal>>>,
     next_id: AtomicU64,
+    /// Caps how many operations may be concurrently past the lock-wait stage
+    /// (i.e. actually running `execute`) at once, regardless of how many
+    /// distinct resources are involved — spec §6: same lock serial,
+    /// different locks parallel, at most 3 overall.
+    semaphore: Arc<Semaphore>,
 }
 
 impl OperationManager {
@@ -35,6 +102,7 @@ impl OperationManager {
             held: Arc::new(Mutex::new(HashSet::new())),
             records: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicU64::new(1),
+            semaphore: Arc::new(Semaphore::new(3)),
         }
     }
 
@@ -100,12 +168,13 @@ impl OperationManager {
     pub fn submit(self: &Arc<Self>, plan: Plan) -> OpId {
         let op_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let cancel = CancellationToken::new();
-        let record = OpRecord {
+        let record = OpInternal {
             id: op_id,
             plan: plan.clone(),
             status: OpStatus::Queued,
             outcome: None,
             cancel: cancel.clone(),
+            lock_release: None,
         };
         self.records.lock().unwrap().insert(op_id, record);
         self.sink.emit(OperationEvent::Status {
@@ -114,14 +183,62 @@ impl OperationManager {
         });
 
         let manager = Arc::clone(self);
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             manager.run_operation(op_id, plan, cancel).await;
+        });
+
+        // `run_operation`'s `JoinHandle` is otherwise unobserved, so if the
+        // task panics (e.g. a misbehaving adapter), tokio catches the panic
+        // at the task boundary and nothing would ever mark this op `Done` —
+        // `wait()` would hang forever. This small watcher task is the other
+        // half of the panic-safety fix: `LockGuard`'s `Drop` (inside
+        // `run_operation`) already released any resource lock during the
+        // unwind; this just finishes the bookkeeping so `wait()` returns.
+        let manager_for_panic = Arc::clone(self);
+        tokio::spawn(async move {
+            if let Err(join_err) = handle.await {
+                if join_err.is_panic() {
+                    manager_for_panic.finish(
+                        op_id,
+                        Outcome::Failed {
+                            exit_code: None,
+                            summary: "operation panicked".to_string(),
+                        },
+                        true,
+                    );
+                }
+            }
         });
 
         op_id
     }
 
     async fn run_operation(self: Arc<Self>, op_id: OpId, plan: Plan, cancel: CancellationToken) {
+        // Acquire a concurrency permit *before* waiting for resource locks —
+        // this is the cross-resource cap (max 3 concurrently active ops of
+        // any kind), separate from and outside the per-resource locking
+        // below. Cancellation must still be honored while waiting here: an
+        // op cancelled before it ever got a permit never touched anything,
+        // so nothing to release.
+        let _permit: OwnedSemaphorePermit = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                self.finish(op_id, Outcome::NoChange, false);
+                return;
+            }
+            permit = self.semaphore.clone().acquire_owned() => {
+                match permit {
+                    Ok(p) => p,
+                    Err(_) => {
+                        // The semaphore was closed (manager torn down);
+                        // treat exactly like a cancellation.
+                        self.finish(op_id, Outcome::NoChange, false);
+                        return;
+                    }
+                }
+            }
+        };
+
         // Wait for every lock this plan needs, polling every 50 ms. Only
         // mark `acquired` once every lock in `plan.locks` was free and has
         // now been inserted into `held` — otherwise a later step could
@@ -147,6 +264,35 @@ impl OperationManager {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        // The lock is now ours. Wire up panic-safe release before doing
+        // anything else: stash a `LockRelease` in this op's record (so
+        // `finish()` can route its normal-path release through the same
+        // idempotent object) and keep a `LockGuard` as a local variable for
+        // the rest of this function. If anything below panics — including
+        // inside `adapter.execute(...).await` — unwinding drops `_lock_guard`
+        // and releases the lock even though `finish` is never reached.
+        let lock_release = Arc::new(LockRelease {
+            held: self.held.clone(),
+            locks: plan.locks.clone(),
+            released: AtomicBool::new(false),
+        });
+        if let Some(r) = self.records.lock().unwrap().get_mut(&op_id) {
+            r.lock_release = Some(lock_release.clone());
+        }
+        let _lock_guard = LockGuard(lock_release);
+
+        // If the op was cancelled in the window between "the lock became
+        // free" and this check (e.g. it was cancelled the instant after
+        // `submit`, before the poll loop above ever ran), the command must
+        // never actually start. Unlike the still-queued branch above, this
+        // op *did* acquire its locks, so they must be released here —
+        // `release_locks: true` is required, not `false` (which would leak
+        // them forever since nothing else will ever release them).
+        if cancel.is_cancelled() {
+            self.finish(op_id, Outcome::NoChange, true);
+            return;
         }
 
         self.set_status(op_id, OpStatus::Running);
@@ -203,6 +349,46 @@ impl OperationManager {
         let reconciled = adapter.reconcile(&instance, &key).await;
 
         let final_outcome = match exec_result {
+            // A command that reported success is not proof of success on
+            // its own — spec §6 requires the `Verifying` reconcile to gate
+            // the final outcome even on the "normal" exit-0 path, not just
+            // after a cancelled/timed-out execute. Never fabricate Succeeded
+            // or Failed when reconcile itself could not be trusted (`Err`):
+            // report Unconfirmed instead.
+            Ok(Outcome::Succeeded) => match reconciled {
+                Err(_) => Outcome::Unconfirmed,
+                Ok(r) => match plan.request.kind {
+                    OpKind::Install => {
+                        if r.present {
+                            Outcome::Succeeded
+                        } else {
+                            Outcome::NeedsAttention(
+                                "command succeeded but the package is not installed".to_string(),
+                            )
+                        }
+                    }
+                    OpKind::Uninstall => {
+                        if !r.present {
+                            Outcome::Succeeded
+                        } else {
+                            Outcome::NeedsAttention(
+                                "command succeeded but the package is still installed".to_string(),
+                            )
+                        }
+                    }
+                    OpKind::Upgrade => {
+                        // There is no target version to compare against
+                        // here, so presence is the strongest evidence
+                        // available: still present after an upgrade that
+                        // reported success is as good as it gets.
+                        if r.present {
+                            Outcome::Succeeded
+                        } else {
+                            Outcome::NeedsAttention("package disappeared after upgrade".to_string())
+                        }
+                    }
+                },
+            },
             // A cancelled/timed-out execute only tells us the artifact's
             // *current* presence, not whether this op caused it. That is
             // proof of success for Install (wasn't there, now is) and
@@ -238,8 +424,14 @@ impl OperationManager {
     }
 
     /// `release_locks` must be `false` when this op never actually acquired
-    /// its locks (cancelled while still waiting for them) — otherwise this
-    /// would release locks a *different*, still-running op is holding.
+    /// its locks (cancelled while still waiting for them, or for a
+    /// concurrency permit) — passing `true` in that case would be
+    /// harmless in itself (there is no `lock_release` yet to act on), but
+    /// stays `false` there for clarity. When `true` and the op *did*
+    /// acquire locks, the actual removal is delegated to that op's
+    /// `LockRelease` (shared with its `LockGuard`), so a panic-triggered
+    /// release racing with this one can never double-release — whichever
+    /// runs first wins and the other is a no-op.
     fn finish(&self, op_id: OpId, outcome: Outcome, release_locks: bool) {
         {
             let mut records = self.records.lock().unwrap();
@@ -247,9 +439,8 @@ impl OperationManager {
                 r.status = OpStatus::Done;
                 r.outcome = Some(outcome.clone());
                 if release_locks {
-                    let mut held = self.held.lock().unwrap();
-                    for l in &r.plan.locks {
-                        held.remove(l);
+                    if let Some(lr) = &r.lock_release {
+                        lr.release_once();
                     }
                 }
             }

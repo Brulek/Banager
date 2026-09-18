@@ -20,6 +20,7 @@ use canager_core::model::{
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -45,6 +46,7 @@ struct FakeAdapter {
     meta: AdapterMeta,
     behavior: ExecuteBehavior,
     reconcile_result: Reconciled,
+    execute_calls: Arc<AtomicUsize>,
 }
 
 impl FakeAdapter {
@@ -61,7 +63,14 @@ impl FakeAdapter {
             },
             behavior,
             reconcile_result,
+            execute_calls: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// Number of times `execute` has actually been invoked — used to prove a
+    /// cancelled-before-running op never starts the underlying command.
+    fn execute_calls(&self) -> usize {
+        self.execute_calls.load(Ordering::SeqCst)
     }
 }
 
@@ -130,6 +139,7 @@ impl Adapter for FakeAdapter {
         _op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        self.execute_calls.fetch_add(1, Ordering::SeqCst);
         match &self.behavior {
             ExecuteBehavior::WaitForCancel => {
                 cancel.cancelled().await;
@@ -480,4 +490,43 @@ async fn test_cancel_after_done_is_a_no_op() {
     let record = manager.record(op_id).expect("record still present");
     assert_eq!(record.status, OpStatus::Done);
     assert_eq!(manager.wait(op_id).await, Some(Outcome::Succeeded));
+}
+
+// (F1) Cancelling immediately after submit, with the resource lock free, must
+// not let the command start at all: cancellation is checked again right
+// after the lock is acquired and before the op is marked Running, not only
+// while it is still waiting for a lock held by someone else.
+#[tokio::test]
+async fn test_cancel_immediately_after_submit_never_calls_execute() {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let adapter = Arc::new(FakeAdapter::new(
+        ExecuteBehavior::Work(Duration::from_millis(200)),
+        Reconciled {
+            present: true,
+            version: None,
+        },
+    ));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/immediate-cancel");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Install, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+
+    // Nothing else holds this resource's lock, so `submit` will find it free
+    // on the very first poll.
+    let op_id = manager.submit(plan);
+    manager.cancel(op_id);
+
+    let outcome = manager.wait(op_id).await;
+    assert_eq!(outcome, Some(Outcome::NoChange));
+    assert_eq!(
+        adapter.execute_calls(),
+        0,
+        "a cancelled-before-running op must never invoke execute"
+    );
 }
