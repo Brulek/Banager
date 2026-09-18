@@ -1447,7 +1447,7 @@ expression: result
     "key": {
       "instance_id": "brew:/opt/homebrew",
       "kind": "Cask",
-      "name": "claudebar"
+      "name": "gautham-v/tap/claudebar"
     },
     "display_name": "Claudebar",
     "version": "0.1.1",
@@ -1463,7 +1463,7 @@ expression: result
     "key": {
       "instance_id": "brew:/opt/homebrew",
       "kind": "Cask",
-      "name": "package-manager-manager"
+      "name": "mxcl/made/package-manager-manager"
     },
     "display_name": "Package Manager Manager",
     "version": "0.25.0",

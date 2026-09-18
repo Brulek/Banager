@@ -17,6 +17,8 @@ struct InfoInstalledRoot {
 struct FormulaInfo {
     name: String,
     #[serde(default)]
+    full_name: Option<String>,
+    #[serde(default)]
     desc: Option<String>,
     #[serde(default)]
     homepage: Option<String>,
@@ -39,6 +41,8 @@ struct FormulaInstalledEntry {
 struct CaskInfo {
     token: String,
     #[serde(default)]
+    full_token: Option<String>,
+    #[serde(default)]
     name: Vec<String>,
     #[serde(default)]
     desc: Option<String>,
@@ -59,6 +63,17 @@ struct CaskInfo {
 /// `Dependency`; `Unknown` is reserved for the case where a formula has no
 /// installed entry to pick from at all. Casks have no install-reason field
 /// in brew's JSON, so they are always `Requested`.
+///
+/// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
+/// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or
+/// a cask's `full_token` (e.g. `gautham-v/tap/claudebar`) when brew reports
+/// one, falling back to the short `name`/`token` otherwise. This matters
+/// because third-party taps only disambiguate by their full name, and using
+/// the short name as the key would make `reconcile` (see `brew/mod.rs`)
+/// unable to ever find a tapped artifact again. The short name is preserved
+/// in `display_name` for formulae; casks already use their human-readable
+/// `name[0]` for `display_name`, so no separate short-name field is needed
+/// there.
 pub fn parse_info_installed(
     json: &str,
     instance_id: &str,
@@ -87,11 +102,16 @@ pub fn parse_info_installed(
             None => (String::new(), InstallReason::Unknown, None),
         };
 
+        let key_name = f
+            .full_name
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| f.name.clone());
+
         out.push(InstalledArtifact {
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
                 kind: ArtifactKind::Formula,
-                name: f.name.clone(),
+                name: key_name,
             },
             display_name: f.name,
             version,
@@ -106,12 +126,16 @@ pub fn parse_info_installed(
     }
 
     for c in root.casks {
+        let key_name = c
+            .full_token
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| c.token.clone());
         let display_name = c.name.into_iter().next().unwrap_or_else(|| c.token.clone());
         out.push(InstalledArtifact {
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
                 kind: ArtifactKind::Cask,
-                name: c.token,
+                name: key_name,
             },
             display_name,
             version: c.installed.unwrap_or_default(),
@@ -139,6 +163,8 @@ struct OutdatedRoot {
 #[derive(Debug, Deserialize)]
 struct OutdatedItem {
     name: String,
+    #[serde(default)]
+    full_name: Option<String>,
     #[serde(default)]
     installed_versions: Vec<String>,
     current_version: String,
@@ -169,11 +195,15 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
         if item.pinned {
             warnings.push("pinned".to_string());
         }
+        let key_name = item
+            .full_name
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| item.name.clone());
         out.push(UpdateCandidate {
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
                 kind,
-                name: item.name,
+                name: key_name,
             },
             current,
             target: item.current_version,
