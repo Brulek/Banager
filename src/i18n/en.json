@@ -89,5 +89,26 @@
     "confirm": "Uninstall",
     "cancel": "Cancel",
     "confirmDisabledHint": "Resolve the items above before uninstalling."
+  },
+  "settings": {
+    "title": "Settings",
+    "loading": "Loading settings…",
+    "showTechnicalDetails": {
+      "label": "Show technical details",
+      "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+    },
+    "language": {
+      "label": "Language",
+      "system": "System",
+      "english": "English",
+      "chinese": "简体中文"
+    },
+    "ignoredUpdates": {
+      "title": "Ignored updates",
+      "empty": "You haven't ignored any updates.",
+      "unignore": "Stop ignoring",
+      "unignoreAriaLabel": "Stop ignoring {{name}}"
+    },
+    "saveError": "Couldn't save that change ({{message}}). It's been reverted."
   }
 }

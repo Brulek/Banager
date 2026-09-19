@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Sidebar } from "./components/Sidebar";
 import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
@@ -24,7 +25,7 @@ function App() {
           ) : page === "updates" ? (
             <UpdatesPage />
           ) : (
-            <h1 className="p-6 text-lg font-semibold">{t(`nav.${page}`)}</h1>
+            <SettingsPage />
           )}
         </main>
       </div>
