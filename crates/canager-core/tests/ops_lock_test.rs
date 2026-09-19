@@ -134,6 +134,7 @@ fn make_instance(id: &str, prefix: &str) -> ManagerInstance {
         scope: Scope::User,
         version: None,
         healthy: true,
+        unverified_version: None,
     }
 }
 

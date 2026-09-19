@@ -45,6 +45,21 @@ impl AdapterMeta {
     pub fn from_toml(s: &str) -> Result<AdapterMeta, toml::de::Error> {
         toml::from_str(s)
     }
+
+    /// `None` when this adapter's metadata lists no verified versions, or
+    /// when `detected` is among them (or absent). `Some(detected)` when it
+    /// is not, so the UI can mark the source as running an unverified
+    /// version (spec §4.1).
+    ///
+    /// Defined once, here, rather than per adapter: every `detect()` in the
+    /// workspace calls this, so the rule can only ever mean one thing. An
+    /// earlier draft of this phase had seven copies of it.
+    pub fn unverified_version(&self, detected: &Option<String>) -> Option<String> {
+        detected
+            .as_ref()
+            .filter(|v| !self.verified_versions.is_empty() && !self.verified_versions.contains(v))
+            .cloned()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -140,6 +155,33 @@ mod tests {
         assert_eq!(meta.id, "brew");
         assert_eq!(meta.name, "Homebrew");
         assert_eq!(meta.platforms, vec!["macos".to_string()]);
+    }
+
+    #[test]
+    fn test_unverified_version_flags_only_a_version_outside_a_non_empty_verified_list() {
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec!["1.0".to_string()],
+        };
+        assert_eq!(meta.unverified_version(&Some("1.0".to_string())), None);
+        assert_eq!(
+            meta.unverified_version(&Some("9.9".to_string())),
+            Some("9.9".to_string())
+        );
+        assert_eq!(meta.unverified_version(&None), None);
+
+        // An adapter whose meta file lists no verified versions has nothing
+        // to compare against, so it never flags anything.
+        let unpinned = AdapterMeta {
+            verified_versions: vec![],
+            ..meta
+        };
+        assert_eq!(unpinned.unverified_version(&Some("9.9".to_string())), None);
     }
 
     #[test]

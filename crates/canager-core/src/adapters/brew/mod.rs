@@ -210,6 +210,7 @@ impl BrewAdapter {
                 Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
                 _ => None,
             };
+            let unverified_version = self.meta.unverified_version(&version);
             let prefix = Self::prefix_for(&path);
             found.push(ManagerInstance {
                 id: Self::instance_id_for(&prefix),
@@ -219,6 +220,7 @@ impl BrewAdapter {
                 scope: Scope::User,
                 healthy: version.is_some(),
                 version,
+                unverified_version,
             });
         }
         found
@@ -596,6 +598,7 @@ mod tests {
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
             healthy: true,
+            unverified_version: None,
         }
     }
 
@@ -679,6 +682,61 @@ mod tests {
         assert_eq!(instances[0].id, "brew:/opt/homebrew");
         assert_eq!(instances[0].version, Some("7.0.3".to_string()));
         assert!(instances[0].healthy);
+    }
+
+    #[tokio::test]
+    async fn test_detect_finds_opt_homebrew_and_its_version_is_verified() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "Homebrew 7.0.3\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        let instances = adapter.detect(&env).await;
+        assert_eq!(instances.len(), 1);
+        assert!(
+            instances[0].unverified_version.is_none(),
+            "7.0.3 is listed in adapters/meta/brew.toml's verified_versions"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_flags_an_unverified_version_not_in_brew_toml() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "Homebrew 99.9.9\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        let instances = adapter.detect(&env).await;
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            instances[0].unverified_version,
+            Some("99.9.9".to_string()),
+            "a version not listed in adapters/meta/brew.toml's verified_versions must be flagged"
+        );
     }
 
     #[tokio::test]
@@ -810,6 +868,7 @@ mod tests {
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
             healthy: true,
+            unverified_version: None,
         };
 
         adapter
@@ -1076,6 +1135,7 @@ mod plan_execute_tests {
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
             healthy: true,
+            unverified_version: None,
         }
     }
 
@@ -1097,6 +1157,7 @@ mod plan_execute_tests {
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
             healthy: true,
+            unverified_version: None,
         };
         let req = OpRequest {
             kind: OpKind::Install,

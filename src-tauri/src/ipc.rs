@@ -295,6 +295,7 @@ mod tests {
             scope: Scope::User,
             version: Some("1.0".to_string()),
             healthy: true,
+            unverified_version: None,
         };
         let meta = AdapterMeta {
             id: "fake".to_string(),

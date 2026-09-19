@@ -19,6 +19,11 @@ pub struct ManagerInstance {
     pub scope: Scope,
     pub version: Option<String>,
     pub healthy: bool,
+    /// None when the adapter's metadata lists no verified versions, or when
+    /// the detected version is among them. Some(detected) when it is not,
+    /// so the UI can mark the source as running an unverified version (spec
+    /// §4.1).
+    pub unverified_version: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -166,8 +171,27 @@ mod tests {
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
             healthy: true,
+            unverified_version: None,
         };
         let json = serde_json::to_string(&instance).expect("serialize");
+        let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(instance, back);
+    }
+
+    #[test]
+    fn test_manager_instance_with_unverified_version_round_trips_through_json() {
+        let instance = ManagerInstance {
+            id: "brew:/opt/homebrew".to_string(),
+            adapter_id: "brew".to_string(),
+            exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
+            prefix: PathBuf::from("/opt/homebrew"),
+            scope: Scope::User,
+            version: Some("99.9.9".to_string()),
+            healthy: true,
+            unverified_version: Some("99.9.9".to_string()),
+        };
+        let json = serde_json::to_string(&instance).expect("serialize");
+        assert!(json.contains("\"unverified_version\":\"99.9.9\""));
         let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(instance, back);
     }

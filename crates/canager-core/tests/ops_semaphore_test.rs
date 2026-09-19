@@ -148,6 +148,7 @@ fn make_instance_for_adapter(id: &str, adapter_id: &str) -> ManagerInstance {
         scope: Scope::User,
         version: None,
         healthy: true,
+        unverified_version: None,
     }
 }
 
