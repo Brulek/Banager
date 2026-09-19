@@ -8,14 +8,21 @@
 //! document.
 
 use crate::adapters::brew::BrewAdapter;
+use crate::adapters::cargo::CargoAdapter;
+use crate::adapters::npm::NpmAdapter;
+use crate::adapters::ollama::OllamaAdapter;
+use crate::adapters::pip::PipAdapter;
+use crate::adapters::pipx::PipxAdapter;
+use crate::adapters::uv::UvAdapter;
 use crate::adapters::{Adapter, AdapterError, CheckOptions};
 use crate::events::{EventSink, OpId};
+use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock,
     UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
-use crate::runner::HostEnv;
+use crate::runner::{CommandRunner, HostEnv, RealRunner};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -141,11 +148,23 @@ pub struct Session {
 }
 
 impl Session {
-    /// Registers the Homebrew adapter with a `RealRunner`. `now_fn` exists
-    /// so tests can pin `refreshed_at`; production passes `None`.
+    /// Registers all seven adapters (Task 11) over a shared `RealRunner`
+    /// and `RealHttpClient` (network-touching adapters only: pipx, cargo,
+    /// ollama, per the per-adapter contract table). `now_fn` exists so
+    /// tests can pin `refreshed_at`; production passes `None`.
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
-        let brew = Arc::new(BrewAdapter::new(Arc::new(crate::runner::RealRunner::new())));
-        Session::with_adapters(sink, vec![brew], now_fn)
+        let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
+        let http: Arc<dyn HttpClient> = Arc::new(RealHttpClient::new());
+        let adapters: Vec<Arc<dyn Adapter>> = vec![
+            Arc::new(BrewAdapter::new(runner.clone())),
+            Arc::new(NpmAdapter::new(runner.clone())),
+            Arc::new(PipxAdapter::new(runner.clone(), http.clone())),
+            Arc::new(UvAdapter::new(runner.clone())),
+            Arc::new(PipAdapter::new(runner.clone())),
+            Arc::new(CargoAdapter::new(runner.clone(), http.clone())),
+            Arc::new(OllamaAdapter::new(runner, http)),
+        ];
+        Session::with_adapters(sink, adapters, now_fn)
     }
 
     /// Test seam: build a Session over arbitrary adapters.
@@ -236,9 +255,38 @@ impl Session {
             return self.commit(previous, refused);
         }
 
-        let mut instances = Vec::new();
+        // Task 11: each adapter's detect() runs in its own spawned task, so
+        // a slow or failing source (e.g. an Ollama daemon that is not
+        // answering) can never delay any other adapter's detection -- only
+        // its own instances arrive late, the same guarantee the
+        // per-instance inventory/check_updates fetch below already gives
+        // each instance.
+        let mut detect_handles = Vec::with_capacity(self.adapters.len());
         for adapter in self.adapters.values() {
-            instances.extend(adapter.detect(env).await);
+            // Cloned into the task because `tokio::spawn` needs a 'static
+            // future: iterating `values()` by reference would tie it to
+            // `&self`. (Written as an explicit clone rather than
+            // `.values().cloned()` only because clippy's
+            // `unnecessary_to_owned` misreads the latter here.)
+            let adapter = adapter.clone();
+            let env = env.clone();
+            detect_handles.push((
+                adapter.meta().id.clone(),
+                tokio::spawn(async move { adapter.detect(&env).await }),
+            ));
+        }
+        let mut instances = Vec::new();
+        let mut detect_errors = Vec::new();
+        for (adapter_id, handle) in detect_handles {
+            match handle.await {
+                Ok(found) => instances.extend(found),
+                Err(_join_err) => {
+                    detect_errors.push(SourceError {
+                        instance_id: adapter_id,
+                        message: "internal error detecting this source".to_string(),
+                    });
+                }
+            }
         }
         for inst in &instances {
             self.ops.register_instance(inst.clone());
@@ -260,6 +308,18 @@ impl Session {
         // applies here exactly as it does to operations themselves.
         let mut handles = Vec::with_capacity(instances.len());
         for inst in instances.clone() {
+            // An instance the adapter reported as `healthy: false` is a
+            // *reported state*, not a failed refresh: the adapter already
+            // knows the source is not answering and said so. Fanning out to
+            // it would fail, push a SourceError, set `stale` -- and therefore
+            // carry `refreshed_at` forward instead of stamping it -- leaving
+            // the whole snapshot permanently stale on a machine where, say,
+            // Ollama is installed but not running. It stays in
+            // `snapshot.instances` so the UI can render its notice (Task 12)
+            // and offer to start it.
+            if !inst.healthy {
+                continue;
+            }
             let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
                 continue;
             };
@@ -318,8 +378,8 @@ impl Session {
 
         let mut artifacts = Vec::new();
         let mut updates = Vec::new();
-        let mut errors = Vec::new();
-        let mut stale = false;
+        let mut errors = detect_errors;
+        let mut stale = !errors.is_empty();
         for (instance_id, handle) in handles {
             match handle.await {
                 Ok((a, u, e, s)) => {
@@ -426,6 +486,17 @@ impl Session {
 
     pub fn operations(&self) -> Vec<OpSummary> {
         self.ops.summaries()
+    }
+
+    /// Sorted ids of every adapter this Session has registered, regardless
+    /// of whether that adapter currently detects any instance on the host.
+    /// A test seam (Task 11) so registration itself is verifiable without
+    /// depending on which tools happen to be installed on the machine
+    /// running the test.
+    pub fn adapter_ids(&self) -> Vec<AdapterId> {
+        let mut ids: Vec<AdapterId> = self.adapters.keys().cloned().collect();
+        ids.sort();
+        ids
     }
 }
 
@@ -657,6 +728,108 @@ mod tests {
             cargo_home: None,
             ollama_host: None,
         }
+    }
+
+    #[test]
+    fn test_new_registers_all_seven_adapters() {
+        let sink = Arc::new(VecSink::new());
+        let session = Session::new(sink, None);
+        assert_eq!(
+            session.adapter_ids(),
+            vec![
+                "brew".to_string(),
+                "cargo".to_string(),
+                "npm".to_string(),
+                "ollama".to_string(),
+                "pip".to_string(),
+                "pipx".to_string(),
+                "uv".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others(
+    ) {
+        // Regression guard: detect() used to run in a plain sequential loop
+        // over `self.adapters.values()`, so a slow adapter (e.g. Ollama
+        // probing an unresponsive daemon) delayed every adapter registered
+        // after it. Two adapters each delayed 200ms must finish in well
+        // under their sum (400ms) once detect() fans out concurrently.
+        let (slow_a, state_a) = FakeAdapter::new("slow-a");
+        let (slow_b, state_b) = FakeAdapter::new("slow-b");
+        state_a.lock().unwrap().detect_delay = Duration::from_millis(200);
+        state_a.lock().unwrap().instances = vec![make_instance("slow-a", "slow-a:1")];
+        state_b.lock().unwrap().detect_delay = Duration::from_millis(200);
+        state_b.lock().unwrap().instances = vec![make_instance("slow-b", "slow-b:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![slow_a, slow_b], None);
+
+        let started = Instant::now();
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let elapsed = started.elapsed();
+
+        assert!(snapshot.instances.iter().any(|i| i.id == "slow-a:1"));
+        assert!(snapshot.instances.iter().any(|i| i.id == "slow-b:1"));
+        assert!(
+            elapsed < Duration::from_millis(350),
+            "two 200ms detects must overlap, not run back to back (took {elapsed:?})"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_an_unhealthy_instance_is_a_reported_state_not_a_failed_refresh() {
+        // A source that is installed but known not to be running -- Ollama
+        // with its daemon down is the case this phase adds, since
+        // OllamaAdapter::detect returns an instance with healthy:false rather
+        // than no instance at all -- must not be fanned out to. Its
+        // inventory() would fail, push a SourceError, set `stale`, and so
+        // carry `refreshed_at` forward unchanged: on that machine
+        // `refreshed_at` would stay None forever, the stale banner would
+        // never clear, and the front end would keep reading "no refresh has
+        // ever finished" however many brew/npm/pipx refreshes succeeded --
+        // all while Task 12's "Ollama isn't running" notice renders right
+        // next to it saying exactly what is going on.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            let mut down = make_instance("fake", "fake:down");
+            down.healthy = false;
+            s.instances = vec![make_instance("fake", "fake:up"), down];
+            s.artifacts
+                .insert("fake:up".to_string(), vec![make_artifact("fake:up", "jq")]);
+            // If refresh ever does fan out to the unhealthy instance, this
+            // makes it fail loudly rather than pass by accident.
+            s.failing.push("fake:down".to_string());
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(
+            snapshot.refreshed_at.is_some(),
+            "a refresh whose only complaint is a source known not to be running has completed"
+        );
+        assert!(!snapshot.stale);
+        assert!(snapshot.errors.is_empty());
+        assert!(
+            snapshot.instances.iter().any(|i| i.id == "fake:down"),
+            "the unhealthy instance stays in the snapshot so the UI can offer to start it"
+        );
+        assert!(
+            !state
+                .lock()
+                .unwrap()
+                .inventory_calls
+                .contains(&"fake:down".to_string()),
+            "an instance reported as not running must never be inventoried"
+        );
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
     }
 
     #[tokio::test]
