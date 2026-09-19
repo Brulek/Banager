@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 pub mod brew;
 pub mod npm;
+pub mod pip;
 pub mod pipx;
 pub mod uv;
 
