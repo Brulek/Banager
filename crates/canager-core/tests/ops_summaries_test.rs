@@ -224,6 +224,39 @@ async fn test_summaries_are_ordered_newest_first() {
 }
 
 #[tokio::test]
+async fn test_records_are_capped_so_old_finished_operations_do_not_accumulate_forever() {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new())).with_max_records(2);
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let mut ids = Vec::new();
+    for name in ["aaa", "bbb", "ccc"] {
+        let plan = adapter
+            .plan(&inst, &make_request(name, "fake:1"))
+            .await
+            .unwrap();
+        let id = manager.submit(plan);
+        manager.wait(id).await;
+        ids.push(id);
+    }
+
+    let summaries = manager.summaries();
+    assert_eq!(
+        summaries.len(),
+        2,
+        "the cap of 2 must be enforced once a third operation completes"
+    );
+    assert!(
+        summaries.iter().all(|s| s.id != ids[0]),
+        "the oldest finished operation must be the one evicted"
+    );
+    assert!(summaries.iter().any(|s| s.id == ids[2]));
+}
+
+#[tokio::test]
 async fn test_wait_does_not_hang_after_finish() {
     // This only guards against an unbounded stall (e.g. a regression to a
     // dropped notification that never wakes `wait()` at all). It does

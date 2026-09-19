@@ -7,7 +7,6 @@ import {
 } from "@tanstack/react-query";
 import {
   getSnapshot,
-  refresh,
   planOperation,
   submitOperation,
   cancelOperation,
@@ -16,13 +15,11 @@ import {
   setSettings,
   openOllamaApp,
 } from "./api";
+import { refreshIntoCache } from "./events";
+import { queryKeys } from "./queryKeys";
 import type { IssuedPlan, OpRequest, OpSummary, Settings, Snapshot } from "./types";
 
-export const queryKeys = {
-  snapshot: ["snapshot"] as const,
-  operations: ["operations"] as const,
-  settings: ["settings"] as const,
-};
+export { queryKeys };
 
 export function useSnapshot(): UseQueryResult<Snapshot> {
   return useQuery({ queryKey: queryKeys.snapshot, queryFn: getSnapshot });
@@ -39,9 +36,17 @@ export function useOperations(): UseQueryResult<OpSummary[]> {
 export function useRefresh(): UseMutationResult<Snapshot, Error, void> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: refresh,
-    onSuccess: (snapshot) => {
-      queryClient.setQueryData(queryKeys.snapshot, snapshot);
+    mutationFn: async () => {
+      // refreshIntoCache already writes the result into the cache; reading
+      // it back here is what makes a coalesced call (one that arrived while
+      // another refresh was already in flight) report the *served* result
+      // instead of racing a second, redundant `invoke("refresh")`.
+      await refreshIntoCache(queryClient, "manual");
+      const result = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
+      if (!result) {
+        throw new Error("refresh did not produce a snapshot");
+      }
+      return result;
     },
   });
 }

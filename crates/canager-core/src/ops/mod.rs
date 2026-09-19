@@ -11,6 +11,13 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
+/// Default cap on how many finished (`Done`) operations `records` keeps at
+/// once; an operation still in flight is never evicted regardless of this
+/// bound. Bounds a long-running session's memory use -- without it, every
+/// operation ever submitted in the process's lifetime stays in `records`
+/// (and therefore in `summaries()`) forever.
+const DEFAULT_MAX_RECORDS: usize = 200;
+
 pub struct OpRecord {
     pub id: OpId,
     pub plan: Plan,
@@ -97,6 +104,9 @@ pub struct OperationManager {
     /// `op_id`'s status after every wake, so a notification meant for a
     /// different op just costs one extra, harmless status check.
     done_notify: Arc<Notify>,
+    /// Caps `records` at this many total entries (Task 13); see
+    /// `DEFAULT_MAX_RECORDS`'s doc comment and `with_max_records`.
+    max_records: usize,
 }
 
 /// A read-only view of one operation for a UI, independent of the
@@ -125,6 +135,7 @@ impl OperationManager {
             next_id: AtomicU64::new(1),
             semaphore: Arc::new(Semaphore::new(3)),
             done_notify: Arc::new(Notify::new()),
+            max_records: DEFAULT_MAX_RECORDS,
         }
     }
 
@@ -138,6 +149,14 @@ impl OperationManager {
 
     pub fn register_instance(&self, inst: ManagerInstance) {
         self.instances.lock().unwrap().insert(inst.id.clone(), inst);
+    }
+
+    /// Caps how many finished (`Done`) operations `records` keeps at once;
+    /// production uses `DEFAULT_MAX_RECORDS`, tests set a small value to
+    /// make eviction observable without submitting hundreds of ops.
+    pub fn with_max_records(mut self, max: usize) -> OperationManager {
+        self.max_records = max;
+        self
     }
 
     pub fn record(&self, op_id: OpId) -> Option<OpRecord> {
@@ -228,7 +247,11 @@ impl OperationManager {
             cancel: cancel.clone(),
             lock_release: None,
         };
-        self.records.lock().unwrap().insert(op_id, record);
+        {
+            let mut records = self.records.lock().unwrap();
+            records.insert(op_id, record);
+            Self::evict_oldest_done_records(&mut records, self.max_records);
+        }
         self.sink.emit(OperationEvent::Status {
             op_id,
             status: OpStatus::Queued,
@@ -263,6 +286,31 @@ impl OperationManager {
         });
 
         op_id
+    }
+
+    /// Evicts the oldest (lowest op id) `Done` records, oldest first, until
+    /// either the cap is met or no `Done` record remains. Work that is still
+    /// Queued/Running/CancelRequested/Cancelling/Verifying is never evicted,
+    /// so `max_records` is a target, not a hard bound: with enough operations
+    /// in flight at once, `records` can legitimately sit above it.
+    fn evict_oldest_done_records(records: &mut HashMap<OpId, OpInternal>, max_records: usize) {
+        if records.len() <= max_records {
+            return;
+        }
+        let mut done_ids: Vec<OpId> = records
+            .iter()
+            .filter(|(_, r)| r.status == OpStatus::Done)
+            .map(|(id, _)| *id)
+            .collect();
+        done_ids.sort_unstable();
+        let mut overflow = records.len() - max_records;
+        for id in done_ids {
+            if overflow == 0 {
+                break;
+            }
+            records.remove(&id);
+            overflow -= 1;
+        }
     }
 
     async fn run_operation(self: Arc<Self>, op_id: OpId, plan: Plan, cancel: CancellationToken) {

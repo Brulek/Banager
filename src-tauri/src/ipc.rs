@@ -6,6 +6,7 @@ use canager_core::ops::OpSummary;
 use canager_core::runner::HostEnv;
 use canager_core::session::{IssuedPlan, Snapshot};
 use canager_core::settings::Settings;
+use std::sync::atomic::Ordering;
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -25,15 +26,31 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 /// shell is the only layer that can, and this is the only place in the
 /// whole plan that does so outside a test.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
-    let generation_before = state.session.snapshot().generation;
     let opts = CheckOptions {
         include_self_updating: state.get_settings().include_self_updating,
     };
     let snapshot = state.session.refresh(&HostEnv::discover(), &opts).await;
-    if snapshot.generation != generation_before {
-        state.channel_sink.broadcast(UiEvent::SnapshotChanged {
-            generation: snapshot.generation,
-        });
+    let generation = snapshot.generation;
+    // Two refresh_impl calls that coalesce inside Session::refresh (its
+    // refresh_gate) both receive the *same* resulting Snapshot. Comparing
+    // each call's own "before" reading against that shared result would let
+    // both of them independently decide the generation moved and broadcast
+    // -- a spurious duplicate for one refresh (Task 13). A compare-and-swap
+    // against the last generation this process has ever broadcast ensures
+    // exactly one of any group of callers who see the same new generation
+    // wins, however many of them coalesced into the same refresh; a caller
+    // that loses the swap has nothing left to do, since whoever won it (or
+    // a still-newer generation) already has this one covered.
+    let previous = state.last_broadcast_generation.load(Ordering::SeqCst);
+    if generation > previous
+        && state
+            .last_broadcast_generation
+            .compare_exchange(previous, generation, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    {
+        state
+            .channel_sink
+            .broadcast(UiEvent::SnapshotChanged { generation });
     }
     Ok(snapshot)
 }
@@ -208,6 +225,7 @@ mod tests {
         /// on a refresh instead of only round-tripping through
         /// get_settings/set_settings.
         check_options_calls: Arc<Mutex<Vec<CheckOptions>>>,
+        detect_delay: std::time::Duration,
     }
 
     #[async_trait]
@@ -228,6 +246,9 @@ mod tests {
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            if !self.detect_delay.is_zero() {
+                tokio::time::sleep(self.detect_delay).await;
+            }
             vec![self.instance.clone()]
         }
 
@@ -358,6 +379,7 @@ mod tests {
             instance,
             execute_calls: execute_calls.clone(),
             check_options_calls: check_options_calls.clone(),
+            detect_delay: std::time::Duration::ZERO,
         });
         let sink = ChannelSink::new();
         let session =
@@ -367,8 +389,101 @@ mod tests {
             settings_path: temp_settings_path("appstate"),
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
         };
         (state, execute_calls, check_options_calls)
+    }
+
+    /// Like `state_with_fake_adapter_and_now`, but the fake adapter's
+    /// `detect()` sleeps for `detect_delay` first -- long enough to widen
+    /// the race window so two concurrent `refresh_impl` calls reliably
+    /// coalesce inside `Session::refresh`'s `refresh_gate`, mirroring
+    /// `session::tests::test_concurrent_refresh_calls_are_coalesced`'s own
+    /// use of an artificial delay for the same reason.
+    fn state_with_slow_fake_adapter(detect_delay: std::time::Duration) -> Arc<AppState> {
+        let instance = ManagerInstance {
+            id: "fake:1".to_string(),
+            adapter_id: "fake".to_string(),
+            exe_path: PathBuf::from("/bin/true"),
+            prefix: PathBuf::from("/"),
+            scope: Scope::User,
+            version: Some("1.0".to_string()),
+            healthy: true,
+            unverified_version: None,
+        };
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec![],
+        };
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance,
+            execute_calls: Arc::new(AtomicUsize::new(0)),
+            check_options_calls: Arc::new(Mutex::new(Vec::new())),
+            detect_delay,
+        });
+        let sink = ChannelSink::new();
+        let session =
+            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+        Arc::new(AppState {
+            session,
+            settings_path: temp_settings_path("ipc-slow"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_refresh_impl_broadcasts_snapshot_changed_exactly_once_when_two_calls_coalesce() {
+        // Two refresh_impl calls that coalesce inside Session::refresh (its
+        // refresh_gate) both receive the *same* resulting Snapshot. Each
+        // independently comparing that result's generation against its own
+        // "before" reading used to make both of them decide the generation
+        // moved and broadcast -- a spurious duplicate for what was really
+        // one refresh.
+        let state = state_with_slow_fake_adapter(std::time::Duration::from_millis(100));
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let state_a = state.clone();
+        let state_b = state.clone();
+        let (a, b) = tokio::join!(
+            tokio::spawn(async move { refresh_impl(&state_a).await }),
+            tokio::spawn(async move { refresh_impl(&state_b).await }),
+        );
+        let snap_a = a.expect("task a").expect("refresh_impl a");
+        let snap_b = b.expect("task b").expect("refresh_impl b");
+        assert_eq!(
+            snap_a.generation, snap_b.generation,
+            "precondition: both calls must see the same coalesced result"
+        );
+
+        let events = received.lock().unwrap();
+        let broadcasts: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                UiEvent::SnapshotChanged { generation } => Some(*generation),
+                UiEvent::Operation(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            broadcasts,
+            vec![snap_a.generation],
+            "exactly one SnapshotChanged must reach the subscriber even though two refresh_impl calls coalesced, got: {events:?}"
+        );
     }
 
     #[tokio::test]

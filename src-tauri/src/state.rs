@@ -9,6 +9,14 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub settings: Mutex<Settings>,
     pub channel_sink: std::sync::Arc<ChannelSink>,
+    /// The last `Snapshot::generation` this process has ever broadcast as a
+    /// `SnapshotChanged` event (Task 13). `refresh_impl` compares against
+    /// this with a compare-and-swap instead of each call's own "before"
+    /// reading of `session.snapshot()`, so that when two `refresh_impl`
+    /// calls coalesce inside `Session::refresh` and both receive the same
+    /// resulting Snapshot, only one of them ever wins the swap and
+    /// broadcasts -- never both.
+    pub last_broadcast_generation: std::sync::atomic::AtomicU64,
 }
 
 impl AppState {
@@ -23,6 +31,7 @@ impl AppState {
             settings_path,
             settings: Mutex::new(loaded),
             channel_sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
         }
     }
 

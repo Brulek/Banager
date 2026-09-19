@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
-import { queryKeys } from "./queries";
+import { queryKeys } from "./queryKeys";
 import { useUiStore } from "../store/ui";
 import type { UiEvent } from "./types";
 
@@ -31,14 +31,26 @@ import type { UiEvent } from "./types";
 let refreshInFlight: Promise<void> | null = null;
 let refreshAgain = false;
 
-function refreshIntoCache(queryClient: QueryClient, why: string): void {
-  // refreshIntoCache is a plain function, not a hook, so useUiStore.getState()
-  // — rather than the useUiStore() hook — is the correct way to reach the store here.
+/**
+ * Exported (Task 13) so `useRefresh` (src/lib/queries.ts) shares this same
+ * single-flight coordinator instead of calling `refresh()` directly --
+ * previously a manual "Try again" click could run fully concurrently with
+ * an in-flight startup/event-driven refresh, exactly the race this module
+ * exists to prevent. A call that arrives while one is already in flight
+ * gets back *that* run's own promise rather than starting a second one; it
+ * still schedules the one-more-follow-up this module has always used to
+ * make sure whatever changed after the in-flight run started is not lost.
+ * Every internal side effect (cache write, `startupRefreshError`) is
+ * unchanged; the only new thing is that a failure is now also re-thrown, so
+ * a caller like `useRefresh` can `await` this and see `isError` — existing
+ * fire-and-forget callers below append their own `.catch(() => {})`.
+ */
+export function refreshIntoCache(queryClient: QueryClient, why: string): Promise<void> {
   if (refreshInFlight) {
     refreshAgain = true;
-    return;
+    return refreshInFlight;
   }
-  refreshInFlight = refresh()
+  const run: Promise<void> = refresh()
     .then((snapshot) => {
       queryClient.setQueryData(queryKeys.snapshot, snapshot);
       useUiStore.getState().setStartupRefreshError(null);
@@ -46,14 +58,17 @@ function refreshIntoCache(queryClient: QueryClient, why: string): void {
     .catch((e: unknown) => {
       console.error(`${why} refresh failed`, e);
       useUiStore.getState().setStartupRefreshError(e instanceof Error ? e.message : String(e));
+      throw e;
     })
     .finally(() => {
       refreshInFlight = null;
       if (refreshAgain) {
         refreshAgain = false;
-        refreshIntoCache(queryClient, `${why} (follow-up)`);
+        refreshIntoCache(queryClient, `${why} (follow-up)`).catch(() => {});
       }
     });
+  refreshInFlight = run;
+  return run;
 }
 
 /**
@@ -67,7 +82,7 @@ export function useStartupRefresh(): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    refreshIntoCache(queryClient, "initial");
+    refreshIntoCache(queryClient, "initial").catch(() => {});
   }, [queryClient]);
 }
 
@@ -106,7 +121,7 @@ export function useOperationEvents(): void {
         } else {
           queryClient.invalidateQueries({ queryKey: queryKeys.operations });
           if ("Finished" in opEvent) {
-            refreshIntoCache(queryClient, "post-operation");
+            refreshIntoCache(queryClient, "post-operation").catch(() => {});
           }
         }
       } else {

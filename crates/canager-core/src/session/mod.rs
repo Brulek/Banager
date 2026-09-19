@@ -139,9 +139,12 @@ pub struct Session {
     refresh_seq: AtomicU64,
     /// Plans handed out by `issue_plan` but not yet consumed by `submit`,
     /// keyed by `PlanId`. `submit` removes its entry on use, so each plan
-    /// can be submitted at most once; an entry older than 600 seconds is
-    /// rejected as expired instead of being proactively swept, since this
-    /// only grows by one entry per preview an operator actually looks at.
+    /// can be submitted at most once. An entry older than 600 seconds is
+    /// rejected as expired by `submit` (see its own doc comment) *and*
+    /// swept out by `issue_plan` itself on every new preview (Task 13), so
+    /// a plan the operator previewed and then walked away from does not sit
+    /// in this map forever -- only entries still within the 600 s window
+    /// ever accumulate here.
     issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>,
     next_plan_id: AtomicU64,
     now_fn: Option<fn() -> i64>,
@@ -454,12 +457,15 @@ impl Session {
         })?;
         let plan = adapter.plan(&instance, req).await?;
         let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
+        let issued_at = self.now();
         let issued = IssuedPlan {
             id,
             plan,
-            issued_at: self.now(),
+            issued_at,
         };
-        self.issued_plans.lock().unwrap().insert(id, issued.clone());
+        let mut plans = self.issued_plans.lock().unwrap();
+        plans.retain(|_, p| issued_at - p.issued_at <= 600);
+        plans.insert(id, issued.clone());
         Ok(issued)
     }
 
@@ -1411,5 +1417,48 @@ mod tests {
             .submit(fresh.id)
             .expect("a freshly issued plan is submittable");
         assert_eq!(session.operations().len(), 2);
+    }
+
+    static SWEEP_TEST_NOW: AtomicI64 = AtomicI64::new(2_000_000_000);
+
+    fn sweep_test_now() -> i64 {
+        SWEEP_TEST_NOW.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded()
+    {
+        // Distinguishes "issue_plan proactively sweeps" (this test) from
+        // "submit itself checks the age of the one entry it looked up"
+        // (test_submit_rejects_a_plan_issued_more_than_600s_ago above): once
+        // an expired entry has been swept, submitting its id must come back
+        // Unknown (the entry is gone), not Expired (which would mean the
+        // entry was still sitting in the map when submit ran).
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(sweep_test_now));
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+
+        let stale = session.issue_plan(&req).await.expect("issue_plan (stale)");
+        SWEEP_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+        let _fresh = session
+            .issue_plan(&req)
+            .await
+            .expect("issue_plan (fresh, triggers sweep)");
+
+        assert_eq!(
+            session.submit(stale.id),
+            Err(SubmitError::Unknown),
+            "a swept entry must read back as Unknown, not Expired"
+        );
     }
 }

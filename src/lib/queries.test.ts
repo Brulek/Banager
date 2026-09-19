@@ -4,6 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useSnapshot, useRefresh, usePlanOperation, useSubmitOperation } from "./queries";
+import { refreshIntoCache } from "./events";
 import type { IssuedPlan, Snapshot } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -53,6 +54,37 @@ describe("queries", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(2);
+  });
+
+  it("useRefresh coalesces with a refresh already started through refreshIntoCache instead of firing a second one", async () => {
+    let resolveFirst: (s: Snapshot) => void = () => {};
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const queryClient = newClient();
+    const refreshCalls = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+
+    // Something else (e.g. the Finished-event handler in events.ts)
+    // already started a refresh through the shared coordinator.
+    const inFlight = refreshIntoCache(queryClient, "test-setup");
+    await waitFor(() => expect(refreshCalls()).toBe(1));
+
+    const { result } = renderHook(() => useRefresh(), { wrapper: wrapper(queryClient) });
+    result.current.mutate();
+
+    // If useRefresh still called `refresh` directly (bypassing the
+    // coordinator), this would now be 2.
+    expect(refreshCalls()).toBe(1);
+
+    resolveFirst({ ...snapshot, generation: 5 });
+    await inFlight;
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(5);
   });
 
   it("usePlanOperation calls planOperation and returns its IssuedPlan", async () => {
