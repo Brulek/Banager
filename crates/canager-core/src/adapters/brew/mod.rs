@@ -25,6 +25,14 @@ pub struct BrewAdapter {
     /// installs of Homebrew each get their own throttle instead of sharing
     /// a single adapter-wide timer.
     last_update: Mutex<HashMap<InstanceId, Instant>>,
+    /// Serialises `maybe_update` per instance: without this, two
+    /// concurrent `check_updates` calls for the same instance could both
+    /// observe "TTL expired" before either had recorded a fresh
+    /// timestamp, and both run `brew update` concurrently — wasteful, and
+    /// two `brew update` processes writing the same Homebrew cache
+    /// directory at once is not something Homebrew is designed to
+    /// tolerate. Keyed the same way as `last_update`.
+    update_locks: Mutex<HashMap<InstanceId, Arc<tokio::sync::Mutex<()>>>>,
     update_ttl: Duration,
     /// How to read the *real* effective UID for the root-refusal check on
     /// every brew subprocess call (not just `detect`, which instead checks
@@ -57,6 +65,7 @@ impl BrewAdapter {
             runner,
             meta,
             last_update: Mutex::new(HashMap::new()),
+            update_locks: Mutex::new(HashMap::new()),
             update_ttl: Duration::from_secs(6 * 3600),
             euid_fn: || unsafe { libc::geteuid() },
         }
@@ -130,7 +139,17 @@ impl BrewAdapter {
             .await?)
     }
 
+    fn update_lock_for(&self, inst_id: &InstanceId) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self.update_locks.lock().unwrap();
+        locks
+            .entry(inst_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    }
+
     async fn maybe_update(&self, inst: &ManagerInstance) -> Result<(), AdapterError> {
+        let lock = self.update_lock_for(&inst.id);
+        let _guard = lock.lock().await;
         let needs_update = {
             let last = self.last_update.lock().unwrap();
             match last.get(&inst.id) {
@@ -234,7 +253,12 @@ impl BrewAdapter {
         inst: &ManagerInstance,
         opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-        self.maybe_update(inst).await?;
+        let update_warning = match self.maybe_update(inst).await {
+            Ok(()) => None,
+            Err(e) => Some(format!(
+                "brew update failed ({e}); showing potentially stale results"
+            )),
+        };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
         if opts.include_self_updating {
             args.push("--greedy".to_string());
@@ -246,7 +270,13 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
-        parse_outdated(&output.stdout, &inst.id)
+        let mut candidates = parse_outdated(&output.stdout, &inst.id)?;
+        if let Some(warning) = &update_warning {
+            for candidate in &mut candidates {
+                candidate.warnings.push(warning.clone());
+            }
+        }
+        Ok(candidates)
     }
 
     pub async fn search(
@@ -859,6 +889,122 @@ mod tests {
             .await
             .expect("check_updates with --greedy");
         assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_degrades_a_failed_brew_update_to_a_warning() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "error: brew update failed: no such remote".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outdated_json = r#"{"formulae":[{"name":"jq","installed_versions":["1.6"],"current_version":"1.7.1","pinned":false,"pinned_version":null}],"casks":[]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: outdated_json.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a failed `brew update` must not fail check_updates");
+        assert_eq!(candidates.len(), 1);
+        assert!(
+            candidates[0]
+                .warnings
+                .iter()
+                .any(|w| w.contains("brew update failed")),
+            "expected a brew-update-failed warning, got {:?}",
+            candidates[0].warnings
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_serialises_maybe_update_across_concurrent_callers() {
+        // Before this fix, two concurrent `check_updates` calls for the same
+        // instance could both observe the TTL expired and both run `brew
+        // update` — this test makes the first `update` slow enough that a
+        // second, concurrent call is guaranteed to reach its own TTL check
+        // while the first is still in flight, and proves the fix serialises
+        // them: only one `brew update` process ever runs.
+        let runner = Arc::new(MockRunner::new());
+        runner.delay(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            Duration::from_millis(200),
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let empty_outdated = r#"{"formulae":[],"casks":[]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: empty_outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter =
+            Arc::new(BrewAdapter::new(runner.clone()).with_update_ttl(Duration::from_secs(3600)));
+        let inst = test_instance();
+
+        let task_a = {
+            let adapter = adapter.clone();
+            let inst = inst.clone();
+            tokio::spawn(
+                async move { adapter.check_updates(&inst, &CheckOptions::default()).await },
+            )
+        };
+        // Give task_a time to acquire the per-instance update lock and start
+        // its (slow) `brew update` before task_b starts.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let task_b = {
+            let adapter = adapter.clone();
+            let inst = inst.clone();
+            tokio::spawn(
+                async move { adapter.check_updates(&inst, &CheckOptions::default()).await },
+            )
+        };
+
+        task_a
+            .await
+            .expect("task a panicked")
+            .expect("check_updates a");
+        task_b
+            .await
+            .expect("task b panicked")
+            .expect("check_updates b");
+
+        let update_calls = runner
+            .calls()
+            .iter()
+            .filter(|c| c.get(1).map(String::as_str) == Some("update"))
+            .count();
+        assert_eq!(
+            update_calls, 1,
+            "two concurrent check_updates calls for the same instance must run `brew update` at most once"
+        );
     }
 
     #[tokio::test]

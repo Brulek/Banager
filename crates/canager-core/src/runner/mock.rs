@@ -3,10 +3,12 @@ use crate::events::Stream;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 pub struct MockRunner {
     responses: Mutex<HashMap<Vec<String>, CommandOutput>>,
+    delays: Mutex<HashMap<Vec<String>, Duration>>,
     calls: Mutex<Vec<Vec<String>>>,
 }
 
@@ -14,6 +16,7 @@ impl MockRunner {
     pub fn new() -> MockRunner {
         MockRunner {
             responses: Mutex::new(HashMap::new()),
+            delays: Mutex::new(HashMap::new()),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -29,6 +32,16 @@ impl MockRunner {
     pub fn respond(&self, argv: Vec<&str>, output: CommandOutput) {
         let key: Vec<String> = argv.into_iter().map(|s| s.to_string()).collect();
         self.responses.lock().unwrap().insert(key, output);
+    }
+
+    /// Makes the canned response for `argv` (registered via `respond`)
+    /// available only after `delay` has elapsed, so a test can observe what
+    /// happens *while* a call is still in flight — e.g. proving two
+    /// concurrent callers serialise on a lock rather than both proceeding
+    /// immediately.
+    pub fn delay(&self, argv: Vec<&str>, delay: Duration) {
+        let key: Vec<String> = argv.into_iter().map(|s| s.to_string()).collect();
+        self.delays.lock().unwrap().insert(key, delay);
     }
 
     pub fn calls(&self) -> Vec<Vec<String>> {
@@ -52,6 +65,10 @@ impl CommandRunner for MockRunner {
     ) -> Result<CommandOutput, RunnerError> {
         let key = Self::argv(&spec);
         self.calls.lock().unwrap().push(key.clone());
+        let delay = self.delays.lock().unwrap().get(&key).copied();
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
+        }
         let output = self
             .responses
             .lock()
