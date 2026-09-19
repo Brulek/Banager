@@ -222,15 +222,14 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceId, ManagerInstance,
-        OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-        UpdateCandidate,
+        ArtifactKind, InstallReason, InstalledArtifact, InstanceId, ManagerInstance, OpKind,
+        OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit, UpdateCandidate,
     };
     use crate::runner::HostEnv;
+    use crate::session::test_support::{make_instance, non_root_env, root_env};
     use crate::session::{DetectOutcome, Session};
     use async_trait::async_trait;
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
@@ -264,15 +263,7 @@ mod tests {
                 inventory_calls: Vec::new(),
             }));
             let adapter = Arc::new(FakeAdapter {
-                meta: AdapterMeta {
-                    id: id.to_string(),
-                    name: id.to_string(),
-                    kind: "fake".to_string(),
-                    platforms: vec!["macos".to_string()],
-                    homepage: "https://example.invalid".to_string(),
-                    schema_version: 1,
-                    verified_versions: vec![],
-                },
+                meta: crate::session::test_support::fake_adapter_meta(id),
                 state: state.clone(),
             });
             (adapter, state)
@@ -286,14 +277,7 @@ mod tests {
         }
 
         fn capabilities(&self) -> Capabilities {
-            Capabilities {
-                search: false,
-                per_item_upgrade: true,
-                upgrade_all: false,
-                uninstall: true,
-                background_check: true,
-                cancel_safe: true,
-            }
+            crate::session::test_support::fake_capabilities()
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
@@ -346,18 +330,7 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
-            Ok(Plan {
-                request: req.clone(),
-                program: inst.exe_path.clone(),
-                args: vec!["do".to_string(), req.name.clone()],
-                env: vec![],
-                needs_password: false,
-                locks: vec![ResourceLock(inst.id.clone())],
-                cancel_policy: CancelPolicy::KillThenReconcile,
-                warnings: vec![],
-                affected: vec![],
-                timeout_secs: 60,
-            })
+            Ok(crate::session::test_support::fake_plan(inst, req))
         }
 
         async fn execute(
@@ -381,23 +354,7 @@ mod tests {
             _inst: &ManagerInstance,
             _key: &crate::model::ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
-            Ok(Reconciled {
-                present: true,
-                version: None,
-            })
-        }
-    }
-
-    fn make_instance(adapter_id: &str, id: &str) -> ManagerInstance {
-        ManagerInstance {
-            id: id.to_string(),
-            adapter_id: adapter_id.to_string(),
-            exe_path: PathBuf::from("/bin/true"),
-            prefix: PathBuf::from("/"),
-            scope: Scope::User,
-            version: Some("1.0".to_string()),
-            healthy: true,
-            unverified_version: None,
+            Ok(crate::session::test_support::fake_reconciled())
         }
     }
 
@@ -417,26 +374,6 @@ mod tests {
             installed_at: None,
             path: None,
             auto_updates: false,
-        }
-    }
-
-    fn non_root_env() -> HostEnv {
-        HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
-        }
-    }
-
-    fn root_env() -> HostEnv {
-        HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/var/root"),
-            euid: 0,
-            cargo_home: None,
-            ollama_host: None,
         }
     }
 

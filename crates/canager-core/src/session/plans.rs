@@ -70,13 +70,13 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
+        Plan, Reconciled, SearchHit, UpdateCandidate,
     };
     use crate::runner::HostEnv;
+    use crate::session::test_support;
     use crate::session::{Session, SubmitError};
     use async_trait::async_trait;
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicI64, Ordering};
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
@@ -89,15 +89,7 @@ mod tests {
     impl FakeAdapter {
         fn new(instances: Vec<ManagerInstance>) -> Arc<FakeAdapter> {
             Arc::new(FakeAdapter {
-                meta: AdapterMeta {
-                    id: "fake".to_string(),
-                    name: "fake".to_string(),
-                    kind: "fake".to_string(),
-                    platforms: vec!["macos".to_string()],
-                    homepage: "https://example.invalid".to_string(),
-                    schema_version: 1,
-                    verified_versions: vec![],
-                },
+                meta: test_support::fake_adapter_meta("fake"),
                 instances,
             })
         }
@@ -110,14 +102,7 @@ mod tests {
         }
 
         fn capabilities(&self) -> Capabilities {
-            Capabilities {
-                search: false,
-                per_item_upgrade: true,
-                upgrade_all: false,
-                uninstall: true,
-                background_check: true,
-                cancel_safe: true,
-            }
+            test_support::fake_capabilities()
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
@@ -152,18 +137,7 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
-            Ok(Plan {
-                request: req.clone(),
-                program: inst.exe_path.clone(),
-                args: vec!["do".to_string(), req.name.clone()],
-                env: vec![],
-                needs_password: false,
-                locks: vec![ResourceLock(inst.id.clone())],
-                cancel_policy: CancelPolicy::KillThenReconcile,
-                warnings: vec![],
-                affected: vec![],
-                timeout_secs: 60,
-            })
+            Ok(test_support::fake_plan(inst, req))
         }
 
         async fn execute(
@@ -181,33 +155,7 @@ mod tests {
             _inst: &ManagerInstance,
             _key: &ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
-            Ok(Reconciled {
-                present: true,
-                version: None,
-            })
-        }
-    }
-
-    fn make_instance(id: &str) -> ManagerInstance {
-        ManagerInstance {
-            id: id.to_string(),
-            adapter_id: "fake".to_string(),
-            exe_path: PathBuf::from("/bin/true"),
-            prefix: PathBuf::from("/"),
-            scope: Scope::User,
-            version: Some("1.0".to_string()),
-            healthy: true,
-            unverified_version: None,
-        }
-    }
-
-    fn non_root_env() -> HostEnv {
-        HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
+            Ok(test_support::fake_reconciled())
         }
     }
 
@@ -222,11 +170,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_issue_plan_delegates_to_the_owning_adapter() {
-        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = install_request("fake:1");
         let issued = session.issue_plan(&req).await.expect("issue_plan");
@@ -248,11 +196,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_of_a_never_issued_plan_id_is_unknown_and_runs_nothing() {
-        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
 
         assert_eq!(session.submit(1), Err(SubmitError::Unknown));
@@ -275,11 +223,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_submit_consumes_the_plan_so_the_same_id_cannot_be_replayed() {
-        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = install_request("fake:1");
         let issued = session.issue_plan(&req).await.expect("issue_plan");
@@ -324,11 +272,11 @@ mod tests {
     async fn test_submit_rejects_a_plan_issued_more_than_600s_ago() {
         const T0: i64 = 1_758_000_000;
         FAKE_NOW.store(T0, Ordering::SeqCst);
-        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = install_request("fake:1");
         let on_time = session.issue_plan(&req).await.expect("issue_plan");
@@ -373,11 +321,11 @@ mod tests {
     #[tokio::test]
     async fn test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded()
     {
-        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], Some(sweep_test_now));
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = install_request("fake:1");
 

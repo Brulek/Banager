@@ -8,6 +8,11 @@
 
 mod plans;
 mod refresh;
+/// Shared `#[cfg(test)]` scaffolding (`non_root_env`/`root_env`, common
+/// `FakeAdapter` boilerplate) for the test modules in this file, `plans.rs`
+/// and `refresh.rs`. See its module doc for why it exists.
+#[cfg(test)]
+mod test_support;
 
 // `CheckOptions` and `AdapterError` are deliberately absent from this list:
 // `refresh` (which took `CheckOptions`) now lives in `refresh.rs`, and
@@ -217,16 +222,16 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use super::test_support;
     use super::*;
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, OpKind, OpRequest, OpStatus,
-        Outcome, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+        ArtifactKey, ArtifactKind, InstalledArtifact, OpKind, OpRequest, OpStatus, Outcome,
+        Reconciled, SearchHit, UpdateCandidate,
     };
     use crate::runner::HostEnv;
     use async_trait::async_trait;
-    use std::path::PathBuf;
     use std::sync::Mutex as StdMutex;
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
@@ -248,15 +253,7 @@ mod tests {
                 block_execute: false,
             }));
             let adapter = Arc::new(FakeAdapter {
-                meta: AdapterMeta {
-                    id: "fake".to_string(),
-                    name: "fake".to_string(),
-                    kind: "fake".to_string(),
-                    platforms: vec!["macos".to_string()],
-                    homepage: "https://example.invalid".to_string(),
-                    schema_version: 1,
-                    verified_versions: vec![],
-                },
+                meta: test_support::fake_adapter_meta("fake"),
                 state: state.clone(),
             });
             (adapter, state)
@@ -270,14 +267,7 @@ mod tests {
         }
 
         fn capabilities(&self) -> Capabilities {
-            Capabilities {
-                search: false,
-                per_item_upgrade: true,
-                upgrade_all: false,
-                uninstall: true,
-                background_check: true,
-                cancel_safe: true,
-            }
+            test_support::fake_capabilities()
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
@@ -312,18 +302,7 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
-            Ok(Plan {
-                request: req.clone(),
-                program: inst.exe_path.clone(),
-                args: vec!["do".to_string(), req.name.clone()],
-                env: vec![],
-                needs_password: false,
-                locks: vec![ResourceLock(inst.id.clone())],
-                cancel_policy: CancelPolicy::KillThenReconcile,
-                warnings: vec![],
-                affected: vec![],
-                timeout_secs: 60,
-            })
+            Ok(test_support::fake_plan(inst, req))
         }
 
         async fn execute(
@@ -347,33 +326,7 @@ mod tests {
             _inst: &ManagerInstance,
             _key: &ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
-            Ok(Reconciled {
-                present: true,
-                version: None,
-            })
-        }
-    }
-
-    fn make_instance(id: &str) -> ManagerInstance {
-        ManagerInstance {
-            id: id.to_string(),
-            adapter_id: "fake".to_string(),
-            exe_path: PathBuf::from("/bin/true"),
-            prefix: PathBuf::from("/"),
-            scope: Scope::User,
-            version: Some("1.0".to_string()),
-            healthy: true,
-            unverified_version: None,
-        }
-    }
-
-    fn non_root_env() -> HostEnv {
-        HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
+            Ok(test_support::fake_reconciled())
         }
     }
 
@@ -400,13 +353,13 @@ mod tests {
         let (adapter, state) = FakeAdapter::new();
         {
             let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake:1")];
+            s.instances = vec![test_support::make_instance("fake", "fake:1")];
             s.block_execute = true;
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         session
-            .refresh(&non_root_env(), &CheckOptions::default())
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = OpRequest {
             kind: OpKind::Install,
