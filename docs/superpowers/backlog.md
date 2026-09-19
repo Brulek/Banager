@@ -17,6 +17,10 @@
 - `AdapterMeta.verified_versions` 从未与 `ManagerInstance.version` 比较（spec §4.1 "未验证版本"角标）。
 - spec §4.2 需更正：brew 7.0.3 的 `installed[]` 只有 `installed_on_request`，没有 `installed_as_dependency`（解析器与其文档注释是对的，spec 过时）。
 
+## 阶段 4 之前
+
+- `crates/canager-core/src/adapters/mod.rs` `Adapter::capabilities()` 在整个工作区**没有任何调用方**：`session/`、`ops/`、`src-tauri/src/ipc.rs` 都不调，`Capabilities` 也不在 `src/lib/types.ts` 里，从不跨 IPC。七个适配器各写一份 `capabilities()`，全是死代码。要么把它接进界面（离线时不可检查的来源、只读来源的提示、不支持搜索的来源——这需要给 `ManagerInstance` 的线格式加字段、加 TypeScript 镜像、加界面状态与测试），要么直接从 trait 上删掉。在有消费者之前，**别再让 `Capabilities` 长出新字段**：阶段 3 计划原本要加一个 `needs_network` 网络依赖标志，正因为这条而砍掉（2026-09-20 控制者裁决）。
+
 ## 阶段 5（发现页）之前必须处理
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
