@@ -1,10 +1,11 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSnapshot, useSettings, usePlanOperation } from "../lib/queries";
+import { useSnapshot, useSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
-import type { InstalledArtifact } from "../lib/types";
+import { UninstallDialog } from "../components/UninstallDialog";
+import type { InstalledArtifact, OpRequest } from "../lib/types";
 
 const ADAPTER_LABEL_KEYS: Record<string, string> = {
   brew: "adapters.brew",
@@ -19,12 +20,21 @@ export function InstalledPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
-  const planMutation = usePlanOperation();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
   const showDependencies = useUiStore((s) => s.showDependencies);
   const toggleDependencies = useUiStore((s) => s.toggleDependencies);
+  const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
+  const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // Uninstall is destructive, so the row's button only *targets* an artifact;
+  // UninstallDialog is what plans it, shows the exact command and what would
+  // break, and submits (Global Constraints, spec §6).
+  const [uninstallTarget, setUninstallTarget] = useState<{
+    request: OpRequest;
+    displayName: string;
+  } | null>(null);
 
   const updatableIds = useMemo(
     () => new Set((snapshot?.updates ?? []).map((u) => artifactKeyId(u.key))),
@@ -146,11 +156,14 @@ export function InstalledPage() {
                     }
                     primaryActionLabel={t("installed.uninstall")}
                     onPrimaryAction={() =>
-                      planMutation.mutate({
-                        kind: "Uninstall",
-                        instance_id: item.artifact.key.instance_id,
-                        artifact_kind: item.artifact.key.kind,
-                        name: item.artifact.key.name,
+                      setUninstallTarget({
+                        request: {
+                          kind: "Uninstall",
+                          instance_id: item.artifact.key.instance_id,
+                          artifact_kind: item.artifact.key.kind,
+                          name: item.artifact.key.name,
+                        },
+                        displayName: item.artifact.display_name,
                       })
                     }
                   />
@@ -160,6 +173,21 @@ export function InstalledPage() {
           })}
         </div>
       </div>
+      {uninstallTarget ? (
+        <UninstallDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setUninstallTarget(null);
+          }}
+          request={uninstallTarget.request}
+          displayName={uninstallTarget.displayName}
+          onSubmitted={(opId) => {
+            setUninstallTarget(null);
+            setFocusedOpId(opId);
+            setDrawerOpen(true);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

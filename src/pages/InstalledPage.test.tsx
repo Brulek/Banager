@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
-import type { Settings, Snapshot } from "../lib/types";
+import type { OpRequest, Settings, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -138,23 +138,80 @@ describe("InstalledPage", () => {
     await waitFor(() => expect(queryByText("jq")).not.toBeInTheDocument());
   });
 
-  it("plans an uninstall when the row's primary button is clicked", async () => {
-    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
+  it("opens the uninstall dialog and plans it when the row's primary button is clicked", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return Promise.resolve(snapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "plan_operation") {
+        return Promise.resolve({
+          id: 1,
+          plan: {
+            request: (args as { request: OpRequest }).request,
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+            needs_password: false,
+            locks: ["brew:/opt/homebrew"],
+            cancel_policy: "KillThenReconcile",
+            warnings: [],
+            affected: [],
+            timeout_secs: 1800,
+          },
+          issued_at: 1758000000,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
     fireEvent.click(getByRole("button", { name: "Uninstall" }));
 
-    // TanStack Query v5 awaits `onMutate` before calling `mutationFn`, so
-    // `invoke` is not called synchronously inside the click.
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
-        request: {
-          kind: "Uninstall",
-          instance_id: "brew:/opt/homebrew",
-          artifact_kind: "Formula",
-          name: "jq",
-        },
-      }),
-    );
+    const dialog = await findByRole("dialog");
+    expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+      request: {
+        kind: "Uninstall",
+        instance_id: "brew:/opt/homebrew",
+        artifact_kind: "Formula",
+        name: "jq",
+      },
+    });
+    await within(dialog).findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+  });
+
+  it("disables the dialog's confirm button when the plan reports dependents", async () => {
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "get_snapshot") return Promise.resolve(snapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "plan_operation") {
+        return Promise.resolve({
+          id: 1,
+          plan: {
+            request: (args as { request: OpRequest }).request,
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+            needs_password: false,
+            locks: ["brew:/opt/homebrew"],
+            cancel_policy: "KillThenReconcile",
+            warnings: [],
+            affected: ["jq-cli-wrapper"],
+            timeout_secs: 1800,
+          },
+          issued_at: 1758000000,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
+
+    await findByText("jq");
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
+
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("jq-cli-wrapper");
+    expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 });

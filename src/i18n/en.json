@@ -77,5 +77,17 @@
       "NeedsAttention": "Needs attention: {{message}}",
       "Failed": "Failed: {{summary}}"
     }
+  },
+  "uninstall": {
+    "title": "Uninstall {{name}}?",
+    "description": "Review what this will do before you continue.",
+    "checking": "Checking what this would affect…",
+    "planError": "Couldn't check what this would affect: {{message}}",
+    "submitError": "Couldn't start the uninstall: {{message}}",
+    "warningsTitle": "Before you continue:",
+    "affectedTitle": "These will stop working if you remove it:",
+    "confirm": "Uninstall",
+    "cancel": "Cancel",
+    "confirmDisabledHint": "Resolve the items above before uninstalling."
   }
 }
