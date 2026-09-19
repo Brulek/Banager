@@ -10,6 +10,7 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
     language: "System",
     show_technical_details: false,
     ignored_updates: [],
+    include_self_updating: false,
     ...overrides,
   };
 }
@@ -93,5 +94,25 @@ describe("SettingsPage", () => {
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
       settings: expect.objectContaining({ ignored_updates: [] }),
     });
+  });
+
+  it("round-trips the include-self-updating toggle through set_settings", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const toggle = await screen.findByRole("switch", { name: "Include self-updating apps" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ include_self_updating: true }),
+      }),
+    );
   });
 });

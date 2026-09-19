@@ -146,6 +146,7 @@ describe("types", () => {
       language: "ZhCn",
       show_technical_details: true,
       ignored_updates: [],
+      include_self_updating: false,
     };
 
     expect(roundTrip(plan).cancel_policy).toBe("KillThenReconcile");

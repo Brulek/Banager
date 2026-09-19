@@ -97,12 +97,19 @@ export function UpdatesPage() {
     return snapshot.updates.filter((u) => !ignored.has(artifactKeyId(u.key)));
   }, [snapshot, settings]);
 
-  // Only rows that are selected *and* still visible count. The store keeps
-  // a selection for a row that has since been ignored; without this
-  // intersection "Update selected" would be enabled for nothing and open an
-  // empty dialog.
+  // Only rows that are selected, still visible *and* still checkable count.
+  // The store keeps a selection for a row that has since been ignored;
+  // without this intersection "Update selected" would be enabled for nothing
+  // and open an empty dialog. `checkable` is in the same intersection
+  // because a selection outlives the row that made it: a candidate selected
+  // while it was checkable stays selected after a refresh flips the flag,
+  // and the batch would then plan the very row whose Update button was just
+  // taken away.
   const selectedVisible = useMemo(
-    () => visibleUpdates.filter((u) => selectedUpdates.includes(artifactKeyId(u.key))),
+    () =>
+      visibleUpdates.filter(
+        (u) => u.checkable && selectedUpdates.includes(artifactKeyId(u.key)),
+      ),
     [visibleUpdates, selectedUpdates],
   );
 
@@ -287,21 +294,47 @@ export function UpdatesPage() {
           <ArtifactRow
             key={artifactKeyId(candidate.key)}
             name={candidate.key.name}
-            description={descriptionFor(candidate)}
-            badgeText={
-              candidate.warnings.length > 0
-                ? t("updates.warnings", { count: candidate.warnings.length })
-                : t("updates.available")
+            // `checkable: false` means the adapter could not establish what
+            // the remote version is -- a cargo crate installed from git or a
+            // path, an Ollama model whose manifest could not be read, a pipx
+            // tool whose PyPI lookup failed. Such a row must offer no action
+            // and no selection: "Update" on a git-sourced crate would run
+            // `cargo install --force {name}` against the crates.io crate of
+            // the same name, which is a different package. The reason lives
+            // in `warnings`, so it becomes the row's description.
+            description={
+              candidate.checkable
+                ? descriptionFor(candidate)
+                : candidate.warnings.join(" ")
             }
-            badgeVariant={candidate.warnings.length > 0 ? "warning" : "info"}
-            primaryActionLabel={t("updates.update")}
-            onPrimaryAction={() => openConfirm([candidate])}
+            badgeText={
+              !candidate.checkable
+                ? t("updates.cannotCheck")
+                : candidate.warnings.length > 0
+                  ? t("updates.warnings", { count: candidate.warnings.length })
+                  : t("updates.available")
+            }
+            badgeVariant={
+              !candidate.checkable
+                ? "neutral"
+                : candidate.warnings.length > 0
+                  ? "warning"
+                  : "info"
+            }
+            primaryActionLabel={candidate.checkable ? t("updates.update") : undefined}
+            onPrimaryAction={
+              candidate.checkable ? () => openConfirm([candidate]) : undefined
+            }
             primaryActionDisabled={dialogOpen}
-            selectable={{
-              checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
-              onToggle: () => toggleUpdate(candidate.key),
-              ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
-            }}
+            selectable={
+              candidate.checkable
+                ? {
+                    checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
+                    onToggle: () => toggleUpdate(candidate.key),
+                    ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
+                  }
+                : undefined
+            }
             secondaryContent={
               <button
                 type="button"
@@ -368,6 +401,13 @@ export function UpdatesPage() {
               ) : null}
               {item.issued !== null ? (
                 <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
+              ) : null}
+              {item.issued && item.issued.plan.warnings.length > 0 ? (
+                <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
+                  {item.issued.plan.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
               ) : null}
               {item.issued?.plan.needs_password ? (
                 // Per item, not per batch: a batch can mix Casks (which the

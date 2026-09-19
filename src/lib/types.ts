@@ -103,6 +103,7 @@ export interface Settings {
   language: Language;
   show_technical_details: boolean;
   ignored_updates: ArtifactKey[];
+  include_self_updating: boolean;
 }
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }

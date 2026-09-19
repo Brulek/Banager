@@ -10,6 +10,11 @@ const mockInvoke = vi.mocked(invoke);
 
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
 const onyxKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" };
+const myForkKey: ArtifactKey = {
+  instance_id: "cargo:/Users/brulek/.cargo",
+  kind: "Binary",
+  name: "my-fork",
+};
 
 const snapshot: Snapshot = {
   generation: 2,
@@ -61,6 +66,7 @@ let holdSaves: boolean;
 // Names whose plan comes back with `needs_password: true`, mirroring the
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
+let planWarnings: Record<string, string[]>;
 let releasePlan: Record<string, () => void>;
 let releaseSubmit: Record<number, () => void>;
 let releaseSave: Array<() => void>;
@@ -76,7 +82,7 @@ function issuedPlanFor(request: OpRequest, id: number) {
       needs_password: needsPassword.has(request.name),
       locks: ["brew:/opt/homebrew"],
       cancel_policy: "KillThenReconcile",
-      warnings: [],
+      warnings: planWarnings[request.name] ?? [],
       affected: [],
       timeout_secs: 1800,
     },
@@ -97,6 +103,7 @@ beforeEach(() => {
     language: "System",
     show_technical_details: false,
     ignored_updates: [],
+    include_self_updating: false,
   };
   updates = snapshot.updates;
   nextPlanId = 1;
@@ -107,6 +114,7 @@ beforeEach(() => {
   holdSubmits = new Set();
   holdSaves = false;
   needsPassword = new Set();
+  planWarnings = {};
   releasePlan = {};
   releaseSubmit = {};
   releaseSave = [];
@@ -239,6 +247,81 @@ describe("UpdatesPage", () => {
     expect(notices).toHaveLength(1);
     expect(notices[0].closest("div")?.textContent).toContain("onyx");
     expect(notices[0].closest("div")?.textContent).not.toContain("glib");
+  });
+
+  it("shows a warning carried on the plan, such as cargo's compile-locally notice", async () => {
+    planWarnings.glib = ["This will compile locally and can take several minutes."];
+    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText(
+      "This will compile locally and can take several minutes.",
+    );
+  });
+
+  it("offers no Update button and no checkbox for a candidate the adapter could not check", async () => {
+    // The whole point of UpdateCandidate.checkable. A git-sourced cargo
+    // crate reports checkable:false because crates.io knows nothing about
+    // it -- and "Update" on such a row would run `cargo install --force
+    // my-fork` against the crates.io crate of the same name, a different
+    // package entirely. The same flag covers an Ollama model whose manifest
+    // could not be read and a pipx tool whose PyPI lookup failed.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["installed from git, cannot check crates.io for updates"],
+      },
+    ];
+    const { findByText, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("my-fork");
+    expect(queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(
+      await findByText("installed from git, cannot check crates.io for updates"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an uncheckable candidate out of Update selected even when it was selected earlier", async () => {
+    // Deviation from the brief, recorded in the task report: hiding the
+    // checkbox is not enough on its own. A selection lives in the UI store
+    // and outlives the row that made it, so a candidate selected while it
+    // was checkable stays selected after a refresh flips `checkable` to
+    // false (cargo's crates.io lookup failing is enough to do that). Without
+    // this, "Update selected" would still plan the row whose Update button
+    // was just taken away -- `cargo install --force my-fork` against the
+    // same-named crates.io crate, the exact hazard `checkable` exists for.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["installed from git, cannot check crates.io for updates"],
+      },
+    ];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(myForkKey);
+    });
+
+    const { findByText, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("my-fork");
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    expect(
+      calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name),
+    ).toEqual(["glib"]);
   });
 
   it("submits nothing when the confirmation is cancelled", async () => {

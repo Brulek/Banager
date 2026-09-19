@@ -13,8 +13,10 @@ export interface ArtifactRowProps {
   description: string;
   badgeText: string;
   badgeVariant: BadgeVariant;
-  primaryActionLabel: string;
-  onPrimaryAction: () => void;
+  /** Omit both this and `onPrimaryAction` for a row with no primary action
+   * at all (Task 12: a read-only source, e.g. pip, offers no uninstall). */
+  primaryActionLabel?: string;
+  onPrimaryAction?: () => void;
   primaryActionDisabled?: boolean;
   selectable?: ArtifactRowSelectable;
   /** Extra inline content between the description and the badge (Task 12 uses this for an Ignore link). */
@@ -59,14 +61,16 @@ export function ArtifactRow({
       >
         {badgeText}
       </span>
-      <button
-        type="button"
-        onClick={onPrimaryAction}
-        disabled={primaryActionDisabled}
-        className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
-      >
-        {primaryActionLabel}
-      </button>
+      {primaryActionLabel && onPrimaryAction ? (
+        <button
+          type="button"
+          onClick={onPrimaryAction}
+          disabled={primaryActionDisabled}
+          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+        >
+          {primaryActionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }

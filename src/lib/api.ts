@@ -69,3 +69,7 @@ export function subscribeEvents(onEvent: (e: UiEvent) => void): Promise<() => vo
     };
   });
 }
+
+export function openOllamaApp(): Promise<void> {
+  return call<void>("open_ollama_app");
+}

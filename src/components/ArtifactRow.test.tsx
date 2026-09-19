@@ -59,4 +59,11 @@ describe("ArtifactRow", () => {
     getByRole("checkbox", { name: "Select glib for update" }).click();
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it("renders no primary action button when the row offers none", () => {
+    const { queryByRole } = renderWithProviders(
+      <ArtifactRow name="numpy" description="desc" badgeText="Up to date" badgeVariant="neutral" />,
+    );
+    expect(queryByRole("button")).not.toBeInTheDocument();
+  });
 });

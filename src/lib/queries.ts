@@ -14,6 +14,7 @@ import {
   listOperations,
   getSettings,
   setSettings,
+  openOllamaApp,
 } from "./api";
 import type { IssuedPlan, OpRequest, OpSummary, Settings, Snapshot } from "./types";
 
@@ -78,4 +79,8 @@ export function useCancelOperation(): UseMutationResult<void, Error, number> {
       queryClient.invalidateQueries({ queryKey: queryKeys.operations });
     },
   });
+}
+
+export function useOpenOllamaApp(): UseMutationResult<void, Error, void> {
+  return useMutation({ mutationFn: openOllamaApp });
 }

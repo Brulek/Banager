@@ -83,6 +83,28 @@ export function SettingsPage() {
         />
       </div>
 
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col">
+          <label htmlFor="settings-include-self-updating">
+            {t("settings.includeSelfUpdating.label")}
+          </label>
+          <p
+            id="settings-include-self-updating-desc"
+            className="text-sm text-[var(--color-muted-foreground)]"
+          >
+            {t("settings.includeSelfUpdating.description")}
+          </p>
+        </div>
+        <Switch
+          id="settings-include-self-updating"
+          aria-describedby="settings-include-self-updating-desc"
+          checked={current.include_self_updating}
+          onCheckedChange={(checked) =>
+            persist({ ...current, include_self_updating: checked })
+          }
+        />
+      </div>
+
       <div>
         <p className="mb-2">{t("settings.language.label")}</p>
         <div role="radiogroup" aria-label={t("settings.language.label")} className="flex gap-2">

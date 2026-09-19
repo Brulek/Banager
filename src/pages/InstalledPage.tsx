@@ -1,25 +1,48 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSnapshot, useSettings } from "../lib/queries";
+import { useSnapshot, useSettings, useOpenOllamaApp } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
+import { SourceNotice } from "../components/SourceNotice";
 import { UninstallDialog } from "../components/UninstallDialog";
 import type { InstalledArtifact, OpRequest } from "../lib/types";
 
 const ADAPTER_LABEL_KEYS: Record<string, string> = {
   brew: "adapters.brew",
+  npm: "adapters.npm",
+  pipx: "adapters.pipx",
+  uv: "adapters.uv",
+  pip: "adapters.pip",
+  cargo: "adapters.cargo",
+  ollama: "adapters.ollama",
 };
 
+// pip can only report what is installed; it offers no install/uninstall
+// path Canager could safely drive (spec's per-adapter contract table).
+// Read-only here is a presentational fact about that one source, not a
+// judgement call the UI is making on its own.
+const READ_ONLY_ADAPTER_IDS = new Set(["pip"]);
+
 type ListItem =
-  | { type: "group"; instanceId: string; label: string; unverifiedVersion: string | null }
-  | { type: "artifact"; artifact: InstalledArtifact }
+  | {
+      type: "group";
+      instanceId: string;
+      label: string;
+      adapterId: string;
+      healthy: boolean;
+      // Task 4's unverified-version badge. Kept here deliberately: this
+      // task edits Task 4's file rather than replacing it.
+      unverifiedVersion: string | null;
+    }
+  | { type: "artifact"; artifact: InstalledArtifact; adapterId: string }
   | { type: "toggle"; instanceId: string; hiddenCount: number };
 
 export function InstalledPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
+  const openOllamaApp = useOpenOllamaApp();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
   const showDependencies = useUiStore((s) => s.showDependencies);
@@ -55,24 +78,37 @@ export function InstalledPage() {
     }
     const result: ListItem[] = [];
     for (const instance of snapshot.instances) {
-      const artifacts = byInstance.get(instance.id);
-      if (!artifacts || artifacts.length === 0) continue;
+      const artifacts = byInstance.get(instance.id) ?? [];
+      // A source can need a notice (pip's read-only note, Ollama not
+      // running) even with nothing installed to list under it -- most
+      // visibly, an unhealthy Ollama daemon that has nothing to report yet.
+      const needsNotice =
+        READ_ONLY_ADAPTER_IDS.has(instance.adapter_id) ||
+        (instance.adapter_id === "ollama" && !instance.healthy);
+      if (artifacts.length === 0 && !needsNotice) continue;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
       result.push({
         type: "group",
         instanceId: instance.id,
         label: labelKey ? t(labelKey) : instance.adapter_id,
+        adapterId: instance.adapter_id,
+        healthy: instance.healthy,
         unverifiedVersion: instance.unverified_version,
       });
-      const primary = artifacts.filter((a) => a.reason === "Requested");
-      const dependencies = artifacts.filter((a) => a.reason !== "Requested");
+      // `!== "Dependency"`, not `=== "Requested"`: pip can only ever report
+      // Unknown or Dependency (its `--not-required` marks a leaf, which is
+      // not the same as "the user asked for it"), so keying off "Requested"
+      // would collapse every pip package behind "Show N dependencies" and
+      // render the pip group as a header and a notice with no visible rows.
+      const primary = artifacts.filter((a) => a.reason !== "Dependency");
+      const dependencies = artifacts.filter((a) => a.reason === "Dependency");
       for (const artifact of primary) {
-        result.push({ type: "artifact", artifact });
+        result.push({ type: "artifact", artifact, adapterId: instance.adapter_id });
       }
       if (dependencies.length > 0) {
         if (showDependencies) {
           for (const artifact of dependencies) {
-            result.push({ type: "artifact", artifact });
+            result.push({ type: "artifact", artifact, adapterId: instance.adapter_id });
           }
         } else {
           result.push({ type: "toggle", instanceId: instance.id, hiddenCount: dependencies.length });
@@ -125,14 +161,34 @@ export function InstalledPage() {
                 }}
               >
                 {item.type === "group" ? (
-                  <p className="px-4 py-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
-                    {item.label}
-                    {item.unverifiedVersion ? (
-                      <span className="ml-2 normal-case text-[var(--color-danger)]">
-                        {t("installed.unverifiedVersion", { version: item.unverifiedVersion })}
-                      </span>
+                  <div className="px-4 py-2">
+                    <p className="text-xs font-semibold uppercase text-[var(--color-muted)]">
+                      {item.label}
+                      {item.unverifiedVersion ? (
+                        <span className="ml-2 normal-case text-[var(--color-danger)]">
+                          {t("installed.unverifiedVersion", { version: item.unverifiedVersion })}
+                        </span>
+                      ) : null}
+                    </p>
+                    {READ_ONLY_ADAPTER_IDS.has(item.adapterId) ? (
+                      <SourceNotice
+                        variant="info"
+                        title={t("sourceNotice.pipReadOnly.title")}
+                        description={t("sourceNotice.pipReadOnly.description")}
+                      />
                     ) : null}
-                  </p>
+                    {item.adapterId === "ollama" && !item.healthy ? (
+                      <SourceNotice
+                        variant="warning"
+                        title={t("sourceNotice.ollamaNotRunning.title")}
+                        description={t("sourceNotice.ollamaNotRunning.description")}
+                        action={{
+                          label: t("sourceNotice.ollamaNotRunning.action"),
+                          onClick: () => openOllamaApp.mutate(),
+                        }}
+                      />
+                    ) : null}
+                  </div>
                 ) : item.type === "toggle" ? (
                   <button
                     type="button"
@@ -160,17 +216,22 @@ export function InstalledPage() {
                     badgeVariant={
                       updatableIds.has(artifactKeyId(item.artifact.key)) ? "info" : "neutral"
                     }
-                    primaryActionLabel={t("installed.uninstall")}
-                    onPrimaryAction={() =>
-                      setUninstallTarget({
-                        request: {
-                          kind: "Uninstall",
-                          instance_id: item.artifact.key.instance_id,
-                          artifact_kind: item.artifact.key.kind,
-                          name: item.artifact.key.name,
-                        },
-                        displayName: item.artifact.display_name,
-                      })
+                    primaryActionLabel={
+                      READ_ONLY_ADAPTER_IDS.has(item.adapterId) ? undefined : t("installed.uninstall")
+                    }
+                    onPrimaryAction={
+                      READ_ONLY_ADAPTER_IDS.has(item.adapterId)
+                        ? undefined
+                        : () =>
+                            setUninstallTarget({
+                              request: {
+                                kind: "Uninstall",
+                                instance_id: item.artifact.key.instance_id,
+                                artifact_kind: item.artifact.key.kind,
+                                name: item.artifact.key.name,
+                              },
+                              displayName: item.artifact.display_name,
+                            })
                     }
                   />
                 )}

@@ -67,6 +67,7 @@ const settings: Settings = {
   language: "System",
   show_technical_details: false,
   ignored_updates: [],
+  include_self_updating: false,
 };
 
 beforeEach(() => {
@@ -231,5 +232,94 @@ describe("InstalledPage", () => {
 
     await findByText("jq");
     await findByText("Unverified version (99.9.9)");
+  });
+
+  it("hides the uninstall button and shows a read-only note for pip rows", async () => {
+    const pipSnapshot: Snapshot = {
+      generation: 1,
+      detect: "Found",
+      instances: [
+        {
+          id: "pip:/usr/bin/python3",
+          adapter_id: "pip",
+          exe_path: "/usr/bin/python3",
+          prefix: "/usr",
+          scope: "User",
+          version: "26.2.1",
+          healthy: true,
+          unverified_version: null,
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "pip:/usr/bin/python3", kind: "Package", name: "requests" },
+          display_name: "requests",
+          version: "2.32.3",
+          // Unknown, not Requested: pip's `--not-required` marks a leaf
+          // package, which is not the same as "the user asked for it", so
+          // Task 8's adapter can only ever emit Unknown or Dependency here.
+          // A "Requested" fixture would pass against data pip cannot produce.
+          reason: "Unknown",
+          description: "Python HTTP for Humans.",
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
+      ],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(pipSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByRole } = renderWithProviders(<InstalledPage />);
+
+    await findByText("requests");
+    expect(queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
+    expect(await findByText("Read-only: pip packages")).toBeInTheDocument();
+  });
+
+  it("shows a not-running notice with an Open Ollama button when the instance is unhealthy", async () => {
+    const ollamaSnapshot: Snapshot = {
+      generation: 1,
+      detect: "Found",
+      instances: [
+        {
+          id: "ollama:http://127.0.0.1:11434",
+          adapter_id: "ollama",
+          exe_path: "/usr/local/bin/ollama",
+          prefix: "/usr/local",
+          scope: "User",
+          version: null,
+          healthy: false,
+          unverified_version: null,
+        },
+      ],
+      artifacts: [],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(ollamaSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "open_ollama_app") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
+
+    await findByText("Ollama isn't running");
+    fireEvent.click(getByRole("button", { name: "Open Ollama" }));
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
   });
 });

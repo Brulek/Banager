@@ -15,7 +15,13 @@
     "close": "Close"
   },
   "adapters": {
-    "brew": "Homebrew"
+    "brew": "Homebrew",
+    "npm": "npm",
+    "pipx": "pipx",
+    "uv": "uv",
+    "pip": "pip",
+    "cargo": "Cargo",
+    "ollama": "Ollama"
   },
   "installed": {
     "filterLabel": "Filter installed items",
@@ -39,6 +45,7 @@
     "ignore": "Ignore",
     "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
     "available": "Update",
+    "cannotCheck": "Can't check",
     "warnings_one": "{{count}} warning",
     "warnings_other": "{{count}} warnings",
     "versionChange": "{{current}} → {{target}}",
@@ -52,6 +59,17 @@
   "commandPreview": {
     "label": "This will run:",
     "needsPassword": "This will ask for your Mac password."
+  },
+  "sourceNotice": {
+    "pipReadOnly": {
+      "title": "Read-only: pip packages",
+      "description": "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
+    },
+    "ollamaNotRunning": {
+      "title": "Ollama isn't running",
+      "description": "Start the Ollama app to see its models and check for updates.",
+      "action": "Open Ollama"
+    }
   },
   "operations": {
     "idle": "No operation running",
@@ -98,6 +116,10 @@
     "showTechnicalDetails": {
       "label": "Show technical details",
       "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+    },
+    "includeSelfUpdating": {
+      "label": "Include self-updating apps",
+      "description": "List apps that update themselves, like Chrome and Docker, as updatable here too."
     },
     "language": {
       "label": "Language",

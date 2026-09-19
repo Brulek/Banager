@@ -15,7 +15,13 @@
     "close": "关闭"
   },
   "adapters": {
-    "brew": "Homebrew"
+    "brew": "Homebrew",
+    "npm": "npm",
+    "pipx": "pipx",
+    "uv": "uv",
+    "pip": "pip",
+    "cargo": "Cargo",
+    "ollama": "Ollama"
   },
   "installed": {
     "filterLabel": "筛选已安装项目",
@@ -37,6 +43,7 @@
     "ignore": "忽略",
     "ignoreFailed": "没能保存已忽略的更新:{{message}}",
     "available": "更新",
+    "cannotCheck": "无法检查",
     "warnings_other": "{{count}} 条警告",
     "versionChange": "{{current}} → {{target}}",
     "selectRow": "选择要更新的 {{name}}",
@@ -49,6 +56,17 @@
   "commandPreview": {
     "label": "将执行:",
     "needsPassword": "这一步会要求你输入 Mac 密码。"
+  },
+  "sourceNotice": {
+    "pipReadOnly": {
+      "title": "只读:pip 包",
+      "description": "Canager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
+    },
+    "ollamaNotRunning": {
+      "title": "Ollama 没有运行",
+      "description": "启动 Ollama 应用,才能看到它的模型并检查更新。",
+      "action": "打开 Ollama"
+    }
   },
   "operations": {
     "idle": "当前没有正在进行的操作",
@@ -95,6 +113,10 @@
     "showTechnicalDetails": {
       "label": "显示技术细节",
       "description": "显示版本号、文件路径,以及 Canager 实际执行的命令。"
+    },
+    "includeSelfUpdating": {
+      "label": "包含自更新的应用",
+      "description": "把 Chrome、Docker 这类会自己更新的应用,也列为这里可更新的项目。"
     },
     "language": {
       "label": "语言",

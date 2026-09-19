@@ -40,6 +40,7 @@ pub fn run() {
             ipc::get_settings,
             ipc::set_settings,
             ipc::subscribe_events,
+            ipc::open_ollama_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

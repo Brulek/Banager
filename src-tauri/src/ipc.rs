@@ -134,6 +134,51 @@ pub async fn subscribe_events(
     subscribe_events_impl(&state, channel)
 }
 
+/// The exact program and argv this command runs. A pure builder so a test
+/// can assert the contract -- launch Ollama.app, nothing else -- without
+/// starting a process.
+fn open_ollama_app_argv() -> (&'static std::path::Path, Vec<String>) {
+    (
+        std::path::Path::new("/usr/bin/open"),
+        vec!["-a".to_string(), "Ollama".to_string()],
+    )
+}
+
+/// Fire-and-forget: launches (or focuses) the Ollama.app the user already
+/// has installed, for the "Ollama isn't running" notice's button. Takes no
+/// input at all, so there is nothing here for the front end to build an
+/// argv from or for a caller to influence -- unlike a package operation,
+/// this never goes through Session/Plan because it is not a package
+/// management action.
+///
+/// `program` is a parameter purely so tests can point it at an inert binary:
+/// `cargo test --workspace` runs on the developer's machine and on CI, and a
+/// test that really ran `open -a Ollama` would launch a GUI app on both.
+fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
+    let (_default_program, args) = open_ollama_app_argv();
+    let mut child = std::process::Command::new(program)
+        .args(&args)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    // Reap on a background thread instead of leaving a zombie: `open` exits
+    // almost immediately once it has handed off to (or failed to find)
+    // Ollama.app, and this command must return without waiting for that.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+pub(crate) fn open_ollama_app_impl() -> Result<(), String> {
+    let (program, _args) = open_ollama_app_argv();
+    open_ollama_app_impl_with(program)
+}
+
+#[tauri::command]
+pub async fn open_ollama_app() -> Result<(), String> {
+    open_ollama_app_impl()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,5 +724,36 @@ mod tests {
             .channel_sink
             .broadcast(UiEvent::SnapshotChanged { generation: 42 });
         assert_eq!(received.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_open_ollama_app_argv_is_exactly_open_dash_a_ollama() {
+        // The argv is the whole contract of this command: it must launch
+        // Ollama.app and nothing else, and it takes no input, so there is
+        // nothing a caller could steer. Asserted from a pure builder so the
+        // test never starts a process.
+        let (program, args) = open_ollama_app_argv();
+        assert_eq!(program, std::path::Path::new("/usr/bin/open"));
+        assert_eq!(args, vec!["-a".to_string(), "Ollama".to_string()]);
+    }
+
+    #[test]
+    fn test_open_ollama_app_impl_with_spawns_and_reaps_the_program_it_is_given() {
+        // Deliberately /bin/echo, not /usr/bin/open: `cargo test --workspace`
+        // is this plan's definition of done for every task, so a test that
+        // really ran `open -a Ollama` would launch Ollama.app on the
+        // developer's machine and on CI -- exactly the side effect this
+        // phase's own constraint ("a background refresh never launches an
+        // application") exists to prevent -- while asserting nothing beyond
+        // "spawn did not error", which is true of any existing binary.
+        open_ollama_app_impl_with(std::path::Path::new("/bin/echo"))
+            .expect("spawning an existing program must succeed");
+    }
+
+    #[test]
+    fn test_open_ollama_app_impl_with_reports_a_missing_program_instead_of_panicking() {
+        let err = open_ollama_app_impl_with(std::path::Path::new("/definitely/not/a/program"))
+            .expect_err("a missing program must be an Err, not a panic");
+        assert!(!err.is_empty());
     }
 }
