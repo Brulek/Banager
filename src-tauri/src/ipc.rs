@@ -334,6 +334,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_refresh_impl_broadcasts_snapshot_changed_when_the_generation_moves() {
+        // M9 in the design review: `refresh_impl` is the only production
+        // code path in the whole plan that ever sends
+        // `UiEvent::SnapshotChanged`, and only when the refresh actually
+        // moved `generation`. Subscribe *first* (every other test that
+        // refreshes either has no subscriber or subscribes after its last
+        // refresh, which is why inverting or dropping the generation-diff
+        // branch used to leave the whole suite green), then refresh a fresh
+        // session: its first refresh always changes the content (no
+        // instances -> the fake instance), so `generation` must move and
+        // exactly one SnapshotChanged carrying the new value must reach the
+        // subscriber through AppState.channel_sink.
+        let state = state_with_fake_adapter();
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let before = get_snapshot_impl(&state)
+            .expect("get_snapshot_impl")
+            .generation;
+        let snapshot = refresh_impl(&state).await.expect("refresh_impl");
+        assert_ne!(
+            snapshot.generation, before,
+            "precondition: the first refresh must change the generation"
+        );
+
+        let events = received.lock().unwrap();
+        let generations: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                UiEvent::SnapshotChanged { generation } => Some(*generation),
+                UiEvent::Operation(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            generations,
+            vec![snapshot.generation],
+            "exactly one SnapshotChanged carrying the new generation must reach the subscriber, got: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_impl_does_not_rebroadcast_when_the_generation_is_unchanged() {
+        // Companion to the test above. The fake adapter always reports the
+        // same instance and empty inventory/updates, so a second refresh
+        // yields identical content and `Session::refresh` leaves
+        // `generation` alone (M5: `refreshed_at` is deliberately excluded
+        // from that comparison). `refresh_impl` must then stay silent — a
+        // front end that re-fetches on every SnapshotChanged would
+        // otherwise refetch identical data on every poll.
+        let state = state_with_fake_adapter();
+        let first = refresh_impl(&state).await.expect("first refresh_impl");
+
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let second = refresh_impl(&state).await.expect("second refresh_impl");
+        assert_eq!(
+            first.generation, second.generation,
+            "precondition: identical content must not move the generation"
+        );
+
+        let events = received.lock().unwrap();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, UiEvent::SnapshotChanged { .. })),
+            "an unchanged refresh must not re-broadcast SnapshotChanged, got: {events:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_plan_operation_impl_delegates_to_session_issue_plan() {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh_impl");
