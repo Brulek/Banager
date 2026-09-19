@@ -524,3 +524,43 @@ impl OperationManager {
         self.sink.emit(OperationEvent::Finished { op_id, outcome });
     }
 }
+
+/// Held while `refresh` is fetching one instance's inventory/updates, over
+/// the *same* `held` set `run_operation`'s locks use. Releases on drop, the
+/// same idempotent-by-construction shape as the internal `LockGuard`.
+pub struct ResourceLockGuard {
+    held: Arc<Mutex<HashSet<ResourceLock>>>,
+    lock: ResourceLock,
+}
+
+impl Drop for ResourceLockGuard {
+    fn drop(&mut self) {
+        self.held.lock().unwrap().remove(&self.lock);
+    }
+}
+
+impl OperationManager {
+    /// Waits (polling every 50ms, the same cadence `run_operation` already
+    /// uses for its own lock-wait loop) until `lock` is free, then holds it
+    /// until the returned guard drops. `refresh` uses this to take the same
+    /// per-instance lock a submitted install/upgrade/uninstall holds, so the
+    /// two can never read/write that instance's filesystem state at once —
+    /// while a *different* instance's lock is untouched, so refreshing one
+    /// instance never waits on an operation running against another.
+    pub async fn acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard {
+        loop {
+            {
+                let mut held = self.held.lock().unwrap();
+                if !held.contains(&lock) {
+                    held.insert(lock.clone());
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        ResourceLockGuard {
+            held: self.held.clone(),
+            lock,
+        }
+    }
+}
