@@ -129,7 +129,13 @@ describe("InstalledPage", () => {
       target: { value: "nonexistent" },
     });
 
-    expect(queryByText("jq")).not.toBeInTheDocument();
+    // Controller's binding note: interactions that assert on DOM changes use
+    // fireEvent + findBy/waitFor, never a synchronous assertion right after
+    // the interaction. The state path (Zustand setQuery -> synchronous
+    // re-render) makes this unlikely to flake today, but wrapping it in
+    // waitFor keeps the test robust if the query update ever becomes async
+    // (e.g. a debounced filter).
+    await waitFor(() => expect(queryByText("jq")).not.toBeInTheDocument());
   });
 
   it("plans an uninstall when the row's primary button is clicked", async () => {
