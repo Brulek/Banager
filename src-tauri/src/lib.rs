@@ -30,6 +30,17 @@ pub fn run() {
             app.manage(AppState::new(settings_path, channel_sink));
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            ipc::get_snapshot,
+            ipc::refresh,
+            ipc::plan_operation,
+            ipc::submit_operation,
+            ipc::cancel_operation,
+            ipc::list_operations,
+            ipc::get_settings,
+            ipc::set_settings,
+            ipc::subscribe_events,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
