@@ -54,11 +54,24 @@ pub enum AdapterError {
     Unsupported(String),
 }
 
-/// Matches `^[A-Za-z0-9@._+/-]+$` and rejects names starting with `-`
+/// Matches `^[A-Za-z0-9@._+/-]+$`, rejects names starting with `-`, `/` or
+/// `.`, rejects a `..` path segment anywhere, and rejects a trailing `.rb`
 /// (implemented by hand instead of pulling in the `regex` crate, since this
-/// is the only place in the crate that needs pattern matching).
+/// is the only place in the crate that needs pattern matching). The `/`,
+/// leading-`.`, `..`-segment and `.rb`-suffix rules exist specifically so
+/// `brew install --formula {name}` can never be handed a path: without them
+/// `validate_package_name("/tmp/evil.rb")` — or a tap-relative
+/// `"../../tmp/evil.rb"` — would pass, and Homebrew treats a `.rb`-suffixed
+/// argument as a local formula file to load and run, not a formula name to
+/// look up.
 pub fn validate_package_name(name: &str) -> Result<(), AdapterError> {
-    if name.is_empty() || name.starts_with('-') {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.starts_with('/')
+        || name.starts_with('.')
+        || name.ends_with(".rb")
+        || name.split('/').any(|segment| segment == "..")
+    {
         return Err(AdapterError::InvalidName(name.to_string()));
     }
     let valid = name
@@ -131,5 +144,32 @@ mod tests {
         assert!(validate_package_name("-rf").is_err());
         assert!(validate_package_name("a;b").is_err());
         assert!(validate_package_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_rejects_an_absolute_path() {
+        assert!(validate_package_name("/tmp/evil.rb").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_rejects_a_leading_dot() {
+        assert!(validate_package_name(".hidden").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_rejects_a_dotdot_segment() {
+        assert!(validate_package_name("foo/../evil").is_err());
+        assert!(validate_package_name("../evil").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_rejects_an_rb_suffix() {
+        assert!(validate_package_name("evil.rb").is_err());
+        assert!(validate_package_name("some/tap/evil.rb").is_err());
+    }
+
+    #[test]
+    fn test_validate_package_name_still_accepts_a_tap_qualified_cask_name() {
+        assert!(validate_package_name("gautham-v/tap/claudebar").is_ok());
     }
 }
