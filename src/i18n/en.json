@@ -1,0 +1,12 @@
+{
+  "app": {
+    "title": "Canager",
+    "operationBarRegion": "Operation status"
+  },
+  "nav": {
+    "label": "Sections",
+    "installed": "Installed",
+    "updates": "Updates",
+    "settings": "Settings"
+  }
+}
