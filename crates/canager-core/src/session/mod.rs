@@ -425,6 +425,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use std::path::PathBuf;
+    use std::sync::atomic::AtomicI64;
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
 
@@ -992,5 +993,160 @@ mod tests {
             .expect("refresh task panicked");
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
+    }
+
+    /// Backing store for `fake_now`. `Session::with_adapters` takes a plain
+    /// `fn() -> i64`, which cannot capture state, so the clock the expiry
+    /// test winds forward has to live in a static. Only
+    /// `test_submit_rejects_a_plan_issued_more_than_600s_ago` reads or
+    /// writes it, so the parallel test threads never race on it.
+    static FAKE_NOW: AtomicI64 = AtomicI64::new(0);
+
+    fn fake_now() -> i64 {
+        FAKE_NOW.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_submit_of_a_never_issued_plan_id_is_unknown_and_runs_nothing() {
+        // F1 / spec §6: the only thing a client can send `submit` is an id,
+        // and an id this Session never handed out must be rejected outright
+        // — it must not start anything, whatever number it is.
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+
+        // Nothing has been issued yet, so every id is a forgery.
+        assert_eq!(session.submit(1), Err(SubmitError::Unknown));
+        assert_eq!(session.submit(u64::MAX), Err(SubmitError::Unknown));
+
+        // With exactly one plan issued (id 1), its neighbours are still
+        // forgeries and the real id is untouched by those failed attempts.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(issued.id, 1);
+        assert_eq!(session.submit(0), Err(SubmitError::Unknown));
+        assert_eq!(session.submit(2), Err(SubmitError::Unknown));
+        assert!(
+            session.operations().is_empty(),
+            "a rejected submit must never reach the OperationManager"
+        );
+        session
+            .submit(issued.id)
+            .expect("the genuinely issued id is still submittable after the forgeries failed");
+        assert_eq!(session.operations().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_submit_consumes_the_plan_so_the_same_id_cannot_be_replayed() {
+        // The single-use guarantee: one issue_plan yields at most one
+        // operation. Submitting the same id a second time is treated exactly
+        // like an id that was never issued.
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+
+        let op_id = session
+            .submit(issued.id)
+            .expect("first submit of a freshly issued plan");
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::Unknown),
+            "an issued plan is single-use: replaying its id must be rejected"
+        );
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::Unknown),
+            "and it stays rejected however many times it is replayed"
+        );
+        let ops = session.operations();
+        assert_eq!(
+            ops.len(),
+            1,
+            "exactly one operation may result from one issued plan"
+        );
+        assert_eq!(ops[0].id, op_id);
+
+        // Previewing the same request again is a new plan under a new id,
+        // which is itself submittable exactly once more.
+        let reissued = session.issue_plan(&req).await.expect("issue_plan again");
+        assert_ne!(reissued.id, issued.id);
+        session
+            .submit(reissued.id)
+            .expect("a re-issued plan is submittable once");
+        assert_eq!(session.submit(reissued.id), Err(SubmitError::Unknown));
+        assert_eq!(session.operations().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_submit_rejects_a_plan_issued_more_than_600s_ago() {
+        // Pins `issued_at` through the `now_fn` seam, then winds the same
+        // clock forward to prove the 600 s limit is enforced on submit —
+        // inclusive at exactly 600 s ("more than 600 seconds ago" is the
+        // documented contract), exclusive one second later.
+        const T0: i64 = 1_758_000_000;
+        FAKE_NOW.store(T0, Ordering::SeqCst);
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let on_time = session.issue_plan(&req).await.expect("issue_plan");
+        let too_late = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(
+            on_time.issued_at, T0,
+            "issued_at must come from the injected clock"
+        );
+        assert_eq!(too_late.issued_at, T0);
+
+        // Exactly 600 s old is not "more than 600 seconds ago": still valid.
+        FAKE_NOW.store(T0 + 600, Ordering::SeqCst);
+        session
+            .submit(on_time.id)
+            .expect("a plan exactly 600 s old is still submittable");
+        assert_eq!(session.operations().len(), 1);
+
+        // One second past the limit: expired, and nothing is submitted.
+        FAKE_NOW.store(T0 + 601, Ordering::SeqCst);
+        assert_eq!(session.submit(too_late.id), Err(SubmitError::Expired));
+        assert_eq!(
+            session.operations().len(),
+            1,
+            "an expired plan must never reach the OperationManager"
+        );
+
+        // The failed submit discarded the expired plan rather than leaving
+        // it around for a retry: even winding the clock back cannot
+        // resurrect it, and the caller has to issue_plan again.
+        FAKE_NOW.store(T0, Ordering::SeqCst);
+        assert_eq!(session.submit(too_late.id), Err(SubmitError::Unknown));
+        assert_eq!(session.operations().len(), 1);
+        let fresh = session.issue_plan(&req).await.expect("issue_plan again");
+        assert_ne!(fresh.id, too_late.id);
+        session
+            .submit(fresh.id)
+            .expect("a freshly issued plan is submittable");
+        assert_eq!(session.operations().len(), 2);
     }
 }
