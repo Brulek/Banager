@@ -357,6 +357,61 @@ impl Session {
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.lock().unwrap().clone()
     }
+
+    /// Resolves `req` to its owning adapter, asks it to plan the operation,
+    /// then stores the resulting `Plan` under a fresh `PlanId` and returns
+    /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
+    /// in it is ever accepted back — `submit` takes only `issued.id`.
+    pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
+        let instance = self
+            .snapshot
+            .lock()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|i| i.id == req.instance_id)
+            .cloned()
+            .ok_or_else(|| {
+                AdapterError::Refused(format!("unknown instance {}", req.instance_id))
+            })?;
+        let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
+            AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
+        })?;
+        let plan = adapter.plan(&instance, req).await?;
+        let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
+        let issued = IssuedPlan {
+            id,
+            plan,
+            issued_at: self.now(),
+        };
+        self.issued_plans.lock().unwrap().insert(id, issued.clone());
+        Ok(issued)
+    }
+
+    /// Removes (one-time consumption) the issued plan stored under
+    /// `plan_id` and submits exactly that stored `Plan`. Fails with
+    /// `SubmitError::Unknown` if `plan_id` was never issued or was already
+    /// submitted once, and `SubmitError::Expired` if it was issued more
+    /// than 600 seconds ago — the client can never influence what actually
+    /// runs, since nothing it sends is used except this opaque id.
+    pub fn submit(self: &Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
+        let issued = {
+            let mut plans = self.issued_plans.lock().unwrap();
+            plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
+        };
+        if self.now() - issued.issued_at > 600 {
+            return Err(SubmitError::Expired);
+        }
+        Ok(self.ops.submit(issued.plan))
+    }
+
+    pub fn cancel(&self, op_id: OpId) {
+        self.ops.cancel(op_id)
+    }
+
+    pub fn operations(&self) -> Vec<OpSummary> {
+        self.ops.summaries()
+    }
 }
 
 #[cfg(test)]
@@ -772,5 +827,170 @@ mod tests {
         let refreshed = session.refresh(&non_root_env()).await;
         let after = session.snapshot();
         assert_eq!(after, refreshed);
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_delegates_to_the_owning_adapter() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(issued.id, 1, "PlanId numbering starts at 1");
+        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_for_unknown_instance_is_refused() {
+        let (adapter, _state) = FakeAdapter::new("fake");
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "does-not-exist".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        match session.issue_plan(&req).await {
+            Err(AdapterError::Refused(_)) => {}
+            other => panic!("expected Refused, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_cancel_and_operations_forward_to_the_operation_manager() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if session
+                .operations()
+                .iter()
+                .any(|o| o.id == op_id && o.status == OpStatus::Running)
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(session.operations().len(), 1);
+
+        session.cancel(op_id);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(summary) = session.operations().into_iter().find(|o| o.id == op_id) {
+                if summary.status == OpStatus::Done {
+                    assert_eq!(summary.outcome, Some(Outcome::Succeeded));
+                    break;
+                }
+            }
+            assert!(Instant::now() < deadline, "operation never finished");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others(
+    ) {
+        // Regression guard for M8 in the design review: refresh() must take
+        // the same per-instance resource lock a submitted operation holds,
+        // so it can never observe fake:1's filesystem state while an
+        // install/upgrade/uninstall on fake:1 is still running — but that
+        // must not hold up fake:2's fetch, which uses a different lock.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.artifacts
+                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        state.lock().unwrap().inventory_calls.clear();
+
+        // Submit (and thereby lock) an operation against fake:1 only, and
+        // hold it there — `block_execute` makes `execute()` wait on
+        // cancellation — until this test releases it below.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if session
+                .operations()
+                .iter()
+                .any(|o| o.id == op_id && o.status == OpStatus::Running)
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let session_for_refresh = session.clone();
+        let refresh_task =
+            tokio::spawn(async move { session_for_refresh.refresh(&non_root_env()).await });
+
+        // Give the refresh time to reach fake:2's inventory (no contention)
+        // and to *try* fake:1's (which must still be waiting on the lock
+        // fake:1's running operation holds).
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        {
+            let calls = state.lock().unwrap().inventory_calls.clone();
+            assert!(
+                calls.contains(&"fake:2".to_string()),
+                "a different instance's refresh must proceed while fake:1 is locked"
+            );
+            assert!(
+                !calls.contains(&"fake:1".to_string()),
+                "fake:1's refresh must not run while fake:1's operation is still holding its lock"
+            );
+        }
+
+        // Release fake:1's lock; the refresh (and the operation) must now
+        // both complete, and the snapshot must reflect both instances.
+        session.cancel(op_id);
+        let snapshot = tokio::time::timeout(Duration::from_secs(2), refresh_task)
+            .await
+            .expect("refresh must not hang once the blocking operation is cancelled")
+            .expect("refresh task panicked");
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
     }
 }
