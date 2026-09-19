@@ -392,6 +392,7 @@ export interface UiState {
   logs: LogLine[]; appendLog(l: Omit<LogLine, "seq">): void; clearLogs(opId: number): void;
   selectedUpdates: string[];                            // `${instance_id}|${kind}|${name}`
   toggleUpdate(key: ArtifactKey): void; clearSelectedUpdates(): void;
+  startupRefreshError: string | null; setStartupRefreshError(message: string | null): void;
 }
 export const useUiStore: UseBoundStore<StoreApi<UiState>>;
 export function artifactKeyId(key: ArtifactKey): string;  // `${instance_id}|${kind}|${name}`
@@ -416,7 +417,7 @@ export function artifactKeyId(key: ArtifactKey): string;  // `${instance_id}|${k
 | 13 | Operation bar + log drawer | live status, streamed lines, working Cancel |
 | 14 | Uninstall dialog | affected list, command preview, confirm disabled when something would break; wired into the Installed page's uninstall button so it is actually reachable |
 | 15 | Settings page | technical details, language, greedy casks; persisted through IPC; wired into the app shell |
-| 16 | i18n completeness | complete `zh-CN.json` covering every namespace through Task 15, system-language detection, Settings override wired, automated check that every `t()` key exists in both files and no component holds a literal user-visible string |
+| 16 | i18n completeness | complete `zh-CN.json` covering every namespace through Task 15, system-language detection, Settings override wired, and two automated checks: the `en`/`zh-CN` key sets are identical, and no component holds a literal JSX string |
 | 17 | Empty and error states | no Homebrew, root refusal, refresh failed (stale banner), nothing installed |
 | 18 | Front-end tests in CI | `pnpm test` wired into `ci.yml`, green |
 
@@ -3789,7 +3790,7 @@ Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with
 
 **Interfaces:**
 - Consumes: none from earlier tasks — this is the front-end foundation. No IPC calls yet (Tasks 1–8 exist only in `canager-core` / `src-tauri`, not called from React until Task 10).
-- Produces: `renderWithProviders(ui: ReactElement)` test helper (`src/test/setup.ts`), used by every later test in Tasks 10–18; a global `vi.mock` of `@tauri-apps/api/core`'s `invoke` and `Channel`; `Sidebar` component and its `SidebarPage` type (`"installed" | "updates" | "settings"`) from `src/components/Sidebar.tsx` (Task 11 later replaces this local type with the shared `Page` type from `src/store/ui.ts`); the default `i18n` instance from `src/i18n/index.ts` with `en.json` resources loaded under keys `app.*` and `nav.*`; `Dialog({ open, onOpenChange, title, children, footer? })` and `Switch({ checked, onCheckedChange, id?, "aria-label"? })` (`src/components/ui/Dialog.tsx` and `src/components/ui/Switch.tsx` — the two Radix wrappers every later dialog/toggle in this plan builds on: Task 12's `UpdatesPage`, Task 14's `UninstallDialog`, and Task 15's `SettingsPage`).
+- Produces: `renderWithProviders(ui: ReactElement)` test helper (`src/test/setup.ts`), used by every later test in Tasks 10–18; a global `vi.mock` of `@tauri-apps/api/core`'s `invoke` and `Channel`; `Sidebar` component and its `SidebarPage` type (`"installed" | "updates" | "settings"`) from `src/components/Sidebar.tsx` (Task 11 later replaces this local type with the shared `Page` type from `src/store/ui.ts`); the default `i18n` instance from `src/i18n/index.ts` with `en.json` resources loaded under keys `app.*` and `nav.*`; `Dialog({ open, onOpenChange, title, children, footer? })` and `Switch({ checked, onCheckedChange, id?, "aria-label"?, "aria-describedby"? })` (`src/components/ui/Dialog.tsx` and `src/components/ui/Switch.tsx` — the two Radix wrappers every later dialog/toggle in this plan builds on: Task 12's `UpdatesPage`, Task 14's `UninstallDialog`, and Task 15's `SettingsPage`).
 
 - [ ] **Step 1: Add front-end dependencies and install them**
 
@@ -3835,6 +3836,7 @@ Replace `package.json` with:
     "@tailwindcss/vite": "^4.3.3",
     "vitest": "^5.0.1",
     "jsdom": "^30.1.0",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/user-event": "^14.6.7"
@@ -3842,7 +3844,7 @@ Replace `package.json` with:
 }
 ```
 
-Versions were read from the registry on 2026-09-19 (`npm view <pkg> version`): `@tanstack/react-query` 5.103.1, `@tanstack/react-virtual` 3.14.13, `zustand` 5.0.15, `i18next` 26.4.2, `react-i18next` 17.0.14, `i18next-browser-languagedetector` 8.2.1, `@radix-ui/react-dialog` 1.1.23, `@radix-ui/react-switch` 1.3.7, `@radix-ui/react-scroll-area` 1.2.18, `vitest` 5.0.1 (peer `vite: ^6 || ^7 || ^8`, matching the repo's `vite ^8.0.16`), `@testing-library/react` 16.3.3, `@testing-library/jest-dom` 7.0.1 (ships a `./vitest` subpath export), `jsdom` 30.1.0, `@testing-library/user-event` 14.6.7. `@radix-ui/react-tabs` and `@radix-ui/react-tooltip` are deliberately **not** installed: no task in this plan builds a `Tabs` or `Tooltip` wrapper or imports either package (the language picker in Task 15 uses a hand-rolled `role="radiogroup"` instead), so they would be dead weight.
+Versions were read from the registry on 2026-09-19 (`npm view <pkg> version`): `@tanstack/react-query` 5.103.1, `@tanstack/react-virtual` 3.14.13, `zustand` 5.0.15, `i18next` 26.4.2, `react-i18next` 17.0.14, `i18next-browser-languagedetector` 8.2.1, `@radix-ui/react-dialog` 1.1.23, `@radix-ui/react-switch` 1.3.7, `@radix-ui/react-scroll-area` 1.2.18, `vitest` 5.0.1 (peer `vite: ^6 || ^7 || ^8`, matching the repo's `vite ^8.0.16`), `@testing-library/react` 16.3.3, `@testing-library/jest-dom` 7.0.1 (ships a `./vitest` subpath export), `jsdom` 30.1.0, `@testing-library/user-event` 14.6.7, `@testing-library/dom` 10.4.2. `@testing-library/dom` is listed explicitly because `@testing-library/react` 16, `@testing-library/jest-dom` 7 and `@testing-library/user-event` 14 all declare it as a peer dependency: pnpm 12's default `auto-install-peers` would pull it in silently today, but a lockfile should not depend on that default. `@radix-ui/react-tabs` and `@radix-ui/react-tooltip` are deliberately **not** installed: no task in this plan builds a `Tabs` or `Tooltip` wrapper or imports either package (the language picker in Task 15 uses a hand-rolled `role="radiogroup"` instead), so they would be dead weight.
 
 Run: `pnpm install`
 Expected: exits 0; `pnpm-lock.yaml` is rewritten to include the new packages; no `ERR_PNPM` output.
@@ -3870,20 +3872,31 @@ Create `src/i18n/index.ts`:
 
 ```ts
 import i18n from "i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 import en from "./en.json";
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    en: { translation: en },
-  },
-  lng: "en",
-  fallbackLng: "en",
-  interpolation: { escapeValue: false },
-});
+void i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: {
+      en: { translation: en },
+    },
+    fallbackLng: "en",
+    supportedLngs: ["en", "zh-CN"],
+    detection: { order: ["navigator"], caches: [] },
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;
 ```
+
+This is the file's final shape except for the `zh-CN` bundle, which Task 16 adds to `resources` once `zh-CN.json` exists. Three details are load-bearing and must not be "simplified" away:
+
+- There is deliberately **no `lng:` option**. Passing one skips the detector entirely and pins the UI to that language no matter what the system says — which would silently defeat the Global Constraint "the language follows the system unless overridden in Settings".
+- `supportedLngs` is what turns whatever the detector reports into one of the two bundles this app ships: jsdom's `navigator.language` is `en-US`, which i18next resolves to `en`, so every test in Tasks 9–15 that asserts English copy sees exactly the same strings it would with a hard-coded English `lng` option. `zh-CN` is listed already so that Task 16 only has to register the resource.
+- `caches: []` stops the detector from writing to `localStorage`. Task 16's Settings override calls `i18n.changeLanguage(...)`; without this the detector would remember that forced language and "System" could never win it back.
 
 - [ ] **Step 3: Create the vitest harness**
 
@@ -3997,6 +4010,8 @@ export default defineConfig(() => ({
 
 The triple-slash reference to `vitest/config` merges vitest's `test` field into `defineConfig`'s type from plain `vite`, which is the officially documented way to add a `test` block without importing `defineConfig` from `vitest/config` (`vitest` 5.0.1 ships a `./config` type-only export for exactly this).
 
+**Hard rule for every test written in Tasks 9–18.** Any interaction whose assertion depends on a DOM change or an asynchronous side effect — a page switch, a dialog opening, a mutation reaching `invoke` — is driven with `fireEvent`/`userEvent` and awaited with `findBy*`/`waitFor`. Never call a bare `element.click()` and assert synchronously on the next line. Two mechanisms make such a test fail deterministically: under React 19's `createRoot`, a discrete-event update dispatched outside `act` commits in a microtask, so a synchronous `getBy*` right after the click still sees the old DOM; and TanStack Query v5 `await`s `onMutate` before it calls `mutationFn`, so `invoke` has not been called yet when the click handler returns. Tests that only assert a callback prop was invoked (`Sidebar` and `Switch` in this task, `ArtifactRow` in Task 11) are exempt, because the callback fires synchronously inside the click handler itself.
+
 - [ ] **Step 4: Write a failing test for `Sidebar`**
 
 Create `src/components/Sidebar.test.tsx`:
@@ -4095,6 +4110,7 @@ Create `src/App.test.tsx`:
 
 ```tsx
 import { describe, expect, it } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
 
@@ -4104,12 +4120,12 @@ describe("App", () => {
     expect(getByRole("heading", { name: "Installed" })).toBeInTheDocument();
   });
 
-  it("switches the content area when a sidebar link is clicked", () => {
-    const { getByRole } = renderWithProviders(<App />);
+  it("switches the content area when a sidebar link is clicked", async () => {
+    const { getByRole, findByRole } = renderWithProviders(<App />);
 
-    getByRole("button", { name: "Updates" }).click();
+    fireEvent.click(getByRole("button", { name: "Updates" }));
 
-    expect(getByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(await findByRole("heading", { name: "Updates" })).toBeInTheDocument();
   });
 });
 ```
@@ -4170,6 +4186,7 @@ Replace `src/index.css`:
   --color-muted: #6e6e73;
   --color-muted-foreground: #6b7280;
   --color-danger: #d70015;
+  --color-overlay: rgb(0 0 0 / 0.4);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -4184,6 +4201,7 @@ Replace `src/index.css`:
     --color-muted: #98989d;
     --color-muted-foreground: #9ca3af;
     --color-danger: #ff453a;
+    --color-overlay: rgb(0 0 0 / 0.6);
   }
 }
 
@@ -4329,7 +4347,7 @@ export function Dialog({ open, onOpenChange, title, children, footer }: DialogPr
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 bg-black/40" />
+        <RadixDialog.Overlay className="fixed inset-0 bg-[var(--color-overlay)]" />
         <RadixDialog.Content className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-[var(--color-background)] p-6 shadow-lg">
           <RadixDialog.Title className="text-base font-semibold text-[var(--color-foreground)]">
             {title}
@@ -4343,6 +4361,8 @@ export function Dialog({ open, onOpenChange, title, children, footer }: DialogPr
 }
 ```
 
+The overlay reads the `--color-overlay` token that `index.css` defines for both palettes (Step 10) instead of Tailwind's black-with-opacity utility: component code never carries a colour literal (Global Constraints), and the dimmer is the one colour that has to change with dark mode. Task 12's and Task 14's dialogs inherit it.
+
 Create `src/components/ui/Switch.tsx`:
 
 ```tsx
@@ -4353,13 +4373,22 @@ export interface SwitchProps {
   onCheckedChange: (checked: boolean) => void;
   id?: string;
   "aria-label"?: string;
+  /** Points at a description element; Task 15 uses it to keep the Switch's accessible name to the label text alone. */
+  "aria-describedby"?: string;
 }
 
-export function Switch({ checked, onCheckedChange, id, "aria-label": ariaLabel }: SwitchProps) {
+export function Switch({
+  checked,
+  onCheckedChange,
+  id,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
+}: SwitchProps) {
   return (
     <RadixSwitch.Root
       id={id}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       checked={checked}
       onCheckedChange={onCheckedChange}
       className="relative h-6 w-10 shrink-0 rounded-full bg-[var(--color-hover)] outline-none data-[state=checked]:bg-[var(--color-accent)]"
@@ -4397,6 +4426,7 @@ EOF
 - Create: `src/lib/events.ts`
 - Create: `src/lib/queries.ts`
 - Create: `src/store/ui.ts`
+- Modify: `src/test/setup.ts`
 - Test: `src/lib/types.test.ts`
 - Test: `src/lib/api.test.ts`
 - Test: `src/store/ui.test.ts`
@@ -4405,7 +4435,7 @@ EOF
 
 **Interfaces:**
 - Consumes: the nine `#[tauri::command]`s from Task 8 (`get_snapshot`, `refresh`, `plan_operation`, `submit_operation`, `cancel_operation`, `list_operations`, `get_settings`, `set_settings`, `subscribe_events`) and the `UiEvent` wire shape from Task 6's `src-tauri/src/events.rs`, both exactly as given in the skeleton's Core Interfaces; `renderWithProviders` and the global `invoke`/`Channel` mock from Task 9's `src/test/setup.ts`.
-- Produces: every name in the skeleton's `types.ts` / `api.ts` / `queries.ts` / `store/ui.ts` blocks, reproduced verbatim below; plus `useOperationEvents(): void` (`src/lib/events.ts`, not in the skeleton — a zero-argument hook with no return value that a page mounts once to start forwarding `UiEvent`s from the Channel into the Zustand store and into TanStack Query cache invalidation). Later tasks import `useOperationEvents` from `../lib/events`.
+- Produces: every name in the skeleton's `types.ts` / `api.ts` / `queries.ts` / `store/ui.ts` blocks, reproduced verbatim below; plus two zero-argument, no-return hooks in `src/lib/events.ts` that are not in the skeleton: `useOperationEvents(): void`, which a page mounts once to start forwarding `UiEvent`s from the Channel into the Zustand store and into TanStack Query cache invalidation (and which triggers a backend `refresh` after every `Finished` event), and `useStartupRefresh(): void`, which triggers the first `refresh` when the app mounts — the only thing that ever moves the backend off its empty startup `Snapshot`. Task 13's `App` mounts both, side by side. Later tasks import them from `../lib/events`. This task also modifies Task 9's `src/test/setup.ts` to reset `useUiStore` before every test, now that the store exists.
 
 - [ ] **Step 1: Write failing tests for the data layer (`types.ts`, `api.ts`, `store/ui.ts`)**
 
@@ -4415,64 +4445,75 @@ Create `src/lib/types.test.ts`:
 import { describe, expect, it } from "vitest";
 import type { Snapshot, Outcome, OperationEvent, UiEvent, Plan, OpSummary, Settings } from "./types";
 
+// Every fixture below is a *typed* literal rather than a JSON string. vitest
+// only strips types, so a JSON-string fixture would pass no matter what
+// `types.ts` says; `pnpm build` runs `tsc` over the test files too (tsconfig
+// `include` is `["src"]`), so a typed literal fails the build the moment a
+// field name or variant drifts away from the Rust side. The JSON round trip
+// keeps the runtime check that the wire shape (snake_case, externally tagged
+// enums) survives serialisation unchanged.
+function roundTrip<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 describe("types", () => {
-  it("parses a realistic Snapshot JSON payload (shape copied from canager-core's brew fixtures)", () => {
-    const raw = `{
-      "generation": 3,
-      "detect": "Found",
-      "instances": [
+  it("round-trips a realistic Snapshot (shape copied from canager-core's brew fixtures)", () => {
+    const snapshot = {
+      generation: 3,
+      detect: "Found",
+      instances: [
         {
-          "id": "brew:/opt/homebrew",
-          "adapter_id": "brew",
-          "exe_path": "/opt/homebrew/bin/brew",
-          "prefix": "/opt/homebrew",
-          "scope": "User",
-          "version": "7.0.3",
-          "healthy": true
-        }
+          id: "brew:/opt/homebrew",
+          adapter_id: "brew",
+          exe_path: "/opt/homebrew/bin/brew",
+          prefix: "/opt/homebrew",
+          scope: "User",
+          version: "7.0.3",
+          healthy: true,
+        },
       ],
-      "artifacts": [
+      artifacts: [
         {
-          "key": { "instance_id": "brew:/opt/homebrew", "kind": "Formula", "name": "jq" },
-          "display_name": "jq",
-          "version": "1.8.2",
-          "reason": "Requested",
-          "description": "Lightweight and flexible command-line JSON processor",
-          "homepage": "https://jqlang.github.io/jq/",
-          "size_bytes": null,
-          "installed_at": 1783762037,
-          "path": null,
-          "auto_updates": false
+          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+          display_name: "jq",
+          version: "1.8.2",
+          reason: "Requested",
+          description: "Lightweight and flexible command-line JSON processor",
+          homepage: "https://jqlang.github.io/jq/",
+          size_bytes: null,
+          installed_at: 1783762037,
+          path: null,
+          auto_updates: false,
         },
         {
-          "key": { "instance_id": "brew:/opt/homebrew", "kind": "Cask", "name": "onyx" },
-          "display_name": "OnyX",
-          "version": "5.0.2",
-          "reason": "Requested",
-          "description": "Verify system files structure, run miscellaneous maintenance and more",
-          "homepage": "https://www.titanium-software.fr/en/onyx.html",
-          "size_bytes": null,
-          "installed_at": null,
-          "path": null,
-          "auto_updates": false
-        }
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
+          display_name: "OnyX",
+          version: "5.0.2",
+          reason: "Requested",
+          description: "Verify system files structure, run miscellaneous maintenance and more",
+          homepage: "https://www.titanium-software.fr/en/onyx.html",
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
       ],
-      "updates": [
+      updates: [
         {
-          "key": { "instance_id": "brew:/opt/homebrew", "kind": "Cask", "name": "onyx" },
-          "current": "5.0.2",
-          "target": "5.1.0",
-          "channel": "Native",
-          "checkable": true,
-          "warnings": []
-        }
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
+          current: "5.0.2",
+          target: "5.1.0",
+          channel: "Native",
+          checkable: true,
+          warnings: [],
+        },
       ],
-      "refreshed_at": 1789700000,
-      "stale": false,
-      "errors": []
-    }`;
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    } satisfies Snapshot;
 
-    const parsed = JSON.parse(raw) as Snapshot;
+    const parsed = roundTrip<Snapshot>(snapshot);
 
     expect(parsed.generation).toBe(3);
     expect(parsed.detect).toBe("Found");
@@ -4485,54 +4526,76 @@ describe("types", () => {
     expect(parsed.errors).toEqual([]);
   });
 
-  it("parses tagged Outcome variants", () => {
-    const succeeded = JSON.parse('"Succeeded"') as Outcome;
-    const needsAttention = JSON.parse(
-      '{"NeedsAttention": "command succeeded but the package is not installed"}',
-    ) as Outcome;
-    const failed = JSON.parse('{"Failed": {"exit_code": 1, "summary": "boom"}}') as Outcome;
+  it("keeps Outcome's externally tagged variants intact on the wire", () => {
+    const succeeded: Outcome = "Succeeded";
+    const needsAttention: Outcome = {
+      NeedsAttention: "command succeeded but the package is not installed",
+    };
+    const failed: Outcome = { Failed: { exit_code: 1, summary: "boom" } };
 
-    expect(succeeded).toBe("Succeeded");
-    expect(needsAttention).toEqual({
+    expect(roundTrip(succeeded)).toBe("Succeeded");
+    expect(roundTrip(needsAttention)).toEqual({
       NeedsAttention: "command succeeded but the package is not installed",
     });
-    expect(failed).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
+    expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
+    expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
   });
 
-  it("parses OperationEvent and UiEvent wire shapes", () => {
-    const log = JSON.parse(
-      '{"Log": {"op_id": 1, "stream": "Stdout", "line": "Installing jq"}}',
-    ) as OperationEvent;
-    const uiEvent = JSON.parse(
-      '{"Operation": {"Status": {"op_id": 1, "status": "Running"}}}',
-    ) as UiEvent;
-    const snapshotChanged = JSON.parse('{"SnapshotChanged": {"generation": 7}}') as UiEvent;
+  it("keeps OperationEvent and UiEvent wire shapes intact", () => {
+    const log: OperationEvent = { Log: { op_id: 1, stream: "Stdout", line: "Installing jq" } };
+    const uiEvent: UiEvent = { Operation: { Status: { op_id: 1, status: "Running" } } };
+    const snapshotChanged: UiEvent = { SnapshotChanged: { generation: 7 } };
 
-    expect(log).toEqual({ Log: { op_id: 1, stream: "Stdout", line: "Installing jq" } });
-    expect("Operation" in uiEvent && uiEvent.Operation).toEqual({
+    expect(roundTrip(log)).toEqual({ Log: { op_id: 1, stream: "Stdout", line: "Installing jq" } });
+    const parsedUiEvent = roundTrip(uiEvent);
+    expect("Operation" in parsedUiEvent && parsedUiEvent.Operation).toEqual({
       Status: { op_id: 1, status: "Running" },
     });
-    expect("SnapshotChanged" in snapshotChanged && snapshotChanged.SnapshotChanged).toEqual({
-      generation: 7,
-    });
+    const parsedSnapshotChanged = roundTrip(snapshotChanged);
+    expect(
+      "SnapshotChanged" in parsedSnapshotChanged && parsedSnapshotChanged.SnapshotChanged,
+    ).toEqual({ generation: 7 });
   });
 
-  it("parses a Plan, an OpSummary and Settings", () => {
-    const plan = JSON.parse(
-      '{"request": {"kind": "Install", "instance_id": "brew:/opt/homebrew", "artifact_kind": "Formula", "name": "jq"}, "program": "/opt/homebrew/bin/brew", "args": ["install", "--formula", "jq"], "env": [], "needs_password": false, "locks": ["brew:/opt/homebrew"], "cancel_policy": "KillThenReconcile", "warnings": [], "affected": [], "timeout_secs": 1800}',
-    ) as Plan;
-    const opSummary = JSON.parse(
-      '{"id": 1, "kind": "Install", "instance_id": "brew:/opt/homebrew", "artifact_kind": "Formula", "name": "jq", "status": "Running", "outcome": null, "argv_preview": ["/opt/homebrew/bin/brew", "install", "--formula", "jq"]}',
-    ) as OpSummary;
-    const settings = JSON.parse(
-      '{"language": "ZhCn", "show_technical_details": true, "ignored_updates": []}',
-    ) as Settings;
+  it("round-trips a Plan, an OpSummary and Settings", () => {
+    const plan: Plan = {
+      request: {
+        kind: "Install",
+        instance_id: "brew:/opt/homebrew",
+        artifact_kind: "Formula",
+        name: "jq",
+      },
+      program: "/opt/homebrew/bin/brew",
+      args: ["install", "--formula", "jq"],
+      env: [],
+      needs_password: false,
+      locks: ["brew:/opt/homebrew"],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected: [],
+      timeout_secs: 1800,
+    };
+    const opSummary: OpSummary = {
+      id: 1,
+      kind: "Install",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name: "jq",
+      status: "Running",
+      outcome: null,
+      argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
+    };
+    const settings: Settings = {
+      language: "ZhCn",
+      show_technical_details: true,
+      ignored_updates: [],
+    };
 
-    expect(plan.cancel_policy).toBe("KillThenReconcile");
-    expect(plan.locks).toEqual(["brew:/opt/homebrew"]);
-    expect(opSummary.status).toBe("Running");
-    expect(opSummary.outcome).toBeNull();
-    expect(settings.language).toBe("ZhCn");
+    expect(roundTrip(plan).cancel_policy).toBe("KillThenReconcile");
+    expect(roundTrip(plan).locks).toEqual(["brew:/opt/homebrew"]);
+    expect(roundTrip(opSummary).status).toBe("Running");
+    expect(roundTrip(opSummary).outcome).toBeNull();
+    expect(roundTrip(settings).language).toBe("ZhCn");
   });
 });
 ```
@@ -4566,6 +4629,13 @@ describe("api", () => {
     mockInvoke.mockResolvedValueOnce({} as never);
     await getSnapshot();
     expect(mockInvoke).toHaveBeenCalledWith("get_snapshot");
+  });
+
+  it("turns a bare-string rejection from the backend into an Error carrying that string", async () => {
+    // A `#[tauri::command]` returning `Result<_, String>` rejects with the
+    // raw string; every error surface in the app renders `error.message`.
+    mockInvoke.mockRejectedValueOnce("boom" as never);
+    await expect(getSnapshot()).rejects.toThrow("boom");
   });
 
   it("refresh invokes refresh", async () => {
@@ -4749,7 +4819,7 @@ describe("useUiStore", () => {
 - [ ] **Step 2: Run the tests, verify they fail**
 
 Run: `pnpm exec vitest run src/lib/types.test.ts src/lib/api.test.ts src/store/ui.test.ts`
-Expected: FAIL — all three files error with "Failed to resolve import" for `./types`, `./api` and `./ui` respectively.
+Expected: FAIL — `api.test.ts` and `ui.test.ts` error with "Failed to resolve import" for `./api` and `./ui` respectively. `types.test.ts` already **passes** (4 tests): its only import is `import type`, which vitest's transform erases before module resolution runs, so a missing `types.ts` is invisible to it. That is expected, not a broken environment — the typed fixtures in that file are checked by `pnpm build`'s `tsc`, not by vitest, and Step 3 is where `types.ts` has to exist for the build.
 
 - [ ] **Step 3: Implement `types.ts`, `api.ts` and `store/ui.ts`**
 
@@ -4871,39 +4941,54 @@ export type UiEvent = { Operation: OperationEvent } | { SnapshotChanged: { gener
 Create `src/lib/api.ts`:
 
 ```ts
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import type { IssuedPlan, OpRequest, Settings, Snapshot, OpSummary, UiEvent } from "./types";
 
+/**
+ * The single choke point for every IPC call. A `#[tauri::command]` that
+ * returns `Result<_, String>` rejects with the *bare string*, not an `Error`.
+ * TanStack Query types `error` as `Error`, every error surface in this plan
+ * renders `error.message`, and `"boom".message` is `undefined` — so without
+ * this wrapper those surfaces would render blank. Wrapping here keeps the
+ * backend's text verbatim (IPC errors are shown as-is) while making
+ * `.message` real. Nothing outside this file calls `invoke`.
+ */
+function call<T>(cmd: string, args?: InvokeArgs): Promise<T> {
+  return invoke<T>(cmd, args).catch((e: unknown) => {
+    throw e instanceof Error ? e : new Error(typeof e === "string" ? e : JSON.stringify(e));
+  });
+}
+
 export function getSnapshot(): Promise<Snapshot> {
-  return invoke("get_snapshot");
+  return call<Snapshot>("get_snapshot");
 }
 
 export function refresh(): Promise<Snapshot> {
-  return invoke("refresh");
+  return call<Snapshot>("refresh");
 }
 
 export function planOperation(request: OpRequest): Promise<IssuedPlan> {
-  return invoke("plan_operation", { request });
+  return call<IssuedPlan>("plan_operation", { request });
 }
 
 export function submitOperation(planId: number): Promise<number> {
-  return invoke("submit_operation", { planId });
+  return call<number>("submit_operation", { planId });
 }
 
 export function cancelOperation(opId: number): Promise<void> {
-  return invoke("cancel_operation", { opId });
+  return call<void>("cancel_operation", { opId });
 }
 
 export function listOperations(): Promise<OpSummary[]> {
-  return invoke("list_operations");
+  return call<OpSummary[]>("list_operations");
 }
 
 export function getSettings(): Promise<Settings> {
-  return invoke("get_settings");
+  return call<Settings>("get_settings");
 }
 
 export function setSettings(settings: Settings): Promise<void> {
-  return invoke("set_settings", { settings });
+  return call<void>("set_settings", { settings });
 }
 
 /**
@@ -4916,7 +5001,7 @@ export function setSettings(settings: Settings): Promise<void> {
 export function subscribeEvents(onEvent: (e: UiEvent) => void): Promise<() => void> {
   const channel = new Channel<UiEvent>();
   channel.onmessage = onEvent;
-  return invoke("subscribe_events", { channel }).then(() => {
+  return call<void>("subscribe_events", { channel }).then(() => {
     return () => {
       channel.onmessage = () => {};
     };
@@ -4956,6 +5041,8 @@ export interface UiState {
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;
   clearSelectedUpdates(): void;
+  startupRefreshError: string | null;
+  setStartupRefreshError(message: string | null): void;
 }
 
 const MAX_LOG_LINES = 2000;
@@ -5001,13 +5088,41 @@ export const useUiStore = create<UiState>((set) => ({
       };
     }),
   clearSelectedUpdates: () => set({ selectedUpdates: [] }),
+  startupRefreshError: null,
+  setStartupRefreshError: (message) => set({ startupRefreshError: message }),
 }));
 ```
+
+Modify `src/test/setup.ts` (Task 9) so the store above starts clean for every test. `useUiStore` is a module-level singleton and vitest runs a file's tests serially in one module context, so any `setState` one test makes — a filter `query`, `showDependencies`, `selectedUpdates`, `page` — would otherwise leak into the next test in the same file (`mockReset`/`restoreAllMocks` never touch it; Task 11's `InstalledPage.test.tsx` fails deterministically without this). Replace the file's imports and hooks — everything from the first line through the `afterEach` — with:
+
+```ts
+import "@testing-library/jest-dom/vitest";
+import type { ReactElement, ReactNode } from "react";
+import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import i18n from "../i18n";
+import { useUiStore } from "../store/ui";
+
+beforeEach(() => {
+  // zustand 5 remembers the state the store was created with; merging it
+  // back restores every field and leaves the action functions unchanged.
+  useUiStore.setState(useUiStore.getInitialState());
+});
+
+afterEach(() => {
+  cleanup();
+});
+```
+
+The `ResizeObserverStub`, the `vi.mock("@tauri-apps/api/core", …)` and `renderWithProviders` below that point stay exactly as Task 9 wrote them. Setup-file hooks run before a test file's own `beforeEach`, so tests that seed the store deliberately (Task 13's `OperationBar`/`LogDrawer` tests) still get their seed applied on top of a clean state.
 
 - [ ] **Step 4: Run the tests, verify they pass**
 
 Run: `pnpm exec vitest run src/lib/types.test.ts src/lib/api.test.ts src/store/ui.test.ts`
-Expected: PASS (4 + 9 + 9 = 22 tests)
+Expected: PASS (4 + 10 + 9 = 23 tests)
 
 - [ ] **Step 5: Write failing tests for `queries.ts` and `events.ts`**
 
@@ -5119,9 +5234,10 @@ import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { useOperationEvents } from "./events";
+import { useOperationEvents, useStartupRefresh } from "./events";
 import { useUiStore } from "../store/ui";
 import { queryKeys } from "./queries";
+import type { Snapshot } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -5131,14 +5247,31 @@ function wrapper(queryClient: QueryClient) {
   };
 }
 
+const refreshedSnapshot: Snapshot = {
+  generation: 1,
+  detect: "Found",
+  instances: [],
+  artifacts: [],
+  updates: [],
+  refreshed_at: 1789700000,
+  stale: false,
+  errors: [],
+};
+
 beforeEach(() => {
   mockInvoke.mockReset();
   useUiStore.setState({ logs: [] });
 });
 
+// `capturedChannel` is declared as `null as … | null` rather than with a type
+// annotation and a bare `null` initializer: tsc narrows the latter to `null`
+// (the assignment inside the mock callback is invisible to control-flow
+// analysis), which makes the later `capturedChannel!` collapse to `never`
+// and fails `pnpm build` with "Property 'onmessage' does not exist on type
+// 'never'".
 describe("useOperationEvents", () => {
   it("appends streamed Log events to the ui store", async () => {
-    let capturedChannel: InstanceType<typeof Channel> | null = null;
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
     mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "subscribe_events") {
         capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
@@ -5160,7 +5293,7 @@ describe("useOperationEvents", () => {
   });
 
   it("invalidates the snapshot query on SnapshotChanged", async () => {
-    let capturedChannel: InstanceType<typeof Channel> | null = null;
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
     mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "subscribe_events") {
         capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
@@ -5176,6 +5309,60 @@ describe("useOperationEvents", () => {
     capturedChannel!.onmessage({ SnapshotChanged: { generation: 4 } });
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.snapshot });
+  });
+
+  it("refreshes the snapshot into the cache after a Finished event", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    expect(mockInvoke).not.toHaveBeenCalledWith("refresh");
+    capturedChannel!.onmessage({ Operation: { Finished: { op_id: 1, outcome: "Succeeded" } } });
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(refreshedSnapshot),
+    );
+  });
+});
+
+describe("useStartupRefresh", () => {
+  it("calls refresh on mount and writes the result into the snapshot cache", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+    await waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(refreshedSnapshot),
+    );
+  });
+
+  it("sets startupRefreshError in the ui store when the startup refresh rejects", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return Promise.reject("brew: command not found");
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() =>
+      expect(useUiStore.getState().startupRefreshError).toBe("brew: command not found"),
+    );
   });
 });
 ```
@@ -5277,17 +5464,60 @@ Create `src/lib/events.ts`:
 
 ```ts
 import { useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { subscribeEvents } from "./api";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { refresh, subscribeEvents } from "./api";
 import { queryKeys } from "./queries";
 import { useUiStore } from "../store/ui";
 import type { UiEvent } from "./types";
 
 /**
+ * Runs a backend `refresh` and writes the returned Snapshot straight into the
+ * query cache. This — not `get_snapshot` — is the only thing that ever makes
+ * the backend go and look at Homebrew: `Session` starts from
+ * `Snapshot::empty()` (`generation: 0`, `detect: Missing`, no artifacts,
+ * `refreshed_at: null`) and `get_snapshot` merely returns whatever is in
+ * memory. `Session::refresh` is serialised on the Rust side, so overlapping
+ * calls (StrictMode's double mount, a `Finished` event landing during
+ * startup) are safe. Failures are logged, never thrown: the stale/error
+ * surfaces in Task 17 read the snapshot's own `stale`/`errors` fields.
+ */
+function refreshIntoCache(queryClient: QueryClient, why: string): void {
+  // refreshIntoCache is a plain function, not a hook, so useUiStore.getState()
+  // — rather than the useUiStore() hook — is the correct way to reach the store here.
+  refresh()
+    .then((snapshot) => {
+      queryClient.setQueryData(queryKeys.snapshot, snapshot);
+      useUiStore.getState().setStartupRefreshError(null);
+    })
+    .catch((e: unknown) => {
+      console.error(`${why} refresh failed`, e);
+      useUiStore.getState().setStartupRefreshError(e instanceof Error ? e.message : String(e));
+    });
+}
+
+/**
+ * Mounted once by `App` (Task 13), next to `useOperationEvents`: triggers the
+ * first real refresh when the window opens. Without it the UI would sit on
+ * the empty startup snapshot forever and report "Homebrew isn't installed".
+ * Until the call resolves the cached snapshot has `refreshed_at: null`,
+ * which Task 17's `SnapshotStatus` renders as loading, not as an empty state.
+ */
+export function useStartupRefresh(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    refreshIntoCache(queryClient, "initial");
+  }, [queryClient]);
+}
+
+/**
  * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
  * React state: `Operation.Log` events are appended to the Zustand log ring
  * buffer, `Operation.Status`/`Operation.Finished` invalidate the operations
- * query, and `SnapshotChanged` invalidates the snapshot query. Not part of
+ * query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
+ * event additionally triggers a `refresh`: that is the only way the
+ * installed/updates lists learn that an uninstall or update changed
+ * anything, because nothing on the backend refreshes on its own. Not part of
  * the skeleton's Core Interfaces — introduced here because `events.ts` needs
  * a concrete hook shape and none was specified.
  */
@@ -5309,20 +5539,34 @@ export function useOperationEvents(): void {
           });
         } else {
           queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+          if ("Finished" in opEvent) {
+            refreshIntoCache(queryClient, "post-operation");
+          }
         }
       } else {
         queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
       }
     }
 
-    subscribeEvents(handle).then((unsubscribe) => {
-      if (cancelled) {
-        unsubscribe();
-      } else {
-        detach = unsubscribe;
-      }
-    });
+    subscribeEvents(handle)
+      .then((unsubscribe) => {
+        if (cancelled) {
+          unsubscribe();
+        } else {
+          detach = unsubscribe;
+        }
+      })
+      .catch((e: unknown) => {
+        // Without this the rejection is unhandled: the app would silently
+        // lose its subscription (backend not ready, command not registered)
+        // and vitest would fail the whole run on the stray rejection.
+        console.error("subscribe_events failed", e);
+      });
 
+    // Under React StrictMode the effect mounts, unmounts and mounts again.
+    // The first Channel is detached client-side but stays in the backend's
+    // ChannelSink registry as a ghost until a send to it fails; it receives
+    // events and drops them. There is no other side effect.
     return () => {
       cancelled = true;
       detach?.();
@@ -5334,7 +5578,7 @@ export function useOperationEvents(): void {
 - [ ] **Step 8: Run the tests, verify they pass**
 
 Run: `pnpm exec vitest run src/lib/queries.test.ts src/lib/events.test.ts`
-Expected: PASS (4 + 2 = 6 tests)
+Expected: PASS (4 + 5 = 9 tests)
 
 - [ ] **Step 9: Run the full suite**
 
@@ -5344,7 +5588,7 @@ Expected: PASS — every test file from Tasks 9 and 10 green, 0 failures.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/lib/types.ts src/lib/api.ts src/lib/events.ts src/lib/queries.ts src/store/ui.ts src/lib/types.test.ts src/lib/api.test.ts src/store/ui.test.ts src/lib/queries.test.ts src/lib/events.test.ts
+git add src/lib/types.ts src/lib/api.ts src/lib/events.ts src/lib/queries.ts src/store/ui.ts src/test/setup.ts src/lib/types.test.ts src/lib/api.test.ts src/store/ui.test.ts src/lib/queries.test.ts src/lib/events.test.ts
 git commit -m "$(cat <<'EOF'
 feat(ui): add typed IPC client, TanStack Query hooks and ui store
 
@@ -5558,17 +5802,20 @@ Replace `src/i18n/en.json`:
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
     "noDescription": "No description available",
+    "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
     "showDependencies_other": "{{count}} components installed by other software"
   }
 }
 ```
 
+This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (Task 9's `app.*` and `nav.*`). Task 16's parity test goes red on any key that goes missing here, and it would do so several tasks after the mistake was made.
+
 Create `src/pages/InstalledPage.test.tsx`:
 
 ```tsx
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
@@ -5676,7 +5923,7 @@ describe("InstalledPage", () => {
     const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    getByRole("button", { name: "1 component installed by other software" }).click();
+    fireEvent.click(getByRole("button", { name: "1 component installed by other software" }));
 
     await findByText("glib");
   });
@@ -5696,16 +5943,20 @@ describe("InstalledPage", () => {
     const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    getByRole("button", { name: "Uninstall" }).click();
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
 
-    expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
-      request: {
-        kind: "Uninstall",
-        instance_id: "brew:/opt/homebrew",
-        artifact_kind: "Formula",
-        name: "jq",
-      },
-    });
+    // TanStack Query v5 awaits `onMutate` before calling `mutationFn`, so
+    // `invoke` is not called synchronously inside the click.
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+        request: {
+          kind: "Uninstall",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "jq",
+        },
+      }),
+    );
   });
 });
 ```
@@ -5851,7 +6102,10 @@ export function InstalledPage() {
                   <ArtifactRow
                     name={
                       settings?.show_technical_details
-                        ? `${item.artifact.display_name} · ${item.artifact.version}`
+                        ? t("installed.nameWithVersion", {
+                            name: item.artifact.display_name,
+                            version: item.artifact.version,
+                          })
                         : item.artifact.display_name
                     }
                     description={item.artifact.description ?? t("installed.noDescription")}
@@ -5931,6 +6185,7 @@ Replace `src/App.test.tsx` (the default page now renders `InstalledPage`'s own c
 
 ```tsx
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
@@ -5970,12 +6225,12 @@ describe("App", () => {
   });
 
   it("switches the content area when a sidebar link is clicked", async () => {
-    const { getByRole, findByLabelText } = renderWithProviders(<App />);
+    const { getByRole, findByLabelText, findByRole } = renderWithProviders(<App />);
     await findByLabelText("Filter installed items");
 
-    getByRole("button", { name: "Updates" }).click();
+    fireEvent.click(getByRole("button", { name: "Updates" }));
 
-    expect(getByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(await findByRole("heading", { name: "Updates" })).toBeInTheDocument();
   });
 });
 ```
@@ -6077,6 +6332,7 @@ Replace `src/i18n/en.json`:
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
     "noDescription": "No description available",
+    "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
     "showDependencies_other": "{{count}} components installed by other software"
   },
@@ -6093,13 +6349,17 @@ Replace `src/i18n/en.json`:
     "versionChange": "{{current}} → {{target}}",
     "selectRow": "Select {{name}} for update",
     "confirmTitle": "Confirm update",
-    "confirmUpdate": "Confirm"
+    "confirmUpdate": "Confirm",
+    "planFailed": "Couldn't prepare the update: {{message}}",
+    "submitFailed": "Could not start the update: {{message}}"
   },
   "commandPreview": {
     "label": "This will run:"
   }
 }
 ```
+
+This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (Task 11's `common.*`, `adapters.*` and all of `installed.*`, including `installed.nameWithVersion`). Task 16's parity test goes red on any key that goes missing here.
 
 `Dialog` itself already exists (`src/components/ui/Dialog.tsx`, Task 9) — this task only imports it, in `UpdatesPage` below.
 
@@ -6167,7 +6427,7 @@ Create `src/pages/UpdatesPage.test.tsx`:
 
 ```tsx
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { waitFor } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
@@ -6204,6 +6464,10 @@ const snapshot: Snapshot = {
 };
 
 let settings: Settings;
+// Every plan_operation answer carries a fresh server-issued id: a PlanId is
+// single-use, so the multi-select test below must prove that each submit
+// sent a *different* id, not the same one twice.
+let nextPlanId: number;
 
 beforeEach(() => {
   settings = {
@@ -6211,6 +6475,7 @@ beforeEach(() => {
     show_technical_details: false,
     ignored_updates: [],
   };
+  nextPlanId = 1;
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "get_snapshot") return Promise.resolve(snapshot);
@@ -6223,8 +6488,10 @@ beforeEach(() => {
       const request = (
         args as { request: { instance_id: string; artifact_kind: string; name: string } }
       ).request;
+      const id = nextPlanId;
+      nextPlanId += 1;
       return Promise.resolve({
-        id: 1,
+        id,
         plan: {
           request,
           program: "/opt/homebrew/bin/brew",
@@ -6246,24 +6513,32 @@ beforeEach(() => {
 });
 
 describe("UpdatesPage", () => {
-  it("lists each update with its version change", async () => {
+  it("lists each update with its version change when technical details are on", async () => {
+    settings.show_technical_details = true;
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("2.88.3 → 2.90.0");
     await findByText("5.0.2 → 5.1.0");
   });
 
+  it("hides version numbers under the default settings", async () => {
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    expect(queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
+  });
+
   it("plans and, after confirming, submits a single update", async () => {
     const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     const updateButtons = await findAllByRole("button", { name: "Update" });
-    updateButtons[0].click();
+    fireEvent.click(updateButtons[0]);
 
     await findByRole("dialog");
-    (await findByRole("button", { name: "Confirm" })).click();
+    fireEvent.click(await findByRole("button", { name: "Confirm" }));
 
     await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith("submit_operation", expect.anything()),
+      expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: 1 }),
     );
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
@@ -6275,31 +6550,31 @@ describe("UpdatesPage", () => {
     });
   });
 
-  it("submits one operation per selected item from Update selected", async () => {
+  it("submits one operation per selected item, each with its own plan id", async () => {
     const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     const checkboxes = await findAllByRole("checkbox");
-    checkboxes[0].click();
-    checkboxes[1].click();
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
 
-    getByRole("button", { name: "Update selected" }).click();
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
     await findByRole("dialog");
-    (await findByRole("button", { name: "Confirm" })).click();
+    fireEvent.click(await findByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       const submitCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation");
-      expect(submitCalls).toHaveLength(2);
+      expect(submitCalls.map(([, args]) => args)).toEqual([{ planId: 1 }, { planId: 2 }]);
     });
   });
 
   it("removes an item from the list when Ignore is clicked", async () => {
     const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("2.88.3 → 2.90.0");
+    await findByText("glib");
     const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
-    ignoreButtons[0].click();
+    fireEvent.click(ignoreButtons[0]);
 
-    await waitFor(() => expect(queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
   });
 
   it("shows the up-to-date state once every update is ignored", async () => {
@@ -6360,6 +6635,7 @@ export function UpdatesPage() {
   const clearSelectedUpdates = useUiStore((s) => s.clearSelectedUpdates);
 
   const [pendingPlans, setPendingPlans] = useState<IssuedPlan[] | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
@@ -6367,22 +6643,64 @@ export function UpdatesPage() {
     return snapshot.updates.filter((u) => !ignored.has(artifactKeyId(u.key)));
   }, [snapshot, settings]);
 
+  // Only rows that are selected *and* still visible count. The store keeps
+  // a selection for a row that has since been ignored; without this
+  // intersection "Update selected" would be enabled for nothing and open an
+  // empty dialog.
+  const selectedVisible = useMemo(
+    () => visibleUpdates.filter((u) => selectedUpdates.includes(artifactKeyId(u.key))),
+    [visibleUpdates, selectedUpdates],
+  );
+
+  // Default view hides version numbers (Global Constraints); the row falls
+  // back to the artifact's description, exactly as the Installed page does.
+  const descriptionFor = (candidate: UpdateCandidate): string => {
+    if (settings?.show_technical_details) {
+      return t("updates.versionChange", { current: candidate.current, target: candidate.target });
+    }
+    const artifact = snapshot?.artifacts.find(
+      (a) => artifactKeyId(a.key) === artifactKeyId(candidate.key),
+    );
+    return artifact?.description ?? t("installed.noDescription");
+  };
+
   async function openConfirm(candidates: UpdateCandidate[]) {
-    const plans = await Promise.all(candidates.map((c) => planMutation.mutateAsync(toRequest(c))));
-    setPendingPlans(plans);
+    setSubmitError(null);
+    try {
+      const plans = await Promise.all(
+        candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
+      );
+      setPendingPlans(plans);
+    } catch {
+      // Rendered below from planMutation.isError / planMutation.error, so the
+      // backend's message is shown verbatim instead of escaping as an
+      // unhandled rejection.
+    }
   }
 
   async function confirmAndSubmit() {
     if (!pendingPlans) return;
-    for (const issued of pendingPlans) {
-      await submitMutation.mutateAsync(issued.id);
+    try {
+      for (const issued of pendingPlans) {
+        await submitMutation.mutateAsync(issued.id);
+      }
+      clearSelectedUpdates();
+    } catch (err) {
+      // A PlanId is single-use and expires after 10 minutes. Whatever the
+      // backend said (`Expired`, `Unknown`, anything else), the preview in
+      // the dialog is no longer valid: show the message verbatim and close
+      // the dialog so the next Update click asks for a fresh IssuedPlan.
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPendingPlans(null);
     }
-    clearSelectedUpdates();
-    setPendingPlans(null);
   }
 
   function ignore(candidate: UpdateCandidate) {
     if (!settings) return;
+    if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
+      toggleUpdate(candidate.key);
+    }
     saveSettings.mutate({
       ...settings,
       ignored_updates: [...settings.ignored_updates, candidate.key],
@@ -6402,16 +6720,24 @@ export function UpdatesPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {planMutation.isError ? (
+        <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
+          {t("updates.planFailed", { message: planMutation.error.message })}
+        </p>
+      ) : null}
+      {submitError !== null ? (
+        <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
+          {t("updates.submitFailed", { message: submitError })}
+        </p>
+      ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
         <p className="text-sm text-[var(--color-muted)]">
           {t("updates.count", { count: visibleUpdates.length })}
         </p>
         <button
           type="button"
-          disabled={selectedUpdates.length === 0}
-          onClick={() =>
-            openConfirm(visibleUpdates.filter((u) => selectedUpdates.includes(artifactKeyId(u.key))))
-          }
+          disabled={selectedVisible.length === 0 || planMutation.isPending}
+          onClick={() => openConfirm(selectedVisible)}
           className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
         >
           {t("updates.updateSelected")}
@@ -6422,10 +6748,7 @@ export function UpdatesPage() {
           <ArtifactRow
             key={artifactKeyId(candidate.key)}
             name={candidate.key.name}
-            description={t("updates.versionChange", {
-              current: candidate.current,
-              target: candidate.target,
-            })}
+            description={descriptionFor(candidate)}
             badgeText={
               candidate.warnings.length > 0
                 ? t("updates.warnings", { count: candidate.warnings.length })
@@ -6434,6 +6757,7 @@ export function UpdatesPage() {
             badgeVariant={candidate.warnings.length > 0 ? "warning" : "info"}
             primaryActionLabel={t("updates.update")}
             onPrimaryAction={() => openConfirm([candidate])}
+            primaryActionDisabled={planMutation.isPending}
             selectable={{
               checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
               onToggle: () => toggleUpdate(candidate.key),
@@ -6469,7 +6793,8 @@ export function UpdatesPage() {
             <button
               type="button"
               onClick={confirmAndSubmit}
-              className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)]"
+              disabled={submitMutation.isPending}
+              className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
             >
               {t("updates.confirmUpdate")}
             </button>
@@ -6490,7 +6815,7 @@ export function UpdatesPage() {
 - [ ] **Step 9: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run src/pages/UpdatesPage.test.tsx`
-Expected: PASS (5 tests)
+Expected: PASS (6 tests)
 
 - [ ] **Step 10: Wire `UpdatesPage` into the app shell**
 
@@ -6534,7 +6859,7 @@ export default App;
 ```
 
 Run: `pnpm test`
-Expected: FAIL — one assertion in `src/App.test.tsx` ("switches the content area when a sidebar link is clicked") now reads `Unable to find an accessible element with the role "heading" and name "Updates"`. That is correct: clicking Updates used to fall through to the generic `<h1>{t(`nav.${page}`)}</h1>`, and this step just replaced that fallback with the real `UpdatesPage`, which has no heading. Step 11 retargets the assertion.
+Expected: FAIL — one test in `src/App.test.tsx` ("switches the content area when a sidebar link is clicked") now fails after `findByRole`'s timeout with `Unable to find an accessible element with the role "heading" and name "Updates"`. That is correct: clicking Updates used to fall through to the generic `<h1>{t(`nav.${page}`)}</h1>`, and this step just replaced that fallback with the real `UpdatesPage`, which has no heading. Step 11 retargets the assertion.
 
 - [ ] **Step 11: Retarget the App shell test at what the real Updates page renders**
 
@@ -6545,11 +6870,13 @@ The shell test must assert on content the Updates page actually shows, not on th
     const { getByRole, findByLabelText, findByText } = renderWithProviders(<App />);
     await findByLabelText("Filter installed items");
 
-    getByRole("button", { name: "Updates" }).click();
+    fireEvent.click(getByRole("button", { name: "Updates" }));
 
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 ```
+
+(`fireEvent` is already imported at the top of the file since Task 11.)
 
 Run: `pnpm test`
 Expected: PASS — every test file from Tasks 9–12 green, 0 failures.
@@ -6572,16 +6899,18 @@ EOF
 
 **Files:**
 - Create: `src/components/ui/ScrollArea.tsx`
+- Create: `src/lib/format.ts`
 - Create: `src/components/OperationBar.tsx`
 - Create: `src/components/LogDrawer.tsx`
 - Test: `src/components/OperationBar.test.tsx`
 - Test: `src/components/LogDrawer.test.tsx`
 - Modify: `src/App.tsx`
+- Modify: `src/App.test.tsx`
 - Modify: `src/i18n/en.json`
 
 **Interfaces:**
-- Consumes: `useOperations`, `useCancelOperation` (`src/lib/queries.ts`, Task 10); `useOperationEvents` (`src/lib/events.ts`, Task 10); `useUiStore` (`drawerOpen`, `setDrawerOpen`, `focusedOpId`, `setFocusedOpId`, `logs`) (`src/store/ui.ts`, Task 10); `OpStatus`, `Outcome` (`src/lib/types.ts`, Task 10).
-- Produces: `ScrollArea` (`src/components/ui/ScrollArea.tsx`, a thin Radix ScrollArea wrapper — not in the skeleton); `OperationBar`, `LogDrawer`. `App.tsx` is modified to mount both and to call `useOperationEvents()` once at the top level, which is what starts the Channel subscription for the whole app.
+- Consumes: `useOperations`, `useCancelOperation` (`src/lib/queries.ts`, Task 10); `useOperationEvents`, `useStartupRefresh` (`src/lib/events.ts`, Task 10); `useUiStore` (`drawerOpen`, `setDrawerOpen`, `focusedOpId`, `setFocusedOpId`, `logs`) (`src/store/ui.ts`, Task 10); `OpStatus`, `Outcome` (`src/lib/types.ts`, Task 10).
+- Produces: `ScrollArea` (`src/components/ui/ScrollArea.tsx`, a thin Radix ScrollArea wrapper — not in the skeleton); `outcomeKey(outcome: Outcome): string` and `outcomeArgs(outcome: Outcome): Record<string, unknown>` (`src/lib/format.ts` — the skeleton's "pure display helpers" file, created here because both `OperationBar` and `LogDrawer` need to turn an `Outcome` into an `operations.outcome.*` key plus interpolation values); `OperationBar`, `LogDrawer`. `App.tsx` is modified to mount both and to call `useOperationEvents()` and `useStartupRefresh()` once at the top level — the first starts the Channel subscription for the whole app, the second is the call that makes the backend actually look at Homebrew for the first time.
 
 - [ ] **Step 1: Add i18n keys and the ScrollArea wrapper**
 
@@ -6614,6 +6943,7 @@ Replace `src/i18n/en.json`:
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
     "noDescription": "No description available",
+    "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
     "showDependencies_other": "{{count}} components installed by other software"
   },
@@ -6630,13 +6960,16 @@ Replace `src/i18n/en.json`:
     "versionChange": "{{current}} → {{target}}",
     "selectRow": "Select {{name}} for update",
     "confirmTitle": "Confirm update",
-    "confirmUpdate": "Confirm"
+    "confirmUpdate": "Confirm",
+    "planFailed": "Couldn't prepare the update: {{message}}",
+    "submitFailed": "Could not start the update: {{message}}"
   },
   "commandPreview": {
-    "label": "This will run"
+    "label": "This will run:"
   },
   "operations": {
     "idle": "No operation running",
+    "current": "{{kind}} {{name}} — {{status}}",
     "cancel": "Cancel",
     "logDrawerTitle": "Operation log",
     "kind": {
@@ -6663,6 +6996,8 @@ Replace `src/i18n/en.json`:
   }
 }
 ```
+
+This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (all of Task 12's `updates.*` and `commandPreview.label` — note the trailing colon in `"This will run:"`, which Task 12's `CommandPreview.test.tsx` asserts verbatim). Task 16's parity test goes red on any key that goes missing here; a changed *value* is caught only by the test that asserts it.
 
 Create `src/components/ui/ScrollArea.tsx`:
 
@@ -6697,6 +7032,7 @@ Create `src/components/OperationBar.test.tsx`:
 
 ```tsx
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { OperationBar } from "./OperationBar";
@@ -6736,11 +7072,40 @@ describe("OperationBar", () => {
       return Promise.resolve(undefined);
     });
 
-    const { findByRole } = renderWithProviders(<OperationBar />);
-    const cancelButton = await findByRole("button", { name: "Cancel" });
-    cancelButton.click();
+    const { findByRole, findByText } = renderWithProviders(<OperationBar />);
+    await findByText("Updating onyx — running");
+    fireEvent.click(await findByRole("button", { name: "Cancel" }));
 
-    expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 5 });
+    // This is the only proof in the plan that Cancel really reaches
+    // cancel_operation; the mutation calls invoke after awaiting onMutate.
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 5 }),
+    );
+  });
+
+  it("keeps a finished operation visible with its outcome and no Cancel button", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 6,
+            kind: "Install",
+            instance_id: "brew:/opt/homebrew",
+            artifact_kind: "Formula",
+            name: "jqq",
+            status: "Done",
+            outcome: { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"" } },
+            argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jqq"],
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
+
+    await findByText('Failed: No available formula with the name "jqq"');
+    expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 });
 ```
@@ -6750,13 +7115,34 @@ describe("OperationBar", () => {
 Run: `pnpm exec vitest run src/components/OperationBar.test.tsx`
 Expected: FAIL — `Failed to resolve import "./OperationBar"`.
 
-- [ ] **Step 4: Implement `OperationBar`**
+- [ ] **Step 4: Implement `format.ts` and `OperationBar`**
+
+Create `src/lib/format.ts` (the skeleton's pure display helpers; `OperationBar` below and `LogDrawer` in Step 8 both import from here):
+
+```ts
+import type { Outcome } from "./types";
+
+/** The `operations.outcome.*` key suffix for an Outcome, mirroring its externally tagged variant name. */
+export function outcomeKey(outcome: Outcome): string {
+  if (typeof outcome === "string") return outcome;
+  if ("NeedsAttention" in outcome) return "NeedsAttention";
+  return "Failed";
+}
+
+/** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */
+export function outcomeArgs(outcome: Outcome): Record<string, unknown> {
+  if (typeof outcome === "string") return {};
+  if ("NeedsAttention" in outcome) return { message: outcome.NeedsAttention };
+  return { summary: outcome.Failed.summary };
+}
+```
 
 Create `src/components/OperationBar.tsx`:
 
 ```tsx
 import { useTranslation } from "react-i18next";
 import { useOperations, useCancelOperation } from "../lib/queries";
+import { outcomeArgs, outcomeKey } from "../lib/format";
 import { useUiStore } from "../store/ui";
 import type { OpStatus } from "../lib/types";
 
@@ -6769,7 +7155,11 @@ export function OperationBar() {
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
 
-  const current = (operations ?? []).find((op) => ACTIVE_STATUSES.includes(op.status));
+  // The backend lists operations newest first (Task 3). Showing the newest
+  // one — not only an *active* one — is what lets the user see the outcome
+  // of an update that finished while they were looking elsewhere; the bar
+  // only goes back to idle once the list itself is empty.
+  const current = operations?.[0];
 
   if (!current) {
     return (
@@ -6779,6 +7169,8 @@ export function OperationBar() {
     );
   }
 
+  const isActive = ACTIVE_STATUSES.includes(current.status);
+
   return (
     <div className="flex h-full items-center justify-between gap-4 px-4">
       <button
@@ -6787,27 +7179,42 @@ export function OperationBar() {
           setFocusedOpId(current.id);
           setDrawerOpen(true);
         }}
-        className="min-w-0 flex-1 truncate text-left text-sm text-[var(--color-foreground)]"
+        className="flex min-w-0 flex-1 gap-2 truncate text-left text-sm text-[var(--color-foreground)]"
       >
-        {t(`operations.kind.${current.kind}`)} {current.name} — {t(`operations.status.${current.status}`)}
+        <span>
+          {t("operations.current", {
+            kind: t(`operations.kind.${current.kind}`),
+            name: current.name,
+            status: t(`operations.status.${current.status}`),
+          })}
+        </span>
+        {current.status === "Done" && current.outcome ? (
+          <span className="text-[var(--color-muted)]">
+            {t(`operations.outcome.${outcomeKey(current.outcome)}`, outcomeArgs(current.outcome))}
+          </span>
+        ) : null}
       </button>
-      <button
-        type="button"
-        onClick={() => cancelMutation.mutate(current.id)}
-        disabled={current.status === "CancelRequested" || current.status === "Cancelling"}
-        className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
-      >
-        {t("operations.cancel")}
-      </button>
+      {isActive ? (
+        <button
+          type="button"
+          onClick={() => cancelMutation.mutate(current.id)}
+          disabled={current.status === "CancelRequested" || current.status === "Cancelling"}
+          className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+        >
+          {t("operations.cancel")}
+        </button>
+      ) : null}
     </div>
   );
 }
 ```
 
+The status line is one interpolated sentence (`operations.current`) rather than three fragments concatenated in JSX, so `zh-CN.json` (Task 16) can order the words its own way.
+
 - [ ] **Step 5: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run src/components/OperationBar.test.tsx`
-Expected: PASS (2 tests)
+Expected: PASS (3 tests)
 
 - [ ] **Step 6: Write a failing test for `LogDrawer`, including a synthetic event sequence**
 
@@ -6842,7 +7249,7 @@ beforeEach(() => {
 
 describe("LogDrawer", () => {
   it("renders a synthetic sequence of streamed log lines in order", async () => {
-    const { findByText } = renderWithProviders(<LogDrawer />);
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
 
     act(() => {
       useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "Fetching jq" });
@@ -6852,9 +7259,10 @@ describe("LogDrawer", () => {
         .appendLog({ opId: 1, stream: "Stderr", line: "warning: cask deprecated" });
     });
 
-    await findByText("Fetching jq");
-    await findByText("Installing jq");
     await findByText("warning: cask deprecated");
+    // "in order" means the DOM order, not merely that each line exists.
+    const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
+    expect(lines).toEqual(["Fetching jq", "Installing jq", "warning: cask deprecated"]);
   });
 
   it("only shows log lines for the focused operation", async () => {
@@ -6900,22 +7308,10 @@ import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useUiStore } from "../store/ui";
 import { useOperations } from "../lib/queries";
+import { outcomeArgs, outcomeKey } from "../lib/format";
 import { ScrollArea } from "./ui/ScrollArea";
-import type { Outcome } from "../lib/types";
 
 const NEAR_BOTTOM_PX = 32;
-
-function outcomeKey(outcome: Outcome): string {
-  if (typeof outcome === "string") return outcome;
-  if ("NeedsAttention" in outcome) return "NeedsAttention";
-  return "Failed";
-}
-
-function outcomeArgs(outcome: Outcome): Record<string, unknown> {
-  if (typeof outcome === "string") return {};
-  if ("NeedsAttention" in outcome) return { message: outcome.NeedsAttention };
-  return { summary: outcome.Failed.summary };
-}
 
 export function LogDrawer() {
   const { t } = useTranslation();
@@ -6966,7 +7362,7 @@ export function LogDrawer() {
         </button>
       </div>
       <ScrollArea className="h-[calc(100%-96px)]" ref={viewportRef} onViewportScroll={handleScroll}>
-        <div className="px-4 py-2 font-mono text-xs">
+        <div role="log" className="px-4 py-2 font-mono text-xs">
           {visibleLogs.map((line) => (
             <p
               key={line.seq}
@@ -6992,7 +7388,7 @@ export function LogDrawer() {
 Run: `pnpm exec vitest run src/components/LogDrawer.test.tsx`
 Expected: PASS (4 tests)
 
-- [ ] **Step 10: Mount `OperationBar` and `LogDrawer`, start the event bridge**
+- [ ] **Step 10: Mount `OperationBar` and `LogDrawer`, start the event bridge and the first refresh**
 
 Replace `src/App.tsx`:
 
@@ -7003,7 +7399,7 @@ import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
-import { useOperationEvents } from "./lib/events";
+import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useUiStore } from "./store/ui";
 
 function App() {
@@ -7011,6 +7407,7 @@ function App() {
   const page = useUiStore((s) => s.page);
   const setPage = useUiStore((s) => s.setPage);
   useOperationEvents();
+  useStartupRefresh();
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-background)] text-[var(--color-foreground)]">
@@ -7040,17 +7437,35 @@ function App() {
 export default App;
 ```
 
+`useStartupRefresh()` is the only call in the whole front end that makes the backend look at Homebrew unprompted: `Session` boots with `Snapshot::empty()` and `get_snapshot` never refreshes. Leave it out and every user sees an empty Installed page (from Task 17 on, "Homebrew isn't installed yet") forever.
+
+`App` now mounts three things that call `invoke` at startup — `useStartupRefresh` (`refresh`), `OperationBar` (`list_operations`) and the event bridge (`subscribe_events`) — and the mock in `src/App.test.tsx` still answers `undefined` for all but `get_snapshot`/`get_settings`. `undefined` from `refresh` would be written into the snapshot cache; `undefined` from `list_operations` is treated by TanStack Query v5 as an error ("Query data cannot be undefined", plus background retries and console noise). Replace the `beforeEach` in `src/App.test.tsx` with:
+
+```tsx
+beforeEach(() => {
+  mockInvoke.mockReset();
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "get_snapshot" || cmd === "refresh") return Promise.resolve(emptySnapshot);
+    if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+    if (cmd === "list_operations") return Promise.resolve([]);
+    return Promise.resolve(undefined);
+  });
+});
+```
+
+Everything else in the file (fixtures, both tests) stays as Task 12 left it.
+
 - [ ] **Step 11: Run the full suite**
 
 Run: `pnpm test`
-Expected: PASS — every test file from Tasks 9–13 green, 0 failures.
+Expected: PASS — every test file from Tasks 9–13 green, 0 failures, and no "Query data cannot be undefined" noise from `App.test.tsx`.
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/components/ui/ScrollArea.tsx src/components/OperationBar.tsx src/components/OperationBar.test.tsx src/components/LogDrawer.tsx src/components/LogDrawer.test.tsx src/App.tsx src/i18n/en.json
+git add src/components/ui/ScrollArea.tsx src/lib/format.ts src/components/OperationBar.tsx src/components/OperationBar.test.tsx src/components/LogDrawer.tsx src/components/LogDrawer.test.tsx src/App.tsx src/App.test.tsx src/i18n/en.json
 git commit -m "$(cat <<'EOF'
-feat(ui): add the operation bar and log drawer, wire the event bridge into App
+feat(ui): add the operation bar and log drawer, wire the event bridge and startup refresh into App
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -7115,14 +7530,17 @@ beforeEach(() => {
 });
 
 describe("UninstallDialog", () => {
-  it("shows a checking message and a disabled confirm button while the plan is loading", () => {
+  it("shows a checking message and a disabled confirm button while the plan is loading", async () => {
     vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
 
     renderWithProviders(
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(screen.getByText("Checking what this would affect…")).toBeInTheDocument();
+    // `planMutation.mutate()` runs in an effect and TanStack Query v5 pushes
+    // the `isPending` transition to React through a setTimeout(0) scheduler,
+    // so right after render the component is still idle: wait for it.
+    expect(await screen.findByText("Checking what this would affect…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
@@ -7166,6 +7584,36 @@ describe("UninstallDialog", () => {
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("shows the backend's error verbatim and asks for a fresh plan when submitting fails", async () => {
+    // The dialog sat open past the PlanId's 10-minute lifetime (or the id was
+    // already consumed): the backend rejects with a bare string, and the
+    // stale preview must not be resubmittable with the same id.
+    let planCalls = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") {
+        planCalls += 1;
+        return { ...issuedPlanFor(), id: planCalls };
+      }
+      if (cmd === "submit_operation") {
+        throw "this plan is older than 10 minutes; preview it again";
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "this plan is older than 10 minutes; preview it again",
+    );
+    await waitFor(() => expect(planCalls).toBe(2));
   });
 });
 ```
@@ -7230,6 +7678,14 @@ export function UninstallDialog({
         onSubmitted?.(opId);
         onOpenChange(false);
       },
+      onError: () => {
+        // A PlanId is single-use and expires after 10 minutes; whatever the
+        // backend said, this one is spent. Re-plan so the dialog shows a
+        // fresh id and preview instead of letting the user resubmit a dead
+        // one. The error itself stays visible (rendered below) until the
+        // dialog closes, because `submitMutation` is only reset on close.
+        planMutation.mutate(request);
+      },
     });
   }
 
@@ -7258,7 +7714,13 @@ export function UninstallDialog({
 
       {planMutation.isPending && <p>{t("uninstall.checking")}</p>}
 
-      {planMutation.isError && <p role="alert">{t("uninstall.planError")}</p>}
+      {planMutation.isError && (
+        <p role="alert">{t("uninstall.planError", { message: planMutation.error.message })}</p>
+      )}
+
+      {submitMutation.isError && (
+        <p role="alert">{t("uninstall.submitError", { message: submitMutation.error.message })}</p>
+      )}
 
       {plan && (
         <div className="flex flex-col gap-3">
@@ -7299,7 +7761,8 @@ Add this top-level key to `src/i18n/en.json` (add a comma after the last existin
   "title": "Uninstall {{name}}?",
   "description": "Review what this will do before you continue.",
   "checking": "Checking what this would affect…",
-  "planError": "Couldn't check what this would affect. Try again in a moment.",
+  "planError": "Couldn't check what this would affect: {{message}}",
+  "submitError": "Couldn't start the uninstall: {{message}}",
   "warningsTitle": "Before you continue:",
   "affectedTitle": "These will stop working if you remove it:",
   "confirm": "Uninstall",
@@ -7308,10 +7771,12 @@ Add this top-level key to `src/i18n/en.json` (add a comma after the last existin
 }
 ```
 
+Both error strings interpolate `{{message}}`: the backend's error text is shown verbatim (Global Constraints), and `error.message` is guaranteed to be that text by Task 10's `call()` wrapper in `api.ts`. Task 16's `zh-CN.json` mirrors both keys.
+
 - [ ] **Step 4: Run it and confirm it passes**
 
 Run: `pnpm exec vitest run src/components/UninstallDialog.test.tsx`
-Expected: PASS — 3 tests passed.
+Expected: PASS — 4 tests passed.
 
 - [ ] **Step 5: Write the failing tests for wiring `UninstallDialog` into `InstalledPage`**
 
@@ -7319,14 +7784,14 @@ Expected: PASS — 3 tests passed.
 
 ```tsx
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, within } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
 import type { OpRequest, Settings, Snapshot } from "../lib/types";
 ```
 
-(only the `@testing-library/react` and new `../lib/types` imports change — `within` and `OpRequest` are new; everything else in the file's `snapshot`/`settings` fixtures and `beforeEach` stays exactly as Task 11 left it.)
+(only the `@testing-library/react` and `../lib/types` imports change — `within` and `OpRequest` are new; `fireEvent` and `waitFor` were already there; everything else in the file's `snapshot`/`settings` fixtures and `beforeEach` stays exactly as Task 11 left it.)
 
 Replace this test:
 
@@ -7335,16 +7800,20 @@ Replace this test:
     const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    getByRole("button", { name: "Uninstall" }).click();
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
 
-    expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
-      request: {
-        kind: "Uninstall",
-        instance_id: "brew:/opt/homebrew",
-        artifact_kind: "Formula",
-        name: "jq",
-      },
-    });
+    // TanStack Query v5 awaits `onMutate` before calling `mutationFn`, so
+    // `invoke` is not called synchronously inside the click.
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+        request: {
+          kind: "Uninstall",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "jq",
+        },
+      }),
+    );
   });
 ```
 
@@ -7379,7 +7848,7 @@ with:
     const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    getByRole("button", { name: "Uninstall" }).click();
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
 
     const dialog = await findByRole("dialog");
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
@@ -7421,7 +7890,7 @@ with:
     const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    getByRole("button", { name: "Uninstall" }).click();
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
 
     const dialog = await findByRole("dialog");
     await within(dialog).findByText("jq-cli-wrapper");
@@ -7579,7 +8048,10 @@ export function InstalledPage() {
                   <ArtifactRow
                     name={
                       settings?.show_technical_details
-                        ? `${item.artifact.display_name} · ${item.artifact.version}`
+                        ? t("installed.nameWithVersion", {
+                            name: item.artifact.display_name,
+                            version: item.artifact.version,
+                          })
                         : item.artifact.display_name
                     }
                     description={item.artifact.description ?? t("installed.noDescription")}
@@ -7635,7 +8107,7 @@ export function InstalledPage() {
 - [ ] **Step 8: Run the suite and confirm it passes**
 
 Run: `pnpm exec vitest run src/pages/InstalledPage.test.tsx src/components/UninstallDialog.test.tsx`
-Expected: PASS — 6 tests passed in `InstalledPage.test.tsx` (the 3 unchanged from Task 11 plus the 2 replacing the old direct-`plan_operation` test, plus the untouched filter test), 3 in `UninstallDialog.test.tsx`.
+Expected: PASS — 5 tests passed in `InstalledPage.test.tsx` (the 3 unchanged from Task 11, including the filter test, plus the 2 replacing the old direct-`plan_operation` test), 4 in `UninstallDialog.test.tsx`.
 
 - [ ] **Step 9: Run the full front-end suite**
 
@@ -7670,7 +8142,7 @@ EOF
 - Modify: `src/App.tsx`
 
 **Interfaces:**
-- Consumes: `useSettings(): UseQueryResult<Settings>` and `useSaveSettings(): UseMutationResult<void, Error, Settings>` from `src/lib/queries.ts`; `Settings`, `Language` from `src/lib/types.ts`; `artifactKeyId(key: ArtifactKey): string` from `src/store/ui.ts`; `Switch` from `src/components/ui/Switch.tsx` (Task 9's controlled Radix wrapper: `checked: boolean`, `onCheckedChange: (checked: boolean) => void`, `id?: string`, `"aria-label"?: string`).
+- Consumes: `useSettings(): UseQueryResult<Settings>` and `useSaveSettings(): UseMutationResult<void, Error, Settings>` from `src/lib/queries.ts`; `Settings`, `Language` from `src/lib/types.ts`; `artifactKeyId(key: ArtifactKey): string` from `src/store/ui.ts`; `Switch` from `src/components/ui/Switch.tsx` (Task 9's controlled Radix wrapper: `checked: boolean`, `onCheckedChange: (checked: boolean) => void`, `id?: string`, `"aria-label"?: string`, `"aria-describedby"?: string`).
 - Produces: `export function SettingsPage(): JSX.Element` — the component the app shell routes to for the "settings" page (per `src/store/ui.ts`'s `Page` type). `App.tsx` is modified to import it and replace the placeholder `<h1>` that Task 13 left in the "settings" branch of its page switch.
 
 - [ ] **Step 1: Write the failing test for reading settings**
@@ -7763,14 +8235,20 @@ export function SettingsPage() {
       <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
 
       <div className="flex items-center justify-between gap-4">
-        <label htmlFor="settings-show-technical" className="flex flex-col">
-          <span>{t("settings.showTechnicalDetails.label")}</span>
-          <span className="text-sm text-[var(--color-muted-foreground)]">
+        <div className="flex flex-col">
+          <label htmlFor="settings-show-technical">
+            {t("settings.showTechnicalDetails.label")}
+          </label>
+          <p
+            id="settings-show-technical-desc"
+            className="text-sm text-[var(--color-muted-foreground)]"
+          >
             {t("settings.showTechnicalDetails.description")}
-          </span>
-        </label>
+          </p>
+        </div>
         <Switch
           id="settings-show-technical"
+          aria-describedby="settings-show-technical-desc"
           checked={current.show_technical_details}
           onCheckedChange={(checked) =>
             saveMutation.mutate({ ...current, show_technical_details: checked })
@@ -7830,6 +8308,8 @@ export function SettingsPage() {
 }
 ```
 
+The `<label>` holds *only* the title. Radix renders the switch as `<button role="switch" id=…>`, and a button is a labelable element, so the accessible-name algorithm takes the label's whole text content: with the description inside the label the name would be "Show technical details Reveal version numbers, …" and every `findByRole("switch", { name: "Show technical details" })` in this task's tests would fail. The description lives in its own `<p>` and is attached through `aria-describedby` (the prop Task 9's `Switch` forwards).
+
 Add these top-level keys to `src/i18n/en.json`:
 
 ```json
@@ -7852,7 +8332,7 @@ Add these top-level keys to `src/i18n/en.json`:
     "unignore": "Stop ignoring",
     "unignoreAriaLabel": "Stop ignoring {{name}}"
   },
-  "saveError": "Couldn't save that change. It's been reverted."
+  "saveError": "Couldn't save that change ({{message}}). It's been reverted."
 }
 ```
 
@@ -7933,7 +8413,11 @@ describe("SettingsPage", () => {
   });
 
   it("removes an item from the ignored list and saves the shorter list", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+    // `args?: unknown`, as in Tasks 11/12/14: `invoke`'s second parameter is
+    // `InvokeArgs` (a union that includes `ArrayBuffer`), and under
+    // `strictFunctionTypes` a `Record<string, unknown>` parameter does not
+    // accept it — vitest would pass, `pnpm build`'s tsc would not.
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (cmd === "get_settings") {
         return baseSettings({
           ignored_updates: [
@@ -7941,10 +8425,7 @@ describe("SettingsPage", () => {
           ],
         });
       }
-      if (cmd === "set_settings") {
-        expect((args?.settings as Settings).ignored_updates).toEqual([]);
-        return undefined;
-      }
+      if (cmd === "set_settings") return undefined;
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -7956,6 +8437,11 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(screen.getByText("You haven't ignored any updates.")).toBeInTheDocument(),
     );
+    // The optimistic draft shows the empty list before the save resolves, so
+    // the line above alone cannot tell a correct payload from a wrong one.
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
+      settings: expect.objectContaining({ ignored_updates: [] }),
+    });
   });
 });
 ```
@@ -8004,38 +8490,51 @@ export function SettingsPage() {
     return <p>{t("settings.loading")}</p>;
   }
 
-  function persist(next: Settings) {
-    const previous = current as Settings;
+  // Arrow functions declared *after* the early return, not hoisted function
+  // declarations: TypeScript only carries the `!current` narrowing into
+  // function expressions, so a `function persist() {}` here would see
+  // `current` as `Settings | undefined` and fail `pnpm build` (TS18048 /
+  // TS2345) two tasks later, at Task 17's type-check.
+  const persist = (next: Settings) => {
+    const previous = current;
     setDraft(next);
     saveMutation.mutate(next, {
       onError: () => setDraft(previous),
     });
-  }
+  };
 
-  function unignore(key: Settings["ignored_updates"][number]) {
+  const unignore = (key: Settings["ignored_updates"][number]) => {
     persist({
       ...current,
       ignored_updates: current.ignored_updates.filter(
         (k) => artifactKeyId(k) !== artifactKeyId(key),
       ),
     });
-  }
+  };
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
 
-      {saveMutation.isError && <p role="alert">{t("settings.saveError")}</p>}
+      {saveMutation.isError && (
+        <p role="alert">{t("settings.saveError", { message: saveMutation.error.message })}</p>
+      )}
 
       <div className="flex items-center justify-between gap-4">
-        <label htmlFor="settings-show-technical" className="flex flex-col">
-          <span>{t("settings.showTechnicalDetails.label")}</span>
-          <span className="text-sm text-[var(--color-muted-foreground)]">
+        <div className="flex flex-col">
+          <label htmlFor="settings-show-technical">
+            {t("settings.showTechnicalDetails.label")}
+          </label>
+          <p
+            id="settings-show-technical-desc"
+            className="text-sm text-[var(--color-muted-foreground)]"
+          >
             {t("settings.showTechnicalDetails.description")}
-          </span>
-        </label>
+          </p>
+        </div>
         <Switch
           id="settings-show-technical"
+          aria-describedby="settings-show-technical-desc"
           checked={current.show_technical_details}
           onCheckedChange={(checked) =>
             persist({ ...current, show_technical_details: checked })
@@ -8151,11 +8650,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Create: `src/i18n/no-literal-strings.test.ts`
 - Create: `src/i18n/useLanguageSync.ts`
 - Create: `src/i18n/useLanguageSync.test.tsx`
+- Modify: `src/i18n/index.ts`
 - Modify: `src/App.tsx`
 
 **Interfaces:**
-- Consumes: `useSettings(): UseQueryResult<Settings>` from `src/lib/queries.ts`; the i18next instance exported as the default export of `src/i18n/index.ts` (created in Task 9; assumed to run `i18next-browser-languagedetector` at startup and to expose `i18n.language` / `i18n.changeLanguage(lng)`).
-- Produces: `export function useLanguageSync(): void` from `src/i18n/useLanguageSync.ts` — call it once, near the app root, to keep i18next's active language following `Settings.language`. `src/i18n/zh-CN.json` becomes the second resource bundle every later task's `en.json` edits must be mirrored into.
+- Consumes: `useSettings(): UseQueryResult<Settings>` and `queryKeys` from `src/lib/queries.ts`; the i18next instance exported as the default export of `src/i18n/index.ts` (Task 9), which already registers `i18next-browser-languagedetector` (`order: ["navigator"]`, `caches: []`), lists `zh-CN` in `supportedLngs`, and exposes `i18n.language` / `i18n.resolvedLanguage` / `i18n.changeLanguage(lng?)`.
+- Produces: `export function useLanguageSync(): void` from `src/i18n/useLanguageSync.ts` — call it once, near the app root, to keep i18next's active language following `Settings.language`. `src/i18n/zh-CN.json` becomes the second resource bundle every later task's `en.json` edits must be mirrored into, and `src/i18n/index.ts` is modified to register it: until that edit, `changeLanguage("zh-CN")` sets `i18n.language` but every `t()` still falls back to English, which is why the tests in Step 7 assert on a translated string and not only on `i18n.language`.
 
 - [ ] **Step 1: Write the failing key-parity test**
 
@@ -8235,6 +8735,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
     "upToDate": "已是最新",
     "updateAvailable": "有可用更新",
     "noDescription": "暂无描述",
+    "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_other": "{{count}} 个由其他软件附带安装的组件"
   },
   "updates": {
@@ -8248,13 +8749,16 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
     "versionChange": "{{current}} → {{target}}",
     "selectRow": "选择要更新的 {{name}}",
     "confirmTitle": "确认更新",
-    "confirmUpdate": "确认"
+    "confirmUpdate": "确认",
+    "planFailed": "没能准备这次更新:{{message}}",
+    "submitFailed": "没能开始更新:{{message}}"
   },
   "commandPreview": {
     "label": "将执行:"
   },
   "operations": {
     "idle": "当前没有正在进行的操作",
+    "current": "{{kind}} {{name}}({{status}})",
     "cancel": "取消",
     "logDrawerTitle": "操作日志",
     "kind": {
@@ -8283,7 +8787,8 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
     "title": "卸载 {{name}}?",
     "description": "继续之前,先看看会发生什么。",
     "checking": "正在检查会有什么影响…",
-    "planError": "没能检查清楚会有什么影响,请稍后重试。",
+    "planError": "没能检查清楚会有什么影响:{{message}}",
+    "submitError": "没能开始卸载:{{message}}",
     "warningsTitle": "继续之前请注意:",
     "affectedTitle": "删除后这些会受影响:",
     "confirm": "卸载",
@@ -8309,10 +8814,12 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
       "unignore": "取消忽略",
       "unignoreAriaLabel": "取消忽略 {{name}}"
     },
-    "saveError": "保存失败,已恢复原来的设置。"
+    "saveError": "保存失败({{message}}),已恢复原来的设置。"
   }
 }
 ```
+
+Keys that carry `{{message}}` (`updates.planFailed`, `updates.submitFailed`, `uninstall.planError`, `uninstall.submitError`, `settings.saveError`) show the backend's error text verbatim inside the Chinese sentence; `operations.current` puts the status in parentheses instead of after an em dash, which is the whole reason that line is one interpolated key rather than three fragments joined in JSX.
 
 Chinese has no plural forms, so every English key that only exists as `_one`/`_other` (`installed.showDependencies_one` / `_other`, `updates.count_one` / `_other`, `updates.warnings_one` / `_other`) is mirrored here with a single `_other` entry — i18next falls back to the `_other` form for any count in a locale that declares no plural rule for the key, and Step 1's completeness test already normalizes away plural suffixes before comparing key sets, so a lone `_other` on the Chinese side counts as parity with both `_one` and `_other` on the English side.
 
@@ -8345,18 +8852,28 @@ function collectTsxFiles(dir: string): string[] {
 }
 
 // Matches a JSX text child sitting directly between two tags, e.g.
-// `<p>Nothing installed yet</p>`. A child that is itself an expression
-// (`<p>{t("x")}</p>`) never matches, because the `>` is immediately
-// followed by `{`, not a letter.
-const SUSPICIOUS_JSX_TEXT = />[ \t]*[A-Za-z][A-Za-z0-9 ,.'!?:;()-]{3,}[ \t]*</g;
+// `<p>Nothing installed yet</p>`, including the wrapped form prettier
+// produces for long copy (`>\n  Nothing installed yet\n</p>`) — hence `\s*`,
+// not `[ \t]*`, at both ends. A child that is itself an expression
+// (`<p>{t("x")}</p>`) never matches, because the `>` is followed by `{`,
+// not a letter.
+const SUSPICIOUS_JSX_TEXT = />\s*[A-Za-z][A-Za-z0-9 ,.'!?:;()-]{3,}\s*</g;
+
+// User-visible copy also hides in attribute strings; every one of these in
+// this codebase is written as `aria-label={t("…")}`, so a quoted literal is
+// a mistake.
+const SUSPICIOUS_ATTRIBUTE = /(aria-label|placeholder|title|alt)="[A-Za-z][^"]{2,}"/g;
 
 const files = SCAN_DIRS.flatMap((dir) => collectTsxFiles(dir));
 
 describe("no literal user-visible strings in JSX", () => {
   it.each(files)("has no literal JSX text in %s", (file) => {
     const source = readFileSync(file, "utf-8");
-    const matches = source.match(SUSPICIOUS_JSX_TEXT) ?? [];
-    const real = matches.filter((m) => m.slice(1, -1).trim().length > 0);
+    const jsxText = (source.match(SUSPICIOUS_JSX_TEXT) ?? []).filter(
+      (m) => m.slice(1, -1).trim().length > 0,
+    );
+    const attributes = source.match(SUSPICIOUS_ATTRIBUTE) ?? [];
+    const real = [...jsxText, ...attributes];
     expect(real, `${file} has literal text: ${real.join(" | ")}`).toEqual([]);
   });
 });
@@ -8372,12 +8889,13 @@ Expected: PASS if every `src/components/**/*.tsx` and `src/pages/**/*.tsx` file 
 ```tsx
 // src/i18n/useLanguageSync.test.tsx
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { useLanguageSync } from "./useLanguageSync";
 import i18n from "./index";
-import type { Settings } from "../lib/types";
+import { queryKeys, useSettings } from "../lib/queries";
+import type { Language, Settings } from "../lib/types";
 
 function baseSettings(overrides: Partial<Settings> = {}): Settings {
   return {
@@ -8388,9 +8906,14 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
   };
 }
 
+// Renders the language the settings query actually delivered, so a test can
+// wait until the settings have *arrived* and the effect has run, instead of
+// asserting the moment `invoke` happens to be called (which is before the
+// query resolves and proves nothing).
 function Probe() {
   useLanguageSync();
-  return null;
+  const { data } = useSettings();
+  return <span>{data?.language ?? ""}</span>;
 }
 
 beforeEach(async () => {
@@ -8399,21 +8922,41 @@ beforeEach(async () => {
 });
 
 describe("useLanguageSync", () => {
-  it("switches i18next to Simplified Chinese when Settings overrides the language", async () => {
+  it("switches i18next to Simplified Chinese, resources included, when Settings overrides the language", async () => {
     vi.mocked(invoke).mockResolvedValue(baseSettings({ language: "ZhCn" }));
 
     renderWithProviders(<Probe />);
 
     await waitFor(() => expect(i18n.language).toBe("zh-CN"));
+    // i18next sets `language` to whatever was requested even when no bundle
+    // is registered for it; only a translated string proves that
+    // zh-CN.json is wired into `resources` in src/i18n/index.ts.
+    await waitFor(() => expect(i18n.t("nav.settings")).toBe("设置"));
   });
 
-  it("leaves i18next's detected language alone when Settings says 'System'", async () => {
+  it("re-runs system detection when Settings says 'System'", async () => {
     vi.mocked(invoke).mockResolvedValue(baseSettings({ language: "System" }));
 
     renderWithProviders(<Probe />);
 
-    await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalled());
-    expect(i18n.language).toBe("en");
+    await screen.findByText("System");
+    // jsdom reports navigator.language "en-US"; supportedLngs resolves it to "en".
+    await waitFor(() => expect(i18n.resolvedLanguage).toBe("en"));
+  });
+
+  it("falls back to the detected system language once the override is switched off again", async () => {
+    let language: Language = "ZhCn";
+    vi.mocked(invoke).mockImplementation(async () => baseSettings({ language }));
+
+    const { queryClient } = renderWithProviders(<Probe />);
+    await waitFor(() => expect(i18n.t("nav.settings")).toBe("设置"));
+
+    language = "System";
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+
+    await screen.findByText("System");
+    await waitFor(() => expect(i18n.resolvedLanguage).toBe("en"));
+    expect(i18n.t("nav.settings")).toBe("Settings");
   });
 });
 ```
@@ -8433,18 +8976,23 @@ import i18n from "./index";
 
 /**
  * Keeps i18next's active language in sync with the user's Settings
- * override. When `settings.language` is `"System"`, i18next keeps
- * whatever language `i18next-browser-languagedetector` picked at startup
- * (see `src/i18n/index.ts`); otherwise this forces the exact language the
- * user chose (spec §9: the language follows the system unless overridden
- * in Settings).
+ * override (spec §9: the language follows the system unless overridden in
+ * Settings). `"System"` re-runs the detector `src/i18n/index.ts` registered;
+ * anything else forces the exact language the user chose.
  */
 export function useLanguageSync(): void {
   const { data: settings } = useSettings();
 
   useEffect(() => {
     if (!settings) return;
-    if (settings.language === "System") return;
+    if (settings.language === "System") {
+      // No argument: i18next re-runs `i18next-browser-languagedetector`.
+      // This is what makes "简体中文 → System" take effect immediately
+      // instead of at the next launch; `caches: []` in index.ts guarantees
+      // the detector has not remembered the previous override.
+      void i18n.changeLanguage();
+      return;
+    }
     const target = settings.language === "ZhCn" ? "zh-CN" : "en";
     if (i18n.language !== target) {
       void i18n.changeLanguage(target);
@@ -8453,7 +9001,33 @@ export function useLanguageSync(): void {
 }
 ```
 
-`src/i18n/index.ts` (Task 9) is assumed to end with `export default i18n;` after its `i18next.use(...).init(...)` call — that default export is what the line above imports.
+Register the Chinese bundle. Replace `src/i18n/index.ts` (Task 9's file plus the `zhCN` import and the `"zh-CN"` resource — nothing else changes; `supportedLngs`, `detection` and the absence of `lng:` are already there and must stay):
+
+```ts
+import i18n from "i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
+import { initReactI18next } from "react-i18next";
+import en from "./en.json";
+import zhCN from "./zh-CN.json";
+
+void i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: {
+      en: { translation: en },
+      "zh-CN": { translation: zhCN },
+    },
+    fallbackLng: "en",
+    supportedLngs: ["en", "zh-CN"],
+    detection: { order: ["navigator"], caches: [] },
+    interpolation: { escapeValue: false },
+  });
+
+export default i18n;
+```
+
+Without this registration the first test in Step 7 still sees `i18n.language === "zh-CN"` but `i18n.t("nav.settings")` stays `"Settings"`, which is exactly the failure that assertion exists to catch.
 
 Open `src/App.tsx` and add:
 
@@ -8472,12 +9046,12 @@ as the first line inside the `App` function body, before whatever it already doe
 - [ ] **Step 10: Run the full front-end suite**
 
 Run: `pnpm test`
-Expected: PASS — every suite green, including the 2 new tests in `useLanguageSync.test.tsx`, with no regressions in any file from Tasks 9–15.
+Expected: PASS — every suite green, including the 3 new tests in `useLanguageSync.test.tsx`, with no regressions in any file from Tasks 9–15 (every earlier test asserts English copy, and jsdom's `en-US` still resolves to `en`).
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/i18n/zh-CN.json src/i18n/completeness.test.ts src/i18n/no-literal-strings.test.ts src/i18n/useLanguageSync.ts src/i18n/useLanguageSync.test.tsx src/App.tsx
+git add src/i18n/zh-CN.json src/i18n/index.ts src/i18n/completeness.test.ts src/i18n/no-literal-strings.test.ts src/i18n/useLanguageSync.ts src/i18n/useLanguageSync.test.tsx src/App.tsx
 git commit -m "feat(i18n): add zh-CN translations, completeness guards, and Settings language override
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -8495,9 +9069,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modify: `src/i18n/en.json`
 - Modify: `src/i18n/zh-CN.json`
 - Modify: `src/App.tsx`
+- Modify: `src/App.test.tsx`
 
 **Interfaces:**
-- Consumes: `useSnapshot(): UseQueryResult<Snapshot>` and `useRefresh(): UseMutationResult<Snapshot, Error, void>` from `src/lib/queries.ts`; `Snapshot`, `DetectOutcome` from `src/lib/types.ts`.
+- Consumes: `useSnapshot(): UseQueryResult<Snapshot>` and `useRefresh(): UseMutationResult<Snapshot, Error, void>` from `src/lib/queries.ts`; `Snapshot`, `DetectOutcome` from `src/lib/types.ts`; the startup refresh that Task 10's `useStartupRefresh` (mounted by `App` since Task 13) performs — `SnapshotStatus` treats a snapshot with `refreshed_at: null` as "that refresh has not finished yet".
 - Produces:
   - `export interface EmptyStateAction { label: string; onClick: () => void }` and `export function EmptyState(props: { title: string; description: string; action?: EmptyStateAction; variant?: "empty" | "banner"; icon?: ReactNode }): JSX.Element`. `variant: "banner"` renders `role="status"` and is meant to sit above still-visible content (the stale-refresh case); the default `"empty"` variant fills the space where content would otherwise be.
   - `export function SnapshotStatus(props: { children: ReactNode }): JSX.Element` — reads the current `Snapshot` and renders the matching `EmptyState` in place of (or, for the stale case, above) `children`.
@@ -8583,7 +9158,7 @@ export function EmptyState({
       role={isBanner ? "status" : undefined}
       className={
         isBanner
-          ? "flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-muted)] px-6 py-3"
+          ? "flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar-bg)] px-6 py-3"
           : "flex flex-1 flex-col items-center justify-center gap-3 p-12 text-center"
       }
     >
@@ -8602,6 +9177,8 @@ export function EmptyState({
 }
 ```
 
+The banner's background is `--color-sidebar-bg`, a surface token. `--color-muted` (Task 9) is the *text* grey every earlier component uses as `text-[var(--color-muted)]`; as a background under `text-[var(--color-muted-foreground)]` it would be grey on grey.
+
 - [ ] **Step 4: Run it and confirm it passes**
 
 Run: `pnpm exec vitest run src/components/EmptyState.test.tsx`
@@ -8616,6 +9193,7 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SnapshotStatus } from "./SnapshotStatus";
+import { useUiStore } from "../store/ui";
 import type { Snapshot } from "../lib/types";
 
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
@@ -8647,6 +9225,59 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Homebrew isn't installed yet")).toBeInTheDocument();
+    expect(screen.queryByText("installed list")).not.toBeInTheDocument();
+  });
+
+  it("shows loading, not the no-Homebrew state, before the first refresh has completed", async () => {
+    // Session boots with Snapshot::empty(): generation 0, detect Missing,
+    // refreshed_at null. Only a completed refresh ever sets refreshed_at —
+    // including a refresh that finds Homebrew genuinely missing.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText("Homebrew isn't installed yet")).not.toBeInTheDocument();
+  });
+
+  it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
+    // get_snapshot itself succeeded with the empty startup snapshot, but the
+    // startup refresh() IPC call rejected — refreshed_at will never be set.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
+    );
+    useUiStore.setState({ startupRefreshError: "brew: command not found" });
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("shows the backend's error verbatim when the snapshot itself cannot be loaded", async () => {
+    // get_snapshot rejects with a bare string (Task 10's call() turns it
+    // into an Error); without this branch the page would be blank.
+    vi.mocked(invoke).mockRejectedValue("brew: command not found" as never);
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
@@ -8746,6 +9377,7 @@ Expected: FAIL — `Cannot find module './SnapshotStatus'` (the file does not ex
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRefresh, useSnapshot } from "../lib/queries";
+import { useUiStore } from "../store/ui";
 import { EmptyState } from "./EmptyState";
 
 export interface SnapshotStatusProps {
@@ -8756,10 +9388,56 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
   const refreshMutation = useRefresh();
+  const startupRefreshError = useUiStore((s) => s.startupRefreshError);
   const snapshot = snapshotQuery.data;
+
+  if (snapshotQuery.isError) {
+    // get_snapshot itself failed. InstalledPage renders null without data,
+    // so without this branch the user would face a blank page and no way
+    // out. The message is the backend's own text (Task 10's call()); a
+    // failed retry replaces it with the retry's message.
+    return (
+      <EmptyState
+        title={t("emptyStates.loadFailed.title")}
+        description={t("emptyStates.loadFailed.description", {
+          message: (refreshMutation.error ?? snapshotQuery.error).message,
+        })}
+        action={{
+          label: t("emptyStates.refreshFailed.retry"),
+          onClick: () => refreshMutation.mutate(),
+        }}
+      />
+    );
+  }
 
   if (!snapshot) {
     return <>{children}</>;
+  }
+
+  if (snapshot.refreshed_at === null && startupRefreshError) {
+    // The startup refresh (Task 10's useStartupRefresh) resolved to a
+    // rejection rather than a Snapshot, so refreshed_at will never be set by
+    // it. Without this branch the app would sit on the loading branch below
+    // forever, with no error and no way out.
+    return (
+      <EmptyState
+        title={t("emptyStates.loadFailed.title")}
+        description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
+        action={{
+          label: t("emptyStates.refreshFailed.retry"),
+          onClick: () => refreshMutation.mutate(),
+        }}
+      />
+    );
+  }
+
+  if (snapshot.refreshed_at === null && snapshot.errors.length === 0) {
+    // The startup snapshot: Task 10's useStartupRefresh has not resolved
+    // yet, and `detect` is still Snapshot::empty()'s placeholder `Missing`.
+    // Judging it here would flash "Homebrew isn't installed yet" at every
+    // launch. A completed refresh always sets refreshed_at (Task 5), even
+    // when Homebrew really is missing, so this branch ends on its own.
+    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
   }
 
   if (snapshot.detect === "Missing") {
@@ -8786,9 +9464,13 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
         <EmptyState
           variant="banner"
           title={t("emptyStates.refreshFailed.title")}
-          description={t("emptyStates.refreshFailed.description", {
-            count: snapshot.errors.length,
-          })}
+          description={
+            refreshMutation.isError
+              ? t("emptyStates.refreshFailed.retryFailed", {
+                  message: refreshMutation.error.message,
+                })
+              : t("emptyStates.refreshFailed.description", { count: snapshot.errors.length })
+          }
           action={{
             label: t("emptyStates.refreshFailed.retry"),
             onClick: () => refreshMutation.mutate(),
@@ -8812,13 +9494,17 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
 }
 ```
 
-Add this top-level key to `src/i18n/en.json`:
+Add this top-level key to `src/i18n/en.json` (the loading branch reuses the existing `common.loading`; `noHomebrew.description` names only Homebrew because that is the only source this phase ships):
 
 ```json
 "emptyStates": {
+  "loadFailed": {
+    "title": "Couldn't load what's installed",
+    "description": "The last attempt failed with: {{message}}"
+  },
   "noHomebrew": {
     "title": "Homebrew isn't installed yet",
-    "description": "Canager manages tools installed through Homebrew, npm, and more. Install Homebrew first, then come back here."
+    "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
   },
   "refusedAsRoot": {
     "title": "Canager can't run as an administrator",
@@ -8828,6 +9514,7 @@ Add this top-level key to `src/i18n/en.json`:
     "title": "Some data might be out of date",
     "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",
     "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
+    "retryFailed": "Trying again didn't work: {{message}}",
     "retry": "Try again"
   },
   "nothingInstalled": {
@@ -8841,9 +9528,13 @@ And this matching top-level key to `src/i18n/zh-CN.json` (this keeps Task 16's k
 
 ```json
 "emptyStates": {
+  "loadFailed": {
+    "title": "没能读取已安装的内容",
+    "description": "上次尝试失败,原因:{{message}}"
+  },
   "noHomebrew": {
     "title": "还没有安装 Homebrew",
-    "description": "Canager 管理通过 Homebrew、npm 等方式安装的工具。请先安装 Homebrew,然后再回到这里。"
+    "description": "Canager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
   },
   "refusedAsRoot": {
     "title": "Canager 不能以管理员身份运行",
@@ -8852,6 +9543,7 @@ And this matching top-level key to `src/i18n/zh-CN.json` (this keeps Task 16's k
   "refreshFailed": {
     "title": "部分数据可能不是最新的",
     "description_other": "上次刷新有 {{count}} 个来源没能完成,下面显示的内容可能不是最新的。",
+    "retryFailed": "重试没有成功:{{message}}",
     "retry": "重试"
   },
   "nothingInstalled": {
@@ -8864,7 +9556,7 @@ And this matching top-level key to `src/i18n/zh-CN.json` (this keeps Task 16's k
 - [ ] **Step 8: Run it and confirm everything passes**
 
 Run: `pnpm exec vitest run src/components/SnapshotStatus.test.tsx src/i18n/completeness.test.ts`
-Expected: PASS — 5 tests passed in `SnapshotStatus.test.tsx`, 1 in `completeness.test.ts` (confirming the new `emptyStates` keys didn't break parity).
+Expected: PASS — 8 tests passed in `SnapshotStatus.test.tsx`, 1 in `completeness.test.ts` (confirming the new `emptyStates` keys didn't break parity).
 
 - [ ] **Step 9: Wire `SnapshotStatus` into the app shell**
 
@@ -8874,7 +9566,7 @@ Open `src/App.tsx` and add:
 import { SnapshotStatus } from "./components/SnapshotStatus";
 ```
 
-to its import list. Then wrap only the routed-page area in `<SnapshotStatus>…</SnapshotStatus>`, leaving the sidebar, the operation bar and the log drawer outside the wrapper so they stay visible in every state. After Task 15's Step 9 the page switch reads exactly:
+to its import list. Then wrap only the two snapshot-driven pages in `<SnapshotStatus>…</SnapshotStatus>`. The Settings page stays **outside** the wrapper, as do the sidebar, the operation bar and the log drawer: a user with no Homebrew, or one who just installed it and has nothing yet, or one who was refused as root and told to quit, is exactly the user who needs to reach Settings to change the language or the technical-details switch. After Task 15's Step 9 the page switch reads exactly:
 
 ```tsx
           {page === "installed" ? (
@@ -8889,29 +9581,123 @@ to its import list. Then wrap only the routed-page area in `<SnapshotStatus>…<
 Replace that block with:
 
 ```tsx
-          <SnapshotStatus>
-            {page === "installed" ? (
-              <InstalledPage />
-            ) : page === "updates" ? (
-              <UpdatesPage />
-            ) : (
-              <SettingsPage />
-            )}
-          </SnapshotStatus>
+          {page === "settings" ? (
+            <SettingsPage />
+          ) : (
+            <SnapshotStatus>
+              {page === "installed" ? <InstalledPage /> : <UpdatesPage />}
+            </SnapshotStatus>
+          )}
 ```
 
-Nothing else in `App.tsx` changes: the `<Sidebar>`, the operation-bar `<footer>` and the log drawer stay exactly where they are, outside the wrapper.
+Nothing else in `App.tsx` changes: the `<Sidebar>`, the operation-bar `<footer>` and the log drawer stay exactly where they are.
+
+`src/App.test.tsx` must change with it. Its fixture has been `artifacts: []` with `refreshed_at: null` since Task 11; under the wrapper that now renders the loading state (and, once refreshed, "Nothing installed yet") instead of the Installed page, so both existing tests would time out on `findByLabelText("Filter installed items")`. Replace the whole file:
+
+```tsx
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { fireEvent } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
+import { renderWithProviders } from "./test/setup";
+import App from "./App";
+import type { Settings, Snapshot } from "./lib/types";
+
+const mockInvoke = vi.mocked(invoke);
+
+// A *refreshed* snapshot with one instance and one requested artifact — the
+// shape a real launch reaches after useStartupRefresh resolves. `updates: []`
+// keeps the Updates page on "Everything is up to date".
+const snapshot: Snapshot = {
+  generation: 1,
+  detect: "Found",
+  instances: [
+    {
+      id: "brew:/opt/homebrew",
+      adapter_id: "brew",
+      exe_path: "/opt/homebrew/bin/brew",
+      prefix: "/opt/homebrew",
+      scope: "User",
+      version: "7.0.3",
+      healthy: true,
+    },
+  ],
+  artifacts: [
+    {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+      display_name: "jq",
+      version: "1.8.2",
+      reason: "Requested",
+      description: "Lightweight and flexible command-line JSON processor",
+      homepage: "https://jqlang.github.io/jq/",
+      size_bytes: null,
+      installed_at: 1783762037,
+      path: null,
+      auto_updates: false,
+    },
+  ],
+  updates: [],
+  refreshed_at: 1789700000,
+  stale: false,
+  errors: [],
+};
+
+const defaultSettings: Settings = {
+  language: "System",
+  show_technical_details: false,
+  ignored_updates: [],
+};
+
+function mockBackend(snap: Snapshot) {
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "get_snapshot" || cmd === "refresh") return Promise.resolve(snap);
+    if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+    if (cmd === "list_operations") return Promise.resolve([]);
+    return Promise.resolve(undefined);
+  });
+}
+
+beforeEach(() => {
+  mockInvoke.mockReset();
+  mockBackend(snapshot);
+});
+
+describe("App", () => {
+  it("shows the Installed page's filter box by default", async () => {
+    const { findByLabelText } = renderWithProviders(<App />);
+    await findByLabelText("Filter installed items");
+  });
+
+  it("switches the content area when a sidebar link is clicked", async () => {
+    const { getByRole, findByLabelText, findByText } = renderWithProviders(<App />);
+    await findByLabelText("Filter installed items");
+
+    fireEvent.click(getByRole("button", { name: "Updates" }));
+
+    expect(await findByText("Everything is up to date")).toBeInTheDocument();
+  });
+
+  it("keeps Settings reachable when Homebrew is missing", async () => {
+    mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
+    const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
+    await findByText("Homebrew isn't installed yet");
+
+    fireEvent.click(getByRole("button", { name: "Settings" }));
+
+    expect(await findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+});
+```
 
 - [ ] **Step 10: Run the full front-end suite and the production type-check**
 
 Run: `pnpm test && pnpm build`
-Expected: PASS — every suite green (no regressions from the `App.tsx` edit), and `tsc && vite build` completes with no type errors.
+Expected: PASS — every suite green, including the 3 tests in `App.test.tsx`, and `tsc && vite build` completes with no type errors.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/components/EmptyState.tsx src/components/EmptyState.test.tsx src/components/SnapshotStatus.tsx src/components/SnapshotStatus.test.tsx src/i18n/en.json src/i18n/zh-CN.json src/App.tsx
-git commit -m "feat(ui): add the four empty/error surfaces for a new or offline user
+git add src/components/EmptyState.tsx src/components/EmptyState.test.tsx src/components/SnapshotStatus.tsx src/components/SnapshotStatus.test.tsx src/i18n/en.json src/i18n/zh-CN.json src/App.tsx src/App.test.tsx
+git commit -m "feat(ui): add the empty, loading and error surfaces for a new or offline user
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
