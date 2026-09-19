@@ -25,7 +25,8 @@
     "updateAvailable": "有可用更新",
     "noDescription": "暂无描述",
     "nameWithVersion": "{{name}} · {{version}}",
-    "showDependencies_other": "{{count}} 个由其他软件附带安装的组件"
+    "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",
+    "unverifiedVersion": "未验证版本（{{version}}）"
   },
   "updates": {
     "upToDate": "所有内容都已是最新",

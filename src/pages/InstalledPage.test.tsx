@@ -19,6 +19,7 @@ const snapshot: Snapshot = {
       scope: "User",
       version: "7.0.3",
       healthy: true,
+      unverified_version: null,
     },
   ],
   artifacts: [
@@ -213,5 +214,22 @@ describe("InstalledPage", () => {
     const dialog = await findByRole("dialog");
     await within(dialog).findByText("jq-cli-wrapper");
     expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  });
+
+  it("shows an unverified-version badge next to a source whose detected version is not verified", async () => {
+    const unverifiedSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [{ ...snapshot.instances[0], unverified_version: "99.9.9" }],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(unverifiedSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText } = renderWithProviders(<InstalledPage />);
+
+    await findByText("jq");
+    await findByText("Unverified version (99.9.9)");
   });
 });

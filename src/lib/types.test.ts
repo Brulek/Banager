@@ -26,6 +26,7 @@ describe("types", () => {
           scope: "User",
           version: "7.0.3",
           healthy: true,
+          unverified_version: null,
         },
       ],
       artifacts: [

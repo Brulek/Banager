@@ -12,7 +12,7 @@ const ADAPTER_LABEL_KEYS: Record<string, string> = {
 };
 
 type ListItem =
-  | { type: "group"; instanceId: string; label: string }
+  | { type: "group"; instanceId: string; label: string; unverifiedVersion: string | null }
   | { type: "artifact"; artifact: InstalledArtifact }
   | { type: "toggle"; instanceId: string; hiddenCount: number };
 
@@ -62,6 +62,7 @@ export function InstalledPage() {
         type: "group",
         instanceId: instance.id,
         label: labelKey ? t(labelKey) : instance.adapter_id,
+        unverifiedVersion: instance.unverified_version,
       });
       const primary = artifacts.filter((a) => a.reason === "Requested");
       const dependencies = artifacts.filter((a) => a.reason !== "Requested");
@@ -126,6 +127,11 @@ export function InstalledPage() {
                 {item.type === "group" ? (
                   <p className="px-4 py-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
                     {item.label}
+                    {item.unverifiedVersion ? (
+                      <span className="ml-2 normal-case text-[var(--color-danger)]">
+                        {t("installed.unverifiedVersion", { version: item.unverifiedVersion })}
+                      </span>
+                    ) : null}
                   </p>
                 ) : item.type === "toggle" ? (
                   <button

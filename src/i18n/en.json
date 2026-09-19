@@ -26,7 +26,8 @@
     "noDescription": "No description available",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
-    "showDependencies_other": "{{count}} components installed by other software"
+    "showDependencies_other": "{{count}} components installed by other software",
+    "unverifiedVersion": "Unverified version ({{version}})"
   },
   "updates": {
     "upToDate": "Everything is up to date",

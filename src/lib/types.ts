@@ -49,6 +49,7 @@ export interface ManagerInstance {
   scope: "User" | "System";
   version: string | null;
   healthy: boolean;
+  unverified_version: string | null;
 }
 export interface Plan {
   request: OpRequest;
