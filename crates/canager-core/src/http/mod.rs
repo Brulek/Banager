@@ -8,6 +8,8 @@ use async_trait::async_trait;
 
 pub mod mock;
 pub use mock::MockHttpClient;
+pub mod real;
+pub use real::RealHttpClient;
 
 /// `method` is always `"GET"` in this phase — no adapter added in this plan
 /// ever writes over HTTP (Ollama's writes go through its CLI; see the
