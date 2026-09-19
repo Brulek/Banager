@@ -4,6 +4,7 @@
 
 pub mod adapters;
 pub mod events;
+pub mod http;
 pub mod model;
 pub mod ops;
 pub mod runner;
