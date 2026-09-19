@@ -1,0 +1,9 @@
+{
+  "@alisaitteke/photoshop-mcp": {
+    "current": "1.7.15",
+    "wanted": "1.7.17",
+    "latest": "1.7.17",
+    "dependent": "global",
+    "location": "/opt/homebrew/lib/node_modules/@alisaitteke/photoshop-mcp"
+  }
+}

@@ -1,0 +1,2 @@
+ruff v0.15.0 (/Users/brulek/.local/share/uv/tools/ruff)
+- ruff (/Users/brulek/.local/bin/ruff)

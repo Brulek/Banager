@@ -1,0 +1,81 @@
+[
+
+{"name":"jq","keywords":[],"version":"1.7.2","description":"Server-side jQuery wrapper for node.","sanitized_name":"jq","publisher":{"email":"jake.luer@incatern.com","username":"jakeluer"},"maintainers":[{"email":"jake.luer@incatern.com","username":"jakeluer"}],"date":"2012-04-29T21:20:53.740Z","links":{"repository":"git://github.com/logicalparadox/jq.git","npm":"https://www.npmjs.com/package/jq"}}
+
+,
+
+{"name":"node-jq","keywords":["jq","json"],"version":"6.3.1","description":"Run jq in node","sanitized_name":"node-jq","publisher":{"email":"dsnxmoreno@gmail.com","username":"davesnx"},"maintainers":[{"email":"maarten.ackermans@gmail.com","username":"mackermans-admin"},{"email":"dsnxmoreno@gmail.com","username":"davesnx"}],"license":"MIT","date":"2025-08-29T23:09:58.704Z","links":{"homepage":"https://github.com/sanack/node-jq#readme","repository":"git+https://github.com/sanack/node-jq.git","bugs":"https://github.com/sanack/node-jq/issues","npm":"https://www.npmjs.com/package/node-jq"}}
+
+,
+
+{"name":"@elastic/micro-jq","keywords":[],"version":"2.0.2","description":"Small implementation of jq","sanitized_name":"@elastic/micro-jq","publisher":{"email":"npm-oidc-no-reply@github.com","trustedPublisher":{"oidcConfigId":"oidc:***","id":"github"},"username":"GitHub Actions"},"maintainers":[{"email":"npm3@gregback.net","username":"gtback"},{"email":"ioannis.kakavas+elastic-npm-admin@elastic.co","username":"elastic-npm-admin"},{"email":"ioannis.kakavas@elastic.co","username":"ikakavas"}],"license":"Apache-2.0","date":"2026-07-31T13:46:41.003Z","links":{"homepage":"https://github.com/elastic/micro-jq#readme","repository":"git+https://github.com/elastic/micro-jq.git","bugs":"https://github.com/elastic/micro-jq/issues","npm":"https://www.npmjs.com/package/@elastic/micro-jq"}}
+
+,
+
+{"name":"jq-wasm","keywords":["jq","wasm","emscripten","webassembly","typescript","javascript"],"version":"3.0.0-jq-1.8.2","description":"A high-performance jq wrapper using Emscripten and WebAssembly.","sanitized_name":"jq-wasm","publisher":{"email":"o@owenou.com","actor":{"name":"owenthereal","type":"user","email":"o@owenou.com"},"username":"owenthereal"},"maintainers":[{"email":"o@owenou.com","username":"owenthereal"}],"license":"MIT","date":"2026-07-05T02:01:31.296Z","links":{"homepage":"https://github.com/owenthereal/jq-wasm#readme","repository":"git+https://github.com/owenthereal/jq-wasm.git","bugs":"https://github.com/owenthereal/jq-wasm/issues","npm":"https://www.npmjs.com/package/jq-wasm"}}
+
+,
+
+{"name":"jq-web","keywords":["emscriptem","jq","json","filter","path"],"version":"0.6.2","description":"a hack that makes jq run in the browser with emscripten.","sanitized_name":"jq-web","publisher":{"email":"fiatjaf@gmail.com","username":"fiatjaf"},"maintainers":[{"email":"fiatjaf@gmail.com","username":"fiatjaf"}],"license":"ISC","date":"2025-03-19T17:51:45.554Z","links":{"homepage":"https://github.com/fiatjaf/jq-web#readme","repository":"git+https://github.com/fiatjaf/jq-web.git","bugs":"https://github.com/fiatjaf/jq-web/issues","npm":"https://www.npmjs.com/package/jq-web"}}
+
+,
+
+{"name":"@jq-tools/jq","keywords":[],"version":"0.0.11","description":"jq for js","sanitized_name":"@jq-tools/jq","publisher":{"email":"alexander.macinsky@gmail.com","username":"alexxander"},"maintainers":[{"email":"alexander.macinsky@gmail.com","username":"alexxander"}],"date":"2026-02-16T22:56:47.223Z","links":{"homepage":"https://github.com/alexxander/jq-tools#readme","repository":"git+https://github.com/alexxander/jq-tools.git","bugs":"https://github.com/alexxander/jq-tools/issues","npm":"https://www.npmjs.com/package/@jq-tools/jq"}}
+
+,
+
+{"name":"@port-labs/jq-node-bindings","keywords":["jq","binding"],"version":"1.0.6","description":"Node.js bindings for JQ","sanitized_name":"@port-labs/jq-node-bindings","publisher":{"email":"npm-oidc-no-reply@github.com","trustedPublisher":{"oidcConfigId":"oidc:***","id":"github"},"username":"GitHub Actions"},"maintainers":[{"email":"daniel.sinai.main@gmail.com","username":"danielsinaimain"},{"email":"arbelt@port.io","username":"teitelbaum"},{"email":"hadar@getport.io","username":"hadorco"},{"email":"guy.s+npmlastime@getport.io","username":"guy-s-port"},{"email":"gilm@port.io","username":"gilmor-port"},{"email":"noyah@port.io","username":"noyah"},{"email":"irar@port.io","username":"irar-port"},{"email":"dorm@getport.io","username":"dormeiri-port"}],"license":"MIT","date":"2026-04-16T08:48:11.563Z","links":{"homepage":"https://github.com/port-labs/jq-node-bindings#readme","repository":"git+ssh://git@github.com/port-labs/jq-node-bindings.git","bugs":"https://github.com/port-labs/jq-node-bindings/issues","npm":"https://www.npmjs.com/package/@port-labs/jq-node-bindings"}}
+
+,
+
+{"name":"@gabrielbryk/jq-ts","keywords":["jq","json","query","filter","workflow","deterministic","interpreter","typescript"],"version":"1.7.0","description":"Deterministic TypeScript implementation of a jq subset for workflow isolates","sanitized_name":"@gabrielbryk/jq-ts","publisher":{"email":"npm-oidc-no-reply@github.com","trustedPublisher":{"oidcConfigId":"oidc:***","id":"github"},"username":"GitHub Actions"},"maintainers":[{"email":"gbryk11@gmail.com","username":"gbryk31"}],"license":"MIT","date":"2026-07-01T17:38:58.748Z","links":{"homepage":"https://github.com/gabrielbryk/jq-ts","repository":"git+https://github.com/gabrielbryk/jq-ts.git","bugs":"https://github.com/gabrielbryk/jq-ts/issues","npm":"https://www.npmjs.com/package/@gabrielbryk/jq-ts"}}
+
+,
+
+{"name":"monaco-languages-jq","keywords":["monaco","monaco-editor","syntax","highlight","jq","languages","monarch","language"],"version":"1.0.0","description":"Monaco Editor JQ language definition (and syntax highlight)","sanitized_name":"monaco-languages-jq","publisher":{"email":"eli.sherer@gmail.com","username":"elisherer"},"maintainers":[{"email":"eli.sherer@gmail.com","username":"elisherer"}],"license":"MIT","date":"2021-04-06T06:48:00.277Z","links":{"homepage":"https://github.com/elisherer/monaco-languages-jq#readme","repository":"git+https://github.com/elisherer/monaco-languages-jq.git","bugs":"https://github.com/elisherer/monaco-languages-jq/issues","npm":"https://www.npmjs.com/package/monaco-languages-jq"}}
+
+,
+
+{"name":"@pixiebrix/jq-web","keywords":["emscriptem","jq","json","filter","path"],"version":"0.5.1","description":"a hack that makes jq run in the browser with emscripten.","sanitized_name":"@pixiebrix/jq-web","publisher":{"email":"todd.schiller@gmail.com","username":"tschiller"},"maintainers":[{"email":"misha@pixiebrix.com","username":"mnholtz"},{"email":"grahamlangford87@gmail.com","username":"grahamlangford"},{"email":"todd.schiller@gmail.com","username":"tschiller"}],"license":"ISC","date":"2023-09-21T00:58:40.905Z","links":{"homepage":"https://github.com/pixiebrix/jq-web/jq-web#readme","repository":"git+https://github.com/pixiebrix/jq-web.git","bugs":"https://github.com/pixiebrix/jq-web/issues","npm":"https://www.npmjs.com/package/@pixiebrix/jq-web"}}
+
+,
+
+{"name":"jq-cli-wrapper","keywords":["cli-wrapper","jq","json"],"version":"1.6.1","description":"A npm wrapper around the jq cli","sanitized_name":"jq-cli-wrapper","publisher":{"email":"jmeyoung@gmail.com","username":"jamsyoung"},"maintainers":[{"email":"jmeyoung@gmail.com","username":"jamsyoung"}],"license":"MIT","date":"2019-05-31T19:21:50.606Z","links":{"homepage":"https://github.com/jamsyoung/jq-cli-wrapper","repository":"git+https://github.com/jamsyoung/jq-cli-wrapper.git","bugs":"https://github.com/jamsyoung/jq-cli-wrapper/issues","npm":"https://www.npmjs.com/package/jq-cli-wrapper"}}
+
+,
+
+{"name":"codemirror-lang-jq","keywords":[],"version":"1.0.0","description":"jq language support for CodeMirror","sanitized_name":"codemirror-lang-jq","publisher":{"email":"caleb@mathmammoth.com","username":"steffan153"},"maintainers":[{"email":"caleb@mathmammoth.com","username":"steffan153"}],"license":"MIT","date":"2024-03-31T02:39:29.954Z","links":{"npm":"https://www.npmjs.com/package/codemirror-lang-jq"}}
+
+,
+
+{"name":"@plurnk/plurnk-execs-jq","keywords":["plurnk","exec","runtime","executor","jq","json","filter"],"version":"1.18.0","description":"jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter or transform JSON.","sanitized_name":"@plurnk/plurnk-execs-jq","publisher":{"email":"possumtech@pm.me","username":"possumtechcom"},"maintainers":[{"email":"possumtech@pm.me","username":"possumtechcom"}],"license":"MIT","date":"2026-09-15T16:55:21.313Z","links":{"homepage":"https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs-jq#readme","repository":"git+https://github.com/plurnk/plurnk-service.git","bugs":"https://repo.possumtech.com/plurnk/plurnk-service/issues","npm":"https://www.npmjs.com/package/@plurnk/plurnk-execs-jq"}}
+
+,
+
+{"name":"pkg-jq","keywords":["package","jq","pkg-up","edit"],"version":"0.2.11","description":"Find the nearest package.json then modify it inline by jq syntax","sanitized_name":"pkg-jq","publisher":{"email":"zixia@zixia.net","username":"zixia"},"maintainers":[{"email":"zixia@zixia.net","username":"zixia"}],"license":"Apache-2.0","date":"2021-01-08T14:01:26.745Z","links":{"homepage":"https://github.com/huan/pkg-jq#readme","repository":"git+https://github.com/huan/pkg-jq.git","bugs":"https://github.com/huan/pkg-jq/issues","npm":"https://www.npmjs.com/package/pkg-jq"}}
+
+,
+
+{"name":"@arborium/jq","keywords":["arborium","syntax-highlighting","tree-sitter","jq","jq","wasm"],"version":"2.18.2","description":"Syntax highlighting for jq, powered by WebAssembly","sanitized_name":"@arborium/jq","publisher":{"email":"npm-oidc-no-reply@github.com","trustedPublisher":{"oidcConfigId":"oidc:***","id":"github"},"username":"GitHub Actions"},"maintainers":[{"email":"amos@bearcove.eu","username":"fasterthanlime"}],"license":"MIT","date":"2026-08-28T15:09:40.707Z","links":{"homepage":"https://github.com/bearcove/arborium","repository":"git+https://github.com/bearcove/arborium.git","bugs":"https://github.com/bearcove/arborium/issues","npm":"https://www.npmjs.com/package/@arborium/jq"}}
+
+,
+
+{"name":"@michaelhomer/jqjs","keywords":["jq","json","jqlang"],"version":"1.6.0","description":"Pure-JavaScript implementation of the jq JSON query language","sanitized_name":"@michaelhomer/jqjs","publisher":{"email":"mwh@ecs.vuw.ac.nz","username":"michaelhomer"},"maintainers":[{"email":"mwh@ecs.vuw.ac.nz","username":"michaelhomer"}],"license":"MIT","date":"2026-03-17T01:17:59.440Z","links":{"homepage":"https://github.com/mwh/jqjs#readme","repository":"git+https://github.com/mwh/jqjs.git","bugs":"https://github.com/mwh/jqjs/issues","npm":"https://www.npmjs.com/package/@michaelhomer/jqjs"}}
+
+,
+
+{"name":"@agentos-software/jq","keywords":[],"version":"0.3.3","description":"jq JSON processor for secure-exec VMs","sanitized_name":"@agentos-software/jq","publisher":{"email":"npm@nathanflurry.com","username":"nathanflurry"},"maintainers":[{"email":"npm@nathanflurry.com","username":"nathanflurry"},{"email":"andrew@rivet.gg","username":"anticipate-brave-cookies"}],"license":"Apache-2.0","date":"2026-07-06T14:14:19.801Z","links":{"npm":"https://www.npmjs.com/package/@agentos-software/jq"}}
+
+,
+
+{"name":"@tai42/jq-studio","keywords":["jq","editor","visual","react","json","transform","node-graph"],"version":"0.1.5","description":"Standalone, embeddable visual jq editor: a node canvas that reads a jq expression into an editable graph and writes it back, round-trip AST converters, a faithfulness guard, and a drop-in JqField — design-system-agnostic, with an injectable primitives sea","sanitized_name":"@tai42/jq-studio","publisher":{"email":"oss@tai42.ai","username":"tai42"},"maintainers":[{"email":"oss@tai42.ai","username":"tai42"}],"license":"Apache-2.0","date":"2026-09-14T11:05:40.177Z","links":{"homepage":"https://github.com/tai42ai/jq-studio#readme","repository":"git+https://github.com/tai42ai/jq-studio.git","bugs":"https://github.com/tai42ai/jq-studio/issues","npm":"https://www.npmjs.com/package/@tai42/jq-studio"}}
+
+,
+
+{"name":"jq-in-the-browser","keywords":[],"version":"0.7.2","description":"jq-compatible query language for the web","sanitized_name":"jq-in-the-browser","publisher":{"email":"npm@daniel-kantor.com","username":"kantord"},"maintainers":[{"email":"npm@daniel-kantor.com","username":"kantord"}],"license":"MIT","date":"2018-02-05T19:19:12.867Z","links":{"npm":"https://www.npmjs.com/package/jq-in-the-browser"}}
+
+,
+
+{"name":"tree-sitter-jq","keywords":["parser","lexer","jq"],"version":"1.0.2","description":"Jq grammar for tree-sitter","sanitized_name":"tree-sitter-jq","publisher":{"email":"noah.v.peart@gmail.com","username":"nverno"},"maintainers":[{"email":"noah.v.peart@gmail.com","username":"nverno"}],"license":"GPL-3.0-or-later","date":"2025-02-23T21:06:16.225Z","links":{"homepage":"https://github.com/nverno/tree-sitter-jq#readme","repository":"git+https://github.com/nverno/tree-sitter-jq.git","bugs":"https://github.com/nverno/tree-sitter-jq/issues","npm":"https://www.npmjs.com/package/tree-sitter-jq"}}
+]
+
