@@ -210,13 +210,22 @@ impl Session {
         let previous = self.snapshot.lock().unwrap().clone();
 
         if BrewAdapter::refuses_as_root(env) {
+            // This refresh ran to completion: it did not fail, it answered
+            // "Canager cannot run as root", which is a definitive result
+            // about the host and not a missing one. So it stamps
+            // `refreshed_at` like any other completed refresh. Carrying
+            // `previous.refreshed_at` forward instead left it `None` on a
+            // process's first refresh, and the front end reads a null
+            // `refreshed_at` with no errors as "no refresh has finished
+            // yet" — which, since a process's euid never changes, would
+            // have been true forever.
             let refused = Snapshot {
                 generation: previous.generation,
                 detect: DetectOutcome::RefusedAsRoot,
                 instances: Vec::new(),
                 artifacts: Vec::new(),
                 updates: Vec::new(),
-                refreshed_at: previous.refreshed_at,
+                refreshed_at: Some(self.now()),
                 stale: previous.stale,
                 errors: Vec::new(),
             };
@@ -672,6 +681,26 @@ mod tests {
             state.lock().unwrap().detect_calls,
             0,
             "no adapter should be probed while running as root"
+        );
+    }
+
+    /// A refresh that ran to completion and definitively answered "Canager
+    /// cannot run as root" *is* a completed refresh, so it must stamp
+    /// `refreshed_at`. Leaving it `None` (as carrying `previous.refreshed_at`
+    /// forward did on a process's first refresh) made the front end's
+    /// "no refresh has finished yet" loading branch match forever: a
+    /// process's euid never changes, so no later refresh could clear it
+    /// either.
+    #[tokio::test]
+    async fn test_refresh_as_root_stamps_refreshed_at() {
+        let (adapter, _state) = FakeAdapter::new("fake");
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let snapshot = session.refresh(&root_env()).await;
+        assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
+        assert!(
+            snapshot.refreshed_at.is_some(),
+            "a root refusal is a completed refresh and must set refreshed_at"
         );
     }
 

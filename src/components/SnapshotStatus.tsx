@@ -55,20 +55,35 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     );
   }
 
-  if (snapshot.refreshed_at === null && snapshot.errors.length === 0) {
+  if (
+    snapshot.detect === "Missing" &&
+    snapshot.refreshed_at === null &&
+    snapshot.errors.length === 0
+  ) {
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
-    // yet, and `detect` is still Snapshot::empty()'s placeholder `Missing`.
+    // yet, so this is still Snapshot::empty() — generation 0, no
+    // `refreshed_at`, no errors, and `detect` at its placeholder `Missing`.
     // Judging it here would flash "Homebrew isn't installed yet" at every
-    // launch. This branch only matches while `errors` is empty. Task 5's
-    // `refresh()` (crates/canager-core/src/session/mod.rs) only carries the
-    // previous `refreshed_at` forward — leaving it null here — when `stale`
-    // is true, and `stale` only becomes true from a per-instance error,
-    // i.e. exactly when `errors` is non-empty. So with `errors.length === 0`
-    // a completed refresh is guaranteed to set `refreshed_at`, and this
-    // branch ends on its own. A refresh that completes with per-instance
-    // errors on the very first attempt (`errors.length > 0`, still no prior
-    // `refreshed_at`) is handled by the dedicated branch below instead,
-    // rather than falling through to here or to the generic stale banner.
+    // launch.
+    //
+    // All three conditions are load-bearing. `detect === "Missing"` is what
+    // makes this the *placeholder* rather than a real answer: only a
+    // completed refresh can report `Found` or `RefusedAsRoot`, so those are
+    // never "still loading" no matter what the timestamp says. Matching on
+    // the timestamp alone used to swallow the root refusal entirely, and
+    // because a process's euid never changes, no later refresh could undo
+    // it — the app sat on "Loading…" forever.
+    //
+    // The timestamp and error conditions then bound how long this can last.
+    // Task 5's `refresh()` (crates/canager-core/src/session/mod.rs) leaves
+    // `refreshed_at` null only when it carries the previous value forward,
+    // which happens on a per-instance failure — i.e. exactly when `errors`
+    // is non-empty. So with `errors.length === 0` a completed refresh always
+    // sets `refreshed_at` and this branch ends on its own. A refresh that
+    // completes with per-instance errors on the very first attempt
+    // (`errors.length > 0`, still no prior `refreshed_at`) is handled by the
+    // dedicated branch below instead, rather than falling through to here or
+    // to the generic stale banner.
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
   }
 
