@@ -22,6 +22,7 @@
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
 - 搜索词校验目前套用包名规则，含空格的查询（"json processor"）被拒；spec §4.1 要求独立的 query 规则。
 - 阶段 2 的 Task 16 只做两项 i18n 自动检查：en/zh-CN 键集互比 + 组件里的 JSX 字面量扫描，**不**扫描代码里 `t("…")` 用到的键是否真的存在。若将来要补「静态校验 `t()` 键存在性」，需先把动态键改成静态查表：`Sidebar` 的 `t(\`nav.${p}\`)`、`OperationBar` 的 `operations.kind.${…}` / `operations.status.${…}`、`OperationBar`/`LogDrawer` 的 `operations.outcome.${…}`（改成 `PAGE_LABEL_KEYS` 一类的 `Record` 常量表）。动态键拼错在运行时立刻可见，不是隐蔽 bug，故阶段 2 未做。
+- 阶段 2 的更新页（`src/pages/UpdatesPage.tsx`，Task 12）直接遍历渲染，没接 `useVirtualizer`：只有 Homebrew 一个来源时更新通常只有几条到几十条，虚拟化收益极低而改动不小（每行的 `snapshot.artifacts.find` 已改为 `useMemo` 建 `Map` 的 O(1) 查找，真正的 O(n²) 已除）。接入更多来源后若更新列表可能变长，按已安装页（`InstalledPage`）的写法补 `useVirtualizer`。
 
 ## Runner 打磨（任意时机）
 

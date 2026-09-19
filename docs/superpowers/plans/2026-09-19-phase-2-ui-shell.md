@@ -4954,7 +4954,12 @@ import type { IssuedPlan, OpRequest, Settings, Snapshot, OpSummary, UiEvent } fr
  * `.message` real. Nothing outside this file calls `invoke`.
  */
 function call<T>(cmd: string, args?: InvokeArgs): Promise<T> {
-  return invoke<T>(cmd, args).catch((e: unknown) => {
+  // A no-argument command must reach `invoke` as `invoke(cmd)`, not
+  // `invoke(cmd, undefined)`: the tests assert `toHaveBeenCalledWith("get_snapshot")`
+  // with one argument, and vitest counts arguments, so a trailing `undefined`
+  // would fail every zero-argument assertion in this task.
+  const result = args === undefined ? invoke<T>(cmd) : invoke<T>(cmd, args);
+  return result.catch((e: unknown) => {
     throw e instanceof Error ? e : new Error(typeof e === "string" ? e : JSON.stringify(e));
   });
 }
@@ -5333,6 +5338,82 @@ describe("useOperationEvents", () => {
       expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(refreshedSnapshot),
     );
   });
+
+  it("ignores events that arrive after unmount while the subscription is still pending", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    let resolveSubscribe: () => void = () => {};
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+        return new Promise<void>((resolve) => {
+          resolveSubscribe = resolve;
+        });
+      }
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    const { unmount } = renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    unmount();
+
+    // The registration has not been acknowledged, so the cleanup had no
+    // `detach` to call: the Channel still delivers to the old handler.
+    capturedChannel!.onmessage({
+      Operation: { Log: { op_id: 1, stream: "Stdout", line: "late line" } },
+    });
+    capturedChannel!.onmessage({ Operation: { Finished: { op_id: 1, outcome: "Succeeded" } } });
+
+    expect(useUiStore.getState().logs).toEqual([]);
+    expect(mockInvoke).not.toHaveBeenCalledWith("refresh");
+
+    // Settle the pending registration so it cannot leak into the next test.
+    resolveSubscribe();
+    await Promise.resolve();
+  });
+
+  it("coalesces a refresh requested while one is in flight into a single follow-up", async () => {
+    // The refresh coordinator in events.ts is module-level state, so every
+    // deferred `refresh` here is resolved before the test ends; a refresh
+    // left pending would be coalesced into the next test's calls.
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    const pendingRefreshes: Array<(snapshot: Snapshot) => void> = [];
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          pendingRefreshes.push(resolve);
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    const refreshCalls = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+
+    renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+
+    // Two operations finish while the first refresh is still scanning. The
+    // backend would merge the second request into the first scan, so the
+    // front end must not fire it yet — it only notes that one is owed.
+    capturedChannel!.onmessage({ Operation: { Finished: { op_id: 1, outcome: "Succeeded" } } });
+    capturedChannel!.onmessage({ Operation: { Finished: { op_id: 2, outcome: "Succeeded" } } });
+    expect(refreshCalls()).toBe(1);
+
+    // Once the first settles, exactly one follow-up goes out.
+    pendingRefreshes[0]({ ...refreshedSnapshot, generation: 1 });
+    await waitFor(() => expect(refreshCalls()).toBe(2));
+
+    pendingRefreshes[1]({ ...refreshedSnapshot, generation: 2 });
+    await waitFor(() =>
+      expect((queryClient.getQueryData(queryKeys.snapshot) as Snapshot).generation).toBe(2),
+    );
+    expect(refreshCalls()).toBe(2);
+  });
 });
 
 describe("useStartupRefresh", () => {
@@ -5476,15 +5557,34 @@ import type { UiEvent } from "./types";
  * the backend go and look at Homebrew: `Session` starts from
  * `Snapshot::empty()` (`generation: 0`, `detect: Missing`, no artifacts,
  * `refreshed_at: null`) and `get_snapshot` merely returns whatever is in
- * memory. `Session::refresh` is serialised on the Rust side, so overlapping
- * calls (StrictMode's double mount, a `Finished` event landing during
- * startup) are safe. Failures are logged, never thrown: the stale/error
- * surfaces in Task 17 read the snapshot's own `stale`/`errors` fields.
+ * memory. Failures are logged, never thrown: the stale/error surfaces in
+ * Task 17 read the snapshot's own `stale`/`errors` fields.
+ *
+ * Refreshes are coordinated here, at module level, not per hook or per
+ * component. The backend contract is that a `refresh` arriving while one is
+ * already running does not start a second scan: it is merged into the
+ * running one and returns *that* one's result. So a refresh that is already
+ * past instance A and scanning instance B when an operation on A finishes
+ * hands back A's old inventory, and the `Finished`-triggered refresh that
+ * was merged into it never sees the change — an uninstall completes and the
+ * list does not move. To close that gap, a refresh requested while one is
+ * in flight only sets `refreshAgain`, and the in-flight refresh issues
+ * exactly one follow-up when it settles. Startup, event-driven and any
+ * later manual refresh all go through this one function, so they share the
+ * coordination; under StrictMode's double mount the second startup call is
+ * coalesced into one follow-up rather than running concurrently.
  */
+let refreshInFlight: Promise<void> | null = null;
+let refreshAgain = false;
+
 function refreshIntoCache(queryClient: QueryClient, why: string): void {
   // refreshIntoCache is a plain function, not a hook, so useUiStore.getState()
   // — rather than the useUiStore() hook — is the correct way to reach the store here.
-  refresh()
+  if (refreshInFlight) {
+    refreshAgain = true;
+    return;
+  }
+  refreshInFlight = refresh()
     .then((snapshot) => {
       queryClient.setQueryData(queryKeys.snapshot, snapshot);
       useUiStore.getState().setStartupRefreshError(null);
@@ -5492,6 +5592,13 @@ function refreshIntoCache(queryClient: QueryClient, why: string): void {
     .catch((e: unknown) => {
       console.error(`${why} refresh failed`, e);
       useUiStore.getState().setStartupRefreshError(e instanceof Error ? e.message : String(e));
+    })
+    .finally(() => {
+      refreshInFlight = null;
+      if (refreshAgain) {
+        refreshAgain = false;
+        refreshIntoCache(queryClient, `${why} (follow-up)`);
+      }
     });
 }
 
@@ -5529,6 +5636,11 @@ export function useOperationEvents(): void {
     let cancelled = false;
 
     function handle(event: UiEvent) {
+      // The subscription can still be pending when this hook unmounts
+      // (StrictMode's first mount, a window that closes at once): the cleanup
+      // below has no `detach` to call yet, so the Channel keeps delivering.
+      // This check is what makes an unmounted hook inert until then.
+      if (cancelled) return;
       if ("Operation" in event) {
         const opEvent = event.Operation;
         if ("Log" in opEvent) {
@@ -5578,12 +5690,12 @@ export function useOperationEvents(): void {
 - [ ] **Step 8: Run the tests, verify they pass**
 
 Run: `pnpm exec vitest run src/lib/queries.test.ts src/lib/events.test.ts`
-Expected: PASS (4 + 5 = 9 tests)
+Expected: PASS (4 + 7 = 11 tests)
 
-- [ ] **Step 9: Run the full suite**
+- [ ] **Step 9: Run the full suite and the type check**
 
-Run: `pnpm test`
-Expected: PASS — every test file from Tasks 9 and 10 green, 0 failures.
+Run: `pnpm test && pnpm build`
+Expected: PASS — every test file from Tasks 9 and 10 green, 0 failures; then `tsc` (the first half of `package.json`'s `"build": "tsc && vite build"`) exits clean. `pnpm test` on its own proves nothing about `types.ts`: vitest strips types, so a field name or enum variant that drifted from the Rust side would still pass every test above. The clean `tsc` run is the only evidence that the TypeScript contract matches the wire shapes in Core Interfaces. A `tsc` error here blocks the commit in Step 10.
 
 - [ ] **Step 10: Commit**
 
@@ -6290,8 +6402,10 @@ EOF
 ### Task 12: Updates page
 
 **Files:**
+- Create: `src/lib/format.ts`
 - Create: `src/components/CommandPreview.tsx`
 - Create: `src/pages/UpdatesPage.tsx`
+- Test: `src/lib/format.test.ts`
 - Test: `src/components/CommandPreview.test.tsx`
 - Test: `src/pages/UpdatesPage.test.tsx`
 - Modify: `src/App.tsx`
@@ -6299,8 +6413,8 @@ EOF
 - Modify: `src/i18n/en.json`
 
 **Interfaces:**
-- Consumes: `ArtifactRow` and its `selectable`/`secondaryContent` props (`src/components/ArtifactRow.tsx`, Task 11); `useSnapshot`, `useSettings`, `useSaveSettings`, `usePlanOperation`, `useSubmitOperation` (`src/lib/queries.ts`, Task 10); `useUiStore` (`selectedUpdates`, `toggleUpdate`, `clearSelectedUpdates`), `artifactKeyId` (`src/store/ui.ts`, Task 10); `OpRequest`, `IssuedPlan`, `UpdateCandidate` (`src/lib/types.ts`, Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` (`src/components/ui/Dialog.tsx`, Task 9).
-- Produces: `CommandPreview` (`src/components/CommandPreview.tsx`, not in the skeleton — renders a `Plan`'s `program`/`args` as the exact command that will run, satisfying the Global Constraint that every destructive action previews its command before running; Task 14's uninstall dialog reuses this same component rather than creating its own); `UpdatesPage` (`src/pages/UpdatesPage.tsx`). Both single-row Update and multi-select "Update selected" route through one shared confirmation dialog inside `UpdatesPage` before calling `useSubmitOperation`, so an update never runs without the operator having seen its command first.
+- Consumes: `ArtifactRow` and its `selectable`/`secondaryContent`/`primaryActionDisabled` props (`src/components/ArtifactRow.tsx`, Task 11); `useSnapshot`, `useSettings`, `useSaveSettings`, `usePlanOperation`, `useSubmitOperation` (`src/lib/queries.ts`, Task 10); `useUiStore` (`selectedUpdates`, `toggleUpdate`), `artifactKeyId` (`src/store/ui.ts`, Task 10); `ArtifactKey`, `InstalledArtifact`, `OpRequest`, `IssuedPlan`, `UpdateCandidate` (`src/lib/types.ts`, Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` (`src/components/ui/Dialog.tsx`, Task 9).
+- Produces: `displayToken(token: string): string` (`src/lib/format.ts` — the skeleton's "pure display helpers" file, created here; Task 13 appends `outcomeKey`/`outcomeArgs` to it); `CommandPreview` (`src/components/CommandPreview.tsx`, not in the skeleton — renders a `Plan`'s `program`/`args` as the exact command that will run, one `displayToken` per token so a path or argument containing whitespace cannot blur where one token ends and the next begins; this satisfies the Global Constraint that every destructive action previews its command before running, and Task 14's uninstall dialog reuses this same component rather than creating its own); `UpdatesPage` (`src/pages/UpdatesPage.tsx`). Both single-row Update and multi-select "Update selected" route through one shared confirmation dialog inside `UpdatesPage` before calling `useSubmitOperation`, so an update never runs without the operator having seen its command first. The dialog is driven by an explicit per-batch state machine (`Batch`/`BatchItem`, local to `UpdatesPage`) rather than by mutation-observer flags, so a batch of N items reports N results, a started item leaves the selection the moment it starts, and a superseded batch's late replies are discarded by batch id.
 
 - [ ] **Step 1: Add i18n keys**
 
@@ -6320,7 +6434,8 @@ Replace `src/i18n/en.json`:
   },
   "common": {
     "loading": "Loading…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "adapters": {
     "brew": "Homebrew"
@@ -6338,11 +6453,13 @@ Replace `src/i18n/en.json`:
   },
   "updates": {
     "upToDate": "Everything is up to date",
+    "allIgnored": "No pending updates — everything else is ignored.",
     "count_one": "{{count}} update available",
     "count_other": "{{count}} updates available",
     "updateSelected": "Update selected",
     "update": "Update",
     "ignore": "Ignore",
+    "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
     "available": "Update",
     "warnings_one": "{{count}} warning",
     "warnings_other": "{{count}} warnings",
@@ -6350,6 +6467,7 @@ Replace `src/i18n/en.json`:
     "selectRow": "Select {{name}} for update",
     "confirmTitle": "Confirm update",
     "confirmUpdate": "Confirm",
+    "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Could not start the update: {{message}}"
   },
@@ -6359,11 +6477,39 @@ Replace `src/i18n/en.json`:
 }
 ```
 
+`updates.upToDate` and `updates.allIgnored` are two different states, not two wordings of one: the first means the backend reported no updates, the second that it reported some and every one is on the ignore list. `common.close` labels the confirmation dialog's only button once a batch has finished with a failure (Task 13's log drawer reuses it).
+
 This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (Task 11's `common.*`, `adapters.*` and all of `installed.*`, including `installed.nameWithVersion`). Task 16's parity test goes red on any key that goes missing here.
 
 `Dialog` itself already exists (`src/components/ui/Dialog.tsx`, Task 9) — this task only imports it, in `UpdatesPage` below.
 
-- [ ] **Step 2: Write a failing test for `CommandPreview`**
+- [ ] **Step 2: Write failing tests for `displayToken` and `CommandPreview`**
+
+Create `src/lib/format.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { displayToken } from "./format";
+
+describe("displayToken", () => {
+  it("leaves a plain token alone", () => {
+    expect(displayToken("--cask")).toBe("--cask");
+    expect(displayToken("/opt/homebrew/bin/brew")).toBe("/opt/homebrew/bin/brew");
+  });
+
+  it("quotes a program path that contains a space", () => {
+    expect(displayToken("/Users/Alice Smith/bin/brew")).toBe("'/Users/Alice Smith/bin/brew'");
+  });
+
+  it("shows an empty argument as ''", () => {
+    expect(displayToken("")).toBe("''");
+  });
+
+  it("escapes a single quote inside a quoted token", () => {
+    expect(displayToken("it's")).toBe("'it'\\''s'");
+  });
+});
+```
 
 Create `src/components/CommandPreview.test.tsx`:
 
@@ -6381,26 +6527,55 @@ describe("CommandPreview", () => {
     expect(getByText("This will run:")).toBeInTheDocument();
     expect(getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
   });
+
+  it("quotes tokens that contain whitespace so argument boundaries stay visible", () => {
+    const { getByText } = renderWithProviders(
+      <CommandPreview program="/Users/Alice Smith/bin/brew" args={["upgrade", "--cask", "onyx"]} />,
+    );
+
+    expect(getByText("'/Users/Alice Smith/bin/brew' upgrade --cask onyx")).toBeInTheDocument();
+  });
 });
 ```
 
-- [ ] **Step 3: Run the test, verify it fails**
+- [ ] **Step 3: Run the tests, verify they fail**
 
-Run: `pnpm exec vitest run src/components/CommandPreview.test.tsx`
-Expected: FAIL — `Failed to resolve import "./CommandPreview"`.
+Run: `pnpm exec vitest run src/lib/format.test.ts src/components/CommandPreview.test.tsx`
+Expected: FAIL — `Failed to resolve import "./format"` and `Failed to resolve import "./CommandPreview"`.
 
-- [ ] **Step 4: Implement `CommandPreview`**
+- [ ] **Step 4: Implement `displayToken` and `CommandPreview`**
+
+Create `src/lib/format.ts` (the skeleton's pure display helpers; Task 13 appends `outcomeKey`/`outcomeArgs` to this same file):
+
+```ts
+/** Display-only: quotes a token that contains whitespace, a quote or is empty,
+ *  so the preview cannot blur where one argument ends and the next begins.
+ *  Nothing here is ever executed — submission only ever sends a PlanId. */
+export function displayToken(token: string): string {
+  if (token === "") return "''";
+  if (!/[\s"'\\]/.test(token)) return token;
+  return `'${token.replace(/'/g, `'\\''`)}'`;
+}
+```
 
 Create `src/components/CommandPreview.tsx`:
 
 ```tsx
 import { useTranslation } from "react-i18next";
+import { displayToken } from "../lib/format";
 
 export interface CommandPreviewProps {
   program: string;
   args: string[];
 }
 
+/**
+ * The exact command a Plan will run, one token per `displayToken`: a plain
+ * `join(" ")` cannot tell `/Users/Alice Smith/bin/brew` apart from a
+ * program called `/Users/Alice` with an argument `Smith/bin/brew`, and both
+ * destructive paths (updates here, uninstall in Task 14) rely on this
+ * component as the operator's only view of what is about to run.
+ */
 export function CommandPreview({ program, args }: CommandPreviewProps) {
   const { t } = useTranslation();
   return (
@@ -6409,17 +6584,17 @@ export function CommandPreview({ program, args }: CommandPreviewProps) {
         {t("commandPreview.label")}
       </p>
       <code className="mt-1 block overflow-x-auto rounded-md bg-[var(--color-hover)] px-3 py-2 text-xs text-[var(--color-foreground)]">
-        {[program, ...args].join(" ")}
+        {[program, ...args].map(displayToken).join(" ")}
       </code>
     </div>
   );
 }
 ```
 
-- [ ] **Step 5: Run the test, verify it passes**
+- [ ] **Step 5: Run the tests, verify they pass**
 
-Run: `pnpm exec vitest run src/components/CommandPreview.test.tsx`
-Expected: PASS (1 test)
+Run: `pnpm exec vitest run src/lib/format.test.ts src/components/CommandPreview.test.tsx`
+Expected: PASS (4 + 2 = 6 tests)
 
 - [ ] **Step 6: Write a failing test for `UpdatesPage`**
 
@@ -6427,13 +6602,17 @@ Create `src/pages/UpdatesPage.test.tsx`:
 
 ```tsx
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
-import type { Settings, Snapshot } from "../lib/types";
+import { useUiStore } from "../store/ui";
+import type { ArtifactKey, OpRequest, Settings, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
+
+const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
+const onyxKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" };
 
 const snapshot: Snapshot = {
   generation: 2,
@@ -6442,7 +6621,7 @@ const snapshot: Snapshot = {
   artifacts: [],
   updates: [
     {
-      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" },
+      key: glibKey,
       current: "2.88.3",
       target: "2.90.0",
       channel: "Native",
@@ -6450,7 +6629,7 @@ const snapshot: Snapshot = {
       warnings: [],
     },
     {
-      key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
+      key: onyxKey,
       current: "5.0.2",
       target: "5.1.0",
       channel: "Native",
@@ -6464,10 +6643,54 @@ const snapshot: Snapshot = {
 };
 
 let settings: Settings;
+let updates: Snapshot["updates"];
 // Every plan_operation answer carries a fresh server-issued id: a PlanId is
-// single-use, so the multi-select test below must prove that each submit
+// single-use, so the multi-select tests below must prove that each submit
 // sent a *different* id, not the same one twice.
 let nextPlanId: number;
+// Per-test knobs for the mocked backend. A name in `planFailures` makes its
+// plan_operation reject with that text; a plan id in `submitFailures` makes
+// its submit_operation reject; `saveFailure` makes set_settings reject. A
+// name in `holdPlans`, an id in `holdSubmits`, or `holdSaves` keeps the
+// reply pending until the test calls the matching `release*` function.
+// Rejections are bare strings, exactly as a `Result<_, String>` command
+// rejects; Task 10's `call()` turns them into Errors.
+let planFailures: Record<string, string>;
+let submitFailures: Record<number, string>;
+let saveFailure: string | null;
+let holdPlans: Set<string>;
+let holdSubmits: Set<number>;
+let holdSaves: boolean;
+let releasePlan: Record<string, () => void>;
+let releaseSubmit: Record<number, () => void>;
+let releaseSave: Array<() => void>;
+
+function issuedPlanFor(request: OpRequest, id: number) {
+  return {
+    id,
+    plan: {
+      request,
+      program: "/opt/homebrew/bin/brew",
+      args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
+      env: [],
+      needs_password: false,
+      locks: ["brew:/opt/homebrew"],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected: [],
+      timeout_secs: 1800,
+    },
+    issued_at: 1758000000,
+  };
+}
+
+function calls(cmd: string) {
+  return mockInvoke.mock.calls.filter(([name]) => name === cmd);
+}
+
+function submittedPlanIds() {
+  return calls("submit_operation").map(([, args]) => args);
+}
 
 beforeEach(() => {
   settings = {
@@ -6475,39 +6698,59 @@ beforeEach(() => {
     show_technical_details: false,
     ignored_updates: [],
   };
+  updates = snapshot.updates;
   nextPlanId = 1;
+  planFailures = {};
+  submitFailures = {};
+  saveFailure = null;
+  holdPlans = new Set();
+  holdSubmits = new Set();
+  holdSaves = false;
+  releasePlan = {};
+  releaseSubmit = {};
+  releaseSave = [];
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-    if (cmd === "get_snapshot") return Promise.resolve(snapshot);
+    if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, updates });
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "set_settings") {
-      settings = (args as { settings: Settings }).settings;
+      if (saveFailure !== null) return Promise.reject(saveFailure);
+      const next = (args as { settings: Settings }).settings;
+      if (holdSaves) {
+        return new Promise<void>((resolve) => {
+          releaseSave.push(() => {
+            settings = next;
+            resolve();
+          });
+        });
+      }
+      settings = next;
       return Promise.resolve(undefined);
     }
     if (cmd === "plan_operation") {
-      const request = (
-        args as { request: { instance_id: string; artifact_kind: string; name: string } }
-      ).request;
-      const id = nextPlanId;
+      const request = (args as { request: OpRequest }).request;
+      const failure = planFailures[request.name];
+      if (failure !== undefined) return Promise.reject(failure);
+      const issued = issuedPlanFor(request, nextPlanId);
       nextPlanId += 1;
-      return Promise.resolve({
-        id,
-        plan: {
-          request,
-          program: "/opt/homebrew/bin/brew",
-          args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
-          env: [],
-          needs_password: false,
-          locks: ["brew:/opt/homebrew"],
-          cancel_policy: "KillThenReconcile",
-          warnings: [],
-          affected: [],
-          timeout_secs: 1800,
-        },
-        issued_at: 1758000000,
-      });
+      if (holdPlans.has(request.name)) {
+        return new Promise((resolve) => {
+          releasePlan[request.name] = () => resolve(issued);
+        });
+      }
+      return Promise.resolve(issued);
     }
-    if (cmd === "submit_operation") return Promise.resolve(1);
+    if (cmd === "submit_operation") {
+      const { planId } = args as { planId: number };
+      const failure = submitFailures[planId];
+      if (failure !== undefined) return Promise.reject(failure);
+      if (holdSubmits.has(planId)) {
+        return new Promise((resolve) => {
+          releaseSubmit[planId] = () => resolve(7);
+        });
+      }
+      return Promise.resolve(7);
+    }
     return Promise.resolve(undefined);
   });
 });
@@ -6528,18 +6771,14 @@ describe("UpdatesPage", () => {
     expect(queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
   });
 
-  it("plans and, after confirming, submits a single update", async () => {
-    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+  it("previews the command, submits nothing until Confirm, then submits the single update", async () => {
+    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     const updateButtons = await findAllByRole("button", { name: "Update" });
     fireEvent.click(updateButtons[0]);
 
-    await findByRole("dialog");
-    fireEvent.click(await findByRole("button", { name: "Confirm" }));
-
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: 1 }),
-    );
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Upgrade",
@@ -6548,23 +6787,211 @@ describe("UpdatesPage", () => {
         name: "glib",
       },
     });
+    // Seeing the command comes first; opening the dialog submits nothing.
+    expect(submittedPlanIds()).toEqual([]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    // Every item started, so the dialog closes on its own.
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("submits one operation per selected item, each with its own plan id", async () => {
-    const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+  it("previews every selected command, then submits one operation per item, each with its own plan id", async () => {
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     const checkboxes = await findAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
 
     fireEvent.click(getByRole("button", { name: "Update selected" }));
-    await findByRole("dialog");
-    fireEvent.click(await findByRole("button", { name: "Confirm" }));
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    expect(submittedPlanIds()).toEqual([]);
 
-    await waitFor(() => {
-      const submitCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation");
-      expect(submitCalls.map(([, args]) => args)).toEqual([{ planId: 1 }, { planId: 2 }]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    expect(useUiStore.getState().selectedUpdates).toEqual([]);
+  });
+
+  it("submits nothing when the confirmation is cancelled", async () => {
+    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    expect(submittedPlanIds()).toEqual([]);
+  });
+
+  it("shows the backend's rejection verbatim and submits a fresh plan id only after a second Confirm", async () => {
+    // The dialog sat open past the PlanId's 10-minute lifetime (or the id
+    // was already consumed): the backend rejects with a bare string.
+    submitFailures[1] = "this plan is older than 10 minutes; preview it again";
+    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    let dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not start the update: this plan is older than 10 minutes; preview it again",
+    );
+    // The dead id is not retried on its own, and the dialog stays open so
+    // the failure can be read rather than blinking away.
+    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+    expect(calls("plan_operation")).toHaveLength(1);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Asking again plans again: a new id and a new preview, and still no
+    // submit until the user confirms that preview.
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    expect(calls("plan_operation")).toHaveLength(2);
+    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
+  });
+
+  it("shows one item's planning failure in the dialog while the other stays submittable", async () => {
+    planFailures.glib = "glib is pinned";
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    const checkboxes = await findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+
+    const dialog = await findByRole("dialog");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Couldn't prepare the update: glib is pinned",
+    );
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    expect(
+      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    // onyx holds the only issued plan (glib never received an id). The batch
+    // had a failure, so the dialog stays open with the outcome per item, and
+    // only the item that started leaves the selection.
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    await within(dialog).findByText("Started");
+    expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Formula|glib"]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
+    submitFailures[2] = "this plan is older than 10 minutes; preview it again";
+    const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    const checkboxes = await findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+
+    let dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    // glib started, onyx did not, and the dialog says which is which.
+    await within(dialog).findByText("Started");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not start the update: this plan is older than 10 minutes; preview it again",
+    );
+    expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]);
+    // A started item leaves the selection at once; the failed one stays.
+    expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Cask|onyx"]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Retry: plan_operation is asked exactly once more, for onyx only — a
+    // fresh id must never re-queue the item that already started.
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    const secondRound = calls("plan_operation").slice(2);
+    expect(secondRound).toHaveLength(1);
+    expect(secondRound[0][1]).toEqual({
+      request: {
+        kind: "Upgrade",
+        instance_id: "brew:/opt/homebrew",
+        artifact_kind: "Cask",
+        name: "onyx",
+      },
     });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }, { planId: 3 }]),
+    );
+  });
+
+  it("locks the dialog while submitting and drops a superseded batch's late reply", async () => {
+    holdPlans.add("glib");
+    holdSubmits.add(2);
+    const { findAllByRole, findByRole, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    // glib is selected so "Update selected" has something to do: the lock
+    // below is what disables it, not an empty selection.
+    fireEvent.click((await findAllByRole("checkbox"))[0]);
+    const updateButtons = await findAllByRole("button", { name: "Update" });
+
+    // Batch 1 (glib) is still planning when batch 2 (onyx) opens the dialog.
+    // Planning has no side effect beyond issuing a PlanId that expires on
+    // its own, so the newer click supersedes the older batch.
+    fireEvent.click(updateButtons[0]);
+    fireEvent.click(updateButtons[1]);
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    await waitFor(() => expect(releasePlan.glib).toBeDefined());
+
+    // Batch 1's plan lands late. It must neither replace nor add to the
+    // preview the user is looking at, and must not close it.
+    await act(async () => {
+      releasePlan.glib();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(queryByRole("dialog")).toBe(dialog);
+    expect(
+      within(dialog).queryByText("/opt/homebrew/bin/brew upgrade --formula glib"),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    // Submitting: nothing closes the dialog or starts another batch until
+    // this one has settled — not Cancel, not Escape, not "Update selected".
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled(),
+    );
+    expect(within(dialog).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(queryByRole("dialog")).toBe(dialog);
+
+    await waitFor(() => expect(releaseSubmit[2]).toBeDefined());
+    releaseSubmit[2]();
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+    expect(submittedPlanIds()).toEqual([{ planId: 2 }]);
+    expect(getByRole("button", { name: "Update selected" })).not.toBeDisabled();
   });
 
   it("removes an item from the list when Ignore is clicked", async () => {
@@ -6577,11 +7004,53 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
   });
 
-  it("shows the up-to-date state once every update is ignored", async () => {
-    settings.ignored_updates = [
-      { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" },
-      { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
-    ];
+  it("disables every Ignore while a save is pending so a second click cannot overwrite the first", async () => {
+    holdSaves = true;
+    const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
+    fireEvent.click(ignoreButtons[0]);
+
+    // Both buttons lock until the first save settles. A second Ignore now
+    // would build its settings from the same stale base, and the later save
+    // would drop the earlier one.
+    await waitFor(() => expect(ignoreButtons[1]).toBeDisabled());
+    expect(ignoreButtons[0]).toBeDisabled();
+    fireEvent.click(ignoreButtons[1]);
+    expect(calls("set_settings")).toHaveLength(1);
+
+    releaseSave[0]();
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    await findByText("onyx");
+    await waitFor(() => expect(ignoreButtons[1]).not.toBeDisabled());
+    expect(calls("set_settings")).toHaveLength(1);
+  });
+
+  it("shows the backend's message when saving the ignore list fails", async () => {
+    saveFailure = "settings.json is read-only";
+    const { findByText, findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    fireEvent.click((await findAllByRole("button", { name: "Ignore" }))[0]);
+
+    expect(await findByRole("alert")).toHaveTextContent(
+      "Couldn't save the ignored updates: settings.json is read-only",
+    );
+    // Nothing was saved, so nothing disappears.
+    expect(await findByText("glib")).toBeInTheDocument();
+  });
+
+  it("says every update is ignored — not that everything is up to date — once all are ignored", async () => {
+    settings.ignored_updates = [glibKey, onyxKey];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("No pending updates — everything else is ignored.");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
+  it("says everything is up to date only when the backend reports no updates at all", async () => {
+    updates = [];
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("Everything is up to date");
@@ -6599,7 +7068,7 @@ Expected: FAIL — `Failed to resolve import "./UpdatesPage"`.
 Create `src/pages/UpdatesPage.tsx`:
 
 ```tsx
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useSnapshot,
@@ -6612,7 +7081,13 @@ import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { CommandPreview } from "../components/CommandPreview";
 import { Dialog } from "../components/ui/Dialog";
-import type { IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
+import type {
+  ArtifactKey,
+  InstalledArtifact,
+  IssuedPlan,
+  OpRequest,
+  UpdateCandidate,
+} from "../lib/types";
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -6623,19 +7098,68 @@ function toRequest(candidate: UpdateCandidate): OpRequest {
   };
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * One selected row's journey through a batch. Exactly one of `issued` /
+ * `planError` is set once its plan settles; exactly one of `submittedOpId` /
+ * `submitError` once its submit settles. A row whose plan failed is listed
+ * in the dialog with its reason and is never submitted.
+ */
+interface BatchItem {
+  key: ArtifactKey;
+  issued: IssuedPlan | null;
+  planError: string | null;
+  submittedOpId: number | null;
+  submitError: string | null;
+}
+
+/**
+ * The confirmation flow's whole state, kept explicitly instead of being read
+ * off `usePlanOperation`/`useSubmitOperation`'s observer flags: an observer
+ * only ever reflects its *last* call, so a batch of N `mutateAsync` calls
+ * would report one result and lose the other N−1 (A fails, B succeeds: the
+ * page would show B's success and swallow A's error).
+ *
+ *   planning ─(every plan settled)─▶ ready ─(Confirm)─▶ submitting ─▶ done
+ *
+ * The dialog opens at `ready` if at least one plan was issued; when every
+ * plan failed the batch goes straight to `done` with the dialog shut and
+ * the reasons shown on the page. `done` is reached after submitting only
+ * when something failed — a batch whose every item started closes the
+ * dialog instead. `id` is compared with `batchIdRef` before any async
+ * callback writes back, so a superseded batch's late reply can neither
+ * overwrite a newer preview nor close a newer dialog.
+ */
+interface Batch {
+  id: number;
+  phase: "planning" | "ready" | "submitting" | "done";
+  items: BatchItem[];
+}
+
+function hasIssuedPlan(batch: Batch): boolean {
+  return batch.items.some((item) => item.issued !== null);
+}
+
 export function UpdatesPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
   const saveSettings = useSaveSettings();
+  // Used only for their promise-returning `mutateAsync` — which keeps
+  // `useSubmitOperation`'s operations-query invalidation — never for their
+  // `isPending`/`isError`/`error`; every flag the UI needs comes from `batch`.
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
   const selectedUpdates = useUiStore((s) => s.selectedUpdates);
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
-  const clearSelectedUpdates = useUiStore((s) => s.clearSelectedUpdates);
 
-  const [pendingPlans, setPendingPlans] = useState<IssuedPlan[] | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  // Monotonic. The batch whose id equals this is the only one allowed to
+  // write state; every async continuation checks `isCurrent` after `await`.
+  const batchIdRef = useRef(0);
 
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
@@ -6652,52 +7176,118 @@ export function UpdatesPage() {
     [visibleUpdates, selectedUpdates],
   );
 
+  // One lookup table instead of a `snapshot.artifacts.find` per row: that
+  // scan made every render O(updates × artifacts).
+  const artifactsById = useMemo(() => {
+    const byId = new Map<string, InstalledArtifact>();
+    for (const artifact of snapshot?.artifacts ?? []) {
+      byId.set(artifactKeyId(artifact.key), artifact);
+    }
+    return byId;
+  }, [snapshot]);
+
   // Default view hides version numbers (Global Constraints); the row falls
   // back to the artifact's description, exactly as the Installed page does.
   const descriptionFor = (candidate: UpdateCandidate): string => {
     if (settings?.show_technical_details) {
       return t("updates.versionChange", { current: candidate.current, target: candidate.target });
     }
-    const artifact = snapshot?.artifacts.find(
-      (a) => artifactKeyId(a.key) === artifactKeyId(candidate.key),
+    return (
+      artifactsById.get(artifactKeyId(candidate.key))?.description ?? t("installed.noDescription")
     );
-    return artifact?.description ?? t("installed.noDescription");
   };
 
-  async function openConfirm(candidates: UpdateCandidate[]) {
-    setSubmitError(null);
-    try {
-      const plans = await Promise.all(
-        candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
-      );
-      setPendingPlans(plans);
-    } catch {
-      // Rendered below from planMutation.isError / planMutation.error, so the
-      // backend's message is shown verbatim instead of escaping as an
-      // unhandled rejection.
+  function isCurrent(id: number): boolean {
+    return batchIdRef.current === id;
+  }
+
+  function deselect(key: ArtifactKey) {
+    // Read the store directly: this runs after an `await`, when the
+    // `selectedUpdates` captured by this render may already be stale.
+    const store = useUiStore.getState();
+    if (store.selectedUpdates.includes(artifactKeyId(key))) {
+      store.toggleUpdate(key);
     }
+  }
+
+  async function openConfirm(candidates: UpdateCandidate[]) {
+    // A new id retires whatever batch was still planning. Planning has no
+    // side effect beyond issuing PlanIds that expire on their own, so the
+    // newest click wins and the older batch's late replies are dropped by
+    // `isCurrent`. Submitting is different — see the lock in the dialog.
+    const id = batchIdRef.current + 1;
+    batchIdRef.current = id;
+    const blank = (c: UpdateCandidate): BatchItem => ({
+      key: c.key,
+      issued: null,
+      planError: null,
+      submittedOpId: null,
+      submitError: null,
+    });
+    setBatch({ id, phase: "planning", items: candidates.map(blank) });
+
+    // allSettled, not all: one rejected plan must not hide the others, and
+    // each item keeps its own backend message verbatim.
+    const results = await Promise.allSettled(
+      candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
+    );
+    if (!isCurrent(id)) return;
+
+    const items = candidates.map((c, i): BatchItem => {
+      const result = results[i];
+      return {
+        ...blank(c),
+        issued: result.status === "fulfilled" ? result.value : null,
+        planError: result.status === "rejected" ? errorMessage(result.reason) : null,
+      };
+    });
+    // Nothing to confirm when no plan came back: the dialog stays shut and
+    // the reasons are rendered on the page (see `pageErrors` below).
+    setBatch({ id, phase: items.some((item) => item.issued !== null) ? "ready" : "done", items });
   }
 
   async function confirmAndSubmit() {
-    if (!pendingPlans) return;
-    try {
-      for (const issued of pendingPlans) {
-        await submitMutation.mutateAsync(issued.id);
+    if (!batch || batch.phase !== "ready") return;
+    const { id } = batch;
+    const items = [...batch.items];
+    setBatch({ id, phase: "submitting", items });
+
+    // Sequential, not concurrent: each item's result is recorded before the
+    // next is sent, so a failure part-way leaves an exact record of what did
+    // start. A started item leaves the selection at once, so a retry after a
+    // partial failure re-plans only what never started — a single-use PlanId
+    // cannot stop the same item being re-queued under a fresh id, only the
+    // selection can.
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (!item.issued) continue;
+      try {
+        const opId = await submitMutation.mutateAsync(item.issued.id);
+        items[i] = { ...item, submittedOpId: opId };
+        deselect(item.key);
+      } catch (e) {
+        // A PlanId is single-use and expires after 10 minutes. Whatever the
+        // backend said (`Expired`, `Unknown`, anything else), this id is
+        // spent: keep the message verbatim and carry on with the next item.
+        items[i] = { ...item, submitError: errorMessage(e) };
       }
-      clearSelectedUpdates();
-    } catch (err) {
-      // A PlanId is single-use and expires after 10 minutes. Whatever the
-      // backend said (`Expired`, `Unknown`, anything else), the preview in
-      // the dialog is no longer valid: show the message verbatim and close
-      // the dialog so the next Update click asks for a fresh IssuedPlan.
-      setSubmitError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPendingPlans(null);
+      if (!isCurrent(id)) return;
+      setBatch({ id, phase: "submitting", items: [...items] });
     }
+    if (!isCurrent(id)) return;
+
+    const anyFailed = items.some((item) => item.planError !== null || item.submitError !== null);
+    // Only a clean sweep closes the dialog; otherwise it stays open and
+    // says, per item, what started and what did not, and why.
+    setBatch(anyFailed ? { id, phase: "done", items } : null);
   }
 
   function ignore(candidate: UpdateCandidate) {
-    if (!settings) return;
+    // One save at a time. A second Ignore while the first is pending would
+    // build its settings from the same stale base, and the later save would
+    // overwrite the earlier one. The buttons are disabled meanwhile; this
+    // guard covers a click that was already queued.
+    if (!settings || saveSettings.isPending) return;
     if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
       toggleUpdate(candidate.key);
     }
@@ -6714,20 +7304,37 @@ export function UpdatesPage() {
     return null;
   }
 
-  if (visibleUpdates.length === 0) {
+  // Two different kinds of empty: the backend found no updates, or it found
+  // some and every one is on the ignore list. Only the first means the
+  // machine is up to date.
+  if (snapshot.updates.length === 0) {
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("updates.upToDate")}</p>;
   }
+  if (visibleUpdates.length === 0) {
+    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("updates.allIgnored")}</p>;
+  }
+
+  const dialogOpen = batch !== null && batch.phase !== "planning" && hasIssuedPlan(batch);
+  const submitting = batch?.phase === "submitting";
+  // Every plan failed: there is nothing to confirm, so the reasons go on the
+  // page rather than into an empty dialog. Cleared by the next batch.
+  const pageErrors =
+    batch !== null && batch.phase === "done" && !hasIssuedPlan(batch) ? batch.items : [];
 
   return (
     <div className="flex h-full flex-col">
-      {planMutation.isError ? (
-        <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
-          {t("updates.planFailed", { message: planMutation.error.message })}
+      {pageErrors.map((item) => (
+        <p
+          key={artifactKeyId(item.key)}
+          role="alert"
+          className="px-4 pt-4 text-sm text-[var(--color-danger)]"
+        >
+          {t("updates.planFailed", { message: item.planError ?? "" })}
         </p>
-      ) : null}
-      {submitError !== null ? (
+      ))}
+      {saveSettings.isError ? (
         <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
-          {t("updates.submitFailed", { message: submitError })}
+          {t("updates.ignoreFailed", { message: saveSettings.error.message })}
         </p>
       ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
@@ -6736,7 +7343,7 @@ export function UpdatesPage() {
         </p>
         <button
           type="button"
-          disabled={selectedVisible.length === 0 || planMutation.isPending}
+          disabled={selectedVisible.length === 0 || dialogOpen}
           onClick={() => openConfirm(selectedVisible)}
           className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
         >
@@ -6757,7 +7364,7 @@ export function UpdatesPage() {
             badgeVariant={candidate.warnings.length > 0 ? "warning" : "info"}
             primaryActionLabel={t("updates.update")}
             onPrimaryAction={() => openConfirm([candidate])}
-            primaryActionDisabled={planMutation.isPending}
+            primaryActionDisabled={dialogOpen}
             selectable={{
               checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
               onToggle: () => toggleUpdate(candidate.key),
@@ -6767,7 +7374,8 @@ export function UpdatesPage() {
               <button
                 type="button"
                 onClick={() => ignore(candidate)}
-                className="shrink-0 text-xs text-[var(--color-muted)] underline"
+                disabled={saveSettings.isPending}
+                className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
               >
                 {t("updates.ignore")}
               </button>
@@ -6776,34 +7384,68 @@ export function UpdatesPage() {
         ))}
       </div>
       <Dialog
-        open={pendingPlans !== null}
+        open={dialogOpen}
         onOpenChange={(open) => {
-          if (!open) setPendingPlans(null);
+          // Escape and overlay clicks arrive here. A submitting batch runs to
+          // completion no matter what — closing early would leave the old
+          // loop running against a dialog the user might reopen — so the
+          // request is ignored until it has settled. The footer follows the
+          // same rule: Cancel is disabled while submitting.
+          if (!open && !submitting) setBatch(null);
         }}
         title={t("updates.confirmTitle")}
         footer={
-          <>
+          batch?.phase === "done" ? (
             <button
               type="button"
-              onClick={() => setPendingPlans(null)}
+              onClick={() => setBatch(null)}
               className="rounded-md px-3 py-1 text-sm"
             >
-              {t("common.cancel")}
+              {t("common.close")}
             </button>
-            <button
-              type="button"
-              onClick={confirmAndSubmit}
-              disabled={submitMutation.isPending}
-              className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
-            >
-              {t("updates.confirmUpdate")}
-            </button>
-          </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setBatch(null)}
+                disabled={submitting}
+                className="rounded-md px-3 py-1 text-sm disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={confirmAndSubmit}
+                disabled={batch?.phase !== "ready"}
+                className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+              >
+                {t("updates.confirmUpdate")}
+              </button>
+            </>
+          )
         }
       >
-        <div className="flex flex-col gap-3">
-          {(pendingPlans ?? []).map((issued, index) => (
-            <CommandPreview key={index} program={issued.plan.program} args={issued.plan.args} />
+        <div className="flex flex-col gap-4">
+          {(batch?.items ?? []).map((item) => (
+            <div key={artifactKeyId(item.key)} className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">{item.key.name}</p>
+              {item.planError !== null ? (
+                <p role="alert" className="text-sm text-[var(--color-danger)]">
+                  {t("updates.planFailed", { message: item.planError })}
+                </p>
+              ) : null}
+              {item.issued !== null ? (
+                <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
+              ) : null}
+              {item.submittedOpId !== null ? (
+                <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
+              ) : null}
+              {item.submitError !== null ? (
+                <p role="alert" className="text-sm text-[var(--color-danger)]">
+                  {t("updates.submitFailed", { message: item.submitError })}
+                </p>
+              ) : null}
+            </div>
           ))}
         </div>
       </Dialog>
@@ -6815,7 +7457,7 @@ export function UpdatesPage() {
 - [ ] **Step 9: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run src/pages/UpdatesPage.test.tsx`
-Expected: PASS (6 tests)
+Expected: PASS (14 tests)
 
 - [ ] **Step 10: Wire `UpdatesPage` into the app shell**
 
@@ -6863,7 +7505,7 @@ Expected: FAIL — one test in `src/App.test.tsx` ("switches the content area wh
 
 - [ ] **Step 11: Retarget the App shell test at what the real Updates page renders**
 
-The shell test must assert on content the Updates page actually shows, not on the placeholder heading this task removed. With `updates: []` in the test's mocked snapshot, `UpdatesPage` renders its up-to-date message. Replace only that one test in `src/App.test.tsx`, leaving the rest of the file untouched:
+The shell test must assert on content the Updates page actually shows, not on the placeholder heading this task removed. With `updates: []` in the test's mocked snapshot the backend reported no updates at all, so `UpdatesPage` renders its up-to-date message (the all-ignored message is a different branch, covered in Step 6). Replace only that one test in `src/App.test.tsx`, leaving the rest of the file untouched:
 
 ```tsx
   it("switches the content area when a sidebar link is clicked", async () => {
@@ -6884,7 +7526,7 @@ Expected: PASS — every test file from Tasks 9–12 green, 0 failures.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/components/CommandPreview.tsx src/components/CommandPreview.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/App.tsx src/App.test.tsx src/i18n/en.json
+git add src/lib/format.ts src/lib/format.test.ts src/components/CommandPreview.tsx src/components/CommandPreview.test.tsx src/pages/UpdatesPage.tsx src/pages/UpdatesPage.test.tsx src/App.tsx src/App.test.tsx src/i18n/en.json
 git commit -m "$(cat <<'EOF'
 feat(ui): add the Updates page with command-previewed single and batch updates
 
@@ -6899,7 +7541,7 @@ EOF
 
 **Files:**
 - Create: `src/components/ui/ScrollArea.tsx`
-- Create: `src/lib/format.ts`
+- Modify: `src/lib/format.ts`
 - Create: `src/components/OperationBar.tsx`
 - Create: `src/components/LogDrawer.tsx`
 - Test: `src/components/OperationBar.test.tsx`
@@ -6910,7 +7552,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `useOperations`, `useCancelOperation` (`src/lib/queries.ts`, Task 10); `useOperationEvents`, `useStartupRefresh` (`src/lib/events.ts`, Task 10); `useUiStore` (`drawerOpen`, `setDrawerOpen`, `focusedOpId`, `setFocusedOpId`, `logs`) (`src/store/ui.ts`, Task 10); `OpStatus`, `Outcome` (`src/lib/types.ts`, Task 10).
-- Produces: `ScrollArea` (`src/components/ui/ScrollArea.tsx`, a thin Radix ScrollArea wrapper — not in the skeleton); `outcomeKey(outcome: Outcome): string` and `outcomeArgs(outcome: Outcome): Record<string, unknown>` (`src/lib/format.ts` — the skeleton's "pure display helpers" file, created here because both `OperationBar` and `LogDrawer` need to turn an `Outcome` into an `operations.outcome.*` key plus interpolation values); `OperationBar`, `LogDrawer`. `App.tsx` is modified to mount both and to call `useOperationEvents()` and `useStartupRefresh()` once at the top level — the first starts the Channel subscription for the whole app, the second is the call that makes the backend actually look at Homebrew for the first time.
+- Produces: `ScrollArea` (`src/components/ui/ScrollArea.tsx`, a thin Radix ScrollArea wrapper — not in the skeleton); `outcomeKey(outcome: Outcome): string` and `outcomeArgs(outcome: Outcome): Record<string, unknown>` (appended to `src/lib/format.ts`, the skeleton's "pure display helpers" file that Task 12 created with `displayToken`, because both `OperationBar` and `LogDrawer` need to turn an `Outcome` into an `operations.outcome.*` key plus interpolation values); `OperationBar`, `LogDrawer`. `App.tsx` is modified to mount both and to call `useOperationEvents()` and `useStartupRefresh()` once at the top level — the first starts the Channel subscription for the whole app, the second is the call that makes the backend actually look at Homebrew for the first time.
 
 - [ ] **Step 1: Add i18n keys and the ScrollArea wrapper**
 
@@ -6949,11 +7591,13 @@ Replace `src/i18n/en.json`:
   },
   "updates": {
     "upToDate": "Everything is up to date",
+    "allIgnored": "No pending updates — everything else is ignored.",
     "count_one": "{{count}} update available",
     "count_other": "{{count}} updates available",
     "updateSelected": "Update selected",
     "update": "Update",
     "ignore": "Ignore",
+    "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
     "available": "Update",
     "warnings_one": "{{count}} warning",
     "warnings_other": "{{count}} warnings",
@@ -6961,6 +7605,7 @@ Replace `src/i18n/en.json`:
     "selectRow": "Select {{name}} for update",
     "confirmTitle": "Confirm update",
     "confirmUpdate": "Confirm",
+    "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Could not start the update: {{message}}"
   },
@@ -6997,7 +7642,7 @@ Replace `src/i18n/en.json`:
 }
 ```
 
-This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (all of Task 12's `updates.*` and `commandPreview.label` — note the trailing colon in `"This will run:"`, which Task 12's `CommandPreview.test.tsx` asserts verbatim). Task 16's parity test goes red on any key that goes missing here; a changed *value* is caught only by the test that asserts it.
+This is a whole-file replacement: before writing it, confirm key by key that it still contains every key the previous task wrote (all of Task 12's `common.close`, `updates.*` — including `updates.allIgnored`, `updates.ignoreFailed` and `updates.started` — and `commandPreview.label`; note the trailing colon in `"This will run:"`, which Task 12's `CommandPreview.test.tsx` asserts verbatim). Task 16's parity test goes red on any key that goes missing here; a changed *value* is caught only by the test that asserts it.
 
 Create `src/components/ui/ScrollArea.tsx`:
 
@@ -7115,12 +7760,21 @@ describe("OperationBar", () => {
 Run: `pnpm exec vitest run src/components/OperationBar.test.tsx`
 Expected: FAIL — `Failed to resolve import "./OperationBar"`.
 
-- [ ] **Step 4: Implement `format.ts` and `OperationBar`**
+- [ ] **Step 4: Extend `format.ts` and implement `OperationBar`**
 
-Create `src/lib/format.ts` (the skeleton's pure display helpers; `OperationBar` below and `LogDrawer` in Step 8 both import from here):
+Modify `src/lib/format.ts` (created in Task 12 with `displayToken`): add the `Outcome` import at the top and append `outcomeKey`/`outcomeArgs` — `OperationBar` below and `LogDrawer` in Step 8 both import them from here. The whole file after the edit:
 
 ```ts
 import type { Outcome } from "./types";
+
+/** Display-only: quotes a token that contains whitespace, a quote or is empty,
+ *  so the preview cannot blur where one argument ends and the next begins.
+ *  Nothing here is ever executed — submission only ever sends a PlanId. */
+export function displayToken(token: string): string {
+  if (token === "") return "''";
+  if (!/[\s"'\\]/.test(token)) return token;
+  return `'${token.replace(/'/g, `'\\''`)}'`;
+}
 
 /** The `operations.outcome.*` key suffix for an Outcome, mirroring its externally tagged variant name. */
 export function outcomeKey(outcome: Outcome): string {
@@ -7529,6 +8183,10 @@ beforeEach(() => {
   vi.mocked(invoke).mockReset();
 });
 
+function submitCalls() {
+  return vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "submit_operation");
+}
+
 describe("UninstallDialog", () => {
   it("shows a checking message and a disabled confirm button while the plan is loading", async () => {
     vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
@@ -7580,30 +8238,62 @@ describe("UninstallDialog", () => {
 
     const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    // The exact command is on screen, and nothing has been submitted, before
+    // the user is allowed to confirm.
+    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    expect(submitCalls()).toHaveLength(0);
     fireEvent.click(confirmButton);
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("submit_operation", { planId: 1 });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("shows the backend's error verbatim and asks for a fresh plan when submitting fails", async () => {
+  it("submits nothing when the dialog is cancelled", async () => {
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor());
+    const onOpenChange = vi.fn();
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={onOpenChange} request={request} displayName="jq" />,
+    );
+
+    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(submitCalls()).toHaveLength(0);
+  });
+
+  it("shows the backend's error verbatim, re-plans, and submits the fresh id only when confirmed again", async () => {
     // The dialog sat open past the PlanId's 10-minute lifetime (or the id was
     // already consumed): the backend rejects with a bare string, and the
     // stale preview must not be resubmittable with the same id.
     let planCalls = 0;
+    let submitAttempts = 0;
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") {
         planCalls += 1;
         return { ...issuedPlanFor(), id: planCalls };
       }
       if (cmd === "submit_operation") {
-        throw "this plan is older than 10 minutes; preview it again";
+        submitAttempts += 1;
+        if (submitAttempts === 1) {
+          throw "this plan is older than 10 minutes; preview it again";
+        }
+        return 7;
       }
       throw new Error(`unexpected command ${cmd}`);
     });
+    const onSubmitted = vi.fn();
 
     renderWithProviders(
-      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+      <UninstallDialog
+        open
+        onOpenChange={() => {}}
+        request={request}
+        displayName="jq"
+        onSubmitted={onSubmitted}
+      />,
     );
 
     const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
@@ -7614,6 +8304,18 @@ describe("UninstallDialog", () => {
       "this plan is older than 10 minutes; preview it again",
     );
     await waitFor(() => expect(planCalls).toBe(2));
+    // Confirm re-enables only once the fresh plan has arrived; its preview is
+    // on screen, but the fresh id has not been sent — the dead id is still
+    // the only submit so far, and nothing was reported as started.
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: 1 }]);
+    expect(onSubmitted).not.toHaveBeenCalled();
+
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: 1 }, { planId: 2 }]);
   });
 });
 ```
@@ -7776,11 +8478,11 @@ Both error strings interpolate `{{message}}`: the backend's error text is shown 
 - [ ] **Step 4: Run it and confirm it passes**
 
 Run: `pnpm exec vitest run src/components/UninstallDialog.test.tsx`
-Expected: PASS — 4 tests passed.
+Expected: PASS — 5 tests passed.
 
 - [ ] **Step 5: Write the failing tests for wiring `UninstallDialog` into `InstalledPage`**
 
-`InstalledPage` (Task 11) currently wires the row's "Uninstall" button straight to `planMutation.mutate({...})`, with no dialog and no command preview — a direct violation of the Global Constraint that every destructive action previews its command first. Replace the existing "plans an uninstall when the row's primary button is clicked" test in `src/pages/InstalledPage.test.tsx` with the following three, and add the `within` import:
+`InstalledPage` (Task 11) currently wires the row's "Uninstall" button straight to `planMutation.mutate({...})`, with no dialog and no command preview — a direct violation of the Global Constraint that every destructive action previews its command first. Replace the existing "plans an uninstall when the row's primary button is clicked" test in `src/pages/InstalledPage.test.tsx` with the following two, and add the `within` import:
 
 ```tsx
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -8107,7 +8809,7 @@ export function InstalledPage() {
 - [ ] **Step 8: Run the suite and confirm it passes**
 
 Run: `pnpm exec vitest run src/pages/InstalledPage.test.tsx src/components/UninstallDialog.test.tsx`
-Expected: PASS — 5 tests passed in `InstalledPage.test.tsx` (the 3 unchanged from Task 11, including the filter test, plus the 2 replacing the old direct-`plan_operation` test), 4 in `UninstallDialog.test.tsx`.
+Expected: PASS — 5 tests passed in `InstalledPage.test.tsx` (the 3 unchanged from Task 11, including the filter test, plus the 2 replacing the old direct-`plan_operation` test), 5 in `UninstallDialog.test.tsx`.
 
 - [ ] **Step 9: Run the full front-end suite**
 
@@ -8740,16 +9442,19 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
   },
   "updates": {
     "upToDate": "所有内容都已是最新",
+    "allIgnored": "没有待处理的更新，其余都已忽略。",
     "count_other": "{{count}} 个可用更新",
     "updateSelected": "更新所选项",
     "update": "更新",
     "ignore": "忽略",
+    "ignoreFailed": "没能保存已忽略的更新:{{message}}",
     "available": "更新",
     "warnings_other": "{{count}} 条警告",
     "versionChange": "{{current}} → {{target}}",
     "selectRow": "选择要更新的 {{name}}",
     "confirmTitle": "确认更新",
     "confirmUpdate": "确认",
+    "started": "已开始",
     "planFailed": "没能准备这次更新:{{message}}",
     "submitFailed": "没能开始更新:{{message}}"
   },
@@ -8819,7 +9524,7 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
 }
 ```
 
-Keys that carry `{{message}}` (`updates.planFailed`, `updates.submitFailed`, `uninstall.planError`, `uninstall.submitError`, `settings.saveError`) show the backend's error text verbatim inside the Chinese sentence; `operations.current` puts the status in parentheses instead of after an em dash, which is the whole reason that line is one interpolated key rather than three fragments joined in JSX.
+Keys that carry `{{message}}` (`updates.planFailed`, `updates.submitFailed`, `updates.ignoreFailed`, `uninstall.planError`, `uninstall.submitError`, `settings.saveError`) show the backend's error text verbatim inside the Chinese sentence; `operations.current` puts the status in parentheses instead of after an em dash, which is the whole reason that line is one interpolated key rather than three fragments joined in JSX.
 
 Chinese has no plural forms, so every English key that only exists as `_one`/`_other` (`installed.showDependencies_one` / `_other`, `updates.count_one` / `_other`, `updates.warnings_one` / `_other`) is mirrored here with a single `_other` entry — i18next falls back to the `_other` form for any count in a locale that declares no plural rule for the key, and Step 1's completeness test already normalizes away plural suffixes before comparing key sets, so a lone `_other` on the Chinese side counts as parity with both `_one` and `_other` on the English side.
 
