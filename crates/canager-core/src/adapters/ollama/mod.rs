@@ -592,6 +592,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_check_updates_flags_the_model_as_outdated_when_the_registry_manifest_differs() {
+        // The committed fixture pair is deliberately the already-up-to-date
+        // case (identical 1209-digest sets), so the branch that produces a
+        // real, checkable candidate cannot be reached from fixtures alone.
+        // Keep the recorded local manifest and mock the registry side with
+        // inline JSON carrying a different config digest and different layer
+        // digests — "Inline JSON in a unit test is fine and is not a fixture"
+        // (Global Constraints), the same technique the cargo adapter uses in
+        // `test_check_updates_flags_the_fixture_crate_as_outdated`.
+        const REPUBLISHED_CONFIG_DIGEST: &str =
+            "sha256:9f1c0b6d2e4a58c3719d84b0ff62a7d5c1e830469b2a4f7d8c6051e39ab7d240";
+        let republished_manifest = format!(
+            r#"{{"schemaVersion":2,
+                "mediaType":"application/vnd.docker.distribution.manifest.v2+json",
+                "config":{{"mediaType":"application/vnd.docker.container.image.v1+json",
+                          "digest":"{REPUBLISHED_CONFIG_DIGEST}","size":251}},
+                "layers":[
+                  {{"mediaType":"application/vnd.ollama.image.tensor",
+                   "digest":"sha256:3c9d1f0a77b45e2681df0c4a95b3e7182d6a0f4c58b91e7d03a26f8c4b1d95e0",
+                   "size":715161924,"name":"lm_head.weight"}},
+                  {{"mediaType":"application/vnd.ollama.image.tensor",
+                   "digest":"sha256:b7e4a1c05f38d296471ea80c3b95d6f2081c74a3e9d05b6f2a8c41739de60bb2",
+                   "size":2542796928,"name":"model.layers.0.mlp.down_proj.weight"}}
+                ]}}"#
+        );
+
+        let tags_json =
+            std::fs::read_to_string("../../adapters/fixtures/ollama/0.34.1/api-tags.json")
+                .expect("read ollama api-tags.json fixture");
+        let local_json = std::fs::read_to_string(
+            "../../adapters/fixtures/ollama/0.34.1/local-manifest-qwen3.8-27b-mlx.json",
+        )
+        .expect("read local manifest fixture");
+
+        let home = std::env::temp_dir().join(format!(
+            "canager-ollama-outdated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let model_dir = home.join("models/manifests/registry.ollama.ai/library/qwen3.8");
+        std::fs::create_dir_all(&model_dir).expect("create fixture manifest dir");
+        std::fs::write(model_dir.join("27b-mlx"), &local_json).expect("write local manifest");
+
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "http://127.0.0.1:11434/api/tags",
+            HttpResponse {
+                status: 200,
+                body: tags_json,
+            },
+        );
+        http.respond(
+            "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx",
+            HttpResponse {
+                status: 200,
+                body: republished_manifest,
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http);
+        let inst = test_instance("http://127.0.0.1:11434", home.clone());
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        assert_eq!(candidates.len(), 1, "one installed model, one candidate");
+        let candidate = &candidates[0];
+        assert_eq!(candidate.key.name, "qwen3.8:27b-mlx");
+        assert!(
+            candidate.checkable,
+            "a differing registry manifest is a real, offerable update"
+        );
+        assert!(candidate.warnings.is_empty());
+        assert_eq!(candidate.channel, UpdateChannel::Digest);
+        // `target` is the registry's config digest, not the tag: the tag
+        // (`27b-mlx`) is unchanged by a republish, so it could never show a
+        // difference.
+        assert_eq!(candidate.target, REPUBLISHED_CONFIG_DIGEST);
+        // `current` is the local digest `/api/tags` reported, so the two
+        // sides of the candidate really differ.
+        assert_eq!(
+            candidate.current,
+            "5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e"
+        );
+        assert_ne!(candidate.current, candidate.target);
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
     async fn test_check_updates_marks_a_model_uncheckable_when_the_local_manifest_is_missing() {
         // Edge case the fixture cannot show directly: the local manifest
         // file is absent (e.g. deleted out from under Canager).
