@@ -14,6 +14,14 @@ pub struct Settings {
     pub language: Language,
     pub show_technical_details: bool,
     pub ignored_updates: Vec<ArtifactKey>,
+    /// Feeds CheckOptions.include_self_updating. Default false: most people
+    /// do not want Chrome and Docker listed as updatable when those apps
+    /// update themselves. `#[serde(default)]` so a settings.json written by
+    /// an older Canager version (or a front end not yet sending this field)
+    /// still deserializes instead of losing every other field to
+    /// `Settings::default()` in `load()`.
+    #[serde(default)]
+    pub include_self_updating: bool,
 }
 
 impl Default for Settings {
@@ -22,6 +30,7 @@ impl Default for Settings {
             language: Language::System,
             show_technical_details: false,
             ignored_updates: Vec::new(),
+            include_self_updating: false,
         }
     }
 }
@@ -100,6 +109,7 @@ mod tests {
         assert!(json.contains("\"language\":\"System\""));
         assert!(json.contains("\"show_technical_details\":false"));
         assert!(json.contains("\"ignored_updates\":[]"));
+        assert!(json.contains("\"include_self_updating\":false"));
     }
 
     #[test]
@@ -118,6 +128,25 @@ mod tests {
     }
 
     #[test]
+    fn test_load_of_json_missing_include_self_updating_defaults_it_to_false_and_keeps_the_rest() {
+        // A settings.json written before this field existed (or sent by a
+        // not-yet-updated front end) must still load its other fields
+        // rather than falling back to Settings::default() entirely — that
+        // would silently discard a user's language and ignored_updates.
+        let path = temp_settings_path("no-include-self-updating");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[]}"#,
+        )
+        .expect("write settings.json without include_self_updating");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details);
+        assert!(!loaded.include_self_updating);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn test_save_then_load_round_trips_a_non_default_settings() {
         let path = temp_settings_path("roundtrip");
         let settings = Settings {
@@ -128,6 +157,7 @@ mod tests {
                 kind: ArtifactKind::Formula,
                 name: "jq".to_string(),
             }],
+            include_self_updating: true,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

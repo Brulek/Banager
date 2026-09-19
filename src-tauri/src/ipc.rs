@@ -26,10 +26,10 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 /// whole plan that does so outside a test.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
     let generation_before = state.session.snapshot().generation;
-    let snapshot = state
-        .session
-        .refresh(&HostEnv::discover(), &CheckOptions::default())
-        .await;
+    let opts = CheckOptions {
+        include_self_updating: state.get_settings().include_self_updating,
+    };
+    let snapshot = state.session.refresh(&HostEnv::discover(), &opts).await;
     if snapshot.generation != generation_before {
         state.channel_sink.broadcast(UiEvent::SnapshotChanged {
             generation: snapshot.generation,
@@ -147,7 +147,7 @@ mod tests {
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
 
     struct FakeAdapter {
@@ -158,6 +158,11 @@ mod tests {
         /// reaches the runner (F1 in the design review); every other test
         /// in this module ignores it.
         execute_calls: Arc<AtomicUsize>,
+        /// Every `CheckOptions` this adapter's `check_updates` was handed,
+        /// in order. Proves the Settings toggle really reaches the adapter
+        /// on a refresh instead of only round-tripping through
+        /// get_settings/set_settings.
+        check_options_calls: Arc<Mutex<Vec<CheckOptions>>>,
     }
 
     #[async_trait]
@@ -191,8 +196,9 @@ mod tests {
         async fn check_updates(
             &self,
             _inst: &ManagerInstance,
-            _opts: &CheckOptions,
+            opts: &CheckOptions,
         ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+            self.check_options_calls.lock().unwrap().push(*opts);
             Ok(Vec::new())
         }
 
@@ -259,7 +265,7 @@ mod tests {
     }
 
     fn state_with_fake_adapter() -> AppState {
-        let (state, _execute_calls) = state_with_fake_adapter_and_now(None);
+        let (state, _execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         state
     }
 
@@ -280,7 +286,7 @@ mod tests {
     /// rather than checking that a *real* operation's events arrive.
     fn state_with_fake_adapter_and_now(
         now_fn: Option<fn() -> i64>,
-    ) -> (AppState, Arc<AtomicUsize>) {
+    ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
         let instance = ManagerInstance {
             id: "fake:1".to_string(),
             adapter_id: "fake".to_string(),
@@ -300,10 +306,12 @@ mod tests {
             verified_versions: vec![],
         };
         let execute_calls = Arc::new(AtomicUsize::new(0));
+        let check_options_calls = Arc::new(Mutex::new(Vec::new()));
         let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
             meta,
             instance,
             execute_calls: execute_calls.clone(),
+            check_options_calls: check_options_calls.clone(),
         });
         let sink = ChannelSink::new();
         let session =
@@ -314,7 +322,7 @@ mod tests {
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
         };
-        (state, execute_calls)
+        (state, execute_calls, check_options_calls)
     }
 
     #[tokio::test]
@@ -521,7 +529,7 @@ mod tests {
         // PlanId, never anything the caller invents — including a
         // tampered or forged id nothing ever issued. The runner must never
         // be reached.
-        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
         let err = submit_operation_impl(&state, 999_999)
             .expect_err("an unissued plan id must be rejected");
@@ -541,7 +549,7 @@ mod tests {
         // F1: each issued plan is single-use. Resubmitting the same id —
         // e.g. a replayed IPC call — must be rejected the second time, not
         // silently run the operation again.
-        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
             kind: OpKind::Install,
@@ -580,7 +588,8 @@ mod tests {
             EXPIRED_PLAN_TEST_NOW.load(Ordering::SeqCst)
         }
 
-        let (state, execute_calls) = state_with_fake_adapter_and_now(Some(expired_plan_test_now));
+        let (state, execute_calls, _check_options_calls) =
+            state_with_fake_adapter_and_now(Some(expired_plan_test_now));
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
             kind: OpKind::Install,
@@ -620,6 +629,35 @@ mod tests {
             get_settings_impl(&state).expect("get_settings_impl again"),
             settings
         );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_impl_passes_include_self_updating_from_settings_to_check_updates() {
+        // Backend end of the backlog's `greedy_casks` item: the Settings
+        // toggle must actually reach `Adapter::check_updates` on every
+        // refresh, not just round-trip through get_settings/set_settings.
+        let (state, _execute_calls, check_options_calls) = state_with_fake_adapter_and_now(None);
+        let mut settings = get_settings_impl(&state).expect("get_settings_impl");
+        settings.include_self_updating = true;
+        set_settings_impl(&state, settings).expect("set_settings_impl");
+
+        refresh_impl(&state).await.expect("refresh_impl");
+
+        let calls = check_options_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0].include_self_updating,
+            "refresh_impl must read the persisted setting and thread it through, got {calls:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_impl_defaults_include_self_updating_to_false() {
+        let (state, _execute_calls, check_options_calls) = state_with_fake_adapter_and_now(None);
+        refresh_impl(&state).await.expect("refresh_impl");
+        let calls = check_options_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert!(!calls[0].include_self_updating);
     }
 
     #[test]

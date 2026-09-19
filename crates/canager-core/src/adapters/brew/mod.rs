@@ -232,16 +232,14 @@ impl BrewAdapter {
     pub async fn check_updates(
         &self,
         inst: &ManagerInstance,
-        _opts: &CheckOptions,
+        opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
         self.maybe_update(inst).await?;
-        let output = self
-            .run_brew(
-                inst,
-                vec!["outdated".to_string(), "--json=v2".to_string()],
-                Duration::from_secs(120),
-            )
-            .await?;
+        let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
+        if opts.include_self_updating {
+            args.push("--greedy".to_string());
+        }
+        let output = self.run_brew(inst, args, Duration::from_secs(120)).await?;
         if output.exit_code != Some(0) {
             return Err(AdapterError::CommandFailed {
                 code: output.exit_code,
@@ -821,6 +819,46 @@ mod tests {
             update_calls_after_second_round, 2,
             "within the TTL window, neither instance should run `brew update` again"
         );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_passes_greedy_flag_when_include_self_updating_is_true() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let empty_outdated = r#"{"formulae":[],"casks":[]}"#;
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/brew",
+                "outdated",
+                "--json=v2",
+                "--greedy",
+            ],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: empty_outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let opts = CheckOptions {
+            include_self_updating: true,
+        };
+        let result = adapter
+            .check_updates(&test_instance(), &opts)
+            .await
+            .expect("check_updates with --greedy");
+        assert!(result.is_empty());
     }
 
     #[tokio::test]
