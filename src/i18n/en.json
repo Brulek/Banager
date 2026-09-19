@@ -131,6 +131,11 @@
       "retryFailed": "Trying again didn't work: {{message}}",
       "retry": "Try again"
     },
+    "firstRefreshFailed": {
+      "title": "Couldn't finish the first check",
+      "description_one": "The first check couldn't finish for {{count}} source, so what you see below may be incomplete.",
+      "description_other": "The first check couldn't finish for {{count}} sources, so what you see below may be incomplete."
+    },
     "nothingInstalled": {
       "title": "Nothing installed yet",
       "description": "Once you install something with Homebrew, it will show up here."

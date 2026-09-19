@@ -127,6 +127,10 @@
       "retryFailed": "重试没有成功:{{message}}",
       "retry": "重试"
     },
+    "firstRefreshFailed": {
+      "title": "首次检查没能完成",
+      "description_other": "首次检查有 {{count}} 个来源没能完成,下面显示的内容可能不完整。"
+    },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
       "description": "用 Homebrew 装点什么之后,就会显示在这里。"

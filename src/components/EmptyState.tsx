@@ -28,7 +28,7 @@ export function EmptyState({
       className={
         isBanner
           ? "flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar-bg)] px-6 py-3"
-          : "flex flex-1 flex-col items-center justify-center gap-3 p-12 text-center"
+          : "flex h-full flex-col items-center justify-center gap-3 p-12 text-center"
       }
     >
       {icon}

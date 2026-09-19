@@ -56,6 +56,34 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Homebrew isn't installed yet")).not.toBeInTheDocument();
   });
 
+  it("shows a distinct first-check-incomplete banner (not the stale-data banner) when the very first refresh completes with a per-instance error", async () => {
+    // previous.refreshed_at is None from Snapshot::empty(): Task 5's
+    // refresh() carries that None forward whenever stale is true, even
+    // though the refresh promise resolved and errors is non-empty. There is
+    // no prior successful refresh, so this must not read as "some data
+    // might be out of date" (the generic stale banner) — there is no
+    // "some data" yet, only an incomplete first check.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        generation: 0,
+        refreshed_at: null,
+        stale: true,
+        errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
+      }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't finish the first check")).toBeInTheDocument();
+    expect(screen.getByText("installed list")).toBeInTheDocument();
+    expect(screen.queryByText("Some data might be out of date")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
   it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
     // get_snapshot itself succeeded with the empty startup snapshot, but the
     // startup refresh() IPC call rejected — refreshed_at will never be set.

@@ -59,9 +59,54 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
     // yet, and `detect` is still Snapshot::empty()'s placeholder `Missing`.
     // Judging it here would flash "Homebrew isn't installed yet" at every
-    // launch. A completed refresh always sets refreshed_at (Task 5), even
-    // when Homebrew really is missing, so this branch ends on its own.
+    // launch. This branch only matches while `errors` is empty. Task 5's
+    // `refresh()` (crates/canager-core/src/session/mod.rs) only carries the
+    // previous `refreshed_at` forward — leaving it null here — when `stale`
+    // is true, and `stale` only becomes true from a per-instance error,
+    // i.e. exactly when `errors` is non-empty. So with `errors.length === 0`
+    // a completed refresh is guaranteed to set `refreshed_at`, and this
+    // branch ends on its own. A refresh that completes with per-instance
+    // errors on the very first attempt (`errors.length > 0`, still no prior
+    // `refreshed_at`) is handled by the dedicated branch below instead,
+    // rather than falling through to here or to the generic stale banner.
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
+  }
+
+  if (snapshot.refreshed_at === null && snapshot.errors.length > 0) {
+    // First-ever refresh (previous.refreshed_at was None from
+    // Snapshot::empty()) that hit a per-instance error. The refresh promise
+    // resolved (so this isn't a load-failed case) and `detect` may well be
+    // "Found" (so this isn't the no-Homebrew case either), but there is no
+    // prior successful refresh — unlike the generic stale-banner case below,
+    // nothing here is actually "out of date"; the first check itself simply
+    // didn't finish. Distinguishing the copy avoids implying stale prior
+    // data exists on what is, in fact, a first launch. Laid out the same
+    // way as the generic stale banner below (a local `h-full` flex column,
+    // not plain siblings under `<main>`) so this banner-above-content
+    // combination doesn't overflow `<main>` either — see that branch's
+    // comment for why.
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <EmptyState
+          variant="banner"
+          title={t("emptyStates.firstRefreshFailed.title")}
+          description={
+            refreshMutation.isError
+              ? t("emptyStates.refreshFailed.retryFailed", {
+                  message: refreshMutation.error.message,
+                })
+              : t("emptyStates.firstRefreshFailed.description", {
+                  count: snapshot.errors.length,
+                })
+          }
+          action={{
+            label: t("emptyStates.refreshFailed.retry"),
+            onClick: () => refreshMutation.mutate(),
+          }}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      </div>
+    );
   }
 
   if (snapshot.detect === "Missing") {
@@ -83,8 +128,19 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
   }
 
   if (snapshot.stale && snapshot.errors.length > 0) {
+    // The banner variant is meant to "sit above still-visible content"
+    // without hiding any of it, but `children` (e.g. InstalledPage) sizes
+    // itself with `h-full` — 100% of the nearest positioned ancestor with a
+    // definite height, which is `<main>` in App.tsx, not this banner's
+    // sibling slot. Stacked as plain siblings under `<main>`, the banner's
+    // own height plus `children`'s 100%-of-`<main>` height would overflow
+    // `<main>`'s box, forcing an extra scroll to reach content that would
+    // otherwise be fully visible. Constraining both to a local `h-full` flex
+    // column — banner sized to its own content, `children` wrapped in the
+    // remaining `flex-1 min-h-0` space with its own scroll — keeps the
+    // total height exactly at `<main>`'s height, so nothing overflows.
     return (
-      <>
+      <div className="flex h-full flex-col overflow-hidden">
         <EmptyState
           variant="banner"
           title={t("emptyStates.refreshFailed.title")}
@@ -100,8 +156,8 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
             onClick: () => refreshMutation.mutate(),
           }}
         />
-        {children}
-      </>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      </div>
     );
   }
 
