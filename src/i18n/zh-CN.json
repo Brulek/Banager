@@ -46,7 +46,8 @@
     "submitFailed": "没能开始更新:{{message}}"
   },
   "commandPreview": {
-    "label": "将执行:"
+    "label": "将执行:",
+    "needsPassword": "这一步会要求你输入 Mac 密码。"
   },
   "operations": {
     "idle": "当前没有正在进行的操作",

@@ -58,6 +58,9 @@ let saveFailure: string | null;
 let holdPlans: Set<string>;
 let holdSubmits: Set<number>;
 let holdSaves: boolean;
+// Names whose plan comes back with `needs_password: true`, mirroring the
+// brew adapter, which sets it for every Cask upgrade.
+let needsPassword: Set<string>;
 let releasePlan: Record<string, () => void>;
 let releaseSubmit: Record<number, () => void>;
 let releaseSave: Array<() => void>;
@@ -70,7 +73,7 @@ function issuedPlanFor(request: OpRequest, id: number) {
       program: "/opt/homebrew/bin/brew",
       args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
       env: [],
-      needs_password: false,
+      needs_password: needsPassword.has(request.name),
       locks: ["brew:/opt/homebrew"],
       cancel_policy: "KillThenReconcile",
       warnings: [],
@@ -103,6 +106,7 @@ beforeEach(() => {
   holdPlans = new Set();
   holdSubmits = new Set();
   holdSaves = false;
+  needsPassword = new Set();
   releasePlan = {};
   releaseSubmit = {};
   releaseSave = [];
@@ -212,6 +216,29 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
+  });
+
+  it("warns per item, before the sudo prompt, about the one update that needs a password", async () => {
+    // A batch can mix Casks and formulae, and the brew adapter only sets
+    // `needs_password` for Casks (crates/canager-core/src/adapters/brew/
+    // mod.rs). Spec §6: whatever will ask for a password says so in the
+    // preview, next to the command it belongs to.
+    needsPassword.add("onyx");
+    const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    const checkboxes = await findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+
+    const notices = within(dialog).getAllByText("This will ask for your Mac password.");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].closest("div")?.textContent).toContain("onyx");
+    expect(notices[0].closest("div")?.textContent).not.toContain("glib");
   });
 
   it("submits nothing when the confirmation is cancelled", async () => {

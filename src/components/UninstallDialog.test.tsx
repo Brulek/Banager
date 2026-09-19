@@ -55,6 +55,31 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
+  it("warns before the sudo prompt when the plan needs a password, and stays quiet when it does not", async () => {
+    // Every Cask uninstall sets `needs_password` (crates/canager-core/src/
+    // adapters/brew/mod.rs), so removing a GUI app pops a system password
+    // dialog. Spec §6: an operation that needs a password is marked in the
+    // preview — a password is never a surprise.
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ needs_password: true }));
+
+    const { unmount } = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    expect(await screen.findByText("This will ask for your Mac password.")).toBeInTheDocument();
+
+    unmount();
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ needs_password: false }));
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    // Wait for the plan to land, so absence means "not rendered", not "not yet".
+    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    expect(screen.queryByText("This will ask for your Mac password.")).not.toBeInTheDocument();
+  });
+
   it("disables confirm and explains what would break when something depends on it", async () => {
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ affected: ["jq-cli-wrapper"] }));
 

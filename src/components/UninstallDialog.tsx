@@ -155,6 +155,15 @@ export function UninstallDialog({
             )}
 
             <CommandPreview program={plan.program} args={plan.args} />
+
+            {plan.needs_password && (
+              // Every Cask uninstall sets `needs_password`, so removing a GUI
+              // app pops a system password dialog. Spec §6 requires that to be
+              // marked in the preview: a password is never a surprise.
+              <p className="text-sm font-medium text-[var(--color-foreground)]">
+                {t("commandPreview.needsPassword")}
+              </p>
+            )}
           </div>
         )}
       </div>

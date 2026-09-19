@@ -369,6 +369,15 @@ export function UpdatesPage() {
               {item.issued !== null ? (
                 <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
               ) : null}
+              {item.issued?.plan.needs_password ? (
+                // Per item, not per batch: a batch can mix Casks (which the
+                // brew adapter marks) and formulae (which it does not), so
+                // the notice belongs next to the command that will trigger
+                // the prompt. Spec §6: a password is never a surprise.
+                <p className="text-sm font-medium text-[var(--color-foreground)]">
+                  {t("commandPreview.needsPassword")}
+                </p>
+              ) : null}
               {item.submittedOpId !== null ? (
                 <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
               ) : null}
