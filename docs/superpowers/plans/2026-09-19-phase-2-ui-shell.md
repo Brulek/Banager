@@ -2693,10 +2693,13 @@ mod tests {
 }
 ```
 
-Then add `mod events;` to `src-tauri/src/lib.rs`, right above the existing `#[tauri::command] fn greet...` line (it will be removed in Step 6, but this keeps the module declared while both exist momentarily). This must happen now, not after the implementation exists: the module has to actually be part of the crate for the compile failure in Step 2 below to be the real one (unresolved names), rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review):
+Then add `pub mod events;` to `src-tauri/src/lib.rs`, right above the existing `#[tauri::command] fn greet...` line (it will be removed in Step 6, but this keeps the module declared while both exist momentarily). This must happen now, not after the implementation exists: the module has to actually be part of the crate for the compile failure in Step 2 below to be the real one (unresolved names), rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review):
+
+`pub`, not a private `mod`: nothing consumes `UiEvent`/`ChannelSink` until Task 7 builds `AppState`, and this workspace lints with `-D warnings`. This crate has a library target (`canager_lib`), so items of a public module count as reachable API and `dead_code` stays quiet without an `#[allow]`.
+
 
 ```rust
-mod events;
+pub mod events;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -2706,7 +2709,7 @@ fn greet(name: &str) -> String {
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
 Run: `cargo test -p canager --lib events::`
-Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (the module is now part of the crate via `mod events;`, so this is a real compile failure — the referenced types simply do not exist yet; Step 3 implements them).
+Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (the module is now part of the crate via `pub mod events;`, so this is a real compile failure — the referenced types simply do not exist yet; Step 3 implements them).
 
 - [ ] **Step 3: Implement `UiEvent` and `ChannelSink`**
 
@@ -2749,7 +2752,7 @@ impl EventSink for ChannelSink {
 }
 ```
 
-(`mod events;` was already added to `src-tauri/src/lib.rs` in Step 1, so there is nothing left to wire in here.)
+(`pub mod events;` was already added to `src-tauri/src/lib.rs` in Step 1, so there is nothing left to wire in here.)
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
@@ -2897,10 +2900,10 @@ mod tests {
 }
 ```
 
-Then add `mod state;` to `src-tauri/src/lib.rs`, next to `mod events;`:
+Then add `mod state;` to `src-tauri/src/lib.rs`, next to `pub mod events;`:
 
 ```rust
-mod events;
+pub mod events;
 mod state;
 ```
 
@@ -2992,7 +2995,7 @@ EOF
 Replace the whole of `src-tauri/src/lib.rs` with:
 
 ```rust
-mod events;
+pub mod events;
 mod state;
 
 use state::AppState;
@@ -3550,7 +3553,7 @@ mod tests {
 Then add `mod ipc;` to `src-tauri/src/lib.rs`, alongside the existing module declarations:
 
 ```rust
-mod events;
+pub mod events;
 mod ipc;
 mod state;
 ```
