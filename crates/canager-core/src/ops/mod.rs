@@ -1,13 +1,14 @@
 use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
-    AdapterId, ArtifactKey, InstanceId, ManagerInstance, OpKind, OpStatus, Outcome, Plan,
-    ResourceLock,
+    AdapterId, ArtifactKey, ArtifactKind, InstanceId, ManagerInstance, OpKind, OpStatus, Outcome,
+    Plan, ResourceLock,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 pub struct OpRecord {
@@ -15,7 +16,6 @@ pub struct OpRecord {
     pub plan: Plan,
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
-    pub cancel: CancellationToken,
 }
 
 /// Releases a specific op's resource locks from the shared `held` set
@@ -91,6 +91,27 @@ pub struct OperationManager {
     /// distinct resources are involved — spec §6: same lock serial,
     /// different locks parallel, at most 3 overall.
     semaphore: Arc<Semaphore>,
+    /// Fired every time any operation reaches `Done`, so `wait()` can react
+    /// immediately instead of polling `records` every 20 ms. A single
+    /// instance shared by every operation: `wait(op_id)` re-checks its own
+    /// `op_id`'s status after every wake, so a notification meant for a
+    /// different op just costs one extra, harmless status check.
+    done_notify: Arc<Notify>,
+}
+
+/// A read-only view of one operation for a UI, independent of the
+/// operation's own lifetime bookkeeping (`OpRecord`/`OpInternal`). Carries
+/// exactly what a list of "current and recent operations" needs to render.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpSummary {
+    pub id: OpId,
+    pub kind: OpKind,
+    pub instance_id: InstanceId,
+    pub artifact_kind: ArtifactKind,
+    pub name: String,
+    pub status: OpStatus,
+    pub outcome: Option<Outcome>,
+    pub argv_preview: Vec<String>, // program followed by args
 }
 
 impl OperationManager {
@@ -103,6 +124,7 @@ impl OperationManager {
             records: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicU64::new(1),
             semaphore: Arc::new(Semaphore::new(3)),
+            done_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -125,8 +147,31 @@ impl OperationManager {
             plan: r.plan.clone(),
             status: r.status,
             outcome: r.outcome.clone(),
-            cancel: r.cancel.clone(),
         })
+    }
+
+    /// Newest first (descending op id).
+    pub fn summaries(&self) -> Vec<OpSummary> {
+        let records = self.records.lock().unwrap();
+        let mut summaries: Vec<OpSummary> = records
+            .values()
+            .map(|r| {
+                let mut argv_preview = vec![r.plan.program.to_string_lossy().to_string()];
+                argv_preview.extend(r.plan.args.iter().cloned());
+                OpSummary {
+                    id: r.id,
+                    kind: r.plan.request.kind,
+                    instance_id: r.plan.request.instance_id.clone(),
+                    artifact_kind: r.plan.request.artifact_kind,
+                    name: r.plan.request.name.clone(),
+                    status: r.status,
+                    outcome: r.outcome.clone(),
+                    argv_preview,
+                }
+            })
+            .collect();
+        summaries.sort_by_key(|s| std::cmp::Reverse(s.id));
+        summaries
     }
 
     pub fn cancel(&self, op_id: OpId) {
@@ -153,6 +198,13 @@ impl OperationManager {
 
     pub async fn wait(&self, op_id: OpId) -> Option<Outcome> {
         loop {
+            // Register interest in the next notification *before* checking
+            // `records`: `Notify::notified()`'s returned future remembers a
+            // notification that lands between this line and the `.await`
+            // below, so a `finish()` racing with this check can never be
+            // missed — the lost-wakeup a naive "check, then await" would
+            // have. This replaces the previous 20ms-poll implementation.
+            let notified = self.done_notify.notified();
             {
                 let records = self.records.lock().unwrap();
                 match records.get(&op_id) {
@@ -161,7 +213,7 @@ impl OperationManager {
                     _ => {}
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            notified.await;
         }
     }
 
@@ -468,6 +520,7 @@ impl OperationManager {
                 }
             }
         }
+        self.done_notify.notify_waiters();
         self.sink.emit(OperationEvent::Finished { op_id, outcome });
     }
 }
