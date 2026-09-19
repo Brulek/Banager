@@ -24,6 +24,19 @@ const ADAPTER_LABEL_KEYS: Record<string, string> = {
 // judgement call the UI is making on its own.
 const READ_ONLY_ADAPTER_IDS = new Set(["pip"]);
 
+// A group header on its own is one line. A group header that also carries a
+// SourceNotice (pip's read-only note, Ollama's not-running warning) is a title
+// plus a banner -- a title line, a description line and, for Ollama, a button.
+// Both numbers are only the virtualizer's first guess: every row reports its
+// real height through `measureElement` as soon as it is in the DOM.
+const ROW_ESTIMATE = 56;
+const NOTICE_GROUP_ESTIMATE = 120;
+
+/** Whether this source's group header renders a SourceNotice under it. */
+function hasSourceNotice(adapterId: string, healthy: boolean): boolean {
+  return READ_ONLY_ADAPTER_IDS.has(adapterId) || (adapterId === "ollama" && !healthy);
+}
+
 type ListItem =
   | {
       type: "group";
@@ -82,9 +95,7 @@ export function InstalledPage() {
       // A source can need a notice (pip's read-only note, Ollama not
       // running) even with nothing installed to list under it -- most
       // visibly, an unhealthy Ollama daemon that has nothing to report yet.
-      const needsNotice =
-        READ_ONLY_ADAPTER_IDS.has(instance.adapter_id) ||
-        (instance.adapter_id === "ollama" && !instance.healthy);
+      const needsNotice = hasSourceNotice(instance.adapter_id, instance.healthy);
       if (artifacts.length === 0 && !needsNotice) continue;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
       result.push({
@@ -121,7 +132,12 @@ export function InstalledPage() {
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
+    estimateSize: (index) => {
+      const item = items[index];
+      return item?.type === "group" && hasSourceNotice(item.adapterId, item.healthy)
+        ? NOTICE_GROUP_ESTIMATE
+        : ROW_ESTIMATE;
+    },
   });
 
   if (isLoading) {
@@ -148,15 +164,21 @@ export function InstalledPage() {
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = items[virtualRow.index];
             return (
+              // The row reports its own height back to the virtualizer, and
+              // carries no fixed one. A group header plus a SourceNotice is
+              // far taller than a plain row, so a fixed height would let the
+              // banner overflow its slot -- and the next row, later in DOM
+              // order and therefore painted on top, would cover its tail,
+              // including the Ollama notice's "Open Ollama" button.
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
                 style={{
                   position: "absolute",
                   top: 0,
                   left: 0,
                   width: "100%",
-                  height: `${virtualRow.size}px`,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
