@@ -1,9 +1,379 @@
+use crate::adapters::{
+    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+};
+use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateCandidate,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance,
+    OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
     UpdateChannel,
 };
+use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
+use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+
+/// A search box takes free text, not a package name: `validate_package_name`
+/// matches `^[A-Za-z0-9@._+/-]+$`, so it rejects any multi-word query
+/// ("json parser") as an *invalid name*, which is both wrong and confusing.
+/// That function exists to keep a path out of an argv; this one exists to
+/// keep a query out of argv's flag namespace and to bound its length. npm
+/// itself decides what matches.
+fn validate_search_query(query: &str) -> Result<(), AdapterError> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') || trimmed.len() > 200 {
+        return Err(AdapterError::InvalidName(query.to_string()));
+    }
+    Ok(())
+}
+
+/// The real check for `NpmAdapter::new`'s `prefix_writable_fn` default:
+/// whether the current user can write to `prefix` (the global `node_modules`
+/// directory `npm prefix -g` reports). A prefix owned by another user (e.g. a
+/// system-wide npm) is read-only for this adapter — see the per-adapter
+/// contract table's Notes column.
+fn real_prefix_is_writable(prefix: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    match std::ffi::CString::new(prefix.as_os_str().as_bytes()) {
+        Ok(c_path) => unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 },
+        Err(_) => false,
+    }
+}
+
+pub struct NpmAdapter {
+    runner: Arc<dyn CommandRunner>,
+    meta: AdapterMeta,
+    /// How to decide whether `inst.prefix` is writable by the current user,
+    /// gating install/uninstall/upgrade. Production always gets
+    /// `real_prefix_is_writable`; tests inject a fixed answer via the
+    /// `#[cfg(test)]`-only `with_prefix_writable_fn`, mirroring
+    /// `BrewAdapter::with_euid_fn`.
+    prefix_writable_fn: fn(&Path) -> bool,
+}
+
+impl NpmAdapter {
+    pub const ENV: [(&'static str, &'static str); 3] = [
+        ("NO_COLOR", "1"),
+        ("npm_config_update_notifier", "false"),
+        ("npm_config_fund", "false"),
+    ];
+
+    pub fn new(runner: Arc<dyn CommandRunner>) -> NpmAdapter {
+        let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/npm.toml"))
+            .expect("adapters/meta/npm.toml must parse");
+        NpmAdapter {
+            runner,
+            meta,
+            prefix_writable_fn: real_prefix_is_writable,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_prefix_writable_fn(mut self, f: fn(&Path) -> bool) -> NpmAdapter {
+        self.prefix_writable_fn = f;
+        self
+    }
+
+    fn env_vec(&self) -> Vec<(String, String)> {
+        Self::ENV
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn instance_id_for(prefix: &Path) -> String {
+        format!("npm:{}", prefix.display())
+    }
+
+    async fn run_npm(
+        &self,
+        inst: &ManagerInstance,
+        args: Vec<String>,
+        timeout: Duration,
+    ) -> Result<CommandOutput, AdapterError> {
+        let spec = CommandSpec {
+            program: inst.exe_path.clone(),
+            args,
+            env: self.env_vec(),
+            cwd: None,
+            timeout,
+        };
+        Ok(self
+            .runner
+            .run(spec, None, CancellationToken::new())
+            .await?)
+    }
+
+    pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
+        let Some(exe_path) = resolve_exe("npm", env) else {
+            return Vec::new();
+        };
+        let prefix_spec = CommandSpec {
+            program: exe_path.clone(),
+            args: vec!["prefix".to_string(), "-g".to_string()],
+            env: self.env_vec(),
+            cwd: None,
+            timeout: Duration::from_secs(30),
+        };
+        let prefix_output = self
+            .runner
+            .run(prefix_spec, None, CancellationToken::new())
+            .await;
+        let prefix = match &prefix_output {
+            Ok(o) if o.exit_code == Some(0) => PathBuf::from(o.stdout.trim()),
+            _ => return Vec::new(),
+        };
+        let version_spec = CommandSpec {
+            program: exe_path.clone(),
+            args: vec!["--version".to_string()],
+            env: self.env_vec(),
+            cwd: None,
+            timeout: Duration::from_secs(30),
+        };
+        let version_output = self
+            .runner
+            .run(version_spec, None, CancellationToken::new())
+            .await;
+        let version = match version_output {
+            Ok(o) if o.exit_code == Some(0) => Some(o.stdout.trim().to_string()),
+            _ => None,
+        };
+        let unverified_version = self.meta.unverified_version(&version);
+        vec![ManagerInstance {
+            id: Self::instance_id_for(&prefix),
+            adapter_id: self.meta.id.clone(),
+            exe_path,
+            prefix,
+            scope: Scope::User,
+            healthy: version.is_some(),
+            version,
+            unverified_version,
+        }]
+    }
+
+    pub async fn inventory(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        let output = self
+            .run_npm(
+                inst,
+                vec![
+                    "ls".to_string(),
+                    "-g".to_string(),
+                    "--depth=0".to_string(),
+                    "--json".to_string(),
+                ],
+                Duration::from_secs(60),
+            )
+            .await?;
+        // `npm ls -g --depth=0 --json` exits 1 for various non-fatal
+        // reasons (e.g. peer dependency mismatches); accept 0 or 1 and
+        // always parse stdout — see the per-adapter contract table.
+        if output.exit_code != Some(0) && output.exit_code != Some(1) {
+            return Err(AdapterError::CommandFailed {
+                code: output.exit_code,
+                stderr: output.stderr,
+            });
+        }
+        parse_ls_global(&output.stdout, &inst.id)
+    }
+
+    pub async fn check_updates(
+        &self,
+        inst: &ManagerInstance,
+        _opts: &CheckOptions,
+    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        let output = self
+            .run_npm(
+                inst,
+                vec![
+                    "outdated".to_string(),
+                    "-g".to_string(),
+                    "--json".to_string(),
+                ],
+                Duration::from_secs(60),
+            )
+            .await?;
+        // npm exits 1 whenever it finds anything outdated — a result, not a
+        // failure. See the per-adapter contract table.
+        if output.exit_code != Some(0) && output.exit_code != Some(1) {
+            return Err(AdapterError::CommandFailed {
+                code: output.exit_code,
+                stderr: output.stderr,
+            });
+        }
+        parse_outdated_global(&output.stdout, &inst.id)
+    }
+
+    pub async fn search(
+        &self,
+        inst: &ManagerInstance,
+        query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        validate_search_query(query)?;
+        let output = self
+            .run_npm(
+                inst,
+                vec![
+                    "search".to_string(),
+                    "--json".to_string(),
+                    "--searchlimit".to_string(),
+                    "20".to_string(),
+                    query.to_string(),
+                ],
+                Duration::from_secs(30),
+            )
+            .await?;
+        if output.exit_code != Some(0) {
+            return Err(AdapterError::CommandFailed {
+                code: output.exit_code,
+                stderr: output.stderr,
+            });
+        }
+        parse_search(&output.stdout, &self.meta.id)
+    }
+
+    pub async fn plan(
+        &self,
+        inst: &ManagerInstance,
+        req: &OpRequest,
+    ) -> Result<Plan, AdapterError> {
+        if req.instance_id != inst.id {
+            return Err(AdapterError::Refused(format!(
+                "plan requested for instance {} but given instance {}",
+                req.instance_id, inst.id
+            )));
+        }
+        validate_package_name(&req.name)?;
+        if !(self.prefix_writable_fn)(&inst.prefix) {
+            return Err(AdapterError::Refused(format!(
+                "{} is not writable; this npm install is read-only for the current user",
+                inst.prefix.display()
+            )));
+        }
+        let lock = ResourceLock(inst.id.clone());
+        let args = match req.kind {
+            OpKind::Install => vec!["install".to_string(), "-g".to_string(), req.name.clone()],
+            OpKind::Uninstall => vec!["uninstall".to_string(), "-g".to_string(), req.name.clone()],
+            OpKind::Upgrade => vec![
+                "install".to_string(),
+                "-g".to_string(),
+                format!("{}@latest", req.name),
+            ],
+        };
+        Ok(Plan {
+            request: req.clone(),
+            program: inst.exe_path.clone(),
+            args,
+            env: self.env_vec(),
+            needs_password: false,
+            locks: vec![lock],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: Vec::new(),
+            affected: Vec::new(),
+            timeout_secs: 600,
+        })
+    }
+
+    pub async fn execute(
+        &self,
+        plan: &Plan,
+        sink: Arc<dyn EventSink>,
+        op_id: OpId,
+        cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        run_plan(&self.runner, plan, sink, op_id, cancel).await
+    }
+
+    pub async fn reconcile(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        let artifacts = self.inventory(inst).await?;
+        match artifacts.into_iter().find(|a| a.key.name == key.name) {
+            Some(a) => Ok(Reconciled {
+                present: true,
+                version: Some(a.version),
+            }),
+            None => Ok(Reconciled {
+                present: false,
+                version: None,
+            }),
+        }
+    }
+}
+
+#[async_trait]
+impl Adapter for NpmAdapter {
+    fn meta(&self) -> &AdapterMeta {
+        &self.meta
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            search: true,
+            per_item_upgrade: true,
+            upgrade_all: false,
+            uninstall: true,
+            background_check: true,
+            cancel_safe: true,
+        }
+    }
+
+    async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
+        NpmAdapter::detect(self, env).await
+    }
+
+    async fn inventory(
+        &self,
+        inst: &ManagerInstance,
+    ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        NpmAdapter::inventory(self, inst).await
+    }
+
+    async fn check_updates(
+        &self,
+        inst: &ManagerInstance,
+        opts: &CheckOptions,
+    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        NpmAdapter::check_updates(self, inst, opts).await
+    }
+
+    async fn search(
+        &self,
+        inst: &ManagerInstance,
+        query: &str,
+    ) -> Result<Vec<SearchHit>, AdapterError> {
+        NpmAdapter::search(self, inst, query).await
+    }
+
+    async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
+        NpmAdapter::plan(self, inst, req).await
+    }
+
+    async fn execute(
+        &self,
+        plan: &Plan,
+        sink: Arc<dyn EventSink>,
+        op_id: OpId,
+        cancel: CancellationToken,
+    ) -> Result<Outcome, AdapterError> {
+        NpmAdapter::execute(self, plan, sink, op_id, cancel).await
+    }
+
+    async fn reconcile(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        NpmAdapter::reconcile(self, inst, key).await
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct LsGlobalRoot {
@@ -184,5 +554,395 @@ mod tests {
             Some("Server-side jQuery wrapper for node.")
         );
         assert!(hits.iter().all(|h| h.adapter_id == "npm"));
+    }
+
+    use crate::adapters::{Adapter, AdapterError, CheckOptions};
+    use crate::events::VecSink;
+    use crate::model::{
+        ArtifactKey, CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock, Scope,
+    };
+    use crate::runner::{CommandOutput, HostEnv, MockRunner};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    fn test_instance() -> ManagerInstance {
+        ManagerInstance {
+            id: "npm:/opt/homebrew/lib".to_string(),
+            adapter_id: "npm".to_string(),
+            exe_path: PathBuf::from("/opt/homebrew/bin/npm"),
+            prefix: PathBuf::from("/opt/homebrew/lib"),
+            scope: Scope::User,
+            version: Some("12.0.2".to_string()),
+            healthy: true,
+            unverified_version: None,
+        }
+    }
+
+    fn fake_exe(dir: &std::path::Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, b"#!/bin/sh\n").expect("write fake npm executable");
+        path
+    }
+
+    #[tokio::test]
+    async fn test_detect_finds_npm_on_path_and_resolves_its_global_prefix() {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-npm-detect-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let npm_path = fake_exe(&dir, "npm");
+        let npm_path_str = npm_path.to_str().expect("utf8 path");
+
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm_path_str, "prefix", "-g"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "/opt/homebrew\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec![npm_path_str, "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "12.0.2\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].id, "npm:/opt/homebrew");
+        assert_eq!(instances[0].version, Some("12.0.2".to_string()));
+        assert!(instances[0].healthy);
+        assert!(
+            instances[0].unverified_version.is_none(),
+            "12.0.2 is verified in adapters/meta/npm.toml"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_flags_an_unverified_version() {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-npm-detect-unverified-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let npm_path = fake_exe(&dir, "npm");
+        let npm_path_str = npm_path.to_str().expect("utf8 path");
+
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm_path_str, "prefix", "-g"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "/opt/homebrew\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec![npm_path_str, "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "99.9.9\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].unverified_version, Some("99.9.9".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_detect_returns_empty_when_npm_is_not_on_path() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = NpmAdapter::new(runner.clone());
+        let env = HostEnv {
+            path_dirs: vec![PathBuf::from("/definitely/not/a/real/path")],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        let instances = adapter.detect(&env).await;
+        assert!(instances.is_empty());
+        assert!(
+            runner.calls().is_empty(),
+            "no subprocess should run when npm isn't found"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inventory_accepts_exit_code_1() {
+        let runner = Arc::new(MockRunner::new());
+        let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+            .expect("read fixture");
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: json,
+                stderr: "npm warn config global".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let artifacts = adapter
+            .inventory(&test_instance())
+            .await
+            .expect("exit 1 must still be parsed");
+        assert_eq!(artifacts.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_accepts_exit_code_1() {
+        let runner = Arc::new(MockRunner::new());
+        let json =
+            std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/outdated-global.json")
+                .expect("read fixture");
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: json,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("exit 1 means updates were found, not a failure");
+        assert_eq!(candidates.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_search_matches_the_recorded_fixture_end_to_end() {
+        let runner = Arc::new(MockRunner::new());
+        let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/search-jq.json")
+            .expect("read fixture");
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/npm",
+                "search",
+                "--json",
+                "--searchlimit",
+                "20",
+                "jq",
+            ],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: json,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let hits = adapter
+            .search(&test_instance(), "jq")
+            .await
+            .expect("search");
+        assert_eq!(hits.len(), 20);
+        assert_eq!(hits[0].name, "jq");
+    }
+
+    #[tokio::test]
+    async fn test_plan_install() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["install", "-g", "jq"]);
+        assert!(!plan.needs_password);
+        assert_eq!(plan.locks, vec![ResourceLock(inst.id.clone())]);
+        assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["uninstall", "-g", "jq"]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_targets_latest() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert_eq!(plan.args, vec!["install", "-g", "jq@latest"]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_is_refused_when_the_prefix_is_not_writable() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| false);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        let result = adapter.plan(&inst, &req).await;
+        match result {
+            Err(AdapterError::Refused(_)) => {}
+            other => panic!("expected Refused, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_streams_log_events_and_succeeds() {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "install", "-g", "jq"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "added 1 package\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        let sink = Arc::new(VecSink::new());
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(sink.snapshot().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_reports_present_and_absent() {
+        let runner = Arc::new(MockRunner::new());
+        let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+            .expect("read fixture");
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: json,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let inst = test_instance();
+        let present = adapter
+            .reconcile(
+                &inst,
+                &ArtifactKey {
+                    instance_id: inst.id.clone(),
+                    kind: ArtifactKind::Package,
+                    name: "npm".to_string(),
+                },
+            )
+            .await
+            .expect("reconcile present");
+        assert!(present.present);
+        assert_eq!(present.version, Some("12.0.2".to_string()));
+
+        let absent = adapter
+            .reconcile(
+                &inst,
+                &ArtifactKey {
+                    instance_id: inst.id.clone(),
+                    kind: ArtifactKind::Package,
+                    name: "does-not-exist".to_string(),
+                },
+            )
+            .await
+            .expect("reconcile absent");
+        assert!(!absent.present);
+    }
+
+    #[test]
+    fn test_validate_search_query_rejects_a_flag_and_accepts_free_text() {
+        // A search box takes free text, so a multi-word query must pass
+        // where `validate_package_name` would reject it as an invalid name.
+        assert!(validate_search_query("json parser").is_ok());
+        assert!(validate_search_query("jq").is_ok());
+        // Anything that would land in argv's flag namespace, or that is not
+        // a query at all, is refused before it reaches npm.
+        assert!(validate_search_query("--registry=http://evil.invalid").is_err());
+        assert!(validate_search_query("   ").is_err());
+        assert!(validate_search_query(&"x".repeat(201)).is_err());
+    }
+
+    #[test]
+    fn test_capabilities_report_search_per_item_upgrade_and_uninstall() {
+        let adapter = NpmAdapter::new(Arc::new(MockRunner::new()));
+        let caps = adapter.capabilities();
+        assert!(caps.search);
+        assert!(caps.per_item_upgrade);
+        assert!(caps.uninstall);
     }
 }

@@ -3,10 +3,11 @@ use crate::model::{
     ArtifactKey, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, Reconciled,
     SearchHit, UpdateCandidate,
 };
-use crate::runner::HostEnv;
+use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 pub mod brew;
@@ -142,6 +143,66 @@ pub trait Adapter: Send + Sync {
     ) -> Result<Reconciled, AdapterError>;
 }
 
+/// Runs a plan through the runner, streaming each line to the sink, and maps
+/// the result the way every adapter must: a clean exit is `Succeeded`, a
+/// cancelled or timed-out run is `Unconfirmed` (the operation may or may not
+/// have taken effect — only `reconcile` can say), and a non-zero exit is
+/// `Failed` carrying the last five stderr lines.
+///
+/// Every adapter's `execute()` is this function and nothing else. It lives
+/// here so the cancelled/timed-out rule and the five-line summary can only
+/// ever mean one thing; an earlier draft of this phase had six byte-identical
+/// copies of it.
+pub async fn run_plan(
+    runner: &Arc<dyn CommandRunner>,
+    plan: &Plan,
+    sink: Arc<dyn EventSink>,
+    op_id: OpId,
+    cancel: CancellationToken,
+) -> Result<Outcome, AdapterError> {
+    let sink_for_line = sink.clone();
+    let on_line: LineCallback = Arc::new(move |stream, line| {
+        sink_for_line.emit(crate::events::OperationEvent::Log {
+            op_id,
+            stream,
+            line,
+        });
+    });
+    let spec = CommandSpec {
+        program: plan.program.clone(),
+        args: plan.args.clone(),
+        env: plan.env.clone(),
+        cwd: None,
+        timeout: Duration::from_secs(plan.timeout_secs),
+    };
+    let output = runner.run(spec, Some(on_line), cancel).await?;
+    if output.cancelled || output.timed_out {
+        return Ok(Outcome::Unconfirmed);
+    }
+    match output.exit_code {
+        Some(0) => Ok(Outcome::Succeeded),
+        code => {
+            let stderr_lines: Vec<&str> = output.stderr.lines().collect();
+            let start = stderr_lines.len().saturating_sub(5);
+            Ok(Outcome::Failed {
+                exit_code: code,
+                summary: stderr_lines[start..].join("\n"),
+            })
+        }
+    }
+}
+
+/// `"cargo 1.98.1 (…)"` -> `Some("1.98.1")`. Several tools (cargo, uv, pip)
+/// print their version as the second whitespace-separated token of the first
+/// line; this is that rule, once. Tools that print it differently — pipx's
+/// bare `1.17.3`, Ollama's `ollama version is 0.34.1` — keep their own
+/// parser.
+pub fn second_token(text: &str) -> Option<String> {
+    let mut parts = text.lines().next()?.split_whitespace();
+    let _label = parts.next()?;
+    parts.next().map(|token| token.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +285,101 @@ mod tests {
     #[test]
     fn test_validate_package_name_still_accepts_a_tap_qualified_cask_name() {
         assert!(validate_package_name("gautham-v/tap/claudebar").is_ok());
+    }
+
+    #[test]
+    fn test_second_token_reads_the_version_out_of_a_labelled_version_line() {
+        assert_eq!(
+            second_token("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
+            Some("1.98.1".to_string())
+        );
+        assert_eq!(
+            second_token("uv 0.12.17 (Homebrew)"),
+            Some("0.12.17".to_string())
+        );
+        assert_eq!(second_token(""), None);
+        assert_eq!(second_token("onlyoneword\n"), None);
+    }
+
+    #[tokio::test]
+    async fn test_run_plan_maps_a_cancelled_run_to_unconfirmed_and_a_failure_to_the_last_stderr_lines(
+    ) {
+        use crate::events::VecSink;
+        use crate::model::{ArtifactKind, CancelPolicy, OpKind, OpRequest, ResourceLock};
+        use crate::runner::{CommandOutput, MockRunner};
+        use std::path::PathBuf;
+        use tokio_util::sync::CancellationToken;
+
+        fn plan_for(args: Vec<&str>) -> Plan {
+            Plan {
+                request: OpRequest {
+                    kind: OpKind::Install,
+                    instance_id: "fake:1".to_string(),
+                    artifact_kind: ArtifactKind::Package,
+                    name: "jq".to_string(),
+                },
+                program: PathBuf::from("/bin/fake"),
+                args: args.into_iter().map(|a| a.to_string()).collect(),
+                env: Vec::new(),
+                needs_password: false,
+                locks: vec![ResourceLock("fake:1".to_string())],
+                cancel_policy: CancelPolicy::KillThenReconcile,
+                warnings: Vec::new(),
+                affected: Vec::new(),
+                timeout_secs: 60,
+            }
+        }
+
+        let runner_raw = MockRunner::new();
+        runner_raw.respond(
+            vec!["/bin/fake", "cancelled"],
+            CommandOutput {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: true,
+            },
+        );
+        runner_raw.respond(
+            vec!["/bin/fake", "failed"],
+            CommandOutput {
+                exit_code: Some(2),
+                stdout: String::new(),
+                stderr: "l1\nl2\nl3\nl4\nl5\nl6\nl7".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let runner: Arc<dyn CommandRunner> = Arc::new(runner_raw);
+
+        let sink = Arc::new(VecSink::new());
+        assert_eq!(
+            run_plan(
+                &runner,
+                &plan_for(vec!["cancelled"]),
+                sink.clone(),
+                1,
+                CancellationToken::new()
+            )
+            .await
+            .expect("run_plan"),
+            Outcome::Unconfirmed
+        );
+        assert_eq!(
+            run_plan(
+                &runner,
+                &plan_for(vec!["failed"]),
+                sink,
+                2,
+                CancellationToken::new()
+            )
+            .await
+            .expect("run_plan"),
+            Outcome::Failed {
+                exit_code: Some(2),
+                summary: "l3\nl4\nl5\nl6\nl7".to_string(),
+            }
+        );
     }
 }

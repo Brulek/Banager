@@ -1,0 +1,7 @@
+schema_version = 1
+id = "npm"
+name = "npm"
+kind = "package_manager"
+platforms = ["macos"]
+homepage = "https://www.npmjs.com"
+verified_versions = ["12.0.2"]
