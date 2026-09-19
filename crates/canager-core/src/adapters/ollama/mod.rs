@@ -220,10 +220,20 @@ impl OllamaAdapter {
             .await
         {
             Ok(None) => None,
-            // `current` is the local digest `parse_tags` stored as the
-            // artifact's version and `target` is the registry's config
-            // digest, so the two really differ — reporting `27b-mlx ->
-            // 27b-mlx` (the tag on both sides) would satisfy no reader.
+            // `current` is the local manifest digest that `parse_tags` stored
+            // as the artifact's version; `target` is the registry manifest's
+            // config digest. Reporting the tag on both sides (`27b-mlx ->
+            // 27b-mlx`) would satisfy no reader, so these two carry the
+            // change instead — but they are **different hash spaces**, not
+            // two readings of one identifier. The local model's `/api/tags`
+            // digest appears nowhere in either manifest, and after a
+            // successful pull the fresh `/api/tags` digest still will not
+            // equal this `target`. So: never compare, diff or equality-check
+            // them, and never render them as a version jump the way npm's or
+            // cargo's homogeneous version strings can be. The up-to-date
+            // decision is made above by `compare_digests` on the layer-digest
+            // sets, never by these fields; an `UpdateChannel::Digest` row is a
+            // "changed / not changed" marker. See docs/superpowers/backlog.md.
             Ok(Some(registry_config)) => Some(UpdateCandidate {
                 key: artifact.key.clone(),
                 current: artifact.version.clone(),

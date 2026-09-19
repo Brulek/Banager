@@ -69,6 +69,8 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 
 **规格与实现不一致（下一个计划开头就处理）**
 - 更新确认对话框没有展示版本跳变（`current → target`）与 `UpdateCandidate.warnings` 的文字内容（现在只有一个数量徽章）。spec §6 两项都要求。位置 `src/pages/UpdatesPage.tsx:361-378`。
+  **做这条时必须一并处理 Ollama**：`UpdateChannel::Digest` 的行不能按 `current → target` 渲染。阶段 3 任务 10 的评审查实（对着提交进仓的 fixture 逐字比对）：Ollama 的 `current` 是 `/api/tags` 的清单摘要、`target` 是注册表清单里的 config 摘要，**是两个不同的哈希空间**，互不包含，拉取成功后新的 `current` 也不会等于旧的 `target`。这两个字段只是「变了／没变」的标记，真正的判定在 `compare_digests` 对层摘要集合的比较上。给小白看两串 64 位十六进制本来也毫无意义——这类行应该说「有新版本可拉取」，而不是打印哈希。
+  为什么不在阶段 3 改：修它的两条路都拿一种不一致换另一种。改 `current` 为本地 config 摘要，会和「已安装」页显示的 `artifact.version`（`/api/tags` 摘要）自相矛盾；改 `target` 为注册表的清单摘要才是真正对的，但那要读 `Docker-Content-Digest` 响应头，而 `HttpResponse` 只有 `status` 和 `body`，得改 trait、Mock、真实实现和全部测试。当前无人渲染这两个字段，`reconcile` 也不比较它们，所以没有实际故障，只有一个等着被踩的坑——坑口已经写在 `adapters/ollama/mod.rs` 的注释里（2026-09-20 控制者裁决）。
 - `greedy_casks`：计划的任务表把它列为任务 15 的交付物、spec §4.2 与 §5 也定义了它，但计划里那份权威 `Settings` 结构体没有它，于是实现也没有。补它是一次跨 Rust、TypeScript 与磁盘 JSON 的线格式变更，越晚越贵。**需要作者拍板**。
 - 更新列表未虚拟化（`src/pages/UpdatesPage.tsx:283-315`），而已安装列表用了 `useVirtualizer`。Global Constraints 与 spec §7 都写了长列表要虚拟化。
 
