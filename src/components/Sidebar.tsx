@@ -1,13 +1,12 @@
 import { useTranslation } from "react-i18next";
-
-export type SidebarPage = "installed" | "updates" | "settings";
+import type { Page } from "../store/ui";
 
 interface SidebarProps {
-  page: SidebarPage;
-  onSelectPage: (page: SidebarPage) => void;
+  page: Page;
+  onSelectPage: (page: Page) => void;
 }
 
-const PAGES: SidebarPage[] = ["installed", "updates", "settings"];
+const PAGES: Page[] = ["installed", "updates", "settings"];
 
 export function Sidebar({ page, onSelectPage }: SidebarProps) {
   const { t } = useTranslation();
