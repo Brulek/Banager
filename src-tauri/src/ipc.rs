@@ -1,0 +1,554 @@
+use crate::events::UiEvent;
+use crate::state::AppState;
+use canager_core::model::OpRequest;
+use canager_core::ops::OpSummary;
+use canager_core::runner::HostEnv;
+use canager_core::session::{IssuedPlan, Snapshot};
+use canager_core::settings::Settings;
+use tauri::ipc::Channel;
+use tauri::State;
+
+pub(crate) fn get_snapshot_impl(state: &AppState) -> Result<Snapshot, String> {
+    Ok(state.session.snapshot())
+}
+
+#[tauri::command]
+pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String> {
+    get_snapshot_impl(&state)
+}
+
+/// Also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink`
+/// whenever the refreshed snapshot's `generation` differs from the one
+/// before this call (M9 in the design review). `canager-core` must never
+/// depend on `tauri`, so `Session::refresh` itself cannot send this — the
+/// shell is the only layer that can, and this is the only place in the
+/// whole plan that does so outside a test.
+pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
+    let generation_before = state.session.snapshot().generation;
+    let snapshot = state.session.refresh(&HostEnv::discover()).await;
+    if snapshot.generation != generation_before {
+        state.channel_sink.broadcast(UiEvent::SnapshotChanged {
+            generation: snapshot.generation,
+        });
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
+    refresh_impl(&state).await
+}
+
+/// Resolves and plans `request` through `Session::issue_plan`, returning
+/// the server-issued `IssuedPlan` for the caller to preview. Nothing in
+/// the returned `Plan` is ever accepted back from the client — F1 in the
+/// design review: IPC accepts only known operations and server-issued
+/// object IDs, never a client-supplied `Plan`. `submit_operation_impl`
+/// below is the only way to actually run it, and takes only the id.
+pub(crate) async fn plan_operation_impl(
+    state: &AppState,
+    request: OpRequest,
+) -> Result<IssuedPlan, String> {
+    state
+        .session
+        .issue_plan(&request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn plan_operation(
+    state: State<'_, AppState>,
+    request: OpRequest,
+) -> Result<IssuedPlan, String> {
+    plan_operation_impl(&state, request).await
+}
+
+/// Consumes the plan stored under `plan_id` (one-time use) and submits
+/// exactly that stored `Plan`. Rejects an unknown, already-submitted, or
+/// expired `plan_id` (`Session::submit`'s `SubmitError`) without ever
+/// constructing or accepting a `Plan` from the caller.
+pub(crate) fn submit_operation_impl(state: &AppState, plan_id: u64) -> Result<u64, String> {
+    state.session.submit(plan_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn submit_operation(state: State<'_, AppState>, plan_id: u64) -> Result<u64, String> {
+    submit_operation_impl(&state, plan_id)
+}
+
+pub(crate) fn cancel_operation_impl(state: &AppState, op_id: u64) -> Result<(), String> {
+    state.session.cancel(op_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_operation(state: State<'_, AppState>, op_id: u64) -> Result<(), String> {
+    cancel_operation_impl(&state, op_id)
+}
+
+pub(crate) fn list_operations_impl(state: &AppState) -> Result<Vec<OpSummary>, String> {
+    Ok(state.session.operations())
+}
+
+#[tauri::command]
+pub async fn list_operations(state: State<'_, AppState>) -> Result<Vec<OpSummary>, String> {
+    list_operations_impl(&state)
+}
+
+pub(crate) fn get_settings_impl(state: &AppState) -> Result<Settings, String> {
+    Ok(state.get_settings())
+}
+
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
+    get_settings_impl(&state)
+}
+
+pub(crate) fn set_settings_impl(state: &AppState, settings: Settings) -> Result<(), String> {
+    state.set_settings(settings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    set_settings_impl(&state, settings)
+}
+
+pub(crate) fn subscribe_events_impl(
+    state: &AppState,
+    channel: Channel<UiEvent>,
+) -> Result<(), String> {
+    state.channel_sink.register(channel);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn subscribe_events(
+    state: State<'_, AppState>,
+    channel: Channel<UiEvent>,
+) -> Result<(), String> {
+    subscribe_events_impl(&state, channel)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::ChannelSink;
+    use async_trait::async_trait;
+    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+    use canager_core::events::{EventSink, OpId, OperationEvent};
+    use canager_core::model::{
+        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+        Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+    };
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    struct FakeAdapter {
+        meta: AdapterMeta,
+        instance: ManagerInstance,
+        /// How many times `execute()` actually ran. Used only by the
+        /// plan-rejection tests below to prove a rejected `submit` never
+        /// reaches the runner (F1 in the design review); every other test
+        /// in this module ignores it.
+        execute_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Adapter for FakeAdapter {
+        fn meta(&self) -> &AdapterMeta {
+            &self.meta
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                search: false,
+                per_item_upgrade: true,
+                upgrade_all: false,
+                uninstall: true,
+                background_check: true,
+                cancel_safe: true,
+            }
+        }
+
+        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            vec![self.instance.clone()]
+        }
+
+        async fn inventory(
+            &self,
+            _inst: &ManagerInstance,
+        ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn check_updates(
+            &self,
+            _inst: &ManagerInstance,
+        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn plan(
+            &self,
+            inst: &ManagerInstance,
+            req: &OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Ok(Plan {
+                request: req.clone(),
+                program: inst.exe_path.clone(),
+                args: vec!["do".to_string(), req.name.clone()],
+                env: vec![],
+                needs_password: false,
+                locks: vec![ResourceLock(inst.id.clone())],
+                cancel_policy: CancelPolicy::KillThenReconcile,
+                warnings: vec![],
+                affected: vec![],
+                timeout_secs: 60,
+            })
+        }
+
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            _cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            self.execute_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Outcome::Succeeded)
+        }
+
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            Ok(Reconciled {
+                present: true,
+                version: None,
+            })
+        }
+    }
+
+    fn temp_settings_path(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "canager-ipc-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn state_with_fake_adapter() -> AppState {
+        let (state, _execute_calls) = state_with_fake_adapter_and_now(None);
+        state
+    }
+
+    /// Like `state_with_fake_adapter`, but also returns a counter of how
+    /// many times the fake adapter's `execute()` actually ran, and accepts
+    /// an injectable clock — needed only by the plan-rejection tests below,
+    /// which must prove a rejected `submit` never reaches the runner and
+    /// must simulate a plan aging past its expiry window (F1 in the design
+    /// review). `state_with_fake_adapter` above delegates to this with
+    /// `None`, so there is exactly one place that builds this fixture.
+    ///
+    /// `session` and `channel_sink` share the *same* `ChannelSink` (N1 in
+    /// the design review): the two used to be built from separate
+    /// `ChannelSink::new()` calls, which meant a real operation's events —
+    /// emitted into `session`'s sink — could never reach a Channel
+    /// registered through `AppState.channel_sink`, and no test caught it
+    /// because every test only ever broadcast directly on `channel_sink`
+    /// rather than checking that a *real* operation's events arrive.
+    fn state_with_fake_adapter_and_now(
+        now_fn: Option<fn() -> i64>,
+    ) -> (AppState, Arc<AtomicUsize>) {
+        let instance = ManagerInstance {
+            id: "fake:1".to_string(),
+            adapter_id: "fake".to_string(),
+            exe_path: PathBuf::from("/bin/true"),
+            prefix: PathBuf::from("/"),
+            scope: Scope::User,
+            version: Some("1.0".to_string()),
+            healthy: true,
+        };
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec![],
+        };
+        let execute_calls = Arc::new(AtomicUsize::new(0));
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance,
+            execute_calls: execute_calls.clone(),
+        });
+        let sink = ChannelSink::new();
+        let session =
+            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
+        let state = AppState {
+            session,
+            settings_path: temp_settings_path("appstate"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+        };
+        (state, execute_calls)
+    }
+
+    #[tokio::test]
+    async fn test_get_snapshot_impl_returns_the_sessions_current_snapshot() {
+        let state = state_with_fake_adapter();
+        let snapshot = get_snapshot_impl(&state).expect("get_snapshot_impl");
+        assert_eq!(snapshot.generation, 0);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_impl_detects_the_fake_instance() {
+        // `refresh_impl` calls `HostEnv::discover()` internally (there is no
+        // way to inject an env from the command layer — the real command
+        // never has one to inject either), so this test relies on the test
+        // process itself not running as root, same as every other
+        // integration test in this workspace that calls real `detect()`
+        // logic.
+        let state = state_with_fake_adapter();
+        let snapshot = refresh_impl(&state).await.expect("refresh_impl");
+        assert_eq!(snapshot.instances.len(), 1);
+        assert_eq!(snapshot.instances[0].id, "fake:1");
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_delegates_to_session_issue_plan() {
+        let state = state_with_fake_adapter();
+        refresh_impl(&state).await.expect("refresh_impl");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_maps_session_error_to_string() {
+        let state = state_with_fake_adapter();
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "does-not-exist".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let err = plan_operation_impl(&state, req)
+            .await
+            .expect_err("expected an error for an unknown instance");
+        assert!(
+            err.contains("does-not-exist"),
+            "error string should name the unknown instance, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_and_list_and_cancel_operations_impl_round_trip() {
+        let state = state_with_fake_adapter();
+        refresh_impl(&state).await.expect("refresh_impl");
+
+        // N1 in the design review: state_with_fake_adapter now wires
+        // `session` and `channel_sink` to the *same* ChannelSink, so a real
+        // subscriber registered here — through the same `subscribe_events_impl`
+        // path the real `subscribe_events` command uses — proves that
+        // wiring is actually connected end to end, not merely that
+        // ChannelSink::broadcast works when called directly on a sink no
+        // Session ever emits into.
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+        let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let summaries = list_operations_impl(&state).expect("list_operations_impl");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, op_id);
+
+        cancel_operation_impl(&state, op_id).expect("cancel_operation_impl on a finished op");
+
+        let events = received.lock().unwrap();
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                UiEvent::Operation(OperationEvent::Status { op_id: id, .. }) if *id == op_id
+            )),
+            "the real operation's Status events must reach a subscriber through AppState.channel_sink"
+        );
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                UiEvent::Operation(OperationEvent::Finished { op_id: id, .. }) if *id == op_id
+            )),
+            "the real operation's Finished event must reach a subscriber through AppState.channel_sink"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_an_unissued_plan_id() {
+        // F1 in the design review: submit must accept only a server-issued
+        // PlanId, never anything the caller invents — including a
+        // tampered or forged id nothing ever issued. The runner must never
+        // be reached.
+        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        refresh_impl(&state).await.expect("refresh_impl");
+        let err = submit_operation_impl(&state, 999_999)
+            .expect_err("an unissued plan id must be rejected");
+        assert!(
+            err.contains("no such plan"),
+            "expected the Unknown-plan error, got: {err}"
+        );
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            0,
+            "a rejected submit must never reach the runner"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_the_same_plan_id_submitted_twice() {
+        // F1: each issued plan is single-use. Resubmitting the same id —
+        // e.g. a replayed IPC call — must be rejected the second time, not
+        // silently run the operation again.
+        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        refresh_impl(&state).await.expect("refresh_impl");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+        submit_operation_impl(&state, issued.id).expect("the first submit must succeed");
+        let err = submit_operation_impl(&state, issued.id)
+            .expect_err("resubmitting the same plan id must be rejected");
+        assert!(
+            err.contains("no such plan"),
+            "expected the Unknown-plan error, got: {err}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            1,
+            "exactly one execute() call, from the first legitimate submit — not two"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_an_expired_plan() {
+        // F1: a plan previewed too long ago must be re-previewed, not run
+        // blind. Simulates 601 seconds passing between issue_plan and
+        // submit via an injectable clock — `Session::{new,with_adapters}`'s
+        // `now_fn` seam exists specifically so tests like this one do not
+        // need to actually wait 10 minutes.
+        static EXPIRED_PLAN_TEST_NOW: AtomicI64 = AtomicI64::new(1_700_000_000);
+        fn expired_plan_test_now() -> i64 {
+            EXPIRED_PLAN_TEST_NOW.load(Ordering::SeqCst)
+        }
+
+        let (state, execute_calls) = state_with_fake_adapter_and_now(Some(expired_plan_test_now));
+        refresh_impl(&state).await.expect("refresh_impl");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+
+        EXPIRED_PLAN_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+
+        let err = submit_operation_impl(&state, issued.id)
+            .expect_err("a plan older than 600 seconds must be rejected");
+        assert!(
+            err.contains("older than 10 minutes"),
+            "expected the Expired-plan error, got: {err}"
+        );
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            0,
+            "an expired submit must never reach the runner"
+        );
+    }
+
+    #[test]
+    fn test_get_and_set_settings_impl_round_trip() {
+        let path = temp_settings_path("settings-roundtrip");
+        let _ = std::fs::remove_file(&path);
+        let state = AppState::new(path, ChannelSink::new());
+        let mut settings = get_settings_impl(&state).expect("get_settings_impl");
+        assert_eq!(settings, Settings::default());
+        settings.show_technical_details = true;
+        set_settings_impl(&state, settings.clone()).expect("set_settings_impl");
+        assert_eq!(
+            get_settings_impl(&state).expect("get_settings_impl again"),
+            settings
+        );
+    }
+
+    #[test]
+    fn test_subscribe_events_impl_registers_a_channel_that_receives_broadcasts() {
+        let path = temp_settings_path("subscribe");
+        let _ = std::fs::remove_file(&path);
+        let state = AppState::new(path, ChannelSink::new());
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+        state
+            .channel_sink
+            .broadcast(UiEvent::SnapshotChanged { generation: 42 });
+        assert_eq!(received.lock().unwrap().len(), 1);
+    }
+}
