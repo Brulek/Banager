@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 pub mod brew;
 pub mod npm;
 pub mod pipx;
+pub mod uv;
 
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
 /// that do not apply to them; a new field must never change behaviour for an
