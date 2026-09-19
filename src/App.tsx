@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Sidebar } from "./components/Sidebar";
 import { InstalledPage } from "./pages/InstalledPage";
+import { UpdatesPage } from "./pages/UpdatesPage";
 import { useUiStore } from "./store/ui";
 
 function App() {
@@ -15,6 +16,8 @@ function App() {
         <main className="flex-1 overflow-y-auto">
           {page === "installed" ? (
             <InstalledPage />
+          ) : page === "updates" ? (
+            <UpdatesPage />
           ) : (
             <h1 className="p-6 text-lg font-semibold">{t(`nav.${page}`)}</h1>
           )}

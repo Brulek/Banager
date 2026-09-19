@@ -39,11 +39,11 @@ describe("App", () => {
   });
 
   it("switches the content area when a sidebar link is clicked", async () => {
-    const { getByRole, findByLabelText, findByRole } = renderWithProviders(<App />);
+    const { getByRole, findByLabelText, findByText } = renderWithProviders(<App />);
     await findByLabelText("Filter installed items");
 
     fireEvent.click(getByRole("button", { name: "Updates" }));
 
-    expect(await findByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 });

@@ -10,7 +10,9 @@
     "settings": "Settings"
   },
   "common": {
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "adapters": {
     "brew": "Homebrew"
@@ -25,5 +27,28 @@
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
     "showDependencies_other": "{{count}} components installed by other software"
+  },
+  "updates": {
+    "upToDate": "Everything is up to date",
+    "allIgnored": "No pending updates — everything else is ignored.",
+    "count_one": "{{count}} update available",
+    "count_other": "{{count}} updates available",
+    "updateSelected": "Update selected",
+    "update": "Update",
+    "ignore": "Ignore",
+    "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
+    "available": "Update",
+    "warnings_one": "{{count}} warning",
+    "warnings_other": "{{count}} warnings",
+    "versionChange": "{{current}} → {{target}}",
+    "selectRow": "Select {{name}} for update",
+    "confirmTitle": "Confirm update",
+    "confirmUpdate": "Confirm",
+    "started": "Started",
+    "planFailed": "Couldn't prepare the update: {{message}}",
+    "submitFailed": "Could not start the update: {{message}}"
+  },
+  "commandPreview": {
+    "label": "This will run:"
   }
 }
