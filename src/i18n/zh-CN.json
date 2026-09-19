@@ -107,5 +107,29 @@
       "unignoreAriaLabel": "取消忽略 {{name}}"
     },
     "saveError": "保存失败({{message}}),已恢复原来的设置。"
+  },
+  "emptyStates": {
+    "loadFailed": {
+      "title": "没能读取已安装的内容",
+      "description": "上次尝试失败,原因:{{message}}"
+    },
+    "noHomebrew": {
+      "title": "还没有安装 Homebrew",
+      "description": "Canager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
+    },
+    "refusedAsRoot": {
+      "title": "Canager 不能以管理员身份运行",
+      "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Canager,改用你平时的用户账户重新打开。"
+    },
+    "refreshFailed": {
+      "title": "部分数据可能不是最新的",
+      "description_other": "上次刷新有 {{count}} 个来源没能完成,下面显示的内容可能不是最新的。",
+      "retryFailed": "重试没有成功:{{message}}",
+      "retry": "重试"
+    },
+    "nothingInstalled": {
+      "title": "还没有安装任何东西",
+      "description": "用 Homebrew 装点什么之后,就会显示在这里。"
+    }
   }
 }

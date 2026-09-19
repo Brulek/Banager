@@ -110,5 +110,30 @@
       "unignoreAriaLabel": "Stop ignoring {{name}}"
     },
     "saveError": "Couldn't save that change ({{message}}). It's been reverted."
+  },
+  "emptyStates": {
+    "loadFailed": {
+      "title": "Couldn't load what's installed",
+      "description": "The last attempt failed with: {{message}}"
+    },
+    "noHomebrew": {
+      "title": "Homebrew isn't installed yet",
+      "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
+    },
+    "refusedAsRoot": {
+      "title": "Canager can't run as an administrator",
+      "description": "Homebrew refuses to run under the root user for safety. Quit Canager, then open it again from your normal user account."
+    },
+    "refreshFailed": {
+      "title": "Some data might be out of date",
+      "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",
+      "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
+      "retryFailed": "Trying again didn't work: {{message}}",
+      "retry": "Try again"
+    },
+    "nothingInstalled": {
+      "title": "Nothing installed yet",
+      "description": "Once you install something with Homebrew, it will show up here."
+    }
   }
 }

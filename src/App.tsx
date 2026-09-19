@@ -6,6 +6,7 @@ import { UpdatesPage } from "./pages/UpdatesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
+import { SnapshotStatus } from "./components/SnapshotStatus";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useUiStore } from "./store/ui";
 
@@ -22,12 +23,12 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar page={page} onSelectPage={setPage} />
         <main className="flex-1 overflow-y-auto">
-          {page === "installed" ? (
-            <InstalledPage />
-          ) : page === "updates" ? (
-            <UpdatesPage />
-          ) : (
+          {page === "settings" ? (
             <SettingsPage />
+          ) : (
+            <SnapshotStatus>
+              {page === "installed" ? <InstalledPage /> : <UpdatesPage />}
+            </SnapshotStatus>
           )}
         </main>
       </div>
