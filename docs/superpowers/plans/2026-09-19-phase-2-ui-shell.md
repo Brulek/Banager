@@ -15,6 +15,7 @@
 - macOS only; minimum macOS 13.3; Tauri ≥ 2.11.1; universal build unchanged.
 - `canager-core` must never depend on `tauri` and must never create a tokio runtime.
 - No business logic in TypeScript. The front end never builds an argv, never decides whether something is safe to remove, and never guesses an outcome: it renders what the commands return.
+- IPC only accepts known operations and server-issued object IDs (spec §6). A command's `program`/`args`/`env`/`locks` are constructed by the Rust side alone and are never accepted as values from the front end — see `plan_operation`/`submit_operation`'s server-issued, single-use `IssuedPlan`/`PlanId` in Core Interfaces below.
 - Every destructive action shows the exact command that will run before it runs (spec §6). Uninstall additionally shows what would break.
 - The app never asks for a password in the background; nothing in this phase triggers a privileged operation on a timer.
 - UI copy ships in `en` and `zh-CN`. No user-visible string is hard-coded in a component; every one comes from the i18n resources. English is the default; the language follows the system unless overridden in Settings.
@@ -33,7 +34,7 @@
 crates/canager-core/src/
 ├── session/mod.rs        NEW  Session facade: adapters + instances + Snapshot(generation) + ops passthrough
 ├── settings.rs           NEW  Settings struct, atomic JSON load/save, defaults
-├── ops/mod.rs            MOD  add OpSummary + OperationManager::summaries(); make OpRecord.cancel private
+├── ops/mod.rs            MOD  add OpSummary + OperationManager::summaries(); remove OpRecord.cancel
 ├── adapters/mod.rs       MOD  harden validate_package_name (reject path-like names)
 ├── adapters/brew/mod.rs  MOD  detect() distinguishes "refused because root" from "not installed"
 └── lib.rs                MOD  pub mod session; pub mod settings;
@@ -96,11 +97,10 @@ pub enum Language { System, En, ZhCn }
 pub struct Settings {
     pub language: Language,
     pub show_technical_details: bool,
-    pub greedy_casks: bool,
     pub ignored_updates: Vec<crate::model::ArtifactKey>,
 }
 impl Default for Settings {
-    // Language::System, show_technical_details: false, greedy_casks: false, ignored_updates: vec![]
+    // Language::System, show_technical_details: false, ignored_updates: vec![]
 }
 /// Missing file, unreadable file or malformed JSON all yield `Settings::default()`
 /// — settings are a convenience, never a reason to fail startup.
@@ -142,6 +142,31 @@ pub struct Snapshot {
     pub errors: Vec<SourceError>,
 }
 
+/// Opaque handle to a plan `Session` has issued and is holding server-side.
+/// The front end never constructs one; it only ever echoes back the `id` it
+/// was given.
+pub type PlanId = u64;
+
+/// A `Plan` the server has already computed and stored, returned to the
+/// caller for preview. Submitting requires only the `id`; the `plan` field
+/// is for display (exact command preview, spec §6) and is never accepted
+/// back from the client (see `Session::submit`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssuedPlan {
+    pub id: PlanId,
+    pub plan: Plan,
+    /// Unix seconds when this plan was issued, used to decide expiry.
+    pub issued_at: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum SubmitError {
+    #[error("no such plan, or it was already submitted")]
+    Unknown,
+    #[error("this plan is older than 10 minutes; preview it again")]
+    Expired,
+}
+
 pub struct Session { /* private */ }
 
 impl Session {
@@ -159,8 +184,20 @@ impl Session {
     pub async fn refresh(self: &Arc<Self>, env: &HostEnv) -> Snapshot;
     pub fn snapshot(&self) -> Snapshot;
 
-    pub async fn plan(&self, req: &OpRequest) -> Result<Plan, crate::adapters::AdapterError>;
-    pub fn submit(self: &Arc<Self>, plan: Plan) -> OpId;
+    /// Resolves `req` to its owning adapter, asks it to plan the operation,
+    /// then stores the resulting `Plan` server-side under a fresh `PlanId`
+    /// and returns both as an `IssuedPlan` for the caller to preview. IPC
+    /// accepts only known operations and server-issued object IDs (spec
+    /// §6): nothing in the returned `Plan` is ever accepted back from the
+    /// client — `submit` takes only the `PlanId`.
+    pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, crate::adapters::AdapterError>;
+    /// Consumes (removes) the issued plan stored under `plan_id` and submits
+    /// exactly that stored `Plan` — never one reconstructed from anything
+    /// the caller supplied. Fails with `SubmitError::Unknown` if `plan_id`
+    /// is not currently issued (never issued, or already submitted once),
+    /// and `SubmitError::Expired` if it was issued more than 600 seconds
+    /// ago (the caller must re-`issue_plan` to get a fresh preview).
+    pub fn submit(self: &Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError>;
     pub fn cancel(&self, op_id: OpId);
     pub fn operations(&self) -> Vec<OpSummary>;
 }
@@ -189,7 +226,11 @@ impl OperationManager {
 
 ```rust
 // src-tauri/src/events.rs
-#[derive(Clone, Debug, Serialize)]
+// Deserialize too (not just Serialize): Task 6's tests decode a Channel's
+// received body back into a UiEvent to assert on it. This is the shell's
+// own type, not a core one, so it is exempt from the "no serde attributes
+// on canager-core types" constraint above.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
     Operation(canager_core::events::OperationEvent),
     SnapshotChanged { generation: u64 },
@@ -209,8 +250,8 @@ impl canager_core::events::EventSink for ChannelSink { /* emit -> broadcast(UiEv
 // src-tauri/src/ipc.rs — every command. All are async and take State<AppState>.
 #[tauri::command] async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String>;
 #[tauri::command] async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String>;
-#[tauri::command] async fn plan_operation(state: State<'_, AppState>, request: OpRequest) -> Result<Plan, String>;
-#[tauri::command] async fn submit_operation(state: State<'_, AppState>, plan: Plan) -> Result<u64, String>;
+#[tauri::command] async fn plan_operation(state: State<'_, AppState>, request: OpRequest) -> Result<IssuedPlan, String>;
+#[tauri::command] async fn submit_operation(state: State<'_, AppState>, plan_id: u64) -> Result<u64, String>;
 #[tauri::command] async fn cancel_operation(state: State<'_, AppState>, op_id: u64) -> Result<(), String>;
 #[tauri::command] async fn list_operations(state: State<'_, AppState>) -> Result<Vec<OpSummary>, String>;
 #[tauri::command] async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String>;
@@ -238,6 +279,7 @@ Core types carry no serde renames, so: **struct fields are snake_case**, **unit 
 | `Outcome::Failed { exit_code, summary }` | `{"Failed": {"exit_code": 1 \| null, "summary": "…"}}` |
 | `ResourceLock(String)` | `"brew:/opt/homebrew"` (newtype = inner value) |
 | `ArtifactKey` | `{"instance_id": "…", "kind": "Formula", "name": "…"}` |
+| `IssuedPlan` | `{"id": 1, "plan": <Plan>, "issued_at": 1758000000}` |
 | `OperationEvent::Status { op_id, status }` | `{"Status": {"op_id": 1, "status": "Running"}}` |
 | `OperationEvent::Log { op_id, stream, line }` | `{"Log": {"op_id": 1, "stream": "Stdout", "line": "…"}}` |
 | `OperationEvent::Finished { op_id, outcome }` | `{"Finished": {"op_id": 1, "outcome": "Succeeded"}}` |
@@ -282,6 +324,7 @@ export interface Plan {
   warnings: string[]; affected: string[]; timeout_secs: number;
 }
 export interface OpRequest { kind: OpKind; instance_id: string; artifact_kind: ArtifactKind; name: string }
+export interface IssuedPlan { id: number; plan: Plan; issued_at: number }
 export interface OpSummary {
   id: number; kind: OpKind; instance_id: string; artifact_kind: ArtifactKind;
   name: string; status: OpStatus; outcome: Outcome | null; argv_preview: string[];
@@ -294,7 +337,7 @@ export interface Snapshot {
 }
 export type Language = "System" | "En" | "ZhCn";
 export interface Settings {
-  language: Language; show_technical_details: boolean; greedy_casks: boolean;
+  language: Language; show_technical_details: boolean;
   ignored_updates: ArtifactKey[];
 }
 export type OperationEvent =
@@ -308,8 +351,8 @@ export type UiEvent = { Operation: OperationEvent } | { SnapshotChanged: { gener
 // src/lib/api.ts — one function per command, no other invoke() call sites anywhere.
 export function getSnapshot(): Promise<Snapshot>;
 export function refresh(): Promise<Snapshot>;
-export function planOperation(request: OpRequest): Promise<Plan>;
-export function submitOperation(plan: Plan): Promise<number>;
+export function planOperation(request: OpRequest): Promise<IssuedPlan>;
+export function submitOperation(planId: number): Promise<number>;
 export function cancelOperation(opId: number): Promise<void>;
 export function listOperations(): Promise<OpSummary[]>;
 export function getSettings(): Promise<Settings>;
@@ -329,9 +372,9 @@ export function useSettings(): UseQueryResult<Settings>;
 export function useOperations(): UseQueryResult<OpSummary[]>;
 export function useRefresh(): UseMutationResult<Snapshot, Error, void>;
 export function useSaveSettings(): UseMutationResult<void, Error, Settings>;
-/** Plans, shows nothing itself; callers render the Plan then call submit. */
-export function usePlanOperation(): UseMutationResult<Plan, Error, OpRequest>;
-export function useSubmitOperation(): UseMutationResult<number, Error, Plan>;
+/** Plans, shows nothing itself; callers render the IssuedPlan's Plan then submit its id. */
+export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpRequest>;
+export function useSubmitOperation(): UseMutationResult<number, Error, number>;
 export function useCancelOperation(): UseMutationResult<void, Error, number>;
 ```
 
@@ -360,9 +403,9 @@ export function artifactKeyId(key: ArtifactKey): string;  // `${instance_id}|${k
 |---|---|---|
 | 1 | Harden `validate_package_name` | rejects path-like names: absolute paths, a leading `.`, a `..` segment anywhere, a trailing `.rb` |
 | 2 | Distinguish root refusal from missing Homebrew | `BrewAdapter::refuses_as_root`; `detect()` uses it instead of re-deriving the euid-0 rule |
-| 3 | `OpSummary` + `OperationManager::summaries()`; `OpRecord.cancel` private | newest-first op list with argv preview; cancelling now only possible via `OperationManager::cancel` |
+| 3 | `OpSummary` + `OperationManager::summaries()`; `OpRecord.cancel` removed | newest-first op list with argv preview; cancelling now only possible via `OperationManager::cancel` |
 | 4 | Core `Settings` | atomic JSON load/save, corrupt file falls back to defaults |
-| 5 | Core `Session` facade | `Snapshot` with generation/stale/errors; refresh serialised; plan/submit/cancel/operations passthrough |
+| 5 | Core `Session` facade | `Snapshot` with generation/stale/errors; refresh serialised, per-instance resource-locked; issue_plan/submit (server-issued, single-use `PlanId`)/cancel/operations passthrough |
 | 6 | `ChannelSink` and `UiEvent` | fans core `OperationEvent`s out to every registered Tauri `Channel`; drops a channel whose send fails |
 | 7 | Tauri shell wiring (`AppState`, CSP, window config, remove template `greet`) | `AppState` built and managed, real CSP, template `greet` command and its front-end caller removed |
 | 8 | Tauri IPC commands | all nine commands, each with a Rust test over `Session` |
@@ -491,7 +534,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `HostEnv { path_dirs, home, euid }` (existing, unchanged).
-- Produces: `BrewAdapter::refuses_as_root(env: &HostEnv) -> bool` — new **inherent** function (not a trait method), the implementation choice for the backlog's "`detect()` distinguishes root refusal from missing" item. The `Adapter` trait gains nothing new and stays object-safe/stable. Task 5's `Session::refresh` does **not** call this method through a `dyn Adapter` (it can't — this is inherent to `BrewAdapter`, not virtual); instead `Session` computes its own `DetectOutcome` directly from the `HostEnv::euid` it already receives as a parameter, applying the identical "euid 0 ⇒ refused" rule. This function exists so the rule is asserted and unit-tested once, at the one adapter that currently enforces it, and reused (as inline logic, not a trait call) by `detect()` itself.
+- Produces: `BrewAdapter::refuses_as_root(env: &HostEnv) -> bool` — new **inherent** function (not a trait method), the implementation choice for the backlog's "`detect()` distinguishes root refusal from missing" item. The `Adapter` trait gains nothing new and stays object-safe/stable. Task 5's `Session::refresh` cannot reach this method through a `dyn Adapter` (it's inherent to `BrewAdapter`, not virtual, so the trait object has no way to call it); instead `Session` calls `BrewAdapter::refuses_as_root(env)` directly, by its concrete type, wherever it needs to tell "refused as root" apart from "not installed". This function exists so the euid-0 rule is asserted and unit-tested exactly once, at the one adapter that currently enforces it, and both `detect()` and `Session::refresh` call this same function rather than each re-deriving the rule.
 
 - [ ] **Step 1: Write the failing test for `BrewAdapter::refuses_as_root`**
 
@@ -532,7 +575,7 @@ Replace the start of `detect` at `crates/canager-core/src/adapters/brew/mod.rs:1
     /// installed" when `detect()`'s returned `Vec` is empty either way;
     /// keeping the rule in exactly one place means it can never drift
     /// between call sites (this method and `Session::refresh`, added in a
-    /// later plan, both apply it).
+    /// later plan, both call this function directly).
     pub fn refuses_as_root(env: &HostEnv) -> bool {
         env.euid == 0
     }
@@ -566,17 +609,17 @@ EOF
 
 ---
 
-### Task 3: `OpSummary` + `OperationManager::summaries()`; `OpRecord.cancel` private
+### Task 3: `OpSummary` + `OperationManager::summaries()`; `OpRecord.cancel` removed
 
 **Files:**
-- Modify: `crates/canager-core/src/ops/mod.rs:1-11` (imports), `:13-19` (`OpRecord.cancel` private), `:82-94` (new `done_notify` field), `:96-107` (`new()`), `:154-166` (`wait()` rewritten on `Notify`), `:458-472` (`finish()` notifies waiters), plus a new `OpSummary` struct and `OperationManager::summaries()`
+- Modify: `crates/canager-core/src/ops/mod.rs:1-11` (imports), `:13-19` (delete `OpRecord.cancel` — the cancellation token stays on the private `OpInternal` only), `:82-94` (new `done_notify` field), `:96-107` (`new()`), `:121-129` (`record()` drops the now-removed field from the `OpRecord { ... }` it builds), `:154-166` (`wait()` rewritten on `Notify`), `:458-472` (`finish()` notifies waiters), plus a new `OpSummary` struct and `OperationManager::summaries()`
 - Test: `crates/canager-core/tests/ops_summaries_test.rs` (new)
 
 **Interfaces:**
 - Consumes: `OperationManager::{new, register_adapter, register_instance, submit, wait}` (existing, unchanged).
 - Produces:
   - `OpSummary { id: OpId, kind: OpKind, instance_id: InstanceId, artifact_kind: ArtifactKind, name: String, status: OpStatus, outcome: Option<Outcome>, argv_preview: Vec<String> }` and `OperationManager::summaries(&self) -> Vec<OpSummary>` (newest first) — used verbatim by Task 5's `Session::operations()` and Task 8's `list_operations` IPC command.
-  - `OpRecord.cancel` is now a private field. External code (including the future IPC layer) must call `OperationManager::cancel(op_id)`; it can no longer reach into a fetched `OpRecord` and cancel the token directly, which used to skip the `CancelRequested` status update and event.
+  - `OpRecord` no longer has a `cancel` field at all: the token it used to expose stays solely on the private `OpInternal`, which `record()`'s public `OpRecord` is built from. (Merely making the field private is not enough: `record()` would still construct it and nothing would ever read it, which is exactly the shape of a `dead_code` warning `-D warnings` rejects — removing the field is what actually fixes that.) External code (including the future IPC layer) must call `OperationManager::cancel(op_id)`; there is no longer any way to reach a token directly and cancel it out from under the status bookkeeping, which used to be able to skip the `CancelRequested` status update and event.
 
 - [ ] **Step 1: Write the failing tests for `OperationManager::summaries()` and the `Notify`-based `wait()`**
 
@@ -599,6 +642,14 @@ use tokio_util::sync::CancellationToken;
 
 struct FakeAdapter {
     meta: AdapterMeta,
+    /// When `gated` is set, `execute()` waits for `release.notified()`
+    /// before returning instead of completing immediately. Lets a test hold
+    /// an operation in `Running` for as long as it likes — with no reliance
+    /// on real time — so it can register several `wait()` callers before
+    /// choosing the exact moment the operation finishes. Unset by default,
+    /// so every test that does not opt in still completes immediately.
+    gated: std::sync::atomic::AtomicBool,
+    release: Arc<tokio::sync::Notify>,
 }
 
 impl FakeAdapter {
@@ -613,6 +664,8 @@ impl FakeAdapter {
                 schema_version: 1,
                 verified_versions: vec![],
             },
+            gated: std::sync::atomic::AtomicBool::new(false),
+            release: Arc::new(tokio::sync::Notify::new()),
         }
     }
 }
@@ -682,6 +735,9 @@ impl Adapter for FakeAdapter {
         _op_id: OpId,
         _cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        if self.gated.load(std::sync::atomic::Ordering::SeqCst) {
+            self.release.notified().await;
+        }
         Ok(Outcome::Succeeded)
     }
 
@@ -794,13 +850,16 @@ async fn test_summaries_are_ordered_newest_first() {
 }
 
 #[tokio::test]
-async fn test_wait_returns_promptly_without_polling_after_finish() {
-    // Regression guard for the switch from a 20ms poll loop to
-    // `tokio::sync::Notify`: `wait()` must return very soon after `finish()`
-    // runs, not up to 20ms later. A single op with no contention finishes
-    // almost immediately, so a generous 200ms deadline leaves wide margin
-    // for a correctly-implemented `Notify` wakeup on any CI runner while
-    // still catching a regression to an unbounded stall.
+async fn test_wait_does_not_hang_after_finish() {
+    // This only guards against an unbounded stall (e.g. a regression to a
+    // dropped notification that never wakes `wait()` at all). It does
+    // *not* prove the 20ms poll loop is gone — the old poll-based
+    // implementation would pass this same assertion, just slower — so it
+    // must not be read as a performance regression test. That property is
+    // covered by `test_multiple_waiters_all_wake_once_the_op_finishes`
+    // below, which uses a controlled synchronization point instead of a
+    // wall-clock bound and so cannot flake under CI load the way tightening
+    // this timeout would.
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     let adapter = Arc::new(FakeAdapter::new());
     manager.register_adapter(adapter.clone());
@@ -818,6 +877,66 @@ async fn test_wait_returns_promptly_without_polling_after_finish() {
         .expect("wait() should not hang");
     assert_eq!(outcome, Some(Outcome::Succeeded));
 }
+
+#[tokio::test]
+async fn test_multiple_waiters_all_wake_once_the_op_finishes() {
+    // Exercises the actual race `wait()`'s "create `notified()` before
+    // checking status" ordering exists to prevent, with several concurrent
+    // waiters instead of one. The synchronization is entirely deterministic
+    // — a gate on `execute()` plus cooperative yielding, no sleeps or
+    // timing thresholds — so this cannot be flaky under CI load the way a
+    // tightened wall-clock bound would be.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    adapter.gated.store(true, std::sync::atomic::Ordering::SeqCst);
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan = adapter
+        .plan(&inst, &make_request("jq", "fake:1"))
+        .await
+        .unwrap();
+    let op_id = manager.submit(plan);
+
+    // Wait until `execute()` has actually been entered and is blocked on
+    // the gate (status == Running), so there is no window in which the op
+    // could finish before any waiter is spawned.
+    loop {
+        if manager.record(op_id).map(|r| r.status) == Some(OpStatus::Running) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    let waiters: Vec<_> = (0..5)
+        .map(|_| {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.wait(op_id).await })
+        })
+        .collect();
+
+    // Give every spawned waiter a chance to run up to its `notified().await`
+    // point before the op is allowed to finish, so this test actually
+    // exercises concurrent registered waiters rather than each one simply
+    // observing an already-`Done` status.
+    for _ in 0..50 {
+        tokio::task::yield_now().await;
+    }
+    // `notify_one`, not `notify_waiters`: exactly one `execute()` call is
+    // ever blocked on this gate, and `notify_one` (unlike `notify_waiters`)
+    // stores its permit if `execute()` has not reached the await yet, so
+    // this can never race the gate itself.
+    adapter.release.notify_one();
+
+    for w in waiters {
+        assert_eq!(
+            w.await.expect("waiter task panicked"),
+            Some(Outcome::Succeeded)
+        );
+    }
+}
 ```
 
 - [ ] **Step 2: Run the new test file and confirm it fails to compile**
@@ -825,7 +944,7 @@ async fn test_wait_returns_promptly_without_polling_after_finish() {
 Run: `cargo test -p canager-core --test ops_summaries_test`
 Expected: FAIL to compile — `error[E0599]: no method named `summaries` found for struct `OperationManager` in the current scope`
 
-- [ ] **Step 3: Implement `OpSummary`, `OperationManager::summaries()`, private `OpRecord.cancel`, and `Notify`-based `wait()`**
+- [ ] **Step 3: Implement `OpSummary`, `OperationManager::summaries()`, remove `OpRecord.cancel`, and `Notify`-based `wait()`**
 
 In `crates/canager-core/src/ops/mod.rs`, replace the imports at lines 1-11 with:
 
@@ -852,15 +971,26 @@ pub struct OpRecord {
     pub plan: Plan,
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
-    /// Deliberately not `pub`: cancelling this token directly (bypassing
-    /// `OperationManager::cancel`) would flip execution off without ever
-    /// updating `status` to `CancelRequested` or emitting that event, so
-    /// external code observing this record's `status` would be lied to.
-    /// `OperationManager::cancel(op_id)` is the only sanctioned way to
-    /// cancel an operation.
-    cancel: CancellationToken,
 }
+```
 
+`record()` (lines 121-129) must be updated to match — drop the field it no longer builds:
+
+```rust
+    pub fn record(&self, op_id: OpId) -> Option<OpRecord> {
+        let records = self.records.lock().unwrap();
+        records.get(&op_id).map(|r| OpRecord {
+            id: r.id,
+            plan: r.plan.clone(),
+            status: r.status,
+            outcome: r.outcome.clone(),
+        })
+    }
+```
+
+Add this new, separate struct (it did not exist before this task):
+
+```rust
 /// A read-only view of one operation for a UI, independent of the
 /// operation's own lifetime bookkeeping (`OpRecord`/`OpInternal`). Carries
 /// exactly what a list of "current and recent operations" needs to render.
@@ -944,7 +1074,7 @@ Add `summaries()` to `impl OperationManager`, right after the `record()` method 
                 }
             })
             .collect();
-        summaries.sort_by(|a, b| b.id.cmp(&a.id));
+        summaries.sort_by_key(|s| std::cmp::Reverse(s.id));
         summaries
     }
 ```
@@ -973,7 +1103,7 @@ Finally, in `finish()` (lines 458-472), notify waiters right after the lock scop
 - [ ] **Step 4: Run the new test file and confirm it passes, then run the whole ops test surface**
 
 Run: `cargo test -p canager-core --test ops_summaries_test`
-Expected: `test result: ok. 4 passed; 0 failed; ...`
+Expected: `test result: ok. 5 passed; 0 failed; ...`
 
 Run: `cargo test -p canager-core --test ops_cancel_test --test ops_lock_test --test ops_outcome_test --test ops_panic_test --test ops_semaphore_test`
 Expected: every suite reports `test result: ok.` with the same pass counts as before this task (0 regressions) — `ops_outcome_test` `9 passed`, `ops_panic_test` `1 passed`, `ops_semaphore_test` `2 passed`, and `ops_cancel_test`/`ops_lock_test` with 0 failures across their scenarios.
@@ -983,11 +1113,12 @@ Expected: every suite reports `test result: ok.` with the same pass counts as be
 ```bash
 git add crates/canager-core/src/ops/mod.rs crates/canager-core/tests/ops_summaries_test.rs
 git commit -m "$(cat <<'EOF'
-feat(core): add OperationManager::summaries, make OpRecord.cancel private
+feat(core): add OperationManager::summaries, remove OpRecord.cancel
 
 summaries() gives the future UI layer a Serialize-able list of current
 and recent operations (status, outcome, argv preview), newest first.
-OpRecord.cancel is no longer pub, closing the bypass around cancel()'s
+OpRecord no longer carries a cancel field at all — the token stays on
+the private OpInternal only — closing the bypass around cancel()'s
 status bookkeeping, and wait() now wakes via tokio::sync::Notify
 instead of a 20ms poll loop.
 
@@ -1009,9 +1140,9 @@ EOF
 - Consumes: `crate::model::ArtifactKey` (existing, unchanged).
 - Produces (fixed verbatim by `docs/superpowers/plans/2026-09-19-phase-2-ui-shell.md`'s Core Interfaces section):
   - `Language { System, En, ZhCn }`
-  - `Settings { language: Language, show_technical_details: bool, greedy_casks: bool, ignored_updates: Vec<ArtifactKey> }`, with `impl Default for Settings`
+  - `Settings { language: Language, show_technical_details: bool, ignored_updates: Vec<ArtifactKey> }`, with `impl Default for Settings`
   - `load(path: &Path) -> Settings` — missing file, unreadable file, or malformed JSON all yield `Settings::default()`
-  - `save(path: &Path, settings: &Settings) -> std::io::Result<()>` — writes to `<path>.tmp` then renames over `path`
+  - `save(path: &Path, settings: &Settings) -> std::io::Result<()>` — writes to a `<path>.tmp.<n>` staging file, `n` a process-local auto-incrementing counter (so two concurrent `save()` calls to the same path can never write the same staging file out from under each other), then renames it over `path`
 
   These are consumed verbatim by Task 7's `AppState` and Task 8's `get_settings`/`set_settings` commands.
 
@@ -1047,7 +1178,6 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.language, Language::System);
         assert!(!settings.show_technical_details);
-        assert!(!settings.greedy_casks);
         assert!(settings.ignored_updates.is_empty());
     }
 
@@ -1061,7 +1191,6 @@ mod tests {
         let json = serde_json::to_string(&Settings::default()).expect("serialize");
         assert!(json.contains("\"language\":\"System\""));
         assert!(json.contains("\"show_technical_details\":false"));
-        assert!(json.contains("\"greedy_casks\":false"));
         assert!(json.contains("\"ignored_updates\":[]"));
     }
 
@@ -1086,7 +1215,6 @@ mod tests {
         let settings = Settings {
             language: Language::ZhCn,
             show_technical_details: true,
-            greedy_casks: true,
             ignored_updates: vec![ArtifactKey {
                 instance_id: "brew:/opt/homebrew".to_string(),
                 kind: ArtifactKind::Formula,
@@ -1103,11 +1231,22 @@ mod tests {
     fn test_save_writes_atomically_and_leaves_no_tmp_file_behind() {
         let path = temp_settings_path("atomic");
         save(&path, &Settings::default()).expect("save");
-        let mut tmp_os = path.as_os_str().to_os_string();
-        tmp_os.push(".tmp");
+        // The staging file is named `<path>.tmp.<n>` (`n` a process-local
+        // counter, so concurrent saves never collide on one fixed name) —
+        // scan for any leftover `<file-name>.tmp.*` sibling rather than
+        // checking one fixed `.tmp` path.
+        let dir = path.parent().expect("path has a parent");
+        let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let leftover = std::fs::read_dir(dir)
+            .expect("read temp dir")
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.starts_with(&format!("{file_name}.tmp."))
+            });
         assert!(
-            !PathBuf::from(tmp_os).exists(),
-            "the .tmp staging file must be renamed away, never left behind"
+            !leftover,
+            "no <path>.tmp.<n> staging file may be left behind"
         );
         assert!(path.exists());
         let _ = std::fs::remove_file(&path);
@@ -1160,7 +1299,6 @@ pub enum Language {
 pub struct Settings {
     pub language: Language,
     pub show_technical_details: bool,
-    pub greedy_casks: bool,
     pub ignored_updates: Vec<ArtifactKey>,
 }
 
@@ -1169,7 +1307,6 @@ impl Default for Settings {
         Settings {
             language: Language::System,
             show_technical_details: false,
-            greedy_casks: false,
             ignored_updates: Vec::new(),
         }
     }
@@ -1185,16 +1322,27 @@ pub fn load(path: &Path) -> Settings {
     }
 }
 
-/// Writes to `<path>.tmp` then renames over `path`, so a crash mid-write can
-/// never leave a half-written, corrupt settings file in `path`'s place.
+/// Per-process counter for `save()`'s staging file name. A fixed `<path>.tmp`
+/// would let two concurrent `save()` calls to the same path clobber each
+/// other's staging file (one call's `write` landing in the middle of
+/// another's, or one `rename` picking up the wrong writer's bytes); suffixing
+/// each call's staging file with its own counter value makes that
+/// impossible, regardless of how many callers race.
+static SAVE_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Writes to a `<path>.tmp.<n>` staging file, `n` unique to this call within
+/// this process, then renames it over `path`, so a crash mid-write can never
+/// leave a half-written, corrupt settings file in `path`'s place, and two
+/// concurrent calls can never collide on the same staging file.
 pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let seq = SAVE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut tmp_os = path.as_os_str().to_os_string();
-    tmp_os.push(".tmp");
+    tmp_os.push(format!(".tmp.{seq}"));
     let tmp_path = std::path::PathBuf::from(tmp_os);
     std::fs::write(&tmp_path, json)?;
     std::fs::rename(&tmp_path, path)?;
@@ -1220,8 +1368,10 @@ git commit -m "$(cat <<'EOF'
 feat(core): add file-backed Settings with atomic save and safe defaults
 
 Settings::load never fails startup — a missing or corrupt settings
-file just yields Settings::default() — and save() writes via a .tmp
-file plus rename so a crash mid-write cannot corrupt it.
+file just yields Settings::default() — and save() writes via a
+<path>.tmp.<n> staging file (n a process-local counter) plus rename,
+so a crash mid-write cannot corrupt it and concurrent saves can never
+collide on one fixed staging file.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -1235,16 +1385,19 @@ EOF
 **Files:**
 - Create: `crates/canager-core/src/session/mod.rs`
 - Modify: `crates/canager-core/src/lib.rs` (insert `pub mod session;` before the `pub mod settings;` line Task 4 added, keeping the module list alphabetical)
+- Modify: `crates/canager-core/src/ops/mod.rs` (add `OperationManager::acquire_resource_lock` + `ResourceLockGuard`, so `refresh` can share the real per-instance resource lock with in-flight operations — M8 in the design review)
 - Test: `crates/canager-core/src/session/mod.rs` (inline `#[cfg(test)] mod tests`, with a self-contained `FakeAdapter` in the style of `crates/canager-core/tests/ops_cancel_test.rs`)
 
 **Interfaces:**
-- Consumes: the `Adapter` trait and `AdapterError` (`crate::adapters`, unchanged); `EventSink`, `OpId` (`crate::events`, unchanged); `AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, UpdateCandidate` (`crate::model`, unchanged); `HostEnv` (`crate::runner`, unchanged); `OperationManager::{new, register_adapter, register_instance, submit, cancel}` (existing) and `OperationManager::summaries` / `OpSummary` (Task 3); `BrewAdapter::new` and `RealRunner::new` (existing, used only by `Session::new`'s production path).
+- Consumes: the `Adapter` trait and `AdapterError` (`crate::adapters`, unchanged); `BrewAdapter::refuses_as_root` (`crate::adapters::brew`, Task 2) — called directly, by its concrete type, wherever `refresh` needs to tell "refused as root" apart from "not installed" (Task 2's Interfaces note now says this explicitly, closing N5 in the design review); `EventSink`, `OpId` (`crate::events`, unchanged); `AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock, UpdateCandidate` (`crate::model`, unchanged); `HostEnv` (`crate::runner`, unchanged); `OperationManager::{new, register_adapter, register_instance, submit, cancel}` (existing) and `OperationManager::summaries` / `OpSummary` (Task 3); `BrewAdapter::new` and `RealRunner::new` (existing, used only by `Session::new`'s production path).
 - Produces (fixed verbatim by the skeleton's Core Interfaces section):
   - `SourceError { instance_id: InstanceId, message: String }`
   - `DetectOutcome { Found, Missing, RefusedAsRoot }`
   - `Snapshot { generation: u64, detect: DetectOutcome, instances: Vec<ManagerInstance>, artifacts: Vec<InstalledArtifact>, updates: Vec<UpdateCandidate>, refreshed_at: Option<i64>, stale: bool, errors: Vec<SourceError> }`
-  - `Session::{new, with_adapters, refresh, snapshot, plan, submit, cancel, operations}` with exactly the signatures in the skeleton.
-  - Not fixed by the skeleton (this task's own design decisions, needed to implement `refresh`'s documented contract): a private `Snapshot::same_content` comparison used to decide whether `generation` bumps, and a private `Session::commit` helper. Neither is used outside this file.
+  - `PlanId` (= `u64`), `IssuedPlan { id: PlanId, plan: Plan, issued_at: i64 }`, `SubmitError { Unknown, Expired }` — the server-issued, single-use, expiring plan handle spec §6 requires (F1 in the design review): IPC must accept only known operations and server-issued object IDs, never a client-supplied `Plan`.
+  - `Session::{new, with_adapters, refresh, snapshot, issue_plan, submit, cancel, operations}` with exactly the signatures in the skeleton. `issue_plan` is the only way a `Plan` is ever produced for a caller to see; `submit` accepts nothing but the opaque `PlanId` `issue_plan` handed out, looks up and removes the matching stored `Plan`, and submits exactly that — never anything reconstructed from caller-supplied data.
+  - Also modifies `crates/canager-core/src/ops/mod.rs` (touched by Task 3, extended here): a new `OperationManager::acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard` and a `pub struct ResourceLockGuard` (RAII; releases the lock on drop) that share the same `held` set `run_operation` already uses. This lets `refresh` (M8 in the design review) hold the *same* resource lock as an in-flight install/upgrade/uninstall for a given instance, so the two can never interleave on that instance while still running freely across different instances.
+  - Not fixed by the skeleton (this task's own design decisions, needed to implement the documented contracts): a private `Snapshot::same_content` comparison used to decide whether `generation` bumps; a private `Session::commit` helper; a private `refresh_seq: AtomicU64` counter on `Session`, bumped every time a refresh completes regardless of whether its content changed (M5 in the design review — see Step 3's doc comment for why this must be separate from `generation`); and a private `issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>` plus `next_plan_id: AtomicU64` on `Session`, backing `issue_plan`/`submit`. None of these are used outside this file.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1260,15 +1413,18 @@ Create `crates/canager-core/src/session/mod.rs` with its full production `use` b
 //! Interfaces section — every name and shape here is fixed by that
 //! document.
 
+use crate::adapters::brew::BrewAdapter;
 use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, UpdateCandidate,
+    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock,
+    UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
 use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[cfg(test)]
@@ -1299,6 +1455,11 @@ mod tests {
         detect_delay: Duration,
         detect_calls: usize,
         block_execute: bool,
+        /// Every instance id `inventory()` was actually called for, in
+        /// call order — used by `test_refresh_is_mutually_exclusive_...`
+        /// to observe that one instance's fetch proceeded while another's
+        /// was still blocked on a resource lock (M8 in the design review).
+        inventory_calls: Vec<InstanceId>,
     }
 
     struct FakeAdapter {
@@ -1316,6 +1477,7 @@ mod tests {
                 detect_delay: Duration::from_millis(0),
                 detect_calls: 0,
                 block_execute: false,
+                inventory_calls: Vec::new(),
             }));
             let adapter = Arc::new(FakeAdapter {
                 meta: AdapterMeta {
@@ -1367,6 +1529,7 @@ mod tests {
             inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
             let mut s = self.state.lock().unwrap();
+            s.inventory_calls.push(inst.id.clone());
             if let Some(pos) = s.failing.iter().position(|id| id == &inst.id) {
                 s.failing.remove(pos);
                 return Err(AdapterError::CommandFailed {
@@ -1626,6 +1789,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_concurrent_refresh_calls_with_unchanged_content_are_still_coalesced() {
+        // Regression guard for M5 in the design review: `generation` only
+        // advances when content actually changes, so by itself it cannot
+        // tell "another refresh already completed while I waited for the
+        // gate" apart from "no refresh has run since I last checked" — two
+        // refreshes back to back that both see identical data must still
+        // coalesce into one `detect()` call, not run the adapters twice.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        // Establish a steady-state snapshot first, outside any concurrency.
+        session.refresh(&non_root_env()).await;
+        let calls_before = state.lock().unwrap().detect_calls;
+
+        // Every refresh from here on sees exactly the same data as above,
+        // so `generation` will not advance no matter how many times it
+        // runs — that must not be mistaken for "no refresh has happened".
+        state.lock().unwrap().detect_delay = Duration::from_millis(100);
+        let session_a = session.clone();
+        let session_b = session.clone();
+        let (a, b) = tokio::join!(
+            tokio::spawn(async move { session_a.refresh(&non_root_env()).await }),
+            tokio::spawn(async move { session_b.refresh(&non_root_env()).await }),
+        );
+        let snap_a = a.expect("task a");
+        let snap_b = b.expect("task b");
+        assert_eq!(snap_a.generation, snap_b.generation);
+        assert_eq!(
+            state.lock().unwrap().detect_calls,
+            calls_before + 1,
+            "two concurrent refreshes over unchanged content must still run detect() only once between them"
+        );
+    }
+
+    #[tokio::test]
     async fn test_snapshot_returns_cached_value_without_calling_adapters() {
         let (adapter, state) = FakeAdapter::new("fake");
         let sink = Arc::new(VecSink::new());
@@ -1638,99 +1842,80 @@ mod tests {
         assert_eq!(after, refreshed);
     }
 
-    #[tokio::test]
-    async fn test_plan_delegates_to_the_owning_adapter() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let plan = session.plan(&req).await.expect("plan");
-        assert_eq!(plan.args, vec!["do".to_string(), "jq".to_string()]);
+}
+```
+
+Then add `pub mod session;` to `crates/canager-core/src/lib.rs`, before the `pub mod settings;` line Task 4 added (keeping the module list alphabetical):
+
+```rust
+pub mod adapters;
+pub mod events;
+pub mod model;
+pub mod ops;
+pub mod runner;
+pub mod session;
+pub mod settings;
+
+pub use events::*;
+pub use model::*;
+```
+
+This has to happen now, not later: `session/mod.rs` must actually be part of the crate for Step 2's compile failure to be the real "these types don't exist" error, rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review).
+
+Deliberately **not yet included above**: any test that calls `issue_plan`, `submit`, `cancel` or `operations`. Once `mod session;` makes this file part of the crate, a single missing method anywhere in the test module fails the whole compile unit, so no test in it — including these already-correct refresh/snapshot ones — could report a pass if such a call were present now. They are written in Step 6, after this half is fully green and committed.
+
+- [ ] **Step 2: Run the tests and confirm they fail to compile**
+
+Run: `cargo test -p canager-core --lib session::`
+Expected: FAIL to compile — `error[E0412]: cannot find type `Session`/`Snapshot`/`DetectOutcome`/`SourceError` in this scope` (the module is now part of the crate via `pub mod session;`, so this is a real compile failure — the types simply do not exist yet; Step 3 implements them).
+
+- [ ] **Step 3: Implement `SourceError`, `DetectOutcome`, `Snapshot`, `PlanId`, `IssuedPlan`, `SubmitError`, `Session::{new, with_adapters, refresh, snapshot}`, and `OperationManager::acquire_resource_lock`**
+
+First, add this to `crates/canager-core/src/ops/mod.rs` (extending Task 3's edits to this file) — a way for a caller other than `run_operation` to hold one of the same resource locks an operation holds, so `refresh` (below) can never interleave with an install/upgrade/uninstall on the same instance (M8 in the design review):
+
+```rust
+/// Held while `refresh` is fetching one instance's inventory/updates, over
+/// the *same* `held` set `run_operation`'s locks use. Releases on drop, the
+/// same idempotent-by-construction shape as the internal `LockGuard`.
+pub struct ResourceLockGuard {
+    held: Arc<Mutex<HashSet<ResourceLock>>>,
+    lock: ResourceLock,
+}
+
+impl Drop for ResourceLockGuard {
+    fn drop(&mut self) {
+        self.held.lock().unwrap().remove(&self.lock);
     }
+}
 
-    #[tokio::test]
-    async fn test_plan_for_unknown_instance_is_refused() {
-        let (adapter, _state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "does-not-exist".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        match session.plan(&req).await {
-            Err(AdapterError::Refused(_)) => {}
-            other => panic!("expected Refused, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_submit_cancel_and_operations_forward_to_the_operation_manager() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
-            s.block_execute = true;
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let plan = session.plan(&req).await.expect("plan");
-        let op_id = session.submit(plan);
-
-        let deadline = Instant::now() + Duration::from_secs(2);
+impl OperationManager {
+    /// Waits (polling every 50ms, the same cadence `run_operation` already
+    /// uses for its own lock-wait loop) until `lock` is free, then holds it
+    /// until the returned guard drops. `refresh` uses this to take the same
+    /// per-instance lock a submitted install/upgrade/uninstall holds, so the
+    /// two can never read/write that instance's filesystem state at once —
+    /// while a *different* instance's lock is untouched, so refreshing one
+    /// instance never waits on an operation running against another.
+    pub async fn acquire_resource_lock(self: &Arc<Self>, lock: ResourceLock) -> ResourceLockGuard {
         loop {
-            if session
-                .operations()
-                .iter()
-                .any(|o| o.id == op_id && o.status == OpStatus::Running)
             {
-                break;
-            }
-            assert!(Instant::now() < deadline, "operation never reached Running");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert_eq!(session.operations().len(), 1);
-
-        session.cancel(op_id);
-
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            if let Some(summary) = session.operations().into_iter().find(|o| o.id == op_id) {
-                if summary.status == OpStatus::Done {
-                    assert_eq!(summary.outcome, Some(Outcome::Succeeded));
+                let mut held = self.held.lock().unwrap();
+                if !held.contains(&lock) {
+                    held.insert(lock.clone());
                     break;
                 }
             }
-            assert!(Instant::now() < deadline, "operation never finished");
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        ResourceLockGuard {
+            held: self.held.clone(),
+            lock,
         }
     }
 }
 ```
 
-- [ ] **Step 2: Run the tests and confirm they fail to compile**
-
-Run: `cargo test -p canager-core --lib session::`
-Expected: FAIL to compile — `error[E0433]: failed to resolve: could not find `session` in `canager_core`` (the module is not declared in `lib.rs` yet, and even once declared, `Session`/`Snapshot`/`DetectOutcome` do not exist yet).
-
-- [ ] **Step 3: Implement `SourceError`, `DetectOutcome`, `Snapshot`, and `Session::{new, with_adapters, refresh, snapshot}`**
-
-Insert this into `crates/canager-core/src/session/mod.rs`, between the `use` block and the `#[cfg(test)]` module:
+Now insert this into `crates/canager-core/src/session/mod.rs`, between the `use` block and the `#[cfg(test)]` module:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1781,6 +1966,16 @@ impl Snapshot {
     /// Whether `self` and `other` carry the same *data* — every field
     /// except `generation`, `refreshed_at` and `stale`, which describe the
     /// refresh attempt rather than the fetched data itself.
+    ///
+    /// Deliberately excludes `refreshed_at`: comparing the *full* struct
+    /// (as the design review's M6 suggested) would mean `generation` bumps
+    /// on every successful refresh, since `refreshed_at` changes every
+    /// time — at which point `generation` stops meaning "the content
+    /// changed" and a front end watching it for that reason gets bumped on
+    /// every poll for no visible reason. `generation` keeps that meaning by
+    /// design; `refresh_seq` below (M5) is the separate counter that
+    /// actually solves the concurrent-refresh-coalescing problem M6's
+    /// suggestion was trying to fix.
     fn same_content(&self, other: &Snapshot) -> bool {
         self.detect == other.detect
             && self.instances == other.instances
@@ -1788,6 +1983,31 @@ impl Snapshot {
             && self.updates == other.updates
             && self.errors == other.errors
     }
+}
+
+/// Opaque handle to a plan `Session` has issued and is holding server-side.
+/// The front end never constructs one; it only ever echoes back the `id` it
+/// was given.
+pub type PlanId = u64;
+
+/// A `Plan` the server has already computed and stored, returned to the
+/// caller for preview. Submitting requires only the `id`; the `plan` field
+/// is for display (exact command preview, spec §6) and is never accepted
+/// back from the client (see `Session::submit`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssuedPlan {
+    pub id: PlanId,
+    pub plan: Plan,
+    /// Unix seconds when this plan was issued, used to decide expiry.
+    pub issued_at: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum SubmitError {
+    #[error("no such plan, or it was already submitted")]
+    Unknown,
+    #[error("this plan is older than 10 minutes; preview it again")]
+    Expired,
 }
 
 pub struct Session {
@@ -1798,6 +2018,22 @@ pub struct Session {
     /// `snapshot` (see `refresh`'s doc comment for the exact protocol).
     refresh_gate: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
+    /// Bumped every time a refresh actually completes, regardless of
+    /// whether its content — and therefore `generation` — changed (M5 in
+    /// the design review). `generation` alone cannot tell a waiter "someone
+    /// else already finished a refresh while I waited for the gate" apart
+    /// from "no one has run since I last checked": two refreshes in a row
+    /// can fetch identical data, in which case `generation` does not move
+    /// even though a real refresh happened. `refresh_seq` always moves, so
+    /// it is what `refresh` actually checks to decide whether to coalesce.
+    refresh_seq: AtomicU64,
+    /// Plans handed out by `issue_plan` but not yet consumed by `submit`,
+    /// keyed by `PlanId`. `submit` removes its entry on use, so each plan
+    /// can be submitted at most once; an entry older than 600 seconds is
+    /// rejected as expired instead of being proactively swept, since this
+    /// only grows by one entry per preview an operator actually looks at.
+    issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>,
+    next_plan_id: AtomicU64,
     now_fn: Option<fn() -> i64>,
 }
 
@@ -1805,9 +2041,7 @@ impl Session {
     /// Registers the Homebrew adapter with a `RealRunner`. `now_fn` exists
     /// so tests can pin `refreshed_at`; production passes `None`.
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
-        let brew = Arc::new(crate::adapters::brew::BrewAdapter::new(Arc::new(
-            crate::runner::RealRunner::new(),
-        )));
+        let brew = Arc::new(BrewAdapter::new(Arc::new(crate::runner::RealRunner::new())));
         Session::with_adapters(sink, vec![brew], now_fn)
     }
 
@@ -1828,6 +2062,9 @@ impl Session {
             ops: Arc::new(ops),
             refresh_gate: tokio::sync::Mutex::new(()),
             snapshot: Mutex::new(Snapshot::empty()),
+            refresh_seq: AtomicU64::new(0),
+            issued_plans: Mutex::new(HashMap::new()),
+            next_plan_id: AtomicU64::new(1),
             now_fn,
         })
     }
@@ -1842,31 +2079,34 @@ impl Session {
         }
     }
 
-    /// Detect instances, then inventory + check updates for each. Bumps
-    /// `generation` only when the resulting data actually differs from the
-    /// previous snapshot. Per-instance failures land in `errors` and set
-    /// `stale`; they never abort the whole refresh, and a failing
-    /// instance's *previous* artifacts/updates are kept rather than
+    /// Detect instances, then inventory + check updates for each instance
+    /// concurrently (each under that instance's own resource lock — see
+    /// below). Bumps `generation` only when the resulting data actually
+    /// differs from the previous snapshot. Per-instance failures land in
+    /// `errors` and set `stale`; they never abort the whole refresh, and a
+    /// failing instance's *previous* artifacts/updates are kept rather than
     /// dropped, so a transient failure never makes something the user
     /// installed appear to vanish. Concurrent calls are serialised: a call
     /// that starts while another is already running waits for it, then
-    /// returns the snapshot the *first* call produced instead of running a
-    /// second, redundant refresh.
+    /// returns the snapshot that other call produced instead of running a
+    /// second, redundant refresh — see `refresh_seq` on `Session` for why
+    /// that check cannot use `generation`.
     pub async fn refresh(self: &Arc<Self>, env: &HostEnv) -> Snapshot {
-        let generation_before = self.snapshot.lock().unwrap().generation;
+        let seq_before = self.refresh_seq.load(Ordering::SeqCst);
         let _gate = self.refresh_gate.lock().await;
-        {
-            let current = self.snapshot.lock().unwrap();
-            if current.generation != generation_before {
-                // Another call already did the work while we were waiting
-                // for the gate; its result is exactly what we would produce.
-                return current.clone();
-            }
+        if self.refresh_seq.load(Ordering::SeqCst) != seq_before {
+            // Another call already completed a refresh while we waited for
+            // the gate. Its result is exactly what we would produce — even
+            // when its content was identical to what came before and so
+            // left `generation` unchanged (M5 in the design review): a
+            // second, redundant run of the adapters must not happen just
+            // because nothing looked different.
+            return self.snapshot.lock().unwrap().clone();
         }
 
         let previous = self.snapshot.lock().unwrap().clone();
 
-        if env.euid == 0 {
+        if BrewAdapter::refuses_as_root(env) {
             let refused = Snapshot {
                 generation: previous.generation,
                 detect: DetectOutcome::RefusedAsRoot,
@@ -1893,47 +2133,89 @@ impl Session {
             DetectOutcome::Found
         };
 
+        // M8 in the design review: take the *same* per-instance resource
+        // lock a submitted install/upgrade/uninstall holds for the whole
+        // inventory+check_updates segment below, so a refresh can never
+        // observe a half-updated filesystem while an operation on that
+        // instance is running (and vice versa). Each instance's fetch is
+        // its own spawned task so that a lock held by a slow or blocked
+        // operation on *one* instance only ever delays that instance's
+        // fetch — spec §6's "same lock serial, different locks parallel"
+        // applies here exactly as it does to operations themselves.
+        let mut handles = Vec::with_capacity(instances.len());
+        for inst in instances.clone() {
+            let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
+                continue;
+            };
+            let ops = self.ops.clone();
+            let previous = previous.clone();
+            handles.push((
+                inst.id.clone(),
+                tokio::spawn(async move {
+                    let _lock = ops
+                        .acquire_resource_lock(ResourceLock(inst.id.clone()))
+                        .await;
+                    let mut artifacts = Vec::new();
+                    let mut updates = Vec::new();
+                    let mut errors = Vec::new();
+                    let mut stale = false;
+                    match adapter.inventory(&inst).await {
+                        Ok(items) => artifacts.extend(items),
+                        Err(e) => {
+                            errors.push(SourceError {
+                                instance_id: inst.id.clone(),
+                                message: e.to_string(),
+                            });
+                            stale = true;
+                            artifacts.extend(
+                                previous
+                                    .artifacts
+                                    .iter()
+                                    .filter(|a| a.key.instance_id == inst.id)
+                                    .cloned(),
+                            );
+                        }
+                    }
+                    match adapter.check_updates(&inst).await {
+                        Ok(items) => updates.extend(items),
+                        Err(e) => {
+                            errors.push(SourceError {
+                                instance_id: inst.id.clone(),
+                                message: e.to_string(),
+                            });
+                            stale = true;
+                            updates.extend(
+                                previous
+                                    .updates
+                                    .iter()
+                                    .filter(|u| u.key.instance_id == inst.id)
+                                    .cloned(),
+                            );
+                        }
+                    }
+                    (artifacts, updates, errors, stale)
+                }),
+            ));
+        }
+
         let mut artifacts = Vec::new();
         let mut updates = Vec::new();
         let mut errors = Vec::new();
         let mut stale = false;
-
-        for inst in &instances {
-            let Some(adapter) = self.adapters.get(&inst.adapter_id) else {
-                continue;
-            };
-            match adapter.inventory(inst).await {
-                Ok(items) => artifacts.extend(items),
-                Err(e) => {
-                    errors.push(SourceError {
-                        instance_id: inst.id.clone(),
-                        message: e.to_string(),
-                    });
-                    stale = true;
-                    artifacts.extend(
-                        previous
-                            .artifacts
-                            .iter()
-                            .filter(|a| a.key.instance_id == inst.id)
-                            .cloned(),
-                    );
+        for (instance_id, handle) in handles {
+            match handle.await {
+                Ok((a, u, e, s)) => {
+                    artifacts.extend(a);
+                    updates.extend(u);
+                    errors.extend(e);
+                    stale = stale || s;
                 }
-            }
-            match adapter.check_updates(inst).await {
-                Ok(items) => updates.extend(items),
-                Err(e) => {
+                Err(_join_err) => {
                     errors.push(SourceError {
-                        instance_id: inst.id.clone(),
-                        message: e.to_string(),
+                        instance_id,
+                        message: "internal error refreshing this instance".to_string(),
                     });
                     stale = true;
-                    updates.extend(
-                        previous
-                            .updates
-                            .iter()
-                            .filter(|u| u.key.instance_id == inst.id)
-                            .cloned(),
-                    );
                 }
             }
         }
@@ -1957,12 +2239,15 @@ impl Session {
     }
 
     /// Assigns the real generation number (bumping only on a content
-    /// change) and stores the result as the current snapshot.
+    /// change), stores the result as the current snapshot, and marks this
+    /// refresh complete via `refresh_seq` regardless of whether `generation`
+    /// moved (M5 in the design review — see `refresh_seq`'s field doc).
     fn commit(&self, previous: Snapshot, mut candidate: Snapshot) -> Snapshot {
         if !previous.same_content(&candidate) {
             candidate.generation = previous.generation + 1;
         }
         *self.snapshot.lock().unwrap() = candidate.clone();
+        self.refresh_seq.fetch_add(1, Ordering::SeqCst);
         candidate
     }
 
@@ -1974,33 +2259,213 @@ impl Session {
 
 - [ ] **Step 4: Run the refresh/snapshot tests and confirm they pass**
 
-Run: `cargo test -p canager-core --lib session:: 2>&1 | tail -20`
-Expected: the `refresh`/`snapshot` tests pass; `test_plan_delegates_to_the_owning_adapter`, `test_plan_for_unknown_instance_is_refused` and `test_submit_cancel_and_operations_forward_to_the_operation_manager` FAIL to compile with `error[E0599]: no method named `plan`/`submit`/`cancel`/`operations` found for struct `Session`` (not implemented yet — expected at this point).
+Run: `cargo test -p canager-core --lib session::`
+Expected: `test result: ok. 8 passed; 0 failed; ...` — every test written in Step 1 (`refresh`, `snapshot`, and the M5 unchanged-content-coalescing regression test) genuinely compiles and passes; nothing in this module yet references `issue_plan`/`submit`/`cancel`/`operations`, so there is no half-compiling state to describe.
 
 - [ ] **Step 5: Commit the refresh/snapshot half**
 
 ```bash
-git add crates/canager-core/src/session/mod.rs
+git add crates/canager-core/src/session/mod.rs crates/canager-core/src/lib.rs crates/canager-core/src/ops/mod.rs
 git commit -m "$(cat <<'EOF'
 feat(core): add Session::{new,with_adapters,refresh,snapshot}
 
 Session owns the registered adapters and a generation-numbered
 Snapshot. refresh() serialises concurrent callers, keeps a failing
 instance's previous data instead of dropping it, and only bumps the
-generation when the fetched data actually changed. plan/submit/cancel/
-operations land in the next commit.
+generation when the fetched data actually changed. issue_plan/submit/
+cancel/operations land in the next commit.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
 )"
 ```
 
-- [ ] **Step 6: Implement `Session::{plan, submit, cancel, operations}`**
+- [ ] **Step 6: Write the failing tests for `Session::{issue_plan, submit, cancel, operations}`**
 
-Append these methods to `impl Session` in `crates/canager-core/src/session/mod.rs`, after `snapshot`:
+Append these tests to the `#[cfg(test)] mod tests` block in `crates/canager-core/src/session/mod.rs`, after `test_snapshot_returns_cached_value_without_calling_adapters`:
 
 ```rust
-    pub async fn plan(&self, req: &OpRequest) -> Result<Plan, AdapterError> {
+    #[tokio::test]
+    async fn test_issue_plan_delegates_to_the_owning_adapter() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(issued.id, 1, "PlanId numbering starts at 1");
+        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_for_unknown_instance_is_refused() {
+        let (adapter, _state) = FakeAdapter::new("fake");
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "does-not-exist".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        match session.issue_plan(&req).await {
+            Err(AdapterError::Refused(_)) => {}
+            other => panic!("expected Refused, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_cancel_and_operations_forward_to_the_operation_manager() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if session
+                .operations()
+                .iter()
+                .any(|o| o.id == op_id && o.status == OpStatus::Running)
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(session.operations().len(), 1);
+
+        session.cancel(op_id);
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(summary) = session.operations().into_iter().find(|o| o.id == op_id) {
+                if summary.status == OpStatus::Done {
+                    assert_eq!(summary.outcome, Some(Outcome::Succeeded));
+                    break;
+                }
+            }
+            assert!(Instant::now() < deadline, "operation never finished");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others(
+    ) {
+        // Regression guard for M8 in the design review: refresh() must take
+        // the same per-instance resource lock a submitted operation holds,
+        // so it can never observe fake:1's filesystem state while an
+        // install/upgrade/uninstall on fake:1 is still running — but that
+        // must not hold up fake:2's fetch, which uses a different lock.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.artifacts
+                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session.refresh(&non_root_env()).await;
+        state.lock().unwrap().inventory_calls.clear();
+
+        // Submit (and thereby lock) an operation against fake:1 only, and
+        // hold it there — `block_execute` makes `execute()` wait on
+        // cancellation — until this test releases it below.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if session
+                .operations()
+                .iter()
+                .any(|o| o.id == op_id && o.status == OpStatus::Running)
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let session_for_refresh = session.clone();
+        let refresh_task =
+            tokio::spawn(async move { session_for_refresh.refresh(&non_root_env()).await });
+
+        // Give the refresh time to reach fake:2's inventory (no contention)
+        // and to *try* fake:1's (which must still be waiting on the lock
+        // fake:1's running operation holds).
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        {
+            let calls = state.lock().unwrap().inventory_calls.clone();
+            assert!(
+                calls.contains(&"fake:2".to_string()),
+                "a different instance's refresh must proceed while fake:1 is locked"
+            );
+            assert!(
+                !calls.contains(&"fake:1".to_string()),
+                "fake:1's refresh must not run while fake:1's operation is still holding its lock"
+            );
+        }
+
+        // Release fake:1's lock; the refresh (and the operation) must now
+        // both complete, and the snapshot must reflect both instances.
+        session.cancel(op_id);
+        let snapshot = tokio::time::timeout(Duration::from_secs(2), refresh_task)
+            .await
+            .expect("refresh must not hang once the blocking operation is cancelled")
+            .expect("refresh task panicked");
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
+    }
+```
+
+- [ ] **Step 7: Run the tests and confirm they fail to compile**
+
+Run: `cargo test -p canager-core --lib session::`
+Expected: FAIL to compile — `error[E0599]: no method named `issue_plan`/`submit`/`cancel`/`operations` found for struct `Session`` (Step 4's 8 tests still compile fine on their own; it is only these 4 new ones that reference methods that do not exist yet — and per M4 in the design review, that failure now applies to the whole compile unit, so re-running Step 4's `cargo test` command at this point would report the same failure, not a partial pass).
+
+- [ ] **Step 8: Implement `Session::{issue_plan, submit, cancel, operations}`**
+
+Append these methods to `impl Session` in `crates/canager-core/src/session/mod.rs`, after `snapshot`. This is F1 in the design review: IPC must accept only known operations and server-issued object IDs, never a client-supplied `Plan` — `issue_plan` is the only place a `Plan` is ever computed, and `submit` accepts nothing but the opaque `PlanId` it handed out, looks the stored plan up by that id, removes it (one-time use), and submits exactly what was stored:
+
+```rust
+    /// Resolves `req` to its owning adapter, asks it to plan the operation,
+    /// then stores the resulting `Plan` under a fresh `PlanId` and returns
+    /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
+    /// in it is ever accepted back — `submit` takes only `issued.id`.
+    pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
         let instance = self
             .snapshot
             .lock()
@@ -2018,11 +2483,32 @@ Append these methods to `impl Session` in `crates/canager-core/src/session/mod.r
                 instance.adapter_id
             ))
         })?;
-        adapter.plan(&instance, req).await
+        let plan = adapter.plan(&instance, req).await?;
+        let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
+        let issued = IssuedPlan {
+            id,
+            plan,
+            issued_at: self.now(),
+        };
+        self.issued_plans.lock().unwrap().insert(id, issued.clone());
+        Ok(issued)
     }
 
-    pub fn submit(self: &Arc<Self>, plan: Plan) -> OpId {
-        self.ops.submit(plan)
+    /// Removes (one-time consumption) the issued plan stored under
+    /// `plan_id` and submits exactly that stored `Plan`. Fails with
+    /// `SubmitError::Unknown` if `plan_id` was never issued or was already
+    /// submitted once, and `SubmitError::Expired` if it was issued more
+    /// than 600 seconds ago — the client can never influence what actually
+    /// runs, since nothing it sends is used except this opaque id.
+    pub fn submit(self: &Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
+        let issued = {
+            let mut plans = self.issued_plans.lock().unwrap();
+            plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
+        };
+        if self.now() - issued.issued_at > 600 {
+            return Err(SubmitError::Expired);
+        }
+        Ok(self.ops.submit(issued.plan))
     }
 
     pub fn cancel(&self, op_id: OpId) {
@@ -2034,27 +2520,32 @@ Append these methods to `impl Session` in `crates/canager-core/src/session/mod.r
     }
 ```
 
-- [ ] **Step 7: Run the full session test module and confirm everything passes**
+- [ ] **Step 9: Run the full session test module and confirm everything passes**
 
 Run: `cargo test -p canager-core --lib session::`
-Expected: `test result: ok. 10 passed; 0 failed; ...`
+Expected: `test result: ok. 12 passed; 0 failed; ...`
 
-- [ ] **Step 8: Run the full workspace definition-of-done check**
+- [ ] **Step 10: Run the full workspace definition-of-done check**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite, including the new `session::` tests, with 0 regressions in `adapters::`, `brew::`, `ops::`, `settings::`, and every `tests/*.rs` integration file.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add crates/canager-core/src/session/mod.rs crates/canager-core/src/lib.rs
 git commit -m "$(cat <<'EOF'
-feat(core): add Session::{plan,submit,cancel,operations}
+feat(core): add Session::{issue_plan,submit,cancel,operations}
 
-Completes the Session facade: plan() resolves an OpRequest's instance
-id to its owning adapter and delegates; submit/cancel/operations are
-thin, tested passthroughs to OperationManager. canager-core now
-exposes everything the Tauri shell needs without depending on tauri.
+Completes the Session facade: issue_plan() resolves an OpRequest's
+instance id to its owning adapter, plans it, and stores the resulting
+Plan server-side under a fresh PlanId; submit(plan_id) consumes that
+stored plan exactly once and forwards it to OperationManager. IPC (and
+any caller) can therefore never hand back a Plan of its own — only the
+opaque id this crate issued (spec §6: known operations and
+server-issued object IDs only). cancel/operations are thin, tested
+passthroughs to OperationManager. canager-core now exposes everything
+the Tauri shell needs without depending on tauri.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -2072,6 +2563,7 @@ EOF
 **Interfaces:**
 - Consumes: `canager_core::events::{EventSink, OperationEvent}` (existing).
 - Produces: `src-tauri/src/events.rs`: `UiEvent { Operation(canager_core::events::OperationEvent), SnapshotChanged { generation: u64 } }` and `ChannelSink::{new, register, broadcast}` implementing `canager_core::events::EventSink`, matching the skeleton exactly. **Verified against the vendored `tauri` 2.11.5 source** (`~/.cargo/registry/src/.../tauri-2.11.5/src/ipc/channel.rs`): `tauri::ipc::Channel<TSend>::new<F: Fn(tauri::ipc::InvokeResponseBody) -> tauri::Result<()> + Send + Sync + 'static>(on_message: F) -> Self` can construct a `Channel` directly with no live webview, and `send(&self, data: TSend) -> tauri::Result<()> where TSend: IpcResponse` is available for any `TSend: Serialize` via a blanket impl. This is what makes `ChannelSink` fully unit-testable below. Task 7's `AppState` holds an `Arc<ChannelSink>` built from `ChannelSink::new()`; Task 8's `subscribe_events` command calls `ChannelSink::register`.
+- **Unverified by this task's tests (N2 in the design review):** `test_broadcast_removes_a_channel_from_the_registry_after_its_send_fails` below only proves that `broadcast` drops a channel once its `send` returns an error — it manufactures that error directly (a closure returning `Err`) and cannot say anything about when, or whether, a *real* closed Tauri window actually makes `Channel::send` fail, nor about behavior across a window reload or a duplicate subscription. Confirm the real timing manually against a running app once one exists (Task 7 onward) and record the result in this task's completion report; do not read passing unit tests here as proof of real window-close behavior.
 
 - [ ] **Step 1: Write the failing tests for `ChannelSink`**
 
@@ -2079,7 +2571,7 @@ Create `src-tauri/src/events.rs` with its `use` block and test module only (no p
 
 ```rust
 use canager_core::events::EventSink;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 
@@ -2115,21 +2607,35 @@ mod tests {
 
         assert_eq!(received_a.lock().unwrap().len(), 1);
         assert_eq!(received_b.lock().unwrap().len(), 1);
-        match &received_a.lock().unwrap()[0] {
+        // Bind the guard first, then match on it, and terminate the match
+        // with a semicolon: matching directly on `&received_a.lock().unwrap()[0]`
+        // as this function's tail expression makes the temporary `MutexGuard`
+        // outlive the match (its drop is deferred to the end of the
+        // enclosing statement, which here is the whole function body),
+        // which rustc rejects with E0597 ("borrowed value does not live
+        // long enough") since Rust 2021.
+        let events = received_a.lock().unwrap();
+        match &events[0] {
             UiEvent::SnapshotChanged { generation } => assert_eq!(*generation, 7),
             other => panic!("expected SnapshotChanged, got {other:?}"),
-        }
+        };
     }
 
     #[test]
-    fn test_broadcast_drops_a_channel_whose_send_fails() {
+    fn test_broadcast_removes_a_channel_from_the_registry_after_its_send_fails() {
+        // This manufactures the send failure directly; it does not — and,
+        // from a unit test with no real webview, cannot — prove anything
+        // about when (or whether) a real closed window actually makes
+        // Channel::send fail. See this task's Interfaces note (N2 in the
+        // design review): that must be confirmed by hand later, against a
+        // running app.
         let sink = ChannelSink::new();
         let ok_count = Arc::new(AtomicUsize::new(0));
 
         let failing: Channel<UiEvent> = Channel::new(|_body| -> tauri::Result<()> {
             Err(tauri::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
-                "window closed",
+                "simulated send failure, e.g. from a closed window",
             )))
         });
         let oc = ok_count.clone();
@@ -2186,17 +2692,27 @@ mod tests {
 }
 ```
 
+Then add `mod events;` to `src-tauri/src/lib.rs`, right above the existing `#[tauri::command] fn greet...` line (it will be removed in Step 6, but this keeps the module declared while both exist momentarily). This must happen now, not after the implementation exists: the module has to actually be part of the crate for the compile failure in Step 2 below to be the real one (unresolved names), rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review):
+
+```rust
+mod events;
+
+// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+#[tauri::command]
+fn greet(name: &str) -> String {
+```
+
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
 Run: `cargo test -p canager --lib events::`
-Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (`mod events;` is also not yet declared in `lib.rs`, so this file is not even part of the crate yet — Step 3 fixes both).
+Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `ChannelSink`` and `error[E0412]: cannot find type `UiEvent` in this scope` (the module is now part of the crate via `mod events;`, so this is a real compile failure — the referenced types simply do not exist yet; Step 3 implements them).
 
-- [ ] **Step 3: Implement `UiEvent` and `ChannelSink`, and wire the module in**
+- [ ] **Step 3: Implement `UiEvent` and `ChannelSink`**
 
 Insert into `src-tauri/src/events.rs`, between the `use` block and the `#[cfg(test)]` module:
 
 ```rust
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum UiEvent {
     Operation(canager_core::events::OperationEvent),
     SnapshotChanged { generation: u64 },
@@ -2232,15 +2748,7 @@ impl EventSink for ChannelSink {
 }
 ```
 
-Then add `mod events;` to `src-tauri/src/lib.rs`, right above the existing `#[tauri::command] fn greet...` line (it will be removed in Step 6, but this keeps the module declared while both exist momentarily):
-
-```rust
-mod events;
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-```
+(`mod events;` was already added to `src-tauri/src/lib.rs` in Step 1, so there is nothing left to wire in here.)
 
 - [ ] **Step 4: Run the tests and confirm they pass**
 
@@ -2277,7 +2785,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `canager_core::session::Session::new` (Task 5), `canager_core::settings::{self, Settings}` (Task 4), `ChannelSink::new` (Task 6).
-- Produces: `src-tauri/src/state.rs`: `AppState { session: Arc<Session>, settings_path: PathBuf, settings: Mutex<Settings>, channel_sink: Arc<ChannelSink> }`, `AppState::new(settings_path, channel_sink) -> AppState`, `AppState::get_settings(&self) -> Settings`, `AppState::set_settings(&self, new: Settings) -> std::io::Result<()>`. `get_settings`/`set_settings` are not fixed by the skeleton (which only names the struct's shape); they exist so Task 8's `get_settings`/`set_settings` commands have real logic to call instead of reaching into the struct's fields directly from `ipc.rs`.
+- Produces: `src-tauri/src/state.rs`: `AppState { session: Arc<Session>, settings_path: PathBuf, settings: Mutex<Settings>, channel_sink: Arc<ChannelSink> }`, `AppState::new(settings_path, channel_sink) -> AppState`, `AppState::get_settings(&self) -> Settings`, `AppState::set_settings(&self, new: Settings) -> std::io::Result<()>`. `get_settings`/`set_settings` are not fixed by the skeleton (which only names the struct's shape); they exist so Task 8's `get_settings`/`set_settings` commands have real logic to call instead of reaching into the struct's fields directly from `ipc.rs`. `set_settings` holds `settings`'s mutex for its entire save-then-update-memory sequence rather than just the final assignment (M7 in the design review): two overlapping calls could otherwise finish with disk holding one caller's settings and memory holding the other's. The whole method stays synchronous (no `.await` inside), so holding a `std::sync::Mutex` guard across it is safe.
 
 - [ ] **Step 1: Write the failing tests for `AppState`**
 
@@ -2293,6 +2801,8 @@ use std::sync::Mutex;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use canager_core::model::{ArtifactKey, ArtifactKind};
+    use std::sync::Arc;
 
     fn temp_settings_path(tag: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -2339,15 +2849,68 @@ mod tests {
         // Session rather than left unconstructed.
         assert_eq!(state.session.snapshot().generation, 0);
     }
+
+    #[test]
+    fn test_concurrent_set_settings_calls_leave_disk_and_memory_consistent() {
+        // Regression guard for M7 in the design review: set_settings used
+        // to save to disk unlocked and only briefly lock memory for the
+        // final assignment, so two overlapping calls could finish with
+        // disk holding one caller's settings and memory holding the
+        // other's. The whole save-then-update sequence is now one critical
+        // section, so no matter how many threads race here, whichever
+        // write actually lands on disk last must also be the one left in
+        // memory.
+        let path = temp_settings_path("concurrent");
+        let _ = std::fs::remove_file(&path);
+        let state = Arc::new(AppState::new(path.clone(), ChannelSink::new()));
+
+        let handles: Vec<_> = (0..8u32)
+            .map(|i| {
+                let state = state.clone();
+                std::thread::spawn(move || {
+                    let settings = Settings {
+                        show_technical_details: i % 2 == 0,
+                        ignored_updates: vec![ArtifactKey {
+                            instance_id: "brew:/opt/homebrew".to_string(),
+                            kind: ArtifactKind::Formula,
+                            name: format!("pkg-{i}"),
+                        }],
+                        ..Settings::default()
+                    };
+                    state.set_settings(settings).expect("set_settings");
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("writer thread panicked");
+        }
+
+        let on_disk = settings::load(&path);
+        let in_memory = state.get_settings();
+        assert_eq!(
+            on_disk, in_memory,
+            "whichever write actually landed on disk must also be the one left in memory"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
 }
 ```
+
+Then add `mod state;` to `src-tauri/src/lib.rs`, next to `mod events;`:
+
+```rust
+mod events;
+mod state;
+```
+
+This has to happen now, not after `AppState` exists: `state.rs` must actually be part of the crate for Step 2's compile failure to be the real "the type doesn't exist" error, rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review).
 
 - [ ] **Step 2: Run the tests and confirm they fail to compile**
 
 Run: `cargo test -p canager --lib state::`
-Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `AppState`` (`mod state;` is not declared in `lib.rs` yet and the struct does not exist).
+Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `AppState`` (the module is now part of the crate via `mod state;`, so this is a real compile failure — the struct simply does not exist yet; Step 3 implements it).
 
-- [ ] **Step 3: Implement `AppState`, and declare both new modules in `lib.rs`**
+- [ ] **Step 3: Implement `AppState`**
 
 Insert into `src-tauri/src/state.rs`, between the `use` block and the `#[cfg(test)]` module:
 
@@ -2378,28 +2941,32 @@ impl AppState {
         self.settings.lock().unwrap().clone()
     }
 
-    /// Persists `new_settings` to disk, then updates the in-memory copy only
-    /// if the write succeeded — a failed save must never leave the running
-    /// app believing settings changed when the file on disk did not.
+    /// Persists `new_settings` to disk, then updates the in-memory copy —
+    /// holding `settings`'s lock across *both*, not just the final
+    /// assignment (M7 in the design review). Without this, two overlapping
+    /// calls could each save to disk unlocked and then briefly lock memory
+    /// only for the assignment, letting them interleave into "disk holds
+    /// caller B's settings, memory holds caller A's": e.g. A saves, pauses;
+    /// B saves (disk now B) and updates memory (memory now B); A resumes
+    /// and updates memory (memory now A) — disk and memory now disagree
+    /// even though both calls "succeeded". Holding the lock for the whole
+    /// method serialises the two callers instead, so whichever one's write
+    /// actually lands on disk last is also the one left in memory. This
+    /// stays synchronous throughout (no `.await` inside), so holding a
+    /// `std::sync::Mutex` guard across it is safe.
     pub fn set_settings(&self, new_settings: Settings) -> std::io::Result<()> {
+        let mut settings = self.settings.lock().unwrap();
         settings::save(&self.settings_path, &new_settings)?;
-        *self.settings.lock().unwrap() = new_settings;
+        *settings = new_settings;
         Ok(())
     }
 }
 ```
 
-Add `mod state;` to `src-tauri/src/lib.rs`, next to `mod events;`:
-
-```rust
-mod events;
-mod state;
-```
-
 - [ ] **Step 4: Run the tests and confirm they pass**
 
 Run: `cargo test -p canager --lib state::`
-Expected: `test result: ok. 3 passed; 0 failed; ...`
+Expected: `test result: ok. 4 passed; 0 failed; ...`
 
 - [ ] **Step 5: Commit**
 
@@ -2410,6 +2977,9 @@ feat(shell): add AppState wrapping Session and file-backed Settings
 
 get_settings/set_settings are plain, directly-testable methods so the
 IPC commands added next can stay thin adapters over State<AppState>.
+set_settings holds one lock across its entire save-then-update-memory
+sequence so concurrent callers can never leave disk and the in-memory
+copy disagreeing about which write actually won.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -2459,7 +3029,9 @@ In `src-tauri/tauri.conf.json`, replace `"csp": null` with a real policy:
     }
 ```
 
-This omits `'unsafe-inline'` for `style-src`: Tailwind v4's Vite plugin (`@tailwindcss/vite`, added in Task 9) compiles Tailwind's utility classes into a static stylesheet loaded via a build-time `<link>`, not injected through runtime `<style>` tags, and no front-end component code exists yet at this point in the plan that sets inline `style="..."` attributes. If a later task's Radix UI components (Tasks 9–14 use Popover/Tooltip/DropdownMenu/Select, which position themselves via inline `style` attributes at runtime) turn out to be blocked by this policy once the packaged app actually runs under system WebKit, that task must add `'unsafe-inline'` to `style-src` at that point and say why in its own commit — do not add it here pre-emptively.
+This omits `'unsafe-inline'` for `style-src`. That choice is only justified for the **packaged production build**: Tailwind v4's Vite plugin (`@tailwindcss/vite`, added in Task 9) compiles Tailwind's utility classes into a static stylesheet loaded via a build-time `<link>`, not injected through runtime `<style>` tags, and no front-end component code exists yet at this point in the plan that sets inline `style="..."` attributes. If a later task's Radix UI components (Tasks 9–14 use Popover/Tooltip/DropdownMenu/Select, which position themselves via inline `style` attributes at runtime) turn out to be blocked by this policy once the packaged app actually runs under system WebKit, that task must add `'unsafe-inline'` to `style-src` at that point and say why in its own commit — do not add it here pre-emptively.
+
+**Development mode is a separate case this reasoning does not cover** (N3 in the design review): `tauri dev` serves the front end from Vite's own dev server, which injects CSS through its HMR pipeline — typically `<style>` tags written into the document at runtime, not a build-time `<link>` — and Tauri's `csp` setting applies in dev too. Whether `style-src 'self'` (no `'unsafe-inline'`, no nonce/hash) breaks Vite's dev-time style injection or hot reload is a real open question this task's static edits cannot answer; neither `cargo build` nor `tsc` executes the app or a webview, so neither can confirm CSP is actually compatible with real styling, IPC, or Channel traffic in either mode — they only prove the code compiles and `tauri.conf.json` is syntactically valid JSON tauri-build accepts. See Step 7 for the explicit manual checks this requires.
 
 Replace the whole of `src/App.tsx` (dropping the `greet` invoke call, its form, and the template logos — Task 9 replaces the rest of this file's content with the real app shell):
 
@@ -2477,13 +3049,19 @@ function App() {
 export default App;
 ```
 
-- [ ] **Step 7: Run and confirm both the Rust and the front-end sides still build**
+- [ ] **Step 7: Run and confirm both the Rust and the front-end sides still build, then manually verify the CSP against real styling and IPC**
 
 Run: `cargo build -p canager 2>&1 | tail -20`
-Expected: ends with `Finished` and no errors (the `greet` command and its `invoke_handler` registration are gone, `AppState` is built and managed in `.setup`, and `tauri.conf.json`'s new CSP parses — `tauri-build` re-parses `tauri.conf.json` at compile time and would fail the build on invalid JSON or an unrecognised CSP shape).
+Expected: ends with `Finished` and no errors (the `greet` command and its `invoke_handler` registration are gone, `AppState` is built and managed in `.setup`, and `tauri.conf.json`'s new CSP parses — `tauri-build` re-parses `tauri.conf.json` at compile time and would fail the build on invalid JSON or an unrecognised CSP shape). This only proves the CSP string is syntactically acceptable to `tauri-build`; it says nothing about whether real styling, hot reload, or IPC actually work under it.
 
 Run: `pnpm exec tsc -p tsconfig.json`
-Expected: no output, exit code 0 (confirms `App.tsx` has no unused imports left — `tsconfig.json` has `noUnusedLocals`/`noUnusedParameters` enabled — and still type-checks).
+Expected: no output, exit code 0 (confirms `App.tsx` has no unused imports left — `tsconfig.json` has `noUnusedLocals`/`noUnusedParameters` enabled — and still type-checks). This is a type check only; it does not run the app and proves nothing about CSP compatibility either.
+
+Neither command above executes the app in a real webview, so neither can confirm the CSP change is actually compatible with styling or IPC (N3 in the design review). This task's report must instead record the result of these manual checks:
+- **Dev mode** (`pnpm tauri dev` or equivalent): confirm the window renders with real styles, not an unstyled page, and that editing a Tailwind class or `src/index.css` hot-reloads into the running window without a manual restart. This is the check most at risk from the stricter `style-src`, since Vite's dev-time CSS injection is not the same code path as the production build's static stylesheet.
+- **Packaged build** (`pnpm tauri build`, run the resulting bundle): confirm the window renders the compiled Tailwind stylesheet correctly. `invoke()` and Channel communication cannot be exercised yet at this point in the plan — there are no `#[tauri::command]`s registered until Task 8 — so re-run this same manual check once Task 8's commands and Task 9's front end exist, and record the result there instead of assuming it here.
+
+If either manual check fails, that is a defect in this task's CSP choice to fix in this task, not a deferred concern.
 
 - [ ] **Step 8: Commit**
 
@@ -2509,23 +3087,37 @@ EOF
 **Files:**
 - Create: `src-tauri/src/ipc.rs`
 - Modify: `src-tauri/src/lib.rs` (declare `mod ipc;` and register all nine commands via `.invoke_handler(tauri::generate_handler![...])`)
+- Modify: `src-tauri/Cargo.toml` (add `[dev-dependencies]` for `async-trait`, `tokio`, `tokio-util` — M2 in the design review)
 - Test: `src-tauri/src/ipc.rs` (inline `#[cfg(test)] mod tests`, with a self-contained `FakeAdapter`)
 
 **Interfaces:**
-- Consumes: `AppState` (Task 7); `Session::{plan, submit, cancel, operations}`, `Snapshot`, `DetectOutcome` (Task 5); `OpSummary` (Task 3); `Settings` (Task 4); `ChannelSink::register`, `UiEvent` (Task 6); `canager_core::model::{OpRequest, Plan}` (existing); `canager_core::runner::HostEnv` (existing).
-- Produces: all nine `#[tauri::command]` functions with exactly the signatures fixed by the skeleton (`get_snapshot`, `refresh`, `plan_operation`, `submit_operation`, `cancel_operation`, `list_operations`, `get_settings`, `set_settings`, `subscribe_events`). Each is a **thin, ≤2-line adapter** over a plain, non-`#[tauri::command]` `..._impl` function that takes `&AppState` directly — introduced by this task specifically so the real logic is unit-testable, since `tauri::State<'_, T>` wraps a private field and cannot be constructed outside the `tauri` crate (verified against the vendored source: `pub struct State<'r, T: Send + Sync + 'static>(&'r T);` in `~/.cargo/registry/src/.../tauri-2.11.5/src/state.rs` has no public constructor). These `..._impl` functions (`get_snapshot_impl`, `refresh_impl`, `plan_operation_impl`, `submit_operation_impl`, `cancel_operation_impl`, `list_operations_impl`, `get_settings_impl`, `set_settings_impl`, `subscribe_events_impl`) are not named by the skeleton and are private to this crate (`pub(crate)`); no other task depends on their names.
+- Consumes: `AppState` (Task 7); `Session::{issue_plan, submit, cancel, operations}`, `Snapshot`, `DetectOutcome`, `IssuedPlan`, `PlanId`, `SubmitError` (Task 5); `OpSummary` (Task 3); `Settings` (Task 4); `ChannelSink::{register, broadcast}`, `UiEvent` (Task 6); `canager_core::model::OpRequest` (existing); `canager_core::runner::HostEnv` (existing).
+- Produces: all nine `#[tauri::command]` functions with exactly the signatures fixed by the skeleton (`get_snapshot`, `refresh`, `plan_operation`, `submit_operation`, `cancel_operation`, `list_operations`, `get_settings`, `set_settings`, `subscribe_events`) — `plan_operation` returns `IssuedPlan` and `submit_operation` takes only `plan_id: u64` (F1 in the design review: IPC accepts only known operations and server-issued object IDs, never a client-supplied `Plan`). Each is a **thin, ≤2-line adapter** over a plain, non-`#[tauri::command]` `..._impl` function that takes `&AppState` directly — introduced by this task specifically so the real logic is unit-testable, since `tauri::State<'_, T>` wraps a private field and cannot be constructed outside the `tauri` crate (verified against the vendored source: `pub struct State<'r, T: Send + Sync + 'static>(&'r T);` in `~/.cargo/registry/src/.../tauri-2.11.5/src/state.rs` has no public constructor). These `..._impl` functions (`get_snapshot_impl`, `refresh_impl`, `plan_operation_impl`, `submit_operation_impl`, `cancel_operation_impl`, `list_operations_impl`, `get_settings_impl`, `set_settings_impl`, `subscribe_events_impl`) are not named by the skeleton and are private to this crate (`pub(crate)`); no other task depends on their names. `refresh_impl` also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink` whenever the refreshed snapshot's `generation` differs from the one before the call (M9 in the design review — this is the only production code path in the whole plan that ever sends `SnapshotChanged`; every other mention of it up to this task is in a test).
 
-- [ ] **Step 1: Write the failing tests for all nine command implementations**
+- [ ] **Step 1: Add the test-only dependencies this task's tests need**
+
+Task 8's tests are the first in `src-tauri` to use `#[tokio::test]`, `async_trait`, and `tokio_util::sync::CancellationToken`. `canager-core` depends on `tokio`, `tokio-util` and `async-trait`, but a dependency of `canager-core` is not usable directly from the `canager` (src-tauri) crate — each crate must declare what it imports itself (M2 in the design review). Add to `src-tauri/Cargo.toml`:
+
+```toml
+[dev-dependencies]
+async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+```
+
+This has to land before Step 2's test file is written: without it, `use async_trait::async_trait;` and `#[tokio::test]` fail to resolve the moment `mod ipc;` makes the file part of the crate — before ever reaching the "`..._impl` not found" errors Step 3 is meant to produce.
+
+- [ ] **Step 2: Write the failing tests for all nine command implementations**
 
 Create `src-tauri/src/ipc.rs` with its `use` block and full test module (the `..._impl` functions and command wrappers referenced by the tests do not exist yet):
 
 ```rust
 use crate::events::UiEvent;
 use crate::state::AppState;
-use canager_core::model::{OpRequest, Plan};
+use canager_core::model::OpRequest;
 use canager_core::ops::OpSummary;
 use canager_core::runner::HostEnv;
-use canager_core::session::Snapshot;
+use canager_core::session::{IssuedPlan, Snapshot};
 use canager_core::settings::Settings;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -2536,18 +3128,24 @@ mod tests {
     use crate::events::ChannelSink;
     use async_trait::async_trait;
     use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
-    use canager_core::events::{EventSink, OpId, VecSink};
+    use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
-        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, Plan,
         Outcome, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
     };
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
 
     struct FakeAdapter {
         meta: AdapterMeta,
         instance: ManagerInstance,
+        /// How many times `execute()` actually ran. Used only by the
+        /// plan-rejection tests below to prove a rejected `submit` never
+        /// reaches the runner (F1 in the design review); every other test
+        /// in this module ignores it.
+        execute_calls: Arc<AtomicUsize>,
     }
 
     #[async_trait]
@@ -2619,6 +3217,7 @@ mod tests {
             _op_id: OpId,
             _cancel: CancellationToken,
         ) -> Result<Outcome, AdapterError> {
+            self.execute_calls.fetch_add(1, Ordering::SeqCst);
             Ok(Outcome::Succeeded)
         }
 
@@ -2647,6 +3246,28 @@ mod tests {
     }
 
     fn state_with_fake_adapter() -> AppState {
+        let (state, _execute_calls) = state_with_fake_adapter_and_now(None);
+        state
+    }
+
+    /// Like `state_with_fake_adapter`, but also returns a counter of how
+    /// many times the fake adapter's `execute()` actually ran, and accepts
+    /// an injectable clock — needed only by the plan-rejection tests below,
+    /// which must prove a rejected `submit` never reaches the runner and
+    /// must simulate a plan aging past its expiry window (F1 in the design
+    /// review). `state_with_fake_adapter` above delegates to this with
+    /// `None`, so there is exactly one place that builds this fixture.
+    ///
+    /// `session` and `channel_sink` share the *same* `ChannelSink` (N1 in
+    /// the design review): the two used to be built from separate
+    /// `ChannelSink::new()` calls, which meant a real operation's events —
+    /// emitted into `session`'s sink — could never reach a Channel
+    /// registered through `AppState.channel_sink`, and no test caught it
+    /// because every test only ever broadcast directly on `channel_sink`
+    /// rather than checking that a *real* operation's events arrive.
+    fn state_with_fake_adapter_and_now(
+        now_fn: Option<fn() -> i64>,
+    ) -> (AppState, Arc<AtomicUsize>) {
         let instance = ManagerInstance {
             id: "fake:1".to_string(),
             adapter_id: "fake".to_string(),
@@ -2665,15 +3286,22 @@ mod tests {
             schema_version: 1,
             verified_versions: vec![],
         };
-        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter { meta, instance });
+        let execute_calls = Arc::new(AtomicUsize::new(0));
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance,
+            execute_calls: execute_calls.clone(),
+        });
+        let sink = ChannelSink::new();
         let session =
-            canager_core::session::Session::with_adapters(ChannelSink::new(), vec![adapter], None);
-        AppState {
+            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], now_fn);
+        let state = AppState {
             session,
             settings_path: temp_settings_path("appstate"),
             settings: std::sync::Mutex::new(Settings::default()),
-            channel_sink: ChannelSink::new(),
-        }
+            channel_sink: sink,
+        };
+        (state, execute_calls)
     }
 
     #[tokio::test]
@@ -2698,7 +3326,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plan_operation_impl_delegates_to_session_plan() {
+    async fn test_plan_operation_impl_delegates_to_session_issue_plan() {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
@@ -2707,10 +3335,10 @@ mod tests {
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
         };
-        let plan = plan_operation_impl(&state, req)
+        let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        assert_eq!(plan.args, vec!["do".to_string(), "jq".to_string()]);
+        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
     }
 
     #[tokio::test]
@@ -2735,16 +3363,34 @@ mod tests {
     async fn test_submit_and_list_and_cancel_operations_impl_round_trip() {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh_impl");
+
+        // N1 in the design review: state_with_fake_adapter now wires
+        // `session` and `channel_sink` to the *same* ChannelSink, so a real
+        // subscriber registered here — through the same `subscribe_events_impl`
+        // path the real `subscribe_events` command uses — proves that
+        // wiring is actually connected end to end, not merely that
+        // ChannelSink::broadcast works when called directly on a sink no
+        // Session ever emits into.
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "fake:1".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
         };
-        let plan = plan_operation_impl(&state, req)
+        let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        let op_id = submit_operation_impl(&state, plan).expect("submit_operation_impl");
+        let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
@@ -2753,6 +3399,115 @@ mod tests {
         assert_eq!(summaries[0].id, op_id);
 
         cancel_operation_impl(&state, op_id).expect("cancel_operation_impl on a finished op");
+
+        let events = received.lock().unwrap();
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                UiEvent::Operation(OperationEvent::Status { op_id: id, .. }) if *id == op_id
+            )),
+            "the real operation's Status events must reach a subscriber through AppState.channel_sink"
+        );
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                UiEvent::Operation(OperationEvent::Finished { op_id: id, .. }) if *id == op_id
+            )),
+            "the real operation's Finished event must reach a subscriber through AppState.channel_sink"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_an_unissued_plan_id() {
+        // F1 in the design review: submit must accept only a server-issued
+        // PlanId, never anything the caller invents — including a
+        // tampered or forged id nothing ever issued. The runner must never
+        // be reached.
+        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        refresh_impl(&state).await.expect("refresh_impl");
+        let err = submit_operation_impl(&state, 999_999)
+            .expect_err("an unissued plan id must be rejected");
+        assert!(
+            err.contains("no such plan"),
+            "expected the Unknown-plan error, got: {err}"
+        );
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            0,
+            "a rejected submit must never reach the runner"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_the_same_plan_id_submitted_twice() {
+        // F1: each issued plan is single-use. Resubmitting the same id —
+        // e.g. a replayed IPC call — must be rejected the second time, not
+        // silently run the operation again.
+        let (state, execute_calls) = state_with_fake_adapter_and_now(None);
+        refresh_impl(&state).await.expect("refresh_impl");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+        submit_operation_impl(&state, issued.id).expect("the first submit must succeed");
+        let err = submit_operation_impl(&state, issued.id)
+            .expect_err("resubmitting the same plan id must be rejected");
+        assert!(
+            err.contains("no such plan"),
+            "expected the Unknown-plan error, got: {err}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            1,
+            "exactly one execute() call, from the first legitimate submit — not two"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_operation_impl_rejects_an_expired_plan() {
+        // F1: a plan previewed too long ago must be re-previewed, not run
+        // blind. Simulates 601 seconds passing between issue_plan and
+        // submit via an injectable clock — `Session::{new,with_adapters}`'s
+        // `now_fn` seam exists specifically so tests like this one do not
+        // need to actually wait 10 minutes.
+        static EXPIRED_PLAN_TEST_NOW: AtomicI64 = AtomicI64::new(1_700_000_000);
+        fn expired_plan_test_now() -> i64 {
+            EXPIRED_PLAN_TEST_NOW.load(Ordering::SeqCst)
+        }
+
+        let (state, execute_calls) =
+            state_with_fake_adapter_and_now(Some(expired_plan_test_now));
+        refresh_impl(&state).await.expect("refresh_impl");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+
+        EXPIRED_PLAN_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+
+        let err = submit_operation_impl(&state, issued.id)
+            .expect_err("a plan older than 600 seconds must be rejected");
+        assert!(
+            err.contains("older than 10 minutes"),
+            "expected the Expired-plan error, got: {err}"
+        );
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            0,
+            "an expired submit must never reach the runner"
+        );
     }
 
     #[test]
@@ -2762,7 +3517,7 @@ mod tests {
         let state = AppState::new(path, ChannelSink::new());
         let mut settings = get_settings_impl(&state).expect("get_settings_impl");
         assert_eq!(settings, Settings::default());
-        settings.greedy_casks = true;
+        settings.show_technical_details = true;
         set_settings_impl(&state, settings.clone()).expect("set_settings_impl");
         assert_eq!(
             get_settings_impl(&state).expect("get_settings_impl again"),
@@ -2791,12 +3546,22 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the tests and confirm they fail to compile**
+Then add `mod ipc;` to `src-tauri/src/lib.rs`, alongside the existing module declarations:
+
+```rust
+mod events;
+mod ipc;
+mod state;
+```
+
+This has to happen now, not after the `..._impl` functions exist: `ipc.rs` must actually be part of the crate for Step 2's compile failure below to be the real "these functions don't exist" error, rather than the test filter silently matching zero tests because the file was never compiled at all (M4 in the design review).
+
+- [ ] **Step 3: Run the tests and confirm they fail to compile**
 
 Run: `cargo test -p canager --lib ipc::`
-Expected: FAIL to compile — `error[E0433]: failed to resolve: use of undeclared type `AppState`` (until `mod ipc;` is added to `lib.rs`, this file isn't part of the crate) and, once that is added, `error[E0425]: cannot find function `get_snapshot_impl` in this scope` and similarly for every other `..._impl` function.
+Expected: FAIL to compile — `error[E0425]: cannot find function `get_snapshot_impl` in this scope` and similarly for every other `..._impl` function referenced by the test module (the module is now part of the crate via `mod ipc;`, and `AppState` itself resolves fine via the existing `use crate::state::AppState;` — it is only the `..._impl` functions and command wrappers that do not exist yet).
 
-- [ ] **Step 3: Implement all nine `..._impl` functions and their thin `#[tauri::command]` wrappers**
+- [ ] **Step 4: Implement all nine `..._impl` functions and their thin `#[tauri::command]` wrappers**
 
 Insert into `src-tauri/src/ipc.rs`, between the `use` block and the `#[cfg(test)]` module:
 
@@ -2810,8 +3575,21 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
     get_snapshot_impl(&state)
 }
 
+/// Also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink`
+/// whenever the refreshed snapshot's `generation` differs from the one
+/// before this call (M9 in the design review). `canager-core` must never
+/// depend on `tauri`, so `Session::refresh` itself cannot send this — the
+/// shell is the only layer that can, and this is the only place in the
+/// whole plan that does so outside a test.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
-    Ok(state.session.refresh(&HostEnv::discover()).await)
+    let generation_before = state.session.snapshot().generation;
+    let snapshot = state.session.refresh(&HostEnv::discover()).await;
+    if snapshot.generation != generation_before {
+        state.channel_sink.broadcast(UiEvent::SnapshotChanged {
+            generation: snapshot.generation,
+        });
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -2819,28 +3597,42 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
     refresh_impl(&state).await
 }
 
+/// Resolves and plans `request` through `Session::issue_plan`, returning
+/// the server-issued `IssuedPlan` for the caller to preview. Nothing in
+/// the returned `Plan` is ever accepted back from the client — F1 in the
+/// design review: IPC accepts only known operations and server-issued
+/// object IDs, never a client-supplied `Plan`. `submit_operation_impl`
+/// below is the only way to actually run it, and takes only the id.
 pub(crate) async fn plan_operation_impl(
     state: &AppState,
     request: OpRequest,
-) -> Result<Plan, String> {
-    state.session.plan(&request).await.map_err(|e| e.to_string())
+) -> Result<IssuedPlan, String> {
+    state
+        .session
+        .issue_plan(&request)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn plan_operation(
     state: State<'_, AppState>,
     request: OpRequest,
-) -> Result<Plan, String> {
+) -> Result<IssuedPlan, String> {
     plan_operation_impl(&state, request).await
 }
 
-pub(crate) fn submit_operation_impl(state: &AppState, plan: Plan) -> Result<u64, String> {
-    Ok(state.session.submit(plan))
+/// Consumes the plan stored under `plan_id` (one-time use) and submits
+/// exactly that stored `Plan`. Rejects an unknown, already-submitted, or
+/// expired `plan_id` (`Session::submit`'s `SubmitError`) without ever
+/// constructing or accepting a `Plan` from the caller.
+pub(crate) fn submit_operation_impl(state: &AppState, plan_id: u64) -> Result<u64, String> {
+    state.session.submit(plan_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn submit_operation(state: State<'_, AppState>, plan: Plan) -> Result<u64, String> {
-    submit_operation_impl(&state, plan)
+pub async fn submit_operation(state: State<'_, AppState>, plan_id: u64) -> Result<u64, String> {
+    submit_operation_impl(&state, plan_id)
 }
 
 pub(crate) fn cancel_operation_impl(state: &AppState, op_id: u64) -> Result<(), String> {
@@ -2897,23 +3689,15 @@ pub async fn subscribe_events(
 }
 ```
 
-Add `mod ipc;` to `src-tauri/src/lib.rs`, alongside the existing module declarations:
-
-```rust
-mod events;
-mod ipc;
-mod state;
-```
-
-- [ ] **Step 4: Run the tests and confirm they pass**
+- [ ] **Step 5: Run the tests and confirm they pass**
 
 Run: `cargo test -p canager --lib ipc::`
-Expected: `test result: ok. 7 passed; 0 failed; ...`
+Expected: `test result: ok. 10 passed; 0 failed; ...`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src-tauri/src/ipc.rs src-tauri/src/lib.rs
+git add src-tauri/Cargo.toml src-tauri/src/ipc.rs src-tauri/src/lib.rs
 git commit -m "$(cat <<'EOF'
 feat(shell): add all nine IPC commands as thin AppState adapters
 
@@ -2928,7 +3712,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 6: Register all nine commands with `invoke_handler!`**
+- [ ] **Step 7: Register all nine commands with `invoke_handler!`**
 
 In `src-tauri/src/lib.rs`, add the `.invoke_handler(...)` call to the builder chain, right after `.setup(...)`:
 
@@ -2953,12 +3737,12 @@ In `src-tauri/src/lib.rs`, add the `.invoke_handler(...)` call to the builder ch
         .run(tauri::generate_context!())
 ```
 
-- [ ] **Step 7: Run a full build to confirm the macro-generated dispatch compiles, including the `Channel<UiEvent>` command argument**
+- [ ] **Step 8: Run a full build to confirm the macro-generated dispatch compiles, including the `Channel<UiEvent>` command argument**
 
 Run: `cargo build --workspace 2>&1 | tail -20`
 Expected: ends with `Finished` and no errors (proves `tauri::generate_handler!` accepts all nine commands together, and that `Channel<UiEvent>` resolves correctly as a command argument type via its `CommandArg` impl).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src-tauri/src/lib.rs
@@ -2974,10 +3758,10 @@ EOF
 )"
 ```
 
-- [ ] **Step 9: Run the full workspace definition-of-done check**
+- [ ] **Step 10: Run the full workspace definition-of-done check**
 
 Run: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `canager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (10 tests, new), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (4 tests); in `canager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (3 tests, new) and `ipc::` (7 tests, new) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
+Expected: `cargo fmt --all --check` prints nothing and exits 0; clippy ends with `Finished` and no warnings; `cargo test --workspace` reports `test result: ok.` for every suite in the workspace with zero failures — in `canager-core`, that includes `adapters::` (35 tests: the pre-existing 29 across `adapters::tests`/`brew::tests`/`brew::plan_execute_tests` plus this plan's 6 new ones), `settings::` (7 tests, new), `session::` (12 tests, new — refresh/snapshot/issue_plan/submit plus the M5 unchanged-content-coalescing and M8 same-instance-lock regression tests), `ops::` unit tests, and every `tests/*.rs` integration file including the new `ops_summaries_test.rs` (5 tests, including N4's multiple-waiters regression test); in `canager` (`src-tauri`), that includes `events::` (3 tests, new), `state::` (4 tests, new — including the M7 concurrent-save regression test) and `ipc::` (10 tests, new — including the three F1 plan-rejection tests) — with zero regressions anywhere in the workspace relative to the pre-Task-1 baseline.
 
 ---
 
@@ -3741,7 +4525,7 @@ describe("types", () => {
       '{"id": 1, "kind": "Install", "instance_id": "brew:/opt/homebrew", "artifact_kind": "Formula", "name": "jq", "status": "Running", "outcome": null, "argv_preview": ["/opt/homebrew/bin/brew", "install", "--formula", "jq"]}',
     ) as OpSummary;
     const settings = JSON.parse(
-      '{"language": "ZhCn", "show_technical_details": true, "greedy_casks": false, "ignored_updates": []}',
+      '{"language": "ZhCn", "show_technical_details": true, "ignored_updates": []}',
     ) as Settings;
 
     expect(plan.cancel_policy).toBe("KillThenReconcile");
@@ -3769,7 +4553,7 @@ import {
   setSettings,
   subscribeEvents,
 } from "./api";
-import type { OpRequest, Plan, Settings, UiEvent } from "./types";
+import type { IssuedPlan, OpRequest, Settings, UiEvent } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -3790,39 +4574,39 @@ describe("api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("refresh");
   });
 
-  it("planOperation invokes plan_operation with the request", async () => {
+  it("planOperation invokes plan_operation with the request and returns the IssuedPlan", async () => {
     const request: OpRequest = {
       kind: "Uninstall",
       instance_id: "brew:/opt/homebrew",
       artifact_kind: "Formula",
       name: "jq",
     };
-    mockInvoke.mockResolvedValueOnce({} as never);
-    await planOperation(request);
+    const issued: IssuedPlan = {
+      id: 1,
+      plan: {
+        request,
+        program: "/opt/homebrew/bin/brew",
+        args: ["uninstall", "--formula", "jq"],
+        env: [],
+        needs_password: false,
+        locks: ["brew:/opt/homebrew"],
+        cancel_policy: "KillThenReconcile",
+        warnings: [],
+        affected: [],
+        timeout_secs: 1800,
+      },
+      issued_at: 1758000000,
+    };
+    mockInvoke.mockResolvedValueOnce(issued as never);
+    const result = await planOperation(request);
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", { request });
+    expect(result).toEqual(issued);
   });
 
-  it("submitOperation invokes submit_operation with the plan", async () => {
-    const plan: Plan = {
-      request: {
-        kind: "Install",
-        instance_id: "brew:/opt/homebrew",
-        artifact_kind: "Formula",
-        name: "jq",
-      },
-      program: "/opt/homebrew/bin/brew",
-      args: ["install", "--formula", "jq"],
-      env: [],
-      needs_password: false,
-      locks: ["brew:/opt/homebrew"],
-      cancel_policy: "KillThenReconcile",
-      warnings: [],
-      affected: [],
-      timeout_secs: 1800,
-    };
+  it("submitOperation invokes submit_operation with only the plan id", async () => {
     mockInvoke.mockResolvedValueOnce(7 as never);
-    await submitOperation(plan);
-    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { plan });
+    await submitOperation(1);
+    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: 1 });
   });
 
   it("cancelOperation invokes cancel_operation with opId", async () => {
@@ -3847,7 +4631,6 @@ describe("api", () => {
     const settings: Settings = {
       language: "System",
       show_technical_details: false,
-      greedy_casks: false,
       ignored_updates: [],
     };
     mockInvoke.mockResolvedValueOnce(undefined as never);
@@ -4043,6 +4826,11 @@ export interface OpRequest {
   artifact_kind: ArtifactKind;
   name: string;
 }
+export interface IssuedPlan {
+  id: number;
+  plan: Plan;
+  issued_at: number;
+}
 export interface OpSummary {
   id: number;
   kind: OpKind;
@@ -4071,7 +4859,6 @@ export type Language = "System" | "En" | "ZhCn";
 export interface Settings {
   language: Language;
   show_technical_details: boolean;
-  greedy_casks: boolean;
   ignored_updates: ArtifactKey[];
 }
 export type OperationEvent =
@@ -4085,7 +4872,7 @@ Create `src/lib/api.ts`:
 
 ```ts
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { OpRequest, Plan, Settings, Snapshot, OpSummary, UiEvent } from "./types";
+import type { IssuedPlan, OpRequest, Settings, Snapshot, OpSummary, UiEvent } from "./types";
 
 export function getSnapshot(): Promise<Snapshot> {
   return invoke("get_snapshot");
@@ -4095,12 +4882,12 @@ export function refresh(): Promise<Snapshot> {
   return invoke("refresh");
 }
 
-export function planOperation(request: OpRequest): Promise<Plan> {
+export function planOperation(request: OpRequest): Promise<IssuedPlan> {
   return invoke("plan_operation", { request });
 }
 
-export function submitOperation(plan: Plan): Promise<number> {
-  return invoke("submit_operation", { plan });
+export function submitOperation(planId: number): Promise<number> {
+  return invoke("submit_operation", { planId });
 }
 
 export function cancelOperation(opId: number): Promise<void> {
@@ -4233,7 +5020,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { useSnapshot, useRefresh, usePlanOperation, useSubmitOperation } from "./queries";
-import type { Plan, Snapshot } from "./types";
+import type { IssuedPlan, Snapshot } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -4284,26 +5071,30 @@ describe("queries", () => {
     expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(2);
   });
 
-  it("usePlanOperation calls planOperation and returns its Plan", async () => {
-    const plan: Plan = {
-      request: { kind: "Uninstall", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq" },
-      program: "/opt/homebrew/bin/brew",
-      args: ["uninstall", "--formula", "jq"],
-      env: [],
-      needs_password: false,
-      locks: ["brew:/opt/homebrew"],
-      cancel_policy: "KillThenReconcile",
-      warnings: [],
-      affected: [],
-      timeout_secs: 1800,
+  it("usePlanOperation calls planOperation and returns its IssuedPlan", async () => {
+    const issued: IssuedPlan = {
+      id: 1,
+      plan: {
+        request: { kind: "Uninstall", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq" },
+        program: "/opt/homebrew/bin/brew",
+        args: ["uninstall", "--formula", "jq"],
+        env: [],
+        needs_password: false,
+        locks: ["brew:/opt/homebrew"],
+        cancel_policy: "KillThenReconcile",
+        warnings: [],
+        affected: [],
+        timeout_secs: 1800,
+      },
+      issued_at: 1758000000,
     };
-    mockInvoke.mockResolvedValueOnce(plan as never);
+    mockInvoke.mockResolvedValueOnce(issued as never);
     const queryClient = newClient();
     const { result } = renderHook(() => usePlanOperation(), { wrapper: wrapper(queryClient) });
 
-    result.current.mutate(plan.request);
+    result.current.mutate(issued.plan.request);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(plan);
+    expect(result.current.data).toEqual(issued);
   });
 
   it("useSubmitOperation invalidates the operations query on success", async () => {
@@ -4312,18 +5103,7 @@ describe("queries", () => {
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useSubmitOperation(), { wrapper: wrapper(queryClient) });
 
-    result.current.mutate({
-      request: { kind: "Install", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq" },
-      program: "/opt/homebrew/bin/brew",
-      args: ["install", "--formula", "jq"],
-      env: [],
-      needs_password: false,
-      locks: ["brew:/opt/homebrew"],
-      cancel_policy: "KillThenReconcile",
-      warnings: [],
-      affected: [],
-      timeout_secs: 1800,
-    });
+    result.current.mutate(1);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] });
@@ -4427,7 +5207,7 @@ import {
   getSettings,
   setSettings,
 } from "./api";
-import type { OpRequest, OpSummary, Plan, Settings, Snapshot } from "./types";
+import type { IssuedPlan, OpRequest, OpSummary, Settings, Snapshot } from "./types";
 
 export const queryKeys = {
   snapshot: ["snapshot"] as const,
@@ -4467,12 +5247,12 @@ export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
   });
 }
 
-/** Plans, shows nothing itself; callers render the Plan then call submit. */
-export function usePlanOperation(): UseMutationResult<Plan, Error, OpRequest> {
+/** Plans, shows nothing itself; callers render the IssuedPlan's Plan then submit its id. */
+export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpRequest> {
   return useMutation({ mutationFn: planOperation });
 }
 
-export function useSubmitOperation(): UseMutationResult<number, Error, Plan> {
+export function useSubmitOperation(): UseMutationResult<number, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: submitOperation,
@@ -4854,7 +5634,6 @@ const snapshot: Snapshot = {
 const settings: Settings = {
   language: "System",
   show_technical_details: false,
-  greedy_casks: false,
   ignored_updates: [],
 };
 
@@ -5172,7 +5951,6 @@ const emptySnapshot = {
 const defaultSettings = {
   language: "System",
   show_technical_details: false,
-  greedy_casks: false,
   ignored_updates: [],
 };
 
@@ -5266,7 +6044,7 @@ EOF
 - Modify: `src/i18n/en.json`
 
 **Interfaces:**
-- Consumes: `ArtifactRow` and its `selectable`/`secondaryContent` props (`src/components/ArtifactRow.tsx`, Task 11); `useSnapshot`, `useSettings`, `useSaveSettings`, `usePlanOperation`, `useSubmitOperation` (`src/lib/queries.ts`, Task 10); `useUiStore` (`selectedUpdates`, `toggleUpdate`, `clearSelectedUpdates`), `artifactKeyId` (`src/store/ui.ts`, Task 10); `OpRequest`, `Plan`, `UpdateCandidate` (`src/lib/types.ts`, Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` (`src/components/ui/Dialog.tsx`, Task 9).
+- Consumes: `ArtifactRow` and its `selectable`/`secondaryContent` props (`src/components/ArtifactRow.tsx`, Task 11); `useSnapshot`, `useSettings`, `useSaveSettings`, `usePlanOperation`, `useSubmitOperation` (`src/lib/queries.ts`, Task 10); `useUiStore` (`selectedUpdates`, `toggleUpdate`, `clearSelectedUpdates`), `artifactKeyId` (`src/store/ui.ts`, Task 10); `OpRequest`, `IssuedPlan`, `UpdateCandidate` (`src/lib/types.ts`, Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` (`src/components/ui/Dialog.tsx`, Task 9).
 - Produces: `CommandPreview` (`src/components/CommandPreview.tsx`, not in the skeleton — renders a `Plan`'s `program`/`args` as the exact command that will run, satisfying the Global Constraint that every destructive action previews its command before running; Task 14's uninstall dialog reuses this same component rather than creating its own); `UpdatesPage` (`src/pages/UpdatesPage.tsx`). Both single-row Update and multi-select "Update selected" route through one shared confirmation dialog inside `UpdatesPage` before calling `useSubmitOperation`, so an update never runs without the operator having seen its command first.
 
 - [ ] **Step 1: Add i18n keys**
@@ -5431,7 +6209,6 @@ beforeEach(() => {
   settings = {
     language: "System",
     show_technical_details: false,
-    greedy_casks: false,
     ignored_updates: [],
   };
   mockInvoke.mockReset();
@@ -5447,16 +6224,20 @@ beforeEach(() => {
         args as { request: { instance_id: string; artifact_kind: string; name: string } }
       ).request;
       return Promise.resolve({
-        request,
-        program: "/opt/homebrew/bin/brew",
-        args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
-        env: [],
-        needs_password: false,
-        locks: ["brew:/opt/homebrew"],
-        cancel_policy: "KillThenReconcile",
-        warnings: [],
-        affected: [],
-        timeout_secs: 1800,
+        id: 1,
+        plan: {
+          request,
+          program: "/opt/homebrew/bin/brew",
+          args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
+          env: [],
+          needs_password: false,
+          locks: ["brew:/opt/homebrew"],
+          cancel_policy: "KillThenReconcile",
+          warnings: [],
+          affected: [],
+          timeout_secs: 1800,
+        },
+        issued_at: 1758000000,
       });
     }
     if (cmd === "submit_operation") return Promise.resolve(1);
@@ -5556,7 +6337,7 @@ import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { CommandPreview } from "../components/CommandPreview";
 import { Dialog } from "../components/ui/Dialog";
-import type { OpRequest, Plan, UpdateCandidate } from "../lib/types";
+import type { IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -5578,7 +6359,7 @@ export function UpdatesPage() {
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
   const clearSelectedUpdates = useUiStore((s) => s.clearSelectedUpdates);
 
-  const [pendingPlans, setPendingPlans] = useState<Plan[] | null>(null);
+  const [pendingPlans, setPendingPlans] = useState<IssuedPlan[] | null>(null);
 
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
@@ -5593,8 +6374,8 @@ export function UpdatesPage() {
 
   async function confirmAndSubmit() {
     if (!pendingPlans) return;
-    for (const plan of pendingPlans) {
-      await submitMutation.mutateAsync(plan);
+    for (const issued of pendingPlans) {
+      await submitMutation.mutateAsync(issued.id);
     }
     clearSelectedUpdates();
     setPendingPlans(null);
@@ -5696,8 +6477,8 @@ export function UpdatesPage() {
         }
       >
         <div className="flex flex-col gap-3">
-          {(pendingPlans ?? []).map((plan, index) => (
-            <CommandPreview key={index} program={plan.program} args={plan.args} />
+          {(pendingPlans ?? []).map((issued, index) => (
+            <CommandPreview key={index} program={issued.plan.program} args={issued.plan.args} />
           ))}
         </div>
       </Dialog>
@@ -6288,7 +7069,7 @@ EOF
 - Modify: `src/i18n/en.json`
 
 **Interfaces:**
-- Consumes: `usePlanOperation(): UseMutationResult<Plan, Error, OpRequest>` and `useSubmitOperation(): UseMutationResult<number, Error, Plan>` from `src/lib/queries.ts` (Task 10); `OpRequest`, `Plan` from `src/lib/types.ts` (Task 10); `useUiStore` (`setFocusedOpId`, `setDrawerOpen`) from `src/store/ui.ts` (Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` from `src/components/ui/Dialog.tsx` (Task 9); `CommandPreview({ program, args })` from `src/components/CommandPreview.tsx` (Task 12); `InstalledPage`'s existing row rendering and `ArtifactRow` usage (Task 11).
+- Consumes: `usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpRequest>` and `useSubmitOperation(): UseMutationResult<number, Error, number>` from `src/lib/queries.ts` (Task 10); `OpRequest`, `IssuedPlan` from `src/lib/types.ts` (Task 10); `useUiStore` (`setFocusedOpId`, `setDrawerOpen`) from `src/store/ui.ts` (Task 10); `Dialog({ open, onOpenChange, title, children, footer? })` from `src/components/ui/Dialog.tsx` (Task 9); `CommandPreview({ program, args })` from `src/components/CommandPreview.tsx` (Task 12); `InstalledPage`'s existing row rendering and `ArtifactRow` usage (Task 11).
 - Produces: `export interface UninstallDialogProps { open: boolean; onOpenChange: (open: boolean) => void; request: OpRequest; displayName: string; onSubmitted?: (opId: number) => void }` and `export function UninstallDialog(props: UninstallDialogProps): JSX.Element`. The caller (`InstalledPage`) owns the `open` boolean and passes the artifact's `OpRequest` (`kind: "Uninstall"`) plus its human-readable name; `onSubmitted` is how the caller learns the new op id to focus in the log drawer. `InstalledPage` now owns an `uninstallTarget` piece of state and renders `UninstallDialog` conditionally instead of calling `planMutation.mutate` directly from the row's primary action — this is what makes the Global Constraint "every destructive action shows the exact command that will run before it runs" actually true for uninstall, not just true of `UninstallDialog` in isolation.
 
 - [ ] **Step 1: Write the failing tests for `UninstallDialog`**
@@ -6300,7 +7081,7 @@ import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UninstallDialog } from "./UninstallDialog";
-import type { OpRequest, Plan } from "../lib/types";
+import type { IssuedPlan, OpRequest, Plan } from "../lib/types";
 
 const request: OpRequest = {
   kind: "Uninstall",
@@ -6309,19 +7090,23 @@ const request: OpRequest = {
   name: "jq",
 };
 
-function planFor(overrides: Partial<Plan> = {}): Plan {
+function issuedPlanFor(overrides: Partial<Plan> = {}): IssuedPlan {
   return {
-    request,
-    program: "/opt/homebrew/bin/brew",
-    args: ["uninstall", "--formula", "jq"],
-    env: [],
-    needs_password: false,
-    locks: ["brew:/opt/homebrew"],
-    cancel_policy: "KillThenReconcile",
-    warnings: [],
-    affected: [],
-    timeout_secs: 1800,
-    ...overrides,
+    id: 1,
+    plan: {
+      request,
+      program: "/opt/homebrew/bin/brew",
+      args: ["uninstall", "--formula", "jq"],
+      env: [],
+      needs_password: false,
+      locks: ["brew:/opt/homebrew"],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected: [],
+      timeout_secs: 1800,
+      ...overrides,
+    },
+    issued_at: 1758000000,
   };
 }
 
@@ -6342,7 +7127,7 @@ describe("UninstallDialog", () => {
   });
 
   it("disables confirm and explains what would break when something depends on it", async () => {
-    vi.mocked(invoke).mockResolvedValue(planFor({ affected: ["jq-cli-wrapper"] }));
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ affected: ["jq-cli-wrapper"] }));
 
     renderWithProviders(
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
@@ -6355,10 +7140,10 @@ describe("UninstallDialog", () => {
     ).toBeInTheDocument();
   });
 
-  it("submits the plan and reports the new op id when nothing would break", async () => {
-    const plan = planFor();
+  it("submits the plan id and reports the new op id when nothing would break", async () => {
+    const issued = issuedPlanFor();
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "plan_operation") return plan;
+      if (cmd === "plan_operation") return issued;
       if (cmd === "submit_operation") return 7;
       throw new Error(`unexpected command ${cmd}`);
     });
@@ -6434,12 +7219,13 @@ export function UninstallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, request.instance_id, request.artifact_kind, request.name]);
 
-  const plan = planMutation.data;
+  const issued = planMutation.data;
+  const plan = issued?.plan;
   const hasAffected = (plan?.affected.length ?? 0) > 0;
 
   function handleConfirm() {
-    if (!plan) return;
-    submitMutation.mutate(plan, {
+    if (!issued) return;
+    submitMutation.mutate(issued.id, {
       onSuccess: (opId) => {
         onSubmitted?.(opId);
         onOpenChange(false);
@@ -6571,16 +7357,20 @@ with:
       if (cmd === "get_settings") return Promise.resolve(settings);
       if (cmd === "plan_operation") {
         return Promise.resolve({
-          request: (args as { request: OpRequest }).request,
-          program: "/opt/homebrew/bin/brew",
-          args: ["uninstall", "--formula", "jq"],
-          env: [],
-          needs_password: false,
-          locks: ["brew:/opt/homebrew"],
-          cancel_policy: "KillThenReconcile",
-          warnings: [],
-          affected: [],
-          timeout_secs: 1800,
+          id: 1,
+          plan: {
+            request: (args as { request: OpRequest }).request,
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+            needs_password: false,
+            locks: ["brew:/opt/homebrew"],
+            cancel_policy: "KillThenReconcile",
+            warnings: [],
+            affected: [],
+            timeout_secs: 1800,
+          },
+          issued_at: 1758000000,
         });
       }
       return Promise.resolve(undefined);
@@ -6609,16 +7399,20 @@ with:
       if (cmd === "get_settings") return Promise.resolve(settings);
       if (cmd === "plan_operation") {
         return Promise.resolve({
-          request: (args as { request: OpRequest }).request,
-          program: "/opt/homebrew/bin/brew",
-          args: ["uninstall", "--formula", "jq"],
-          env: [],
-          needs_password: false,
-          locks: ["brew:/opt/homebrew"],
-          cancel_policy: "KillThenReconcile",
-          warnings: [],
-          affected: ["jq-cli-wrapper"],
-          timeout_secs: 1800,
+          id: 1,
+          plan: {
+            request: (args as { request: OpRequest }).request,
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+            needs_password: false,
+            locks: ["brew:/opt/homebrew"],
+            cancel_policy: "KillThenReconcile",
+            warnings: [],
+            affected: ["jq-cli-wrapper"],
+            timeout_secs: 1800,
+          },
+          issued_at: 1758000000,
         });
       }
       return Promise.resolve(undefined);
@@ -6894,7 +7688,6 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
   return {
     language: "System",
     show_technical_details: false,
-    greedy_casks: false,
     ignored_updates: [],
     ...overrides,
   };
@@ -6985,22 +7778,6 @@ export function SettingsPage() {
         />
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <label htmlFor="settings-greedy-casks" className="flex flex-col">
-          <span>{t("settings.greedyCasks.label")}</span>
-          <span className="text-sm text-[var(--color-muted-foreground)]">
-            {t("settings.greedyCasks.description")}
-          </span>
-        </label>
-        <Switch
-          id="settings-greedy-casks"
-          checked={current.greedy_casks}
-          onCheckedChange={(checked) =>
-            saveMutation.mutate({ ...current, greedy_casks: checked })
-          }
-        />
-      </div>
-
       <div>
         <p className="mb-2">{t("settings.language.label")}</p>
         <div role="radiogroup" aria-label={t("settings.language.label")} className="flex gap-2">
@@ -7069,10 +7846,6 @@ Add these top-level keys to `src/i18n/en.json`:
     "english": "English",
     "chinese": "简体中文"
   },
-  "greedyCasks": {
-    "label": "Include apps that update themselves",
-    "description": "Apps like Chrome already update themselves. Turn this on to also see their updates listed here."
-  },
   "ignoredUpdates": {
     "title": "Ignored updates",
     "empty": "You haven't ignored any updates.",
@@ -7105,7 +7878,6 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
   return {
     language: "System",
     show_technical_details: false,
-    greedy_casks: false,
     ignored_updates: [],
     ...overrides,
   };
@@ -7268,20 +8040,6 @@ export function SettingsPage() {
           onCheckedChange={(checked) =>
             persist({ ...current, show_technical_details: checked })
           }
-        />
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <label htmlFor="settings-greedy-casks" className="flex flex-col">
-          <span>{t("settings.greedyCasks.label")}</span>
-          <span className="text-sm text-[var(--color-muted-foreground)]">
-            {t("settings.greedyCasks.description")}
-          </span>
-        </label>
-        <Switch
-          id="settings-greedy-casks"
-          checked={current.greedy_casks}
-          onCheckedChange={(checked) => persist({ ...current, greedy_casks: checked })}
         />
       </div>
 
@@ -7545,10 +8303,6 @@ This file needs a Simplified Chinese entry for every key in `src/i18n/en.json` �
       "english": "English",
       "chinese": "简体中文"
     },
-    "greedyCasks": {
-      "label": "包含会自我更新的应用",
-      "description": "像 Chrome 这类应用会自己更新。打开后,这里也会显示它们的更新。"
-    },
     "ignoredUpdates": {
       "title": "已忽略的更新",
       "empty": "你还没有忽略任何更新。",
@@ -7629,7 +8383,6 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
   return {
     language: "System",
     show_technical_details: false,
-    greedy_casks: false,
     ignored_updates: [],
     ...overrides,
   };

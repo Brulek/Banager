@@ -12,6 +12,7 @@
 
 ## 阶段 3（其余来源）/ 存储与刷新层
 
+- Settings 需要一个「包含自更新的应用」开关（阶段 2 计划已把 `greedy_casks` 从 `Settings` 中整体移除：只存不用，Session 从不读取，Homebrew 检查更新固定跑 `outdated --json=v2`）。实现时要把该选项从 Settings 经 Session 传到 Homebrew 的 `check_updates`（对应 `brew outdated --greedy`），届时一并调整 `Adapter` trait 的 `check_updates` 签名（会牵动已合并的阶段 0–1 代码）。
 - `brew/mod.rs` `maybe_update`：`brew update` 失败或超时（离线、首次 tap 同步慢）会让整个 `check_updates` 失败，应退化为"沿用旧索引 + 标记可能过期"（spec §3）；并发调用存在 TOCTOU 双重 `brew update`，需串行化。
 - `AdapterMeta.verified_versions` 从未与 `ManagerInstance.version` 比较（spec §4.1 "未验证版本"角标）。
 - spec §4.2 需更正：brew 7.0.3 的 `installed[]` 只有 `installed_on_request`，没有 `installed_as_dependency`（解析器与其文档注释是对的，spec 过时）。
