@@ -7,6 +7,7 @@ pub mod events;
 pub mod model;
 pub mod ops;
 pub mod runner;
+pub mod settings;
 
 pub use events::*;
 pub use model::*;
