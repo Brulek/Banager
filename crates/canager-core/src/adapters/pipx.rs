@@ -584,6 +584,8 @@ mod tests {
             path_dirs: vec![tmp_dir.clone()],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
         let instances = adapter.detect(&env).await;

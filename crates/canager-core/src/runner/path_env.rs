@@ -5,6 +5,16 @@ pub struct HostEnv {
     pub path_dirs: Vec<PathBuf>,
     pub home: PathBuf,
     pub euid: u32,
+    /// `CARGO_HOME` when the host environment sets it; `None` means "use the
+    /// default", `home/.cargo`. Carried here rather than read from
+    /// `std::env` inside the cargo adapter, for the same reason `path_dirs`
+    /// is: a Finder-launched app's process environment is minimal, and an
+    /// adapter that reaches around `HostEnv` cannot be tested.
+    pub cargo_home: Option<PathBuf>,
+    /// `OLLAMA_HOST` when the host environment sets it; `None` means
+    /// Ollama's own default, `http://127.0.0.1:11434`. Same reasoning as
+    /// `cargo_home`; consumed by Task 10.
+    pub ollama_host: Option<String>,
 }
 
 impl HostEnv {
@@ -20,10 +30,14 @@ impl HostEnv {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/"));
         let euid = unsafe { libc::geteuid() };
+        let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
+        let ollama_host = std::env::var("OLLAMA_HOST").ok().filter(|h| !h.is_empty());
         HostEnv {
             path_dirs,
             home,
             euid,
+            cargo_home,
+            ollama_host,
         }
     }
 }
@@ -54,6 +68,8 @@ mod tests {
             path_dirs: vec![PathBuf::from("/bin"), PathBuf::from("/usr/bin")],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         assert_eq!(resolve_exe("sh", &env), Some(PathBuf::from("/bin/sh")));
     }
@@ -64,6 +80,8 @@ mod tests {
             path_dirs: vec![PathBuf::from("/bin")],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         assert_eq!(resolve_exe("definitely-not-a-real-binary-xyz", &env), None);
     }

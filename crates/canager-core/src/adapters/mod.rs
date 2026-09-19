@@ -11,6 +11,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 pub mod brew;
+pub mod cargo;
 pub mod npm;
 pub mod pip;
 pub mod pipx;

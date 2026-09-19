@@ -625,6 +625,8 @@ mod tests {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -679,6 +681,8 @@ mod tests {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         let _ = std::fs::remove_dir_all(&dir);
@@ -695,6 +699,8 @@ mod tests {
             path_dirs: vec![PathBuf::from("/definitely/not/a/real/path")],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         assert!(instances.is_empty());

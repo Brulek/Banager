@@ -644,6 +644,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         }
     }
 
@@ -652,6 +654,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/var/root"),
             euid: 0,
+            cargo_home: None,
+            ollama_host: None,
         }
     }
 

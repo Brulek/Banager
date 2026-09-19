@@ -633,6 +633,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/var/root"),
             euid: 0,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         assert!(instances.is_empty());
@@ -644,11 +646,15 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/var/root"),
             euid: 0,
+            cargo_home: None,
+            ollama_host: None,
         };
         let user = HostEnv {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         assert!(BrewAdapter::refuses_as_root(&root));
         assert!(!BrewAdapter::refuses_as_root(&user));
@@ -672,6 +678,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         // Assumes Homebrew is installed at /opt/homebrew, true for Canager's
@@ -702,6 +710,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         assert_eq!(instances.len(), 1);
@@ -729,6 +739,8 @@ mod tests {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
+            cargo_home: None,
+            ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
         assert_eq!(instances.len(), 1);
