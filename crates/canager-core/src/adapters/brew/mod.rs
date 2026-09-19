@@ -155,8 +155,20 @@ impl BrewAdapter {
         Ok(())
     }
 
+    /// True when `env`'s effective UID means every brew invocation this
+    /// adapter makes (`detect` included) will refuse to run. Callers use
+    /// this — instead of re-deriving "euid 0 means root" themselves — to
+    /// tell "Homebrew refused to run as root" apart from "Homebrew is not
+    /// installed" when `detect()`'s returned `Vec` is empty either way;
+    /// keeping the rule in exactly one place means it can never drift
+    /// between call sites (this method and `Session::refresh`, added in a
+    /// later plan, both call this function directly).
+    pub fn refuses_as_root(env: &HostEnv) -> bool {
+        env.euid == 0
+    }
+
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
-        if env.euid == 0 {
+        if Self::refuses_as_root(env) {
             return Vec::new();
         }
         let mut found = Vec::new();
@@ -589,6 +601,22 @@ mod tests {
         };
         let instances = adapter.detect(&env).await;
         assert!(instances.is_empty());
+    }
+
+    #[test]
+    fn test_refuses_as_root_is_true_only_for_euid_zero() {
+        let root = HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/var/root"),
+            euid: 0,
+        };
+        let user = HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+        };
+        assert!(BrewAdapter::refuses_as_root(&root));
+        assert!(!BrewAdapter::refuses_as_root(&user));
     }
 
     #[tokio::test]
