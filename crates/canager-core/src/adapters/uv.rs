@@ -15,47 +15,57 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+/// Shared preamble for both of `uv tool list`'s text formats (`--show-paths`
+/// and `--outdated`): a completely empty body or the literal `No tools
+/// installed` yields no lines at all, `- binary (path)` lines and blank
+/// lines are skipped, and each remaining header line is split into its
+/// `name` and the `v`-prefixed remainder with the `v` stripped. A header
+/// line that doesn't fit that shape (no space, or no `v` prefix) is skipped
+/// here too; each caller applies its own further parsing to `rest` and
+/// skips on its own mismatches.
+fn tool_list_header_lines(text: &str) -> impl Iterator<Item = (&str, &str)> {
+    let trimmed = text.trim();
+    let body = if trimmed.is_empty() || trimmed == "No tools installed" {
+        ""
+    } else {
+        text
+    };
+    body.lines().filter_map(|line| {
+        if line.starts_with("- ") || line.trim().is_empty() {
+            return None;
+        }
+        let (name, rest) = line.split_once(' ')?;
+        let rest = rest.strip_prefix('v')?;
+        Some((name, rest))
+    })
+}
+
 /// Parses `uv tool list --show-paths`: one `name vX.Y.Z (path)` header line
 /// per tool, followed by `- binary (path)` lines that this function skips
 /// (the header alone has everything `InstalledArtifact` needs).
 fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArtifact> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "No tools installed" {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for line in text.lines() {
-        if line.starts_with("- ") || line.trim().is_empty() {
-            continue;
-        }
-        let Some((name, rest)) = line.split_once(' ') else {
-            continue;
-        };
-        let Some(rest) = rest.strip_prefix('v') else {
-            continue;
-        };
-        let Some((version, path_part)) = rest.split_once(" (") else {
-            continue;
-        };
-        let path = path_part.trim_end_matches(')');
-        out.push(InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Tool,
-                name: name.to_string(),
-            },
-            display_name: name.to_string(),
-            version: version.to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: Some(PathBuf::from(path)),
-            auto_updates: false,
-        });
-    }
-    out
+    tool_list_header_lines(text)
+        .filter_map(|(name, rest)| {
+            let (version, path_part) = rest.split_once(" (")?;
+            let path = path_part.trim_end_matches(')');
+            Some(InstalledArtifact {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Tool,
+                    name: name.to_string(),
+                },
+                display_name: name.to_string(),
+                version: version.to_string(),
+                reason: InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path: Some(PathBuf::from(path)),
+                auto_updates: false,
+            })
+        })
+        .collect()
 }
 
 /// Parses `uv tool list --outdated`: `name vOLD [latest: NEW]` per outdated
@@ -65,41 +75,24 @@ fn parse_tool_list_show_paths(text: &str, instance_id: &str) -> Vec<InstalledArt
 /// are treated as "no updates", never an error (this phase's documented
 /// trap for uv).
 fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "No tools installed" {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for line in text.lines() {
-        if line.starts_with("- ") || line.trim().is_empty() {
-            continue;
-        }
-        let Some((name, rest)) = line.split_once(' ') else {
-            continue;
-        };
-        let Some(rest) = rest.strip_prefix('v') else {
-            continue;
-        };
-        let Some((old, bracket)) = rest.split_once(" [latest: ") else {
-            continue;
-        };
-        let Some(new) = bracket.strip_suffix(']') else {
-            continue;
-        };
-        out.push(UpdateCandidate {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Tool,
-                name: name.to_string(),
-            },
-            current: old.to_string(),
-            target: new.to_string(),
-            channel: UpdateChannel::Native,
-            checkable: true,
-            warnings: Vec::new(),
-        });
-    }
-    out
+    tool_list_header_lines(text)
+        .filter_map(|(name, rest)| {
+            let (old, bracket) = rest.split_once(" [latest: ")?;
+            let new = bracket.strip_suffix(']')?;
+            Some(UpdateCandidate {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Tool,
+                    name: name.to_string(),
+                },
+                current: old.to_string(),
+                target: new.to_string(),
+                channel: UpdateChannel::Native,
+                checkable: true,
+                warnings: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 pub struct UvAdapter {
