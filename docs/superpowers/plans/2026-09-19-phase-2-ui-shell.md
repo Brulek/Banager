@@ -8874,13 +8874,33 @@ Open `src/App.tsx` and add:
 import { SnapshotStatus } from "./components/SnapshotStatus";
 ```
 
-to its import list. Then wrap only the routed-page area — whatever expression already renders the active one of `InstalledPage` / `UpdatesPage` / `SettingsPage` — in `<SnapshotStatus>…</SnapshotStatus>`, leaving the sidebar, the operation bar and the log drawer outside the wrapper so they stay visible in every state:
+to its import list. Then wrap only the routed-page area in `<SnapshotStatus>…</SnapshotStatus>`, leaving the sidebar, the operation bar and the log drawer outside the wrapper so they stay visible in every state. After Task 15's Step 9 the page switch reads exactly:
 
 ```tsx
-<SnapshotStatus>
-  {/* whatever App.tsx already renders for the active page goes here, unchanged */}
-</SnapshotStatus>
+          {page === "installed" ? (
+            <InstalledPage />
+          ) : page === "updates" ? (
+            <UpdatesPage />
+          ) : (
+            <SettingsPage />
+          )}
 ```
+
+Replace that block with:
+
+```tsx
+          <SnapshotStatus>
+            {page === "installed" ? (
+              <InstalledPage />
+            ) : page === "updates" ? (
+              <UpdatesPage />
+            ) : (
+              <SettingsPage />
+            )}
+          </SnapshotStatus>
+```
+
+Nothing else in `App.tsx` changes: the `<Sidebar>`, the operation-bar `<footer>` and the log drawer stay exactly where they are, outside the wrapper.
 
 - [ ] **Step 10: Run the full front-end suite and the production type-check**
 
