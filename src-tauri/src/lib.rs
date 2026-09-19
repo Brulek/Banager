@@ -1,4 +1,7 @@
-mod events;
+// `pub` because this crate has a library target (`canager_lib`): items of a
+// public module are reachable API, so the dead-code lint does not fire in the
+// window between this module existing and Task 7 wiring it into `AppState`.
+pub mod events;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
