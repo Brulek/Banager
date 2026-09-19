@@ -50,5 +50,32 @@
   },
   "commandPreview": {
     "label": "This will run:"
+  },
+  "operations": {
+    "idle": "No operation running",
+    "current": "{{kind}} {{name}} — {{status}}",
+    "cancel": "Cancel",
+    "logDrawerTitle": "Operation log",
+    "kind": {
+      "Install": "Installing",
+      "Uninstall": "Uninstalling",
+      "Upgrade": "Updating"
+    },
+    "status": {
+      "Queued": "queued",
+      "Running": "running",
+      "CancelRequested": "cancelling",
+      "Cancelling": "cancelling",
+      "Verifying": "verifying",
+      "Done": "done"
+    },
+    "outcome": {
+      "Succeeded": "Succeeded",
+      "NoChange": "No change needed",
+      "PartialSuccess": "Partially succeeded",
+      "Unconfirmed": "Result unconfirmed",
+      "NeedsAttention": "Needs attention: {{message}}",
+      "Failed": "Failed: {{summary}}"
+    }
   }
 }

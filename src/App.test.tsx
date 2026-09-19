@@ -26,8 +26,9 @@ const defaultSettings = {
 beforeEach(() => {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "get_snapshot") return Promise.resolve(emptySnapshot);
+    if (cmd === "get_snapshot" || cmd === "refresh") return Promise.resolve(emptySnapshot);
     if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+    if (cmd === "list_operations") return Promise.resolve([]);
     return Promise.resolve(undefined);
   });
 });
