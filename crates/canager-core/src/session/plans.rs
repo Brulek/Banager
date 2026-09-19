@@ -1,0 +1,397 @@
+//! `Session::issue_plan` and `Session::submit`: preview-then-confirm for a
+//! destructive operation. Split out of `session/mod.rs` (Task 14); no
+//! behaviour change from what shipped there.
+
+use super::{IssuedPlan, PlanId, Session, SubmitError};
+use crate::adapters::AdapterError;
+use crate::events::OpId;
+use crate::model::OpRequest;
+use std::sync::atomic::Ordering;
+
+impl Session {
+    /// Resolves `req` to its owning adapter, asks it to plan the operation,
+    /// then stores the resulting `Plan` under a fresh `PlanId` and returns
+    /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
+    /// in it is ever accepted back -- `submit` takes only `issued.id`. Every
+    /// call also sweeps any entry in `issued_plans` older than 600 seconds
+    /// (Task 13), so a plan the operator previewed and then never submitted
+    /// does not sit in the map forever.
+    pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
+        let instance = self
+            .snapshot
+            .lock()
+            .unwrap()
+            .instances
+            .iter()
+            .find(|i| i.id == req.instance_id)
+            .cloned()
+            .ok_or_else(|| {
+                AdapterError::Refused(format!("unknown instance {}", req.instance_id))
+            })?;
+        let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
+            AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
+        })?;
+        let plan = adapter.plan(&instance, req).await?;
+        let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
+        let issued_at = self.now();
+        let issued = IssuedPlan {
+            id,
+            plan,
+            issued_at,
+        };
+        let mut plans = self.issued_plans.lock().unwrap();
+        plans.retain(|_, p| issued_at - p.issued_at <= 600);
+        plans.insert(id, issued.clone());
+        Ok(issued)
+    }
+
+    /// Removes (one-time consumption) the issued plan stored under
+    /// `plan_id` and submits exactly that stored `Plan`. Fails with
+    /// `SubmitError::Unknown` if `plan_id` was never issued, was already
+    /// submitted once, or was already swept out by a later `issue_plan`
+    /// call, and `SubmitError::Expired` if it is still present but was
+    /// issued more than 600 seconds ago -- the client can never influence
+    /// what actually runs, since nothing it sends is used except this
+    /// opaque id.
+    pub fn submit(self: &std::sync::Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
+        let issued = {
+            let mut plans = self.issued_plans.lock().unwrap();
+            plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
+        };
+        if self.now() - issued.issued_at > 600 {
+            return Err(SubmitError::Expired);
+        }
+        Ok(self.ops.submit(issued.plan))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
+    use crate::events::{EventSink, OpId, VecSink};
+    use crate::model::{
+        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+        OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+    };
+    use crate::runner::HostEnv;
+    use crate::session::{Session, SubmitError};
+    use async_trait::async_trait;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicI64, Ordering};
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    struct FakeAdapter {
+        meta: AdapterMeta,
+        instances: Vec<ManagerInstance>,
+    }
+
+    impl FakeAdapter {
+        fn new(instances: Vec<ManagerInstance>) -> Arc<FakeAdapter> {
+            Arc::new(FakeAdapter {
+                meta: AdapterMeta {
+                    id: "fake".to_string(),
+                    name: "fake".to_string(),
+                    kind: "fake".to_string(),
+                    platforms: vec!["macos".to_string()],
+                    homepage: "https://example.invalid".to_string(),
+                    schema_version: 1,
+                    verified_versions: vec![],
+                },
+                instances,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl Adapter for FakeAdapter {
+        fn meta(&self) -> &AdapterMeta {
+            &self.meta
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                search: false,
+                per_item_upgrade: true,
+                upgrade_all: false,
+                uninstall: true,
+                background_check: true,
+                cancel_safe: true,
+            }
+        }
+
+        async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
+            self.instances.clone()
+        }
+
+        async fn inventory(
+            &self,
+            _inst: &ManagerInstance,
+        ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn check_updates(
+            &self,
+            _inst: &ManagerInstance,
+            _opts: &CheckOptions,
+        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn search(
+            &self,
+            _inst: &ManagerInstance,
+            _query: &str,
+        ) -> Result<Vec<SearchHit>, AdapterError> {
+            Ok(Vec::new())
+        }
+
+        async fn plan(
+            &self,
+            inst: &ManagerInstance,
+            req: &OpRequest,
+        ) -> Result<Plan, AdapterError> {
+            Ok(Plan {
+                request: req.clone(),
+                program: inst.exe_path.clone(),
+                args: vec!["do".to_string(), req.name.clone()],
+                env: vec![],
+                needs_password: false,
+                locks: vec![ResourceLock(inst.id.clone())],
+                cancel_policy: CancelPolicy::KillThenReconcile,
+                warnings: vec![],
+                affected: vec![],
+                timeout_secs: 60,
+            })
+        }
+
+        async fn execute(
+            &self,
+            _plan: &Plan,
+            _sink: Arc<dyn EventSink>,
+            _op_id: OpId,
+            _cancel: CancellationToken,
+        ) -> Result<Outcome, AdapterError> {
+            Ok(Outcome::Succeeded)
+        }
+
+        async fn reconcile(
+            &self,
+            _inst: &ManagerInstance,
+            _key: &ArtifactKey,
+        ) -> Result<Reconciled, AdapterError> {
+            Ok(Reconciled {
+                present: true,
+                version: None,
+            })
+        }
+    }
+
+    fn make_instance(id: &str) -> ManagerInstance {
+        ManagerInstance {
+            id: id.to_string(),
+            adapter_id: "fake".to_string(),
+            exe_path: PathBuf::from("/bin/true"),
+            prefix: PathBuf::from("/"),
+            scope: Scope::User,
+            version: Some("1.0".to_string()),
+            healthy: true,
+            unverified_version: None,
+        }
+    }
+
+    fn non_root_env() -> HostEnv {
+        HostEnv {
+            path_dirs: vec![],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        }
+    }
+
+    fn install_request(instance_id: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Install,
+            instance_id: instance_id.to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_delegates_to_the_owning_adapter() {
+        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(issued.id, 1, "PlanId numbering starts at 1");
+        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_for_unknown_instance_is_refused() {
+        let adapter = FakeAdapter::new(vec![]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let req = install_request("does-not-exist");
+        match session.issue_plan(&req).await {
+            Err(AdapterError::Refused(_)) => {}
+            other => panic!("expected Refused, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_of_a_never_issued_plan_id_is_unknown_and_runs_nothing() {
+        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(session.submit(1), Err(SubmitError::Unknown));
+        assert_eq!(session.submit(u64::MAX), Err(SubmitError::Unknown));
+
+        let req = install_request("fake:1");
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(issued.id, 1);
+        assert_eq!(session.submit(0), Err(SubmitError::Unknown));
+        assert_eq!(session.submit(2), Err(SubmitError::Unknown));
+        assert!(
+            session.operations().is_empty(),
+            "a rejected submit must never reach the OperationManager"
+        );
+        session
+            .submit(issued.id)
+            .expect("the genuinely issued id is still submittable after the forgeries failed");
+        assert_eq!(session.operations().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_submit_consumes_the_plan_so_the_same_id_cannot_be_replayed() {
+        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+
+        let op_id = session
+            .submit(issued.id)
+            .expect("first submit of a freshly issued plan");
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::Unknown),
+            "an issued plan is single-use: replaying its id must be rejected"
+        );
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::Unknown),
+            "and it stays rejected however many times it is replayed"
+        );
+        let ops = session.operations();
+        assert_eq!(
+            ops.len(),
+            1,
+            "exactly one operation may result from one issued plan"
+        );
+        assert_eq!(ops[0].id, op_id);
+
+        let reissued = session.issue_plan(&req).await.expect("issue_plan again");
+        assert_ne!(reissued.id, issued.id);
+        session
+            .submit(reissued.id)
+            .expect("a re-issued plan is submittable once");
+        assert_eq!(session.submit(reissued.id), Err(SubmitError::Unknown));
+        assert_eq!(session.operations().len(), 2);
+    }
+
+    static FAKE_NOW: AtomicI64 = AtomicI64::new(0);
+
+    fn fake_now() -> i64 {
+        FAKE_NOW.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_submit_rejects_a_plan_issued_more_than_600s_ago() {
+        const T0: i64 = 1_758_000_000;
+        FAKE_NOW.store(T0, Ordering::SeqCst);
+        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+        let on_time = session.issue_plan(&req).await.expect("issue_plan");
+        let too_late = session.issue_plan(&req).await.expect("issue_plan");
+        assert_eq!(
+            on_time.issued_at, T0,
+            "issued_at must come from the injected clock"
+        );
+        assert_eq!(too_late.issued_at, T0);
+
+        FAKE_NOW.store(T0 + 600, Ordering::SeqCst);
+        session
+            .submit(on_time.id)
+            .expect("a plan exactly 600 s old is still submittable");
+        assert_eq!(session.operations().len(), 1);
+
+        FAKE_NOW.store(T0 + 601, Ordering::SeqCst);
+        assert_eq!(session.submit(too_late.id), Err(SubmitError::Expired));
+        assert_eq!(
+            session.operations().len(),
+            1,
+            "an expired plan must never reach the OperationManager"
+        );
+
+        FAKE_NOW.store(T0, Ordering::SeqCst);
+        assert_eq!(session.submit(too_late.id), Err(SubmitError::Unknown));
+        assert_eq!(session.operations().len(), 1);
+        let fresh = session.issue_plan(&req).await.expect("issue_plan again");
+        assert_ne!(fresh.id, too_late.id);
+        session
+            .submit(fresh.id)
+            .expect("a freshly issued plan is submittable");
+        assert_eq!(session.operations().len(), 2);
+    }
+
+    static SWEEP_TEST_NOW: AtomicI64 = AtomicI64::new(2_000_000_000);
+
+    fn sweep_test_now() -> i64 {
+        SWEEP_TEST_NOW.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded()
+    {
+        let adapter = FakeAdapter::new(vec![make_instance("fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(sweep_test_now));
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+
+        let stale = session.issue_plan(&req).await.expect("issue_plan (stale)");
+        SWEEP_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+        let _fresh = session
+            .issue_plan(&req)
+            .await
+            .expect("issue_plan (fresh, triggers sweep)");
+
+        assert_eq!(
+            session.submit(stale.id),
+            Err(SubmitError::Unknown),
+            "a swept entry must read back as Unknown, not Expired"
+        );
+    }
+}

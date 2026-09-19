@@ -2,11 +2,19 @@
 //! app in this repo, or a test harness). It owns the registered adapters,
 //! the last known set of instances, and an in-memory, generation-numbered
 //! `Snapshot`; it forwards operation lifecycle calls to an internal
-//! `OperationManager`. See
-//! `docs/superpowers/plans/2026-09-19-phase-2-ui-shell.md`'s Core
-//! Interfaces section — every name and shape here is fixed by that
-//! document.
+//! `OperationManager`. Split (Task 14) into this facade, `refresh.rs`
+//! (detection and the inventory/updates fetch) and `plans.rs`
+//! (preview-then-confirm); no behaviour changed in the split itself.
 
+mod plans;
+mod refresh;
+
+// `CheckOptions` and `AdapterError` are deliberately absent from this list:
+// `refresh` (which took `CheckOptions`) now lives in `refresh.rs`, and
+// `issue_plan`/`submit` (which took `AdapterError`) now live in `plans.rs`;
+// each imports what it needs itself. Leaving either here would be an unused
+// import under `-D warnings` -- the facade's own top-level code no longer
+// touches either type.
 use crate::adapters::brew::BrewAdapter;
 use crate::adapters::cargo::CargoAdapter;
 use crate::adapters::npm::NpmAdapter;
@@ -14,18 +22,17 @@ use crate::adapters::ollama::OllamaAdapter;
 use crate::adapters::pip::PipAdapter;
 use crate::adapters::pipx::PipxAdapter;
 use crate::adapters::uv::UvAdapter;
-use crate::adapters::{Adapter, AdapterError, CheckOptions};
+use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
-    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock,
-    UpdateCandidate,
+    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
-use crate::runner::{CommandRunner, HostEnv, RealRunner};
+use crate::runner::{CommandRunner, RealRunner};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,19 +80,9 @@ impl Snapshot {
         }
     }
 
-    /// Whether `self` and `other` carry the same *data* — every field
+    /// Whether `self` and `other` carry the same *data* -- every field
     /// except `generation`, `refreshed_at` and `stale`, which describe the
     /// refresh attempt rather than the fetched data itself.
-    ///
-    /// Deliberately excludes `refreshed_at`: comparing the *full* struct
-    /// (as the design review's M6 suggested) would mean `generation` bumps
-    /// on every successful refresh, since `refreshed_at` changes every
-    /// time — at which point `generation` stops meaning "the content
-    /// changed" and a front end watching it for that reason gets bumped on
-    /// every poll for no visible reason. `generation` keeps that meaning by
-    /// design; `refresh_seq` below (M5) is the separate counter that
-    /// actually solves the concurrent-refresh-coalescing problem M6's
-    /// suggestion was trying to fix.
     fn same_content(&self, other: &Snapshot) -> bool {
         self.detect == other.detect
             && self.instances == other.instances
@@ -103,7 +100,7 @@ pub type PlanId = u64;
 /// A `Plan` the server has already computed and stored, returned to the
 /// caller for preview. Submitting requires only the `id`; the `plan` field
 /// is for display (exact command preview, spec §6) and is never accepted
-/// back from the client (see `Session::submit`).
+/// back from the client (see `Session::submit`, in `plans.rs`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IssuedPlan {
     pub id: PlanId,
@@ -123,38 +120,28 @@ pub enum SubmitError {
 pub struct Session {
     adapters: HashMap<AdapterId, Arc<dyn Adapter>>,
     ops: Arc<OperationManager>,
-    /// Serialises `refresh()`: whichever caller acquires this first does
-    /// the real work; anyone already waiting when it releases just re-reads
-    /// `snapshot` (see `refresh`'s doc comment for the exact protocol).
+    /// Serialises `refresh()` (in `refresh.rs`): whichever caller acquires
+    /// this first does the real work; anyone already waiting when it
+    /// releases just re-reads `snapshot`.
     refresh_gate: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
     /// Bumped every time a refresh actually completes, regardless of
-    /// whether its content — and therefore `generation` — changed (M5 in
-    /// the design review). `generation` alone cannot tell a waiter "someone
-    /// else already finished a refresh while I waited for the gate" apart
-    /// from "no one has run since I last checked": two refreshes in a row
-    /// can fetch identical data, in which case `generation` does not move
-    /// even though a real refresh happened. `refresh_seq` always moves, so
-    /// it is what `refresh` actually checks to decide whether to coalesce.
+    /// whether its content -- and therefore `generation` -- changed. See
+    /// `refresh.rs`'s doc comment for why a waiter needs this instead of
+    /// `generation` alone.
     refresh_seq: AtomicU64,
-    /// Plans handed out by `issue_plan` but not yet consumed by `submit`,
-    /// keyed by `PlanId`. `submit` removes its entry on use, so each plan
-    /// can be submitted at most once. An entry older than 600 seconds is
-    /// rejected as expired by `submit` (see its own doc comment) *and*
-    /// swept out by `issue_plan` itself on every new preview (Task 13), so
-    /// a plan the operator previewed and then walked away from does not sit
-    /// in this map forever -- only entries still within the 600 s window
-    /// ever accumulate here.
+    /// Plans handed out by `issue_plan` (in `plans.rs`) but not yet
+    /// consumed by `submit`, keyed by `PlanId`.
     issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>,
     next_plan_id: AtomicU64,
     now_fn: Option<fn() -> i64>,
 }
 
 impl Session {
-    /// Registers all seven adapters (Task 11) over a shared `RealRunner`
-    /// and `RealHttpClient` (network-touching adapters only: pipx, cargo,
-    /// ollama, per the per-adapter contract table). `now_fn` exists so
-    /// tests can pin `refreshed_at`; production passes `None`.
+    /// Registers all seven adapters over a shared `RealRunner` and
+    /// `RealHttpClient` (network-touching adapters only: pipx, cargo,
+    /// ollama). `now_fn` exists so tests can pin `refreshed_at`; production
+    /// passes `None`.
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
         let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
         let http: Arc<dyn HttpClient> = Arc::new(RealHttpClient::new());
@@ -204,286 +191,8 @@ impl Session {
         }
     }
 
-    /// Detect instances, then inventory + check updates for each instance
-    /// concurrently (each under that instance's own resource lock — see
-    /// below). Bumps `generation` only when the resulting data actually
-    /// differs from the previous snapshot. Per-instance failures land in
-    /// `errors` and set `stale`; they never abort the whole refresh, and a
-    /// failing instance's *previous* artifacts/updates are kept rather than
-    /// dropped, so a transient failure never makes something the user
-    /// installed appear to vanish. Concurrent calls are serialised: a call
-    /// that starts while another is already running waits for it, then
-    /// returns the snapshot that other call produced instead of running a
-    /// second, redundant refresh — see `refresh_seq` on `Session` for why
-    /// that check cannot use `generation`.
-    pub async fn refresh(self: &Arc<Self>, env: &HostEnv, opts: &CheckOptions) -> Snapshot {
-        let seq_before = self.refresh_seq.load(Ordering::SeqCst);
-        let _gate = self.refresh_gate.lock().await;
-        if self.refresh_seq.load(Ordering::SeqCst) != seq_before {
-            // Another call already completed a refresh while we waited for
-            // the gate. Its result is exactly what we would produce — even
-            // when its content was identical to what came before and so
-            // left `generation` unchanged (M5 in the design review): a
-            // second, redundant run of the adapters must not happen just
-            // because nothing looked different.
-            return self.snapshot.lock().unwrap().clone();
-        }
-
-        let previous = self.snapshot.lock().unwrap().clone();
-        // Owned copy (CheckOptions is Copy): each per-instance spawned task
-        // below needs its own 'static value, and the caller's `&opts`
-        // reference cannot outlive this function.
-        let opts: CheckOptions = *opts;
-
-        if BrewAdapter::refuses_as_root(env) {
-            // This refresh ran to completion: it did not fail, it answered
-            // "Canager cannot run as root", which is a definitive result
-            // about the host and not a missing one. So it stamps
-            // `refreshed_at` like any other completed refresh. Carrying
-            // `previous.refreshed_at` forward instead left it `None` on a
-            // process's first refresh, and the front end reads a null
-            // `refreshed_at` with no errors as "no refresh has finished
-            // yet" — which, since a process's euid never changes, would
-            // have been true forever.
-            let refused = Snapshot {
-                generation: previous.generation,
-                detect: DetectOutcome::RefusedAsRoot,
-                instances: Vec::new(),
-                artifacts: Vec::new(),
-                updates: Vec::new(),
-                refreshed_at: Some(self.now()),
-                stale: previous.stale,
-                errors: Vec::new(),
-            };
-            return self.commit(previous, refused);
-        }
-
-        // Task 11: each adapter's detect() runs in its own spawned task, so
-        // a slow or failing source (e.g. an Ollama daemon that is not
-        // answering) can never delay any other adapter's detection -- only
-        // its own instances arrive late, the same guarantee the
-        // per-instance inventory/check_updates fetch below already gives
-        // each instance.
-        let mut detect_handles = Vec::with_capacity(self.adapters.len());
-        for adapter in self.adapters.values() {
-            // Cloned into the task because `tokio::spawn` needs a 'static
-            // future: iterating `values()` by reference would tie it to
-            // `&self`. (Written as an explicit clone rather than
-            // `.values().cloned()` only because clippy's
-            // `unnecessary_to_owned` misreads the latter here.)
-            let adapter = adapter.clone();
-            let env = env.clone();
-            detect_handles.push((
-                adapter.meta().id.clone(),
-                tokio::spawn(async move { adapter.detect(&env).await }),
-            ));
-        }
-        let mut instances = Vec::new();
-        let mut detect_errors = Vec::new();
-        for (adapter_id, handle) in detect_handles {
-            match handle.await {
-                Ok(found) => instances.extend(found),
-                Err(_join_err) => {
-                    detect_errors.push(SourceError {
-                        instance_id: adapter_id,
-                        message: "internal error detecting this source".to_string(),
-                    });
-                }
-            }
-        }
-        for inst in &instances {
-            self.ops.register_instance(inst.clone());
-        }
-        let detect = if instances.is_empty() {
-            DetectOutcome::Missing
-        } else {
-            DetectOutcome::Found
-        };
-
-        // M8 in the design review: take the *same* per-instance resource
-        // lock a submitted install/upgrade/uninstall holds for the whole
-        // inventory+check_updates segment below, so a refresh can never
-        // observe a half-updated filesystem while an operation on that
-        // instance is running (and vice versa). Each instance's fetch is
-        // its own spawned task so that a lock held by a slow or blocked
-        // operation on *one* instance only ever delays that instance's
-        // fetch — spec §6's "same lock serial, different locks parallel"
-        // applies here exactly as it does to operations themselves.
-        let mut handles = Vec::with_capacity(instances.len());
-        for inst in instances.clone() {
-            // An instance the adapter reported as `healthy: false` is a
-            // *reported state*, not a failed refresh: the adapter already
-            // knows the source is not answering and said so. Fanning out to
-            // it would fail, push a SourceError, set `stale` -- and therefore
-            // carry `refreshed_at` forward instead of stamping it -- leaving
-            // the whole snapshot permanently stale on a machine where, say,
-            // Ollama is installed but not running. It stays in
-            // `snapshot.instances` so the UI can render its notice (Task 12)
-            // and offer to start it.
-            if !inst.healthy {
-                continue;
-            }
-            let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
-                continue;
-            };
-            let ops = self.ops.clone();
-            let previous = previous.clone();
-            // `opts` is `Copy`, so the `async move` block below captures its
-            // own value rather than borrowing this function's.
-            handles.push((
-                inst.id.clone(),
-                tokio::spawn(async move {
-                    let _lock = ops
-                        .acquire_resource_lock(ResourceLock(inst.id.clone()))
-                        .await;
-                    let mut artifacts = Vec::new();
-                    let mut updates = Vec::new();
-                    let mut errors = Vec::new();
-                    let mut stale = false;
-                    match adapter.inventory(&inst).await {
-                        Ok(items) => artifacts.extend(items),
-                        Err(e) => {
-                            errors.push(SourceError {
-                                instance_id: inst.id.clone(),
-                                message: e.to_string(),
-                            });
-                            stale = true;
-                            artifacts.extend(
-                                previous
-                                    .artifacts
-                                    .iter()
-                                    .filter(|a| a.key.instance_id == inst.id)
-                                    .cloned(),
-                            );
-                        }
-                    }
-                    match adapter.check_updates(&inst, &opts).await {
-                        Ok(items) => updates.extend(items),
-                        Err(e) => {
-                            errors.push(SourceError {
-                                instance_id: inst.id.clone(),
-                                message: e.to_string(),
-                            });
-                            stale = true;
-                            updates.extend(
-                                previous
-                                    .updates
-                                    .iter()
-                                    .filter(|u| u.key.instance_id == inst.id)
-                                    .cloned(),
-                            );
-                        }
-                    }
-                    (artifacts, updates, errors, stale)
-                }),
-            ));
-        }
-
-        let mut artifacts = Vec::new();
-        let mut updates = Vec::new();
-        let mut errors = detect_errors;
-        let mut stale = !errors.is_empty();
-        for (instance_id, handle) in handles {
-            match handle.await {
-                Ok((a, u, e, s)) => {
-                    artifacts.extend(a);
-                    updates.extend(u);
-                    errors.extend(e);
-                    stale = stale || s;
-                }
-                Err(_join_err) => {
-                    errors.push(SourceError {
-                        instance_id,
-                        message: "internal error refreshing this instance".to_string(),
-                    });
-                    stale = true;
-                }
-            }
-        }
-
-        let refreshed_at = if stale {
-            previous.refreshed_at
-        } else {
-            Some(self.now())
-        };
-        let candidate = Snapshot {
-            generation: previous.generation,
-            detect,
-            instances,
-            artifacts,
-            updates,
-            refreshed_at,
-            stale,
-            errors,
-        };
-        self.commit(previous, candidate)
-    }
-
-    /// Assigns the real generation number (bumping only on a content
-    /// change), stores the result as the current snapshot, and marks this
-    /// refresh complete via `refresh_seq` regardless of whether `generation`
-    /// moved (M5 in the design review — see `refresh_seq`'s field doc).
-    fn commit(&self, previous: Snapshot, mut candidate: Snapshot) -> Snapshot {
-        if !previous.same_content(&candidate) {
-            candidate.generation = previous.generation + 1;
-        }
-        *self.snapshot.lock().unwrap() = candidate.clone();
-        self.refresh_seq.fetch_add(1, Ordering::SeqCst);
-        candidate
-    }
-
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot.lock().unwrap().clone()
-    }
-
-    /// Resolves `req` to its owning adapter, asks it to plan the operation,
-    /// then stores the resulting `Plan` under a fresh `PlanId` and returns
-    /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
-    /// in it is ever accepted back — `submit` takes only `issued.id`.
-    pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
-        let instance = self
-            .snapshot
-            .lock()
-            .unwrap()
-            .instances
-            .iter()
-            .find(|i| i.id == req.instance_id)
-            .cloned()
-            .ok_or_else(|| {
-                AdapterError::Refused(format!("unknown instance {}", req.instance_id))
-            })?;
-        let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
-            AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
-        })?;
-        let plan = adapter.plan(&instance, req).await?;
-        let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
-        let issued_at = self.now();
-        let issued = IssuedPlan {
-            id,
-            plan,
-            issued_at,
-        };
-        let mut plans = self.issued_plans.lock().unwrap();
-        plans.retain(|_, p| issued_at - p.issued_at <= 600);
-        plans.insert(id, issued.clone());
-        Ok(issued)
-    }
-
-    /// Removes (one-time consumption) the issued plan stored under
-    /// `plan_id` and submits exactly that stored `Plan`. Fails with
-    /// `SubmitError::Unknown` if `plan_id` was never issued or was already
-    /// submitted once, and `SubmitError::Expired` if it was issued more
-    /// than 600 seconds ago — the client can never influence what actually
-    /// runs, since nothing it sends is used except this opaque id.
-    pub fn submit(self: &Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
-        let issued = {
-            let mut plans = self.issued_plans.lock().unwrap();
-            plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
-        };
-        if self.now() - issued.issued_at > 600 {
-            return Err(SubmitError::Expired);
-        }
-        Ok(self.ops.submit(issued.plan))
     }
 
     pub fn cancel(&self, op_id: OpId) {
@@ -512,57 +221,36 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKind, CancelPolicy, InstallReason, OpKind, OpStatus, Outcome, Reconciled,
-        ResourceLock, Scope, SearchHit,
+        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, OpKind, OpRequest, OpStatus,
+        Outcome, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
     };
+    use crate::runner::HostEnv;
     use async_trait::async_trait;
     use std::path::PathBuf;
-    use std::sync::atomic::AtomicI64;
+    use std::sync::Mutex as StdMutex;
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
 
-    /// Controls one `FakeAdapter`'s behaviour so a single test can flip a
-    /// source from healthy to failing mid-run, add an artificial `detect()`
-    /// delay to observe refresh coalescing, or block `execute()` on
-    /// cancellation. Not shared with any other test file's `FakeAdapter`.
     struct FakeState {
         instances: Vec<ManagerInstance>,
-        artifacts: HashMap<InstanceId, Vec<InstalledArtifact>>,
-        updates: HashMap<InstanceId, Vec<UpdateCandidate>>,
-        /// Instance ids whose `inventory` should fail on the *next* call
-        /// only (consumed on use).
-        failing: Vec<InstanceId>,
-        detect_delay: Duration,
-        detect_calls: usize,
         block_execute: bool,
-        /// Every instance id `inventory()` was actually called for, in
-        /// call order — used by `test_refresh_is_mutually_exclusive_...`
-        /// to observe that one instance's fetch proceeded while another's
-        /// was still blocked on a resource lock (M8 in the design review).
-        inventory_calls: Vec<InstanceId>,
     }
 
     struct FakeAdapter {
         meta: AdapterMeta,
-        state: Arc<Mutex<FakeState>>,
+        state: Arc<StdMutex<FakeState>>,
     }
 
     impl FakeAdapter {
-        fn new(id: &str) -> (Arc<FakeAdapter>, Arc<Mutex<FakeState>>) {
-            let state = Arc::new(Mutex::new(FakeState {
+        fn new() -> (Arc<FakeAdapter>, Arc<StdMutex<FakeState>>) {
+            let state = Arc::new(StdMutex::new(FakeState {
                 instances: Vec::new(),
-                artifacts: HashMap::new(),
-                updates: HashMap::new(),
-                failing: Vec::new(),
-                detect_delay: Duration::from_millis(0),
-                detect_calls: 0,
                 block_execute: false,
-                inventory_calls: Vec::new(),
             }));
             let adapter = Arc::new(FakeAdapter {
                 meta: AdapterMeta {
-                    id: id.to_string(),
-                    name: id.to_string(),
+                    id: "fake".to_string(),
+                    name: "fake".to_string(),
                     kind: "fake".to_string(),
                     platforms: vec!["macos".to_string()],
                     homepage: "https://example.invalid".to_string(),
@@ -593,40 +281,22 @@ mod tests {
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
-            let delay = {
-                let mut s = self.state.lock().unwrap();
-                s.detect_calls += 1;
-                s.detect_delay
-            };
-            if !delay.is_zero() {
-                tokio::time::sleep(delay).await;
-            }
             self.state.lock().unwrap().instances.clone()
         }
 
         async fn inventory(
             &self,
-            inst: &ManagerInstance,
+            _inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-            let mut s = self.state.lock().unwrap();
-            s.inventory_calls.push(inst.id.clone());
-            if let Some(pos) = s.failing.iter().position(|id| id == &inst.id) {
-                s.failing.remove(pos);
-                return Err(AdapterError::CommandFailed {
-                    code: Some(1),
-                    stderr: format!("{} inventory failed", inst.id),
-                });
-            }
-            Ok(s.artifacts.get(&inst.id).cloned().unwrap_or_default())
+            Ok(Vec::new())
         }
 
         async fn check_updates(
             &self,
-            inst: &ManagerInstance,
+            _inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-            let s = self.state.lock().unwrap();
-            Ok(s.updates.get(&inst.id).cloned().unwrap_or_default())
+            Ok(Vec::new())
         }
 
         async fn search(
@@ -675,7 +345,7 @@ mod tests {
         async fn reconcile(
             &self,
             _inst: &ManagerInstance,
-            _key: &crate::model::ArtifactKey,
+            _key: &ArtifactKey,
         ) -> Result<Reconciled, AdapterError> {
             Ok(Reconciled {
                 present: true,
@@ -684,10 +354,10 @@ mod tests {
         }
     }
 
-    fn make_instance(adapter_id: &str, id: &str) -> ManagerInstance {
+    fn make_instance(id: &str) -> ManagerInstance {
         ManagerInstance {
             id: id.to_string(),
-            adapter_id: adapter_id.to_string(),
+            adapter_id: "fake".to_string(),
             exe_path: PathBuf::from("/bin/true"),
             prefix: PathBuf::from("/"),
             scope: Scope::User,
@@ -697,40 +367,11 @@ mod tests {
         }
     }
 
-    fn make_artifact(instance_id: &str, name: &str) -> InstalledArtifact {
-        InstalledArtifact {
-            key: crate::model::ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Formula,
-                name: name.to_string(),
-            },
-            display_name: name.to_string(),
-            version: "1.0".to_string(),
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-        }
-    }
-
     fn non_root_env() -> HostEnv {
         HostEnv {
             path_dirs: vec![],
             home: PathBuf::from("/tmp"),
             euid: 501,
-            cargo_home: None,
-            ollama_host: None,
-        }
-    }
-
-    fn root_env() -> HostEnv {
-        HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/var/root"),
-            euid: 0,
             cargo_home: None,
             ollama_host: None,
         }
@@ -755,378 +396,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_refresh_detects_across_adapters_concurrently_so_a_slow_source_does_not_block_others(
-    ) {
-        // Regression guard: detect() used to run in a plain sequential loop
-        // over `self.adapters.values()`, so a slow adapter (e.g. Ollama
-        // probing an unresponsive daemon) delayed every adapter registered
-        // after it. Two adapters each delayed 200ms must finish in well
-        // under their sum (400ms) once detect() fans out concurrently.
-        let (slow_a, state_a) = FakeAdapter::new("slow-a");
-        let (slow_b, state_b) = FakeAdapter::new("slow-b");
-        state_a.lock().unwrap().detect_delay = Duration::from_millis(200);
-        state_a.lock().unwrap().instances = vec![make_instance("slow-a", "slow-a:1")];
-        state_b.lock().unwrap().detect_delay = Duration::from_millis(200);
-        state_b.lock().unwrap().instances = vec![make_instance("slow-b", "slow-b:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![slow_a, slow_b], None);
-
-        let started = Instant::now();
-        let snapshot = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let elapsed = started.elapsed();
-
-        assert!(snapshot.instances.iter().any(|i| i.id == "slow-a:1"));
-        assert!(snapshot.instances.iter().any(|i| i.id == "slow-b:1"));
-        assert!(
-            elapsed < Duration::from_millis(350),
-            "two 200ms detects must overlap, not run back to back (took {elapsed:?})"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_an_unhealthy_instance_is_a_reported_state_not_a_failed_refresh() {
-        // A source that is installed but known not to be running -- Ollama
-        // with its daemon down is the case this phase adds, since
-        // OllamaAdapter::detect returns an instance with healthy:false rather
-        // than no instance at all -- must not be fanned out to. Its
-        // inventory() would fail, push a SourceError, set `stale`, and so
-        // carry `refreshed_at` forward unchanged: on that machine
-        // `refreshed_at` would stay None forever, the stale banner would
-        // never clear, and the front end would keep reading "no refresh has
-        // ever finished" however many brew/npm/pipx refreshes succeeded --
-        // all while Task 12's "Ollama isn't running" notice renders right
-        // next to it saying exactly what is going on.
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            let mut down = make_instance("fake", "fake:down");
-            down.healthy = false;
-            s.instances = vec![make_instance("fake", "fake:up"), down];
-            s.artifacts
-                .insert("fake:up".to_string(), vec![make_artifact("fake:up", "jq")]);
-            // If refresh ever does fan out to the unhealthy instance, this
-            // makes it fail loudly rather than pass by accident.
-            s.failing.push("fake:down".to_string());
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-
-        let snapshot = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-
-        assert!(
-            snapshot.refreshed_at.is_some(),
-            "a refresh whose only complaint is a source known not to be running has completed"
-        );
-        assert!(!snapshot.stale);
-        assert!(snapshot.errors.is_empty());
-        assert!(
-            snapshot.instances.iter().any(|i| i.id == "fake:down"),
-            "the unhealthy instance stays in the snapshot so the UI can offer to start it"
-        );
-        assert!(
-            !state
-                .lock()
-                .unwrap()
-                .inventory_calls
-                .contains(&"fake:down".to_string()),
-            "an instance reported as not running must never be inventoried"
-        );
-        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
-    }
-
-    #[tokio::test]
-    async fn test_refresh_populates_snapshot_from_adapter() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
-            s.artifacts
-                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert_eq!(snapshot.detect, DetectOutcome::Found);
-        assert_eq!(snapshot.instances.len(), 1);
-        assert_eq!(snapshot.artifacts.len(), 1);
-        assert_eq!(snapshot.artifacts[0].display_name, "jq");
-        assert!(!snapshot.stale);
-        assert!(snapshot.errors.is_empty());
-        assert!(snapshot.refreshed_at.is_some());
-        assert_eq!(snapshot.generation, 1);
-    }
-
-    #[tokio::test]
-    async fn test_refresh_as_root_refuses_without_calling_adapters() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
-        assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
-        assert!(snapshot.instances.is_empty());
-        assert_eq!(
-            state.lock().unwrap().detect_calls,
-            0,
-            "no adapter should be probed while running as root"
-        );
-    }
-
-    /// A refresh that ran to completion and definitively answered "Canager
-    /// cannot run as root" *is* a completed refresh, so it must stamp
-    /// `refreshed_at`. Leaving it `None` (as carrying `previous.refreshed_at`
-    /// forward did on a process's first refresh) made the front end's
-    /// "no refresh has finished yet" loading branch match forever: a
-    /// process's euid never changes, so no later refresh could clear it
-    /// either.
-    #[tokio::test]
-    async fn test_refresh_as_root_stamps_refreshed_at() {
-        let (adapter, _state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
-        assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
-        assert!(
-            snapshot.refreshed_at.is_some(),
-            "a root refusal is a completed refresh and must set refreshed_at"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_refresh_with_no_instances_yields_missing() {
-        let (adapter, _state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert_eq!(snapshot.detect, DetectOutcome::Missing);
-    }
-
-    #[tokio::test]
-    async fn test_refresh_keeps_previous_data_and_flags_stale_on_per_instance_failure() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![
-                make_instance("fake", "fake:1"),
-                make_instance("fake", "fake:2"),
-            ];
-            s.artifacts
-                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
-            s.artifacts
-                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let first = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert_eq!(first.artifacts.len(), 2);
-        assert!(!first.stale);
-        let first_refreshed_at = first.refreshed_at;
-
-        state.lock().unwrap().failing.push("fake:1".to_string());
-        let second = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert!(second.stale);
-        assert_eq!(second.errors.len(), 1);
-        assert_eq!(second.errors[0].instance_id, "fake:1");
-        assert!(second.artifacts.iter().any(|a| a.key.name == "jq"));
-        assert!(second.artifacts.iter().any(|a| a.key.name == "wget"));
-        assert_eq!(
-            second.refreshed_at, first_refreshed_at,
-            "a refresh with a per-instance failure must not claim a new successful timestamp"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_refresh_generation_unchanged_when_nothing_changed() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
-            s.artifacts
-                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let first = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let second = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert_eq!(
-            first.generation, second.generation,
-            "identical data must not bump the generation"
-        );
-
-        state
-            .lock()
-            .unwrap()
-            .artifacts
-            .get_mut("fake:1")
-            .unwrap()
-            .push(make_artifact("fake:1", "wget"));
-        let third = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert!(
-            third.generation > second.generation,
-            "new data must bump the generation"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_concurrent_refresh_calls_are_coalesced() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
-            s.detect_delay = Duration::from_millis(100);
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let session_a = session.clone();
-        let session_b = session.clone();
-        let (a, b) = tokio::join!(
-            tokio::spawn(async move {
-                session_a
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-            tokio::spawn(async move {
-                session_b
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-        );
-        let snap_a = a.expect("task a");
-        let snap_b = b.expect("task b");
-        assert_eq!(snap_a.generation, snap_b.generation);
-        assert_eq!(
-            state.lock().unwrap().detect_calls,
-            1,
-            "two concurrent refreshes must run detect() only once between them"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_concurrent_refresh_calls_with_unchanged_content_are_still_coalesced() {
-        // Regression guard for M5 in the design review: `generation` only
-        // advances when content actually changes, so by itself it cannot
-        // tell "another refresh already completed while I waited for the
-        // gate" apart from "no refresh has run since I last checked" — two
-        // refreshes back to back that both see identical data must still
-        // coalesce into one `detect()` call, not run the adapters twice.
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
-            s.artifacts
-                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        // Establish a steady-state snapshot first, outside any concurrency.
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let calls_before = state.lock().unwrap().detect_calls;
-
-        // Every refresh from here on sees exactly the same data as above,
-        // so `generation` will not advance no matter how many times it
-        // runs — that must not be mistaken for "no refresh has happened".
-        state.lock().unwrap().detect_delay = Duration::from_millis(100);
-        let session_a = session.clone();
-        let session_b = session.clone();
-        let (a, b) = tokio::join!(
-            tokio::spawn(async move {
-                session_a
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-            tokio::spawn(async move {
-                session_b
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-        );
-        let snap_a = a.expect("task a");
-        let snap_b = b.expect("task b");
-        assert_eq!(snap_a.generation, snap_b.generation);
-        assert_eq!(
-            state.lock().unwrap().detect_calls,
-            calls_before + 1,
-            "two concurrent refreshes over unchanged content must still run detect() only once between them"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_snapshot_returns_cached_value_without_calling_adapters() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let before = session.snapshot();
-        assert_eq!(before.generation, 0);
-        assert_eq!(state.lock().unwrap().detect_calls, 0);
-        let refreshed = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let after = session.snapshot();
-        assert_eq!(after, refreshed);
-    }
-
-    #[tokio::test]
-    async fn test_issue_plan_delegates_to_the_owning_adapter() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let issued = session.issue_plan(&req).await.expect("issue_plan");
-        assert_eq!(issued.id, 1, "PlanId numbering starts at 1");
-        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
-    }
-
-    #[tokio::test]
-    async fn test_issue_plan_for_unknown_instance_is_refused() {
-        let (adapter, _state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "does-not-exist".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        match session.issue_plan(&req).await {
-            Err(AdapterError::Refused(_)) => {}
-            other => panic!("expected Refused, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn test_submit_cancel_and_operations_forward_to_the_operation_manager() {
-        let (adapter, state) = FakeAdapter::new("fake");
+        let (adapter, state) = FakeAdapter::new();
         {
             let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
+            s.instances = vec![make_instance("fake:1")];
             s.block_execute = true;
         }
         let sink = Arc::new(VecSink::new());
@@ -1170,295 +444,5 @@ mod tests {
             assert!(Instant::now() < deadline, "operation never finished");
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }
-
-    #[tokio::test]
-    async fn test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others(
-    ) {
-        // Regression guard for M8 in the design review: refresh() must take
-        // the same per-instance resource lock a submitted operation holds,
-        // so it can never observe fake:1's filesystem state while an
-        // install/upgrade/uninstall on fake:1 is still running — but that
-        // must not hold up fake:2's fetch, which uses a different lock.
-        let (adapter, state) = FakeAdapter::new("fake");
-        {
-            let mut s = state.lock().unwrap();
-            s.instances = vec![
-                make_instance("fake", "fake:1"),
-                make_instance("fake", "fake:2"),
-            ];
-            s.artifacts
-                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
-            s.artifacts
-                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
-            s.block_execute = true;
-        }
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        state.lock().unwrap().inventory_calls.clear();
-
-        // Submit (and thereby lock) an operation against fake:1 only, and
-        // hold it there — `block_execute` makes `execute()` wait on
-        // cancellation — until this test releases it below.
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let issued = session.issue_plan(&req).await.expect("issue_plan");
-        let op_id = session.submit(issued.id).expect("submit");
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            if session
-                .operations()
-                .iter()
-                .any(|o| o.id == op_id && o.status == OpStatus::Running)
-            {
-                break;
-            }
-            assert!(Instant::now() < deadline, "operation never reached Running");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-
-        let session_for_refresh = session.clone();
-        let refresh_task = tokio::spawn(async move {
-            session_for_refresh
-                .refresh(&non_root_env(), &CheckOptions::default())
-                .await
-        });
-
-        // Give the refresh time to reach fake:2's inventory (no contention)
-        // and to *try* fake:1's (which must still be waiting on the lock
-        // fake:1's running operation holds).
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        {
-            let calls = state.lock().unwrap().inventory_calls.clone();
-            assert!(
-                calls.contains(&"fake:2".to_string()),
-                "a different instance's refresh must proceed while fake:1 is locked"
-            );
-            assert!(
-                !calls.contains(&"fake:1".to_string()),
-                "fake:1's refresh must not run while fake:1's operation is still holding its lock"
-            );
-        }
-
-        // Release fake:1's lock; the refresh (and the operation) must now
-        // both complete, and the snapshot must reflect both instances.
-        session.cancel(op_id);
-        let snapshot = tokio::time::timeout(Duration::from_secs(2), refresh_task)
-            .await
-            .expect("refresh must not hang once the blocking operation is cancelled")
-            .expect("refresh task panicked");
-        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
-        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
-    }
-
-    /// Backing store for `fake_now`. `Session::with_adapters` takes a plain
-    /// `fn() -> i64`, which cannot capture state, so the clock the expiry
-    /// test winds forward has to live in a static. Only
-    /// `test_submit_rejects_a_plan_issued_more_than_600s_ago` reads or
-    /// writes it, so the parallel test threads never race on it.
-    static FAKE_NOW: AtomicI64 = AtomicI64::new(0);
-
-    fn fake_now() -> i64 {
-        FAKE_NOW.load(Ordering::SeqCst)
-    }
-
-    #[tokio::test]
-    async fn test_submit_of_a_never_issued_plan_id_is_unknown_and_runs_nothing() {
-        // F1 / spec §6: the only thing a client can send `submit` is an id,
-        // and an id this Session never handed out must be rejected outright
-        // — it must not start anything, whatever number it is.
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-
-        // Nothing has been issued yet, so every id is a forgery.
-        assert_eq!(session.submit(1), Err(SubmitError::Unknown));
-        assert_eq!(session.submit(u64::MAX), Err(SubmitError::Unknown));
-
-        // With exactly one plan issued (id 1), its neighbours are still
-        // forgeries and the real id is untouched by those failed attempts.
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let issued = session.issue_plan(&req).await.expect("issue_plan");
-        assert_eq!(issued.id, 1);
-        assert_eq!(session.submit(0), Err(SubmitError::Unknown));
-        assert_eq!(session.submit(2), Err(SubmitError::Unknown));
-        assert!(
-            session.operations().is_empty(),
-            "a rejected submit must never reach the OperationManager"
-        );
-        session
-            .submit(issued.id)
-            .expect("the genuinely issued id is still submittable after the forgeries failed");
-        assert_eq!(session.operations().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_submit_consumes_the_plan_so_the_same_id_cannot_be_replayed() {
-        // The single-use guarantee: one issue_plan yields at most one
-        // operation. Submitting the same id a second time is treated exactly
-        // like an id that was never issued.
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let issued = session.issue_plan(&req).await.expect("issue_plan");
-
-        let op_id = session
-            .submit(issued.id)
-            .expect("first submit of a freshly issued plan");
-        assert_eq!(
-            session.submit(issued.id),
-            Err(SubmitError::Unknown),
-            "an issued plan is single-use: replaying its id must be rejected"
-        );
-        assert_eq!(
-            session.submit(issued.id),
-            Err(SubmitError::Unknown),
-            "and it stays rejected however many times it is replayed"
-        );
-        let ops = session.operations();
-        assert_eq!(
-            ops.len(),
-            1,
-            "exactly one operation may result from one issued plan"
-        );
-        assert_eq!(ops[0].id, op_id);
-
-        // Previewing the same request again is a new plan under a new id,
-        // which is itself submittable exactly once more.
-        let reissued = session.issue_plan(&req).await.expect("issue_plan again");
-        assert_ne!(reissued.id, issued.id);
-        session
-            .submit(reissued.id)
-            .expect("a re-issued plan is submittable once");
-        assert_eq!(session.submit(reissued.id), Err(SubmitError::Unknown));
-        assert_eq!(session.operations().len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_submit_rejects_a_plan_issued_more_than_600s_ago() {
-        // Pins `issued_at` through the `now_fn` seam, then winds the same
-        // clock forward to prove the 600 s limit is enforced on submit —
-        // inclusive at exactly 600 s ("more than 600 seconds ago" is the
-        // documented contract), exclusive one second later.
-        const T0: i64 = 1_758_000_000;
-        FAKE_NOW.store(T0, Ordering::SeqCst);
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-        let on_time = session.issue_plan(&req).await.expect("issue_plan");
-        let too_late = session.issue_plan(&req).await.expect("issue_plan");
-        assert_eq!(
-            on_time.issued_at, T0,
-            "issued_at must come from the injected clock"
-        );
-        assert_eq!(too_late.issued_at, T0);
-
-        // Exactly 600 s old is not "more than 600 seconds ago": still valid.
-        FAKE_NOW.store(T0 + 600, Ordering::SeqCst);
-        session
-            .submit(on_time.id)
-            .expect("a plan exactly 600 s old is still submittable");
-        assert_eq!(session.operations().len(), 1);
-
-        // One second past the limit: expired, and nothing is submitted.
-        FAKE_NOW.store(T0 + 601, Ordering::SeqCst);
-        assert_eq!(session.submit(too_late.id), Err(SubmitError::Expired));
-        assert_eq!(
-            session.operations().len(),
-            1,
-            "an expired plan must never reach the OperationManager"
-        );
-
-        // The failed submit discarded the expired plan rather than leaving
-        // it around for a retry: even winding the clock back cannot
-        // resurrect it, and the caller has to issue_plan again.
-        FAKE_NOW.store(T0, Ordering::SeqCst);
-        assert_eq!(session.submit(too_late.id), Err(SubmitError::Unknown));
-        assert_eq!(session.operations().len(), 1);
-        let fresh = session.issue_plan(&req).await.expect("issue_plan again");
-        assert_ne!(fresh.id, too_late.id);
-        session
-            .submit(fresh.id)
-            .expect("a freshly issued plan is submittable");
-        assert_eq!(session.operations().len(), 2);
-    }
-
-    static SWEEP_TEST_NOW: AtomicI64 = AtomicI64::new(2_000_000_000);
-
-    fn sweep_test_now() -> i64 {
-        SWEEP_TEST_NOW.load(Ordering::SeqCst)
-    }
-
-    #[tokio::test]
-    async fn test_issue_plan_sweeps_previously_expired_entries_so_the_map_does_not_grow_unbounded()
-    {
-        // Distinguishes "issue_plan proactively sweeps" (this test) from
-        // "submit itself checks the age of the one entry it looked up"
-        // (test_submit_rejects_a_plan_issued_more_than_600s_ago above): once
-        // an expired entry has been swept, submitting its id must come back
-        // Unknown (the entry is gone), not Expired (which would mean the
-        // entry was still sitting in the map when submit ran).
-        let (adapter, state) = FakeAdapter::new("fake");
-        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], Some(sweep_test_now));
-        session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        let req = OpRequest {
-            kind: OpKind::Install,
-            instance_id: "fake:1".to_string(),
-            artifact_kind: ArtifactKind::Formula,
-            name: "jq".to_string(),
-        };
-
-        let stale = session.issue_plan(&req).await.expect("issue_plan (stale)");
-        SWEEP_TEST_NOW.fetch_add(601, Ordering::SeqCst);
-        let _fresh = session
-            .issue_plan(&req)
-            .await
-            .expect("issue_plan (fresh, triggers sweep)");
-
-        assert_eq!(
-            session.submit(stale.id),
-            Err(SubmitError::Unknown),
-            "a swept entry must read back as Unknown, not Expired"
-        );
     }
 }

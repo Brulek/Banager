@@ -13,3 +13,9 @@ version and source live in the JSON *key*** — `"hexyl 0.17.0 (registry+https:/
 github.com/rust-lang/crates.io-index)"` — and not in the value, which carries
 only `bins`, `features`, `profile`, `rustc`, `target` and `version_req`. A
 parser that looks for a `name` field inside the value will find nothing.
+
+`install-list.txt` is recorded from `cargo install --list`. The adapter reads
+`.crates2.json` instead — the text output begins with two unrelated
+workspace-profile warning lines, which is exactly why. This file is kept as
+corroboration that the `.crates2.json` parse agrees with what cargo itself
+reports, not as a parser input.
