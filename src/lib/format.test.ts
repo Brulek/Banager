@@ -18,4 +18,19 @@ describe("displayToken", () => {
   it("escapes a single quote inside a quoted token", () => {
     expect(displayToken("it's")).toBe("'it'\\''s'");
   });
+
+  it("quotes shell metacharacters so a copied preview cannot mean something else", () => {
+    expect(displayToken("$HOME")).toBe("'$HOME'");
+    expect(displayToken("a;b")).toBe("'a;b'");
+    expect(displayToken("a|b")).toBe("'a|b'");
+    expect(displayToken("*.rb")).toBe("'*.rb'");
+    expect(displayToken("~/bin")).toBe("'~/bin'");
+  });
+
+  it("leaves an ordinary package name unquoted", () => {
+    expect(displayToken("jq")).toBe("jq");
+    expect(displayToken("gautham-v/tap/claudebar")).toBe("gautham-v/tap/claudebar");
+    expect(displayToken("--formula")).toBe("--formula");
+    expect(displayToken("python@3.13")).toBe("python@3.13");
+  });
 });

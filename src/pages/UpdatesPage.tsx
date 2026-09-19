@@ -194,7 +194,9 @@ export function UpdatesPage() {
       try {
         const opId = await submitMutation.mutateAsync(item.issued.id);
         items[i] = { ...item, submittedOpId: opId };
-        deselect(item.key);
+        // Guarded like every other post-await write: `deselect` mutates the
+        // shared selection store, so a superseded batch must not reach it.
+        if (isCurrent(id)) deselect(item.key);
       } catch (e) {
         // A PlanId is single-use and expires after 10 minutes. Whatever the
         // backend said (`Expired`, `Unknown`, anything else), this id is
