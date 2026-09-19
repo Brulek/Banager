@@ -3,9 +3,16 @@ import type { ReactElement, ReactNode } from "react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../i18n";
+import { useUiStore } from "../store/ui";
+
+beforeEach(() => {
+  // zustand 5 remembers the state the store was created with; merging it
+  // back restores every field and leaves the action functions unchanged.
+  useUiStore.setState(useUiStore.getInitialState());
+});
 
 afterEach(() => {
   cleanup();

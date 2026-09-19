@@ -1,0 +1,141 @@
+import { useEffect } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { refresh, subscribeEvents } from "./api";
+import { queryKeys } from "./queries";
+import { useUiStore } from "../store/ui";
+import type { UiEvent } from "./types";
+
+/**
+ * Runs a backend `refresh` and writes the returned Snapshot straight into the
+ * query cache. This — not `get_snapshot` — is the only thing that ever makes
+ * the backend go and look at Homebrew: `Session` starts from
+ * `Snapshot::empty()` (`generation: 0`, `detect: Missing`, no artifacts,
+ * `refreshed_at: null`) and `get_snapshot` merely returns whatever is in
+ * memory. Failures are logged, never thrown: the stale/error surfaces in
+ * Task 17 read the snapshot's own `stale`/`errors` fields.
+ *
+ * Refreshes are coordinated here, at module level, not per hook or per
+ * component. The backend contract is that a `refresh` arriving while one is
+ * already running does not start a second scan: it is merged into the
+ * running one and returns *that* one's result. So a refresh that is already
+ * past instance A and scanning instance B when an operation on A finishes
+ * hands back A's old inventory, and the `Finished`-triggered refresh that
+ * was merged into it never sees the change — an uninstall completes and the
+ * list does not move. To close that gap, a refresh requested while one is
+ * in flight only sets `refreshAgain`, and the in-flight refresh issues
+ * exactly one follow-up when it settles. Startup, event-driven and any
+ * later manual refresh all go through this one function, so they share the
+ * coordination; under StrictMode's double mount the second startup call is
+ * coalesced into one follow-up rather than running concurrently.
+ */
+let refreshInFlight: Promise<void> | null = null;
+let refreshAgain = false;
+
+function refreshIntoCache(queryClient: QueryClient, why: string): void {
+  // refreshIntoCache is a plain function, not a hook, so useUiStore.getState()
+  // — rather than the useUiStore() hook — is the correct way to reach the store here.
+  if (refreshInFlight) {
+    refreshAgain = true;
+    return;
+  }
+  refreshInFlight = refresh()
+    .then((snapshot) => {
+      queryClient.setQueryData(queryKeys.snapshot, snapshot);
+      useUiStore.getState().setStartupRefreshError(null);
+    })
+    .catch((e: unknown) => {
+      console.error(`${why} refresh failed`, e);
+      useUiStore.getState().setStartupRefreshError(e instanceof Error ? e.message : String(e));
+    })
+    .finally(() => {
+      refreshInFlight = null;
+      if (refreshAgain) {
+        refreshAgain = false;
+        refreshIntoCache(queryClient, `${why} (follow-up)`);
+      }
+    });
+}
+
+/**
+ * Mounted once by `App` (Task 13), next to `useOperationEvents`: triggers the
+ * first real refresh when the window opens. Without it the UI would sit on
+ * the empty startup snapshot forever and report "Homebrew isn't installed".
+ * Until the call resolves the cached snapshot has `refreshed_at: null`,
+ * which Task 17's `SnapshotStatus` renders as loading, not as an empty state.
+ */
+export function useStartupRefresh(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    refreshIntoCache(queryClient, "initial");
+  }, [queryClient]);
+}
+
+/**
+ * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
+ * React state: `Operation.Log` events are appended to the Zustand log ring
+ * buffer, `Operation.Status`/`Operation.Finished` invalidate the operations
+ * query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
+ * event additionally triggers a `refresh`: that is the only way the
+ * installed/updates lists learn that an uninstall or update changed
+ * anything, because nothing on the backend refreshes on its own. Not part of
+ * the skeleton's Core Interfaces — introduced here because `events.ts` needs
+ * a concrete hook shape and none was specified.
+ */
+export function useOperationEvents(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let detach: (() => void) | undefined;
+    let cancelled = false;
+
+    function handle(event: UiEvent) {
+      // The subscription can still be pending when this hook unmounts
+      // (StrictMode's first mount, a window that closes at once): the cleanup
+      // below has no `detach` to call yet, so the Channel keeps delivering.
+      // This check is what makes an unmounted hook inert until then.
+      if (cancelled) return;
+      if ("Operation" in event) {
+        const opEvent = event.Operation;
+        if ("Log" in opEvent) {
+          useUiStore.getState().appendLog({
+            opId: opEvent.Log.op_id,
+            stream: opEvent.Log.stream,
+            line: opEvent.Log.line,
+          });
+        } else {
+          queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+          if ("Finished" in opEvent) {
+            refreshIntoCache(queryClient, "post-operation");
+          }
+        }
+      } else {
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+      }
+    }
+
+    subscribeEvents(handle)
+      .then((unsubscribe) => {
+        if (cancelled) {
+          unsubscribe();
+        } else {
+          detach = unsubscribe;
+        }
+      })
+      .catch((e: unknown) => {
+        // Without this the rejection is unhandled: the app would silently
+        // lose its subscription (backend not ready, command not registered)
+        // and vitest would fail the whole run on the stray rejection.
+        console.error("subscribe_events failed", e);
+      });
+
+    // Under React StrictMode the effect mounts, unmounts and mounts again.
+    // The first Channel is detached client-side but stays in the backend's
+    // ChannelSink registry as a ghost until a send to it fails; it receives
+    // events and drops them. There is no other side effect.
+    return () => {
+      cancelled = true;
+      detach?.();
+    };
+  }, [queryClient]);
+}
