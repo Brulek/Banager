@@ -21,6 +21,10 @@
 
 - `crates/canager-core/src/adapters/mod.rs` `Adapter::capabilities()` 在整个工作区**没有任何调用方**：`session/`、`ops/`、`src-tauri/src/ipc.rs` 都不调，`Capabilities` 也不在 `src/lib/types.ts` 里，从不跨 IPC。七个适配器各写一份 `capabilities()`，全是死代码。要么把它接进界面（离线时不可检查的来源、只读来源的提示、不支持搜索的来源——这需要给 `ManagerInstance` 的线格式加字段、加 TypeScript 镜像、加界面状态与测试），要么直接从 trait 上删掉。在有消费者之前，**别再让 `Capabilities` 长出新字段**：阶段 3 计划原本要加一个 `needs_network` 网络依赖标志，正因为这条而砍掉（2026-09-20 控制者裁决）。
 
+- `crates/canager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
+  修的代价：要给 `ManagerInstance`（或 `Snapshot`）加一条实例级 warnings 通道，连带 TypeScript 镜像、线格式表、界面渲染与测试——本身就是一个完整任务，不该塞进阶段 3 的任何一格。
+  可接受的理由：后果是少说了一句提示，不是做错了动作；一旦真有可更新项，提醒照常显示。**不阻塞 v0.1**，但要在做 `Capabilities` 那条（同样需要实例级字段）时一起做掉——两者是同一个通道。
+
 ## 阶段 5（发现页）之前必须处理
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
