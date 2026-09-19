@@ -1,6 +1,8 @@
 pub mod parse;
 
-use crate::adapters::{validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities};
+use crate::adapters::{
+    validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, ManagerInstance,
@@ -230,6 +232,7 @@ impl BrewAdapter {
     pub async fn check_updates(
         &self,
         inst: &ManagerInstance,
+        _opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
         self.maybe_update(inst).await?;
         let output = self
@@ -513,8 +516,9 @@ impl Adapter for BrewAdapter {
     async fn check_updates(
         &self,
         inst: &ManagerInstance,
+        opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-        BrewAdapter::check_updates(self, inst).await
+        BrewAdapter::check_updates(self, inst, opts).await
     }
 
     async fn search(
@@ -709,12 +713,12 @@ mod tests {
         let inst = test_instance();
 
         let first = adapter
-            .check_updates(&inst)
+            .check_updates(&inst, &CheckOptions::default())
             .await
             .expect("first check_updates");
         assert_eq!(first.len(), 1);
         let second = adapter
-            .check_updates(&inst)
+            .check_updates(&inst, &CheckOptions::default())
             .await
             .expect("second check_updates");
         assert_eq!(second.len(), 1);
@@ -781,11 +785,11 @@ mod tests {
         };
 
         adapter
-            .check_updates(&inst_opt)
+            .check_updates(&inst_opt, &CheckOptions::default())
             .await
             .expect("check_updates opt/homebrew #1");
         adapter
-            .check_updates(&inst_local)
+            .check_updates(&inst_local, &CheckOptions::default())
             .await
             .expect("check_updates usr/local #1");
 
@@ -800,11 +804,11 @@ mod tests {
         );
 
         adapter
-            .check_updates(&inst_opt)
+            .check_updates(&inst_opt, &CheckOptions::default())
             .await
             .expect("check_updates opt/homebrew #2");
         adapter
-            .check_updates(&inst_local)
+            .check_updates(&inst_local, &CheckOptions::default())
             .await
             .expect("check_updates usr/local #2");
 

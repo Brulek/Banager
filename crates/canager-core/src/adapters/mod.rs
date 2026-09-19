@@ -11,6 +11,15 @@ use tokio_util::sync::CancellationToken;
 
 pub mod brew;
 
+/// Options a caller passes down to `check_updates`. Adapters ignore fields
+/// that do not apply to them; a new field must never change behaviour for an
+/// adapter that does not read it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckOptions {
+    /// Homebrew only: include casks that update themselves (`brew outdated --greedy`).
+    pub include_self_updating: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities {
     pub search: bool,
@@ -95,6 +104,7 @@ pub trait Adapter: Send + Sync {
     async fn check_updates(
         &self,
         inst: &ManagerInstance,
+        opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError>;
     async fn search(
         &self,

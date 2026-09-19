@@ -1,4 +1,5 @@
 use canager_core::adapters::brew::BrewAdapter;
+use canager_core::adapters::CheckOptions;
 use canager_core::runner::{HostEnv, RealRunner};
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,7 +31,7 @@ async fn main() {
         println!("  {} installed artifacts", artifacts.len());
 
         let outdated = adapter
-            .check_updates(inst)
+            .check_updates(inst, &CheckOptions::default())
             .await
             .expect("check_updates failed");
         println!("  {} outdated artifacts", outdated.len());

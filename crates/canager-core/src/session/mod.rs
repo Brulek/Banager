@@ -8,7 +8,7 @@
 //! document.
 
 use crate::adapters::brew::BrewAdapter;
-use crate::adapters::{Adapter, AdapterError};
+use crate::adapters::{Adapter, AdapterError, CheckOptions};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpRequest, Plan, ResourceLock,
@@ -194,7 +194,7 @@ impl Session {
     /// returns the snapshot that other call produced instead of running a
     /// second, redundant refresh — see `refresh_seq` on `Session` for why
     /// that check cannot use `generation`.
-    pub async fn refresh(self: &Arc<Self>, env: &HostEnv) -> Snapshot {
+    pub async fn refresh(self: &Arc<Self>, env: &HostEnv, opts: &CheckOptions) -> Snapshot {
         let seq_before = self.refresh_seq.load(Ordering::SeqCst);
         let _gate = self.refresh_gate.lock().await;
         if self.refresh_seq.load(Ordering::SeqCst) != seq_before {
@@ -208,6 +208,10 @@ impl Session {
         }
 
         let previous = self.snapshot.lock().unwrap().clone();
+        // Owned copy (CheckOptions is Copy): each per-instance spawned task
+        // below needs its own 'static value, and the caller's `&opts`
+        // reference cannot outlive this function.
+        let opts: CheckOptions = *opts;
 
         if BrewAdapter::refuses_as_root(env) {
             // This refresh ran to completion: it did not fail, it answered
@@ -261,6 +265,8 @@ impl Session {
             };
             let ops = self.ops.clone();
             let previous = previous.clone();
+            // `opts` is `Copy`, so the `async move` block below captures its
+            // own value rather than borrowing this function's.
             handles.push((
                 inst.id.clone(),
                 tokio::spawn(async move {
@@ -288,7 +294,7 @@ impl Session {
                             );
                         }
                     }
-                    match adapter.check_updates(&inst).await {
+                    match adapter.check_updates(&inst, &opts).await {
                         Ok(items) => updates.extend(items),
                         Err(e) => {
                             errors.push(SourceError {
@@ -426,7 +432,7 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKind, CancelPolicy, InstallReason, OpKind, OpStatus, Outcome, Reconciled,
@@ -540,6 +546,7 @@ mod tests {
         async fn check_updates(
             &self,
             inst: &ManagerInstance,
+            _opts: &CheckOptions,
         ) -> Result<Vec<UpdateCandidate>, AdapterError> {
             let s = self.state.lock().unwrap();
             Ok(s.updates.get(&inst.id).cloned().unwrap_or_default())
@@ -658,7 +665,9 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&non_root_env()).await;
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert_eq!(snapshot.detect, DetectOutcome::Found);
         assert_eq!(snapshot.instances.len(), 1);
         assert_eq!(snapshot.artifacts.len(), 1);
@@ -674,7 +683,7 @@ mod tests {
         let (adapter, state) = FakeAdapter::new("fake");
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&root_env()).await;
+        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
         assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
         assert!(snapshot.instances.is_empty());
         assert_eq!(
@@ -696,7 +705,7 @@ mod tests {
         let (adapter, _state) = FakeAdapter::new("fake");
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&root_env()).await;
+        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
         assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
         assert!(
             snapshot.refreshed_at.is_some(),
@@ -709,7 +718,9 @@ mod tests {
         let (adapter, _state) = FakeAdapter::new("fake");
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&non_root_env()).await;
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert_eq!(snapshot.detect, DetectOutcome::Missing);
     }
 
@@ -729,13 +740,17 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let first = session.refresh(&non_root_env()).await;
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert_eq!(first.artifacts.len(), 2);
         assert!(!first.stale);
         let first_refreshed_at = first.refreshed_at;
 
         state.lock().unwrap().failing.push("fake:1".to_string());
-        let second = session.refresh(&non_root_env()).await;
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert!(second.stale);
         assert_eq!(second.errors.len(), 1);
         assert_eq!(second.errors[0].instance_id, "fake:1");
@@ -758,8 +773,12 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let first = session.refresh(&non_root_env()).await;
-        let second = session.refresh(&non_root_env()).await;
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert_eq!(
             first.generation, second.generation,
             "identical data must not bump the generation"
@@ -772,7 +791,9 @@ mod tests {
             .get_mut("fake:1")
             .unwrap()
             .push(make_artifact("fake:1", "wget"));
-        let third = session.refresh(&non_root_env()).await;
+        let third = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         assert!(
             third.generation > second.generation,
             "new data must bump the generation"
@@ -792,8 +813,16 @@ mod tests {
         let session_a = session.clone();
         let session_b = session.clone();
         let (a, b) = tokio::join!(
-            tokio::spawn(async move { session_a.refresh(&non_root_env()).await }),
-            tokio::spawn(async move { session_b.refresh(&non_root_env()).await }),
+            tokio::spawn(async move {
+                session_a
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            }),
+            tokio::spawn(async move {
+                session_b
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            }),
         );
         let snap_a = a.expect("task a");
         let snap_b = b.expect("task b");
@@ -823,7 +852,9 @@ mod tests {
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         // Establish a steady-state snapshot first, outside any concurrency.
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let calls_before = state.lock().unwrap().detect_calls;
 
         // Every refresh from here on sees exactly the same data as above,
@@ -833,8 +864,16 @@ mod tests {
         let session_a = session.clone();
         let session_b = session.clone();
         let (a, b) = tokio::join!(
-            tokio::spawn(async move { session_a.refresh(&non_root_env()).await }),
-            tokio::spawn(async move { session_b.refresh(&non_root_env()).await }),
+            tokio::spawn(async move {
+                session_a
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            }),
+            tokio::spawn(async move {
+                session_b
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            }),
         );
         let snap_a = a.expect("task a");
         let snap_b = b.expect("task b");
@@ -854,7 +893,9 @@ mod tests {
         let before = session.snapshot();
         assert_eq!(before.generation, 0);
         assert_eq!(state.lock().unwrap().detect_calls, 0);
-        let refreshed = session.refresh(&non_root_env()).await;
+        let refreshed = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let after = session.snapshot();
         assert_eq!(after, refreshed);
     }
@@ -865,7 +906,9 @@ mod tests {
         state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "fake:1".to_string(),
@@ -904,7 +947,9 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "fake:1".to_string(),
@@ -966,7 +1011,9 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         state.lock().unwrap().inventory_calls.clear();
 
         // Submit (and thereby lock) an operation against fake:1 only, and
@@ -994,8 +1041,11 @@ mod tests {
         }
 
         let session_for_refresh = session.clone();
-        let refresh_task =
-            tokio::spawn(async move { session_for_refresh.refresh(&non_root_env()).await });
+        let refresh_task = tokio::spawn(async move {
+            session_for_refresh
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await
+        });
 
         // Give the refresh time to reach fake:2's inventory (no contention)
         // and to *try* fake:1's (which must still be waiting on the lock
@@ -1044,7 +1094,9 @@ mod tests {
         state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
 
         // Nothing has been issued yet, so every id is a forgery.
         assert_eq!(session.submit(1), Err(SubmitError::Unknown));
@@ -1081,7 +1133,9 @@ mod tests {
         state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "fake:1".to_string(),
@@ -1134,7 +1188,9 @@ mod tests {
         state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
-        session.refresh(&non_root_env()).await;
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
         let req = OpRequest {
             kind: OpKind::Install,
             instance_id: "fake:1".to_string(),

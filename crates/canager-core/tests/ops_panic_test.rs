@@ -7,7 +7,7 @@
 //! a lock nobody would ever release.
 
 use async_trait::async_trait;
-use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
@@ -87,6 +87,7 @@ impl Adapter for FakeAdapter {
     async fn check_updates(
         &self,
         _inst: &ManagerInstance,
+        _opts: &CheckOptions,
     ) -> Result<Vec<UpdateCandidate>, AdapterError> {
         Ok(Vec::new())
     }

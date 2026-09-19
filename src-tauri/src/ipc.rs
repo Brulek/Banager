@@ -1,5 +1,6 @@
 use crate::events::UiEvent;
 use crate::state::AppState;
+use canager_core::adapters::CheckOptions;
 use canager_core::model::OpRequest;
 use canager_core::ops::OpSummary;
 use canager_core::runner::HostEnv;
@@ -25,7 +26,10 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 /// whole plan that does so outside a test.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
     let generation_before = state.session.snapshot().generation;
-    let snapshot = state.session.refresh(&HostEnv::discover()).await;
+    let snapshot = state
+        .session
+        .refresh(&HostEnv::discover(), &CheckOptions::default())
+        .await;
     if snapshot.generation != generation_before {
         state.channel_sink.broadcast(UiEvent::SnapshotChanged {
             generation: snapshot.generation,
@@ -135,7 +139,7 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use async_trait::async_trait;
-    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities};
+    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
     use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
@@ -187,6 +191,7 @@ mod tests {
         async fn check_updates(
             &self,
             _inst: &ManagerInstance,
+            _opts: &CheckOptions,
         ) -> Result<Vec<UpdateCandidate>, AdapterError> {
             Ok(Vec::new())
         }
