@@ -1,0 +1,111 @@
+{
+  "app": {
+    "title": "Canager",
+    "operationBarRegion": "操作状态"
+  },
+  "nav": {
+    "label": "导航",
+    "installed": "已安装",
+    "updates": "更新",
+    "settings": "设置"
+  },
+  "common": {
+    "loading": "加载中…",
+    "cancel": "取消",
+    "close": "关闭"
+  },
+  "adapters": {
+    "brew": "Homebrew"
+  },
+  "installed": {
+    "filterLabel": "筛选已安装项目",
+    "filterPlaceholder": "搜索已安装项目",
+    "uninstall": "卸载",
+    "upToDate": "已是最新",
+    "updateAvailable": "有可用更新",
+    "noDescription": "暂无描述",
+    "nameWithVersion": "{{name}} · {{version}}",
+    "showDependencies_other": "{{count}} 个由其他软件附带安装的组件"
+  },
+  "updates": {
+    "upToDate": "所有内容都已是最新",
+    "allIgnored": "没有待处理的更新，其余都已忽略。",
+    "count_other": "{{count}} 个可用更新",
+    "updateSelected": "更新所选项",
+    "update": "更新",
+    "ignore": "忽略",
+    "ignoreFailed": "没能保存已忽略的更新:{{message}}",
+    "available": "更新",
+    "warnings_other": "{{count}} 条警告",
+    "versionChange": "{{current}} → {{target}}",
+    "selectRow": "选择要更新的 {{name}}",
+    "confirmTitle": "确认更新",
+    "confirmUpdate": "确认",
+    "started": "已开始",
+    "planFailed": "没能准备这次更新:{{message}}",
+    "submitFailed": "没能开始更新:{{message}}"
+  },
+  "commandPreview": {
+    "label": "将执行:"
+  },
+  "operations": {
+    "idle": "当前没有正在进行的操作",
+    "current": "{{kind}} {{name}}({{status}})",
+    "cancel": "取消",
+    "logDrawerTitle": "操作日志",
+    "kind": {
+      "Install": "正在安装",
+      "Uninstall": "正在卸载",
+      "Upgrade": "正在更新"
+    },
+    "status": {
+      "Queued": "排队中",
+      "Running": "进行中",
+      "CancelRequested": "正在取消",
+      "Cancelling": "正在取消",
+      "Verifying": "正在核实",
+      "Done": "已完成"
+    },
+    "outcome": {
+      "Succeeded": "已成功",
+      "NoChange": "无需更改",
+      "PartialSuccess": "部分成功",
+      "Unconfirmed": "结果未确认",
+      "NeedsAttention": "需要留意:{{message}}",
+      "Failed": "失败:{{summary}}"
+    }
+  },
+  "uninstall": {
+    "title": "卸载 {{name}}?",
+    "description": "继续之前,先看看会发生什么。",
+    "checking": "正在检查会有什么影响…",
+    "planError": "没能检查清楚会有什么影响:{{message}}",
+    "submitError": "没能开始卸载:{{message}}",
+    "warningsTitle": "继续之前请注意:",
+    "affectedTitle": "删除后这些会受影响:",
+    "confirm": "卸载",
+    "cancel": "取消",
+    "confirmDisabledHint": "请先处理上面列出的问题,才能卸载。"
+  },
+  "settings": {
+    "title": "设置",
+    "loading": "正在加载设置…",
+    "showTechnicalDetails": {
+      "label": "显示技术细节",
+      "description": "显示版本号、文件路径,以及 Canager 实际执行的命令。"
+    },
+    "language": {
+      "label": "语言",
+      "system": "跟随系统",
+      "english": "English",
+      "chinese": "简体中文"
+    },
+    "ignoredUpdates": {
+      "title": "已忽略的更新",
+      "empty": "你还没有忽略任何更新。",
+      "unignore": "取消忽略",
+      "unignoreAriaLabel": "取消忽略 {{name}}"
+    },
+    "saveError": "保存失败({{message}}),已恢复原来的设置。"
+  }
+}

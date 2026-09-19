@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useLanguageSync } from "./i18n/useLanguageSync";
 import { Sidebar } from "./components/Sidebar";
 import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
@@ -9,6 +10,7 @@ import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useUiStore } from "./store/ui";
 
 function App() {
+  useLanguageSync();
   const { t } = useTranslation();
   const page = useUiStore((s) => s.page);
   const setPage = useUiStore((s) => s.setPage);
