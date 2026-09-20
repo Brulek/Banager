@@ -17,6 +17,58 @@
 - `AdapterMeta.verified_versions` 从未与 `ManagerInstance.version` 比较（spec §4.1 "未验证版本"角标）。
 - spec §4.2 需更正：brew 7.0.3 的 `installed[]` 只有 `installed_on_request`，没有 `installed_as_dependency`（解析器与其文档注释是对的，spec 过时）。
 
+## 阶段 3 终审遗留：分支 feat/phase-3-sources 合并前必做（2026-09-20 立）
+
+四路整分支通读复审（死字段／跨任务矛盾／重复与 fixture／注入面）共报 12 条独立缺陷，5 条 critical。
+其中 13 条已在 `c7dcc29`（Rust 安全）与 `ccbea0a`（前端诚实化）修掉。**以下是明确留到下一轮的，
+按依赖顺序排列。** 分支已推送，CI 见 GitHub；本地安全标签 `prewrite-d300730` 指向历史重写前的旧头，
+确认无误后可删。
+
+**一、先定架构：实例级通道（三条独立发现都指向它，必须一次设计好，别再长出没有读取方的字段）**
+- 现状：`Adapter::capabilities()` 有七份实现、**零调用方**，而前端在 `src/lib/sources.ts` 里
+  硬编码 `READ_ONLY_ADAPTER_IDS = {"pip"}` —— 同一个事实在 IPC 两侧各维护一份。
+- 同一条通道还要承载：brew「update 失败、结果可能过期」的实例级提醒（候选为空时现在被静默丢弃）；
+  npm 在 prefix 不可写时的只读状态（现在会给出一个点了必然报错的「卸载」按钮）；
+  pip 的更新候选不可执行（`checkable: true` 但 `plan()` 无条件拒绝，前端只能先用硬编码名单兜住）。
+- 决策要点：是给 `ManagerInstance` 加字段、还是把 `Capabilities` 送上线格式、还是引入实例状态对象。
+  无论选哪条，**每个新字段都必须在同一轮里写出生产读取方**，否则就是本项目反复踩的那个坑。
+
+**二、适配器失败语义不统一（critical）**
+同一个条件——远程查询失败——四个适配器给三种答案：cargo 判 `checkable: false`（单项「查不了」）；
+pip / uv / pipx-native 返回 `Err`，整个来源失败；**npm 返回 `Ok(vec![])`，等于谎报「全部最新」**。
+cargo 的代码注释里就写明了为什么不能当来源失败。以 cargo 为准统一，npm 那条要能区分
+「exit 1 且 stdout 有 JSON」与「exit 1 且 stdout 为空、stderr 非空」。
+
+**三、`refreshed_at` 的 Rust 半边（critical）**
+`session/refresh.rs` 的 `stale` 是七个来源的全局 OR，`refreshed_at` 只在全部成功时才盖章。
+六好一坏的机器永远拿不到时间戳。前端已改成对它能检测到的事实诚实（文案改为「有来源没有应答」），
+但真正的修法是**按实例记陈旧**——`SourceError` 已经带 `instance_id`，只是没人读。
+
+**四、其余已确认项**
+- ollama 的 `check_updates` 在守护进程于 detect 与扇出之间停掉时硬报错，绕开了任务 11 的规则；
+  应返回 `Ok(vec![])` 或 `checkable:false` 行。顺带：它每轮刷新会重复发一次 `/api/tags`。
+- brew 的 root 拒绝在 `refresh.rs` 里短路了**全部七个来源**，并且文案把锅甩给 Homebrew；
+  这个判断该留在 `BrewAdapter::detect` 里。
+- npm 的 `real_prefix_is_writable` 测错了目录：`npm prefix -g` 给的是 prefix 根（`/opt/homebrew`），
+  npm 实际写 `{prefix}/lib/node_modules`。测试夹具里 `npm:/opt/homebrew/lib` 那个 id 是同一处误解的化石。
+- 两块逐字重复没被计划的两个共享辅助函数覆盖：五个适配器 `plan()` 开头一模一样的实例校验块
+  （抽 `ensure_instance_match`）、五个适配器一模一样的 `reconcile()` 体（抽 `reconcile_from`）——
+  **npm 的那份副本已经漂了，漏掉 `kind` 检查**，七个适配器里只有它漏。
+- `open_ollama_app` 用 `open -a Ollama` 按名字走 LaunchServices，会匹配到 `~/Downloads` 里的任意副本。
+  改用 bundle id，但**本机没装 Ollama.app、读不到 Info.plist，不许猜**（Homebrew cask 缓存两处
+  旁证是 `com.electron.ollama`，注意 `com.ollama.ollama` 是 launchd job 不是 app）。装上后核实再改。
+  顺手把三个 stdio 流置空。
+- 纵深防御，非活口：六个适配器的 argv 都没有 `--` 参数终止符，目前靠两个校验器拒绝前导短横。
+  加 `--` 能把保证从「偶然」变成「结构性」，但 `ollama pull --` 的行为需要有守护进程才能验。
+- `PlanId` 是顺序递增的 `AtomicU64`，被放弃的预览其 id 可猜。对已沦陷的渲染进程没有增益，便宜就做。
+- `manifests_root` 写死 `registry.ollama.ai`，所以 `hf.co/...` 模型会去错目录找清单。真 bug，
+  属于多注册表支持的设计工作。（已确认：安全修复会让这类名字变成 `checkable: false` 而不是崩溃。）
+
+**五、需要作者本人拍板**
+- **整个应用没有刷新按钮。** 唯三的刷新触发点是启动、操作完成、以及两个错误态里的「重试」。
+  「打开 Ollama」和设置开关这两条明确承诺过会刷新的路径已经修好，但一个软件管家没有刷新控件
+  是个洞。加常驻控件涉及位置与形态，是产品决定，没有代为决定。
+
 ## 阶段 4 之前
 
 - `crates/canager-core/src/adapters/mod.rs` `Adapter::capabilities()` 在整个工作区**没有任何调用方**：`session/`、`ops/`、`src-tauri/src/ipc.rs` 都不调，`Capabilities` 也不在 `src/lib/types.ts` 里，从不跨 IPC。七个适配器各写一份 `capabilities()`，全是死代码。要么把它接进界面（离线时不可检查的来源、只读来源的提示、不支持搜索的来源——这需要给 `ManagerInstance` 的线格式加字段、加 TypeScript 镜像、加界面状态与测试），要么直接从 trait 上删掉。在有消费者之前，**别再让 `Capabilities` 长出新字段**：阶段 3 计划原本要加一个 `needs_network` 网络依赖标志，正因为这条而砍掉（2026-09-20 控制者裁决）。
