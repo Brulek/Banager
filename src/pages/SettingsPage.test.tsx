@@ -96,10 +96,15 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("round-trips the include-self-updating toggle through set_settings", async () => {
+  it("round-trips the include-self-updating toggle through set_settings and re-checks for updates", async () => {
+    // The backend reads include_self_updating fresh on each refresh, but
+    // nothing was triggering one: the save only wrote to the query cache, so
+    // flipping the switch changed nothing the user could see until the app
+    // was restarted.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings();
       if (cmd === "set_settings") return undefined;
+      if (cmd === "refresh") return null;
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -114,5 +119,31 @@ describe("SettingsPage", () => {
         settings: expect.objectContaining({ include_self_updating: true }),
       }),
     );
+    await waitFor(() =>
+      expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1),
+    );
+  });
+
+  it("does not re-scan every source for a save that cannot change what a refresh finds", async () => {
+    // Only include_self_updating changes the backend's answer. Refreshing on
+    // every save would put a full seven-source scan behind each Ignore click
+    // on the Updates page, which shares this mutation.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "refresh") return null;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Show technical details" }));
+
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ show_technical_details: true }),
+      }),
+    );
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
 });

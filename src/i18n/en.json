@@ -46,9 +46,11 @@
     "ignoreFailed": "Couldn't save the ignored updates: {{message}}",
     "available": "Update",
     "cannotCheck": "Can't check",
+    "readOnly": "Read-only",
     "warnings_one": "{{count}} warning",
     "warnings_other": "{{count}} warnings",
     "versionChange": "{{current}} → {{target}}",
+    "newBuild": "A newer build of this model is available",
     "selectRow": "Select {{name}} for update",
     "confirmTitle": "Confirm update",
     "confirmUpdate": "Confirm",
@@ -64,6 +66,10 @@
     "pipReadOnly": {
       "title": "Read-only: pip packages",
       "description": "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
+    },
+    "unreachable": {
+      "title": "Canager can't reach {{source}} right now",
+      "description": "You're seeing what Canager found last time. Anything added or removed with {{source}} since then won't show up until Canager can reach it again."
     },
     "ollamaNotRunning": {
       "title": "Ollama isn't running",
@@ -140,9 +146,9 @@
       "title": "Couldn't load what's installed",
       "description": "The last attempt failed with: {{message}}"
     },
-    "noHomebrew": {
-      "title": "Homebrew isn't installed yet",
-      "description": "Canager manages tools installed through Homebrew. Install Homebrew first, then come back here."
+    "noSources": {
+      "title": "Nothing for Canager to manage yet",
+      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
     },
     "refusedAsRoot": {
       "title": "Canager can't run as an administrator",
@@ -155,14 +161,14 @@
       "retryFailed": "Trying again didn't work: {{message}}",
       "retry": "Try again"
     },
-    "firstRefreshFailed": {
-      "title": "Couldn't finish the first check",
-      "description_one": "The first check couldn't finish for {{count}} source, so what you see below may be incomplete.",
-      "description_other": "The first check couldn't finish for {{count}} sources, so what you see below may be incomplete."
+    "incompleteCheck": {
+      "title": "Some sources didn't answer",
+      "description_one": "Canager couldn't check {{count}} source, so what you see below may be incomplete.",
+      "description_other": "Canager couldn't check {{count}} sources, so what you see below may be incomplete."
     },
     "nothingInstalled": {
       "title": "Nothing installed yet",
-      "description": "Once you install something with Homebrew, it will show up here."
+      "description": "Anything you install with Homebrew, npm, pipx, uv, pip, Cargo or Ollama will show up here."
     }
   }
 }

@@ -3,6 +3,7 @@ import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
+import { SnapshotStatus } from "../components/SnapshotStatus";
 import type { OpRequest, Settings, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -332,6 +333,97 @@ describe("InstalledPage", () => {
     expect(rowAt(1)?.style.height).toBe("");
   });
 
+  it("names an unhealthy source and says Canager cannot reach it, instead of dropping its group", async () => {
+    // brew, npm, uv, pipx, cargo and ollama can all report healthy: false,
+    // and it means the same thing for all six: the CLI is on PATH but
+    // Canager could not talk to it. The backend keeps such an instance in
+    // `snapshot.instances` precisely so the UI can say so -- it pushes no
+    // error and does not mark the snapshot stale, so this notice is the only
+    // place the user can learn that their global npm packages are missing
+    // from the list rather than gone.
+    const unhealthyNpmSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        ...snapshot.instances,
+        {
+          id: "npm:/opt/homebrew/lib",
+          adapter_id: "npm",
+          exe_path: "/opt/homebrew/bin/npm",
+          prefix: "/opt/homebrew/lib",
+          scope: "User",
+          version: "11.2.0",
+          healthy: false,
+          unverified_version: null,
+        },
+      ],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(unhealthyNpmSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText } = renderWithProviders(<InstalledPage />);
+
+    await findByText("jq");
+    expect(await findByText("Canager can't reach npm right now")).toBeInTheDocument();
+  });
+
+  it("never appends a digest to a model's name, while other sources still show their version", async () => {
+    // An Ollama model's `version` is the local manifest digest, not a
+    // version number. Printing it turned every model row into
+    // "qwen3:8b · 5642e97495e1a0888838…", a 64-hex string shown to someone
+    // who does not write code. The Formula below shares the setting and
+    // must still get its version, so the suppression stays on ArtifactKind.
+    const modelSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        ...snapshot.instances,
+        {
+          id: "ollama:http://127.0.0.1:11434",
+          adapter_id: "ollama",
+          exe_path: "/usr/local/bin/ollama",
+          prefix: "/usr/local",
+          scope: "User",
+          version: null,
+          healthy: true,
+          unverified_version: null,
+        },
+      ],
+      artifacts: [
+        ...snapshot.artifacts,
+        {
+          key: { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model", name: "qwen3:8b" },
+          display_name: "qwen3:8b",
+          version: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+          reason: "Requested",
+          description: null,
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
+      ],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(modelSnapshot);
+      if (cmd === "get_settings")
+        return Promise.resolve({ ...settings, show_technical_details: true });
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
+
+    await findByText("qwen3:8b");
+    expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
+    expect(await findByText("jq · 1.8.2")).toBeInTheDocument();
+  });
+
+  // Rendered through SnapshotStatus, exactly as App.tsx does. Rendering
+  // InstalledPage on its own would bypass the gate the real app always goes
+  // through, and this snapshot -- an unhealthy Ollama and nothing installed
+  // anywhere -- is precisely the one that gate used to swallow.
   it("shows a not-running notice with an Open Ollama button when the instance is unhealthy", async () => {
     const ollamaSnapshot: Snapshot = {
       generation: 1,
@@ -361,7 +453,11 @@ describe("InstalledPage", () => {
       return Promise.resolve(undefined);
     });
 
-    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
+    const { findByText, getByRole } = renderWithProviders(
+      <SnapshotStatus>
+        <InstalledPage />
+      </SnapshotStatus>,
+    );
 
     await findByText("Ollama isn't running");
     fireEvent.click(getByRole("button", { name: "Open Ollama" }));

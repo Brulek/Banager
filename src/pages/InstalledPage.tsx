@@ -6,36 +6,17 @@ import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotice } from "../components/SourceNotice";
 import { UninstallDialog } from "../components/UninstallDialog";
+import { ADAPTER_LABEL_KEYS, READ_ONLY_ADAPTER_IDS, hasSourceNotice } from "../lib/sources";
 import type { InstalledArtifact, OpRequest } from "../lib/types";
 
-const ADAPTER_LABEL_KEYS: Record<string, string> = {
-  brew: "adapters.brew",
-  npm: "adapters.npm",
-  pipx: "adapters.pipx",
-  uv: "adapters.uv",
-  pip: "adapters.pip",
-  cargo: "adapters.cargo",
-  ollama: "adapters.ollama",
-};
-
-// pip can only report what is installed; it offers no install/uninstall
-// path Canager could safely drive (spec's per-adapter contract table).
-// Read-only here is a presentational fact about that one source, not a
-// judgement call the UI is making on its own.
-const READ_ONLY_ADAPTER_IDS = new Set(["pip"]);
-
 // A group header on its own is one line. A group header that also carries a
-// SourceNotice (pip's read-only note, Ollama's not-running warning) is a title
-// plus a banner -- a title line, a description line and, for Ollama, a button.
+// SourceNotice (pip's read-only note, an unhealthy source's can't-reach-it
+// warning) is a title plus a banner -- a title line, a description line and,
+// for Ollama, a button.
 // Both numbers are only the virtualizer's first guess: every row reports its
 // real height through `measureElement` as soon as it is in the DOM.
 const ROW_ESTIMATE = 56;
 const NOTICE_GROUP_ESTIMATE = 120;
-
-/** Whether this source's group header renders a SourceNotice under it. */
-function hasSourceNotice(adapterId: string, healthy: boolean): boolean {
-  return READ_ONLY_ADAPTER_IDS.has(adapterId) || (adapterId === "ollama" && !healthy);
-}
 
 type ListItem =
   | {
@@ -92,9 +73,11 @@ export function InstalledPage() {
     const result: ListItem[] = [];
     for (const instance of snapshot.instances) {
       const artifacts = byInstance.get(instance.id) ?? [];
-      // A source can need a notice (pip's read-only note, Ollama not
-      // running) even with nothing installed to list under it -- most
+      // A source can need a notice (pip's read-only note, a source Canager
+      // cannot reach) even with nothing installed to list under it -- most
       // visibly, an unhealthy Ollama daemon that has nothing to report yet.
+      // An unhealthy instance never reaches the artifact fan-out at all, so
+      // its notice is the *only* thing its group ever has to show.
       const needsNotice = hasSourceNotice(instance.adapter_id, instance.healthy);
       if (artifacts.length === 0 && !needsNotice) continue;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
@@ -199,16 +182,33 @@ export function InstalledPage() {
                         description={t("sourceNotice.pipReadOnly.description")}
                       />
                     ) : null}
-                    {item.adapterId === "ollama" && !item.healthy ? (
-                      <SourceNotice
-                        variant="warning"
-                        title={t("sourceNotice.ollamaNotRunning.title")}
-                        description={t("sourceNotice.ollamaNotRunning.description")}
-                        action={{
-                          label: t("sourceNotice.ollamaNotRunning.action"),
-                          onClick: () => openOllamaApp.mutate(),
-                        }}
-                      />
+                    {/* An unhealthy instance means the same thing for every
+                        adapter: the CLI is there but Canager could not talk
+                        to it. Ollama is the one source the user can do
+                        something about from here, so it keeps its own copy
+                        and its start button; every other source gets the
+                        general notice, named through ADAPTER_LABEL_KEYS so
+                        it reads in the user's language. */}
+                    {!item.healthy ? (
+                      item.adapterId === "ollama" ? (
+                        <SourceNotice
+                          variant="warning"
+                          title={t("sourceNotice.ollamaNotRunning.title")}
+                          description={t("sourceNotice.ollamaNotRunning.description")}
+                          action={{
+                            label: t("sourceNotice.ollamaNotRunning.action"),
+                            onClick: () => openOllamaApp.mutate(),
+                          }}
+                        />
+                      ) : (
+                        <SourceNotice
+                          variant="warning"
+                          title={t("sourceNotice.unreachable.title", { source: item.label })}
+                          description={t("sourceNotice.unreachable.description", {
+                            source: item.label,
+                          })}
+                        />
+                      )
                     ) : null}
                   </div>
                 ) : item.type === "toggle" ? (
@@ -222,7 +222,14 @@ export function InstalledPage() {
                 ) : (
                   <ArtifactRow
                     name={
-                      settings?.show_technical_details
+                      // A Model's `version` is the local manifest digest
+                      // Ollama's /api/tags reported, not a version number:
+                      // appending it rendered every model as
+                      // "qwen3:8b · 5642e97495e1a0888838…". No hash goes in
+                      // front of this audience, so the suffix is suppressed
+                      // for models whatever the setting says; every other
+                      // kind still carries its real version.
+                      settings?.show_technical_details && item.artifact.key.kind !== "Model"
                         ? t("installed.nameWithVersion", {
                             name: item.artifact.display_name,
                             version: item.artifact.version,

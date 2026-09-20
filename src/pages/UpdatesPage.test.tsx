@@ -15,11 +15,46 @@ const myForkKey: ArtifactKey = {
   kind: "Binary",
   name: "my-fork",
 };
+const qwenKey: ArtifactKey = {
+  instance_id: "ollama:http://127.0.0.1:11434",
+  kind: "Model",
+  name: "qwen3:8b",
+};
+const urllib3Key: ArtifactKey = {
+  instance_id: "pip:/usr/bin/python3",
+  kind: "Package",
+  name: "urllib3",
+};
 
 const snapshot: Snapshot = {
   generation: 2,
   detect: "Found",
-  instances: [],
+  // A candidate's adapter is only reachable by joining its key's
+  // `instance_id` back to the snapshot's instances, so the page needs real
+  // ones: pip's candidates are genuinely checkable but can never be acted
+  // on.
+  instances: [
+    {
+      id: "brew:/opt/homebrew",
+      adapter_id: "brew",
+      exe_path: "/opt/homebrew/bin/brew",
+      prefix: "/opt/homebrew",
+      scope: "User",
+      version: "7.0.3",
+      healthy: true,
+      unverified_version: null,
+    },
+    {
+      id: "pip:/usr/bin/python3",
+      adapter_id: "pip",
+      exe_path: "/usr/bin/python3",
+      prefix: "/usr",
+      scope: "User",
+      version: "26.2.1",
+      healthy: true,
+      unverified_version: null,
+    },
+  ],
   artifacts: [],
   updates: [
     {
@@ -322,6 +357,97 @@ describe("UpdatesPage", () => {
     expect(
       calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name),
     ).toEqual(["glib"]);
+  });
+
+  it("offers no Update button and no checkbox for a pip package, and points at pipx or uv instead", async () => {
+    // pip is read-only by design: its plan() refuses every operation with
+    // "unsupported: pip is read-only in Canager; use pipx or uv to manage
+    // {name}". Its candidates are still built with checkable: true, because
+    // pip genuinely can check -- so gating the Update button on `checkable`
+    // alone offered a button whose only possible outcome is a raw Rust error
+    // string in a dialog.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    // glib's button and checkbox, and only glib's.
+    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(await findAllByRole("checkbox")).toHaveLength(1);
+    // Counted as one update, not two: the pip row is not one the user can act on.
+    await findByText("1 update available");
+    expect(
+      await findByText(
+        "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {
+    // Same hazard as the uncheckable case above: a selection lives in the UI
+    // store and outlives the row that made it, so hiding the checkbox is not
+    // enough on its own.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(urllib3Key);
+    });
+
+    const { findByText, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    expect(
+      calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name),
+    ).toEqual(["glib"]);
+  });
+
+  it("says a newer build is available for an Ollama model instead of printing two digests", async () => {
+    // `current` is the local manifest digest /api/tags reported; `target` is
+    // the registry manifest's config digest. They are different hash spaces,
+    // not two readings of one identifier -- the adapter's own comment
+    // (crates/canager-core/src/adapters/ollama/mod.rs) forbids rendering
+    // them as a version jump, and neither is anything to show a person who
+    // does not write code. `channel: "Digest"` is the discriminator.
+    settings.show_technical_details = true;
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("qwen3:8b");
+    expect(await findByText("A newer build of this model is available")).toBeInTheDocument();
+    expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
+    expect(queryByText(/sha256:/)).not.toBeInTheDocument();
   });
 
   it("submits nothing when the confirmation is cancelled", async () => {

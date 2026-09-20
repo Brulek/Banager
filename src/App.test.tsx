@@ -81,10 +81,10 @@ describe("App", () => {
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 
-  it("keeps Settings reachable when Homebrew is missing", async () => {
+  it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Homebrew isn't installed yet");
+    await findByText("Nothing for Canager to manage yet");
 
     fireEvent.click(getByRole("button", { name: "Settings" }));
 

@@ -44,8 +44,10 @@
     "ignoreFailed": "没能保存已忽略的更新:{{message}}",
     "available": "更新",
     "cannotCheck": "无法检查",
+    "readOnly": "只读",
     "warnings_other": "{{count}} 条警告",
     "versionChange": "{{current}} → {{target}}",
+    "newBuild": "这个模型有新的版本可用",
     "selectRow": "选择要更新的 {{name}}",
     "confirmTitle": "确认更新",
     "confirmUpdate": "确认",
@@ -61,6 +63,10 @@
     "pipReadOnly": {
       "title": "只读:pip 包",
       "description": "Canager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
+    },
+    "unreachable": {
+      "title": "Canager 现在连不上 {{source}}",
+      "description": "这里显示的是上次查到的内容。在 Canager 重新连上之前,这段时间用 {{source}} 装的或卸的东西都不会出现。"
     },
     "ollamaNotRunning": {
       "title": "Ollama 没有运行",
@@ -137,9 +143,9 @@
       "title": "没能读取已安装的内容",
       "description": "上次尝试失败,原因:{{message}}"
     },
-    "noHomebrew": {
-      "title": "还没有安装 Homebrew",
-      "description": "Canager 管理通过 Homebrew 安装的工具。请先安装 Homebrew,然后再回到这里。"
+    "noSources": {
+      "title": "Canager 还没有可管理的内容",
+      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo 和 Ollama。这台 Mac 上一个都还没装,建议先从 Homebrew 开始。"
     },
     "refusedAsRoot": {
       "title": "Canager 不能以管理员身份运行",
@@ -151,13 +157,13 @@
       "retryFailed": "重试没有成功:{{message}}",
       "retry": "重试"
     },
-    "firstRefreshFailed": {
-      "title": "首次检查没能完成",
-      "description_other": "首次检查有 {{count}} 个来源没能完成,下面显示的内容可能不完整。"
+    "incompleteCheck": {
+      "title": "有来源没有响应",
+      "description_other": "有 {{count}} 个来源没能检查到,下面显示的内容可能不完整。"
     },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
-      "description": "用 Homebrew 装点什么之后,就会显示在这里。"
+      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo 或 Ollama 装的东西,都会显示在这里。"
     }
   }
 }

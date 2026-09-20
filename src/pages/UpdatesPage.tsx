@@ -8,6 +8,7 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
+import { READ_ONLY_ADAPTER_IDS } from "../lib/sources";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { CommandPreview } from "../components/CommandPreview";
 import { Dialog } from "../components/ui/Dialog";
@@ -97,6 +98,46 @@ export function UpdatesPage() {
     return snapshot.updates.filter((u) => !ignored.has(artifactKeyId(u.key)));
   }, [snapshot, settings]);
 
+  // A candidate carries no adapter of its own; the only route from an
+  // UpdateCandidate to the source that produced it is its key's
+  // `instance_id`, joined back to the snapshot's instances.
+  const readOnlyInstanceIds = useMemo(
+    () =>
+      new Set(
+        (snapshot?.instances ?? [])
+          .filter((instance) => READ_ONLY_ADAPTER_IDS.has(instance.adapter_id))
+          .map((instance) => instance.id),
+      ),
+    [snapshot],
+  );
+
+  /**
+   * Whether this row may offer an Update button and a checkbox. Two
+   * independent reasons it may not, and the wire carries only one of them:
+   *
+   * - `checkable: false` -- the adapter could not establish what the remote
+   *   version is.
+   * - a read-only source -- pip's `plan()` refuses every operation, yet its
+   *   candidates are built with `checkable: true` because pip genuinely
+   *   *can* check. Offering Update here produced nothing but a raw
+   *   "unsupported: pip is read-only in Canager" string in a dialog.
+   *
+   * Stopgap: the proper fix is a signal on the wire (an `actionable` flag,
+   * or `Capabilities` surfaced over IPC) rather than the front end knowing
+   * which adapter ids are read-only. That is a later wave; until then this
+   * shares one list with the Installed page (src/lib/sources.ts) so the two
+   * pages cannot disagree about it.
+   */
+  const isActionable = (candidate: UpdateCandidate): boolean =>
+    candidate.checkable && !readOnlyInstanceIds.has(candidate.key.instance_id);
+
+  const isReadOnly = (candidate: UpdateCandidate): boolean =>
+    readOnlyInstanceIds.has(candidate.key.instance_id);
+
+  // Counting a row the user cannot act on would promise work that does not
+  // exist: "3 updates available" with one Update button under it.
+  const actionableCount = visibleUpdates.filter((u) => !isReadOnly(u)).length;
+
   // Only rows that are selected, still visible *and* still checkable count.
   // The store keeps a selection for a row that has since been ignored;
   // without this intersection "Update selected" would be enabled for nothing
@@ -108,9 +149,12 @@ export function UpdatesPage() {
   const selectedVisible = useMemo(
     () =>
       visibleUpdates.filter(
-        (u) => u.checkable && selectedUpdates.includes(artifactKeyId(u.key)),
+        (u) =>
+          u.checkable &&
+          !readOnlyInstanceIds.has(u.key.instance_id) &&
+          selectedUpdates.includes(artifactKeyId(u.key)),
       ),
-    [visibleUpdates, selectedUpdates],
+    [visibleUpdates, selectedUpdates, readOnlyInstanceIds],
   );
 
   // One lookup table instead of a `snapshot.artifacts.find` per row: that
@@ -126,6 +170,19 @@ export function UpdatesPage() {
   // Default view hides version numbers (Global Constraints); the row falls
   // back to the artifact's description, exactly as the Installed page does.
   const descriptionFor = (candidate: UpdateCandidate): string => {
+    if (candidate.channel === "Digest") {
+      // Ollama. `current` is the local manifest digest that /api/tags
+      // reported and `target` is the registry manifest's config digest:
+      // **different hash spaces**, not two readings of one identifier, and
+      // they will not be equal even after a successful pull. The adapter's
+      // own comment (crates/canager-core/src/adapters/ollama/mod.rs) says
+      // never to render them as a version jump, and a 64-hex string is not
+      // something to put in front of this audience either way. The channel
+      // is the discriminator, so this holds whether or not technical
+      // details are on -- a Digest row is a "changed / not changed" marker
+      // and that is all it can honestly say.
+      return t("updates.newBuild");
+    }
     if (settings?.show_technical_details) {
       return t("updates.versionChange", { current: candidate.current, target: candidate.target });
     }
@@ -278,7 +335,7 @@ export function UpdatesPage() {
       ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
         <p className="text-sm text-[var(--color-muted)]">
-          {t("updates.count", { count: visibleUpdates.length })}
+          {t("updates.count", { count: actionableCount })}
         </p>
         <button
           type="button"
@@ -303,31 +360,38 @@ export function UpdatesPage() {
             // the same name, which is a different package. The reason lives
             // in `warnings`, so it becomes the row's description.
             description={
-              candidate.checkable
-                ? descriptionFor(candidate)
-                : candidate.warnings.join(" ")
+              isReadOnly(candidate)
+                ? // The same guidance the Installed page's pip group carries:
+                  // Canager can see it, cannot touch it, and pipx or uv is
+                  // the way to get a Python tool it can manage.
+                  t("sourceNotice.pipReadOnly.description")
+                : candidate.checkable
+                  ? descriptionFor(candidate)
+                  : candidate.warnings.join(" ")
             }
             badgeText={
-              !candidate.checkable
-                ? t("updates.cannotCheck")
-                : candidate.warnings.length > 0
-                  ? t("updates.warnings", { count: candidate.warnings.length })
-                  : t("updates.available")
+              isReadOnly(candidate)
+                ? t("updates.readOnly")
+                : !candidate.checkable
+                  ? t("updates.cannotCheck")
+                  : candidate.warnings.length > 0
+                    ? t("updates.warnings", { count: candidate.warnings.length })
+                    : t("updates.available")
             }
             badgeVariant={
-              !candidate.checkable
+              isReadOnly(candidate) || !candidate.checkable
                 ? "neutral"
                 : candidate.warnings.length > 0
                   ? "warning"
                   : "info"
             }
-            primaryActionLabel={candidate.checkable ? t("updates.update") : undefined}
+            primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
             onPrimaryAction={
-              candidate.checkable ? () => openConfirm([candidate]) : undefined
+              isActionable(candidate) ? () => openConfirm([candidate]) : undefined
             }
             primaryActionDisabled={dialogOpen}
             selectable={
-              candidate.checkable
+              isActionable(candidate)
                 ? {
                     checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
                     onToggle: () => toggleUpdate(candidate.key),

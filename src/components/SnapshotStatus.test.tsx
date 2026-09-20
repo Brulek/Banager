@@ -3,8 +3,23 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SnapshotStatus } from "./SnapshotStatus";
+import { useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
 import type { Snapshot } from "../lib/types";
+
+/**
+ * Rendered as a sibling of the component under test, sharing its
+ * QueryClient. Before `get_snapshot` resolves, `SnapshotStatus` has no
+ * snapshot to judge and passes `children` straight through -- so an
+ * assertion that children are visible passes vacuously on the very first
+ * render, whatever the branch under test would do with the data. Waiting
+ * for this probe's "snapshot loaded" is what makes such an assertion be
+ * about the loaded snapshot.
+ */
+function SnapshotProbe() {
+  const { data } = useSnapshot();
+  return <p>{data ? "snapshot loaded" : "snapshot pending"}</p>;
+}
 
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -25,7 +40,9 @@ beforeEach(() => {
 });
 
 describe("SnapshotStatus", () => {
-  it("shows the no-Homebrew empty state and hides children when detect is Missing", async () => {
+  it("shows the no-sources empty state and hides children when detect is Missing", async () => {
+    // `Missing` now means all seven sources found nothing, not that Homebrew
+    // alone is absent.
     vi.mocked(invoke).mockResolvedValue(baseSnapshot({ detect: "Missing" }));
 
     renderWithProviders(
@@ -34,11 +51,16 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Homebrew isn't installed yet")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing for Canager to manage yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
-  it("shows loading, not the no-Homebrew state, before the first refresh has completed", async () => {
+  it("shows loading, not the no-sources state, before the first refresh has completed", async () => {
     // Session boots with Snapshot::empty(): generation 0, detect Missing,
     // refreshed_at null. Only a completed refresh ever sets refreshed_at —
     // including a refresh that finds Homebrew genuinely missing.
@@ -53,19 +75,19 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Loading…")).toBeInTheDocument();
-    expect(screen.queryByText("Homebrew isn't installed yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing for Canager to manage yet")).not.toBeInTheDocument();
   });
 
-  it("shows a distinct first-check-incomplete banner (not the stale-data banner) when the very first refresh completes with a per-instance error", async () => {
-    // previous.refreshed_at is None from Snapshot::empty(): Task 5's
-    // refresh() carries that None forward whenever stale is true, even
-    // though the refresh promise resolved and errors is non-empty. There is
-    // no prior successful refresh, so this must not read as "some data
-    // might be out of date" (the generic stale banner) — there is no
-    // "some data" yet, only an incomplete first check.
+  it("shows a distinct incomplete-check banner (not the stale-data banner) when no refresh has ever had every source answer", async () => {
+    // previous.refreshed_at is None from Snapshot::empty(): refresh()
+    // (crates/canager-core/src/session/refresh.rs) carries that None forward
+    // whenever stale is true, even though the refresh promise resolved and
+    // errors is non-empty. No check has ever had every source answer, so
+    // this must not read as "some data might be out of date" (the generic
+    // stale banner) — nothing below is out of date, it is incomplete.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
-        generation: 0,
+        generation: 1,
         refreshed_at: null,
         stale: true,
         errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
@@ -78,10 +100,39 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't finish the first check")).toBeInTheDocument();
+    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Some data might be out of date")).not.toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("does not claim this was the first check on a Mac that has refreshed many times with one permanently broken source", async () => {
+    // Six sources refresh perfectly, the seventh is permanently broken.
+    // `refreshed_at` is stamped only when *every* source succeeded, so it
+    // stays null across thousands of successful launches while `generation`
+    // climbs. Reading a null timestamp as "the first check has never
+    // completed" made this banner claim, forever, that this was a first
+    // launch.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        generation: 412,
+        refreshed_at: null,
+        stale: true,
+        errors: [{ instance_id: "npm:/opt/homebrew/lib", message: "npm ls exited 1" }],
+      }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
+    expect(
+      screen.getByText("Canager couldn't check 1 source, so what you see below may be incomplete."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("installed list")).toBeInTheDocument();
   });
 
   it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
@@ -101,6 +152,33 @@ describe("SnapshotStatus", () => {
     expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
     expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("keeps showing the data it has when a later refresh fails on a Mac that has refreshed before", async () => {
+    // Same permanently-broken-source Mac: `refreshed_at` is null forever, so
+    // gating the full-page load-failure surface on a null timestamp let one
+    // rejected refresh hide every artifact the other six sources found.
+    // `generation > 0` says a refresh has committed data at least once, and
+    // data in hand beats a full-page error.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        generation: 412,
+        refreshed_at: null,
+        stale: true,
+        errors: [{ instance_id: "npm:/opt/homebrew/lib", message: "npm ls exited 1" }],
+      }),
+    );
+    useUiStore.setState({ startupRefreshError: "refresh timed out" });
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
+    expect(screen.getByText("installed list")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load what's installed")).not.toBeInTheDocument();
   });
 
   it("shows the backend's error verbatim when the snapshot itself cannot be loaded", async () => {
@@ -197,6 +275,51 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Nothing installed yet")).toBeInTheDocument();
+    // Not "Once you install something with Homebrew": a Mac with Node and no
+    // global packages lands here too.
+    expect(
+      screen.getByText(
+        "Anything you install with Homebrew, npm, pipx, uv, pip, Cargo or Ollama will show up here.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders children, not the nothing-installed state, when a source still has a notice to show", async () => {
+    // A Mac with Ollama installed but not running and nothing installed
+    // anywhere else. InstalledPage renders that instance's group header and
+    // its "Open Ollama" notice with no artifacts under it; swallowing the
+    // children here would make that notice -- and with it the whole
+    // open_ollama_app affordance -- unreachable in the app.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        artifacts: [],
+        instances: [
+          {
+            id: "ollama:http://127.0.0.1:11434",
+            adapter_id: "ollama",
+            exe_path: "/usr/local/bin/ollama",
+            prefix: "/usr/local",
+            scope: "User",
+            version: null,
+            healthy: false,
+            unverified_version: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(
+      <>
+        <SnapshotProbe />
+        <SnapshotStatus>
+          <p>installed list</p>
+        </SnapshotStatus>
+      </>,
+    );
+
+    await screen.findByText("snapshot loaded");
+    expect(screen.getByText("installed list")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing installed yet")).not.toBeInTheDocument();
   });
 
   it("renders children unchanged once something is installed", async () => {

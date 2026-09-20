@@ -3,9 +3,28 @@ import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { useSnapshot, useRefresh, usePlanOperation, useSubmitOperation } from "./queries";
+import {
+  useSnapshot,
+  useRefresh,
+  usePlanOperation,
+  useSubmitOperation,
+  useOpenOllamaApp,
+} from "./queries";
 import { refreshIntoCache } from "./events";
-import type { IssuedPlan, Snapshot } from "./types";
+import type { IssuedPlan, ManagerInstance, Snapshot } from "./types";
+
+function ollamaInstance(healthy: boolean): ManagerInstance {
+  return {
+    id: "ollama:http://127.0.0.1:11434",
+    adapter_id: "ollama",
+    exe_path: "/usr/local/bin/ollama",
+    prefix: "/usr/local",
+    scope: "User",
+    version: null,
+    healthy,
+    unverified_version: null,
+  };
+}
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -85,6 +104,18 @@ describe("queries", () => {
     await inFlight;
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(5);
+
+    // The coordinator always issues one more refresh after an in-flight one
+    // settles, and this mock hands every `refresh` a promise that only the
+    // test resolves. Left pending, that follow-up stays in events.ts's
+    // module-level `refreshInFlight` slot for the rest of the file, and
+    // every later test's refresh is silently coalesced into a refresh that
+    // never finishes. `resolveFirst` now points at the follow-up's resolver.
+    await waitFor(() => expect(refreshCalls()).toBe(2));
+    resolveFirst({ ...snapshot, generation: 5 });
+    await waitFor(() =>
+      expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(5),
+    );
   });
 
   it("usePlanOperation calls planOperation and returns its IssuedPlan", async () => {
@@ -111,6 +142,62 @@ describe("queries", () => {
     result.current.mutate(issued.plan.request);
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(issued);
+  });
+
+  it("useOpenOllamaApp refreshes once the daemon has had a moment to come up", async () => {
+    // open_ollama_app only asks macOS to launch the app. The notice the
+    // button sits in says "Start the Ollama app to see its models and check
+    // for updates", and until this mutation refreshed, it stayed on screen
+    // until the next restart.
+    vi.useFakeTimers();
+    try {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "refresh") {
+          return Promise.resolve({ ...snapshot, generation: 9, instances: [ollamaInstance(true)] });
+        }
+        return Promise.resolve(undefined);
+      });
+      const queryClient = newClient();
+      const { result } = renderHook(() => useOpenOllamaApp(), { wrapper: wrapper(queryClient) });
+
+      result.current.mutate();
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
+      expect((queryClient.getQueryData(["snapshot"]) as Snapshot).generation).toBe(9);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("useOpenOllamaApp tries once more when the first look still finds Ollama down", async () => {
+    // A cold start can take longer than the first grace period, and a single
+    // attempt that lands too early leaves exactly the stale notice this fix
+    // exists to clear. Bounded, though: two looks, then the notice stays and
+    // the button can be pressed again.
+    vi.useFakeTimers();
+    try {
+      let refreshes = 0;
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "refresh") {
+          refreshes += 1;
+          return Promise.resolve({
+            ...snapshot,
+            instances: [ollamaInstance(refreshes > 1)],
+          });
+        }
+        return Promise.resolve(undefined);
+      });
+      const queryClient = newClient();
+      const { result } = renderHook(() => useOpenOllamaApp(), { wrapper: wrapper(queryClient) });
+
+      result.current.mutate();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(refreshes).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("useSubmitOperation invalidates the operations query on success", async () => {
