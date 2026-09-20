@@ -439,6 +439,7 @@ dependencies = [
  "async-trait",
  "insta",
  "libc",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",
@@ -446,6 +447,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 1.1.6+spec-1.1.0",
+ "url",
 ]
 
 [[package]]

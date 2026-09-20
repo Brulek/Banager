@@ -1,6 +1,8 @@
 pub mod parse;
 
-use crate::adapters::{run_plan, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
+use crate::adapters::{
+    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+};
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
@@ -10,7 +12,7 @@ use crate::model::{
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
 use parse::{config_digest, layer_digests, parse_tags, parse_version, split_model_reference};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -36,6 +38,94 @@ fn validate_model_reference(name: &str) -> Result<(), AdapterError> {
         return Err(AdapterError::InvalidName(name.to_string()));
     }
     Ok(())
+}
+
+/// Joins a model reference's `namespace`/`name`/`tag` onto the Ollama
+/// manifests root, refusing any reference that would not land inside it.
+///
+/// All three parts come out of `split_model_reference` applied to a name in
+/// the body of `GET {host}/api/tags` — i.e. straight off the network, from a
+/// daemon Canager does not control, on every background refresh. Two shapes
+/// escape a bare `manifests_root.join(namespace).join(name).join(tag)`:
+/// an **absolute** part (`a//etc/passwd` splits into name `/etc/passwd`,
+/// and `Path::join` with an absolute component throws the base away
+/// entirely, so the join *is* `/etc/passwd`), and a **`..` walk**
+/// (`x/../../../../etc/passwd`), which climbs out of the root. The file is
+/// then read, following symlinks, by `compare_digests`.
+///
+/// The defence is structural rather than a blocklist of known-bad strings:
+/// every component of every untrusted part must be a plain
+/// `Component::Normal` segment, so anything rooted (`RootDir`), climbing
+/// (`ParentDir`), drive-qualified (`Prefix`) or degenerate (`CurDir`, or an
+/// empty part contributing no component at all) is refused before any path
+/// is built — no filesystem access and no canonicalisation needed, which
+/// matters because the file legitimately may not exist. The `starts_with`
+/// re-check afterwards is belt and braces on the join itself.
+///
+/// `validate_model_reference` is deliberately *not* what guards this:
+/// `a//etc/passwd` passes it (it does not start with `/`, and no
+/// `/`-separated segment equals `..` — the segments are `a`, ``, `etc`,
+/// `passwd`), and it is only ever called from `plan()` anyway.
+///
+/// The error string is a human-readable reason, because the caller turns it
+/// into one `checkable: false` candidate for this model alone: a single
+/// hostile or malformed name from the daemon must never abort the refresh
+/// for every other model.
+fn contained_manifest_path(
+    manifests_root: &Path,
+    namespace: &str,
+    name: &str,
+    tag: &str,
+) -> Result<PathBuf, String> {
+    for (label, part) in [("namespace", namespace), ("name", name), ("tag", tag)] {
+        let plain = !part.is_empty()
+            && Path::new(part)
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)));
+        if !plain {
+            return Err(format!(
+                "refusing to read a manifest outside {}: the model reference's {label} {part:?} is not a plain path segment",
+                manifests_root.display()
+            ));
+        }
+    }
+    let path = manifests_root.join(namespace).join(name).join(tag);
+    if !path.starts_with(manifests_root) {
+        return Err(format!(
+            "refusing to read a manifest outside {}: {}",
+            manifests_root.display(),
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
+/// Ollama's own registry, and the one documented mirror it understands.
+/// A reference whose first segment looks like a host and is neither of
+/// these names a third party.
+const DEFAULT_REGISTRIES: [&str; 2] = ["registry.ollama.ai", "hf.co"];
+
+/// The third-party registry a model reference points at, if any.
+///
+/// `validate_model_reference` permits `/` and `.`, so
+/// `evil.example.com/ns/model:tag` is a perfectly valid reference — and
+/// Ollama reads a host-like first segment as a registry, so pulling it
+/// fetches from that host rather than from Ollama's library. The operation
+/// preview does show the argv, but this app's audience is people who do not
+/// write code: a hostname sitting inside what looks like a model name does
+/// not read as a warning to them.
+///
+/// The first segment only counts as a registry when the reference actually
+/// has more than one segment: a bare `qwen3.8:27b-mlx` contains a dot but
+/// is a model name, and warning about it would teach the user to ignore the
+/// warning that matters.
+fn third_party_registry(reference: &str) -> Option<&str> {
+    let (first, _rest) = reference.split_once('/')?;
+    if first.contains('.') && !DEFAULT_REGISTRIES.contains(&first) {
+        Some(first)
+    } else {
+        None
+    }
 }
 
 /// Ollama's own default daemon URL, used whenever the host environment did
@@ -162,7 +252,9 @@ impl OllamaAdapter {
     /// either manifest could not be read/fetched/parsed. A network failure
     /// or a 404 for a model removed upstream must not crash the whole
     /// `check_updates` call, so the caller turns that into a single
-    /// `checkable: false` candidate for just this model.
+    /// `checkable: false` candidate for just this model. A reference whose
+    /// parts would escape `manifests_root` is refused the same way, by
+    /// `contained_manifest_path`, before anything is read.
     async fn compare_digests(
         &self,
         manifests_root: &Path,
@@ -170,7 +262,7 @@ impl OllamaAdapter {
         name: &str,
         tag: &str,
     ) -> Result<Option<String>, String> {
-        let local_path = manifests_root.join(namespace).join(name).join(tag);
+        let local_path = contained_manifest_path(manifests_root, namespace, name, tag)?;
         let local_json = std::fs::read_to_string(&local_path).map_err(|e| {
             format!(
                 "could not read local manifest {}: {e}",
@@ -180,8 +272,18 @@ impl OllamaAdapter {
         let local_digests = layer_digests(&local_json)
             .map_err(|e| format!("could not parse local manifest: {e}"))?;
 
-        let registry_url =
-            format!("https://registry.ollama.ai/v2/{namespace}/{name}/manifests/{tag}");
+        // Percent-encoded per segment: these three come off the network in
+        // an `/api/tags` body, and raw they can re-point the request within
+        // the registry (a `?` in the tag turns the rest of the path into a
+        // query, a `#` truncates it at a fragment). The scheme and host are
+        // fixed above the first interpolation point, so the request always
+        // goes to registry.ollama.ai either way.
+        let registry_url = format!(
+            "https://registry.ollama.ai/v2/{}/{}/manifests/{}",
+            url_path_segment(namespace)?,
+            url_path_segment(name)?,
+            url_path_segment(tag)?
+        );
         let response = self
             .http
             .send(HttpRequest {
@@ -301,6 +403,15 @@ impl OllamaAdapter {
         }
         validate_model_reference(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
+        // Named, never blocked: pulling from a third-party registry is a
+        // legitimate thing to want, it just has to be said out loud.
+        // `Plan::warnings` is already rendered in the preview.
+        let warnings = match third_party_registry(&req.name) {
+            Some(registry) => vec![format!(
+                "this model comes from {registry}, not Ollama's own model library"
+            )],
+            None => Vec::new(),
+        };
         let args = match req.kind {
             OpKind::Install | OpKind::Upgrade => vec!["pull".to_string(), req.name.clone()],
             OpKind::Uninstall => vec!["rm".to_string(), req.name.clone()],
@@ -313,7 +424,7 @@ impl OllamaAdapter {
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
-            warnings: Vec::new(),
+            warnings,
             affected: Vec::new(),
             timeout_secs: 3600,
         })
@@ -1049,5 +1160,295 @@ mod tests {
         assert!(adapter.detect(&env).await.is_empty());
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// A scratch directory for the manifest-containment tests below, plus a
+    /// decoy manifest written *outside* the manifests root. The escape tests
+    /// aim a daemon-supplied model name at that decoy: if the adapter ever
+    /// reads it, `compare_digests` gets a parsable manifest and goes on to
+    /// query the registry, so the absence of a registry call in `calls()` is
+    /// hard proof that no read outside the root happened.
+    struct EscapeFixture {
+        root_home: PathBuf,
+        manifests_root: PathBuf,
+        decoy_dir: PathBuf,
+    }
+
+    /// The manifest planted outside the manifests root. Its layer digests
+    /// differ from `DECOY_REGISTRY_MANIFEST`'s, so a successful read of it
+    /// could only end in a *checkable* candidate — never in "up to date"
+    /// and never in a read error. That is what makes the escape visible.
+    const DECOY_MANIFEST: &str = r#"{"schemaVersion":2,
+        "mediaType":"application/vnd.docker.distribution.manifest.v2+json",
+        "config":{"digest":"sha256:decoy0000000000000000000000000000000000000000000000000000000000","size":1},
+        "layers":[{"digest":"sha256:decoy1111111111111111111111111111111111111111111111111111111111","size":2}]}"#;
+
+    /// What the (mocked) registry answers for the hostile reference.
+    const DECOY_REGISTRY_MANIFEST: &str = r#"{"schemaVersion":2,
+        "mediaType":"application/vnd.docker.distribution.manifest.v2+json",
+        "config":{"digest":"sha256:remote000000000000000000000000000000000000000000000000000000000","size":1},
+        "layers":[{"digest":"sha256:remote111111111111111111111111111111111111111111111111111111111","size":2}]}"#;
+
+    fn escape_fixture(label: &str) -> EscapeFixture {
+        let root_home = std::env::temp_dir().join(format!(
+            "canager-ollama-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manifests_root = root_home.join("models/manifests/registry.ollama.ai");
+        std::fs::create_dir_all(&manifests_root).expect("create manifests root");
+        let decoy_dir = root_home.join("decoy");
+        std::fs::create_dir_all(&decoy_dir).expect("create decoy dir");
+        std::fs::write(decoy_dir.join("mani"), DECOY_MANIFEST).expect("write decoy manifest");
+        EscapeFixture {
+            root_home,
+            manifests_root,
+            decoy_dir,
+        }
+    }
+
+    /// An `/api/tags` body naming exactly one model, so a test can put an
+    /// arbitrary (hostile) reference in front of the adapter the way a
+    /// compromised or buggy daemon would. Inline JSON in a unit test is not
+    /// a fixture (Global Constraints).
+    fn tags_body_naming(model: &str) -> String {
+        format!(
+            r#"{{"models":[{{"name":{},"digest":"sha256:local000000000000000000000000000000000000000000000000000000000","size":7}}]}}"#,
+            serde_json::to_string(model).expect("json-encode the model name")
+        )
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_refuses_a_model_name_whose_absolute_path_escapes_the_manifests_root(
+    ) {
+        // `split_model_reference("a//x/y:mani")` yields namespace `a`, name
+        // `/x/y`, tag `mani` — and `Path::join` with an absolute component
+        // throws the base away, so the naive join reads `/x/y/mani`. Here
+        // `/x/y` is a real temp directory holding a real manifest.
+        let fx = escape_fixture("escape-absolute");
+        let decoy = fx.decoy_dir.to_str().expect("utf8 temp path").to_string();
+        let hostile = format!("a/{decoy}:mani");
+
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "http://127.0.0.1:11434/api/tags",
+            HttpResponse {
+                status: 200,
+                body: tags_body_naming(&hostile),
+            },
+        );
+        // Registered so that a naive implementation reaches a *checkable*
+        // candidate rather than tripping over MockHttpClient's NoMock.
+        http.respond(
+            &format!("https://registry.ollama.ai/v2/a/{decoy}/manifests/mani"),
+            HttpResponse {
+                status: 200,
+                body: DECOY_REGISTRY_MANIFEST.to_string(),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance("http://127.0.0.1:11434", fx.root_home.clone());
+
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("one hostile name must not fail the whole check");
+
+        assert_eq!(candidates.len(), 1);
+        assert!(
+            !candidates[0].checkable,
+            "a reference that escapes the manifests root has no target to offer"
+        );
+        let warning = candidates[0].warnings.join(" ");
+        assert!(
+            warning.contains("outside"),
+            "the warning must say the reference was refused for leaving the manifests root, got {warning:?}"
+        );
+        assert!(
+            !warning.contains("could not read local manifest"),
+            "the read must be refused before it is attempted, got {warning:?}"
+        );
+        assert_eq!(
+            http.calls(),
+            vec!["http://127.0.0.1:11434/api/tags".to_string()],
+            "nothing beyond the inventory call may go out for a refused reference"
+        );
+
+        let _ = std::fs::remove_dir_all(&fx.root_home);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_refuses_a_model_name_whose_dotdot_escapes_the_manifests_root() {
+        // `x/../../../../decoy:mani` -> namespace `x`, name
+        // `../../../../decoy`, tag `mani`, i.e.
+        // `<root>/x/../../../../decoy/mani`, which climbs out of
+        // `models/manifests/registry.ollama.ai` and lands on the decoy.
+        let fx = escape_fixture("escape-dotdot");
+        // The `..` walk is resolved by the OS, so the first segment has to
+        // exist as a real directory for a naive read to succeed.
+        std::fs::create_dir_all(fx.manifests_root.join("x")).expect("create traversal anchor");
+        let hostile = "x/../../../../decoy:mani";
+
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "http://127.0.0.1:11434/api/tags",
+            HttpResponse {
+                status: 200,
+                body: tags_body_naming(hostile),
+            },
+        );
+        http.respond(
+            "https://registry.ollama.ai/v2/x/../../../../decoy/manifests/mani",
+            HttpResponse {
+                status: 200,
+                body: DECOY_REGISTRY_MANIFEST.to_string(),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+        let inst = test_instance("http://127.0.0.1:11434", fx.root_home.clone());
+
+        let candidates = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("one hostile name must not fail the whole check");
+
+        assert_eq!(candidates.len(), 1);
+        assert!(!candidates[0].checkable);
+        let warning = candidates[0].warnings.join(" ");
+        assert!(
+            warning.contains("outside"),
+            "expected a containment refusal, got {warning:?}"
+        );
+        assert!(
+            !warning.contains("could not read local manifest"),
+            "the read must be refused before it is attempted, got {warning:?}"
+        );
+        assert_eq!(
+            http.calls(),
+            vec!["http://127.0.0.1:11434/api/tags".to_string()],
+            "nothing beyond the inventory call may go out for a refused reference"
+        );
+
+        let _ = std::fs::remove_dir_all(&fx.root_home);
+    }
+
+    #[test]
+    fn test_manifest_path_accepts_ordinary_references_and_rejects_every_escape_shape() {
+        let root = Path::new("/home/u/.ollama/models/manifests/registry.ollama.ai");
+
+        // The ordinary case, and the two-segment name an `hf.co/user/repo`
+        // reference produces, both stay inside the root.
+        assert_eq!(
+            contained_manifest_path(root, "library", "qwen3.8", "27b-mlx").expect("ordinary name"),
+            root.join("library").join("qwen3.8").join("27b-mlx")
+        );
+        assert!(contained_manifest_path(root, "hf.co", "user/repo", "latest").is_ok());
+
+        // Escape shapes, all reachable from a `/api/tags` body.
+        assert!(contained_manifest_path(root, "a", "/etc/passwd", "latest").is_err());
+        assert!(contained_manifest_path(root, "a", "../../../../etc/passwd", "latest").is_err());
+        assert!(contained_manifest_path(root, "..", "etc", "passwd").is_err());
+        assert!(contained_manifest_path(root, "a", "b", "../../../../etc/passwd").is_err());
+        assert!(contained_manifest_path(root, "", "b", "c").is_err());
+        assert!(contained_manifest_path(root, "a", "", "c").is_err());
+        assert!(contained_manifest_path(root, "a", "b", "").is_err());
+        assert!(contained_manifest_path(root, "a", "./b", "c").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_compare_digests_percent_encodes_the_reference_into_the_registry_url() {
+        // `namespace`/`name`/`tag` are interpolated into the registry URL
+        // straight out of a `/api/tags` body. Unencoded, a `?` in the tag
+        // turns the rest of the path into a query string and a `#` truncates
+        // it at a fragment, so the request no longer addresses the manifest
+        // the local file was read for.
+        let fx = escape_fixture("encode-url");
+        let model_dir = fx.manifests_root.join("library").join("qwen3.8");
+        std::fs::create_dir_all(&model_dir).expect("create manifest dir");
+        std::fs::write(model_dir.join("27b-mlx?x=1#f"), DECOY_MANIFEST)
+            .expect("write local manifest");
+
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx%3Fx=1%23f",
+            HttpResponse {
+                status: 200,
+                body: DECOY_MANIFEST.to_string(),
+            },
+        );
+        let adapter = OllamaAdapter::new(Arc::new(MockRunner::new()), http.clone());
+
+        let outcome = adapter
+            .compare_digests(&fx.manifests_root, "library", "qwen3.8", "27b-mlx?x=1#f")
+            .await;
+
+        assert!(
+            outcome.is_ok(),
+            "the encoded url must be the one requested, got {outcome:?}"
+        );
+        assert_eq!(
+            http.calls(),
+            vec![
+                "https://registry.ollama.ai/v2/library/qwen3.8/manifests/27b-mlx%3Fx=1%23f"
+                    .to_string()
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&fx.root_home);
+    }
+
+    async fn plan_for(name: &str) -> Plan {
+        let adapter =
+            OllamaAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        let inst = test_instance(
+            "http://127.0.0.1:11434",
+            PathBuf::from("/Users/brulek/.ollama"),
+        );
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Model,
+            name: name.to_string(),
+        };
+        OllamaAdapter::plan(&adapter, &inst, &req)
+            .await
+            .expect("plan")
+    }
+
+    #[tokio::test]
+    async fn test_plan_warns_when_the_reference_names_a_third_party_registry() {
+        // Ollama reads a host-like first segment as a registry, so this
+        // pulls from evil.example.com rather than from Ollama's library.
+        // The preview shows the argv, but this app's audience will not read
+        // a hostname inside a model name as a warning.
+        let plan = plan_for("evil.example.com/ns/model:tag").await;
+        assert_eq!(plan.warnings.len(), 1, "got {:?}", plan.warnings);
+        assert!(
+            plan.warnings[0].contains("evil.example.com"),
+            "the warning must name the registry, got {:?}",
+            plan.warnings[0]
+        );
+        // Named, not blocked: the operation still runs as requested.
+        assert_eq!(plan.args, vec!["pull", "evil.example.com/ns/model:tag"]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_does_not_warn_for_ollamas_own_library_or_the_documented_mirror() {
+        // A dotted *model* name is the false positive to avoid: `qwen3.8`
+        // is not a hostname, and warning about it would train the user to
+        // ignore the warning that matters.
+        assert!(plan_for("qwen3.8:27b-mlx").await.warnings.is_empty());
+        assert!(plan_for("library/qwen3.8:27b-mlx")
+            .await
+            .warnings
+            .is_empty());
+        assert!(plan_for("hf.co/user/repo:tag").await.warnings.is_empty());
+        assert!(plan_for("registry.ollama.ai/library/qwen3.8:27b-mlx")
+            .await
+            .warnings
+            .is_empty());
     }
 }

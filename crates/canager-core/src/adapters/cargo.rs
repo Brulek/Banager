@@ -1,6 +1,6 @@
 use crate::adapters::{
-    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    Capabilities, CheckOptions,
+    run_plan, second_token, url_path_segment, validate_package_name, Adapter, AdapterError,
+    AdapterMeta, Capabilities, CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -208,7 +208,13 @@ impl CargoAdapter {
             .http
             .send(HttpRequest {
                 method: "GET",
-                url: format!("https://crates.io/api/v1/crates/{name}"),
+                // Percent-encoded: the crate name is a `.crates2.json` key,
+                // i.e. off disk, and raw it could add path segments or a
+                // query string to crates.io's API url.
+                url: format!(
+                    "https://crates.io/api/v1/crates/{}",
+                    url_path_segment(name)?
+                ),
                 headers: Vec::new(),
                 timeout: Duration::from_secs(30),
             })
@@ -971,5 +977,29 @@ mod tests {
         let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
         let result = <CargoAdapter as Adapter>::search(&adapter, &inst, "hexyl").await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
+    }
+
+    #[tokio::test]
+    async fn test_latest_stable_version_percent_encodes_the_crate_name_into_the_url() {
+        // The crate name comes off disk, out of `.crates2.json`'s keys —
+        // a file Canager does not write. Interpolated raw, a `/` in it adds
+        // path segments to crates.io's API and a `?` starts a query string.
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://crates.io/api/v1/crates/evil%2F..%2Fsummary%3Fx=1",
+            HttpResponse {
+                status: 200,
+                body: r#"{"crate":{"max_stable_version":"1.0.0"}}"#.to_string(),
+            },
+        );
+        let adapter = CargoAdapter::new(Arc::new(MockRunner::new()), http.clone());
+
+        let latest = adapter.latest_stable_version("evil/../summary?x=1").await;
+
+        assert_eq!(latest.as_deref(), Ok("1.0.0"));
+        assert_eq!(
+            http.calls(),
+            vec!["https://crates.io/api/v1/crates/evil%2F..%2Fsummary%3Fx=1".to_string()]
+        );
     }
 }

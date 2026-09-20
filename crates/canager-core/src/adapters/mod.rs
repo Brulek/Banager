@@ -5,6 +5,7 @@ use crate::model::{
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -84,6 +85,54 @@ pub enum AdapterError {
     #[error("unsupported: {0}")]
     Unsupported(String),
 }
+
+/// Percent-encodes one untrusted value for interpolation into a single URL
+/// **path segment**.
+///
+/// Every registry lookup in this crate builds its URL by interpolating a
+/// name Canager did not choose: Ollama's model references arrive in the body
+/// of `GET {host}/api/tags`, cargo's crate names come out of
+/// `.crates2.json`'s keys, pipx's package names out of `pipx list --json`.
+/// Raw, such a name can change *which resource the URL addresses* rather
+/// than merely name it: `/` adds path segments, `?` starts a query string,
+/// `#` truncates the path at a fragment, and `%` lets the value smuggle in
+/// its own encoding. The host and scheme are fixed before any interpolation
+/// point in all three URLs, so this is not header or origin injection — the
+/// request still goes to the right server, at the wrong path.
+///
+/// The set mirrors the WHATWG URL standard's path percent-encode set plus
+/// `/` and `%` — the same set the `url` crate applies in
+/// `PathSegmentsMut::push`. Ordinary names (`hexyl`, `qwen3.8:27b-mlx`'s
+/// parts) pass through byte-for-byte, so no existing URL changes shape.
+///
+/// An empty value is an error rather than an empty encoding, because it
+/// collapses the path: `https://crates.io/api/v1/crates/` is the crate
+/// index, not a crate. The error is a human-readable reason, since all three
+/// callers turn a failure into one `checkable: false` row.
+pub(crate) fn url_path_segment(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Err("refusing to build a registry url from an empty name".to_string());
+    }
+    Ok(utf8_percent_encode(value, URL_PATH_SEGMENT).to_string())
+}
+
+/// The WHATWG URL path percent-encode set, plus `/` and `%`. Spelled out
+/// rather than imported so the exact bytes are reviewable here.
+const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
+    // fragment percent-encode set
+    .add(b' ')
+    .add(b'"')
+    .add(b'<')
+    .add(b'>')
+    .add(b'`')
+    // path percent-encode set
+    .add(b'#')
+    .add(b'?')
+    .add(b'{')
+    .add(b'}')
+    // and what keeps the value inside its own segment
+    .add(b'/')
+    .add(b'%');
 
 /// Matches `^[A-Za-z0-9@._+/-]+$`, rejects names starting with `-`, `/` or
 /// `.`, rejects a `..` path segment anywhere, and rejects a trailing `.rb`
@@ -249,6 +298,41 @@ mod tests {
             ..meta
         };
         assert_eq!(unpinned.unverified_version(&Some("9.9".to_string())), None);
+    }
+
+    #[test]
+    fn test_url_path_segment_encodes_everything_that_could_leave_the_segment() {
+        // Ordinary names must survive untouched, or every registry lookup
+        // in the app changes shape.
+        assert_eq!(url_path_segment("hexyl").expect("plain name"), "hexyl");
+        assert_eq!(
+            url_path_segment("qwen3.8_v2-beta+1~x").expect("punctuated name"),
+            "qwen3.8_v2-beta+1~x"
+        );
+
+        // The characters that would otherwise change which resource the URL
+        // addresses rather than merely naming it.
+        assert_eq!(url_path_segment("a/b").expect("slash"), "a%2Fb");
+        assert_eq!(
+            url_path_segment("latest?x=1").expect("query"),
+            "latest%3Fx=1"
+        );
+        assert_eq!(
+            url_path_segment("tag#frag").expect("fragment"),
+            "tag%23frag"
+        );
+        assert_eq!(url_path_segment("a%2Fb").expect("percent"), "a%252Fb");
+        assert_eq!(url_path_segment("a b").expect("space"), "a%20b");
+        assert_eq!(url_path_segment("a\r\nb").expect("crlf"), "a%0D%0Ab");
+        assert_eq!(url_path_segment("..").expect("dotdot"), "..");
+    }
+
+    #[test]
+    fn test_url_path_segment_refuses_an_empty_value() {
+        // An empty segment collapses the path and addresses a *different*
+        // endpoint (`https://crates.io/api/v1/crates/` is the crate index,
+        // not one crate), so it is refused rather than encoded.
+        assert!(url_path_segment("").is_err());
     }
 
     #[test]

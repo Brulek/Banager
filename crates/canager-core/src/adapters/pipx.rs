@@ -1,5 +1,6 @@
 use crate::adapters::{
-    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+    run_plan, url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta,
+    Capabilities, CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -241,7 +242,10 @@ impl PipxAdapter {
             .http
             .send(HttpRequest {
                 method: "GET",
-                url: format!("https://pypi.org/pypi/{name}/json"),
+                // Percent-encoded: the package name comes out of `pipx
+                // list --json`, and raw it could re-point the request at a
+                // different path on PyPI.
+                url: format!("https://pypi.org/pypi/{}/json", url_path_segment(name)?),
                 headers: Vec::new(),
                 timeout: Duration::from_secs(30),
             })
@@ -823,5 +827,29 @@ mod tests {
         let inst = test_instance();
         let result = <PipxAdapter as Adapter>::search(&adapter, &inst, "cowsay").await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
+    }
+
+    #[tokio::test]
+    async fn test_latest_pypi_version_percent_encodes_the_package_name_into_the_url() {
+        // The package name comes out of `pipx list --json`, i.e. off disk
+        // and out of a subprocess Canager does not control. Interpolated
+        // raw, a `/` in it re-points the request at a different PyPI path.
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://pypi.org/pypi/evil%2F..%2Fsimple%3Fx=1/json",
+            HttpResponse {
+                status: 200,
+                body: r#"{"info":{"version":"9.9.9"}}"#.to_string(),
+            },
+        );
+        let adapter = PipxAdapter::new(Arc::new(MockRunner::new()), http.clone());
+
+        let latest = adapter.latest_pypi_version("evil/../simple?x=1").await;
+
+        assert_eq!(latest.as_deref(), Ok("9.9.9"));
+        assert_eq!(
+            http.calls(),
+            vec!["https://pypi.org/pypi/evil%2F..%2Fsimple%3Fx=1/json".to_string()]
+        );
     }
 }

@@ -12,6 +12,16 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# Already in Cargo.lock as a transitive dependency of reqwest/url, so this
+# adds no crate and no version to the build graph; it is declared directly
+# because `adapters::url_path_segment` encodes untrusted names into registry
+# URLs and must not rely on another crate happening to pull it in.
+percent-encoding = "2"
+# Same rationale as percent-encoding: already in Cargo.lock via reqwest, so
+# nothing new is compiled. Used to parse OLLAMA_HOST in runner::path_env,
+# where hand-rolling "is this a usable http url" is exactly the kind of
+# guesswork that let a bare `127.0.0.1:11434` through in the first place.
+url = "2"
 libc = "0.2"
 toml = "1"
 

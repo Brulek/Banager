@@ -34,6 +34,8 @@ pub enum HttpError {
     Network(String),
     #[error("timed out after {0:?}")]
     Timeout(std::time::Duration),
+    #[error("response body is larger than the {limit}-byte limit")]
+    BodyTooLarge { limit: usize },
     #[error("no canned response for {0}")]
     NoMock(String),
 }
@@ -60,6 +62,10 @@ mod tests {
         assert_eq!(
             HttpError::NoMock("https://pypi.org/pypi/jq/json".to_string()).to_string(),
             "no canned response for https://pypi.org/pypi/jq/json"
+        );
+        assert_eq!(
+            HttpError::BodyTooLarge { limit: 8388608 }.to_string(),
+            "response body is larger than the 8388608-byte limit"
         );
     }
 }
