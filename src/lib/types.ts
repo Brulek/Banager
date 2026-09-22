@@ -8,7 +8,7 @@ export type OpStatus =
   | "Cancelling"
   | "Verifying"
   | "Done";
-export type DetectOutcome = "Found" | "Missing" | "RefusedAsRoot";
+export type DetectOutcome = "Found" | "Missing";
 export type Outcome =
   | "Succeeded"
   | "NoChange"

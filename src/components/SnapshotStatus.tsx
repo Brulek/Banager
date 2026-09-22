@@ -77,11 +77,8 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     // every launch.
     //
     // `detect === "Missing"` is what makes this the *placeholder* rather
-    // than a real answer: only a completed refresh can report `Found` or
-    // `RefusedAsRoot`, so those are never "still loading" no matter what the
-    // timestamp says. Matching on the timestamp alone used to swallow the
-    // root refusal entirely, and because a process's euid never changes, no
-    // later refresh could undo it — the app sat on "Loading…" forever.
+    // than a real answer: only a completed refresh can report `Found`, so
+    // that is never "still loading" no matter what the timestamp says.
     //
     // `generation === 0` and `refreshed_at === null` are both needed.
     // `commit()` (crates/canager-core/src/session/refresh.rs) bumps
@@ -104,15 +101,6 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
       <EmptyState
         title={t("emptyStates.noSources.title")}
         description={t("emptyStates.noSources.description")}
-      />
-    );
-  }
-
-  if (snapshot.detect === "RefusedAsRoot") {
-    return (
-      <EmptyState
-        title={t("emptyStates.refusedAsRoot.title")}
-        description={t("emptyStates.refusedAsRoot.description")}
       />
     );
   }

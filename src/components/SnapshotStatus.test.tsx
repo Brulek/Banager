@@ -167,47 +167,6 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
-  it("shows the root-refusal empty state when detect is RefusedAsRoot", async () => {
-    // `baseSnapshot` carries a non-null `refreshed_at`, which is exactly what
-    // the backend now returns for a root refusal: a refresh that definitively
-    // answered "cannot run as root" is a completed refresh and stamps
-    // `refreshed_at` (crates/canager-core/src/session/mod.rs). The test below
-    // covers the same `detect` with a null `refreshed_at`, so the view does
-    // not silently depend on that stamp.
-    vi.mocked(invoke).mockResolvedValue(baseSnapshot({ detect: "RefusedAsRoot" }));
-
-    renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
-    );
-
-    expect(
-      await screen.findByText("Canager can't run as an administrator"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the root-refusal empty state, not Loading…, when refreshed_at is still null", async () => {
-    // Regression: the loading branch matched on `refreshed_at === null &&
-    // errors.length === 0`, which a root refusal satisfied, so the app sat on
-    // "Loading…" forever — a process's euid never changes, so no later
-    // refresh could ever clear it. `detect` must win over the absence of a
-    // timestamp.
-    vi.mocked(invoke).mockResolvedValue(
-      baseSnapshot({ detect: "RefusedAsRoot", refreshed_at: null, errors: [] }),
-    );
-
-    renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
-    );
-
-    expect(await screen.findByText("Canager can't run as an administrator")).toBeInTheDocument();
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-    expect(screen.queryByText("installed list")).not.toBeInTheDocument();
-  });
-
   it("shows a stale banner above the existing data when the last refresh failed", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {

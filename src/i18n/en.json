@@ -175,10 +175,6 @@
       "title": "Nothing for Canager to manage yet",
       "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
     },
-    "refusedAsRoot": {
-      "title": "Canager can't run as an administrator",
-      "description": "Homebrew refuses to run under the root user for safety. Quit Canager, then open it again from your normal user account."
-    },
     "refreshFailed": {
       "title": "Some data might be out of date",
       "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",

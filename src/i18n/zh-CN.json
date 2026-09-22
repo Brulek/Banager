@@ -170,10 +170,6 @@
       "title": "Canager 还没有可管理的内容",
       "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo 和 Ollama。这台 Mac 上一个都还没装,建议先从 Homebrew 开始。"
     },
-    "refusedAsRoot": {
-      "title": "Canager 不能以管理员身份运行",
-      "description": "出于安全考虑,Homebrew 拒绝以 root 用户运行。请退出 Canager,改用你平时的用户账户重新打开。"
-    },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
       "description_other": "上次刷新有 {{count}} 个来源没能完成,下面显示的内容可能不是最新的。",
