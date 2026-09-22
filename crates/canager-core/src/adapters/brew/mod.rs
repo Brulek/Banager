@@ -5,9 +5,9 @@ use crate::adapters::{
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceNote,
+    InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
+    Scope, SearchHit, Unavailable,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -264,11 +264,26 @@ impl BrewAdapter {
         inst: &ManagerInstance,
         opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
-        let update_warning = match self.maybe_update(inst).await {
-            Ok(()) => None,
-            Err(e) => Some(format!(
-                "brew update failed ({e}); showing potentially stale results"
-            )),
+        // A failed `brew update` is a fact about this Homebrew, not about
+        // any package it lists: the catalogue everything below is compared
+        // against may be behind, which makes "no updates" as suspect as
+        // any version number here. So it rides back on the *source*, as a
+        // note, and not on the candidates.
+        //
+        // It used to be a sentence pushed onto every candidate's
+        // `warnings`. Two things were wrong with that. `UpdatesPage`
+        // renders no warning text on a checkable row -- only a "1 warning"
+        // badge -- so the sentence was unreadable; and a Homebrew with
+        // nothing outdated produces no candidates at all, so in the one
+        // case where the caveat decides whether the page is lying, there
+        // was nothing to attach it to.
+        //
+        // The stderr detail that sentence carried is gone, deliberately:
+        // `InstanceNote` is payload-free so the hand-written TypeScript
+        // mirror keeps seeing a bare string on the wire (spec §2.3).
+        let notes = match self.maybe_update(inst).await {
+            Ok(()) => Vec::new(),
+            Err(_) => vec![InstanceNote::IndexMayBeStale],
         };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
         if opts.include_self_updating {
@@ -281,13 +296,8 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
-        let mut candidates = parse_outdated(&output.stdout, &inst.id)?;
-        if let Some(warning) = &update_warning {
-            for candidate in &mut candidates {
-                candidate.warnings.push(warning.clone());
-            }
-        }
-        Ok(candidates.into())
+        let candidates = parse_outdated(&output.stdout, &inst.id)?;
+        Ok(CheckOutcome { candidates, notes })
     }
 
     pub async fn search(
@@ -956,7 +966,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_updates_degrades_a_failed_brew_update_to_a_warning() {
+    async fn test_check_updates_reports_a_failed_brew_update_as_a_note_on_the_source() {
+        // A failed `brew update` is a fact about Homebrew, not about jq:
+        // the catalogue Canager compared against may be behind, so every
+        // answer from this round -- including "nothing is outdated" -- may
+        // be wrong. It used to ride along as a string on each candidate's
+        // `warnings`, where `UpdatesPage` renders a "1 warning" badge on a
+        // checkable row and never the warning's text: a badge whose
+        // contents the user cannot read. Worse, a source with nothing
+        // outdated has no candidates at all, so the one case where the
+        // caveat matters most carried it nowhere.
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "update"],
@@ -980,20 +999,57 @@ mod tests {
             },
         );
         let adapter = BrewAdapter::new(runner);
-        let candidates = adapter
+        let outcome = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
-            .expect("a failed `brew update` must not fail check_updates")
-            .candidates;
-        assert_eq!(candidates.len(), 1);
-        assert!(
-            candidates[0]
-                .warnings
-                .iter()
-                .any(|w| w.contains("brew update failed")),
-            "expected a brew-update-failed warning, got {:?}",
-            candidates[0].warnings
+            .expect("a failed `brew update` must not fail check_updates");
+        assert_eq!(
+            outcome.notes,
+            vec![InstanceNote::IndexMayBeStale],
+            "the source has to carry the caveat, because no package row can"
         );
+        assert_eq!(outcome.candidates.len(), 1);
+        assert!(
+            outcome.candidates[0].warnings.is_empty(),
+            "removed, not duplicated: leaving it on the row adds a badge \
+             whose text this page never renders, got {:?}",
+            outcome.candidates[0].warnings
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_reports_no_note_when_brew_update_succeeded() {
+        // The other half: a note that appears when nothing is wrong would
+        // put a permanent "this may not be accurate" banner over a page
+        // that is accurate, and the user would learn to ignore it.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let outcome = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+        assert!(outcome.candidates.is_empty());
     }
 
     #[tokio::test]
