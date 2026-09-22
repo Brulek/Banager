@@ -1043,7 +1043,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_reads_the_version_over_the_cli_and_daemon_health_over_http() {
-        let tmp_dir = isolated_path_dir("detect-healthy");
+        let tmp_dir = isolated_path_dir("detect-running");
         let exe_path = tmp_dir.join("ollama");
         let runner = Arc::new(MockRunner::new());
         runner.respond(
@@ -1096,8 +1096,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detect_marks_the_instance_unhealthy_when_the_daemon_does_not_answer() {
-        let tmp_dir = isolated_path_dir("detect-unhealthy");
+    async fn test_detect_marks_the_instance_not_running_when_the_daemon_does_not_answer() {
+        let tmp_dir = isolated_path_dir("detect-not-running");
         let exe_path = tmp_dir.join("ollama");
         let runner = Arc::new(MockRunner::new());
         runner.respond(
