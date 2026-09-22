@@ -483,18 +483,19 @@ mod tests {
     /// one adapter's root policy must not disable the other six). Session
     /// no longer special-cases root at all -- it just runs every adapter's
     /// `detect()` concurrently, exactly as for any other host state, and
-    /// brew alone comes back empty. A real `BrewAdapter` is used (over a
-    /// `MockRunner`, the same pattern `adapters/brew/mod.rs`'s own detect
-    /// tests use) rather than a second `FakeAdapter`, because the whole
-    /// point under test is brew's *own* root check, not a stand-in for it.
+    /// brew alone comes back unavailable. A real `BrewAdapter` is used
+    /// (over a `MockRunner`, the same pattern `adapters/brew/mod.rs`'s own
+    /// detect tests use) rather than a second `FakeAdapter`, because the
+    /// whole point under test is brew's *own* root check, not a stand-in
+    /// for it.
     #[tokio::test]
-    async fn test_refresh_as_root_excludes_only_brew_not_the_other_adapters() {
+    async fn test_refresh_as_root_reports_brew_unavailable_and_leaves_the_others_alone() {
         let runner = Arc::new(MockRunner::new());
         // Real Homebrew is assumed installed at /opt/homebrew, as
         // `adapters/brew/mod.rs`'s own detect tests already assume for
         // CI's macos-latest runners; this response would only be used if
-        // brew's root refusal failed to short-circuit before touching the
-        // runner at all.
+        // brew's root refusal failed to stop `detect` short of asking the
+        // runner for a version at all.
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "--version"],
             CommandOutput {
@@ -523,10 +524,15 @@ mod tests {
             DetectOutcome::Found,
             "the fake adapter still found an instance, so this is an ordinary Found, not a whole-app refusal"
         );
-        assert!(
-            !snapshot.instances.iter().any(|i| i.adapter_id == "brew"),
-            "brew must contribute no instance while running as root, got {:?}",
-            snapshot.instances
+        let brew_instance = snapshot
+            .instances
+            .iter()
+            .find(|i| i.adapter_id == "brew")
+            .expect("brew is installed here, and saying otherwise is the whole bug");
+        assert_eq!(
+            brew_instance.status.unavailable,
+            Some(crate::model::Unavailable::RefusesAsRoot),
+            "brew is listed with its reason, not dropped"
         );
         assert!(
             snapshot.instances.iter().any(|i| i.id == "fake:1"),
@@ -536,13 +542,14 @@ mod tests {
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
     }
 
-    /// When brew is the *only* registered adapter, running as root must
-    /// still land on the ordinary "nothing detected" outcome -- not a
-    /// dedicated whole-app state. `RefusedAsRoot` is gone: from `Session`'s
-    /// point of view, a root user with only Homebrew looks exactly like a
-    /// non-root user on a Mac that never installed Homebrew.
+    /// When brew is the *only* registered adapter, running as root is
+    /// still not a whole-app state -- but it is not "nothing detected"
+    /// either. `DetectOutcome::Missing` is what `SnapshotStatus` renders
+    /// as "none of them are set up on this Mac yet", which on a Mac with
+    /// Homebrew installed is simply false; the source is `Found`, and
+    /// unavailable with a reason that names what to do.
     #[tokio::test]
-    async fn test_refresh_as_root_with_only_brew_registered_yields_ordinary_missing() {
+    async fn test_refresh_as_root_with_only_brew_registered_still_finds_it() {
         let runner = Arc::new(MockRunner::new());
         let brew = Arc::new(BrewAdapter::new(runner));
         let sink = Arc::new(VecSink::new());
@@ -550,8 +557,16 @@ mod tests {
 
         let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
 
-        assert_eq!(snapshot.detect, DetectOutcome::Missing);
-        assert!(snapshot.instances.is_empty());
+        assert_eq!(snapshot.detect, DetectOutcome::Found);
+        assert_eq!(snapshot.instances.len(), 1, "got {:?}", snapshot.instances);
+        assert_eq!(
+            snapshot.instances[0].status.unavailable,
+            Some(crate::model::Unavailable::RefusesAsRoot)
+        );
+        assert!(
+            snapshot.errors.is_empty(),
+            "a source that reported why it cannot answer is not a refresh error"
+        );
         assert!(
             snapshot.refreshed_at.is_some(),
             "a refresh that ran is stamped even when every source came back empty"

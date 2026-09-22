@@ -87,6 +87,10 @@
       "title": "Canager can't reach {{source}} right now",
       "description": "{{source}} is installed but didn't answer. Below is what Canager saw last time; anything added or removed since then won't show up. Reopening Canager usually fixes this."
     },
+    "refusesAsRoot": {
+      "title": "{{source}} is installed, but it won't run this way",
+      "description": "Canager was started with administrator powers (sudo), and {{source}} refuses to work like that. Quit Canager and open it again the normal way — just double-click it — and your {{source}} software will show up here."
+    },
     "ollamaNotRunning": {
       "title": "Ollama isn't running",
       "description": "Start the Ollama app to see its models and check for updates.",

@@ -80,6 +80,25 @@ describe("sourceNoticesFor", () => {
     expect(other.action).toBeUndefined();
   });
 
+  it("tells a root user to reopen Canager rather than that Homebrew is missing", () => {
+    // Launched with `sudo`, Homebrew refuses to run, so `BrewAdapter::detect`
+    // reports the install it found as `RefusesAsRoot` instead of reporting
+    // nothing. Its own copy, because the action is its own: not "start it"
+    // and not "reinstall it", but quit and open Canager again normally.
+    const [notice] = sourceNoticesFor(
+      instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
+      "Homebrew",
+    );
+    expect(notice.axis).toBe("state");
+    expect(notice.variant).toBe("warning");
+    expect(notice.titleKey).toBe("sourceNotice.refusesAsRoot.title");
+    expect(notice.descriptionKey).toBe("sourceNotice.refusesAsRoot.description");
+    expect(notice.values).toEqual({ source: "Homebrew" });
+    // Canager cannot relaunch itself out from under sudo, so no button
+    // pretends it can.
+    expect(notice.action).toBeUndefined();
+  });
+
   it("says a source that would not answer is showing last time's data", () => {
     const [notice] = sourceNoticesFor(
       instance({ status: { unavailable: "NotResponding", notes: [] } }),
@@ -124,6 +143,7 @@ describe("sourceNoticesFor", () => {
       instance(),
       instance({ read_only_reason: "ByDesign" }),
       instance({ status: { unavailable: "NotRunning", notes: [] } }),
+      instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
       instance({ status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
     ]) {
       expect(hasSourceNotice(inst)).toBe(sourceNoticesFor(inst, "Homebrew").length > 0);
@@ -168,6 +188,9 @@ describe("notActionableMessage", () => {
     expect(
       notActionableMessage(fakeT, { read_only: null, unavailable: "NotResponding" }, "Homebrew"),
     ).toBe('sourceNotice.unreachable.description({"source":"Homebrew"})');
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "RefusesAsRoot" }, "Homebrew"),
+    ).toBe('sourceNotice.refusesAsRoot.description({"source":"Homebrew"})');
   });
 
   it("joins both when a source is read-only and silent at once", () => {

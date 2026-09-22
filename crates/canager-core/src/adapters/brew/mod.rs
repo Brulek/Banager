@@ -179,38 +179,50 @@ impl BrewAdapter {
     }
 
     /// True when `env`'s effective UID means every brew invocation this
-    /// adapter makes (`detect` included) will refuse to run. Callers use
-    /// this — instead of re-deriving "euid 0 means root" themselves — to
-    /// tell "Homebrew refused to run as root" apart from "Homebrew is not
-    /// installed" when `detect()`'s returned `Vec` is empty either way;
-    /// keeping the rule in exactly one place means it can never drift
-    /// between call sites (this method and `Session::refresh`, added in a
-    /// later plan, both call this function directly).
-    pub fn refuses_as_root(env: &HostEnv) -> bool {
+    /// adapter would make will refuse to run.
+    ///
+    /// The rule lives in one named place, rather than as `env.euid == 0`
+    /// inline, because two things in `detect` below turn on it: whether to
+    /// run `brew --version` at all, and which `Unavailable` the detected
+    /// instance carries. It is deliberately *not* public: it used to be,
+    /// for a `Session::refresh` call site that no longer exists -- the root
+    /// objection is Homebrew's alone and disabling the other six sources
+    /// over it was the bug that call site caused.
+    fn refuses_as_root(env: &HostEnv) -> bool {
         env.euid == 0
     }
 
+    /// Every Homebrew on this Mac, each with the state it is in.
+    ///
+    /// Under root this still reports the installs it finds, marked
+    /// `Unavailable::RefusesAsRoot`, and runs no brew process at all. An
+    /// empty `Vec` would have been read as "Homebrew is not installed" --
+    /// by `Session::refresh`'s `DetectOutcome` and, through it, by the
+    /// user, who would be told to go and install the Homebrew they already
+    /// have instead of to reopen Canager without `sudo`.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
-        if Self::refuses_as_root(env) {
-            return Vec::new();
-        }
+        let as_root = Self::refuses_as_root(env);
         let mut found = Vec::new();
         for candidate in Self::CANDIDATE_PATHS {
             let path = PathBuf::from(candidate);
             if !path.exists() {
                 continue;
             }
-            let spec = CommandSpec {
-                program: path.clone(),
-                args: vec!["--version".to_string()],
-                env: self.env_vec(),
-                cwd: None,
-                timeout: Duration::from_secs(30),
-            };
-            let output = self.runner.run(spec, None, CancellationToken::new()).await;
-            let version = match output {
-                Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
-                _ => None,
+            let version = if as_root {
+                None
+            } else {
+                let spec = CommandSpec {
+                    program: path.clone(),
+                    args: vec!["--version".to_string()],
+                    env: self.env_vec(),
+                    cwd: None,
+                    timeout: Duration::from_secs(30),
+                };
+                let output = self.runner.run(spec, None, CancellationToken::new()).await;
+                match output {
+                    Ok(o) if o.exit_code == Some(0) => parse_version(&o.stdout),
+                    _ => None,
+                }
             };
             let unverified_version = self.meta.unverified_version(&version);
             let prefix = Self::prefix_for(&path);
@@ -221,11 +233,18 @@ impl BrewAdapter {
                 prefix,
                 scope: Scope::User,
                 status: InstanceStatus {
-                    // The state axis. `version` is `None` exactly when the
-                    // CLI is on PATH but `--version` would not run or could
-                    // not be parsed: the tool is there, it just did not
-                    // answer.
-                    unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                    // The state axis. Under root nothing was asked, so the
+                    // reason is the root run itself -- not `NotResponding`,
+                    // which would send the user off reinstalling a Homebrew
+                    // that is working perfectly well. Otherwise `version`
+                    // is `None` exactly when the CLI is on PATH but
+                    // `--version` would not run or could not be parsed: the
+                    // tool is there, it just did not answer.
+                    unavailable: if as_root {
+                        Some(Unavailable::RefusesAsRoot)
+                    } else {
+                        version.is_none().then_some(Unavailable::NotResponding)
+                    },
                     notes: Vec::new(),
                 },
                 version,
@@ -634,9 +653,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detect_refuses_root() {
+    async fn test_detect_under_root_reports_the_instance_as_refusing_rather_than_missing() {
+        // Returning no instance at all here is indistinguishable from
+        // "Homebrew is not installed", and the front end says exactly that:
+        // `SnapshotStatus` falls through to "None of them are set up on
+        // this Mac yet". Homebrew *is* set up; the one thing the user has
+        // to be told -- quit and reopen without `sudo` -- is the one thing
+        // an empty `Vec` cannot say. So the instance is detected and marked
+        // unavailable with a reason, which `sourceNoticesFor` turns into
+        // that sentence and `Session::issue_plan` turns into a refusal.
+        //
+        // Assumes Homebrew is installed at /opt/homebrew, the same
+        // assumption `test_detect_finds_opt_homebrew_on_this_apple_silicon_mac`
+        // already makes.
         let runner = Arc::new(MockRunner::new());
-        let adapter = BrewAdapter::new(runner);
+        let adapter = BrewAdapter::new(runner.clone());
         let env = HostEnv {
             path_dirs: vec![],
             home: PathBuf::from("/var/root"),
@@ -645,7 +676,22 @@ mod tests {
             ollama_host: None,
         };
         let instances = adapter.detect(&env).await;
-        assert!(instances.is_empty());
+        assert_eq!(instances.len(), 1, "got {instances:?}");
+        assert_eq!(instances[0].id, "brew:/opt/homebrew");
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::RefusesAsRoot),
+            "a root run is its own reason, not the generic NotResponding"
+        );
+        assert!(
+            instances[0].writable(),
+            "nothing about root makes the prefix read-only; the state axis carries this"
+        );
+        assert_eq!(
+            runner.calls().len(),
+            0,
+            "no brew process should ever be started as root, `--version` included"
+        );
     }
 
     #[test]

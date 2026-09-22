@@ -73,7 +73,7 @@ export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
  * as `ReadOnlyReason`: a new Rust variant does not fail this union at
  * compile time, it lands in whatever default branch reads it.
  */
-export type Unavailable = "NotRunning" | "NotResponding";
+export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot";
 /** Mirrors `InstanceNote`; payload-free on purpose, so a bare string. */
 export type InstanceNote = "IndexMayBeStale";
 /**

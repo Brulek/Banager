@@ -151,6 +151,20 @@ export function sourceNoticesFor(
       descriptionKey: "sourceNotice.unreachable.description",
       values: { source: sourceLabel },
     });
+  } else if (unavailable === "RefusesAsRoot") {
+    // Its own copy because its own action: Canager was started with
+    // `sudo`, Homebrew will not run that way, and the way out is to quit
+    // and open Canager again normally. No button -- Canager cannot
+    // relaunch itself out from under root, and offering to do what it
+    // cannot is the pattern this phase exists to remove.
+    notices.push({
+      id: `${instance.id}:refuses-as-root`,
+      axis: "state",
+      variant: "warning",
+      titleKey: "sourceNotice.refusesAsRoot.title",
+      descriptionKey: "sourceNotice.refusesAsRoot.description",
+      values: { source: sourceLabel },
+    });
   }
 
   for (const note of instance.status.notes) {
@@ -228,9 +242,10 @@ type Translate = (key: string, options?: Record<string, string>) => string;
 
 /**
  * `parseNotActionable`'s result, in the exact copy the source's own
- * notice already uses for these two reasons (`READ_ONLY_NOTICE_KEYS`,
- * `sourceNotice.notRunning`, `sourceNotice.unreachable`) -- so this
- * refusal never reads as a raw Rust enum. `sourceLabel` is the adapter's
+ * notice already uses for each reason (`READ_ONLY_NOTICE_KEYS`,
+ * `sourceNotice.notRunning`, `sourceNotice.unreachable`,
+ * `sourceNotice.refusesAsRoot`) -- so this refusal never reads as a raw
+ * Rust enum. `sourceLabel` is the adapter's
  * name in the user's language, exactly as `sourceNoticesFor` takes it.
  *
  * Both axes can be set at once (a read-only source can also be silent),
@@ -252,6 +267,8 @@ export function notActionableMessage(
     parts.push(t("sourceNotice.notRunning.description", { source: sourceLabel }));
   } else if (reason.unavailable === "NotResponding") {
     parts.push(t("sourceNotice.unreachable.description", { source: sourceLabel }));
+  } else if (reason.unavailable === "RefusesAsRoot") {
+    parts.push(t("sourceNotice.refusesAsRoot.description", { source: sourceLabel }));
   }
   return parts.join(" ");
 }

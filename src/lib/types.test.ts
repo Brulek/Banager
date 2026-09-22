@@ -126,7 +126,9 @@ describe("types", () => {
       unavailable: "NotResponding",
       notes: ["IndexMayBeStale"],
     };
+    const refusesAsRoot: InstanceStatus = { unavailable: "RefusesAsRoot", notes: [] };
     expect(JSON.stringify(notRunning)).toBe('{"unavailable":"NotRunning","notes":[]}');
+    expect(JSON.stringify(refusesAsRoot)).toBe('{"unavailable":"RefusesAsRoot","notes":[]}');
     expect(JSON.stringify(notResponding)).toBe(
       '{"unavailable":"NotResponding","notes":["IndexMayBeStale"]}',
     );

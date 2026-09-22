@@ -82,6 +82,10 @@
       "title": "Canager 现在连不上 {{source}}",
       "description": "{{source}} 装着,但没有应答。下面是 Canager 上次看到的内容,之后的变化不会显示。重新打开 Canager 通常就能恢复。"
     },
+    "refusesAsRoot": {
+      "title": "{{source}} 装着,但这样启动用不了",
+      "description": "这次是用管理员身份(sudo)启动的 Canager,{{source}} 不肯在这种身份下干活。退出 Canager,像平常那样双击重新打开,用 {{source}} 装的东西就会出现在这里。"
+    },
     "ollamaNotRunning": {
       "title": "Ollama 没有运行",
       "description": "启动 Ollama 应用,才能看到它的模型并检查更新。",

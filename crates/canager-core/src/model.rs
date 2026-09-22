@@ -38,6 +38,16 @@ pub enum Unavailable {
     /// The executable is on PATH but would not run, or its version could
     /// not be recognised.
     NotResponding,
+    /// The tool is installed but refuses to do anything while Canager is
+    /// running as root, so Canager never even asked it (Homebrew).
+    ///
+    /// A third variant rather than a reuse of `NotResponding` because
+    /// these divide by *what the user can do about it*: `NotRunning` means
+    /// "start it", `NotResponding` means "reopen Canager, then consider
+    /// reinstalling", and this one means "quit and open Canager again
+    /// without `sudo`" -- a specific, different, and actually effective
+    /// action, which is exactly what the notice says.
+    RefusesAsRoot,
 }
 
 /// Something a source answered *with*, that changes how its answer should
@@ -457,7 +467,11 @@ mod tests {
         let json = serde_json::to_string(&status).expect("serialize");
         assert_eq!(json, r#"{"unavailable":null,"notes":[]}"#);
 
-        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+        for unavailable in [
+            Unavailable::NotRunning,
+            Unavailable::NotResponding,
+            Unavailable::RefusesAsRoot,
+        ] {
             let status = InstanceStatus {
                 unavailable: Some(unavailable),
                 notes: vec![InstanceNote::IndexMayBeStale],
