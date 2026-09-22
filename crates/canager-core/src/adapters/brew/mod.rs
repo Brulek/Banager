@@ -366,7 +366,32 @@ impl BrewAdapter {
                 stderr: output.stderr,
             });
         }
-        let candidates = parse_outdated(&output.stdout, &inst.id)?;
+        let mut candidates = parse_outdated(&output.stdout, &inst.id)?;
+        // brew's two readers spell the same package differently.
+        // `parse_info_installed` keys by `full_name`/`full_token`
+        // (`gautham-v/tap/claudebar`); `brew outdated --json=v2` never
+        // emits `full_name`, so `parse_outdated` falls back to the bare
+        // `claudebar`. Both are faithful readings of what brew printed --
+        // which is why the resolution belongs here and not in either
+        // parser -- but `ArtifactKey` is what everything downstream joins
+        // on, and while the two disagree every tapped formula and cask
+        // loses its "update available" badge on the Installed page, its
+        // description on the Updates page, and its place in
+        // `Session::refresh`'s check that a carried-forward candidate is
+        // still installed.
+        //
+        // The cost is one extra `brew info --installed --json=v2` per
+        // check, the same local command `inventory` runs; it buys keys
+        // that mean one thing across this adapter. A failed inventory is
+        // not a failed check: `qualified_key` returns the key it was
+        // given when nothing matches, so the worst case is the short
+        // spelling that shipped before.
+        let installed = self.inventory(inst).await.unwrap_or_default();
+        if !installed.is_empty() {
+            for candidate in &mut candidates {
+                candidate.key = qualified_key(&installed, &candidate.key);
+            }
+        }
         Ok(CheckOutcome { candidates, notes })
     }
 
@@ -1146,6 +1171,109 @@ mod tests {
             .expect("check_updates with --greedy")
             .candidates;
         assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_names_a_tapped_package_the_way_the_inventory_does() {
+        // brew's two readers spell the same package differently: `brew
+        // info --installed --json=v2` gives a cask's `full_token`
+        // (`gautham-v/tap/claudebar`), while `brew outdated --json=v2`
+        // never emits `full_name` at all and so falls back to the bare
+        // `claudebar` -- both true of this repo's recorded fixtures.
+        // `ArtifactKey` is what everything downstream joins on: the
+        // Installed page's "update available" badge, the Updates page's
+        // description lookup, and `Session::refresh`'s check that a
+        // carried-forward candidate is still installed. All three miss
+        // for every tapped formula and cask while the two spellings
+        // disagree, so the candidate is renamed here, once, against the
+        // inventory -- the same resolution `reconcile` already does
+        // through `qualified_key`.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let installed = r#"{"formulae":[],"casks":[{"token":"claudebar","full_token":"gautham-v/tap/claudebar","name":["ClaudeBar"],"installed":"0.1.1","desc":"Menu bar app"}]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "info", "--installed", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: installed.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let outdated = r#"{"formulae":[],"casks":[{"name":"claudebar","installed_versions":["0.1.1"],"current_version":"0.1.2"}]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].key.name, "gautham-v/tap/claudebar",
+            "the candidate must carry the name the inventory lists, not the short one"
+        );
+        assert_eq!(candidates[0].key.kind, ArtifactKind::Cask);
+        assert_eq!(candidates[0].target, "0.1.2");
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_keeps_the_short_name_when_the_inventory_cannot_be_read() {
+        // Qualifying is a best effort over a second command, and that
+        // command can fail. When it does, the candidates are still the
+        // right candidates under brew's own short spelling -- which is
+        // what shipped before -- so the check must not fail with it.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "update"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        // No response registered for `brew info --installed --json=v2`:
+        // MockRunner answers `NoMock`, i.e. the inventory errors.
+        let outdated = r#"{"formulae":[{"name":"jq","installed_versions":["1.6"],"current_version":"1.7.1"}],"casks":[]}"#;
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: outdated.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a failed inventory must not fail the update check")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].key.name, "jq");
     }
 
     #[tokio::test]

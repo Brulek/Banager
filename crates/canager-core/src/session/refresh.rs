@@ -21,10 +21,12 @@ impl Session {
     /// artifacts/updates are kept rather than dropped, so a transient
     /// failure never makes something the user installed appear to vanish.
     /// The one exception is a carried-forward update candidate that this
-    /// round's own inventory contradicts -- the package is no longer
-    /// installed, or no longer at the version the candidate assumed. That
-    /// is not old data, it is data this snapshot knows to be wrong, and it
-    /// is dropped; see the `check_updates` error branch below.
+    /// round's own inventory positively disproves -- the package is no
+    /// longer installed, or is already at the version the candidate
+    /// targets. That is not old data, it is data this snapshot knows to
+    /// be wrong, and it is dropped; see the `check_updates` error branch
+    /// below. A mere disagreement over which version is installed is not
+    /// disproof and never drops a row.
     /// Concurrent calls are serialised: a call that starts while another is
     /// already running waits for it, then returns the snapshot that other
     /// call produced instead of running a second, redundant refresh -- see
@@ -234,14 +236,35 @@ impl Session {
                             // Keeping the last round's candidates is the
                             // right instinct -- a failed check is not
                             // news that everything is up to date -- but
-                            // only where this round's inventory does not
-                            // already contradict them. It succeeded here,
-                            // so a candidate whose package it no longer
-                            // lists, or lists at a different version than
-                            // the candidate assumed, is not stale data:
-                            // it is a row the same snapshot knows is
-                            // wrong, offering to upgrade something that
-                            // was uninstalled or is already upgraded.
+                            // not where this round's inventory positively
+                            // disproves one. It succeeded here, so a
+                            // candidate is dropped when the inventory no
+                            // longer lists its package (it was
+                            // uninstalled) or lists it at the very
+                            // version the candidate targets (it was
+                            // already upgraded). Both are rows the same
+                            // snapshot knows are wrong.
+                            //
+                            // Nothing else counts as disproof, and in
+                            // particular a *disagreement* between the two
+                            // readings does not. This filter used to
+                            // require `a.version == u.current` -- the
+                            // candidate's own recollection of what was
+                            // installed -- which is a third reading of
+                            // the same fact and can differ from the
+                            // inventory's for reasons that say nothing
+                            // about whether an update is pending. brew
+                            // was the live example: it keys inventory by
+                            // `full_name`/`full_token` and `brew outdated
+                            // --json=v2` by the bare `name`, so the keys
+                            // never matched for a tapped formula or cask
+                            // and every one of their real pending updates
+                            // vanished the moment `brew outdated` failed
+                            // -- the exact harm the carry-forward exists
+                            // to prevent, reintroduced by the fix that
+                            // narrowed it. That spelling is fixed in the
+                            // adapter, and this rule no longer depends on
+                            // its being fixed.
                             //
                             // When the inventory failed too, `artifacts`
                             // is itself last round's, carried forward by
@@ -257,7 +280,7 @@ impl Session {
                                         !inventory_confirmed
                                             || artifacts
                                                 .iter()
-                                                .any(|a| a.key == u.key && a.version == u.current)
+                                                .any(|a| a.key == u.key && a.version != u.target)
                                     })
                                     .cloned(),
                             );
@@ -1185,6 +1208,81 @@ mod tests {
             vec!["curl"],
             "only the candidate the fresh inventory still confirms may be carried forward: \
              jq is gone and wget is already at the version its candidate targeted, got {:?}",
+            second.updates
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_update_check_keeps_a_candidate_whose_recorded_current_has_drifted() {
+        // The narrowing that introduced this test's subject required
+        // `a.version == u.current` -- the candidate's *recorded* idea of
+        // what is installed -- before a carried-forward row could
+        // survive. That is not disproof of a pending update; it is a
+        // disagreement between two readings, and this app has one: brew
+        // keys its inventory by `full_name`/`full_token`
+        // (`gautham-v/tap/claudebar`) while `brew outdated --json=v2`
+        // never emits `full_name` and falls back to `claudebar`, so the
+        // two never matched and every tapped package with a real pending
+        // update was filtered away the moment `brew outdated` had a bad
+        // minute. That spelling is fixed in the brew adapter now; the
+        // rule itself must also stop treating "these two readings differ"
+        // as "this update is not real", because only two things actually
+        // disprove a candidate: the package is gone, or it is already at
+        // the target.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_artifact("fake:1", "jq"),
+                    make_artifact("fake:1", "wget"),
+                ],
+            );
+            s.updates.insert(
+                "fake:1".to_string(),
+                vec![make_update("fake:1", "jq"), make_update("fake:1", "wget")],
+            );
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(update_names(&first), vec!["jq", "wget"]);
+
+        {
+            let mut s = state.lock().unwrap();
+            // Both are still installed and neither is at 1.1, the version
+            // the candidates target. jq drifted to a version the
+            // candidate did not record (1.0.1 -- a reinstall, a revision
+            // bump, or simply the other reader's answer); wget is
+            // untouched.
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_artifact_at("fake:1", "jq", "1.0.1"),
+                    make_artifact("fake:1", "wget"),
+                ],
+            );
+            s.failing_updates.push("fake:1".to_string());
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(second.stale, "precondition: the update check failed");
+        assert_eq!(
+            artifact_names(&second),
+            vec!["jq", "wget"],
+            "precondition: the inventory succeeded and still lists both"
+        );
+        assert_eq!(
+            update_names(&second),
+            vec!["jq", "wget"],
+            "a pending update is not disproved by the inventory reading a \
+             different version than the candidate recorded, got {:?}",
             second.updates
         );
     }
