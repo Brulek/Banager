@@ -139,9 +139,16 @@ pub struct InstanceStatus {
 1. **`refreshed_at` 无条件盖章**（刷新跑完就盖），不再是「七源全成功」。
    `Snapshot::empty()` 必须**继续保持 `refreshed_at: None`**——`SnapshotStatus.tsx:67-70`
    的「启动中」分支依赖它，评审已核过改后仍成立。
-2. **`stale = 任一实例 unavailable || !errors.is_empty()`**。
+2. **`stale = !errors.is_empty()`**（**2026-09-22 修订**：本条最初写的是
+   `任一实例 unavailable || !errors.is_empty()`，实施后又收窄回只看 errors）。
+   收窄的理由：加宽的那一半**没有任何读取方能观察到**——唯一的生产读取方是
+   `SnapshotStatus.tsx` 的 `stale && errors.length > 0`，而 errors 非空必然蕴含 stale，
+   于是那个合取恒等于 `errors.length > 0`。真要给它一个读取方，只能是一条页面级横幅，
+   而它会用更差的措辞、配一个不对的按钮，重复用户在两个页面上已经看到的每来源提示；
+   更糟的是那条横幅按 `errors` 计数，会显示「上次刷新有 0 个来源没能完成」。
+   一个不可用的来源自己会在两个页面上说话，不需要再让全局横幅替它说一遍。
    v1 的公式只看 detect 阶段，会丢掉 fan-out 失败（`brew outdated` 挂了、坏 tap），
-   那类实例 `healthy: true` 但 `errors` 非空——按 v1 公式 `stale == false`，
+   那类实例是可用的但 `errors` 非空——只看「实例是否 unavailable」的公式会给出 `stale == false`，
    `SnapshotStatus.tsx:170` 的横幅不出，用户拿着旧数据且毫无提示。**净回归，必须避免。**
 3. **不可用的实例沿用上一轮的 artifacts 与 updates**（只改 `healthy == false` 那条
    `continue` 路径，错误路径本来就做对了）。这让现有文案
