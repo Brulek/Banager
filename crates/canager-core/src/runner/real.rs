@@ -28,39 +28,72 @@ impl Default for RealRunner {
     }
 }
 
-/// Drains complete lines (split on both `\n` and `\r`, so `brew`'s
-/// carriage-return progress updates are treated as line boundaries too) from
-/// the front of `buf`, leaving any trailing partial line buffered.
-fn drain_lines(buf: &mut Vec<u8>) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    for i in 0..buf.len() {
-        if buf[i] == b'\n' || buf[i] == b'\r' {
-            if i > start {
-                lines.push(String::from_utf8_lossy(&buf[start..i]).to_string());
-            }
-            start = i + 1;
-        }
-    }
-    buf.drain(0..start);
-    lines
+/// One stream's transcript, and how far along it the line splitter has got.
+///
+/// Every byte the child writes has to be kept anyway — `CommandOutput`
+/// carries the whole transcript — so the line splitting reads out of that
+/// same buffer rather than copying each chunk into a second one as well.
+/// The second copy was every byte of output held twice for the life of the
+/// operation: on `brew upgrade` of a large formula that is real memory for
+/// no reason, since the only thing the line splitter actually needs is a
+/// cursor saying where the unterminated tail begins.
+#[derive(Default)]
+struct StreamBuffer {
+    /// Every byte read from this stream, in order. Decoded once, after the
+    /// read loop, from the complete byte sequence — never per-`read()`
+    /// chunk — so a multi-byte UTF-8 character split across two `read()`
+    /// calls at an arbitrary byte offset is still decoded correctly
+    /// instead of turning into two separate replacement characters
+    /// (U+FFFD) at the split point.
+    bytes: Vec<u8>,
+    /// Index in `bytes` where the trailing, not-yet-terminated line
+    /// starts. Everything before it has already been handed to `on_line`.
+    line_start: usize,
 }
 
-/// Buffers one chunk, records it in the full transcript, and hands every
-/// complete line it completes to `on_line`.
-fn emit_chunk(
-    chunk: &[u8],
-    buf: &mut Vec<u8>,
-    all_bytes: &mut Vec<u8>,
-    stream: Stream,
-    on_line: &Option<LineCallback>,
-) {
-    buf.extend_from_slice(chunk);
-    all_bytes.extend_from_slice(chunk);
-    for line in drain_lines(buf) {
-        if let Some(cb) = on_line {
-            cb(stream, line);
+impl StreamBuffer {
+    /// Records one chunk and hands `on_line` every line that chunk
+    /// completed. Lines are split on both `\n` and `\r`, so `brew`'s
+    /// carriage-return progress updates are treated as line boundaries too.
+    fn push(&mut self, chunk: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
+        // Only the new bytes need scanning: everything before `scan_from`
+        // was scanned when it arrived and holds no line terminator.
+        let scan_from = self.bytes.len();
+        self.bytes.extend_from_slice(chunk);
+        for i in scan_from..self.bytes.len() {
+            if self.bytes[i] == b'\n' || self.bytes[i] == b'\r' {
+                if i > self.line_start {
+                    emit(&self.bytes[self.line_start..i], stream, on_line);
+                }
+                self.line_start = i + 1;
+            }
         }
+    }
+
+    /// Delivers a trailing line that never got its newline.
+    ///
+    /// A tool's last line need not be terminated -- a prompt, a progress
+    /// line, output cut off when the tool was killed. Those bytes were
+    /// always in the full transcript, but `on_line` never saw them, and the
+    /// log drawer is built entirely from `on_line`: the user read one line
+    /// less than the tool actually said, and the missing one is the last,
+    /// which on a failure is the one that matters.
+    fn flush_partial_line(&mut self, stream: Stream, on_line: &Option<LineCallback>) {
+        if self.line_start < self.bytes.len() {
+            emit(&self.bytes[self.line_start..], stream, on_line);
+            self.line_start = self.bytes.len();
+        }
+    }
+
+    /// The whole stream, decoded in one go from the accumulated bytes.
+    fn transcript(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+}
+
+fn emit(raw: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
+    if let Some(cb) = on_line {
+        cb(stream, String::from_utf8_lossy(raw).to_string());
     }
 }
 
@@ -71,23 +104,32 @@ fn emit_chunk(
 /// cannot hold a cancelled operation open forever.
 const POST_KILL_DRAIN: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// Delivers a trailing line that never got its newline.
+/// How long to wait for a SIGKILLed child to be reaped before abandoning it.
 ///
-/// A tool's last line need not be terminated -- a prompt, a progress line,
-/// output cut off when the tool was killed. Those bytes were always in the
-/// full transcript, but `on_line` never saw them, and the log drawer is
-/// built entirely from `on_line`: the user read one line less than the tool
-/// actually said, and the missing one is the last, which on a failure is
-/// the one that matters.
-fn flush_partial_line(buf: &mut Vec<u8>, stream: Stream, on_line: &Option<LineCallback>) {
-    if buf.is_empty() {
-        return;
+/// SIGKILL is not instantaneous: a process blocked in an uninterruptible
+/// kernel wait (a read from a stalled disk or a hung network mount) stays
+/// alive until that wait returns, and an unbounded `wait()` would hang the
+/// whole operation — with no upper bound at all — on the path the user
+/// reached by pressing Cancel. Abandoning the child leaks no zombie: Tokio
+/// reaps a dropped `Child` in the background.
+const POST_KILL_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// SIGKILLs the whole process group, so a `brew` invocation's grandchildren
+/// (a `curl` download, a `git` clone) die with it rather than outliving the
+/// operation that started them.
+fn kill_group(pid: Option<libc::pid_t>) {
+    if let Some(pid) = pid {
+        // SAFETY: `killpg` takes two integers and no pointers; the worst a
+        // stale pid can do here is return ESRCH, which is ignored.
+        unsafe {
+            libc::killpg(pid, libc::SIGKILL);
+        }
     }
-    let line = String::from_utf8_lossy(buf).to_string();
-    buf.clear();
-    if let Some(cb) = on_line {
-        cb(stream, line);
-    }
+}
+
+/// Waits for an already-killed child, bounded by `POST_KILL_WAIT`.
+async fn reap(child: &mut tokio::process::Child) {
+    let _ = tokio::time::timeout(POST_KILL_WAIT, child.wait()).await;
 }
 
 #[async_trait]
@@ -131,18 +173,8 @@ impl CommandRunner for RealRunner {
         let mut stdout = child.stdout.take().expect("stdout was piped");
         let mut stderr = child.stderr.take().expect("stderr was piped");
 
-        let mut stdout_buf: Vec<u8> = Vec::new();
-        let mut stderr_buf: Vec<u8> = Vec::new();
-        // Full-transcript byte accumulators. These collect every raw byte
-        // read from each stream, independent of `stdout_buf`/`stderr_buf`
-        // (which are drained line-by-line for `on_line`). Decoding happens
-        // once, after the loop, from the complete byte sequence — never
-        // per-`read()`-chunk — so a multi-byte UTF-8 character split across
-        // two `read()` calls at an arbitrary byte offset is still decoded
-        // correctly instead of turning into two separate replacement
-        // characters (U+FFFD) at the split point.
-        let mut stdout_all_bytes: Vec<u8> = Vec::new();
-        let mut stderr_all_bytes: Vec<u8> = Vec::new();
+        let mut out = StreamBuffer::default();
+        let mut err = StreamBuffer::default();
         // Separate read buffers for stdout/stderr: both branches of the
         // `tokio::select!` below hold a `.read(&mut _)` future live at the
         // same time, so a single shared buffer would need two concurrent
@@ -155,7 +187,11 @@ impl CommandRunner for RealRunner {
         let mut timed_out = false;
         let mut cancelled = false;
 
-        let sleep = tokio::time::sleep(spec.timeout);
+        // One deadline for the whole operation, held by both the read loop
+        // and the final `wait()` below — `spec.timeout` must bound the run
+        // from spawn to exit, not just the part of it that produces output.
+        let deadline = tokio::time::Instant::now() + spec.timeout;
+        let sleep = tokio::time::sleep_until(deadline);
         tokio::pin!(sleep);
 
         while !(stdout_done && stderr_done) && !timed_out && !cancelled {
@@ -163,38 +199,22 @@ impl CommandRunner for RealRunner {
                 biased;
                 _ = cancel.cancelled() => {
                     cancelled = true;
-                    if let Some(pid) = pid {
-                        unsafe { libc::killpg(pid, libc::SIGKILL); }
-                    }
+                    kill_group(pid);
                 }
                 _ = &mut sleep => {
                     timed_out = true;
-                    if let Some(pid) = pid {
-                        unsafe { libc::killpg(pid, libc::SIGKILL); }
-                    }
+                    kill_group(pid);
                 }
                 res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
                     match res {
                         Ok(0) | Err(_) => stdout_done = true,
-                        Ok(n) => emit_chunk(
-                            &stdout_read_buf[..n],
-                            &mut stdout_buf,
-                            &mut stdout_all_bytes,
-                            Stream::Stdout,
-                            &on_line,
-                        ),
+                        Ok(n) => out.push(&stdout_read_buf[..n], Stream::Stdout, &on_line),
                     }
                 }
                 res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
                     match res {
                         Ok(0) | Err(_) => stderr_done = true,
-                        Ok(n) => emit_chunk(
-                            &stderr_read_buf[..n],
-                            &mut stderr_buf,
-                            &mut stderr_all_bytes,
-                            Stream::Stderr,
-                            &on_line,
-                        ),
+                        Ok(n) => err.push(&stderr_read_buf[..n], Stream::Stderr, &on_line),
                     }
                 }
             }
@@ -214,25 +234,13 @@ impl CommandRunner for RealRunner {
                         res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
                             match res {
                                 Ok(0) | Err(_) => stdout_done = true,
-                                Ok(n) => emit_chunk(
-                                    &stdout_read_buf[..n],
-                                    &mut stdout_buf,
-                                    &mut stdout_all_bytes,
-                                    Stream::Stdout,
-                                    &on_line,
-                                ),
+                                Ok(n) => out.push(&stdout_read_buf[..n], Stream::Stdout, &on_line),
                             }
                         }
                         res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
                             match res {
                                 Ok(0) | Err(_) => stderr_done = true,
-                                Ok(n) => emit_chunk(
-                                    &stderr_read_buf[..n],
-                                    &mut stderr_buf,
-                                    &mut stderr_all_bytes,
-                                    Stream::Stderr,
-                                    &on_line,
-                                ),
+                                Ok(n) => err.push(&stderr_read_buf[..n], Stream::Stderr, &on_line),
                             }
                         }
                     }
@@ -243,27 +251,34 @@ impl CommandRunner for RealRunner {
 
         // After the drain, so a trailing unterminated line the child wrote
         // just before it died is delivered too.
-        flush_partial_line(&mut stdout_buf, Stream::Stdout, &on_line);
-        flush_partial_line(&mut stderr_buf, Stream::Stderr, &on_line);
+        out.flush_partial_line(Stream::Stdout, &on_line);
+        err.flush_partial_line(Stream::Stderr, &on_line);
 
         let exit_code = if timed_out || cancelled {
-            let _ = child.wait().await;
+            reap(&mut child).await;
             None
         } else {
-            child.wait().await.ok().and_then(|status| status.code())
+            // Both pipes reaching EOF is not the same event as the child
+            // exiting: a child that closes (or hands off) its stdout and
+            // stderr and keeps running leaves this `wait()` with nothing to
+            // bound it, because the read loop — and with it `spec.timeout`
+            // — is already over. Hold it to the same deadline.
+            match tokio::time::timeout_at(deadline, child.wait()).await {
+                Ok(Ok(status)) => status.code(),
+                Ok(Err(_)) => None,
+                Err(_) => {
+                    timed_out = true;
+                    kill_group(pid);
+                    reap(&mut child).await;
+                    None
+                }
+            }
         };
-
-        // Decode the full transcript once from the accumulated bytes (not
-        // per-chunk) so a multi-byte UTF-8 character split across a read
-        // boundary decodes correctly instead of corrupting into replacement
-        // characters on both sides of the split.
-        let stdout_all = String::from_utf8_lossy(&stdout_all_bytes).into_owned();
-        let stderr_all = String::from_utf8_lossy(&stderr_all_bytes).into_owned();
 
         Ok(CommandOutput {
             exit_code,
-            stdout: stdout_all,
-            stderr: stderr_all,
+            stdout: out.transcript(),
+            stderr: err.transcript(),
             timed_out,
             cancelled,
         })
@@ -533,6 +548,38 @@ mod tests {
             output.stdout.contains("second"),
             "output written before the kill is missing from the transcript: {:?}",
             output.stdout
+        );
+    }
+
+    #[tokio::test]
+    async fn test_timeout_still_applies_after_the_pipes_close() {
+        // EOF on both pipes is not the same event as the child exiting. A
+        // child that closes its stdout and stderr and keeps running ends
+        // the read loop -- and with it the only thing that was enforcing
+        // `spec.timeout` -- while the process is still alive, so the final
+        // `wait()` had nothing bounding it and the operation hung for as
+        // long as the child felt like living. `sh` closes both pipes here
+        // with `exec`, then sleeps far longer than the timeout.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "exec 1>&- 2>&-; sleep 30".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_millis(300),
+        };
+        let started = std::time::Instant::now();
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
+
+        assert!(output.timed_out, "the run must be reported as timed out");
+        assert_eq!(output.exit_code, None);
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "the timeout must bound the whole run, not just the reads; took {elapsed:?}"
         );
     }
 }
