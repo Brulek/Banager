@@ -49,9 +49,17 @@ pub struct SourceError {
 /// Whether any adapter detected a usable instance. There used to be a
 /// third variant, `RefusedAsRoot`, standing for "every adapter is disabled
 /// because Canager is running as root" -- but that was never true: the
-/// root objection belongs to `BrewAdapter` alone, which now simply
-/// contributes no instance under root, the same as when Homebrew is not
-/// installed. `Missing` covers both.
+/// root objection belongs to `BrewAdapter` alone, and npm, pipx, uv, pip,
+/// cargo and ollama have no objection to root at all.
+///
+/// Under root `BrewAdapter::detect` still contributes an instance, marked
+/// `Unavailable::RefusesAsRoot`, so a Mac that has Homebrew reports `Found`
+/// and the UI explains the refusal against that one source -- naming the
+/// action that fixes it, which is to quit and reopen without `sudo`. An
+/// earlier arrangement returned no instance under root, which is
+/// indistinguishable from Homebrew not being installed and left such a
+/// machine reading "none of them are set up on this Mac yet" while
+/// Homebrew sat there installed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetectOutcome {
     Found,

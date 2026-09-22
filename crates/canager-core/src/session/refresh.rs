@@ -55,10 +55,11 @@ impl Session {
         // every one of the other six adapters disabled and was told
         // Homebrew refused to run, whether or not Homebrew was even
         // installed. The decision now lives solely in
-        // `BrewAdapter::detect`, which already returns no instance under
-        // root (see its own doc comment) -- exactly like Homebrew not
-        // being installed at all. Every adapter, brew included, is simply
-        // fanned out to below like any other refresh.
+        // `BrewAdapter::detect`, which under root contributes an instance
+        // marked `Unavailable::RefusesAsRoot` -- so the refusal is reported
+        // against brew alone, with the action that resolves it, instead of
+        // silently disabling the other six. Every adapter, brew included,
+        // is simply fanned out to below like any other refresh.
         let mut detect_handles = Vec::with_capacity(self.adapters.len());
         for adapter in self.adapters.values() {
             // Cloned into the task because `tokio::spawn` needs a 'static
