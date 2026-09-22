@@ -7,7 +7,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel,
+    Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -263,9 +263,7 @@ impl CargoAdapter {
                     target: version,
                     channel: UpdateChannel::Registry,
                     checkable: false,
-                    warnings: vec![format!(
-                        "installed from {source_kind}, cannot check crates.io for updates"
-                    )],
+                    warnings: vec![Warning::NonRegistrySource],
                 });
                 continue;
             }
@@ -285,7 +283,7 @@ impl CargoAdapter {
                     target: version,
                     channel: UpdateChannel::Registry,
                     checkable: false,
-                    warnings: vec![reason],
+                    warnings: vec![Warning::Message(reason)],
                 }),
             }
         }
@@ -324,7 +322,7 @@ impl CargoAdapter {
                 let (program, mut args) = match binstall {
                     Some(path) => (path, vec!["-y".to_string()]),
                     None => {
-                        warnings.push("compiles locally and can take several minutes".to_string());
+                        warnings.push(Warning::CompilesLocally);
                         (inst.exe_path.clone(), vec!["install".to_string()])
                     }
                 };
@@ -646,7 +644,7 @@ mod tests {
             .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
-        assert!(candidates[0].warnings[0].contains("git"));
+        assert_eq!(candidates[0].warnings, vec![Warning::NonRegistrySource]);
         assert!(
             http.calls().is_empty(),
             "a git-sourced crate must never reach crates.io"
@@ -714,10 +712,7 @@ mod tests {
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
         assert_eq!(plan.args, vec!["install", "hexyl"]);
-        assert_eq!(
-            plan.warnings,
-            vec!["compiles locally and can take several minutes".to_string()]
-        );
+        assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
     }
 
     #[tokio::test]

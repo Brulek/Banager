@@ -7,7 +7,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel,
+    Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -293,7 +293,7 @@ impl PipxAdapter {
                     target: artifact.version.clone(),
                     channel: UpdateChannel::Registry,
                     checkable: false,
-                    warnings: vec![reason],
+                    warnings: vec![Warning::Message(reason)],
                 }),
             }
         }

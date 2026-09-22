@@ -168,15 +168,23 @@ struct OutdatedItem {
     #[serde(default)]
     installed_versions: Vec<String>,
     current_version: String,
+    // Deserialized but deliberately unread: a `"pinned"` warning used to be
+    // pushed here, but `UpdatesPage` never renders warning text on a
+    // checkable row (see `BrewAdapter::check_updates`'s doc comment for the
+    // identical argument about a failed `brew update`) -- it only produced
+    // a "1 warning" badge with nothing readable behind it. What pinned
+    // items actually need is per-package actionability
+    // (`UpdateCandidate.actionable: bool` plus a reason enum whose first
+    // variant is `Pinned`, spec §8), which is backlogged, not this field.
     #[serde(default)]
+    #[allow(dead_code)]
     pinned: bool,
     #[serde(default)]
     #[allow(dead_code)]
     pinned_version: Option<String>,
 }
 
-/// Parses `brew outdated --json=v2`. Pinned items get a `"pinned"` warning
-/// (Canager can still show them, but shouldn't silently upgrade past a pin).
+/// Parses `brew outdated --json=v2`.
 pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandidate>, AdapterError> {
     let root: OutdatedRoot =
         serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
@@ -191,10 +199,6 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
 
     for (item, kind) in items {
         let current = item.installed_versions.last().cloned().unwrap_or_default();
-        let mut warnings = Vec::new();
-        if item.pinned {
-            warnings.push("pinned".to_string());
-        }
         let key_name = item
             .full_name
             .filter(|s| !s.is_empty())
@@ -209,7 +213,7 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
             target: item.current_version,
             channel: UpdateChannel::Native,
             checkable: true,
-            warnings,
+            warnings: Vec::new(),
         });
     }
 

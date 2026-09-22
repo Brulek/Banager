@@ -8,7 +8,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, CancelPolicy, InstalledArtifact, InstanceStatus, ManagerInstance, OpKind,
     OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UpdateCandidate, UpdateChannel,
+    UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -364,7 +364,7 @@ impl OllamaAdapter {
                 target: artifact.version.clone(),
                 channel: UpdateChannel::Digest,
                 checkable: false,
-                warnings: vec![reason],
+                warnings: vec![Warning::Message(reason)],
             }),
         }
     }
@@ -417,9 +417,9 @@ impl OllamaAdapter {
         // legitimate thing to want, it just has to be said out loud.
         // `Plan::warnings` is already rendered in the preview.
         let warnings = match third_party_registry(&req.name) {
-            Some(registry) => vec![format!(
+            Some(registry) => vec![Warning::Message(format!(
                 "this model comes from {registry}, not Ollama's own model library"
-            )],
+            ))],
             None => Vec::new(),
         };
         let args = match req.kind {
@@ -536,6 +536,21 @@ mod tests {
     use crate::model::ArtifactKind;
     use crate::runner::{CommandOutput, MockRunner};
     use std::path::PathBuf;
+
+    /// These tests assert on the *text* of a dynamic, not-yet-localised
+    /// `Warning::Message` (spec §6's backlog item -- ollama's warnings are
+    /// out of this phase's scope). This reads the message back out so the
+    /// assertions below can stay string-based.
+    fn warnings_text(warnings: &[Warning]) -> String {
+        warnings
+            .iter()
+            .map(|w| match w {
+                Warning::Message(m) => m.clone(),
+                other => format!("{other:?}"),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 
     fn test_instance(host: &str, prefix: PathBuf) -> ManagerInstance {
         ManagerInstance {
@@ -1266,7 +1281,7 @@ mod tests {
             !candidates[0].checkable,
             "a reference that escapes the manifests root has no target to offer"
         );
-        let warning = candidates[0].warnings.join(" ");
+        let warning = warnings_text(&candidates[0].warnings);
         assert!(
             warning.contains("outside"),
             "the warning must say the reference was refused for leaving the manifests root, got {warning:?}"
@@ -1322,7 +1337,7 @@ mod tests {
 
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
-        let warning = candidates[0].warnings.join(" ");
+        let warning = warnings_text(&candidates[0].warnings);
         assert!(
             warning.contains("outside"),
             "expected a containment refusal, got {warning:?}"
@@ -1431,10 +1446,10 @@ mod tests {
         // a hostname inside a model name as a warning.
         let plan = plan_for("evil.example.com/ns/model:tag").await;
         assert_eq!(plan.warnings.len(), 1, "got {:?}", plan.warnings);
+        let warning = warnings_text(&plan.warnings);
         assert!(
-            plan.warnings[0].contains("evil.example.com"),
-            "the warning must name the registry, got {:?}",
-            plan.warnings[0]
+            warning.contains("evil.example.com"),
+            "the warning must name the registry, got {warning:?}"
         );
         // Named, not blocked: the operation still runs as requested.
         assert_eq!(plan.args, vec!["pull", "evil.example.com/ns/model:tag"]);

@@ -157,6 +157,40 @@ pub enum UpdateChannel {
     Digest,
 }
 
+/// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
+/// render it in the user's language rather than the English sentence Rust
+/// would otherwise have to assemble -- the trap `UpdateCandidate.warnings`
+/// was already in before this type existed (see `ReadOnlyReason`'s doc
+/// comment) and, concretely, the reason the uninstall confirmation screen
+/// used to show a Chinese user an English risk warning right above the
+/// button that acts on it (spec §6).
+///
+/// `Message` is the deliberate escape hatch for warnings this step does
+/// not localise: text built at runtime from something Canager cannot know
+/// ahead of time (a subprocess's stderr, an HTTP error, a model's registry
+/// host). Spec §6 backlogs the real fix for those -- showing a localised
+/// generic sentence by default and routing the raw text behind
+/// `show_technical_details` -- so `Message` only preserves today's
+/// behaviour (the raw string, unconditionally, in whatever language it
+/// came in) rather than pretending those warnings are localised when they
+/// are not.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Warning {
+    /// brew's `uses --installed` check itself failed or timed out. Not the
+    /// same thing as "confirmed no dependents", and must not read like it.
+    DependentsUnknown,
+    /// Uninstalling would break these already-installed dependents.
+    WouldBreak { names: Vec<String> },
+    /// No `cargo-binstall` on PATH: install/upgrade compiles from source,
+    /// which can take a while.
+    CompilesLocally,
+    /// Installed from a git repository or a local path, not the crates.io
+    /// registry Canager checks for updates against.
+    NonRegistrySource,
+    /// Not yet localised -- see this type's doc comment.
+    Message(String),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateCandidate {
     pub key: ArtifactKey,
@@ -164,7 +198,7 @@ pub struct UpdateCandidate {
     pub target: String,
     pub channel: UpdateChannel,
     pub checkable: bool,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Warning>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,7 +243,7 @@ pub struct Plan {
     pub needs_password: bool,
     pub locks: Vec<ResourceLock>,
     pub cancel_policy: CancelPolicy,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Warning>,
     pub affected: Vec<String>, // dependents that would break on uninstall
     pub timeout_secs: u64,
 }
@@ -331,6 +365,44 @@ mod tests {
                 read_only
             );
         }
+    }
+
+    #[test]
+    fn test_warning_wire_shapes_match_the_hand_written_ts_mirror() {
+        // Unit variants are bare strings and the one data variant is
+        // externally tagged, matching every other enum in this module and
+        // the hand-written mirror in `src/lib/types.ts`.
+        assert_eq!(
+            serde_json::to_string(&Warning::DependentsUnknown).unwrap(),
+            r#""DependentsUnknown""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::CompilesLocally).unwrap(),
+            r#""CompilesLocally""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::NonRegistrySource).unwrap(),
+            r#""NonRegistrySource""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::WouldBreak {
+                names: vec!["python@3.13".to_string()]
+            })
+            .unwrap(),
+            r#"{"WouldBreak":{"names":["python@3.13"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::Message("boom".to_string())).unwrap(),
+            r#"{"Message":"boom"}"#
+        );
+        let round_tripped: Warning =
+            serde_json::from_str(r#"{"WouldBreak":{"names":["a","b"]}}"#).unwrap();
+        assert_eq!(
+            round_tripped,
+            Warning::WouldBreak {
+                names: vec!["a".to_string(), "b".to_string()]
+            }
+        );
     }
 
     #[test]

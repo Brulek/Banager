@@ -7,7 +7,7 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
-    Scope, SearchHit, Unavailable,
+    Scope, SearchHit, Unavailable, Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -405,18 +405,13 @@ impl BrewAdapter {
                     // The check itself failed or timed out — this is *not*
                     // the same thing as "confirmed no dependents", and must
                     // not be presented as if it were.
-                    warnings.push(format!(
-                        "could not determine what depends on {}; uninstalling may break other packages",
-                        req.name
-                    ));
+                    warnings.push(Warning::DependentsUnknown);
                     Vec::new()
                 };
                 if !affected.is_empty() {
-                    warnings.push(format!(
-                        "Removing {} will break: {}",
-                        req.name,
-                        affected.join(", ")
-                    ));
+                    warnings.push(Warning::WouldBreak {
+                        names: affected.clone(),
+                    });
                 }
                 Ok(Plan {
                     request: req.clone(),
@@ -1294,7 +1289,9 @@ mod plan_execute_tests {
         assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
         assert_eq!(
             plan.warnings,
-            vec!["Removing jq will break: python@3.13".to_string()]
+            vec![Warning::WouldBreak {
+                names: vec!["python@3.13".to_string()]
+            }]
         );
     }
 
@@ -1329,10 +1326,7 @@ mod plan_execute_tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert!(plan.affected.is_empty());
         assert!(
-            plan.warnings.contains(
-                &"could not determine what depends on jq; uninstalling may break other packages"
-                    .to_string()
-            ),
+            plan.warnings.contains(&Warning::DependentsUnknown),
             "expected a could-not-determine warning, got {:?}",
             plan.warnings
         );
