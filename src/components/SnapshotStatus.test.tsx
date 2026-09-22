@@ -250,6 +250,13 @@ describe("SnapshotStatus", () => {
     await screen.findByText("snapshot loaded");
     expect(screen.getByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Nothing installed yet")).not.toBeInTheDocument();
+    // And no page-wide banner either. An unavailable source is not a
+    // failed refresh (`refresh()` leaves `stale` false for it), and it
+    // already says so itself, in its own words and with its own button,
+    // through the notice InstalledPage renders for it. A second, vaguer
+    // "some data might be out of date" over the top would say the same
+    // thing worse.
+    expect(screen.queryByText("Some data might be out of date")).not.toBeInTheDocument();
   });
 
   it("renders children unchanged once something is installed", async () => {

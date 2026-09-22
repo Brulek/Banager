@@ -105,17 +105,21 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     );
   }
 
-  if (snapshot.stale && snapshot.errors.length > 0) {
+  if (snapshot.stale) {
     // The only "something went wrong" banner there is. There used to be a
     // second one above, for `refreshed_at === null && errors.length > 0`:
     // "no check has ever finished, and this one didn't either". It is
     // unreachable now that `refresh()` stamps `refreshed_at` whenever it
     // ran (spec §2.4-1) -- only `Snapshot::empty()` carries a null one, and
     // it carries no errors either -- so it and its copy are gone rather
-    // than left to rot. Note this branch needs `errors`, not `stale`
-    // alone: `stale` is also true when a source merely reported that it is
-    // not running, and that is the per-source notice's business, not a
-    // page-wide banner's.
+    // than left to rot.
+    //
+    // `stale` alone, with no `errors.length > 0` beside it: `refresh()`
+    // sets `stale` to exactly `!errors.is_empty()`, so the second test was
+    // identity, and the count below is therefore never zero. A source that
+    // is merely unavailable is not stale and gets no banner -- it says so
+    // itself, in its own words, through its own `SourceNotice` on this
+    // page and on the Updates page.
     //
     // The banner variant is meant to "sit above still-visible content"
     // without hiding any of it, but `children` (e.g. InstalledPage) sizes

@@ -67,8 +67,16 @@ pub struct Snapshot {
     pub updates: Vec<UpdateCandidate>,
     /// Unix seconds of the last fully successful refresh, if any.
     pub refreshed_at: Option<i64>,
-    /// True when the newest refresh attempt failed and this data is older
-    /// than it looks (spec §3: keep old data, mark it possibly stale).
+    /// True when part of the newest refresh attempt failed, so this data
+    /// is older than it looks (spec §3: keep old data, mark it possibly
+    /// stale). Exactly `!errors.is_empty()`: `errors` says which sources
+    /// and why, this says whether to say anything at all, and
+    /// `SnapshotStatus` renders the one banner over both.
+    ///
+    /// Deliberately *not* "or some source is unavailable". That is not a
+    /// failed refresh -- the source answered, with the news that it cannot
+    /// answer -- and it is already on screen in that source's own words,
+    /// on both pages, via `sourceNoticesFor`.
     pub stale: bool,
     pub errors: Vec<SourceError>,
 }

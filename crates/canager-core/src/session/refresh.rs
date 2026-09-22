@@ -198,17 +198,21 @@ impl Session {
         }
 
         let mut errors = detect_errors;
-        // Both halves matter. Dropping the `errors` half would silence the
-        // banner whenever a fan-out failed (a broken tap, `brew outdated`
-        // exiting non-zero): those instances answered `detect()` fine, so
-        // an unavailability-only formula would call that snapshot fresh and
-        // leave the user reading stale data with nothing said about it.
-        // Dropping the unavailability half would go back to calling a
-        // machine with a stopped Ollama completely up to date.
-        let mut stale = !errors.is_empty()
-            || instances
-                .iter()
-                .any(|inst| inst.status.unavailable.is_some());
+        // Exactly "a refresh attempt failed", which is all any reader does
+        // with it: `SnapshotStatus` turns it into the one page-wide "some
+        // of this may be out of date, try again" banner, over a count of
+        // `errors`.
+        //
+        // It briefly also meant "or some source is unavailable". Nothing
+        // could observe that half -- the banner's own condition ruled it
+        // out -- and widening it for its own sake would have been worse
+        // than useless: an unavailable source already says so itself, in
+        // its own words, with its own action, on both pages, through
+        // `sourceNoticesFor`. A second page-wide banner saying something
+        // vaguer about the same fact is noise, and its copy ("the last
+        // refresh couldn't finish for {count} sources") would have been
+        // false with a count of zero.
+        let mut stale = !errors.is_empty();
         for (instance_id, handle) in handles {
             match handle.await {
                 Ok((a, u, e, s, notes)) => {
@@ -816,8 +820,10 @@ mod tests {
             "a source that reported it is not running is not a refresh error"
         );
         assert!(
-            snapshot.stale,
-            "one source not answering means what is on screen is not the whole truth"
+            !snapshot.stale,
+            "a source that said why it cannot answer is not a failed refresh: it says so \
+             itself, on both pages, through its own notice. `stale` means the refresh \
+             attempt failed, which is the only thing any reader of it does with it"
         );
         assert!(
             snapshot.instances.iter().any(|i| i.id == "fake:down"),
