@@ -122,8 +122,18 @@ export interface OpRequest {
   artifact_kind: ArtifactKind;
   name: string;
 }
+/**
+ * A random 128-bit token (32 hex chars), not a sequential counter -- see
+ * `PlanId` in crates/canager-core/src/session/mod.rs. A plan the user
+ * previewed and declined used to have a guessable next-in-sequence id that
+ * `submit_operation` would still fire; this makes a declined preview
+ * unfireable by anything short of a renderer that can call
+ * `plan_operation` itself, which a random token cannot defend against
+ * either -- it only ever had to raise the bar on a *guess*.
+ */
+export type PlanId = string;
 export interface IssuedPlan {
-  id: number;
+  id: PlanId;
   plan: Plan;
   issued_at: number;
 }

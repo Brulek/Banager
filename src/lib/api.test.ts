@@ -47,7 +47,7 @@ describe("api", () => {
       name: "jq",
     };
     const issued: IssuedPlan = {
-      id: 1,
+      id: "a1b2c3",
       plan: {
         request,
         program: "/opt/homebrew/bin/brew",
@@ -70,8 +70,8 @@ describe("api", () => {
 
   it("submitOperation invokes submit_operation with only the plan id", async () => {
     mockInvoke.mockResolvedValueOnce(7 as never);
-    await submitOperation(1);
-    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: 1 });
+    await submitOperation("a1b2c3");
+    expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "a1b2c3" });
   });
 
   it("cancelOperation invokes cancel_operation with opId", async () => {

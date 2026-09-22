@@ -102,7 +102,15 @@ impl Snapshot {
 /// Opaque handle to a plan `Session` has issued and is holding server-side.
 /// The front end never constructs one; it only ever echoes back the `id` it
 /// was given.
-pub type PlanId = u64;
+///
+/// A random 128-bit token (32 hex chars via `plans::random_plan_id`), not a
+/// sequential counter. The previous `AtomicU64` starting at 1 gave a plan
+/// the user previewed and then declined a guessable id that `submit` would
+/// still fire on request. That guessability is the whole gap this closes:
+/// it does nothing against a fully compromised renderer, which can call
+/// `issue_plan` itself and read back the id it was handed, but it does mean
+/// a *declined* preview cannot be fired by guessing.
+pub type PlanId = String;
 
 /// A `Plan` the server has already computed and stored, returned to the
 /// caller for preview. Submitting requires only the `id`; the `plan` field
@@ -140,7 +148,6 @@ pub struct Session {
     /// Plans handed out by `issue_plan` (in `plans.rs`) but not yet
     /// consumed by `submit`, keyed by `PlanId`.
     issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>,
-    next_plan_id: AtomicU64,
     now_fn: Option<fn() -> i64>,
 }
 
@@ -183,7 +190,6 @@ impl Session {
             snapshot: Mutex::new(Snapshot::empty()),
             refresh_seq: AtomicU64::new(0),
             issued_plans: Mutex::new(HashMap::new()),
-            next_plan_id: AtomicU64::new(1),
             now_fn,
         })
     }

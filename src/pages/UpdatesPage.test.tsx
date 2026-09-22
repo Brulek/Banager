@@ -127,22 +127,26 @@ let nextPlanId: number;
 // Rejections are bare strings, exactly as a `Result<_, String>` command
 // rejects; Task 10's `call()` turns them into Errors.
 let planFailures: Record<string, string>;
-let submitFailures: Record<number, string>;
+let submitFailures: Record<string, string>;
 let saveFailure: string | null;
 let holdPlans: Set<string>;
-let holdSubmits: Set<number>;
+let holdSubmits: Set<string>;
 let holdSaves: boolean;
 // Names whose plan comes back with `needs_password: true`, mirroring the
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
 let planWarnings: Record<string, Warning[]>;
 let releasePlan: Record<string, () => void>;
-let releaseSubmit: Record<number, () => void>;
+let releaseSubmit: Record<string, () => void>;
 let releaseSave: Array<() => void>;
 
+// `id` stays a number here purely so the tests can order plans ("the first
+// issued", "the second issued"); the wire type is a string (a random
+// 128-bit token, not a sequential counter -- see PlanId in
+// crates/canager-core/src/session/mod.rs), so it is stringified going out.
 function issuedPlanFor(request: OpRequest, id: number) {
   return {
-    id,
+    id: String(id),
     plan: {
       request,
       program: "/opt/homebrew/bin/brew",
@@ -220,7 +224,7 @@ beforeEach(() => {
       return Promise.resolve(issued);
     }
     if (cmd === "submit_operation") {
-      const { planId } = args as { planId: number };
+      const { planId } = args as { planId: string };
       const failure = submitFailures[planId];
       if (failure !== undefined) return Promise.reject(failure);
       if (holdSubmits.has(planId)) {
@@ -271,7 +275,7 @@ describe("UpdatesPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
     // Every item started, so the dialog closes on its own.
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
   });
@@ -291,7 +295,7 @@ describe("UpdatesPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
@@ -669,7 +673,7 @@ describe("UpdatesPage", () => {
   it("shows the backend's rejection verbatim and submits a fresh plan id only after a second Confirm", async () => {
     // The dialog sat open past the PlanId's 10-minute lifetime (or the id
     // was already consumed): the backend rejects with a bare string.
-    submitFailures[1] = "this plan is older than 10 minutes; preview it again";
+    submitFailures["1"] = "this plan is older than 10 minutes; preview it again";
     const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
@@ -682,7 +686,7 @@ describe("UpdatesPage", () => {
     );
     // The dead id is not retried on its own, and the dialog stays open so
     // the failure can be read rather than blinking away.
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }]);
     expect(calls("plan_operation")).toHaveLength(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
@@ -694,11 +698,11 @@ describe("UpdatesPage", () => {
     dialog = await findByRole("dialog");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     expect(calls("plan_operation")).toHaveLength(2);
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
   });
 
   it("shows one item's planning failure in the dialog while the other stays submittable", async () => {
@@ -724,7 +728,7 @@ describe("UpdatesPage", () => {
     // onyx holds the only issued plan (glib never received an id). The batch
     // had a failure, so the dialog stays open with the outcome per item, and
     // only the item that started leaves the selection.
-    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: 1 }]));
+    await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }]));
     await within(dialog).findByText("Started");
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Formula|glib"]);
 
@@ -733,7 +737,7 @@ describe("UpdatesPage", () => {
   });
 
   it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
-    submitFailures[2] = "this plan is older than 10 minutes; preview it again";
+    submitFailures["2"] = "this plan is older than 10 minutes; preview it again";
     const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     const checkboxes = await findAllByRole("checkbox");
@@ -750,7 +754,7 @@ describe("UpdatesPage", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not start the update: this plan is older than 10 minutes; preview it again",
     );
-    expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]);
     // A started item leaves the selection at once; the failed one stays.
     expect(useUiStore.getState().selectedUpdates).toEqual(["brew:/opt/homebrew|Cask|onyx"]);
 
@@ -776,13 +780,13 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() =>
-      expect(submittedPlanIds()).toEqual([{ planId: 1 }, { planId: 2 }, { planId: 3 }]),
+      expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }, { planId: "3" }]),
     );
   });
 
   it("locks the dialog while submitting and drops a superseded batch's late reply", async () => {
     holdPlans.add("glib");
-    holdSubmits.add(2);
+    holdSubmits.add("2");
     const { findAllByRole, findByRole, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     // glib is selected so "Update selected" has something to do: the lock
@@ -824,10 +828,10 @@ describe("UpdatesPage", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(queryByRole("dialog")).toBe(dialog);
 
-    await waitFor(() => expect(releaseSubmit[2]).toBeDefined());
-    releaseSubmit[2]();
+    await waitFor(() => expect(releaseSubmit["2"]).toBeDefined());
+    releaseSubmit["2"]();
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
-    expect(submittedPlanIds()).toEqual([{ planId: 2 }]);
+    expect(submittedPlanIds()).toEqual([{ planId: "2" }]);
     expect(updateSelected).not.toBeDisabled();
   });
 

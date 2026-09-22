@@ -18,7 +18,7 @@ import {
 import { refreshIntoCache } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
-import type { IssuedPlan, OpRequest, OpSummary, Settings, Snapshot } from "./types";
+import type { IssuedPlan, OpRequest, OpSummary, PlanId, Settings, Snapshot } from "./types";
 
 export { queryKeys };
 
@@ -82,7 +82,7 @@ export function usePlanOperation(): UseMutationResult<IssuedPlan, Error, OpReque
   return useMutation({ mutationFn: planOperation });
 }
 
-export function useSubmitOperation(): UseMutationResult<number, Error, number> {
+export function useSubmitOperation(): UseMutationResult<number, Error, PlanId> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: submitOperation,

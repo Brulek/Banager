@@ -89,12 +89,12 @@ pub async fn plan_operation(
 /// exactly that stored `Plan`. Rejects an unknown, already-submitted, or
 /// expired `plan_id` (`Session::submit`'s `SubmitError`) without ever
 /// constructing or accepting a `Plan` from the caller.
-pub(crate) fn submit_operation_impl(state: &AppState, plan_id: u64) -> Result<u64, String> {
+pub(crate) fn submit_operation_impl(state: &AppState, plan_id: String) -> Result<u64, String> {
     state.session.submit(plan_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn submit_operation(state: State<'_, AppState>, plan_id: u64) -> Result<u64, String> {
+pub async fn submit_operation(state: State<'_, AppState>, plan_id: String) -> Result<u64, String> {
     submit_operation_impl(&state, plan_id)
 }
 
@@ -673,7 +673,7 @@ mod tests {
         // be reached.
         let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
-        let err = submit_operation_impl(&state, 999_999)
+        let err = submit_operation_impl(&state, "forged-plan-id".to_string())
             .expect_err("an unissued plan id must be rejected");
         assert!(
             err.contains("no such plan"),
@@ -702,7 +702,7 @@ mod tests {
         let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        submit_operation_impl(&state, issued.id).expect("the first submit must succeed");
+        submit_operation_impl(&state, issued.id.clone()).expect("the first submit must succeed");
         let err = submit_operation_impl(&state, issued.id)
             .expect_err("resubmitting the same plan id must be rejected");
         assert!(

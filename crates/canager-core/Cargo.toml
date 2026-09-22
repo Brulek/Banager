@@ -24,6 +24,12 @@ percent-encoding = "2"
 url = "2"
 libc = "0.2"
 toml = "1"
+# `Session::issue_plan` mints each `PlanId` from this directly (session/mod.rs)
+# rather than pulling in `rand`: the only thing needed is 16 unpredictable
+# bytes, and `getrandom` is already in Cargo.lock at this version as a
+# transitive dependency (uuid, rand_core, …), so this adds no new crate to
+# the build graph.
+getrandom = "0.4"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }

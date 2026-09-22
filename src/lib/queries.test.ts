@@ -121,7 +121,7 @@ describe("queries", () => {
 
   it("usePlanOperation calls planOperation and returns its IssuedPlan", async () => {
     const issued: IssuedPlan = {
-      id: 1,
+      id: "a1b2c3",
       plan: {
         request: { kind: "Uninstall", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq" },
         program: "/opt/homebrew/bin/brew",
@@ -207,7 +207,7 @@ describe("queries", () => {
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useSubmitOperation(), { wrapper: wrapper(queryClient) });
 
-    result.current.mutate(1);
+    result.current.mutate("a1b2c3");
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] });

@@ -6,7 +6,22 @@ use super::{IssuedPlan, PlanId, Session, SubmitError};
 use crate::adapters::AdapterError;
 use crate::events::OpId;
 use crate::model::OpRequest;
-use std::sync::atomic::Ordering;
+
+/// A fresh, unpredictable `PlanId`: 16 bytes from the OS CSPRNG, hex-encoded
+/// to 32 characters. Replaces the previous sequential `AtomicU64` counter,
+/// whose next value for a plan the user had just been issued was always
+/// exactly one guess away.
+///
+/// `getrandom::fill`'s only failure mode is the OS RNG itself being
+/// unavailable, which is not a condition this process can recover from or
+/// meaningfully report through `AdapterError` -- every caller of
+/// `issue_plan` is mid-`await` on a plan it already asked for, with nowhere
+/// sensible to route "the operating system cannot hand out random bytes".
+fn random_plan_id() -> PlanId {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("OS RNG must be available to issue a PlanId");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
 
 impl Session {
     /// Resolves `req` to its owning adapter, asks it to plan the operation,
@@ -58,10 +73,10 @@ impl Session {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
         })?;
         let plan = adapter.plan(&instance, req).await?;
-        let id = self.next_plan_id.fetch_add(1, Ordering::SeqCst);
+        let id = random_plan_id();
         let issued_at = self.now();
         let issued = IssuedPlan {
-            id,
+            id: id.clone(),
             plan,
             issued_at,
         };
@@ -200,8 +215,61 @@ mod tests {
             .await;
         let req = install_request("fake:1");
         let issued = session.issue_plan(&req).await.expect("issue_plan");
-        assert_eq!(issued.id, 1, "PlanId numbering starts at 1");
+        assert_eq!(
+            issued.id.len(),
+            32,
+            "a PlanId is a random 128-bit token, 32 hex chars: {}",
+            issued.id
+        );
+        assert!(
+            issued.id.chars().all(|c| c.is_ascii_hexdigit()),
+            "a PlanId is hex-encoded: {}",
+            issued.id
+        );
         assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_ids_are_random_tokens_not_a_guessable_sequence() {
+        // A plan the user previewed and declined used to have a guessable
+        // next-in-sequence id (`AtomicU64` starting at 1) that
+        // `submit_operation` would still fire. This does not defend against
+        // a fully compromised renderer -- which can call `plan_operation`
+        // itself and read the id it was handed back -- but it does mean
+        // nothing short of that can fire a *declined* preview by guessing.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let req = install_request("fake:1");
+
+        let mut ids = Vec::new();
+        for _ in 0..8 {
+            ids.push(session.issue_plan(&req).await.expect("issue_plan").id);
+        }
+
+        let unique: std::collections::HashSet<_> = ids.iter().cloned().collect();
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "every issued id must be distinct: {ids:?}"
+        );
+        assert!(
+            ids.iter()
+                .all(|id| id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit())),
+            "every id must be a 32-char hex token: {ids:?}"
+        );
+        // The old scheme produced "1", "2", "3", ...; guard against a
+        // regression to anything sequence-like by checking these do not
+        // sort into the order they were issued in.
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_ne!(
+            sorted, ids,
+            "ids must not come back in issuance order -- that is what a sequence looks like: {ids:?}"
+        );
     }
 
     #[tokio::test]
@@ -312,14 +380,14 @@ mod tests {
             .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
 
-        assert_eq!(session.submit(1), Err(SubmitError::Unknown));
-        assert_eq!(session.submit(u64::MAX), Err(SubmitError::Unknown));
+        assert_eq!(session.submit("1".to_string()), Err(SubmitError::Unknown));
+        assert_eq!(session.submit("f".repeat(32)), Err(SubmitError::Unknown));
 
         let req = install_request("fake:1");
         let issued = session.issue_plan(&req).await.expect("issue_plan");
-        assert_eq!(issued.id, 1);
-        assert_eq!(session.submit(0), Err(SubmitError::Unknown));
-        assert_eq!(session.submit(2), Err(SubmitError::Unknown));
+        assert_eq!(issued.id.len(), 32, "a PlanId is a random 128-bit token");
+        assert_eq!(session.submit("0".to_string()), Err(SubmitError::Unknown));
+        assert_eq!(session.submit("2".to_string()), Err(SubmitError::Unknown));
         assert!(
             session.operations().is_empty(),
             "a rejected submit must never reach the OperationManager"
@@ -342,15 +410,15 @@ mod tests {
         let issued = session.issue_plan(&req).await.expect("issue_plan");
 
         let op_id = session
-            .submit(issued.id)
+            .submit(issued.id.clone())
             .expect("first submit of a freshly issued plan");
         assert_eq!(
-            session.submit(issued.id),
+            session.submit(issued.id.clone()),
             Err(SubmitError::Unknown),
             "an issued plan is single-use: replaying its id must be rejected"
         );
         assert_eq!(
-            session.submit(issued.id),
+            session.submit(issued.id.clone()),
             Err(SubmitError::Unknown),
             "and it stays rejected however many times it is replayed"
         );
@@ -365,7 +433,7 @@ mod tests {
         let reissued = session.issue_plan(&req).await.expect("issue_plan again");
         assert_ne!(reissued.id, issued.id);
         session
-            .submit(reissued.id)
+            .submit(reissued.id.clone())
             .expect("a re-issued plan is submittable once");
         assert_eq!(session.submit(reissued.id), Err(SubmitError::Unknown));
         assert_eq!(session.operations().len(), 2);
@@ -403,7 +471,10 @@ mod tests {
         assert_eq!(session.operations().len(), 1);
 
         FAKE_NOW.store(T0 + 601, Ordering::SeqCst);
-        assert_eq!(session.submit(too_late.id), Err(SubmitError::Expired));
+        assert_eq!(
+            session.submit(too_late.id.clone()),
+            Err(SubmitError::Expired)
+        );
         assert_eq!(
             session.operations().len(),
             1,
@@ -411,7 +482,10 @@ mod tests {
         );
 
         FAKE_NOW.store(T0, Ordering::SeqCst);
-        assert_eq!(session.submit(too_late.id), Err(SubmitError::Unknown));
+        assert_eq!(
+            session.submit(too_late.id.clone()),
+            Err(SubmitError::Unknown)
+        );
         assert_eq!(session.operations().len(), 1);
         let fresh = session.issue_plan(&req).await.expect("issue_plan again");
         assert_ne!(fresh.id, too_late.id);

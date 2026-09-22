@@ -1,5 +1,5 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
-import type { IssuedPlan, OpRequest, Settings, Snapshot, OpSummary, UiEvent } from "./types";
+import type { IssuedPlan, OpRequest, PlanId, Settings, Snapshot, OpSummary, UiEvent } from "./types";
 
 /**
  * The single choke point for every IPC call. A `#[tauri::command]` that
@@ -33,7 +33,7 @@ export function planOperation(request: OpRequest): Promise<IssuedPlan> {
   return call<IssuedPlan>("plan_operation", { request });
 }
 
-export function submitOperation(planId: number): Promise<number> {
+export function submitOperation(planId: PlanId): Promise<number> {
   return call<number>("submit_operation", { planId });
 }
 

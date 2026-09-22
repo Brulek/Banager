@@ -14,7 +14,7 @@ const request: OpRequest = {
 
 function issuedPlanFor(overrides: Partial<Plan> = {}): IssuedPlan {
   return {
-    id: 1,
+    id: "1",
     plan: {
       request,
       program: "/opt/homebrew/bin/brew",
@@ -172,7 +172,7 @@ describe("UninstallDialog", () => {
     fireEvent.click(confirmButton);
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith("submit_operation", { planId: 1 });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("submit_operation", { planId: "1" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -200,7 +200,7 @@ describe("UninstallDialog", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") {
         planCalls += 1;
-        return { ...issuedPlanFor(), id: planCalls };
+        return { ...issuedPlanFor(), id: String(planCalls) };
       }
       if (cmd === "submit_operation") {
         submitAttempts += 1;
@@ -236,13 +236,13 @@ describe("UninstallDialog", () => {
     // the only submit so far, and nothing was reported as started.
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
-    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: 1 }]);
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }]);
     expect(onSubmitted).not.toHaveBeenCalled();
 
     fireEvent.click(confirmButton);
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
-    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: 1 }, { planId: 2 }]);
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
   });
 
   it("ignores a submit that finishes after the dialog was retargeted", async () => {
