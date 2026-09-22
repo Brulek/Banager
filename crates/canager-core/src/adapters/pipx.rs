@@ -1,7 +1,7 @@
 use crate::adapters::{
-    lookup_failure_reason, run_plan, uncheckable_candidate, uncheckable_from_inventory,
-    url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
-    CheckOutcome,
+    lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
+    uncheckable_from_inventory, url_path_segment, validate_package_name, Adapter, AdapterError,
+    AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -394,19 +394,7 @@ impl PipxAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         let artifacts = self.inventory(inst).await?;
-        match artifacts
-            .into_iter()
-            .find(|a| a.key.kind == key.kind && a.key.name == key.name)
-        {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        Ok(reconcile_from(artifacts, key))
     }
 }
 

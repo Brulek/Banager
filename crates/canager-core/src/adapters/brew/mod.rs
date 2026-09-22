@@ -1,7 +1,8 @@
 pub mod parse;
 
 use crate::adapters::{
-    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    reconcile_from, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -344,6 +345,31 @@ impl BrewAdapter {
     }
 }
 
+/// The name `inventory()` lists an artifact under, given whatever spelling
+/// the caller had.
+///
+/// Homebrew is the one source where two names address the same artifact: a
+/// tapped cask is installed as `gautham-v/tap/claudebar` and is just as
+/// legitimately called `claudebar`. Returns the caller's own key unchanged
+/// when nothing matches, so a genuinely absent artifact stays absent.
+///
+/// This is the part of brew's reconcile that is *not* shared, and it is
+/// deliberately kept here rather than pushed into `reconcile_from` as an
+/// option: the last-segment rule would be wrong for npm, whose scoped
+/// package names contain `/` (`@types/node` must never be found by
+/// `node`).
+fn qualified_key(artifacts: &[InstalledArtifact], key: &ArtifactKey) -> ArtifactKey {
+    artifacts
+        .iter()
+        .find(|a| {
+            a.key.kind == key.kind
+                && (a.key.name == key.name
+                    || a.key.name.rsplit('/').next() == Some(key.name.as_str()))
+        })
+        .map(|a| a.key.clone())
+        .unwrap_or_else(|| key.clone())
+}
+
 impl BrewAdapter {
     pub async fn plan(
         &self,
@@ -503,23 +529,11 @@ impl BrewAdapter {
         // `parse::parse_info_installed`), but a caller may have started the
         // operation from a short name (e.g. the user typed `claudebar`
         // rather than `gautham-v/tap/claudebar`, or an older `OpRequest` was
-        // built before full names existed). Match either the exact full
-        // name or its last `/`-separated segment so both spellings find the
-        // same artifact.
-        match artifacts.into_iter().find(|a| {
-            a.key.kind == key.kind
-                && (a.key.name == key.name
-                    || a.key.name.rsplit('/').next() == Some(key.name.as_str()))
-        }) {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        // built before full names existed). Resolve the short spelling to
+        // the name inventory actually uses first; the presence rule itself
+        // is the shared one every adapter applies.
+        let key = qualified_key(&artifacts, key);
+        Ok(reconcile_from(artifacts, &key))
     }
 }
 

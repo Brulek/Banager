@@ -1,6 +1,6 @@
 use crate::adapters::{
-    lookup_failure_reason, second_token, uncheckable_candidate, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    lookup_failure_reason, reconcile_from, second_token, uncheckable_candidate, Adapter,
+    AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -338,19 +338,7 @@ impl PipAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         let artifacts = self.inventory(inst).await?;
-        match artifacts
-            .into_iter()
-            .find(|a| a.key.kind == key.kind && a.key.name == key.name)
-        {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        Ok(reconcile_from(artifacts, key))
     }
 }
 

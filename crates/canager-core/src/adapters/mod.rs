@@ -274,6 +274,40 @@ pub fn validate_package_name(name: &str) -> Result<(), AdapterError> {
     Ok(())
 }
 
+/// Whether `key` is installed, and at what version, given one `inventory()`
+/// answer.
+///
+/// The rule is `kind` **and** `name`, both exactly: a source can hold two
+/// artifacts that share a name and differ in kind (Homebrew's `python`
+/// formula and its `python` cask), and answering "present, at 3.14.2" for
+/// the wrong one would make Canager report an uninstall as having failed,
+/// or an install as having already happened.
+///
+/// `ArtifactKey::instance_id` is deliberately *not* compared. An adapter
+/// reconciles against the inventory of the instance it was handed, and the
+/// caller is the one that pairs the two; `ensure_instance_match` is where
+/// that pairing is checked, on the write path where it matters.
+///
+/// Extracted because all seven adapters had this body copied out by hand
+/// and npm's copy had already lost the `kind` half of the rule -- harmless
+/// only because every npm artifact happens to be a `Package`, and nothing
+/// kept the seventh copy in step with the other six.
+pub fn reconcile_from(artifacts: Vec<InstalledArtifact>, key: &ArtifactKey) -> Reconciled {
+    match artifacts
+        .into_iter()
+        .find(|a| a.key.kind == key.kind && a.key.name == key.name)
+    {
+        Some(a) => Reconciled {
+            present: true,
+            version: Some(a.version),
+        },
+        None => Reconciled {
+            present: false,
+            version: None,
+        },
+    }
+}
+
 #[async_trait]
 pub trait Adapter: Send + Sync {
     fn meta(&self) -> &AdapterMeta;
@@ -504,7 +538,7 @@ mod tests {
     async fn test_run_plan_maps_a_cancelled_run_to_unconfirmed_and_a_failure_to_the_last_stderr_lines(
     ) {
         use crate::events::VecSink;
-        use crate::model::{ArtifactKind, CancelPolicy, OpKind, OpRequest, ResourceLock};
+        use crate::model::{CancelPolicy, OpKind, OpRequest, ResourceLock};
         use crate::runner::{CommandOutput, MockRunner};
         use std::path::PathBuf;
         use tokio_util::sync::CancellationToken;
@@ -578,6 +612,75 @@ mod tests {
             Outcome::Failed {
                 exit_code: Some(2),
                 summary: "l3\nl4\nl5\nl6\nl7".to_string(),
+            }
+        );
+    }
+
+    use crate::model::ArtifactKind;
+
+    fn installed(kind: ArtifactKind, name: &str, version: &str) -> InstalledArtifact {
+        InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: "inst".to_string(),
+                kind,
+                name: name.to_string(),
+            },
+            display_name: name.to_string(),
+            version: version.to_string(),
+            reason: crate::model::InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+        }
+    }
+
+    fn key(kind: ArtifactKind, name: &str) -> ArtifactKey {
+        ArtifactKey {
+            instance_id: "inst".to_string(),
+            kind,
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_reconcile_from_reports_the_installed_version_of_a_matching_key() {
+        let artifacts = vec![
+            installed(ArtifactKind::Package, "lodash", "4.17.21"),
+            installed(ArtifactKind::Package, "typescript", "5.9.2"),
+        ];
+        assert_eq!(
+            reconcile_from(artifacts, &key(ArtifactKind::Package, "typescript")),
+            Reconciled {
+                present: true,
+                version: Some("5.9.2".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn test_reconcile_from_reports_absent_for_a_name_that_is_not_installed() {
+        let artifacts = vec![installed(ArtifactKind::Package, "lodash", "4.17.21")];
+        assert_eq!(
+            reconcile_from(artifacts, &key(ArtifactKind::Package, "does-not-exist")),
+            Reconciled {
+                present: false,
+                version: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_reconcile_from_does_not_match_the_same_name_of_another_kind() {
+        // The rule npm's hand-written copy had already lost.
+        let artifacts = vec![installed(ArtifactKind::Formula, "python", "3.14.2")];
+        assert_eq!(
+            reconcile_from(artifacts, &key(ArtifactKind::Cask, "python")),
+            Reconciled {
+                present: false,
+                version: None,
             }
         );
     }

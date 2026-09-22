@@ -1,6 +1,6 @@
 use crate::adapters::{
-    run_plan, second_token, uncheckable_candidate, url_path_segment, validate_package_name,
-    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    reconcile_from, run_plan, second_token, uncheckable_candidate, url_path_segment,
+    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -372,19 +372,7 @@ impl CargoAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         let artifacts = self.inventory(inst).await?;
-        match artifacts
-            .into_iter()
-            .find(|a| a.key.kind == key.kind && a.key.name == key.name)
-        {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        Ok(reconcile_from(artifacts, key))
     }
 }
 

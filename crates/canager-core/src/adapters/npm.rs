@@ -1,6 +1,6 @@
 use crate::adapters::{
-    lookup_failure_reason, run_plan, uncheckable_from_inventory, validate_package_name, Adapter,
-    AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    lookup_failure_reason, reconcile_from, run_plan, uncheckable_from_inventory,
+    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -354,16 +354,7 @@ impl NpmAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         let artifacts = self.inventory(inst).await?;
-        match artifacts.into_iter().find(|a| a.key.name == key.name) {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        Ok(reconcile_from(artifacts, key))
     }
 }
 
@@ -1155,6 +1146,43 @@ mod tests {
             .await
             .expect("reconcile absent");
         assert!(!absent.present);
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_ignores_an_artifact_of_a_different_kind() {
+        // Every npm artifact is a `Package` today, so this can only fail
+        // if npm's match rule stops looking at `kind` at all -- which is
+        // exactly the drift `reconcile_from` exists to prevent.
+        let runner = Arc::new(MockRunner::new());
+        let json = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+            .expect("read fixture");
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: json,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let inst = test_instance();
+        let wrong_kind = adapter
+            .reconcile(
+                &inst,
+                &ArtifactKey {
+                    instance_id: inst.id.clone(),
+                    kind: ArtifactKind::Tool,
+                    name: "npm".to_string(),
+                },
+            )
+            .await
+            .expect("reconcile wrong kind");
+        assert!(
+            !wrong_kind.present,
+            "a key of another kind must not match an installed package by name alone"
+        );
     }
 
     #[test]

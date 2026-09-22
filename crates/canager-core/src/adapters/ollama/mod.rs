@@ -1,8 +1,8 @@
 pub mod parse;
 
 use crate::adapters::{
-    run_plan, uncheckable_candidate, url_path_segment, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    reconcile_from, run_plan, uncheckable_candidate, url_path_segment, Adapter, AdapterError,
+    AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -455,19 +455,7 @@ impl OllamaAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         let artifacts = self.inventory(inst).await?;
-        match artifacts
-            .into_iter()
-            .find(|a| a.key.kind == key.kind && a.key.name == key.name)
-        {
-            Some(a) => Ok(Reconciled {
-                present: true,
-                version: Some(a.version),
-            }),
-            None => Ok(Reconciled {
-                present: false,
-                version: None,
-            }),
-        }
+        Ok(reconcile_from(artifacts, key))
     }
 }
 
