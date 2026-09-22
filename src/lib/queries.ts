@@ -17,6 +17,7 @@ import {
 } from "./api";
 import { refreshIntoCache } from "./events";
 import { queryKeys } from "./queryKeys";
+import { isAvailable } from "./sources";
 import type { IssuedPlan, OpRequest, OpSummary, Settings, Snapshot } from "./types";
 
 export { queryKeys };
@@ -106,7 +107,7 @@ export function useCancelOperation(): UseMutationResult<void, Error, number> {
  *
  * `open_ollama_app` only asks macOS to launch the app; the daemon's HTTP
  * port is not listening by the time the command resolves, so an immediate
- * refresh reliably finds the instance still unhealthy and leaves the very
+ * refresh reliably finds the instance still unavailable and leaves the very
  * notice the button was pressed to clear. One look after a grace period
  * would usually do, but a cold start can outlast it -- so there is a second,
  * later one, and then it stops. Bounded on purpose: a poll that kept going
@@ -135,8 +136,11 @@ export function useOpenOllamaApp(): UseMutationResult<void, Error, void> {
         // swallowed exactly as every other fire-and-forget caller does.
         await refreshIntoCache(queryClient, "ollama started").catch(() => {});
         const snapshot = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
+        // `isAvailable`, not a re-spelling of it: this poll is what
+        // decides whether the notice the button was pressed to clear goes
+        // away, so it has to ask the same question the notice asked.
         const up = snapshot?.instances.some(
-          (instance) => instance.adapter_id === "ollama" && instance.healthy,
+          (instance) => instance.adapter_id === "ollama" && isAvailable(instance),
         );
         if (up) return;
       }

@@ -8,8 +8,9 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
-import { READ_ONLY_NOTICE_KEYS } from "../lib/sources";
+import { ADAPTER_LABEL_KEYS, READ_ONLY_NOTICE_KEYS, sourceNoticesFor } from "../lib/sources";
 import { ArtifactRow } from "../components/ArtifactRow";
+import { SourceNotices } from "../components/SourceNotices";
 import { CommandPreview } from "../components/CommandPreview";
 import { Dialog } from "../components/ui/Dialog";
 import type {
@@ -114,9 +115,39 @@ export function UpdatesPage() {
     return byInstance;
   }, [snapshot]);
 
+  // What the sources themselves have to say, for the top of this page.
+  // Only the *state* axis: a read-only source's advice is already on every
+  // one of its rows (see `readOnlyNoticeKeyFor`), and repeating it as a
+  // banner would say the same thing twice. Whether Canager could reach a
+  // source at all is not on any row, because a source it could not reach
+  // may well have no rows.
+  const instanceNotices = useMemo(
+    () =>
+      (snapshot?.instances ?? []).flatMap((instance) => {
+        const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+        return sourceNoticesFor(instance, labelKey ? t(labelKey) : instance.adapter_id).filter(
+          (notice) => notice.axis === "state",
+        );
+      }),
+    [snapshot, t],
+  );
+
+  // A source that did not answer keeps the candidates it reported last
+  // time (`refresh` carries them forward), so these rows are on screen --
+  // and none of them may offer a button. `Session::issue_plan` refuses
+  // them in Rust whatever this says; offering an action and then refusing
+  // it is the exact pattern this phase exists to remove.
+  const unavailableInstances = useMemo(() => {
+    const ids = new Set<string>();
+    for (const instance of snapshot?.instances ?? []) {
+      if (instance.status.unavailable !== null) ids.add(instance.id);
+    }
+    return ids;
+  }, [snapshot]);
+
   /**
-   * Whether this row may offer an Update button and a checkbox. Two
-   * independent reasons it may not, and the wire now carries both:
+   * Whether this row may offer an Update button and a checkbox. Three
+   * independent reasons it may not, and the wire now carries all three:
    *
    * - `checkable: false` -- the adapter could not establish what the remote
    *   version is.
@@ -124,13 +155,21 @@ export function UpdatesPage() {
    *   candidates can still be built with `checkable: true` because the tool
    *   genuinely *can* check. Offering Update here produced nothing but a
    *   raw "unsupported: pip is read-only in Canager" string in a dialog.
+   * - a source that is not answering -- the two axes are independent, and
+   *   this one is new: a stopped Ollama is perfectly writable, and its
+   *   candidates are still listed because `refresh` carries the last
+   *   round's forward. `ollama pull` against a daemon that is not
+   *   listening cannot succeed.
    *
    * `read_only_reason` replaced a hardcoded list of adapter ids on the
-   * front end. `Session::issue_plan` refuses the same rows in Rust, so a
-   * stale snapshot costs an error message, not a wrong command.
+   * front end. `Session::issue_plan` applies the same conjunction in Rust
+   * (spec §2.5), so a stale snapshot costs an error message, not a wrong
+   * command.
    */
   const isActionable = (candidate: UpdateCandidate): boolean =>
-    candidate.checkable && !readOnlyReasons.has(candidate.key.instance_id);
+    candidate.checkable &&
+    !readOnlyReasons.has(candidate.key.instance_id) &&
+    !unavailableInstances.has(candidate.key.instance_id);
 
   const readOnlyReasonFor = (candidate: UpdateCandidate): ReadOnlyReason | undefined =>
     readOnlyReasons.get(candidate.key.instance_id);
@@ -148,7 +187,11 @@ export function UpdatesPage() {
   // a user with six outdated pip packages "0 updates available" above six
   // listed rows; folding them in would promise six Update buttons that are
   // not there.
-  const unmanageableCount = visibleUpdates.filter((u) => readOnlyReasonFor(u)).length;
+  // A row from a source that is not answering counts here too: it is
+  // listed, it is real, and Canager cannot act on it right now either.
+  const unmanageableCount = visibleUpdates.filter(
+    (u) => readOnlyReasonFor(u) || unavailableInstances.has(u.key.instance_id),
+  ).length;
   const actionableCount = visibleUpdates.length - unmanageableCount;
 
   // Only rows that are selected, still visible *and* still checkable count.
@@ -165,9 +208,10 @@ export function UpdatesPage() {
         (u) =>
           u.checkable &&
           !readOnlyReasons.has(u.key.instance_id) &&
+          !unavailableInstances.has(u.key.instance_id) &&
           selectedUpdates.includes(artifactKeyId(u.key)),
       ),
-    [visibleUpdates, selectedUpdates, readOnlyReasons],
+    [visibleUpdates, selectedUpdates, readOnlyReasons, unavailableInstances],
   );
 
   // One lookup table instead of a `snapshot.artifacts.find` per row: that
@@ -314,13 +358,33 @@ export function UpdatesPage() {
   }
 
   // Two different kinds of empty: the backend found no updates, or it found
-  // some and every one is on the ignore list. Only the first means the
-  // machine is up to date.
+  // some and every one is on the ignore list. Only the first can mean the
+  // machine is up to date -- and only when every source actually answered.
+  //
+  // The notices go *above* the early return, not after it. "Everything is
+  // up to date" over a stopped Ollama or a Homebrew whose catalogue could
+  // not be downloaded is precisely the lie this page used to tell: no
+  // candidates is exactly what an unreachable source produces, and the
+  // page read that silence as good news. When a source has something to
+  // say, the headline drops to what Canager can honestly claim -- nothing
+  // to update *in the sources it managed to check*.
   if (snapshot.updates.length === 0) {
-    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("updates.upToDate")}</p>;
+    return (
+      <div className="p-4">
+        <SourceNotices notices={instanceNotices} />
+        <p className="text-sm text-[var(--color-muted)]">
+          {instanceNotices.length === 0 ? t("updates.upToDate") : t("updates.noneCheckable")}
+        </p>
+      </div>
+    );
   }
   if (visibleUpdates.length === 0) {
-    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("updates.allIgnored")}</p>;
+    return (
+      <div className="p-4">
+        <SourceNotices notices={instanceNotices} />
+        <p className="text-sm text-[var(--color-muted)]">{t("updates.allIgnored")}</p>
+      </div>
+    );
   }
 
   const dialogOpen = batch !== null && batch.phase !== "planning" && hasIssuedPlan(batch);
@@ -332,6 +396,11 @@ export function UpdatesPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {instanceNotices.length > 0 ? (
+        <div className="px-4 pt-4">
+          <SourceNotices notices={instanceNotices} />
+        </div>
+      ) : null}
       {pageErrors.map((item) => (
         <p
           key={artifactKeyId(item.key)}

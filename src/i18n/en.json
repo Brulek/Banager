@@ -59,7 +59,8 @@
     "confirmUpdate": "Confirm",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
-    "submitFailed": "Could not start the update: {{message}}"
+    "submitFailed": "Could not start the update: {{message}}",
+    "noneCheckable": "No updates in the sources Canager could check"
   },
   "commandPreview": {
     "label": "This will run:",
@@ -76,12 +77,21 @@
     },
     "unreachable": {
       "title": "Canager can't reach {{source}} right now",
-      "description": "You're seeing what Canager found last time. Anything added or removed with {{source}} since then won't show up until Canager can reach it again."
+      "description": "{{source}} is installed but didn't answer. Below is what Canager saw last time; anything added or removed since then won't show up. Reopening Canager usually fixes this."
     },
     "ollamaNotRunning": {
       "title": "Ollama isn't running",
       "description": "Start the Ollama app to see its models and check for updates.",
       "action": "Open Ollama"
+    },
+    "notRunning": {
+      "title": "{{source}} isn't running",
+      "description": "Start {{source}}, then come back — Canager will list what's in it."
+    },
+    "indexMayBeStale": {
+      "title": "“Up to date” may not be accurate for Homebrew",
+      "description": "Canager couldn't download Homebrew's latest list of software, so there may be updates it can't see yet. Check your internet connection, then try again.",
+      "action": "Try again"
     }
   },
   "operations": {
@@ -167,11 +177,6 @@
       "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
       "retryFailed": "Trying again didn't work: {{message}}",
       "retry": "Try again"
-    },
-    "incompleteCheck": {
-      "title": "Some sources didn't answer",
-      "description_one": "Canager couldn't check {{count}} source, so what you see below may be incomplete.",
-      "description_other": "Canager couldn't check {{count}} sources, so what you see below may be incomplete."
     },
     "nothingInstalled": {
       "title": "Nothing installed yet",

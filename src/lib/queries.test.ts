@@ -13,7 +13,7 @@ import {
 import { refreshIntoCache } from "./events";
 import type { IssuedPlan, ManagerInstance, Snapshot } from "./types";
 
-function ollamaInstance(healthy: boolean): ManagerInstance {
+function ollamaInstance(running: boolean): ManagerInstance {
   return {
     id: "ollama:http://127.0.0.1:11434",
     adapter_id: "ollama",
@@ -21,9 +21,9 @@ function ollamaInstance(healthy: boolean): ManagerInstance {
     prefix: "/usr/local",
     scope: "User",
     version: null,
-    healthy,
     unverified_version: null,
     read_only_reason: null,
+    status: { unavailable: running ? null : "NotRunning", notes: [] },
   };
 }
 

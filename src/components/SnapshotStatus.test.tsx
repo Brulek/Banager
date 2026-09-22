@@ -78,17 +78,17 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Nothing for Canager to manage yet")).not.toBeInTheDocument();
   });
 
-  it("shows a distinct incomplete-check banner (not the stale-data banner) when no refresh has ever had every source answer", async () => {
-    // previous.refreshed_at is None from Snapshot::empty(): refresh()
-    // (crates/canager-core/src/session/refresh.rs) carries that None forward
-    // whenever stale is true, even though the refresh promise resolved and
-    // errors is non-empty. No check has ever had every source answer, so
-    // this must not read as "some data might be out of date" (the generic
-    // stale banner) — nothing below is out of date, it is incomplete.
+  it("shows the stale-data banner, and no separate incomplete-check one, when a source failed", async () => {
+    // There used to be a second banner here for `refreshed_at === null &&
+    // errors.length > 0` -- "no check has ever finished, and this one
+    // didn't either". `refresh()` now stamps `refreshed_at` whenever it
+    // ran (spec §2.4-1), so a snapshot with errors always has one and that
+    // branch could never fire again; it and its copy are gone. A refresh
+    // that failed for a source says so once, here.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
-        generation: 1,
-        refreshed_at: null,
+        generation: 412,
+        refreshed_at: 1700000500,
         stale: true,
         errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
       }),
@@ -100,39 +100,9 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
+    expect(await screen.findByText("Some data might be out of date")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
-    expect(screen.queryByText("Some data might be out of date")).not.toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-  });
-
-  it("does not claim this was the first check on a Mac that has refreshed many times with one permanently broken source", async () => {
-    // Six sources refresh perfectly, the seventh is permanently broken.
-    // `refreshed_at` is stamped only when *every* source succeeded, so it
-    // stays null across thousands of successful launches while `generation`
-    // climbs. Reading a null timestamp as "the first check has never
-    // completed" made this banner claim, forever, that this was a first
-    // launch.
-    vi.mocked(invoke).mockResolvedValue(
-      baseSnapshot({
-        generation: 412,
-        refreshed_at: null,
-        stale: true,
-        errors: [{ instance_id: "npm:/opt/homebrew/lib", message: "npm ls exited 1" }],
-      }),
-    );
-
-    renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
-    );
-
-    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
-    expect(
-      screen.getByText("Canager couldn't check 1 source, so what you see below may be incomplete."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("installed list")).toBeInTheDocument();
   });
 
   it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
@@ -155,15 +125,15 @@ describe("SnapshotStatus", () => {
   });
 
   it("keeps showing the data it has when a later refresh fails on a Mac that has refreshed before", async () => {
-    // Same permanently-broken-source Mac: `refreshed_at` is null forever, so
-    // gating the full-page load-failure surface on a null timestamp let one
+    // A Mac that has refreshed 412 times and whose npm is broken. Gating
+    // the full-page load-failure surface on the startup error alone let one
     // rejected refresh hide every artifact the other six sources found.
     // `generation > 0` says a refresh has committed data at least once, and
     // data in hand beats a full-page error.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
         generation: 412,
-        refreshed_at: null,
+        refreshed_at: 1700000500,
         stale: true,
         errors: [{ instance_id: "npm:/opt/homebrew/lib", message: "npm ls exited 1" }],
       }),
@@ -176,7 +146,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some sources didn't answer")).toBeInTheDocument();
+    expect(await screen.findByText("Some data might be out of date")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load what's installed")).not.toBeInTheDocument();
   });
@@ -301,9 +271,9 @@ describe("SnapshotStatus", () => {
             prefix: "/usr/local",
             scope: "User",
             version: null,
-            healthy: false,
             unverified_version: null,
             read_only_reason: null,
+            status: { unavailable: "NotRunning", notes: [] },
           },
         ],
       }),

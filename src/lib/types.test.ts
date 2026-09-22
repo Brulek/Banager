@@ -7,6 +7,7 @@ import type {
   Plan,
   OpSummary,
   ReadOnlyReason,
+  InstanceStatus,
   Settings,
 } from "./types";
 
@@ -34,7 +35,7 @@ describe("types", () => {
           prefix: "/opt/homebrew",
           scope: "User",
           version: "7.0.3",
-          healthy: true,
+          status: { unavailable: null, notes: [] },
           unverified_version: null,
           read_only_reason: null,
         },
@@ -104,6 +105,31 @@ describe("types", () => {
     expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable"]);
     const writable: ReadOnlyReason | null = null;
     expect(roundTrip(writable)).toBeNull();
+  });
+
+  it("spells InstanceStatus as an always-present object with bare-string variants", () => {
+    // `InstanceStatus` derives `Default` on the Rust side and is a plain
+    // struct field, so it is never absent and never null: an available
+    // source with nothing to report is `{unavailable: null, notes: []}`.
+    // Both spellings below have to match
+    // `crates/canager-core/src/model.rs` exactly -- nothing checks this at
+    // compile time, and `status.unavailable` reading `undefined` because
+    // the key moved would make every source look available, including the
+    // Ollama whose notice is the only way to start it.
+    const available: InstanceStatus = { unavailable: null, notes: [] };
+    expect(roundTrip(available)).toEqual({ unavailable: null, notes: [] });
+    expect(JSON.stringify(available)).toBe('{"unavailable":null,"notes":[]}');
+
+    const notRunning: InstanceStatus = { unavailable: "NotRunning", notes: [] };
+    const notResponding: InstanceStatus = {
+      unavailable: "NotResponding",
+      notes: ["IndexMayBeStale"],
+    };
+    expect(JSON.stringify(notRunning)).toBe('{"unavailable":"NotRunning","notes":[]}');
+    expect(JSON.stringify(notResponding)).toBe(
+      '{"unavailable":"NotResponding","notes":["IndexMayBeStale"]}',
+    );
+    expect(roundTrip(notResponding)).toEqual(notResponding);
   });
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {

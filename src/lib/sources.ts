@@ -49,25 +49,136 @@ export function canWrite(instance: ManagerInstance): boolean {
 }
 
 /**
- * Whether this source's group header on the Installed page renders a
- * `SourceNotice`: a read-only source's explanation, or the "Canager can't
- * reach it" warning that *every* unhealthy instance gets.
+ * Whether Canager reached this source on the last refresh. The front-end
+ * mirror of `ManagerInstance::available()`, and what `healthy: boolean`
+ * used to be -- except the wire now also says *why*, which is what lets
+ * the copy differ between "start it" and "it did not answer".
+ */
+export function isAvailable(instance: ManagerInstance): boolean {
+  return instance.status.unavailable === null;
+}
+
+/** Which axis a notice speaks for: what Canager may do, or what it knows. */
+export type SourceNoticeAxis = "capability" | "state";
+
+/**
+ * Something the notice offers to do about itself. An id, not a callback:
+ * this module stays pure so both pages can call it, and each page wires
+ * the id to its own mutation.
+ */
+export type SourceNoticeActionId = "openOllama" | "retry";
+
+/**
+ * One banner a source needs rendered, as data: which i18n keys say it,
+ * what to interpolate into them, and what (if anything) the user can do
+ * about it. No `t()` and no JSX, so the rule can be tested directly and,
+ * more to the point, so both pages answer from the same rule -- the
+ * Installed page's group headers and the Updates page's top notices used
+ * to be different code, which is how the Updates page came to say
+ * "Everything is up to date" for a source it had not managed to ask.
+ */
+export interface SourceNoticeSpec {
+  /** Stable React key: one instance can need more than one notice. */
+  id: string;
+  axis: SourceNoticeAxis;
+  variant: "info" | "warning";
+  titleKey: string;
+  descriptionKey: string;
+  /** Interpolation values, already in the user's language. */
+  values?: Record<string, string>;
+  /** What the notice offers to do about itself, if anything. */
+  action?: { id: SourceNoticeActionId; labelKey: string };
+}
+
+/**
+ * Every notice `instance` needs, in the order they should be rendered:
+ * capability first (what Canager may do at all), then state (what it
+ * managed to find out). `sourceLabel` is the source's name as the user
+ * reads it -- resolved by the caller through `ADAPTER_LABEL_KEYS`, because
+ * keeping `t()` out of here is what makes this testable and shareable.
  *
- * `!healthy` is not special-cased per adapter. Six adapters can report it --
- * brew, npm, uv, pipx, cargo and ollama -- and it means the same thing for
- * all of them: the CLI is on PATH but Canager could not talk to it. The
- * backend skips an unhealthy instance's fan-out, pushes no error and does
- * not mark the snapshot stale, keeping the instance in `snapshot.instances`
- * only so the UI can say so. While this read "ollama && !healthy", every
- * other unhealthy source's group was dropped instead and nothing anywhere
- * told the user their globally-installed packages had stopped being listed.
+ * The two axes are independent and both can apply at once: a read-only pip
+ * whose interpreter has gone missing is read-only *and* silent.
+ */
+export function sourceNoticesFor(
+  instance: ManagerInstance,
+  sourceLabel: string,
+): SourceNoticeSpec[] {
+  const notices: SourceNoticeSpec[] = [];
+
+  if (instance.read_only_reason !== null) {
+    const prefix = READ_ONLY_NOTICE_KEYS[instance.read_only_reason];
+    notices.push({
+      id: `${instance.id}:read-only`,
+      axis: "capability",
+      variant: "info",
+      titleKey: `${prefix}.title`,
+      descriptionKey: `${prefix}.description`,
+    });
+  }
+
+  const unavailable = instance.status.unavailable;
+  if (unavailable === "NotRunning") {
+    // Ollama is the only source Canager can start for the user, so it is
+    // the only one whose notice carries a button; every other source that
+    // reports NotRunning gets the same words without one, named through
+    // `sourceLabel` so it reads in the user's language.
+    notices.push(
+      instance.adapter_id === "ollama"
+        ? {
+            id: `${instance.id}:not-running`,
+            axis: "state",
+            variant: "warning",
+            titleKey: "sourceNotice.ollamaNotRunning.title",
+            descriptionKey: "sourceNotice.ollamaNotRunning.description",
+            action: { id: "openOllama", labelKey: "sourceNotice.ollamaNotRunning.action" },
+          }
+        : {
+            id: `${instance.id}:not-running`,
+            axis: "state",
+            variant: "warning",
+            titleKey: "sourceNotice.notRunning.title",
+            descriptionKey: "sourceNotice.notRunning.description",
+            values: { source: sourceLabel },
+          },
+    );
+  } else if (unavailable === "NotResponding") {
+    notices.push({
+      id: `${instance.id}:unreachable`,
+      axis: "state",
+      variant: "warning",
+      titleKey: "sourceNotice.unreachable.title",
+      descriptionKey: "sourceNotice.unreachable.description",
+      values: { source: sourceLabel },
+    });
+  }
+
+  for (const note of instance.status.notes) {
+    if (note === "IndexMayBeStale") {
+      notices.push({
+        id: `${instance.id}:index-may-be-stale`,
+        axis: "state",
+        variant: "warning",
+        titleKey: "sourceNotice.indexMayBeStale.title",
+        descriptionKey: "sourceNotice.indexMayBeStale.description",
+        action: { id: "retry", labelKey: "sourceNotice.indexMayBeStale.action" },
+      });
+    }
+  }
+
+  return notices;
+}
+
+/**
+ * Whether this source has anything to say at all -- exactly
+ * `sourceNoticesFor(...).length > 0`, expressed that way so the two can
+ * never drift.
  *
- * Exported rather than kept private to `InstalledPage` because
- * `SnapshotStatus` has to ask the same question: its zero-artifact empty
- * state replaces `children` entirely, so without this it would hide the very
- * notice that is the only thing an instance with no artifacts has to say.
- * One rule, one place -- duplicating it would let the two drift.
+ * `SnapshotStatus` asks this as well as the pages do: its zero-artifact
+ * empty state replaces `children` outright, so without it a Mac whose only
+ * source is a stopped Ollama shows "Nothing installed yet" and the Open
+ * Ollama button is unreachable. One rule, one place.
  */
 export function hasSourceNotice(instance: ManagerInstance): boolean {
-  return !canWrite(instance) || !instance.healthy;
+  return sourceNoticesFor(instance, "").length > 0;
 }

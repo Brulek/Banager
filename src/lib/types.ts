@@ -49,6 +49,26 @@ export interface UpdateCandidate {
  * keeps a shape test over both spellings.
  */
 export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
+/**
+ * Why a source Canager knows about cannot answer right now. Mirrors
+ * `Unavailable` in crates/canager-core/src/model.rs, same bare-string rule
+ * as `ReadOnlyReason`: a new Rust variant does not fail this union at
+ * compile time, it lands in whatever default branch reads it.
+ */
+export type Unavailable = "NotRunning" | "NotResponding";
+/** Mirrors `InstanceNote`; payload-free on purpose, so a bare string. */
+export type InstanceNote = "IndexMayBeStale";
+/**
+ * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
+ * is always an object, never null, and `notes` is `[]` rather than absent
+ * when there are none. There is deliberately no per-instance
+ * `refreshed_at` -- see the note in the spec's §2.4 for why one would
+ * rebroadcast the snapshot on every refresh.
+ */
+export interface InstanceStatus {
+  unavailable: Unavailable | null;
+  notes: InstanceNote[];
+}
 export interface ManagerInstance {
   id: string;
   adapter_id: string;
@@ -56,10 +76,15 @@ export interface ManagerInstance {
   prefix: string;
   scope: "User" | "System";
   version: string | null;
-  healthy: boolean;
   unverified_version: string | null;
   /** `null` means writable; see `canWrite()` in src/lib/sources.ts. */
   read_only_reason: ReadOnlyReason | null;
+  /**
+   * The state axis, which replaced `healthy: boolean`: the same answer
+   * with a reason attached. `isAvailable()` in src/lib/sources.ts is the
+   * boolean it used to be.
+   */
+  status: InstanceStatus;
 }
 export interface Plan {
   request: OpRequest;

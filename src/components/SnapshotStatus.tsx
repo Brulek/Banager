@@ -45,14 +45,14 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     // whatever `get_snapshot` returned. Without this branch the app would
     // sit on the loading branch below forever, with no error and no way out.
     //
-    // `generation === 0`, not `refreshed_at === null`: a refresh only stamps
-    // `refreshed_at` when *every* source answered, so on a Mac with one
-    // permanently broken source the timestamp is null for the rest of the
-    // machine's life. Gated on that, a single rejected refresh would replace
-    // six sources' worth of real data with a full-page error. `generation`
-    // is 0 only while the snapshot is still `Snapshot::empty()` -- nothing
-    // has ever been committed -- which is exactly when a failed refresh
-    // leaves us with nothing to show.
+    // `generation === 0`, not `refreshed_at === null`: only `generation`
+    // says whether anything has ever been *committed*, and data in hand
+    // beats a full-page error. A Mac with no package manager at all
+    // refreshes successfully and commits nothing new, so it sits at
+    // generation 0 with a stamped timestamp; a Mac that has committed real
+    // data and then fails a refresh keeps showing that data, with the
+    // stale banner below over it. Generation 0 is the one case where a
+    // failed refresh leaves nothing at all to show.
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
@@ -83,67 +83,17 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     // root refusal entirely, and because a process's euid never changes, no
     // later refresh could undo it — the app sat on "Loading…" forever.
     //
-    // `generation === 0` and `refreshed_at === null` are both needed, and
-    // neither implies the other. `commit()`
-    // (crates/canager-core/src/session/refresh.rs) bumps `generation` only
-    // when the refresh's *content* differs from the previous snapshot, so a
-    // Mac with no package manager at all refreshes successfully and stays at
-    // generation 0 forever — only the stamped `refreshed_at` separates
-    // "checked, found nothing" from "not checked yet". Conversely
-    // `refreshed_at` stays null for the life of a Mac with one permanently
-    // broken source, while `generation` climbs. Together they mean what this
-    // branch needs: nothing has been committed *and* nothing has been
-    // checked.
+    // `generation === 0` and `refreshed_at === null` are both needed.
+    // `commit()` (crates/canager-core/src/session/refresh.rs) bumps
+    // `generation` only when the refresh's *content* differs from the
+    // previous snapshot, so a Mac with no package manager at all refreshes
+    // successfully and stays at generation 0 forever — only the stamped
+    // `refreshed_at` separates "checked, found nothing" from "not checked
+    // yet". `refresh()` stamps that timestamp whenever it ran, whatever
+    // the sources said, so `Snapshot::empty()` is now the only snapshot
+    // that can carry a null one: together the two still mean exactly what
+    // this branch needs, nothing committed *and* nothing checked.
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
-  }
-
-  if (snapshot.refreshed_at === null && snapshot.errors.length > 0) {
-    // No refresh has ever had *every* source answer, and the latest one
-    // didn't either. `refresh()` (crates/canager-core/src/session/refresh.rs)
-    // stamps `refreshed_at` only when nothing went stale, and carries the
-    // previous value forward otherwise; a null one therefore means exactly
-    // "no complete check has ever happened", and nothing more. The refresh
-    // promise resolved (so this isn't a load-failed case) and `detect` may
-    // well be "Found" (so this isn't the no-sources case either).
-    //
-    // This is *not* the generic stale banner below: with no complete check
-    // behind it there is no known-good earlier state for the data to be out
-    // of date against. What the user has is a partial answer, so the copy
-    // says incomplete, not stale.
-    //
-    // It deliberately no longer says "first". The front end cannot tell a
-    // genuine first launch from the thousandth launch of a Mac with one
-    // permanently broken source — both carry a null `refreshed_at`, a
-    // non-empty `errors` and no way to distinguish them — and `generation`
-    // cannot stand in: `errors` takes part in `same_content`, so any refresh
-    // that produced errors has already bumped `generation` past 0, making
-    // `generation === 0 && errors.length > 0` unreachable. Saying only what
-    // is true of both is the honest option. Laid out the same way as the
-    // generic stale banner below (a local `h-full` flex column, not plain
-    // siblings under `<main>`) so this banner-above-content combination
-    // doesn't overflow `<main>` either — see that branch's comment for why.
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <EmptyState
-          variant="banner"
-          title={t("emptyStates.incompleteCheck.title")}
-          description={
-            refreshMutation.isError
-              ? t("emptyStates.refreshFailed.retryFailed", {
-                  message: refreshMutation.error.message,
-                })
-              : t("emptyStates.incompleteCheck.description", {
-                  count: snapshot.errors.length,
-                })
-          }
-          action={{
-            label: t("emptyStates.refreshFailed.retry"),
-            onClick: () => refreshMutation.mutate(),
-          }}
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      </div>
-    );
   }
 
   if (snapshot.detect === "Missing") {
@@ -168,6 +118,17 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
   }
 
   if (snapshot.stale && snapshot.errors.length > 0) {
+    // The only "something went wrong" banner there is. There used to be a
+    // second one above, for `refreshed_at === null && errors.length > 0`:
+    // "no check has ever finished, and this one didn't either". It is
+    // unreachable now that `refresh()` stamps `refreshed_at` whenever it
+    // ran (spec §2.4-1) -- only `Snapshot::empty()` carries a null one, and
+    // it carries no errors either -- so it and its copy are gone rather
+    // than left to rot. Note this branch needs `errors`, not `stale`
+    // alone: `stale` is also true when a source merely reported that it is
+    // not running, and that is the per-source notice's business, not a
+    // page-wide banner's.
+    //
     // The banner variant is meant to "sit above still-visible content"
     // without hiding any of it, but `children` (e.g. InstalledPage) sizes
     // itself with `h-full` — 100% of the nearest positioned ancestor with a

@@ -49,7 +49,7 @@ const snapshot: Snapshot = {
       prefix: "/opt/homebrew",
       scope: "User",
       version: "7.0.3",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: null,
     },
@@ -60,7 +60,7 @@ const snapshot: Snapshot = {
       prefix: "/usr",
       scope: "User",
       version: "26.2.1",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: "ByDesign",
     },
@@ -71,7 +71,7 @@ const snapshot: Snapshot = {
       prefix: "/usr/local",
       scope: "User",
       version: "12.0.2",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: "PrefixNotWritable",
     },
@@ -100,8 +100,21 @@ const snapshot: Snapshot = {
   errors: [],
 };
 
+const stoppedOllama: Snapshot["instances"][number] = {
+  id: "ollama:http://127.0.0.1:11434",
+  adapter_id: "ollama",
+  exe_path: "/usr/local/bin/ollama",
+  prefix: "/usr/local",
+  scope: "User",
+  version: "0.34.1",
+  status: { unavailable: "NotRunning", notes: [] },
+  unverified_version: null,
+  read_only_reason: null,
+};
+
 let settings: Settings;
 let updates: Snapshot["updates"];
+let instances: Snapshot["instances"];
 // Every plan_operation answer carries a fresh server-issued id: a PlanId is
 // single-use, so the multi-select tests below must prove that each submit
 // sent a *different* id, not the same one twice.
@@ -162,6 +175,7 @@ beforeEach(() => {
     include_self_updating: false,
   };
   updates = snapshot.updates;
+  instances = snapshot.instances;
   nextPlanId = 1;
   planFailures = {};
   submitFailures = {};
@@ -176,7 +190,7 @@ beforeEach(() => {
   releaseSave = [];
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-    if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, updates });
+    if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, updates, instances });
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "set_settings") {
       if (saveFailure !== null) return Promise.reject(saveFailure);
@@ -784,5 +798,78 @@ describe("UpdatesPage", () => {
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("Everything is up to date");
+  });
+  it("does not say everything is up to date when a source never answered", async () => {
+    // The lie this page used to tell. No candidates is exactly what an
+    // unreachable source produces, and the early return read that silence
+    // as good news: a Mac with Ollama stopped was told, in so many words,
+    // that everything was up to date -- about a source Canager had not
+    // managed to ask.
+    updates = [];
+    instances = [...snapshot.instances, stoppedOllama];
+    const { findByText, queryByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("Ollama isn't running");
+    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    // And the notice is the working one, not a copy of its words: the
+    // button that starts the daemon comes with it.
+    fireEvent.click(getByRole("button", { name: "Open Ollama" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+  });
+
+  it("warns that Homebrew's catalogue may be behind, with a way to retry", async () => {
+    // A note, not an unavailability: brew answered, and what it said may
+    // simply be out of date. "Everything is up to date" is the one
+    // sentence that must not appear over it.
+    updates = [];
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: null, notes: ["IndexMayBeStale"] } },
+      ...snapshot.instances.slice(1),
+    ];
+    const { findByText, queryByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("“Up to date” may not be accurate for Homebrew");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+  });
+
+  it("shows a silent source's notice above the list when there are updates as well", async () => {
+    instances = [...snapshot.instances, stoppedOllama];
+    const { findByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    expect(await findByText("Ollama isn't running")).toBeInTheDocument();
+  });
+
+  it("offers no Update button for a row carried forward from a source that isn't answering", async () => {
+    // `refresh` keeps an unavailable source's last known candidates rather
+    // than dropping them, so this row is on screen -- and `ollama pull`
+    // against a daemon that is not listening cannot succeed. Offering the
+    // button and then refusing the click is the pattern this phase exists
+    // to remove; the count says what is really on offer instead.
+    instances = [...snapshot.instances, stoppedOllama];
+    updates = [
+      ...snapshot.updates,
+      {
+        key: qwenKey,
+        current: "5642e97495e1",
+        target: "a1b2c3d4e5f6",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    const row = (await findByText("qwen3:8b")).closest("li, div") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Update" })).toBeNull();
+    expect(within(row).queryByRole("checkbox")).toBeNull();
+    expect(await findByText("2 updates available")).toBeInTheDocument();
+    expect(await findByText("1 more can't be updated here")).toBeInTheDocument();
+    // The two brew rows still have their buttons: one silent source does
+    // not disarm the page.
+    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
   });
 });

@@ -19,7 +19,7 @@ const snapshot: Snapshot = {
       prefix: "/opt/homebrew",
       scope: "User",
       version: "7.0.3",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: null,
     },
@@ -85,7 +85,7 @@ const pipSnapshot: Snapshot = {
       prefix: "/usr",
       scope: "User",
       version: "26.2.1",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: "ByDesign",
     },
@@ -335,15 +335,14 @@ describe("InstalledPage", () => {
     expect(rowAt(1)?.style.height).toBe("");
   });
 
-  it("names an unhealthy source and says Canager cannot reach it, instead of dropping its group", async () => {
-    // brew, npm, uv, pipx, cargo and ollama can all report healthy: false,
-    // and it means the same thing for all six: the CLI is on PATH but
+  it("names a silent source and says Canager cannot reach it, instead of dropping its group", async () => {
+    // brew, npm, uv, pipx and cargo can all report `NotResponding`,
+    // and it means the same thing for all five: the CLI is on PATH but
     // Canager could not talk to it. The backend keeps such an instance in
     // `snapshot.instances` precisely so the UI can say so -- it pushes no
-    // error and does not mark the snapshot stale, so this notice is the only
-    // place the user can learn that their global npm packages are missing
-    // from the list rather than gone.
-    const unhealthyNpmSnapshot: Snapshot = {
+    // error, so this notice is the only place the user can learn that their
+    // global npm packages are missing from the list rather than gone.
+    const silentNpmSnapshot: Snapshot = {
       ...snapshot,
       instances: [
         ...snapshot.instances,
@@ -354,14 +353,14 @@ describe("InstalledPage", () => {
           prefix: "/opt/homebrew/lib",
           scope: "User",
           version: "11.2.0",
-          healthy: false,
+          status: { unavailable: "NotResponding", notes: [] },
           unverified_version: null,
           read_only_reason: null,
         },
       ],
     };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(unhealthyNpmSnapshot);
+      if (cmd === "get_snapshot") return Promise.resolve(silentNpmSnapshot);
       if (cmd === "get_settings") return Promise.resolve(settings);
       return Promise.resolve(undefined);
     });
@@ -388,7 +387,7 @@ describe("InstalledPage", () => {
           prefix: "/usr/local",
           scope: "User",
           version: "12.0.2",
-          healthy: true,
+          status: { unavailable: null, notes: [] },
           unverified_version: null,
           read_only_reason: "PrefixNotWritable",
         },
@@ -443,7 +442,7 @@ describe("InstalledPage", () => {
           prefix: "/usr/local",
           scope: "User",
           version: null,
-          healthy: true,
+          status: { unavailable: null, notes: [] },
           unverified_version: null,
           read_only_reason: null,
         },
@@ -480,9 +479,9 @@ describe("InstalledPage", () => {
 
   // Rendered through SnapshotStatus, exactly as App.tsx does. Rendering
   // InstalledPage on its own would bypass the gate the real app always goes
-  // through, and this snapshot -- an unhealthy Ollama and nothing installed
+  // through, and this snapshot -- a stopped Ollama and nothing installed
   // anywhere -- is precisely the one that gate used to swallow.
-  it("shows a not-running notice with an Open Ollama button when the instance is unhealthy", async () => {
+  it("shows a not-running notice with an Open Ollama button when the daemon is not running", async () => {
     const ollamaSnapshot: Snapshot = {
       generation: 1,
       detect: "Found",
@@ -494,7 +493,7 @@ describe("InstalledPage", () => {
           prefix: "/usr/local",
           scope: "User",
           version: null,
-          healthy: false,
+          status: { unavailable: "NotRunning", notes: [] },
           unverified_version: null,
           read_only_reason: null,
         },
@@ -522,5 +521,64 @@ describe("InstalledPage", () => {
     fireEvent.click(getByRole("button", { name: "Open Ollama" }));
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+  });
+  it("keeps a stopped source's rows on screen but offers no Uninstall on them", async () => {
+    // `refresh` carries an unavailable source's last known artifacts
+    // forward, which is what makes the notice's "below is what Canager saw
+    // last time" true instead of a sentence above an empty group. Every
+    // one of those rows would otherwise carry an Uninstall button, and
+    // `ollama rm` against a daemon that is not listening cannot succeed --
+    // spec §2.5's conjunction, on the button rather than only in the
+    // backend's refusal.
+    const stoppedOllamaSnapshot: Snapshot = {
+      generation: 4,
+      detect: "Found",
+      instances: [
+        {
+          id: "ollama:http://127.0.0.1:11434",
+          adapter_id: "ollama",
+          exe_path: "/usr/local/bin/ollama",
+          prefix: "/usr/local",
+          scope: "User",
+          version: "0.34.1",
+          status: { unavailable: "NotRunning", notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model", name: "qwen3:8b" },
+          display_name: "qwen3:8b",
+          version: "5642e97495e1",
+          reason: "Requested",
+          description: null,
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
+      ],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: true,
+      errors: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(stoppedOllamaSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByRole } = renderWithProviders(
+      <SnapshotStatus>
+        <InstalledPage />
+      </SnapshotStatus>,
+    );
+
+    await findByText("Ollama isn't running");
+    expect(await findByText("qwen3:8b")).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Uninstall" })).toBeNull();
   });
 });

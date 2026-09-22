@@ -21,7 +21,7 @@ const snapshot: Snapshot = {
       prefix: "/opt/homebrew",
       scope: "User",
       version: "7.0.3",
-      healthy: true,
+      status: { unavailable: null, notes: [] },
       unverified_version: null,
       read_only_reason: null,
     },

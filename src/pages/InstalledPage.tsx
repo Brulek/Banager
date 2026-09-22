@@ -1,21 +1,17 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSnapshot, useSettings, useOpenOllamaApp } from "../lib/queries";
+import { useSnapshot, useSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
-import { SourceNotice } from "../components/SourceNotice";
+import { SourceNotices } from "../components/SourceNotices";
 import { UninstallDialog } from "../components/UninstallDialog";
-import {
-  ADAPTER_LABEL_KEYS,
-  READ_ONLY_NOTICE_KEYS,
-  canWrite,
-  hasSourceNotice,
-} from "../lib/sources";
-import type { InstalledArtifact, OpRequest, ReadOnlyReason } from "../lib/types";
+import { ADAPTER_LABEL_KEYS, canWrite, isAvailable, sourceNoticesFor } from "../lib/sources";
+import type { SourceNoticeSpec } from "../lib/sources";
+import type { InstalledArtifact, OpRequest } from "../lib/types";
 
 // A group header on its own is one line. A group header that also carries a
-// SourceNotice (a read-only source's explanation, an unhealthy source's
+// SourceNotice (a read-only source's explanation, a silent source's
 // can't-reach-it warning) is a title plus a banner -- a title line, a
 // description line and, for Ollama, a button.
 // Both numbers are only the virtualizer's first guess: every row reports its
@@ -28,30 +24,35 @@ type ListItem =
       type: "group";
       instanceId: string;
       label: string;
-      adapterId: string;
-      healthy: boolean;
-      // Why this source cannot be changed, or null when it can. Carried on
-      // the item rather than re-derived at render time so the notice, the
-      // row's Uninstall button and the virtualizer's height estimate all
-      // answer from the same value.
-      readOnlyReason: ReadOnlyReason | null;
-      // `hasSourceNotice(instance)`, decided once while the list is built.
-      // The virtualizer's `estimateSize` needs it and has only the
-      // `ListItem`, and recomputing the rule there is how the two would
-      // drift.
-      hasNotice: boolean;
+      // Everything this source has to say, decided once while the list is
+      // built by the one rule both pages share (`sourceNoticesFor`).
+      // Carried on the item rather than re-derived at render time because
+      // the virtualizer's `estimateSize` needs to know whether this group
+      // has a banner and has only the `ListItem` to ask -- recomputing the
+      // rule there is how the two would drift.
+      notices: SourceNoticeSpec[];
       // Task 4's unverified-version badge. Kept here deliberately: this
       // task edits Task 4's file rather than replacing it.
       unverifiedVersion: string | null;
     }
-  | { type: "artifact"; artifact: InstalledArtifact; writable: boolean }
+  | {
+      type: "artifact";
+      artifact: InstalledArtifact;
+      // Whether this row may offer Uninstall: writable *and* answering.
+      // Both halves, because they are independent -- a stopped Ollama is
+      // perfectly writable, and its rows are on screen only because
+      // `refresh` carried them forward from the last time it answered.
+      // `Session::issue_plan` enforces the same conjunction in Rust (spec
+      // §2.5); this is what stops the button being offered in the first
+      // place.
+      actionable: boolean;
+    }
   | { type: "toggle"; instanceId: string; hiddenCount: number };
 
 export function InstalledPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
-  const openOllamaApp = useOpenOllamaApp();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
   const showDependencies = useUiStore((s) => s.showDependencies);
@@ -88,24 +89,21 @@ export function InstalledPage() {
     const result: ListItem[] = [];
     for (const instance of snapshot.instances) {
       const artifacts = byInstance.get(instance.id) ?? [];
-      // A source can need a notice (a read-only source's explanation, a
-      // source Canager cannot reach) even with nothing installed to list
-      // under it -- most visibly, an unhealthy Ollama daemon that has
-      // nothing to report yet. An unhealthy instance never reaches the
-      // artifact fan-out at all, so its notice is the *only* thing its
-      // group ever has to show.
-      const needsNotice = hasSourceNotice(instance);
-      if (artifacts.length === 0 && !needsNotice) continue;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-      const writable = canWrite(instance);
+      const label = labelKey ? t(labelKey) : instance.adapter_id;
+      // A source can need a notice (a read-only source's explanation, a
+      // source Canager could not reach) even with nothing installed to
+      // list under it -- most visibly an Ollama daemon that is not
+      // running and has never been inventoried, whose notice is then the
+      // only thing its group has to show.
+      const notices = sourceNoticesFor(instance, label);
+      if (artifacts.length === 0 && notices.length === 0) continue;
+      const actionable = canWrite(instance) && isAvailable(instance);
       result.push({
         type: "group",
         instanceId: instance.id,
-        label: labelKey ? t(labelKey) : instance.adapter_id,
-        adapterId: instance.adapter_id,
-        healthy: instance.healthy,
-        readOnlyReason: instance.read_only_reason,
-        hasNotice: needsNotice,
+        label,
+        notices,
         unverifiedVersion: instance.unverified_version,
       });
       // `!== "Dependency"`, not `=== "Requested"`: pip can only ever report
@@ -116,12 +114,12 @@ export function InstalledPage() {
       const primary = artifacts.filter((a) => a.reason !== "Dependency");
       const dependencies = artifacts.filter((a) => a.reason === "Dependency");
       for (const artifact of primary) {
-        result.push({ type: "artifact", artifact, writable });
+        result.push({ type: "artifact", artifact, actionable });
       }
       if (dependencies.length > 0) {
         if (showDependencies) {
           for (const artifact of dependencies) {
-            result.push({ type: "artifact", artifact, writable });
+            result.push({ type: "artifact", artifact, actionable });
           }
         } else {
           result.push({ type: "toggle", instanceId: instance.id, hiddenCount: dependencies.length });
@@ -136,7 +134,9 @@ export function InstalledPage() {
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => {
       const item = items[index];
-      return item?.type === "group" && item.hasNotice ? NOTICE_GROUP_ESTIMATE : ROW_ESTIMATE;
+      return item?.type === "group" && item.notices.length > 0
+        ? NOTICE_GROUP_ESTIMATE
+        : ROW_ESTIMATE;
     },
   });
 
@@ -192,49 +192,13 @@ export function InstalledPage() {
                         </span>
                       ) : null}
                     </p>
-                    {/* Two read-only reasons, two pieces of advice. pip
-                        cannot be driven at all, so the answer is pipx or
-                        uv; an npm with a root-owned prefix works fine and
-                        the answer is to reinstall Node with Homebrew.
-                        `READ_ONLY_NOTICE_KEYS` keeps the pairing in one
-                        place, shared with the Updates page. */}
-                    {item.readOnlyReason ? (
-                      <SourceNotice
-                        variant="info"
-                        title={t(`${READ_ONLY_NOTICE_KEYS[item.readOnlyReason]}.title`)}
-                        description={t(
-                          `${READ_ONLY_NOTICE_KEYS[item.readOnlyReason]}.description`,
-                        )}
-                      />
-                    ) : null}
-                    {/* An unhealthy instance means the same thing for every
-                        adapter: the CLI is there but Canager could not talk
-                        to it. Ollama is the one source the user can do
-                        something about from here, so it keeps its own copy
-                        and its start button; every other source gets the
-                        general notice, named through ADAPTER_LABEL_KEYS so
-                        it reads in the user's language. */}
-                    {!item.healthy ? (
-                      item.adapterId === "ollama" ? (
-                        <SourceNotice
-                          variant="warning"
-                          title={t("sourceNotice.ollamaNotRunning.title")}
-                          description={t("sourceNotice.ollamaNotRunning.description")}
-                          action={{
-                            label: t("sourceNotice.ollamaNotRunning.action"),
-                            onClick: () => openOllamaApp.mutate(),
-                          }}
-                        />
-                      ) : (
-                        <SourceNotice
-                          variant="warning"
-                          title={t("sourceNotice.unreachable.title", { source: item.label })}
-                          description={t("sourceNotice.unreachable.description", {
-                            source: item.label,
-                          })}
-                        />
-                      )
-                    ) : null}
+                    {/* Every banner this source needs, in one place and
+                        from one rule, so the Installed and the Updates
+                        page cannot disagree about what a source has to
+                        say: which read-only reason applies (pip's advice
+                        is not npm's), whether it answered at all, and
+                        whether its answer can be trusted. */}
+                    <SourceNotices notices={item.notices} />
                   </div>
                 ) : item.type === "toggle" ? (
                   <button
@@ -270,9 +234,9 @@ export function InstalledPage() {
                     badgeVariant={
                       updatableIds.has(artifactKeyId(item.artifact.key)) ? "info" : "neutral"
                     }
-                    primaryActionLabel={item.writable ? t("installed.uninstall") : undefined}
+                    primaryActionLabel={item.actionable ? t("installed.uninstall") : undefined}
                     onPrimaryAction={
-                      !item.writable
+                      !item.actionable
                         ? undefined
                         : () =>
                             setUninstallTarget({
