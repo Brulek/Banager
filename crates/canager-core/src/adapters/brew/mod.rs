@@ -44,6 +44,17 @@ pub struct BrewAdapter {
     /// the default `|| unsafe { libc::geteuid() }`, and tests can swap in
     /// `|| 0` via the `#[cfg(test)]`-only `with_euid_fn`.
     euid_fn: fn() -> u32,
+    /// How to read `SUDO_ASKPASS` for the cask install/upgrade
+    /// passthrough. Same fn-pointer trick as `euid_fn`, and for the same
+    /// reason: the value lives in the process environment, and a test that
+    /// wants a known one used to `set_var` it. Rust runs tests in threads
+    /// within one binary, so that was a write to process-global state
+    /// racing every other test in the binary that reads it — including
+    /// every other cask plan, which reads exactly this variable. Injecting
+    /// the reader instead means no test has to touch the environment at
+    /// all. Production still reads the real variable, and still reads it
+    /// per plan rather than once at startup.
+    askpass_fn: fn() -> Option<String>,
 }
 
 impl BrewAdapter {
@@ -70,6 +81,7 @@ impl BrewAdapter {
             update_locks: Mutex::new(HashMap::new()),
             update_ttl: Duration::from_secs(6 * 3600),
             euid_fn: || unsafe { libc::geteuid() },
+            askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
         }
     }
 
@@ -84,6 +96,14 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_euid_fn(mut self, euid_fn: fn() -> u32) -> BrewAdapter {
         self.euid_fn = euid_fn;
+        self
+    }
+
+    /// Test-only hook to pin what `SUDO_ASKPASS` reads as, so no test has
+    /// to mutate the process environment other tests are reading from.
+    #[cfg(test)]
+    fn with_askpass_fn(mut self, askpass_fn: fn() -> Option<String>) -> BrewAdapter {
+        self.askpass_fn = askpass_fn;
         self
     }
 
@@ -406,7 +426,7 @@ impl BrewAdapter {
                 };
                 let needs_password = matches!(req.artifact_kind, ArtifactKind::Cask);
                 let mut env = self.env_vec();
-                if let Ok(askpass) = std::env::var("SUDO_ASKPASS") {
+                if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
                 Ok(Plan {
@@ -473,7 +493,7 @@ impl BrewAdapter {
                 };
                 let needs_password = matches!(req.artifact_kind, ArtifactKind::Cask);
                 let mut env = self.env_vec();
-                if let Ok(askpass) = std::env::var("SUDO_ASKPASS") {
+                if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
                 Ok(Plan {
@@ -1817,11 +1837,19 @@ mod plan_execute_tests {
         assert!(!missing.present);
     }
 
+    /// This used to `set_var("SUDO_ASKPASS", ...)` and then `remove_var`
+    /// it. Cargo runs a binary's tests in threads by default, and the two
+    /// other cask plans in this same binary read that variable while this
+    /// one was writing it: a genuine data race on the process environment,
+    /// the kind that fails once in fifty CI runs and costs someone an
+    /// afternoon. The adapter now reads the variable through an injectable
+    /// reader, so the test states the value it wants and leaves the
+    /// environment alone.
     #[tokio::test]
     async fn test_plan_passes_through_sudo_askpass_for_cask_install() {
-        std::env::set_var("SUDO_ASKPASS", "/tmp/fake-askpass.sh");
         let runner = Arc::new(MockRunner::new());
-        let adapter = BrewAdapter::new(runner);
+        let adapter =
+            BrewAdapter::new(runner).with_askpass_fn(|| Some("/tmp/fake-askpass.sh".to_string()));
         let inst = test_instance();
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1830,10 +1858,34 @@ mod plan_execute_tests {
             name: "claudebar".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        std::env::remove_var("SUDO_ASKPASS");
         assert!(plan.env.contains(&(
             "SUDO_ASKPASS".to_string(),
             "/tmp/fake-askpass.sh".to_string()
         )));
+    }
+
+    /// The other half, which the old env-mutating test could not express
+    /// without unsetting a variable the developer running the tests may
+    /// legitimately have set: with no `SUDO_ASKPASS` in the environment,
+    /// the plan must not invent one. The command preview the user reads
+    /// before confirming shows this env, so a phantom entry there is a
+    /// lie about what is going to run.
+    #[tokio::test]
+    async fn test_plan_adds_no_askpass_when_the_variable_is_not_set() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner).with_askpass_fn(|| None);
+        let inst = test_instance();
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: "claudebar".to_string(),
+        };
+        let plan = adapter.plan(&inst, &req).await.expect("plan");
+        assert!(
+            !plan.env.iter().any(|(k, _)| k == "SUDO_ASKPASS"),
+            "plan env must not carry an askpass that is not set: {:?}",
+            plan.env
+        );
     }
 }
