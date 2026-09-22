@@ -432,6 +432,64 @@ describe("UpdatesPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("says why a row can't be checked even when its source is also read-only", async () => {
+    // pip is read-only *and* reaches PyPI, so a failed lookup produces
+    // rows where both facts are true at once -- and the read-only advice
+    // used to win outright, leaving no trace that Canager had not managed
+    // to check anything. The row would then read "use pipx or uv" with a
+    // "Read-only" badge, exactly as it does on a good day, while behind it
+    // the version information was simply missing. Both have to be on the
+    // row: the advice says why there will never be a button, the reason
+    // says why there is no version either.
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.2.1",
+        channel: "Native",
+        checkable: false,
+        warnings: [{ Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" }],
+      },
+    ];
+    const { findByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    expect(
+      await findByText(/Canager couldn't check this one for updates just now\./),
+    ).toBeInTheDocument();
+    expect(
+      await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//),
+    ).toBeInTheDocument();
+    expect(
+      await findByText(/Install Python command-line tools with pipx or uv instead/),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves a warning that was written for this audience unwrapped", async () => {
+    // Two kinds of text end up on an uncheckable row. `NonRegistrySource`
+    // is written for this audience already and reads as a whole sentence;
+    // a `Message` is whatever the tool printed, in whatever language it
+    // printed it, and on its own it is a row whose entire description is
+    // a line of somebody's stderr.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+      },
+    ];
+    const { findByText } = renderWithProviders(<UpdatesPage />);
+
+    expect(
+      await findByText(
+        "This wasn't installed from crates.io, so Canager can't check it for updates.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("tells an npm user to install Node with Homebrew, not to use pipx or uv", async () => {
     // Both sources are read-only, for different reasons, and the wire now
     // says which. Before `read_only_reason` the page hardcoded pip's

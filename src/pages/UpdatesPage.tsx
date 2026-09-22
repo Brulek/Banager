@@ -9,7 +9,7 @@ import {
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ADAPTER_LABEL_KEYS, READ_ONLY_NOTICE_KEYS, sourceNoticesFor } from "../lib/sources";
-import { warningTexts } from "../lib/warnings";
+import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
 import { CommandPreview } from "../components/CommandPreview";
@@ -249,6 +249,47 @@ export function UpdatesPage() {
     );
   };
 
+  /**
+   * What an uncheckable row says about *why* it is uncheckable.
+   *
+   * Two kinds of text arrive in `warnings`. A warning with a key of its
+   * own (`NonRegistrySource`) was written for this audience and already
+   * reads as a whole sentence, so it is rendered as-is. A `Message` is
+   * raw text off the wire -- a tool's stderr, an HTTP error -- kept
+   * verbatim on purpose (spec §6 backlogs localising it), which on its
+   * own makes the row's entire description a line of somebody's stderr.
+   * Wrapping it in one localised sentence is what turns that into
+   * something a non-programmer can read: first what happened, then the
+   * detail they can pass on to someone who can act on it.
+   */
+  const cannotCheckText = (candidate: UpdateCandidate): string =>
+    candidate.warnings
+      .map((warning) => {
+        const raw = warningMessage(warning);
+        return raw === null
+          ? warningText(t, warning)
+          : t("updates.cannotCheckDetail", { message: raw });
+      })
+      .filter((text): text is string => text !== null && text !== "")
+      .join(" ");
+
+  /**
+   * The row's description. The two axes are independent and both can be
+   * true at once, so both get said: a read-only source's advice explains
+   * why this row will never have a button, and an uncheckable row's
+   * reason explains why it has no version information either. Showing
+   * only the first -- which is what happened before, because pip is
+   * read-only *and* reaches PyPI -- left a row that looks exactly like a
+   * good day's row while Canager had in fact learned nothing about it.
+   */
+  const rowDescription = (candidate: UpdateCandidate, noticeKey: string | undefined): string => {
+    const parts: string[] = [];
+    if (noticeKey) parts.push(t(`${noticeKey}.description`));
+    if (!candidate.checkable) parts.push(cannotCheckText(candidate));
+    else if (!noticeKey) parts.push(descriptionFor(candidate));
+    return parts.filter((part) => part !== "").join(" ");
+  };
+
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
   }
@@ -454,24 +495,20 @@ export function UpdatesPage() {
               name={candidate.key.name}
               // `checkable: false` means the adapter could not establish what
               // the remote version is -- a cargo crate installed from git or a
-              // path, an Ollama model whose manifest could not be read, a pipx
-              // tool whose PyPI lookup failed. Such a row must offer no action
-              // and no selection: "Update" on a git-sourced crate would run
-              // `cargo install --force {name}` against the crates.io crate of
-              // the same name, which is a different package. The reason lives
-              // in `warnings`, so it becomes the row's description.
-              description={
-                // The same guidance the Installed page's group header for
-                // this source carries, and it differs by reason: pip's rows
-                // point at pipx or uv, an unwritable npm prefix's rows point
-                // at installing Node with Homebrew. One shared map
-                // (src/lib/sources.ts) so the two pages cannot disagree.
-                noticeKey
-                  ? t(`${noticeKey}.description`)
-                  : candidate.checkable
-                    ? descriptionFor(candidate)
-                    : warningTexts(t, candidate.warnings).join(" ")
-              }
+              // path, an Ollama model whose manifest could not be read, any
+              // source whose registry lookup could not be made. Such a row
+              // must offer no action and no selection: "Update" on a
+              // git-sourced crate would run `cargo install --force {name}`
+              // against the crates.io crate of the same name, which is a
+              // different package. The reason lives in `warnings`, and
+              // `rowDescription` is what puts it somewhere the user reads
+              // -- read-only guidance included, since a read-only source
+              // can fail a lookup too.
+              description={rowDescription(candidate, noticeKey)}
+              // Capability first when both apply: "Read-only" is the fact
+              // that no button will ever appear on this row, whatever the
+              // next refresh finds. That a lookup also failed is on the
+              // row already, in words, via `rowDescription`.
               badgeText={
                 noticeKey
                   ? t("updates.readOnly")

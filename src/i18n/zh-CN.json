@@ -46,6 +46,7 @@
     "ignoreFailed": "没能保存已忽略的更新:{{message}}",
     "available": "更新",
     "cannotCheck": "无法检查",
+    "cannotCheckDetail": "Canager 这次没能检查它有没有更新。{{message}}",
     "readOnly": "只读",
     "warnings_other": "{{count}} 条警告",
     "versionChange": "{{current}} → {{target}}",
