@@ -9,7 +9,18 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "net"] }
+# `macros` stays here and cannot move to dev-dependencies: the library's own
+# non-test code uses `tokio::select!` in `runner::real`'s read loop and its
+# post-kill drain, and again in `ops`'s cancellation wait, plus `tokio::pin!`
+# in `runner::real`. Dropping it fails the build of the lib itself.
+#
+# `rt-multi-thread` is not here, and was: nothing in the library needs a
+# multi-thread runtime -- it never builds one, and the `rt` that
+# `tokio::spawn` does need arrives with `tokio-util`'s `rt` feature below.
+# The `#[tokio::main]` example and the tests are the only things that want
+# the multi-thread flavour, and both are dev targets, so it is declared
+# under [dev-dependencies].
+tokio = { version = "1", features = ["macros", "process", "io-util", "time", "sync", "net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 # Already in Cargo.lock as a transitive dependency of reqwest/url, so this
@@ -33,3 +44,6 @@ getrandom = "0.4"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
+# Tests and the `brew_smoke` example run on a multi-thread runtime; the
+# library does not. See the note on the tokio dependency above.
+tokio = { version = "1", features = ["rt-multi-thread"] }
