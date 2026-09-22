@@ -8,6 +8,10 @@
 
 mod plans;
 mod refresh;
+/// Re-exported for `crate::testing::expire_issued_plans` alone: how long
+/// an issued plan stays submittable, so that helper can age one past it
+/// without duplicating the number.
+pub(crate) use plans::PLAN_LIFETIME;
 /// Shared `#[cfg(test)]` scaffolding (`non_root_env`/`root_env`, common
 /// `FakeAdapter` boilerplate) for the test modules in this file, `plans.rs`
 /// and `refresh.rs`. See its module doc for why it exists.
@@ -189,7 +193,10 @@ pub struct Session {
     /// `plans::StoredPlan`, not the `IssuedPlan` the caller previews: the
     /// snapshot generation a plan was built against is server-side
     /// bookkeeping that the wire type has no business carrying.
-    issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
+    /// `pub(crate)` only so `crate::testing::expire_issued_plans` can age
+    /// entries: expiry is monotonic on purpose, so a test in another
+    /// crate has no clock it can move instead.
+    pub(crate) issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     now_fn: Option<fn() -> i64>,
 }
 

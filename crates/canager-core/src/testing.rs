@@ -70,3 +70,21 @@ pub fn unavailable_instance(
         ..manager_instance(adapter_id, id)
     }
 }
+
+/// Ages every plan `session` is currently holding past its lifetime, so
+/// that the next `submit` of one reports `SubmitError::Expired`.
+///
+/// Exists for the Tauri shell's own tests, which are a separate crate and
+/// cannot reach into `Session` themselves. A plan's lifetime is measured
+/// on the monotonic clock precisely so that nothing anyone can set
+/// decides it (see `session::plans::StoredPlan`), which leaves a test no
+/// clock to move and no ten minutes to spare.
+pub fn expire_issued_plans(session: &crate::session::Session) {
+    let lifetime = crate::session::PLAN_LIFETIME + std::time::Duration::from_secs(1);
+    for stored in session.issued_plans.lock().unwrap().values_mut() {
+        stored.issued_monotonic = stored
+            .issued_monotonic
+            .checked_sub(lifetime)
+            .expect("the monotonic clock is at least a plan lifetime past its origin");
+    }
+}

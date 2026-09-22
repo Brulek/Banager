@@ -6,6 +6,21 @@ use super::{IssuedPlan, PlanId, Session, SubmitError};
 use crate::adapters::AdapterError;
 use crate::events::OpId;
 use crate::model::OpRequest;
+use std::time::{Duration, Instant};
+
+/// How long a previewed plan stays submittable. Ten minutes is long
+/// enough to read a command and think about it, short enough that the
+/// world it was planned against has probably not moved underneath it --
+/// and `submit`'s actionability re-check covers the part of "probably"
+/// this cannot.
+pub(crate) const PLAN_LIFETIME: Duration = Duration::from_secs(600);
+
+/// Whether a plan issued `elapsed` ago is too old to submit. Exactly
+/// `PLAN_LIFETIME` is still submittable; the boundary is inclusive, as it
+/// has been since the lifetime was introduced.
+fn has_expired(elapsed: Duration) -> bool {
+    elapsed > PLAN_LIFETIME
+}
 
 /// A fresh, unpredictable `PlanId`: 16 bytes from the OS CSPRNG, hex-encoded
 /// to 32 characters. Replaces the previous sequential `AtomicU64` counter,
@@ -37,9 +52,19 @@ fn random_plan_id() -> PlanId {
 /// It is deliberately not a field on `IssuedPlan`: that type crosses the
 /// IPC boundary to the front end, which neither needs this nor may
 /// influence it.
-pub(super) struct StoredPlan {
+pub(crate) struct StoredPlan {
     pub(super) issued: IssuedPlan,
     pub(super) generation: u64,
+    /// When this plan was issued, read from a clock nothing can set.
+    ///
+    /// Expiry is a *lifetime* -- "ten minutes have gone by since you
+    /// previewed this" -- and the system clock does not measure that. It
+    /// can be dragged backwards, which used to keep an expired preview
+    /// executable indefinitely (`now - issued_at` staying under 600, or
+    /// going negative), and forwards, which expired a preview the user
+    /// had just been handed. `issued.issued_at`'s Unix seconds stay for
+    /// display; nothing decides anything with them.
+    pub(crate) issued_monotonic: Instant,
 }
 
 impl Session {
@@ -47,9 +72,10 @@ impl Session {
     /// then stores the resulting `Plan` under a fresh `PlanId` and returns
     /// both as an `IssuedPlan`. The caller previews `issued.plan`; nothing
     /// in it is ever accepted back -- `submit` takes only `issued.id`. Every
-    /// call also sweeps any entry in `issued_plans` older than 600 seconds
-    /// (Task 13), so a plan the operator previewed and then never submitted
-    /// does not sit in the map forever.
+    /// call also sweeps any entry in `issued_plans` that has outlived
+    /// `PLAN_LIFETIME` (Task 13), so a plan the operator previewed and then
+    /// never submitted does not sit in the map forever. Both the sweep and
+    /// `submit`'s expiry read `issued_monotonic`, not the wall clock.
     pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
         // Generation and instance are read under one lock, so the number
         // stored below really is the generation this exact instance came
@@ -102,18 +128,20 @@ impl Session {
         let plan = adapter.plan(&instance, req).await?;
         let id = random_plan_id();
         let issued_at = self.now();
+        let issued_monotonic = Instant::now();
         let issued = IssuedPlan {
             id: id.clone(),
             plan,
             issued_at,
         };
         let mut plans = self.issued_plans.lock().unwrap();
-        plans.retain(|_, p| issued_at - p.issued.issued_at <= 600);
+        plans.retain(|_, p| !has_expired(p.issued_monotonic.elapsed()));
         plans.insert(
             id,
             StoredPlan {
                 issued: issued.clone(),
                 generation,
+                issued_monotonic,
             },
         );
         Ok(issued)
@@ -123,10 +151,11 @@ impl Session {
     /// `plan_id` and submits exactly that stored `Plan`. Fails with
     /// `SubmitError::Unknown` if `plan_id` was never issued, was already
     /// submitted once, or was already swept out by a later `issue_plan`
-    /// call, and `SubmitError::Expired` if it is still present but was
-    /// issued more than 600 seconds ago -- the client can never influence
-    /// what actually runs, since nothing it sends is used except this
-    /// opaque id.
+    /// call, and `SubmitError::Expired` if it is still present but has
+    /// outlived `PLAN_LIFETIME` by the monotonic clock -- the client can
+    /// never influence what actually runs, since nothing it sends is used
+    /// except this opaque id, and nothing it can set decides how old that
+    /// id is.
     ///
     /// It also re-runs `issue_plan`'s actionability gate (spec §2.5)
     /// before handing anything to the `OperationManager`, because
@@ -157,7 +186,7 @@ impl Session {
             let mut plans = self.issued_plans.lock().unwrap();
             plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
         };
-        if self.now() - stored.issued.issued_at > 600 {
+        if has_expired(stored.issued_monotonic.elapsed()) {
             return Err(SubmitError::Expired);
         }
         self.recheck_actionable(&stored)?;
@@ -193,6 +222,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use super::{has_expired, PLAN_LIFETIME};
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
@@ -205,6 +235,7 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicI64, Ordering};
     use std::sync::Arc;
+    use std::time::Duration;
     use tokio_util::sync::CancellationToken;
 
     /// Lets a test suspend `FakeAdapter::plan` exactly where the real
@@ -777,19 +808,46 @@ mod tests {
         assert!(session.operations().is_empty());
     }
 
-    static FAKE_NOW: AtomicI64 = AtomicI64::new(0);
+    /// Ages the plan stored under `id` by rewinding the monotonic reading
+    /// it was issued at.
+    ///
+    /// There is no injection seam for `Instant` the way `now_fn` injects
+    /// the wall clock, and that is the point of the fix rather than an
+    /// oversight: nothing a test -- or a user, or an NTP step -- can set
+    /// may decide how old a plan is. Reaching into `issued_plans` is how
+    /// a test ages one without waiting ten real minutes; it is in the
+    /// same module tree as the field it writes.
+    fn age_issued_plan(session: &Arc<Session>, id: &str, by: Duration) {
+        let mut plans = session.issued_plans.lock().unwrap();
+        let stored = plans.get_mut(id).expect("the plan is still held");
+        stored.issued_monotonic = stored
+            .issued_monotonic
+            .checked_sub(by)
+            .expect("the monotonic clock is at least `by` past its origin");
+    }
 
-    fn fake_now() -> i64 {
-        FAKE_NOW.load(Ordering::SeqCst)
+    #[test]
+    fn test_the_lifetime_boundary_is_inclusive() {
+        // The one part of expiry a monotonic clock cannot be asked about
+        // to the second in a test, kept honest as a predicate instead.
+        assert!(!has_expired(Duration::ZERO));
+        assert!(!has_expired(PLAN_LIFETIME));
+        assert!(has_expired(PLAN_LIFETIME + Duration::from_secs(1)));
     }
 
     #[tokio::test]
-    async fn test_submit_rejects_a_plan_issued_more_than_600s_ago() {
+    async fn test_submit_rejects_a_plan_that_has_outlived_its_lifetime() {
+        // Its own clock: these tests run concurrently in one process,
+        // so a shared static would be one test setting another's time.
+        static EXPIRY_NOW: AtomicI64 = AtomicI64::new(0);
+        fn now() -> i64 {
+            EXPIRY_NOW.load(Ordering::SeqCst)
+        }
         const T0: i64 = 1_758_000_000;
-        FAKE_NOW.store(T0, Ordering::SeqCst);
+        EXPIRY_NOW.store(T0, Ordering::SeqCst);
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], Some(fake_now));
+        let session = Session::with_adapters(sink, vec![adapter], Some(now));
         session
             .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
@@ -798,17 +856,21 @@ mod tests {
         let too_late = session.issue_plan(&req).await.expect("issue_plan");
         assert_eq!(
             on_time.issued_at, T0,
-            "issued_at must come from the injected clock"
+            "issued_at still comes from the injected clock: it is what the \
+             preview displays, it just no longer decides anything"
         );
         assert_eq!(too_late.issued_at, T0);
 
-        FAKE_NOW.store(T0 + 600, Ordering::SeqCst);
         session
             .submit(on_time.id)
-            .expect("a plan exactly 600 s old is still submittable");
+            .expect("a plan issued a moment ago is submittable");
         assert_eq!(session.operations().len(), 1);
 
-        FAKE_NOW.store(T0 + 601, Ordering::SeqCst);
+        age_issued_plan(
+            &session,
+            &too_late.id,
+            PLAN_LIFETIME + Duration::from_secs(1),
+        );
         assert_eq!(
             session.submit(too_late.id.clone()),
             Err(SubmitError::Expired)
@@ -818,13 +880,12 @@ mod tests {
             1,
             "an expired plan must never reach the OperationManager"
         );
-
-        FAKE_NOW.store(T0, Ordering::SeqCst);
         assert_eq!(
             session.submit(too_late.id.clone()),
-            Err(SubmitError::Unknown)
+            Err(SubmitError::Unknown),
+            "and it is consumed by the rejection, like every other submit"
         );
-        assert_eq!(session.operations().len(), 1);
+
         let fresh = session.issue_plan(&req).await.expect("issue_plan again");
         assert_ne!(fresh.id, too_late.id);
         session
@@ -833,10 +894,79 @@ mod tests {
         assert_eq!(session.operations().len(), 2);
     }
 
-    static SWEEP_TEST_NOW: AtomicI64 = AtomicI64::new(2_000_000_000);
+    #[tokio::test]
+    async fn test_winding_the_system_clock_back_does_not_keep_an_expired_plan_alive() {
+        // Expiry used to be `now() - issued_at > 600` over Unix seconds.
+        // Set the Mac's clock back -- by hand, or by an NTP correction
+        // after the battery died -- and that difference stays small, or
+        // goes negative, for as long as you like: a preview from any
+        // point in the past stays executable, which is exactly what a
+        // ten-minute lifetime exists to prevent.
+        // Its own clock: these tests run concurrently in one process,
+        // so a shared static would be one test setting another's time.
+        static BACKWARDS_NOW: AtomicI64 = AtomicI64::new(0);
+        fn now() -> i64 {
+            BACKWARDS_NOW.load(Ordering::SeqCst)
+        }
+        const T0: i64 = 1_758_000_000;
+        BACKWARDS_NOW.store(T0, Ordering::SeqCst);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(now));
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_plan(&install_request("fake:1"))
+            .await
+            .expect("issue_plan");
 
-    fn sweep_test_now() -> i64 {
-        SWEEP_TEST_NOW.load(Ordering::SeqCst)
+        // Ten minutes of real time go by, and the system clock is set
+        // back an hour in the middle of them.
+        age_issued_plan(&session, &issued.id, PLAN_LIFETIME + Duration::from_secs(1));
+        BACKWARDS_NOW.store(T0 - 3_600, Ordering::SeqCst);
+
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::Expired),
+            "a plan is as old as the time that has passed, not as old as the \
+             system clock says"
+        );
+        assert!(session.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_winding_the_system_clock_forward_does_not_expire_a_fresh_plan() {
+        // The same bug from the other side, and the one a user is far
+        // more likely to meet: the clock jumps forward (a laptop waking
+        // from sleep with a stale RTC, an NTP step) and the preview they
+        // are looking at is refused as "older than 10 minutes" seconds
+        // after it was drawn.
+        // Its own clock: these tests run concurrently in one process,
+        // so a shared static would be one test setting another's time.
+        static FORWARDS_NOW: AtomicI64 = AtomicI64::new(0);
+        fn now() -> i64 {
+            FORWARDS_NOW.load(Ordering::SeqCst)
+        }
+        const T0: i64 = 1_758_000_000;
+        FORWARDS_NOW.store(T0, Ordering::SeqCst);
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(now));
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        let issued = session
+            .issue_plan(&install_request("fake:1"))
+            .await
+            .expect("issue_plan");
+
+        FORWARDS_NOW.store(T0 + 100_000, Ordering::SeqCst);
+
+        session
+            .submit(issued.id)
+            .expect("a plan issued a moment ago stays submittable however far the clock jumps");
+        assert_eq!(session.operations().len(), 1);
     }
 
     #[tokio::test]
@@ -844,14 +974,15 @@ mod tests {
     {
         let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
         let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], Some(sweep_test_now));
+        // No injected clock: the sweep does not read one any more.
+        let session = Session::with_adapters(sink, vec![adapter], None);
         session
             .refresh(&test_support::non_root_env(), &CheckOptions::default())
             .await;
         let req = install_request("fake:1");
 
         let stale = session.issue_plan(&req).await.expect("issue_plan (stale)");
-        SWEEP_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+        age_issued_plan(&session, &stale.id, PLAN_LIFETIME + Duration::from_secs(1));
         let _fresh = session
             .issue_plan(&req)
             .await

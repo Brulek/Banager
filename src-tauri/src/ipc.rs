@@ -328,7 +328,7 @@ mod tests {
         Outcome, Plan, Reconciled, ResourceLock, SearchHit,
     };
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
 
@@ -1058,17 +1058,13 @@ mod tests {
     #[tokio::test]
     async fn test_submit_operation_impl_rejects_an_expired_plan() {
         // F1: a plan previewed too long ago must be re-previewed, not run
-        // blind. Simulates 601 seconds passing between issue_plan and
-        // submit via an injectable clock — `Session::{new,with_adapters}`'s
-        // `now_fn` seam exists specifically so tests like this one do not
-        // need to actually wait 10 minutes.
-        static EXPIRED_PLAN_TEST_NOW: AtomicI64 = AtomicI64::new(1_700_000_000);
-        fn expired_plan_test_now() -> i64 {
-            EXPIRED_PLAN_TEST_NOW.load(Ordering::SeqCst)
-        }
-
-        let (state, execute_calls, _check_options_calls) =
-            state_with_fake_adapter_and_now(Some(expired_plan_test_now));
+        // blind. A plan's lifetime is measured on the monotonic clock --
+        // moving the injected `now_fn` forward used to simulate this and
+        // deliberately no longer can, since a system clock the user (or
+        // NTP) can step must not decide whether a destructive preview is
+        // still live. `testing::expire_issued_plans` ages what the
+        // session is holding instead.
+        let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1080,10 +1076,10 @@ mod tests {
             .await
             .expect("plan_operation_impl");
 
-        EXPIRED_PLAN_TEST_NOW.fetch_add(601, Ordering::SeqCst);
+        canager_core::testing::expire_issued_plans(&state.session);
 
         let err = submit_operation_impl(&state, issued.id)
-            .expect_err("a plan older than 600 seconds must be rejected");
+            .expect_err("a plan older than its lifetime must be rejected");
         assert!(
             err.contains("older than 10 minutes"),
             "expected the Expired-plan error, got: {err}"
