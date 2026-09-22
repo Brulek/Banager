@@ -116,13 +116,18 @@ export function UpdatesPage() {
     return byInstance;
   }, [snapshot]);
 
-  // Which sources have a row on this page. Only these get their capability
-  // notice: "pip is read-only" is not news on a page listing two Homebrew
-  // updates.
-  const instancesWithRows = useMemo(
-    () => new Set(visibleUpdates.map((u) => u.key.instance_id)),
-    [visibleUpdates],
-  );
+  // How many rows each source has on this page. Two notices need it: only
+  // a source with rows here gets its capability notice ("pip is read-only"
+  // is not news on a page listing two Homebrew updates), and a silent
+  // source's copy turns on whether its carried-forward rows actually
+  // exist.
+  const rowsByInstance = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const update of visibleUpdates) {
+      counts.set(update.key.instance_id, (counts.get(update.key.instance_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [visibleUpdates]);
 
   // What the sources themselves have to say, for the top of this page.
   //
@@ -147,11 +152,14 @@ export function UpdatesPage() {
     () =>
       (snapshot?.instances ?? []).flatMap((instance) => {
         const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-        return sourceNoticesFor(instance, labelKey ? t(labelKey) : instance.adapter_id).filter(
-          (notice) => notice.axis === "state" || instancesWithRows.has(instance.id),
-        );
+        const rows = rowsByInstance.get(instance.id) ?? 0;
+        return sourceNoticesFor(
+          instance,
+          labelKey ? t(labelKey) : instance.adapter_id,
+          rows,
+        ).filter((notice) => notice.axis === "state" || rows > 0);
       }),
-    [snapshot, t, instancesWithRows],
+    [snapshot, t, rowsByInstance],
   );
 
   // A source that did not answer keeps the candidates it reported last

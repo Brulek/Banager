@@ -84,7 +84,8 @@
     },
     "unreachable": {
       "title": "Canager can't reach {{source}} right now",
-      "description": "{{source}} is installed but didn't answer. Below is what Canager saw last time; anything added or removed since then won't show up. Reopening Canager usually fixes this."
+      "description": "{{source}} is installed but didn't answer, so Canager doesn't know what's in it right now.",
+    "descriptionWithRows": "{{source}} is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing."
     },
     "refusesAsRoot": {
       "title": "{{source}} is installed, but it won't run this way",

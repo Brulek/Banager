@@ -99,10 +99,22 @@ export interface SourceNoticeSpec {
  *
  * The two axes are independent and both can apply at once: a read-only pip
  * whose interpreter has gone missing is read-only *and* silent.
+ *
+ * `rowsOnScreen` is how many rows for this source the caller is about to
+ * draw underneath the notice, and it changes one sentence: a source that
+ * did not answer keeps its last known rows, and the copy that describes
+ * them is a lie when there are none. That is not a corner case. The
+ * snapshot is in memory only -- `Session::new` starts from
+ * `Snapshot::empty()` and nothing is written to disk -- so on the first
+ * refresh after every launch there is nothing to carry forward, and a
+ * source whose CLI fails outright (cargo, when `cargo --version` does)
+ * has nothing to carry forward ever. It defaults to 0, the copy that
+ * claims nothing: a caller that has not counted must not promise rows.
  */
 export function sourceNoticesFor(
   instance: ManagerInstance,
   sourceLabel: string,
+  rowsOnScreen = 0,
 ): SourceNoticeSpec[] {
   const notices: SourceNoticeSpec[] = [];
 
@@ -143,7 +155,16 @@ export function sourceNoticesFor(
       axis: "state",
       variant: "warning",
       titleKey: "sourceNotice.unreachable.title",
-      descriptionKey: "sourceNotice.unreachable.description",
+      // Two sentences for one state, chosen by what is actually on screen.
+      // Neither offers a way out: the one it used to offer ("Reopening
+      // Canager usually fixes this") is simply wrong for a source that
+      // will fail the same way on the next launch, and promising a
+      // recovery that may not happen is the pattern this phase exists to
+      // remove.
+      descriptionKey:
+        rowsOnScreen > 0
+          ? "sourceNotice.unreachable.descriptionWithRows"
+          : "sourceNotice.unreachable.description",
       values: { source: sourceLabel },
     });
   } else if (unavailable === "RefusesAsRoot") {
@@ -261,6 +282,8 @@ export function notActionableMessage(
   if (reason.unavailable === "NotRunning") {
     parts.push(t("sourceNotice.notRunning.description", { source: sourceLabel }));
   } else if (reason.unavailable === "NotResponding") {
+    // The self-contained half of the pair: a refusal has no rows under it,
+    // so the sentence about what is listed would make no sense here.
     parts.push(t("sourceNotice.unreachable.description", { source: sourceLabel }));
   } else if (reason.unavailable === "RefusesAsRoot") {
     parts.push(t("sourceNotice.refusesAsRoot.description", { source: sourceLabel }));

@@ -365,10 +365,52 @@ describe("InstalledPage", () => {
       return Promise.resolve(undefined);
     });
 
-    const { findByText } = renderWithProviders(<InstalledPage />);
+    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
     expect(await findByText("Canager can't reach npm right now")).toBeInTheDocument();
+    // Nothing was carried forward for npm -- and nothing ever is on the
+    // first refresh after a launch, because the snapshot is in memory
+    // only (`Session::new` starts from `Snapshot::empty()`). The notice
+    // used to say "Below is what Canager saw last time" over an empty
+    // group, which for a source whose CLI simply fails is every launch,
+    // forever.
+    expect(
+      await findByText(
+        "npm is installed but didn't answer, so Canager doesn't know what's in it right now.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/What's listed here/)).not.toBeInTheDocument();
+    // And no promise of a recovery that may never come.
+    expect(queryByText(/Reopening Canager/)).not.toBeInTheDocument();
+  });
+
+  it("says what is listed is last time's answer when a silent source did carry rows forward", async () => {
+    // The other half of the same sentence. `refresh` keeps an unavailable
+    // source's last known artifacts, so once there has been a good
+    // refresh these rows are real and the user needs telling how old they
+    // are.
+    const silentBrewSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+      ],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(silentBrewSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
+
+    await findByText("jq");
+    expect(
+      await findByText(
+        "Homebrew is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/doesn't know what's in it right now/)).not.toBeInTheDocument();
   });
 
   it("gives a root-owned npm prefix its own notice and no Uninstall button", async () => {

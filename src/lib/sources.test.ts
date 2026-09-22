@@ -123,10 +123,33 @@ describe("sourceNoticesFor", () => {
     const [notice] = sourceNoticesFor(
       instance({ status: { unavailable: "NotResponding", notes: [] } }),
       "Homebrew",
+      4,
     );
     expect(notice.axis).toBe("state");
     expect(notice.titleKey).toBe("sourceNotice.unreachable.title");
+    expect(notice.descriptionKey).toBe("sourceNotice.unreachable.descriptionWithRows");
     expect(notice.values).toEqual({ source: "Homebrew" });
+  });
+
+  it("does not promise carried-forward rows when the page has none to show", () => {
+    // The snapshot is in memory only -- `Session::new` starts from
+    // `Snapshot::empty()` and nothing is persisted -- so on the first
+    // refresh after every launch there is nothing to carry forward. A
+    // source whose CLI simply fails (cargo, when `cargo --version` does)
+    // hits this on every single launch, and the notice used to say
+    // "Below is what Canager saw last time" over an empty group.
+    const [notice] = sourceNoticesFor(
+      instance({ status: { unavailable: "NotResponding", notes: [] } }),
+      "Homebrew",
+      0,
+    );
+    expect(notice.descriptionKey).toBe("sourceNotice.unreachable.description");
+    // And the default is the copy that claims nothing: a caller that does
+    // not know how many rows it is about to draw must not promise any.
+    expect(
+      sourceNoticesFor(instance({ status: { unavailable: "NotResponding", notes: [] } }), "x")[0]
+        .descriptionKey,
+    ).toBe("sourceNotice.unreachable.description");
   });
 
   it("warns that a stale index makes up-to-date unreliable, with a way to retry", () => {

@@ -80,7 +80,8 @@
     },
     "unreachable": {
       "title": "Canager 现在连不上 {{source}}",
-      "description": "{{source}} 装着,但没有应答。下面是 Canager 上次看到的内容,之后的变化不会显示。重新打开 Canager 通常就能恢复。"
+      "description": "{{source}} 装着,但没有应答,所以 Canager 现在不知道它里面有什么。",
+    "descriptionWithRows": "{{source}} 装着,但没有应答。这里列出的是 Canager 上次问到时看到的内容,之后添加或删除的都不会显示。"
     },
     "refusesAsRoot": {
       "title": "{{source}} 装着,但这样启动用不了",

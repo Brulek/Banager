@@ -96,7 +96,15 @@ export function InstalledPage() {
       // list under it -- most visibly an Ollama daemon that is not
       // running and has never been inventoried, whose notice is then the
       // only thing its group has to show.
-      const notices = sourceNoticesFor(instance, label);
+      //
+      // How many rows this group is about to draw is part of what the
+      // notice says: "what's listed here is last time's data" is a lie
+      // over an empty group, and an empty group is exactly what a silent
+      // source has on the first refresh after every launch, because the
+      // snapshot is never persisted. The count is the filtered one on
+      // purpose -- it describes what is on screen, which is what the
+      // sentence is about.
+      const notices = sourceNoticesFor(instance, label, artifacts.length);
       if (artifacts.length === 0 && notices.length === 0) continue;
       const actionable = canWrite(instance) && isAvailable(instance);
       result.push({

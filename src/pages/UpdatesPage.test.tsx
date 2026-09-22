@@ -1070,6 +1070,48 @@ describe("UpdatesPage", () => {
     expect(await findByText("Ollama isn't running")).toBeInTheDocument();
   });
 
+  it("tells the truth about carried-forward rows on this page, both ways round", async () => {
+    // The notice is above a list, so what it says about that list has to
+    // match it. Homebrew is silent and its two candidates were carried
+    // forward, so they are last time's answer and the user needs telling.
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+      ...snapshot.instances.slice(1),
+    ];
+    const withRows = renderWithProviders(<UpdatesPage />);
+
+    await withRows.findByText("glib");
+    expect(
+      await withRows.findByText(
+        "Homebrew is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+      ),
+    ).toBeInTheDocument();
+    withRows.unmount();
+
+    // And the cold start, which is every launch: the snapshot is in
+    // memory only, so the first refresh has nothing to carry forward and
+    // the same notice sat above an empty group promising rows.
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const coldStart = renderWithProviders(<UpdatesPage />);
+
+    await coldStart.findByText("urllib3");
+    expect(
+      await coldStart.findByText(
+        "Homebrew is installed but didn't answer, so Canager doesn't know what's in it right now.",
+      ),
+    ).toBeInTheDocument();
+    expect(coldStart.queryByText(/What's listed here/)).not.toBeInTheDocument();
+  });
+
   it("offers no Update button for a row carried forward from a source that isn't answering", async () => {
     // `refresh` keeps an unavailable source's last known candidates rather
     // than dropping them, so this row is on screen -- and `ollama pull`
