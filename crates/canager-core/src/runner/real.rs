@@ -582,4 +582,84 @@ mod tests {
             "the timeout must bound the whole run, not just the reads; took {elapsed:?}"
         );
     }
+
+    /// A unique path under the temp dir, so tests that create files on
+    /// disk cannot collide with each other or with a previous run.
+    fn unique_temp_path(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "canager-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[tokio::test]
+    async fn test_a_program_that_is_not_there_reports_not_found() {
+        // Not exotic: this is what the user hits when Homebrew (or pipx,
+        // or uv) is uninstalled from a terminal while Canager is open and
+        // still holding the path it detected at startup. The operation
+        // must come back as a clean `NotFound` carrying the path, not as
+        // some spawn errno the UI has to guess at.
+        let missing = unique_temp_path("no-such-program");
+        assert!(!missing.exists());
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: missing.clone(),
+            args: vec!["--version".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+        };
+        let err = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect_err("a program that is not on disk cannot be run");
+
+        match err {
+            RunnerError::NotFound(path) => assert_eq!(path, missing),
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_program_that_cannot_be_executed_reports_the_spawn_failure() {
+        // The other half of the same story: the file is still on disk, so
+        // the `exists()` check passes, but `exec` refuses it -- a package
+        // manager mid-reinstall, a shim left non-executable, a binary on a
+        // volume mounted `noexec`. That has to surface as `Spawn` carrying
+        // the OS error, not as a panic or a silent success.
+        let not_executable = unique_temp_path("not-executable");
+        std::fs::write(&not_executable, b"#!/bin/sh\necho hi\n").expect("write the fixture");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&not_executable, std::fs::Permissions::from_mode(0o644))
+            .expect("drop the execute bit");
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: not_executable.clone(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+        };
+        let err = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect_err("a file without the execute bit cannot be spawned");
+        let _ = std::fs::remove_file(&not_executable);
+
+        match err {
+            RunnerError::Spawn(io) => assert_eq!(
+                io.kind(),
+                std::io::ErrorKind::PermissionDenied,
+                "expected the refusal from exec, got {io:?}"
+            ),
+            other => panic!("expected Spawn, got {other:?}"),
+        }
+    }
 }
