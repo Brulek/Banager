@@ -18,10 +18,15 @@ const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
 };
 
 /**
- * A per-source banner rendered under an Installed-page group header: pip's
- * read-only note, or Ollama's "daemon not running" notice with a button to
- * start it (Task 12). Purely presentational -- callers decide when it
- * applies and what its action does; this component never calls `invoke`.
+ * One banner about one source: pip's read-only note, or Ollama's "not
+ * running" notice with a button to start it. Both pages render these --
+ * the Installed page under the source's group header, the Updates page at
+ * the top, where a source Canager could not reach has no rows to sit
+ * under and the page would otherwise announce that everything is up to
+ * date. `SourceNotices` maps `sourceNoticesFor`'s specs onto this.
+ *
+ * Purely presentational -- callers decide when it applies and what its
+ * action does; this component never calls `invoke`.
  */
 export function SourceNotice({ variant, title, description, action }: SourceNoticeProps) {
   return (

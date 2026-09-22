@@ -65,7 +65,12 @@ pub struct Snapshot {
     pub instances: Vec<ManagerInstance>,
     pub artifacts: Vec<InstalledArtifact>,
     pub updates: Vec<UpdateCandidate>,
-    /// Unix seconds of the last fully successful refresh, if any.
+    /// Unix seconds of the last refresh that *ran*, successful or not
+    /// (spec §2.4-1) -- `stale` is what says whether it came back clean.
+    /// Gated on success, one permanently broken source left this null for
+    /// the life of the machine, and `SnapshotStatus` reads a null
+    /// timestamp as "Canager has never finished a check". `None` now means
+    /// only that: `Snapshot::empty()`, before the first refresh commits.
     pub refreshed_at: Option<i64>,
     /// True when part of the newest refresh attempt failed, so this data
     /// is older than it looks (spec §3: keep old data, mark it possibly
