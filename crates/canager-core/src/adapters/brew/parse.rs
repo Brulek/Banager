@@ -5,11 +5,19 @@ use crate::model::{
 };
 use serde::Deserialize;
 
+// Both partitions are required, deliberately. `brew info --installed
+// --json=v2` and `brew outdated --json=v2` always emit both keys, the
+// empty one as `[]` (verified against `brew info --json=v2 jq`, which
+// answers `"casks": []`). A reply that omits one — `{}`, an error object,
+// the output of some wrapper that is not brew — is not brew reporting
+// nothing; it is not the reply we asked for. With `#[serde(default)]`
+// here it parsed as "you have nothing installed", which is silent, total
+// and the single worst thing this app can tell someone. Refusing it
+// instead routes the source into the "Canager couldn't check this" state
+// the UI already knows how to explain.
 #[derive(Debug, Deserialize)]
 struct InfoInstalledRoot {
-    #[serde(default)]
     formulae: Vec<FormulaInfo>,
-    #[serde(default)]
     casks: Vec<CaskInfo>,
 }
 
@@ -31,8 +39,14 @@ struct FormulaInfo {
 #[derive(Debug, Deserialize)]
 struct FormulaInstalledEntry {
     version: String,
+    // `Option`, not a defaulted `bool`: `false` is brew saying something
+    // else pulled this in, and the field being absent is brew saying
+    // nothing. Collapsing the second into the first filed unknown-origin
+    // packages as dependencies, which hides them behind the Installed
+    // page's collapsed "N components installed by other software" — the
+    // one place a user will not look for something they did not install.
     #[serde(default)]
-    installed_on_request: bool,
+    installed_on_request: Option<bool>,
     #[serde(default)]
     time: Option<i64>,
 }
@@ -60,9 +74,11 @@ struct CaskInfo {
 /// keg-only formula). Homebrew's JSON records only a single
 /// `installed_on_request` boolean per installed entry (there is no separate
 /// "installed as dependency" field): `true` -> `Requested`, `false` ->
-/// `Dependency`; `Unknown` is reserved for the case where a formula has no
-/// installed entry to pick from at all. Casks have no install-reason field
-/// in brew's JSON, so they are always `Requested`.
+/// `Dependency`, and the field being *absent* -> `Unknown`, same as a
+/// formula with no installed entry to pick from at all. Casks have no
+/// install-reason field in brew's JSON, so they are always `Requested`.
+///
+/// Both top-level partitions must be present; see `InfoInstalledRoot`.
 ///
 /// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
 /// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or
@@ -92,10 +108,10 @@ pub fn parse_info_installed(
 
         let (version, reason, installed_at) = match picked {
             Some(entry) => {
-                let reason = if entry.installed_on_request {
-                    InstallReason::Requested
-                } else {
-                    InstallReason::Dependency
+                let reason = match entry.installed_on_request {
+                    Some(true) => InstallReason::Requested,
+                    Some(false) => InstallReason::Dependency,
+                    None => InstallReason::Unknown,
                 };
                 (entry.version.clone(), reason, entry.time)
             }
@@ -152,11 +168,11 @@ pub fn parse_info_installed(
     Ok(out)
 }
 
+// Required for the same reason as `InfoInstalledRoot`'s, and the lie this
+// one told was "everything is up to date".
 #[derive(Debug, Deserialize)]
 struct OutdatedRoot {
-    #[serde(default)]
     formulae: Vec<OutdatedItem>,
-    #[serde(default)]
     casks: Vec<OutdatedItem>,
 }
 
@@ -350,5 +366,100 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].key.name, "jq");
+    }
+    // `brew info --installed --json=v2` and `brew outdated --json=v2` always
+    // emit *both* partitions, one of them empty when there is nothing in it
+    // (verified against `brew info --json=v2 jq`, which answers
+    // `"casks": []`). A reply missing one is therefore not a brew with
+    // nothing to report — it is not the reply we asked for. Defaulting the
+    // partition to an empty vec turned that into the two worst sentences
+    // this app can say: "nothing installed" and "everything is up to date".
+    // Failing the read instead puts the source into its own "Canager
+    // couldn't check this" state, which the UI already explains.
+
+    #[test]
+    fn parse_info_installed_refuses_a_reply_with_no_partitions() {
+        assert!(parse_info_installed("{}", "brew:/opt/homebrew").is_err());
+    }
+
+    #[test]
+    fn parse_info_installed_refuses_a_reply_missing_a_partition() {
+        let json = r#"{"formulae": []}"#;
+        assert!(parse_info_installed(json, "brew:/opt/homebrew").is_err());
+    }
+
+    #[test]
+    fn parse_info_installed_accepts_both_partitions_empty() {
+        // The genuine "you have installed nothing" answer still reads as one.
+        let json = r#"{"formulae": [], "casks": []}"#;
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_outdated_refuses_a_reply_with_no_partitions() {
+        assert!(parse_outdated("{}", "brew:/opt/homebrew").is_err());
+    }
+
+    #[test]
+    fn parse_outdated_refuses_a_reply_missing_a_partition() {
+        let json = r#"{"casks": []}"#;
+        assert!(parse_outdated(json, "brew:/opt/homebrew").is_err());
+    }
+
+    #[test]
+    fn parse_outdated_accepts_both_partitions_empty() {
+        let json = r#"{"formulae": [], "casks": []}"#;
+        let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn a_formula_whose_entry_omits_installed_on_request_is_unknown_not_a_dependency() {
+        // `installed_on_request: false` is brew saying "something else pulled
+        // this in"; the field being absent is brew saying nothing at all.
+        // Reading the second as the first hid the package behind the
+        // Installed page's collapsed "N components installed by other
+        // software", which is where a user goes looking for things they did
+        // not install.
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "linked_keg": "1.8.2",
+                    "installed": [{ "version": "1.8.2" }]
+                }
+            ],
+            "casks": []
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].reason, InstallReason::Unknown);
+    }
+
+    #[test]
+    fn installed_on_request_still_separates_requested_from_dependency() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "linked_keg": "1.8.2",
+                    "installed": [{ "version": "1.8.2", "installed_on_request": true }]
+                },
+                {
+                    "name": "oniguruma",
+                    "linked_keg": "6.9.10",
+                    "installed": [{ "version": "6.9.10", "installed_on_request": false }]
+                }
+            ],
+            "casks": []
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result[0].reason, InstallReason::Requested);
+        assert_eq!(result[1].reason, InstallReason::Dependency);
     }
 }
