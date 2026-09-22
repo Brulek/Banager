@@ -651,7 +651,12 @@ mod tests {
                 cancelled: false,
             },
         );
-        let adapter = NpmAdapter::new(runner);
+        // The writability answer is pinned like every other detect test
+        // below: `/opt/homebrew` is what this mock `npm prefix -g` reports,
+        // not a directory the machine running this is expected to have, and
+        // asking the real filesystem about it would make the answer depend
+        // on which Mac this is.
+        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
@@ -707,7 +712,7 @@ mod tests {
                 cancelled: false,
             },
         );
-        let adapter = NpmAdapter::new(runner);
+        let adapter = NpmAdapter::new(runner).with_prefix_writable_fn(|_| true);
         let env = HostEnv {
             path_dirs: vec![dir.clone()],
             home: PathBuf::from("/tmp"),
@@ -748,6 +753,10 @@ mod tests {
         (dir, npm_path, env)
     }
 
+    /// `/opt/homebrew` here is what this *mock* `npm prefix -g` answers --
+    /// a realistic prefix to read, not a claim about the machine running
+    /// the test. Nothing in these detect tests touches a real one: the exe
+    /// lives in a temp directory and the writability probe is injected.
     fn detect_runner(npm_path: &std::path::Path) -> Arc<MockRunner> {
         let npm_path_str = npm_path.to_str().expect("utf8 path");
         let runner = Arc::new(MockRunner::new());
