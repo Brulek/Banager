@@ -173,8 +173,18 @@ fn open_ollama_app_argv() -> (&'static std::path::Path, Vec<String>) {
 /// test that really ran `open -a Ollama` would launch a GUI app on both.
 fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     let (_default_program, args) = open_ollama_app_argv();
+    // `spawn()` inherits the parent's stdin/stdout/stderr by default, which
+    // hands this fire-and-forget child Canager's own console and pipes for
+    // no reason -- it takes no input and nothing here ever reads its
+    // output. Nulling all three is the same "share nothing it does not
+    // need" rule `run_plan` already applies to every package-manager
+    // command; this is the one launch in the app that bypasses `run_plan`
+    // and so had been missed.
     let mut child = std::process::Command::new(program)
         .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| e.to_string())?;
     // Reap on a background thread instead of leaving a zombie: `open` exits
@@ -841,5 +851,88 @@ mod tests {
         let err = open_ollama_app_impl_with(std::path::Path::new("/definitely/not/a/program"))
             .expect_err("a missing program must be an Err, not a panic");
         assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn test_open_ollama_app_impl_with_nulls_all_three_stdio_streams() {
+        // "Open Ollama" spawns with inherited stdio today: a Canager built
+        // and launched from a Terminal window hands that child process the
+        // app's own stdin/stdout/stderr, which it has no business sharing
+        // (spec's step D, item 3). This runs a shell script in place of
+        // `/usr/bin/open` that inspects its *own* three standard streams --
+        // by comparing each `/dev/fd/N` against `/dev/null` with `-ef`,
+        // which compares device and inode, not content -- and records what
+        // it found to a file passed in its own source rather than to
+        // stdout, since a genuinely-nulled stdout could not carry the
+        // answer back.
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "canager-stdio-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let script_path = dir.join("probe.sh");
+        let out_path = dir.join("out.txt");
+
+        // Each stream's `-ef` check must run *before* the final block
+        // redirects fd 1 to `out_path` to collect the answer -- checking
+        // `/dev/fd/1` from inside that block would just compare `out_path`
+        // against itself and report "null" whatever the original stdout
+        // was, since by then fd 1 no longer points at it.
+        let script = format!(
+            "#!/bin/sh\n\
+             r0=inherited; [ /dev/fd/0 -ef /dev/null ] && r0=null\n\
+             r1=inherited; [ /dev/fd/1 -ef /dev/null ] && r1=null\n\
+             r2=inherited; [ /dev/fd/2 -ef /dev/null ] && r2=null\n\
+             {{\n\
+             echo stdin=$r0\n\
+             echo stdout=$r1\n\
+             echo stderr=$r2\n\
+             }} > {out}\n",
+            out = out_path.display()
+        );
+        {
+            let mut f = std::fs::File::create(&script_path).expect("create script");
+            f.write_all(script.as_bytes()).expect("write script");
+        }
+        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod +x");
+
+        open_ollama_app_impl_with(&script_path).expect("spawning the probe script must succeed");
+
+        // Fire-and-forget: the script runs on its own timeline, so poll
+        // briefly for its output rather than assuming it has finished the
+        // instant `spawn()` returns.
+        let mut contents = String::new();
+        for _ in 0..100 {
+            if let Ok(s) = std::fs::read_to_string(&out_path) {
+                if !s.is_empty() {
+                    contents = s;
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            contents.contains("stdin=null"),
+            "stdin must be null, got: {contents:?}"
+        );
+        assert!(
+            contents.contains("stdout=null"),
+            "stdout must be null, got: {contents:?}"
+        );
+        assert!(
+            contents.contains("stderr=null"),
+            "stderr must be null, got: {contents:?}"
+        );
     }
 }
