@@ -15,7 +15,7 @@ import {
   setSettings,
   openOllamaApp,
 } from "./api";
-import { refreshIntoCache } from "./events";
+import { isNewerSnapshot, refreshIntoCache } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
 import type { IssuedPlan, OpRequest, OpSummary, PlanId, Settings, Snapshot } from "./types";
@@ -23,7 +23,22 @@ import type { IssuedPlan, OpRequest, OpSummary, PlanId, Settings, Snapshot } fro
 export { queryKeys };
 
 export function useSnapshot(): UseQueryResult<Snapshot> {
-  return useQuery({ queryKey: queryKeys.snapshot, queryFn: getSnapshot });
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: queryKeys.snapshot,
+    // The other half of the rule in `isNewerSnapshot`: this refetch (a
+    // `SnapshotChanged` invalidation, a remount) can also come back with
+    // an older snapshot than a concurrent `refresh` has already cached,
+    // and whatever a queryFn returns is what React Query stores. Keeping
+    // the cached one is how this write obeys the same rule as
+    // `writeSnapshotIfNewer`, which cannot reach inside a query's own
+    // fetch to enforce it.
+    queryFn: async () => {
+      const fetched = await getSnapshot();
+      const cached = queryClient.getQueryData<Snapshot>(queryKeys.snapshot);
+      return isNewerSnapshot(fetched, cached) ? fetched : (cached ?? fetched);
+    },
+  });
 }
 
 export function useSettings(): UseQueryResult<Settings> {

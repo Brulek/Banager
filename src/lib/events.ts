@@ -3,7 +3,48 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
 import { queryKeys } from "./queryKeys";
 import { useUiStore } from "../store/ui";
-import type { UiEvent } from "./types";
+import type { Snapshot, UiEvent } from "./types";
+
+/**
+ * Whether `incoming` is at least as recent as what is already cached, and
+ * so may replace it.
+ *
+ * Two things write the snapshot cache and neither can see the other's
+ * request in flight: `refreshIntoCache` below, with what its own
+ * `refresh` returned, and the `useSnapshot` query, refetching because a
+ * `SnapshotChanged` event invalidated it. A refresh whose reply is slow
+ * can therefore land *after* a newer snapshot has already been cached and
+ * overwrite it — packages the user just removed reappear, with no further
+ * event coming to correct it, because as far as the backend is concerned
+ * nothing has changed since.
+ *
+ * `generation` is the right thing to compare, but only with a
+ * non-strict `>=`: an unchanged refresh deliberately keeps the same
+ * generation (`Snapshot::same_content` in session/refresh.rs), so
+ * treating an equal generation as stale would pin `refreshed_at` at the
+ * first refresh that saw this content and `SnapshotStatus` would report a
+ * "last checked" time that stopped advancing. Two snapshots sharing a
+ * generation are the same data by construction, so the only thing that
+ * can differ is that timestamp, and the later one wins — with a null
+ * (`Snapshot::empty`, nothing has ever been checked) older than any
+ * timestamp at all.
+ */
+export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined): boolean {
+  if (!cached) return true;
+  if (incoming.generation !== cached.generation) return incoming.generation > cached.generation;
+  return (incoming.refreshed_at ?? -Infinity) >= (cached.refreshed_at ?? -Infinity);
+}
+
+/**
+ * The only way anything writes the snapshot cache: `isNewerSnapshot`
+ * decides, inside the updater so that the read and the write cannot be
+ * split by a reply arriving in between.
+ */
+export function writeSnapshotIfNewer(queryClient: QueryClient, snapshot: Snapshot): void {
+  queryClient.setQueryData<Snapshot>(queryKeys.snapshot, (cached) =>
+    isNewerSnapshot(snapshot, cached) ? snapshot : cached,
+  );
+}
 
 /**
  * Runs a backend `refresh` and writes the returned Snapshot straight into the
@@ -52,7 +93,10 @@ export function refreshIntoCache(queryClient: QueryClient, why: string): Promise
   }
   const run: Promise<void> = refresh()
     .then((snapshot) => {
-      queryClient.setQueryData(queryKeys.snapshot, snapshot);
+      // Not `setQueryData` outright: this reply can be older than what a
+      // `SnapshotChanged`-driven refetch has already cached. See
+      // `isNewerSnapshot`.
+      writeSnapshotIfNewer(queryClient, snapshot);
       useUiStore.getState().setStartupRefreshError(null);
     })
     .catch((e: unknown) => {

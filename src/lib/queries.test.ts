@@ -65,6 +65,27 @@ describe("queries", () => {
     expect(mockInvoke).toHaveBeenCalledWith("get_snapshot");
   });
 
+  it("useSnapshot keeps the cached snapshot when its own fetch comes back older", async () => {
+    // The second half of the cache-ordering rule (`isNewerSnapshot` in
+    // events.ts). This query refetches whenever a `SnapshotChanged`
+    // event invalidates it, and whatever its queryFn returns is what
+    // React Query stores -- so a `get_snapshot` that raced a concurrent
+    // refresh and came back with the older of the two must not be
+    // allowed to write itself over the newer one already cached.
+    const newer: Snapshot = { ...snapshot, generation: 5, refreshed_at: 500 };
+    mockInvoke.mockResolvedValue({ ...snapshot, generation: 4, refreshed_at: 400 } as never);
+    const queryClient = newClient();
+    queryClient.setQueryData(["snapshot"], newer);
+
+    const { result } = renderHook(() => useSnapshot(), { wrapper: wrapper(queryClient) });
+    await queryClient.refetchQueries({ queryKey: ["snapshot"] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockInvoke).toHaveBeenCalledWith("get_snapshot");
+    expect(result.current.data).toEqual(newer);
+    expect(queryClient.getQueryData(["snapshot"])).toEqual(newer);
+  });
+
   it("useRefresh writes its result into the snapshot cache", async () => {
     mockInvoke.mockResolvedValueOnce({ ...snapshot, generation: 2 } as never);
     const queryClient = newClient();

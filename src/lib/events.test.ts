@@ -3,7 +3,7 @@ import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { useOperationEvents, useStartupRefresh } from "./events";
+import { isNewerSnapshot, useOperationEvents, useStartupRefresh } from "./events";
 import { useUiStore } from "../store/ui";
 import { queryKeys } from "./queries";
 import type { Snapshot } from "./types";
@@ -177,6 +177,90 @@ describe("useOperationEvents", () => {
       expect((queryClient.getQueryData(queryKeys.snapshot) as Snapshot).generation).toBe(2),
     );
     expect(refreshCalls()).toBe(2);
+  });
+});
+
+describe("isNewerSnapshot", () => {
+  const cached: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 200 };
+
+  it("accepts anything when nothing is cached yet", () => {
+    expect(isNewerSnapshot(refreshedSnapshot, undefined)).toBe(true);
+  });
+
+  it("rejects an older generation and accepts a newer one", () => {
+    expect(isNewerSnapshot({ ...cached, generation: 1 }, cached)).toBe(false);
+    expect(isNewerSnapshot({ ...cached, generation: 3 }, cached)).toBe(true);
+  });
+
+  it("does not treat an equal generation as stale", () => {
+    // A refresh that found nothing new deliberately keeps the same
+    // generation (`Snapshot::same_content`), and only its `refreshed_at`
+    // moves. Rejecting those would freeze the "last checked" time at
+    // whenever this content first appeared.
+    expect(isNewerSnapshot({ ...cached, refreshed_at: 300 }, cached)).toBe(true);
+    expect(isNewerSnapshot({ ...cached, refreshed_at: 200 }, cached)).toBe(true);
+    expect(isNewerSnapshot({ ...cached, refreshed_at: 100 }, cached)).toBe(false);
+  });
+
+  it("treats a never-checked snapshot as older than any checked one", () => {
+    const never: Snapshot = { ...cached, refreshed_at: null };
+    expect(isNewerSnapshot(cached, never)).toBe(true);
+    expect(isNewerSnapshot(never, cached)).toBe(false);
+  });
+});
+
+describe("snapshot cache ordering", () => {
+  it("does not let a slow refresh reply overwrite a newer cached snapshot", async () => {
+    // The interleaving, in order:
+    //   1. a refresh starts (a click, an operation finishing);
+    //   2. while it is out, something else — another window's refresh,
+    //      or a `SnapshotChanged` invalidating this window's snapshot
+    //      query — caches generation 2;
+    //   3. the refresh from step 1 replies with generation 1.
+    // Written into the cache unconditionally, step 3 rolls the UI back
+    // to data the backend has already superseded, and no further event
+    // is coming: as far as the backend is concerned nothing has changed
+    // since. Packages the user just removed reappear and stay.
+    let resolveRefresh: (snapshot: Snapshot) => void = () => {};
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          resolveRefresh = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+    const newer: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 1789700200 };
+    queryClient.setQueryData(queryKeys.snapshot, newer);
+
+    resolveRefresh({ ...refreshedSnapshot, generation: 1, refreshed_at: 1789700100 });
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(newer));
+    // And it stays: nothing arrives later to put it right.
+    await Promise.resolve();
+    expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(newer);
+  });
+
+  it("still writes a refresh reply whose generation is unchanged", async () => {
+    // The companion the rule above must not break: an unchanged refresh
+    // keeps its generation and only moves `refreshed_at`, which is what
+    // `SnapshotStatus` renders as "last checked".
+    const cached: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 1789700100 };
+    const rechecked: Snapshot = { ...cached, refreshed_at: 1789700900 };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return Promise.resolve(rechecked);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.snapshot, cached);
+
+    renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(rechecked));
   });
 });
 
