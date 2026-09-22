@@ -1,9 +1,26 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
+
+/// The drawer as it actually appears: something opened it, and there is
+/// page behind it. Both matter for the keyboard, which is why the focus
+/// tests render this rather than the drawer on its own.
+function DrawerInPage() {
+  const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  return (
+    <>
+      <button type="button" onClick={() => setDrawerOpen(true)}>
+        show the log
+      </button>
+      <LogDrawer />
+      <button type="button">behind the drawer</button>
+    </>
+  );
+}
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -67,5 +84,58 @@ describe("LogDrawer", () => {
     const { queryByRole } = renderWithProviders(<LogDrawer />);
 
     expect(queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("takes focus when it opens and gives it back to whatever opened it", async () => {
+    // Closing a panel should leave a keyboard user where they were, not
+    // on the document body at the top of the window.
+    useUiStore.setState({ drawerOpen: false });
+    const user = userEvent.setup();
+    const { getByRole } = renderWithProviders(<DrawerInPage />);
+    const opener = getByRole("button", { name: "show the log" });
+
+    await user.click(opener);
+    expect(getByRole("dialog")).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(useUiStore.getState().drawerOpen).toBe(false);
+    expect(opener).toHaveFocus();
+  });
+
+  it("closes on Escape from a control inside it, not just from the panel", async () => {
+    const user = userEvent.setup();
+    const { getByRole } = renderWithProviders(<DrawerInPage />);
+
+    await user.tab();
+    expect(getByRole("dialog").contains(document.activeElement)).toBe(true);
+
+    await user.keyboard("{Escape}");
+    expect(useUiStore.getState().drawerOpen).toBe(false);
+  });
+
+  it("keeps Tab inside the drawer instead of letting it wander behind", async () => {
+    // The drawer sits over the page. Tabbing out of it puts the cursor on
+    // controls the user can neither see nor tell they are on.
+    const user = userEvent.setup();
+    const { getByRole } = renderWithProviders(<DrawerInPage />);
+    const dialog = getByRole("dialog");
+    const behind = getByRole("button", { name: "behind the drawer" });
+    const opener = getByRole("button", { name: "show the log" });
+
+    for (let i = 0; i < 6; i += 1) {
+      await user.tab();
+      expect(document.activeElement).not.toBe(behind);
+      expect(document.activeElement).not.toBe(opener);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+
+    // And backwards, which is the direction that used to walk straight
+    // out of the front of the drawer.
+    for (let i = 0; i < 6; i += 1) {
+      await user.tab({ shift: true });
+      expect(document.activeElement).not.toBe(behind);
+      expect(document.activeElement).not.toBe(opener);
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
   });
 });
