@@ -1152,7 +1152,7 @@ checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
 [[package]]
 name = "fix-path-env"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/fix-path-env-rs#c4c45d503ea115a839aae718d02f79e7c7f0f673"
+source = "git+https://github.com/tauri-apps/fix-path-env-rs?rev=c4c45d503ea115a839aae718d02f79e7c7f0f673#c4c45d503ea115a839aae718d02f79e7c7f0f673"
 dependencies = [
  "home",
  "strip-ansi-escapes",
