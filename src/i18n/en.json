@@ -1,6 +1,5 @@
 {
   "app": {
-    "title": "Canager",
     "operationBarRegion": "Operation status"
   },
   "nav": {
@@ -51,8 +50,6 @@
     "cannotCheck": "Can't check",
     "cannotCheckDetail": "Canager couldn't check this one for updates just now. {{message}}",
     "readOnly": "Read-only",
-    "warnings_one": "{{count}} warning",
-    "warnings_other": "{{count}} warnings",
     "versionChange": "{{current}} → {{target}}",
     "newBuild": "A newer build of this model is available",
     "selectRow": "Select {{name}} for update",

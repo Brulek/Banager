@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 
-export type BadgeVariant = "neutral" | "warning" | "info";
+/**
+ * `neutral` for a row Canager cannot act on, `info` for one it can. There
+ * was a `warning` variant too, for an "N warnings" badge on the Updates
+ * page; that badge's only two producers were deleted on this branch, so
+ * both it and the variant went with them rather than sitting here
+ * unreachable.
+ */
+export type BadgeVariant = "neutral" | "info";
 
 export interface ArtifactRowSelectable {
   checked: boolean;
@@ -38,7 +45,6 @@ export interface ArtifactRowProps {
 
 const BADGE_CLASSES: Record<BadgeVariant, string> = {
   neutral: "bg-[var(--color-hover)] text-[var(--color-muted)]",
-  warning: "bg-[var(--color-danger)]/10 text-[var(--color-danger)]",
   info: "bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
 };
 

@@ -545,22 +545,23 @@ export function UpdatesPage() {
               // that no button will ever appear on this row, whatever the
               // next refresh finds. That a lookup also failed is on the
               // row already, in words, via `rowDescription`.
+              // Three states, and there is no fourth: nothing in production
+              // builds a `checkable: true` candidate with a warning on it
+              // any more. There used to be an "N warnings" badge here; brew's
+              // `"pinned"` string and its per-candidate "brew update failed"
+              // sentence were its only two producers, and this branch deleted
+              // both (the second is now `InstanceNote::IndexMayBeStale`, a
+              // notice on the source rather than a count on a row). The badge
+              // outlived them, unreachable, which is the exact shape of defect
+              // this phase keeps finding.
               badgeText={
                 noticeKey
                   ? t("updates.readOnly")
                   : !candidate.checkable
                     ? t("updates.cannotCheck")
-                    : candidate.warnings.length > 0
-                      ? t("updates.warnings", { count: candidate.warnings.length })
-                      : t("updates.available")
+                    : t("updates.available")
               }
-              badgeVariant={
-                noticeKey || !candidate.checkable
-                  ? "neutral"
-                  : candidate.warnings.length > 0
-                    ? "warning"
-                    : "info"
-              }
+              badgeVariant={noticeKey || !candidate.checkable ? "neutral" : "info"}
               primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
               onPrimaryAction={
                 isActionable(candidate) ? () => openConfirm([candidate]) : undefined
