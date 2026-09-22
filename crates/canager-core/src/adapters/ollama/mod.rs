@@ -1,8 +1,8 @@
 pub mod parse;
 
 use crate::adapters::{
-    reconcile_from, run_plan, uncheckable_candidate, url_path_segment, Adapter, AdapterError,
-    AdapterMeta, CheckOptions, CheckOutcome,
+    ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, url_path_segment,
+    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -404,12 +404,7 @@ impl OllamaAdapter {
         inst: &ManagerInstance,
         req: &OpRequest,
     ) -> Result<Plan, AdapterError> {
-        if req.instance_id != inst.id {
-            return Err(AdapterError::Refused(format!(
-                "plan requested for instance {} but given instance {}",
-                req.instance_id, inst.id
-            )));
-        }
+        ensure_instance_match(req, inst)?;
         validate_model_reference(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
         // Named, never blocked: pulling from a third-party registry is a

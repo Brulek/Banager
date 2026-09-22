@@ -1,6 +1,7 @@
 use crate::adapters::{
-    lookup_failure_reason, reconcile_from, run_plan, second_token, uncheckable_from_inventory,
-    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, second_token,
+    uncheckable_from_inventory, validate_package_name, Adapter, AdapterError, AdapterMeta,
+    CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -245,12 +246,7 @@ impl UvAdapter {
         inst: &ManagerInstance,
         req: &OpRequest,
     ) -> Result<Plan, AdapterError> {
-        if req.instance_id != inst.id {
-            return Err(AdapterError::Refused(format!(
-                "plan requested for instance {} but given instance {}",
-                req.instance_id, inst.id
-            )));
-        }
+        ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {

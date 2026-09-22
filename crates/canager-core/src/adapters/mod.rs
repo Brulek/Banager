@@ -308,6 +308,29 @@ pub fn reconcile_from(artifacts: Vec<InstalledArtifact>, key: &ArtifactKey) -> R
     }
 }
 
+/// Refuses a plan whose `OpRequest` names a different instance than the one
+/// the adapter was handed.
+///
+/// Every writable adapter's `plan()` opens with this, before it validates a
+/// name or builds a single argument: the request carries the instance the
+/// user acted on, `inst` is the instance the caller resolved, and if they
+/// disagree then the command about to be built would run against the wrong
+/// prefix -- a `brew uninstall` in `/usr/local` for a row the user clicked
+/// in `/opt/homebrew`. Refusing costs nothing and is not recoverable
+/// further down.
+///
+/// `pip` is the one adapter that does not call this: its `plan()` refuses
+/// every operation outright, so there is no wrong prefix to protect.
+pub fn ensure_instance_match(req: &OpRequest, inst: &ManagerInstance) -> Result<(), AdapterError> {
+    if req.instance_id != inst.id {
+        return Err(AdapterError::Refused(format!(
+            "plan requested for instance {} but given instance {}",
+            req.instance_id, inst.id
+        )));
+    }
+    Ok(())
+}
+
 #[async_trait]
 pub trait Adapter: Send + Sync {
     fn meta(&self) -> &AdapterMeta;
@@ -683,5 +706,39 @@ mod tests {
                 version: None,
             }
         );
+    }
+
+    #[test]
+    fn test_ensure_instance_match_accepts_a_request_for_the_instance_it_was_given() {
+        use crate::model::{OpKind, OpRequest};
+        let inst = crate::testing::manager_instance("npm", "npm:/opt/homebrew");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        assert!(ensure_instance_match(&req, &inst).is_ok());
+    }
+
+    #[test]
+    fn test_ensure_instance_match_refuses_a_request_meant_for_another_instance() {
+        use crate::model::{OpKind, OpRequest};
+        let inst = crate::testing::manager_instance("npm", "npm:/opt/homebrew");
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "npm:/usr/local".to_string(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        };
+        match ensure_instance_match(&req, &inst) {
+            Err(AdapterError::Refused(message)) => {
+                assert!(
+                    message.contains("npm:/usr/local") && message.contains("npm:/opt/homebrew"),
+                    "the refusal must name both instances, got {message}"
+                );
+            }
+            other => panic!("expected Refused, got {other:?}"),
+        }
     }
 }

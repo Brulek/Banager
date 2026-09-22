@@ -1,6 +1,7 @@
 use crate::adapters::{
-    reconcile_from, run_plan, second_token, uncheckable_candidate, url_path_segment,
-    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    ensure_instance_match, reconcile_from, run_plan, second_token, uncheckable_candidate,
+    url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -303,12 +304,7 @@ impl CargoAdapter {
         inst: &ManagerInstance,
         req: &OpRequest,
     ) -> Result<Plan, AdapterError> {
-        if req.instance_id != inst.id {
-            return Err(AdapterError::Refused(format!(
-                "plan requested for instance {} but given instance {}",
-                req.instance_id, inst.id
-            )));
-        }
+        ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
         match req.kind {
