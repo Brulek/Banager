@@ -8,7 +8,7 @@ beforeEach(() => {
   useUiStore.setState({
     page: "installed",
     query: "",
-    showDependencies: false,
+    expandedDependencies: [],
     drawerOpen: false,
     focusedOpId: null,
     logs: [],
@@ -31,12 +31,22 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().query).toBe("jq");
   });
 
-  it("toggleDependencies flips the flag", () => {
-    expect(useUiStore.getState().showDependencies).toBe(false);
-    useUiStore.getState().toggleDependencies();
-    expect(useUiStore.getState().showDependencies).toBe(true);
-    useUiStore.getState().toggleDependencies();
-    expect(useUiStore.getState().showDependencies).toBe(false);
+  it("toggleDependencies expands one source at a time", () => {
+    // It used to be a single boolean, so unfolding pip's dependencies also
+    // unfolded Homebrew's. Every row already carries the instance it came
+    // from; the expansion follows it.
+    const brew = "brew:/opt/homebrew";
+    const pip = "pip:/usr/bin/python3";
+
+    expect(useUiStore.getState().expandedDependencies).toEqual([]);
+    useUiStore.getState().toggleDependencies(pip);
+    expect(useUiStore.getState().expandedDependencies).toEqual([pip]);
+
+    useUiStore.getState().toggleDependencies(brew);
+    expect(useUiStore.getState().expandedDependencies).toEqual([pip, brew]);
+
+    useUiStore.getState().toggleDependencies(pip);
+    expect(useUiStore.getState().expandedDependencies).toEqual([brew]);
   });
 
   it("setDrawerOpen and setFocusedOpId update independently", () => {

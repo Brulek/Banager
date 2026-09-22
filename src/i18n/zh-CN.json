@@ -31,6 +31,7 @@
     "noDescription": "暂无描述",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",
+    "hideDependencies_other": "收起这 {{count}} 个由其他软件附带安装的组件",
     "unverifiedVersion": "未验证版本（{{version}}）"
   },
   "updates": {

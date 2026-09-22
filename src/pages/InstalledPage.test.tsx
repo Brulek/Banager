@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
@@ -622,5 +622,59 @@ describe("InstalledPage", () => {
     await findByText("Ollama isn't running");
     expect(await findByText("qwen3:8b")).toBeInTheDocument();
     expect(queryByRole("button", { name: "Uninstall" })).toBeNull();
+  });
+  it("expands one source's dependencies without expanding another's", async () => {
+    // One global flag meant clicking pip's "N components installed by other
+    // software" also unfolded Homebrew's, on any Mac that has both. The
+    // toggle is per source now, and it can be folded back up again.
+    const twoSources: Snapshot = {
+      ...snapshot,
+      instances: [...snapshot.instances, ...pipSnapshot.instances],
+      artifacts: [
+        ...snapshot.artifacts,
+        ...pipSnapshot.artifacts,
+        {
+          key: { instance_id: "pip:/usr/bin/python3", kind: "Package", name: "charset-normalizer" },
+          display_name: "charset-normalizer",
+          version: "3.4.0",
+          reason: "Dependency",
+          description: "The Real First Universal Charset Detector.",
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
+      ],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(twoSources);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, findByRole, queryByText } = renderWithProviders(<InstalledPage />);
+
+    await findByText("requests");
+    expect(queryByText("glib")).not.toBeInTheDocument();
+    expect(queryByText("charset-normalizer")).not.toBeInTheDocument();
+
+    // Both groups hide exactly one dependency, so the two toggles carry the
+    // same label; the one inside pip's group is the one to click.
+    const toggles = await screen.findAllByRole("button", {
+      name: "1 component installed by other software",
+    });
+    expect(toggles).toHaveLength(2);
+    fireEvent.click(toggles[1]);
+
+    await findByText("charset-normalizer");
+    expect(queryByText("glib")).not.toBeInTheDocument();
+
+    // And it folds back up, which a toggle that vanishes on expand cannot.
+    const collapse = await findByRole("button", {
+      name: "Hide the 1 component installed by other software",
+    });
+    fireEvent.click(collapse);
+    await waitFor(() => expect(queryByText("charset-normalizer")).not.toBeInTheDocument());
   });
 });

@@ -47,7 +47,7 @@ type ListItem =
       // place.
       actionable: boolean;
     }
-  | { type: "toggle"; instanceId: string; hiddenCount: number };
+  | { type: "toggle"; instanceId: string; hiddenCount: number; expanded: boolean };
 
 export function InstalledPage() {
   const { t } = useTranslation();
@@ -55,7 +55,7 @@ export function InstalledPage() {
   const { data: settings } = useSettings();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
-  const showDependencies = useUiStore((s) => s.showDependencies);
+  const expandedDependencies = useUiStore((s) => s.expandedDependencies);
   const toggleDependencies = useUiStore((s) => s.toggleDependencies);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
@@ -125,17 +125,25 @@ export function InstalledPage() {
         result.push({ type: "artifact", artifact, actionable });
       }
       if (dependencies.length > 0) {
-        if (showDependencies) {
+        // The toggle row is pushed in *both* states, not only while the
+        // group is folded: it used to disappear on expand, which left no
+        // way to fold a group back up short of relaunching the app.
+        const expanded = expandedDependencies.includes(instance.id);
+        if (expanded) {
           for (const artifact of dependencies) {
             result.push({ type: "artifact", artifact, actionable });
           }
-        } else {
-          result.push({ type: "toggle", instanceId: instance.id, hiddenCount: dependencies.length });
         }
+        result.push({
+          type: "toggle",
+          instanceId: instance.id,
+          hiddenCount: dependencies.length,
+          expanded,
+        });
       }
     }
     return result;
-  }, [snapshot, query, showDependencies, t]);
+  }, [snapshot, query, expandedDependencies, t]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -211,10 +219,14 @@ export function InstalledPage() {
                 ) : item.type === "toggle" ? (
                   <button
                     type="button"
-                    onClick={toggleDependencies}
+                    onClick={() => toggleDependencies(item.instanceId)}
+                    aria-expanded={item.expanded}
                     className="px-4 py-2 text-left text-sm text-[var(--color-accent)]"
                   >
-                    {t("installed.showDependencies", { count: item.hiddenCount })}
+                    {t(
+                      item.expanded ? "installed.hideDependencies" : "installed.showDependencies",
+                      { count: item.hiddenCount },
+                    )}
                   </button>
                 ) : (
                   <ArtifactRow

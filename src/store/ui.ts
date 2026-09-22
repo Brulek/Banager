@@ -15,8 +15,13 @@ export interface UiState {
   setPage(p: Page): void;
   query: string;
   setQuery(q: string): void;
-  showDependencies: boolean;
-  toggleDependencies(): void;
+  // The ids of the sources whose dependencies are unfolded. This used to
+  // be one boolean for the whole page, so unfolding pip's "N components
+  // installed by other software" unfolded Homebrew's and npm's too --
+  // routine on any Mac with more than one source. Every row already knows
+  // which instance it came from; the expansion follows it.
+  expandedDependencies: string[];
+  toggleDependencies(instanceId: string): void;
   drawerOpen: boolean;
   setDrawerOpen(open: boolean): void;
   focusedOpId: number | null;
@@ -48,8 +53,13 @@ export const useUiStore = create<UiState>((set) => ({
   setPage: (p) => set({ page: p }),
   query: "",
   setQuery: (q) => set({ query: q }),
-  showDependencies: false,
-  toggleDependencies: () => set((s) => ({ showDependencies: !s.showDependencies })),
+  expandedDependencies: [],
+  toggleDependencies: (instanceId) =>
+    set((s) => ({
+      expandedDependencies: s.expandedDependencies.includes(instanceId)
+        ? s.expandedDependencies.filter((id) => id !== instanceId)
+        : [...s.expandedDependencies, instanceId],
+    })),
   drawerOpen: false,
   setDrawerOpen: (open) => set({ drawerOpen: open }),
   focusedOpId: null,
