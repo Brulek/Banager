@@ -205,23 +205,30 @@ export function UpdatesPage() {
   const actionableCount = visibleUpdates.filter(isActionable).length;
   const unmanageableCount = visibleUpdates.length - actionableCount;
 
-  // Only rows that are selected, still visible *and* still checkable count.
-  // The store keeps a selection for a row that has since been ignored;
-  // without this intersection "Update selected" would be enabled for nothing
-  // and open an empty dialog. `checkable` is in the same intersection
-  // because a selection outlives the row that made it: a candidate selected
-  // while it was checkable stays selected after a refresh flips the flag,
-  // and the batch would then plan the very row whose Update button was just
-  // taken away.
+  // Only rows that are selected, still visible *and* still actionable
+  // count. The store keeps a selection for a row that has since been
+  // ignored; without this intersection "Update selected" would be enabled
+  // for nothing and open an empty dialog. Actionability is in the same
+  // intersection because a selection outlives the row that made it: a
+  // candidate selected while it was actionable stays selected after a
+  // refresh takes that away, and the batch would then plan the very row
+  // whose Update button has just gone.
+  //
+  // `isActionable` itself, not a second copy of its conditions. This used
+  // to re-spell all three of them forty lines below where the predicate is
+  // defined, which agreed with it exactly and would have stopped agreeing
+  // the moment a fourth condition arrived (per-package actionability,
+  // spec §8): the button and the count would drop the row, a selection
+  // made before that refresh would still reach the batch, `issue_plan`
+  // would pass it -- its gate is per *instance* -- and the tool's refusal
+  // would come back as raw English.
   const selectedVisible = useMemo(
     () =>
       visibleUpdates.filter(
-        (u) =>
-          u.checkable &&
-          !readOnlyReasons.has(u.key.instance_id) &&
-          !unavailableInstances.has(u.key.instance_id) &&
-          selectedUpdates.includes(artifactKeyId(u.key)),
+        (u) => isActionable(u) && selectedUpdates.includes(artifactKeyId(u.key)),
       ),
+    // `isActionable` is rebuilt every render and so cannot be a dependency;
+    // these are the three values it closes over, which is the same thing.
     [visibleUpdates, selectedUpdates, readOnlyReasons, unavailableInstances],
   );
 
