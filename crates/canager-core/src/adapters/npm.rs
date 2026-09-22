@@ -31,13 +31,36 @@ fn validate_search_query(query: &str) -> Result<(), AdapterError> {
 }
 
 /// The real check for `NpmAdapter::new`'s `prefix_writable_fn` default:
-/// whether the current user can write to `prefix` (the global `node_modules`
-/// directory `npm prefix -g` reports). A prefix owned by another user (e.g. a
+/// whether the current user can write where npm actually places global
+/// packages under `prefix` (the prefix *root* that `npm prefix -g` reports,
+/// e.g. `/opt/homebrew` — **not** the `node_modules` directory itself, despite
+/// what an earlier version of this comment claimed). npm writes into
+/// `{prefix}/lib/node_modules`.
+///
+/// When that directory doesn't exist yet (e.g. the first global install on
+/// this prefix), npm has to create it, which needs write permission on the
+/// nearest *existing* ancestor, not on the missing leaf. So this walks
+/// `{prefix}/lib/node_modules` → `{prefix}/lib` → `{prefix}` and tests
+/// whichever of those exists first. A prefix owned by another user (e.g. a
 /// system-wide npm) is read-only for this adapter — see the per-adapter
 /// contract table's Notes column.
 fn real_prefix_is_writable(prefix: &Path) -> bool {
+    let node_modules = prefix.join("lib").join("node_modules");
+    let lib_dir = prefix.join("lib");
+    for candidate in [node_modules.as_path(), lib_dir.as_path(), prefix] {
+        if candidate.exists() {
+            return path_is_writable(candidate);
+        }
+    }
+    // None of the three exist (npm prefix -g pointed at a prefix that isn't
+    // on disk at all) — there is nothing nearer to test than the root itself,
+    // and `access` on a missing path correctly reports "not writable".
+    path_is_writable(prefix)
+}
+
+fn path_is_writable(path: &Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
-    match std::ffi::CString::new(prefix.as_os_str().as_bytes()) {
+    match std::ffi::CString::new(path.as_os_str().as_bytes()) {
         Ok(c_path) => unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 },
         Err(_) => false,
     }
@@ -46,11 +69,15 @@ fn real_prefix_is_writable(prefix: &Path) -> bool {
 pub struct NpmAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
-    /// How to decide whether `inst.prefix` is writable by the current user,
-    /// gating install/uninstall/upgrade. Production always gets
+    /// How to decide whether `inst.prefix` is writable by the current user
+    /// (in practice: whether npm can write into `{prefix}/lib/node_modules`,
+    /// creating it if needed — see `real_prefix_is_writable`), gating
+    /// install/uninstall/upgrade. Production always gets
     /// `real_prefix_is_writable`; tests inject a fixed answer via the
     /// `#[cfg(test)]`-only `with_prefix_writable_fn`, mirroring
-    /// `BrewAdapter::with_euid_fn`.
+    /// `BrewAdapter::with_euid_fn`. This same seam will also gate `detect()`
+    /// once `read_only_reason` lands, so it takes `&Path` rather than
+    /// `&ManagerInstance` on purpose.
     prefix_writable_fn: fn(&Path) -> bool,
 }
 
@@ -950,5 +977,88 @@ mod tests {
         assert!(caps.search);
         assert!(caps.per_item_upgrade);
         assert!(caps.uninstall);
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-npm-prefix-writable-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// `set_mode` only strips permission bits; it never has to widen them
+    /// back for cleanup here because an empty, no-write directory can still
+    /// be unlinked by its (writable) parent.
+    fn make_read_only(dir: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dir).expect("stat").permissions();
+        perms.set_mode(0o555);
+        std::fs::set_permissions(dir, perms).expect("chmod read-only");
+    }
+
+    #[test]
+    fn real_prefix_is_writable_tests_node_modules_itself_not_just_the_prefix_root() {
+        // `{prefix}/lib/node_modules` exists but is not writable, even though
+        // the prefix root (which we just created and own) is. npm writes
+        // into node_modules directly here, so this must report false — a
+        // regression to "test prefix root only" would wrongly report true.
+        let prefix = scratch_dir("existing-node-modules-read-only");
+        let node_modules = prefix.join("lib").join("node_modules");
+        std::fs::create_dir_all(&node_modules).expect("create node_modules");
+        make_read_only(&node_modules);
+
+        assert!(
+            !real_prefix_is_writable(&prefix),
+            "node_modules itself is read-only, so npm cannot write packages into it"
+        );
+
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn real_prefix_is_writable_walks_up_to_lib_when_node_modules_does_not_exist_yet() {
+        // First global install on this prefix: node_modules hasn't been
+        // created yet, but its parent (`lib`) exists and is writable, so npm
+        // can create node_modules when it needs to.
+        let prefix = scratch_dir("missing-node-modules-writable-lib");
+        let lib_dir = prefix.join("lib");
+        std::fs::create_dir_all(&lib_dir).expect("create lib");
+
+        assert!(real_prefix_is_writable(&prefix));
+
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn real_prefix_is_writable_walks_up_to_lib_and_finds_it_unwritable() {
+        // Same as above, but `lib` itself cannot be written to, so npm could
+        // not create node_modules inside it even though the prefix root can
+        // be written to.
+        let prefix = scratch_dir("missing-node-modules-read-only-lib");
+        let lib_dir = prefix.join("lib");
+        std::fs::create_dir_all(&lib_dir).expect("create lib");
+        make_read_only(&lib_dir);
+
+        assert!(!real_prefix_is_writable(&prefix));
+
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[test]
+    fn real_prefix_is_writable_falls_back_to_the_prefix_root_when_lib_is_also_missing() {
+        // Neither `lib` nor `lib/node_modules` exist yet; the nearest
+        // existing ancestor is the prefix root itself.
+        let prefix = scratch_dir("missing-lib-entirely");
+
+        assert!(real_prefix_is_writable(&prefix));
+
+        let _ = std::fs::remove_dir_all(&prefix);
     }
 }
