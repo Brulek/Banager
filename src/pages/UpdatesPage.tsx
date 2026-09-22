@@ -144,8 +144,8 @@ export function UpdatesPage() {
   // alike. The Installed page has always said it once, under the group
   // header. Said once here too.
   //
-  // Both early returns below run with no visible rows, so `instancesWithRows`
-  // is empty there and this list is state-only -- which is what decides
+  // Both early returns below run with no visible rows, so every count is
+  // zero there and this list is state-only -- which is what decides
   // between "Everything is up to date" and "No updates in the sources
   // Canager could check". A read-only source is one Canager *can* check.
   const instanceNotices = useMemo(
