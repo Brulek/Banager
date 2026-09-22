@@ -48,36 +48,24 @@
 规格 §8 列了明确不在射程的四项（每实例 `refreshed_at`、每包可操作性、`{{message}}` 动态英文透传、
 全新 Mac 的安装引导），都给了正确形状，避免下一轮当新发现重报。
 
-**二、适配器失败语义不统一（critical，未做）**
-同一个条件——远程查询失败——四个适配器给三种答案：cargo 判 `checkable: false`（单项「查不了」）；
-pip / uv / pipx-native 返回 `Err`，整个来源失败；**npm 返回 `Ok(vec![])`，等于谎报「全部最新」**。
-cargo 的代码注释里就写明了为什么不能当来源失败。以 cargo 为准统一，npm 那条要能区分
-「exit 1 且 stdout 有 JSON」与「exit 1 且 stdout 为空、stderr 非空」。
+**二～四、已于 2026-09-22 全部清掉**（`829ae63`..`7940893`，300 个 Rust 测试 / 193 个前端测试全绿）
 
-**三、`refreshed_at` 的 Rust 半边（critical）**
-`session/refresh.rs` 的 `stale` 是七个来源的全局 OR，`refreshed_at` 只在全部成功时才盖章。
-六好一坏的机器永远拿不到时间戳。前端已改成对它能检测到的事实诚实（文案改为「有来源没有应答」），
-但真正的修法是**按实例记陈旧**——`SourceError` 已经带 `instance_id`，只是没人读。
+- 适配器失败语义统一到 cargo 的模型：远程查不到 = 该项 `checkable: false` 带理由，不是整个来源失败。
+  npm 不再谎报「全部最新」——判据改成「非零退出且没有任何发现」，比原定的「exit 1 且 stdout 空」更严，
+  堵掉了 `{}` 与不可解析响应两个洞。
+- 两块逐字重复抽成 `reconcile_from` 与 `ensure_instance_match`；**npm 那份漏 `kind` 检查的漂移
+  由构造消除**（七个适配器现在共用同一份）。
+- brew 的 root 拒绝回到 `BrewAdapter::detect`，不再禁掉其余六个来源；`RefusedAsRoot` 因此变成不可达，
+  连同 TypeScript 镜像、界面分支与两种语言的文案一并删除。
+- 闸门的拒绝不再是 `{:?}` 出来的原始英文；`PlanId` 改成 128 位随机令牌；`open_ollama_app` 的三个
+  stdio 流置空。
 
-**四、其余已确认项**
-- ollama 的 `check_updates` 在守护进程于 detect 与扇出之间停掉时硬报错，绕开了任务 11 的规则；
-  应返回 `Ok(vec![])` 或 `checkable:false` 行。顺带：它每轮刷新会重复发一次 `/api/tags`。
-- brew 的 root 拒绝在 `refresh.rs` 里短路了**全部七个来源**，并且文案把锅甩给 Homebrew；
-  这个判断该留在 `BrewAdapter::detect` 里。
-- npm 的 `real_prefix_is_writable` 测错了目录：`npm prefix -g` 给的是 prefix 根（`/opt/homebrew`），
-  npm 实际写 `{prefix}/lib/node_modules`。测试夹具里 `npm:/opt/homebrew/lib` 那个 id 是同一处误解的化石。
-- 两块逐字重复没被计划的两个共享辅助函数覆盖：五个适配器 `plan()` 开头一模一样的实例校验块
-  （抽 `ensure_instance_match`）、五个适配器一模一样的 `reconcile()` 体（抽 `reconcile_from`）——
-  **npm 的那份副本已经漂了，漏掉 `kind` 检查**，七个适配器里只有它漏。
-- `open_ollama_app` 用 `open -a Ollama` 按名字走 LaunchServices，会匹配到 `~/Downloads` 里的任意副本。
-  改用 bundle id，但**本机没装 Ollama.app、读不到 Info.plist，不许猜**（Homebrew cask 缓存两处
-  旁证是 `com.electron.ollama`，注意 `com.ollama.ollama` 是 launchd job 不是 app）。装上后核实再改。
-  顺手把三个 stdio 流置空。
-- 纵深防御，非活口：六个适配器的 argv 都没有 `--` 参数终止符，目前靠两个校验器拒绝前导短横。
-  加 `--` 能把保证从「偶然」变成「结构性」，但 `ollama pull --` 的行为需要有守护进程才能验。
-- `PlanId` 是顺序递增的 `AtomicU64`，被放弃的预览其 id 可猜。对已沦陷的渲染进程没有增益，便宜就做。
-- `manifests_root` 写死 `registry.ollama.ai`，所以 `hf.co/...` 模型会去错目录找清单。真 bug，
-  属于多注册表支持的设计工作。（已确认：安全修复会让这类名字变成 `checkable: false` 而不是崩溃。）
+**实施者自己抓到并修掉的两处**（简报没要求，但都是本项目的招牌缺陷）：
+一是它的改动会让 pip 成为最大的「查不了」行来源，而那些理由文本因为一个三选一互斥分支加上
+`truncate` 类**永远渲染不出来**——定义了、镜像了、没人看得见；二是更新页的标题计数只用了
+`isActionable` 三个组成部分里的两个，会在六行没有按钮的行上方写「6 个可用更新」。
+
+**仍然挡着合并的只剩作者本人的事项**（见下一节）。技术项全部清空。
 
 **五、需要作者本人拍板**
 - **整个应用没有刷新按钮。** 唯三的刷新触发点是启动、操作完成、以及两个错误态里的「重试」。
