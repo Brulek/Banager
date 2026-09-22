@@ -34,16 +34,21 @@
       **`Capabilities` 连同 trait 方法、七份实现与十一处测试 fake 一并删除**（本条同时结清下面
       「阶段 4 之前」那条同名条目）；`Session::issue_plan` 设统一闸门；前端删掉
       `READ_ONLY_ADAPTER_IDS` 与 `UpdatesPage` 的 stopgap，pip 与 npm 各自的只读文案分开。
-- [ ] 步骤 3 — 状态轴：`InstanceStatus`（`unavailable` + `notes`）上线格式，删 `healthy`（6 个读取方），
-      `refresh.rs` 四处改动（无条件盖 `refreshed_at`、`stale` 兼看 errors、不可用实例沿用旧产物、
-      notes 按 instance_id 回填），来源通知提升为两页共用。
-- [ ] 步骤 4 — `CheckOutcome { candidates, notes }` + brew 的 `IndexMayBeStale`。
-- [ ] 步骤 5 — 卸载确认屏上的英文风险提示改枚举（中文用户目前被要求读英文提示后点「卸载」）。
+- [x] 步骤 3 `02cc340`..`54a4399` — 状态轴：`InstanceStatus` 上线格式，`healthy` 删除，
+      `refresh.rs` 四处改动全部落地，来源通知经 `SourceNotices` + `sources.ts` 的纯映射两页共用。
+- [x] 步骤 4 `926fe13`..`b1a2ca9` — `CheckOutcome { candidates, notes }`（纯核心内部、不跨 IPC）
+      + brew 的 `IndexMayBeStale`，渲染在更新页——「所有内容都已是最新」那句话所在的那一页。
+- [x] 步骤 5 `aebb975`..`616cbb7` — 卸载确认屏与更新页的固定英文警告改成可本地化枚举。
+
+**合取不变量已落地并有测试**：`session/plans.rs:51` 的 `if !instance.writable() || !instance.available()`，
+测试遍历两个 `Unavailable` 变体 × 每个 `OpKind`。这是评审抓到的那条——修发现(6) 的「沿用旧产物」
+若没有它，就会把发现(4) 原样造回来（Ollama 没跑时实例仍可写，结转回来的每行都带一个点了必失败的卸载按钮）。
+全绿：286 个 Rust 测试、181 个前端测试。
 
 规格 §8 列了明确不在射程的四项（每实例 `refreshed_at`、每包可操作性、`{{message}}` 动态英文透传、
 全新 Mac 的安装引导），都给了正确形状，避免下一轮当新发现重报。
 
-**二、适配器失败语义不统一（critical）**
+**二、适配器失败语义不统一（critical，未做）**
 同一个条件——远程查询失败——四个适配器给三种答案：cargo 判 `checkable: false`（单项「查不了」）；
 pip / uv / pipx-native 返回 `Err`，整个来源失败；**npm 返回 `Ok(vec![])`，等于谎报「全部最新」**。
 cargo 的代码注释里就写明了为什么不能当来源失败。以 cargo 为准统一，npm 那条要能区分
