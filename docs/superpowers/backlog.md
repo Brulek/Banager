@@ -24,14 +24,24 @@
 按依赖顺序排列。** 分支已推送，CI 见 GitHub；本地安全标签 `prewrite-d300730` 指向历史重写前的旧头，
 确认无误后可删。
 
-**一、先定架构：实例级通道（三条独立发现都指向它，必须一次设计好，别再长出没有读取方的字段）**
-- 现状：`Adapter::capabilities()` 有七份实现、**零调用方**，而前端在 `src/lib/sources.ts` 里
-  硬编码 `READ_ONLY_ADAPTER_IDS = {"pip"}` —— 同一个事实在 IPC 两侧各维护一份。
-- 同一条通道还要承载：brew「update 失败、结果可能过期」的实例级提醒（候选为空时现在被静默丢弃）；
-  npm 在 prefix 不可写时的只读状态（现在会给出一个点了必然报错的「卸载」按钮）；
-  pip 的更新候选不可执行（`checkable: true` 但 `plan()` 无条件拒绝，前端只能先用硬编码名单兜住）。
-- 决策要点：是给 `ManagerInstance` 加字段、还是把 `Capabilities` 送上线格式、还是引入实例状态对象。
-  无论选哪条，**每个新字段都必须在同一轮里写出生产读取方**，否则就是本项目反复踩的那个坑。
+**一、实例级通道 —— 已定案并在实施中**
+规格：`docs/superpowers/2026-09-22-instance-level-channel-spec.md`（草案经三路对抗评审重写，
+评审证伪了草案的 7 处断言并抓出 2 处「照草案实施会直接坏掉」）。分五步落地：
+
+- [x] 步骤 1 `643efc6` — npm 可写性查错目录：改为沿 `{prefix}/lib/node_modules` → `{prefix}/lib`
+      → `{prefix}` 取最近存在的祖先再判权限。
+- [x] 步骤 2 `b0ebc0f`..`0e6eceb` — 能力轴：`ManagerInstance.read_only_reason` 上线格式；
+      **`Capabilities` 连同 trait 方法、七份实现与十一处测试 fake 一并删除**（本条同时结清下面
+      「阶段 4 之前」那条同名条目）；`Session::issue_plan` 设统一闸门；前端删掉
+      `READ_ONLY_ADAPTER_IDS` 与 `UpdatesPage` 的 stopgap，pip 与 npm 各自的只读文案分开。
+- [ ] 步骤 3 — 状态轴：`InstanceStatus`（`unavailable` + `notes`）上线格式，删 `healthy`（6 个读取方），
+      `refresh.rs` 四处改动（无条件盖 `refreshed_at`、`stale` 兼看 errors、不可用实例沿用旧产物、
+      notes 按 instance_id 回填），来源通知提升为两页共用。
+- [ ] 步骤 4 — `CheckOutcome { candidates, notes }` + brew 的 `IndexMayBeStale`。
+- [ ] 步骤 5 — 卸载确认屏上的英文风险提示改枚举（中文用户目前被要求读英文提示后点「卸载」）。
+
+规格 §8 列了明确不在射程的四项（每实例 `refreshed_at`、每包可操作性、`{{message}}` 动态英文透传、
+全新 Mac 的安装引导），都给了正确形状，避免下一轮当新发现重报。
 
 **二、适配器失败语义不统一（critical）**
 同一个条件——远程查询失败——四个适配器给三种答案：cargo 判 `checkable: false`（单项「查不了」）；
@@ -71,7 +81,7 @@ cargo 的代码注释里就写明了为什么不能当来源失败。以 cargo �
 
 ## 阶段 4 之前
 
-- `crates/canager-core/src/adapters/mod.rs` `Adapter::capabilities()` 在整个工作区**没有任何调用方**：`session/`、`ops/`、`src-tauri/src/ipc.rs` 都不调，`Capabilities` 也不在 `src/lib/types.ts` 里，从不跨 IPC。七个适配器各写一份 `capabilities()`，全是死代码。要么把它接进界面（离线时不可检查的来源、只读来源的提示、不支持搜索的来源——这需要给 `ManagerInstance` 的线格式加字段、加 TypeScript 镜像、加界面状态与测试），要么直接从 trait 上删掉。在有消费者之前，**别再让 `Capabilities` 长出新字段**：阶段 3 计划原本要加一个 `needs_network` 网络依赖标志，正因为这条而砍掉（2026-09-20 控制者裁决）。
+- ~~`Adapter::capabilities()` 七份实现零调用方~~ —— **已于 2026-09-22 在 `e4b13b4` 整体删除**。六个字段里界面唯一需要的「能不能写」是每实例的事实（npm 取决于 prefix 权限），静态的每适配器 trait 方法承载不了，所以移到 `ManagerInstance.read_only_reason`；`search` / `upgrade_all` / `background_check` / `cancel_safe` 四个零调用方直接删。阶段 3 曾因这条砍掉 `needs_network` 标志，该裁决依然正确。
 
 - `crates/canager-core/src/adapters/brew/mod.rs:274-277` **「brew update 失败」的提醒在没有可更新项时被丢掉**。阶段 3 任务 3 把 `brew update` 的失败从「整个来源检查失败」降级成一条提醒，但提醒只能挂在 `UpdateCandidate.warnings` 上，而 `UpdateCandidate` 必须带一个真实的 `ArtifactKey`。于是当 `brew update` 失败、`brew outdated` 又报告零个可更新项时，`for candidate in &mut candidates` 无可遍历，提醒被静默丢弃——偏偏这正是最需要它的情形：本地公式索引陈旧，所以「没有更新」这个结论本身可能就是错的。任务 3 的评审与修复代理都独立认定这是计划自身的设计缺口而非实现偏差，修复代理据此返回 BLOCKED 而没有擅自发明接口，这是对的（2026-09-20 控制者裁决：接受现状，记在这里）。
   修的代价：要给 `ManagerInstance`（或 `Snapshot`）加一条实例级 warnings 通道，连带 TypeScript 镜像、线格式表、界面渲染与测试——本身就是一个完整任务，不该塞进阶段 3 的任何一格。
