@@ -168,20 +168,13 @@ struct OutdatedItem {
     #[serde(default)]
     installed_versions: Vec<String>,
     current_version: String,
-    // Deserialized but deliberately unread: a `"pinned"` warning used to be
-    // pushed here, but `UpdatesPage` never renders warning text on a
-    // checkable row (see `BrewAdapter::check_updates`'s doc comment for the
-    // identical argument about a failed `brew update`) -- it only produced
-    // a "1 warning" badge with nothing readable behind it. What pinned
-    // items actually need is per-package actionability
-    // (`UpdateCandidate.actionable: bool` plus a reason enum whose first
-    // variant is `Pinned`, spec §8), which is backlogged, not this field.
-    #[serde(default)]
-    #[allow(dead_code)]
-    pinned: bool,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pinned_version: Option<String>,
+    // `pinned` and `pinned_version` used to be listed here too, unread,
+    // behind `#[allow(dead_code)]`. serde ignores keys a struct does not
+    // mention, so declaring them bought nothing at all and the `allow` was
+    // what kept the compiler from saying so. What pinned items actually
+    // need is per-package actionability (`UpdateCandidate.actionable: bool`
+    // plus a reason enum whose first variant is `Pinned`, spec §8), which
+    // is backlogged; it will read them from the JSON then.
 }
 
 /// Parses `brew outdated --json=v2`.
