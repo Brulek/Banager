@@ -8,12 +8,7 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
-import {
-  ADAPTER_LABEL_KEYS,
-  READ_ONLY_NOTICE_KEYS,
-  planErrorMessage,
-  sourceNoticesFor,
-} from "../lib/sources";
+import { ADAPTER_LABEL_KEYS, planErrorMessage, sourceNoticesFor } from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
@@ -121,21 +116,42 @@ export function UpdatesPage() {
     return byInstance;
   }, [snapshot]);
 
+  // Which sources have a row on this page. Only these get their capability
+  // notice: "pip is read-only" is not news on a page listing two Homebrew
+  // updates.
+  const instancesWithRows = useMemo(
+    () => new Set(visibleUpdates.map((u) => u.key.instance_id)),
+    [visibleUpdates],
+  );
+
   // What the sources themselves have to say, for the top of this page.
-  // Only the *state* axis: a read-only source's advice is already on every
-  // one of its rows (see `readOnlyNoticeKeyFor`), and repeating it as a
-  // banner would say the same thing twice. Whether Canager could reach a
-  // source at all is not on any row, because a source it could not reach
-  // may well have no rows.
+  //
+  // The *state* axis always: whether Canager could reach a source at all
+  // is not on any row, because a source it could not reach may well have
+  // no rows.
+  //
+  // The *capability* axis for a source that has rows here. It used to be
+  // excluded, on the grounds that a read-only source's advice was already
+  // on every one of its rows -- which is precisely the problem: that
+  // advice runs to about two hundred characters, so six outdated pip
+  // packages meant six identical paragraphs, and each package's own
+  // description was displaced by the copy that made all six rows look
+  // alike. The Installed page has always said it once, under the group
+  // header. Said once here too.
+  //
+  // Both early returns below run with no visible rows, so `instancesWithRows`
+  // is empty there and this list is state-only -- which is what decides
+  // between "Everything is up to date" and "No updates in the sources
+  // Canager could check". A read-only source is one Canager *can* check.
   const instanceNotices = useMemo(
     () =>
       (snapshot?.instances ?? []).flatMap((instance) => {
         const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
         return sourceNoticesFor(instance, labelKey ? t(labelKey) : instance.adapter_id).filter(
-          (notice) => notice.axis === "state",
+          (notice) => notice.axis === "state" || instancesWithRows.has(instance.id),
         );
       }),
-    [snapshot, t],
+    [snapshot, t, instancesWithRows],
   );
 
   // A source that did not answer keeps the candidates it reported last
@@ -177,17 +193,11 @@ export function UpdatesPage() {
     !readOnlyReasons.has(candidate.key.instance_id) &&
     !unavailableInstances.has(candidate.key.instance_id);
 
-  const readOnlyReasonFor = (candidate: UpdateCandidate): ReadOnlyReason | undefined =>
-    readOnlyReasons.get(candidate.key.instance_id);
-
-  // The `sourceNotice.*` prefix whose copy explains why this row cannot be
-  // updated here, or undefined when it can. `undefined` is the whole
-  // "actionable" answer for the capability axis, so the row's description
-  // and badge both branch on this one value.
-  const readOnlyNoticeKeyFor = (candidate: UpdateCandidate): string | undefined => {
-    const reason = readOnlyReasonFor(candidate);
-    return reason ? READ_ONLY_NOTICE_KEYS[reason] : undefined;
-  };
+  // Whether this row's source refuses every operation. The badge is all
+  // the row says about it; *why*, and what to do instead, is the source's
+  // own notice at the top of the page, said once.
+  const isReadOnly = (candidate: UpdateCandidate): boolean =>
+    readOnlyReasons.has(candidate.key.instance_id);
 
   // Two numbers, not one. Folding unactionable rows out of a single count
   // told a user with six outdated pip packages "0 updates available" above
@@ -291,21 +301,19 @@ export function UpdatesPage() {
       .join(" ");
 
   /**
-   * The row's description. The two axes are independent and both can be
-   * true at once, so both get said: a read-only source's advice explains
-   * why this row will never have a button, and an uncheckable row's
-   * reason explains why it has no version information either. Showing
-   * only the first -- which is what happened before, because pip is
-   * read-only *and* reaches PyPI -- left a row that looks exactly like a
-   * good day's row while Canager had in fact learned nothing about it.
+   * The row's description: why Canager could not check this one, or --
+   * when it could -- what the package is.
+   *
+   * Read-only-ness is deliberately not in here. The two axes are
+   * independent and both can be true at once, and both used to be said on
+   * the row; but the capability half is a property of the *source*, not of
+   * this package, and six rows from one read-only source repeated it six
+   * times while displacing the six blurbs that tell them apart. It is the
+   * source's notice at the top of the page now, and the row keeps its own
+   * description back.
    */
-  const rowDescription = (candidate: UpdateCandidate, noticeKey: string | undefined): string => {
-    const parts: string[] = [];
-    if (noticeKey) parts.push(t(`${noticeKey}.description`));
-    if (!candidate.checkable) parts.push(cannotCheckText(candidate));
-    else if (!noticeKey) parts.push(descriptionFor(candidate));
-    return parts.filter((part) => part !== "").join(" ");
-  };
+  const rowDescription = (candidate: UpdateCandidate): string =>
+    candidate.checkable ? descriptionFor(candidate) : cannotCheckText(candidate);
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -519,10 +527,9 @@ export function UpdatesPage() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {visibleUpdates.map((candidate) => {
-          // Resolved once per row: the row's description and its badge must
-          // agree about whether this source is read-only, and about which
-          // reason it is.
-          const noticeKey = readOnlyNoticeKeyFor(candidate);
+          // Resolved once per row: the badge and the row's own actionability
+          // must agree about whether this source is read-only.
+          const readOnly = isReadOnly(candidate);
           return (
             <ArtifactRow
               key={artifactKeyId(candidate.key)}
@@ -538,16 +545,15 @@ export function UpdatesPage() {
               // `rowDescription` is what puts it somewhere the user reads
               // -- read-only guidance included, since a read-only source
               // can fail a lookup too.
-              description={rowDescription(candidate, noticeKey)}
+              description={rowDescription(candidate)}
               // An explanation has to be readable end to end or it has not
-              // been given, and both of the sentences `rowDescription` can
-              // compose are explanations -- the read-only advice and the
-              // reason a lookup failed. Together they run to a few hundred
-              // characters and the reason comes last, so one clipped line
-              // would hide precisely the part this row exists to say. A
-              // package's own blurb keeps the single line: it is a nicety,
-              // not something the user is being asked to act on.
-              wrapDescription={noticeKey !== undefined || !candidate.checkable}
+              // been given. The reason a lookup failed can run to a few
+              // hundred characters and the detail comes last, so one
+              // clipped line would hide precisely the part such a row
+              // exists to say. A package's own blurb keeps the single
+              // line: it is a nicety, not something the user is being
+              // asked to act on.
+              wrapDescription={!candidate.checkable}
               // Capability first when both apply: "Read-only" is the fact
               // that no button will ever appear on this row, whatever the
               // next refresh finds. That a lookup also failed is on the
@@ -562,13 +568,13 @@ export function UpdatesPage() {
               // outlived them, unreachable, which is the exact shape of defect
               // this phase keeps finding.
               badgeText={
-                noticeKey
+                readOnly
                   ? t("updates.readOnly")
                   : !candidate.checkable
                     ? t("updates.cannotCheck")
                     : t("updates.available")
               }
-              badgeVariant={noticeKey || !candidate.checkable ? "neutral" : "info"}
+              badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
               primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
               onPrimaryAction={
                 isActionable(candidate) ? () => openConfirm([candidate]) : undefined

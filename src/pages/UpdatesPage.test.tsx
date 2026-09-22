@@ -115,6 +115,9 @@ const stoppedOllama: Snapshot["instances"][number] = {
 let settings: Settings;
 let updates: Snapshot["updates"];
 let instances: Snapshot["instances"];
+// The Updates page reads a package's own blurb out of `artifacts` when
+// technical details are off, so a test about what a row says needs them.
+let artifacts: Snapshot["artifacts"];
 // Every plan_operation answer carries a fresh server-issued id: a PlanId is
 // single-use, so the multi-select tests below must prove that each submit
 // sent a *different* id, not the same one twice.
@@ -180,6 +183,7 @@ beforeEach(() => {
   };
   updates = snapshot.updates;
   instances = snapshot.instances;
+  artifacts = snapshot.artifacts;
   nextPlanId = 1;
   planFailures = {};
   submitFailures = {};
@@ -194,7 +198,8 @@ beforeEach(() => {
   releaseSave = [];
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-    if (cmd === "get_snapshot") return Promise.resolve({ ...snapshot, updates, instances });
+    if (cmd === "get_snapshot")
+      return Promise.resolve({ ...snapshot, updates, instances, artifacts });
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "set_settings") {
       if (saveFailure !== null) return Promise.reject(saveFailure);
@@ -436,6 +441,57 @@ describe("UpdatesPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("explains a read-only source once, at the top, and leaves every row its own description", async () => {
+    // Six outdated pip packages used to mean six copies of the same
+    // ~200-character paragraph -- roughly twenty lines of screen, because
+    // the row is told not to clip an explanation -- and the packages'
+    // own blurbs were displaced by it, so the six rows read identically.
+    // The Installed page has always said this once, under the group
+    // header. The Updates page now says it once too, at the top.
+    const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
+    updates = pipPackages.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Registry" as const,
+      checkable: true,
+      warnings: [],
+    }));
+    artifacts = pipPackages.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      display_name: name,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description: `what ${name} is for`,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+    }));
+    const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    expect(
+      queryAllByText(/Install Python command-line tools with pipx or uv instead/),
+    ).toHaveLength(1);
+    // And each row can be told from the next again.
+    for (const name of pipPackages) {
+      expect(await findByText(`what ${name} is for`)).toBeInTheDocument();
+    }
+  });
+
+  it("says nothing about a read-only source that has no rows on this page", async () => {
+    // The notice moved to the top of the page, which is a place it can be
+    // shown for a source that has nothing outdated at all. pip being
+    // read-only is not news on a page listing two Homebrew updates.
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    expect(queryByText("Read-only: pip packages")).not.toBeInTheDocument();
+    expect(queryByText("Read-only: npm packages")).not.toBeInTheDocument();
+  });
+
   it("does not count a row it could not check as an available update", async () => {
     // The headline counts what Canager can act on, and `checkable` is one
     // of the three things that decides that -- but the count only ever
@@ -469,9 +525,10 @@ describe("UpdatesPage", () => {
     // used to win outright, leaving no trace that Canager had not managed
     // to check anything. The row would then read "use pipx or uv" with a
     // "Read-only" badge, exactly as it does on a good day, while behind it
-    // the version information was simply missing. Both have to be on the
-    // row: the advice says why there will never be a button, the reason
-    // says why there is no version either.
+    // the version information was simply missing. Both still have to be
+    // said; they are simply said in the two places they belong. The
+    // source's advice is the source's notice, once, at the top; the
+    // reason a lookup failed is this row's and nowhere else.
     updates = [
       {
         key: urllib3Key,
@@ -485,21 +542,18 @@ describe("UpdatesPage", () => {
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("urllib3");
-    expect(
-      await findByText(/Canager couldn't check this one for updates just now\./),
-    ).toBeInTheDocument();
-    expect(
-      await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//),
-    ).toBeInTheDocument();
-    const description = await findByText(/Install Python command-line tools with pipx or uv instead/);
-    expect(description).toBeInTheDocument();
-    // Both sentences land in the same element, and the reason is the
-    // second of them -- close to three hundred characters in all. jsdom
-    // applies no CSS, so being in the DOM says nothing about being
-    // visible; the row has to be told not to clip the description to one
-    // line, or the reason is the exact part the real window hides.
-    expect(description.className).not.toContain("truncate");
-    expect(description.textContent).toMatch(/Could not fetch URL https:\/\/pypi\.org\/simple\/$/);
+    const advice = await findByText(
+      /Install Python command-line tools with pipx or uv instead/,
+    );
+    const reason = await findByText(/Canager couldn't check this one for updates just now/);
+    // Two separate elements: the advice is the source's banner, the reason
+    // is the row's description.
+    expect(advice).not.toBe(reason);
+    expect(advice.textContent).not.toMatch(/Canager couldn't check this one/);
+    // jsdom applies no CSS, so being in the DOM says nothing about being
+    // visible; the row has to be told not to clip the reason to one line,
+    // or the detail at the end of it is what the real window hides.
+    expect(reason.className).not.toContain("truncate");
   });
 
   it("leaves a warning that was written for this audience unwrapped", async () => {
