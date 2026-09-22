@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSaveSettings } from "../lib/queries";
 import type { Settings, Language } from "../lib/types";
@@ -18,6 +19,7 @@ export function SettingsPage() {
   const settingsQuery = useSettings();
   const saveMutation = useSaveSettings();
   const [draft, setDraft] = useState<Settings | null>(null);
+  const languageRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     if (settingsQuery.data && draft === null) {
@@ -42,6 +44,19 @@ export function SettingsPage() {
     saveMutation.mutate(next, {
       onError: () => setDraft(previous),
     });
+  };
+
+  // Arrow keys walk the language group and wrap at both ends, the way a
+  // native radio group does. Selection follows focus (WAI-ARIA's radio
+  // pattern), so the arrow that moves the highlight also saves the choice.
+  const moveLanguage = (event: KeyboardEvent, index: number) => {
+    const back = event.key === "ArrowLeft" || event.key === "ArrowUp";
+    const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+    if (!back && !forward) return;
+    event.preventDefault();
+    const next = (index + (forward ? 1 : -1) + LANGUAGES.length) % LANGUAGES.length;
+    persist({ ...current, language: LANGUAGES[next] });
+    languageRefs.current[next]?.focus();
   };
 
   const unignore = (key: Settings["ignored_updates"][number]) => {
@@ -108,17 +123,34 @@ export function SettingsPage() {
       <div>
         <p className="mb-2">{t("settings.language.label")}</p>
         <div role="radiogroup" aria-label={t("settings.language.label")} className="flex gap-2">
-          {LANGUAGES.map((lang) => (
-            <button
-              key={lang}
-              type="button"
-              role="radio"
-              aria-checked={current.language === lang}
-              onClick={() => persist({ ...current, language: lang })}
-            >
-              {t(languageLabelKey(lang))}
-            </button>
-          ))}
+          {LANGUAGES.map((lang, index) => {
+            const selected = current.language === lang;
+            return (
+              <button
+                key={lang}
+                ref={(node) => {
+                  languageRefs.current[index] = node;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                // Roving tabindex: one Tab stop for the whole group, landing
+                // on the current choice, which is what a radio group is
+                // supposed to feel like from the keyboard. Without it Tab
+                // stopped at all three buttons and the arrow keys did nothing.
+                tabIndex={selected ? 0 : -1}
+                onKeyDown={(event) => moveLanguage(event, index)}
+                onClick={() => persist({ ...current, language: lang })}
+                className={
+                  selected
+                    ? "rounded-md border border-[var(--color-accent)] bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)]"
+                    : "rounded-md border border-[var(--color-border)] px-3 py-1 text-sm hover:bg-[var(--color-hover)]"
+                }
+              >
+                {t(languageLabelKey(lang))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -137,6 +169,7 @@ export function SettingsPage() {
                     name: key.name,
                   })}
                   onClick={() => unignore(key)}
+                  className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm hover:bg-[var(--color-hover)]"
                 >
                   {t("settings.ignoredUpdates.unignore")}
                 </button>

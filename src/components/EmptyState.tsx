@@ -37,7 +37,15 @@ export function EmptyState({
         <p className="text-sm text-[var(--color-muted-foreground)]">{description}</p>
       </div>
       {action && (
-        <button type="button" onClick={action.onClick}>
+        // This is the Retry button of the refresh-failed states, the only way
+        // out of them. Left class-less it rendered as one more line of text
+        // under the explanation, so the recovery the screen is offering was
+        // invisible.
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)]"
+        >
           {action.label}
         </button>
       )}

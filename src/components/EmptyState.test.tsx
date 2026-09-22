@@ -34,4 +34,15 @@ describe("EmptyState", () => {
 
     expect(screen.getByRole("status")).toBeInTheDocument();
   });
+  it("gives the action a visible button style, not bare text", () => {
+    // EmptyState's action is the Retry button of the refresh-failed states
+    // (SnapshotStatus), the app's only recovery affordance when the first
+    // refresh fails. A class-less <button> under Tailwind preflight is
+    // indistinguishable from the sentence above it.
+    renderWithProviders(
+      <EmptyState title="Couldn't load" description="…" action={{ label: "Try again", onClick: () => {} }} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Try again" }).className).not.toBe("");
+  });
 });
