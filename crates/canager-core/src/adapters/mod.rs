@@ -28,16 +28,6 @@ pub struct CheckOptions {
     pub include_self_updating: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Capabilities {
-    pub search: bool,
-    pub per_item_upgrade: bool,
-    pub upgrade_all: bool,
-    pub uninstall: bool,
-    pub background_check: bool,
-    pub cancel_safe: bool,
-}
-
 #[derive(Clone, Debug, Deserialize)]
 pub struct AdapterMeta {
     pub id: String,
@@ -166,7 +156,6 @@ pub fn validate_package_name(name: &str) -> Result<(), AdapterError> {
 #[async_trait]
 pub trait Adapter: Send + Sync {
     fn meta(&self) -> &AdapterMeta;
-    fn capabilities(&self) -> Capabilities;
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance>;
     async fn inventory(
         &self,

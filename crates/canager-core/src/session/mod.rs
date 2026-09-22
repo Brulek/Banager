@@ -224,7 +224,7 @@ impl Session {
 mod tests {
     use super::test_support;
     use super::*;
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, OpKind, OpRequest, OpStatus, Outcome,
@@ -264,10 +264,6 @@ mod tests {
     impl Adapter for FakeAdapter {
         fn meta(&self) -> &AdapterMeta {
             &self.meta
-        }
-
-        fn capabilities(&self) -> Capabilities {
-            test_support::fake_capabilities()
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {

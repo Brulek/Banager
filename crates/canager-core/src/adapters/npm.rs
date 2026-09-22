@@ -1,5 +1,5 @@
 use crate::adapters::{
-    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -353,17 +353,6 @@ impl Adapter for NpmAdapter {
         &self.meta
     }
 
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            search: true,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: true,
-            cancel_safe: true,
-        }
-    }
-
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         NpmAdapter::detect(self, env).await
     }
@@ -595,7 +584,7 @@ mod tests {
         assert!(hits.iter().all(|h| h.adapter_id == "npm"));
     }
 
-    use crate::adapters::{Adapter, AdapterError, CheckOptions};
+    use crate::adapters::{AdapterError, CheckOptions};
     use crate::events::VecSink;
     use crate::model::{
         ArtifactKey, CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock, Scope,
@@ -1092,15 +1081,6 @@ mod tests {
         assert!(validate_search_query("--registry=http://evil.invalid").is_err());
         assert!(validate_search_query("   ").is_err());
         assert!(validate_search_query(&"x".repeat(201)).is_err());
-    }
-
-    #[test]
-    fn test_capabilities_report_search_per_item_upgrade_and_uninstall() {
-        let adapter = NpmAdapter::new(Arc::new(MockRunner::new()));
-        let caps = adapter.capabilities();
-        assert!(caps.search);
-        assert!(caps.per_item_upgrade);
-        assert!(caps.uninstall);
     }
 
     fn scratch_dir(label: &str) -> PathBuf {

@@ -1,7 +1,7 @@
 pub mod parse;
 
 use crate::adapters::{
-    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
+    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -467,17 +467,6 @@ impl OllamaAdapter {
 impl Adapter for OllamaAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            search: false,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: true,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {

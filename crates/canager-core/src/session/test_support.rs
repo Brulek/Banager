@@ -8,7 +8,7 @@
 //! module live here; each file keeps whatever is actually specific to it
 //! (its own `FakeAdapter`/`FakeState` shape, and the tests themselves).
 
-use crate::adapters::{AdapterMeta, Capabilities};
+use crate::adapters::AdapterMeta;
 use crate::model::{
     CancelPolicy, ManagerInstance, OpRequest, Plan, ReadOnlyReason, Reconciled, ResourceLock, Scope,
 };
@@ -79,18 +79,6 @@ pub(super) fn fake_adapter_meta(id: &str) -> AdapterMeta {
         homepage: "https://example.invalid".to_string(),
         schema_version: 1,
         verified_versions: vec![],
-    }
-}
-
-/// The `Capabilities` every `FakeAdapter` in these test modules reports.
-pub(super) fn fake_capabilities() -> Capabilities {
-    Capabilities {
-        search: false,
-        per_item_upgrade: true,
-        upgrade_all: false,
-        uninstall: true,
-        background_check: true,
-        cancel_safe: true,
     }
 }
 

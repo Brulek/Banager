@@ -1,6 +1,4 @@
-use crate::adapters::{
-    second_token, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
-};
+use crate::adapters::{second_token, Adapter, AdapterError, AdapterMeta, CheckOptions};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest,
@@ -327,17 +325,6 @@ impl PipAdapter {
 impl Adapter for PipAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            search: false,
-            per_item_upgrade: false,
-            upgrade_all: false,
-            uninstall: false,
-            background_check: true,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -669,16 +656,6 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(AdapterError::Unsupported(_))));
-    }
-
-    #[test]
-    fn test_capabilities_report_no_write_operations() {
-        let adapter = PipAdapter::new(Arc::new(MockRunner::new()));
-        let caps = <PipAdapter as Adapter>::capabilities(&adapter);
-        assert!(!caps.per_item_upgrade);
-        assert!(!caps.upgrade_all);
-        assert!(!caps.uninstall);
-        assert!(!caps.search);
     }
 
     #[tokio::test]

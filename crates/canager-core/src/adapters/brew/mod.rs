@@ -1,8 +1,6 @@
 pub mod parse;
 
-use crate::adapters::{
-    validate_package_name, Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions,
-};
+use crate::adapters::{validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, ManagerInstance,
@@ -520,17 +518,6 @@ impl BrewAdapter {
 impl Adapter for BrewAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            search: true,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: true,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {

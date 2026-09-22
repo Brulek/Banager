@@ -1,6 +1,6 @@
 use crate::adapters::{
     run_plan, url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    Capabilities, CheckOptions,
+    CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -402,20 +402,6 @@ impl PipxAdapter {
 impl Adapter for PipxAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            // No upgrade-all: OpKind has no variant for it, so `plan()`
-            // could never receive such a request (see this task's
-            // Interfaces block).
-            search: false,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: true,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {

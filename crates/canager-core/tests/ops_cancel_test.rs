@@ -11,7 +11,7 @@
 //! CI runner.
 
 use async_trait::async_trait;
-use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, Capabilities, CheckOptions};
+use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
 use canager_core::events::{EventSink, OpId, OperationEvent, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
@@ -78,17 +78,6 @@ impl FakeAdapter {
 impl Adapter for FakeAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            search: false,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: false,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {

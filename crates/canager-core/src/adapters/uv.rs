@@ -1,6 +1,5 @@
 use crate::adapters::{
-    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    Capabilities, CheckOptions,
+    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -299,19 +298,6 @@ impl UvAdapter {
 impl Adapter for UvAdapter {
     fn meta(&self) -> &AdapterMeta {
         &self.meta
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            // No upgrade-all: OpKind has no variant for it (see this task's
-            // Interfaces block).
-            search: false,
-            per_item_upgrade: true,
-            upgrade_all: false,
-            uninstall: true,
-            background_check: true,
-            cancel_safe: true,
-        }
     }
 
     async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
