@@ -62,6 +62,12 @@
     "label": "将执行:",
     "needsPassword": "这一步会要求你输入 Mac 密码。"
   },
+  "warnings": {
+    "dependentsUnknown": "Canager 无法确定有什么依赖它,卸载可能会影响其他软件。",
+    "wouldBreak_other": "卸载后会影响 {{count}} 项:{{names}}。",
+    "compilesLocally": "这将在本机编译,可能需要几分钟。",
+    "nonRegistrySource": "这不是从 crates.io 安装的,Canager 无法检查它的更新。"
+  },
   "sourceNotice": {
     "pipReadOnly": {
       "title": "只读:pip 包",

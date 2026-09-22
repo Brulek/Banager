@@ -9,6 +9,7 @@ import type {
   ReadOnlyReason,
   InstanceStatus,
   Settings,
+  Warning,
 } from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
@@ -145,6 +146,26 @@ describe("types", () => {
     });
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
+  });
+
+  it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {
+    // Mirrors `Warning` in crates/canager-core/src/model.rs -- every
+    // spelling below has to match it exactly, since a typo here would
+    // silently land the uninstall confirmation screen's dependents warning
+    // in `warningText`'s default (dropped) branch.
+    const dependentsUnknown: Warning = "DependentsUnknown";
+    const compilesLocally: Warning = "CompilesLocally";
+    const nonRegistrySource: Warning = "NonRegistrySource";
+    const wouldBreak: Warning = { WouldBreak: { names: ["python@3.13"] } };
+    const message: Warning = { Message: "boom" };
+
+    expect(roundTrip(dependentsUnknown)).toBe("DependentsUnknown");
+    expect(roundTrip(compilesLocally)).toBe("CompilesLocally");
+    expect(roundTrip(nonRegistrySource)).toBe("NonRegistrySource");
+    expect(JSON.stringify(wouldBreak)).toBe('{"WouldBreak":{"names":["python@3.13"]}}');
+    expect(roundTrip(wouldBreak)).toEqual({ WouldBreak: { names: ["python@3.13"] } });
+    expect(JSON.stringify(message)).toBe('{"Message":"boom"}');
+    expect(roundTrip(message)).toEqual({ Message: "boom" });
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

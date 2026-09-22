@@ -94,6 +94,55 @@ describe("UninstallDialog", () => {
     ).toBeInTheDocument();
   });
 
+  it("localises the plan's warnings instead of showing the Rust side's English", async () => {
+    // Spec §6: this is the app's only destructive confirmation screen, and
+    // a Chinese user was being asked to read an English risk warning right
+    // above the button that acts on it.
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({ warnings: ["DependentsUnknown", { WouldBreak: { names: ["python@3.13"] } }] }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    expect(
+      await screen.findByText(
+        "Canager couldn't check what depends on this, so removing it might break other software.",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("This will break python@3.13.")).toBeInTheDocument();
+  });
+
+  it("pluralises WouldBreak's copy and interpolates every name", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({ warnings: [{ WouldBreak: { names: ["a", "b"] } }] }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    expect(await screen.findByText("This will break 2 other things: a, b.")).toBeInTheDocument();
+  });
+
+  it("shows nothing, not an empty heading, for a warning variant this build does not recognise", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({ warnings: ["SomeFutureVariant" as unknown as Plan["warnings"][number]] }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq"),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Before you continue:")).not.toBeInTheDocument();
+  });
+
   it("submits the plan id and reports the new op id when nothing would break", async () => {
     const issued = issuedPlanFor();
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {

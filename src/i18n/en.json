@@ -66,6 +66,13 @@
     "label": "This will run:",
     "needsPassword": "This will ask for your Mac password."
   },
+  "warnings": {
+    "dependentsUnknown": "Canager couldn't check what depends on this, so removing it might break other software.",
+    "wouldBreak_one": "This will break {{names}}.",
+    "wouldBreak_other": "This will break {{count}} other things: {{names}}.",
+    "compilesLocally": "This will compile locally and can take several minutes.",
+    "nonRegistrySource": "This wasn't installed from crates.io, so Canager can't check it for updates."
+  },
   "sourceNotice": {
     "pipReadOnly": {
       "title": "Read-only: pip packages",

@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
 import { useUiStore } from "../store/ui";
-import type { ArtifactKey, OpRequest, Settings, Snapshot } from "../lib/types";
+import type { ArtifactKey, OpRequest, Settings, Snapshot, Warning } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -135,7 +135,7 @@ let holdSaves: boolean;
 // Names whose plan comes back with `needs_password: true`, mirroring the
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
-let planWarnings: Record<string, string[]>;
+let planWarnings: Record<string, Warning[]>;
 let releasePlan: Record<string, () => void>;
 let releaseSubmit: Record<number, () => void>;
 let releaseSave: Array<() => void>;
@@ -320,7 +320,7 @@ describe("UpdatesPage", () => {
   });
 
   it("shows a warning carried on the plan, such as cargo's compile-locally notice", async () => {
-    planWarnings.glib = ["This will compile locally and can take several minutes."];
+    planWarnings.glib = ["CompilesLocally"];
     const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
@@ -344,7 +344,7 @@ describe("UpdatesPage", () => {
         target: "0.1.0",
         channel: "Registry",
         checkable: false,
-        warnings: ["installed from git, cannot check crates.io for updates"],
+        warnings: ["NonRegistrySource"],
       },
     ];
     const { findByText, queryByRole } = renderWithProviders(<UpdatesPage />);
@@ -353,7 +353,9 @@ describe("UpdatesPage", () => {
     expect(queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
     expect(queryByRole("checkbox")).not.toBeInTheDocument();
     expect(
-      await findByText("installed from git, cannot check crates.io for updates"),
+      await findByText(
+        "This wasn't installed from crates.io, so Canager can't check it for updates.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -374,7 +376,7 @@ describe("UpdatesPage", () => {
         target: "0.1.0",
         channel: "Registry",
         checkable: false,
-        warnings: ["installed from git, cannot check crates.io for updates"],
+        warnings: ["NonRegistrySource"],
       },
     ];
     act(() => {

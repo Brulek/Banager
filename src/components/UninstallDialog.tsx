@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSubmitOperation } from "../lib/queries";
 import type { OpRequest } from "../lib/types";
+import { warningTexts } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
 import { Dialog } from "./ui/Dialog";
 
@@ -52,6 +53,12 @@ export function UninstallDialog({
   const issued = planMutation.data;
   const plan = issued?.plan;
   const hasAffected = (plan?.affected.length ?? 0) > 0;
+  // Rendered here, once, rather than as text per `<li>`: a warning this
+  // build's mirror does not recognise renders nothing (`warningText`
+  // returns null for it), and the heading above the list must agree --
+  // `plan.warnings.length > 0` alone would show "Before you continue:"
+  // over an empty list.
+  const planWarnings = warningTexts(t, plan?.warnings ?? []);
 
   function handleConfirm() {
     if (!issued) return;
@@ -128,13 +135,13 @@ export function UninstallDialog({
 
         {plan && (
           <div className="flex flex-col gap-3">
-            {plan.warnings.length > 0 && (
+            {planWarnings.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-[var(--color-foreground)]">
                   {t("uninstall.warningsTitle")}
                 </p>
                 <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                  {plan.warnings.map((warning) => (
+                  {planWarnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>

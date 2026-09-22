@@ -9,6 +9,7 @@ import {
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ADAPTER_LABEL_KEYS, READ_ONLY_NOTICE_KEYS, sourceNoticesFor } from "../lib/sources";
+import { warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
 import { CommandPreview } from "../components/CommandPreview";
@@ -469,7 +470,7 @@ export function UpdatesPage() {
                   ? t(`${noticeKey}.description`)
                   : candidate.checkable
                     ? descriptionFor(candidate)
-                    : candidate.warnings.join(" ")
+                    : warningTexts(t, candidate.warnings).join(" ")
               }
               badgeText={
                 noticeKey
@@ -558,43 +559,48 @@ export function UpdatesPage() {
         }
       >
         <div className="flex flex-col gap-4">
-          {(batch?.items ?? []).map((item) => (
-            <div key={artifactKeyId(item.key)} className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-[var(--color-foreground)]">{item.key.name}</p>
-              {item.planError !== null ? (
-                <p role="alert" className="text-sm text-[var(--color-danger)]">
-                  {t("updates.planFailed", { message: item.planError })}
-                </p>
-              ) : null}
-              {item.issued !== null ? (
-                <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
-              ) : null}
-              {item.issued && item.issued.plan.warnings.length > 0 ? (
-                <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                  {item.issued.plan.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {item.issued?.plan.needs_password ? (
-                // Per item, not per batch: a batch can mix Casks (which the
-                // brew adapter marks) and formulae (which it does not), so
-                // the notice belongs next to the command that will trigger
-                // the prompt. Spec §6: a password is never a surprise.
+          {(batch?.items ?? []).map((item) => {
+            const itemWarnings = item.issued ? warningTexts(t, item.issued.plan.warnings) : [];
+            return (
+              <div key={artifactKeyId(item.key)} className="flex flex-col gap-1">
                 <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {t("commandPreview.needsPassword")}
+                  {item.key.name}
                 </p>
-              ) : null}
-              {item.submittedOpId !== null ? (
-                <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
-              ) : null}
-              {item.submitError !== null ? (
-                <p role="alert" className="text-sm text-[var(--color-danger)]">
-                  {t("updates.submitFailed", { message: item.submitError })}
-                </p>
-              ) : null}
-            </div>
-          ))}
+                {item.planError !== null ? (
+                  <p role="alert" className="text-sm text-[var(--color-danger)]">
+                    {t("updates.planFailed", { message: item.planError })}
+                  </p>
+                ) : null}
+                {item.issued !== null ? (
+                  <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
+                ) : null}
+                {itemWarnings.length > 0 ? (
+                  <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
+                    {itemWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {item.issued?.plan.needs_password ? (
+                  // Per item, not per batch: a batch can mix Casks (which the
+                  // brew adapter marks) and formulae (which it does not), so
+                  // the notice belongs next to the command that will trigger
+                  // the prompt. Spec §6: a password is never a surprise.
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">
+                    {t("commandPreview.needsPassword")}
+                  </p>
+                ) : null}
+                {item.submittedOpId !== null ? (
+                  <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
+                ) : null}
+                {item.submitError !== null ? (
+                  <p role="alert" className="text-sm text-[var(--color-danger)]">
+                    {t("updates.submitFailed", { message: item.submitError })}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </Dialog>
     </div>

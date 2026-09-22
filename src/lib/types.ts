@@ -33,13 +33,31 @@ export interface InstalledArtifact {
   path: string | null;
   auto_updates: boolean;
 }
+/**
+ * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
+ * in crates/canager-core/src/model.rs: bare-string unit variants, one
+ * externally tagged data variant (`WouldBreak`, whose `names` interpolate
+ * and pluralise the copy in `src/lib/warnings.ts`), and a `Message`
+ * catch-all for warnings this phase does not localise (spec §6's
+ * `show_technical_details` backlog item) -- rendered as the raw string it
+ * carries, same as before this type existed. A new Rust variant this union
+ * does not yet spell lands in `warningText`'s default branch rather than
+ * failing at compile time; `types.test.ts` keeps a shape test over all of
+ * them.
+ */
+export type Warning =
+  | "DependentsUnknown"
+  | { WouldBreak: { names: string[] } }
+  | "CompilesLocally"
+  | "NonRegistrySource"
+  | { Message: string };
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;
   target: string;
   channel: "Native" | "Registry" | "Digest";
   checkable: boolean;
-  warnings: string[];
+  warnings: Warning[];
 }
 /**
  * Why a source can be listed but never changed from Canager. Mirrors
@@ -94,7 +112,7 @@ export interface Plan {
   needs_password: boolean;
   locks: string[];
   cancel_policy: "SafeKill" | "KillThenReconcile" | "NoCancel";
-  warnings: string[];
+  warnings: Warning[];
   affected: string[];
   timeout_secs: number;
 }
