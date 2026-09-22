@@ -1,7 +1,7 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    Reconciled, SearchHit, UpdateCandidate,
+    Reconciled, SearchHit, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -162,6 +162,88 @@ const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
     // and what keeps the value inside its own segment
     .add(b'/')
     .add(b'%');
+
+/// One "Canager could not find out" row: the item is listed at the version
+/// it is installed at, with `checkable: false` and the reason attached.
+///
+/// Every adapter that reaches a registry answers a failed lookup this way,
+/// and this function is why they cannot drift apart again. The alternative
+/// three answers all shipped at once: cargo built rows like these, pip, uv
+/// and pipx's native path returned `Err` (failing the whole source), and
+/// npm returned an empty list -- which on the Updates page is
+/// indistinguishable from "everything is up to date". A failed lookup is
+/// none of those things: it is not knowing.
+///
+/// `target` is the installed version, not a guess. `UpdateCandidate` has no
+/// "unknown" target, and any other value would be a version Canager is
+/// claiming exists.
+pub(crate) fn uncheckable_candidate(
+    key: ArtifactKey,
+    current: String,
+    channel: UpdateChannel,
+    reason: String,
+) -> UpdateCandidate {
+    UpdateCandidate {
+        key,
+        target: current.clone(),
+        current,
+        channel,
+        checkable: false,
+        warnings: vec![Warning::Message(reason)],
+    }
+}
+
+/// One `uncheckable_candidate` per installed item, for the adapters whose
+/// lookup is a single command covering everything at once (`pip list
+/// --outdated`, `uv tool list --outdated`, `pipx list --outdated`, `npm
+/// outdated -g`). When that one command cannot reach the index, nothing is
+/// known about *any* of them, so every installed item gets a row rather
+/// than the source reporting an error and the page showing nothing.
+pub(crate) fn uncheckable_from_inventory(
+    installed: &[InstalledArtifact],
+    channel: UpdateChannel,
+    reason: &str,
+) -> Vec<UpdateCandidate> {
+    installed
+        .iter()
+        .map(|a| {
+            uncheckable_candidate(
+                a.key.clone(),
+                a.version.clone(),
+                channel,
+                reason.to_string(),
+            )
+        })
+        .collect()
+}
+
+/// Why the lookup could not be made, as one line to hang on those rows.
+///
+/// The tool's own first line of stderr, because that is the only thing that
+/// distinguishes "your network is down" from "this index is refusing you"
+/// -- and because `Warning::Message` is shown verbatim (spec §6 backlogs
+/// localising it), a whole multi-line stderr dump would become the row's
+/// description. `what` names the command for the case where the tool exits
+/// non-zero and says nothing at all, which would otherwise leave the row
+/// with an empty reason.
+pub(crate) fn lookup_failure_reason(what: &str, code: Option<i32>, stderr: &str) -> String {
+    const MAX: usize = 200;
+    let line = stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if line.is_empty() {
+        return match code {
+            Some(code) => format!("`{what}` exited with code {code}"),
+            None => format!("`{what}` did not finish"),
+        };
+    }
+    match line.char_indices().nth(MAX) {
+        Some((cut, _)) => format!("{what}: {}...", &line[..cut]),
+        None => format!("{what}: {line}"),
+    }
+}
 
 /// Matches `^[A-Za-z0-9@._+/-]+$`, rejects names starting with `-`, `/` or
 /// `.`, rejects a `..` path segment anywhere, and rejects a trailing `.rb`

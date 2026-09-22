@@ -1,6 +1,6 @@
 use crate::adapters::{
-    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    lookup_failure_reason, run_plan, second_token, uncheckable_from_inventory,
+    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -215,11 +215,17 @@ impl UvAdapter {
                 Duration::from_secs(60),
             )
             .await?;
+        // An index that did not answer is not a failed source: every tool
+        // gets a `checkable: false` row carrying the reason, the same
+        // answer cargo, pip, pipx and npm give. See
+        // `uncheckable_from_inventory`.
         if output.exit_code != Some(0) {
-            return Err(AdapterError::CommandFailed {
-                code: output.exit_code,
-                stderr: output.stderr,
-            });
+            let reason =
+                lookup_failure_reason("uv tool list --outdated", output.exit_code, &output.stderr);
+            let installed = self.inventory(inst).await?;
+            return Ok(
+                uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into(),
+            );
         }
         Ok(parse_tool_list_outdated(&output.stdout, &inst.id).into())
     }
@@ -361,6 +367,7 @@ impl Adapter for UvAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Warning;
 
     #[test]
     fn test_second_token_reads_uvs_recorded_version_line() {
@@ -454,6 +461,50 @@ mod tests {
             .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "ruff");
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_every_tool_uncheckable_when_the_lookup_fails() {
+        // Same rule as cargo, pip, pipx and npm: `uv tool list --outdated`
+        // asks PyPI, and an index that did not answer means "Canager does
+        // not know about these tools", not "this source failed".
+        let list =
+            std::fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt")
+                .expect("read uv tool-list-show-paths.txt fixture");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--outdated"],
+            CommandOutput {
+                exit_code: Some(2),
+                stdout: String::new(),
+                stderr: "error: Request failed after 3 retries".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: list,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = UvAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("an index that did not answer is not a source failure")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].key.name, "ruff");
+        assert!(!candidates[0].checkable);
+        assert!(candidates[0]
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Message(m) if m.contains("Request failed"))));
     }
 
     #[tokio::test]

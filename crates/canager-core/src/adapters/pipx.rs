@@ -1,13 +1,14 @@
 use crate::adapters::{
-    run_plan, url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions, CheckOutcome,
+    lookup_failure_reason, run_plan, uncheckable_candidate, uncheckable_from_inventory,
+    url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel, Warning,
+    Unavailable, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -287,14 +288,12 @@ impl PipxAdapter {
                     warnings: Vec::new(),
                 }),
                 Ok(_) => {}
-                Err(reason) => out.push(UpdateCandidate {
-                    key: artifact.key.clone(),
-                    current: artifact.version.clone(),
-                    target: artifact.version.clone(),
-                    channel: UpdateChannel::Registry,
-                    checkable: false,
-                    warnings: vec![Warning::Message(reason)],
-                }),
+                Err(reason) => out.push(uncheckable_candidate(
+                    artifact.key.clone(),
+                    artifact.version.clone(),
+                    UpdateChannel::Registry,
+                    reason,
+                )),
             }
         }
         out
@@ -318,11 +317,17 @@ impl PipxAdapter {
                     Duration::from_secs(60),
                 )
                 .await?;
+            // The PyPI fallback below already answers a failed lookup with
+            // `checkable: false` rows. This path used to answer the same
+            // question with `Err`, so which of the two a user got depended
+            // only on which pipx they happened to have installed.
             if output.exit_code != Some(0) {
-                return Err(AdapterError::CommandFailed {
-                    code: output.exit_code,
-                    stderr: output.stderr,
-                });
+                let reason =
+                    lookup_failure_reason("pipx list --outdated", output.exit_code, &output.stderr);
+                let installed = self.inventory(inst).await?;
+                return Ok(
+                    uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into(),
+                );
             }
             Ok(parse_outdated(&output.stdout, &inst.id).into())
         } else {
@@ -464,6 +469,7 @@ impl Adapter for PipxAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Warning;
 
     #[test]
     fn test_parse_version_reads_the_bare_version_string() {
@@ -666,6 +672,51 @@ mod tests {
             http.calls(),
             vec!["https://pypi.org/pypi/cowsay/json".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn test_native_check_updates_marks_every_tool_uncheckable_when_the_lookup_fails() {
+        // pipx >= 1.16 has its own `list --outdated`, which reaches PyPI.
+        // Below 1.16 the same failure already produced `checkable: false`
+        // rows (the test below); the native path used to fail the whole
+        // source instead, so one adapter answered the same question two
+        // different ways depending on which pipx the user happened to have.
+        let list = std::fs::read_to_string("../../adapters/fixtures/pipx/1.17.3/list.json")
+            .expect("read pipx list.json fixture");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--outdated"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "Error: Could not reach pypi.org".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/pipx", "list", "--json"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: list,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("an index that did not answer is not a source failure")
+            .candidates;
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].key.name, "cowsay");
+        assert!(!candidates[0].checkable);
+        assert!(candidates[0]
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Message(m) if m.contains("Could not reach pypi.org"))));
     }
 
     #[tokio::test]

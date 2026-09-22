@@ -1,5 +1,6 @@
 use crate::adapters::{
-    second_token, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    lookup_failure_reason, second_token, uncheckable_candidate, Adapter, AdapterError, AdapterMeta,
+    CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -252,11 +253,36 @@ impl PipAdapter {
                 CancellationToken::new(),
             )
             .await?;
+        // `pip list --outdated` reaches PyPI. When it cannot, pip itself
+        // answered fine -- the index did not -- so this is "Canager does
+        // not know about these packages", not "this source failed". Failing
+        // the source made every refresh on such a machine report an error
+        // and hold the whole snapshot stale; cargo already answers this
+        // question the way it is answered here.
         if output.exit_code != Some(0) {
-            return Err(AdapterError::CommandFailed {
-                code: output.exit_code,
-                stderr: output.stderr,
-            });
+            let reason =
+                lookup_failure_reason("pip list --outdated", output.exit_code, &output.stderr);
+            // The plain list, not `inventory()`: all this needs is what is
+            // installed and at what version, and `inventory()` would run a
+            // second `--not-required` pass to work out install reasons
+            // nothing here reads.
+            let installed = self.run_pip_list(inst, &[]).await?;
+            return Ok(installed
+                .into_iter()
+                .map(|p| {
+                    uncheckable_candidate(
+                        ArtifactKey {
+                            instance_id: inst.id.clone(),
+                            kind: ArtifactKind::Package,
+                            name: p.name,
+                        },
+                        p.version,
+                        UpdateChannel::Native,
+                        reason.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into());
         }
         Ok(parse_pip_outdated(&output.stdout, &inst.id)?.into())
     }
@@ -431,7 +457,7 @@ mod tests {
         assert!(wheel.checkable);
     }
 
-    use crate::model::OpKind;
+    use crate::model::{OpKind, Warning};
     use crate::runner::{CommandOutput, MockRunner};
 
     fn test_instance() -> ManagerInstance {
@@ -606,6 +632,63 @@ mod tests {
             .expect("check_updates")
             .candidates;
         assert_eq!(candidates.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_every_package_uncheckable_when_the_lookup_fails() {
+        // `pip list --outdated` reaches out to PyPI. When it cannot, that is
+        // not "pip is broken" -- pip answered, the index did not. Failing the
+        // whole source made every refresh on such a machine report an error
+        // and hold the entire snapshot stale, which is exactly what cargo's
+        // own comment says must not happen.
+        let list = std::fs::read_to_string("../../adapters/fixtures/pip/26.2.1/list.json")
+            .expect("read pip list.json fixture");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/python3.14",
+                "-m",
+                "pip",
+                "list",
+                "--outdated",
+                "--format=json",
+            ],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "WARNING: Retrying ... Read timed out.\nERROR: Could not fetch URL https://pypi.org/simple/".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec![
+                "/opt/homebrew/bin/python3.14",
+                "-m",
+                "pip",
+                "list",
+                "--format=json",
+            ],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: list,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("an index that did not answer is not a source failure")
+            .candidates;
+        assert_eq!(candidates.len(), 7);
+        assert!(candidates.iter().all(|c| !c.checkable));
+        assert!(candidates.iter().all(|c| c
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Message(m) if m.contains("Read timed out")))));
     }
 
     #[tokio::test]

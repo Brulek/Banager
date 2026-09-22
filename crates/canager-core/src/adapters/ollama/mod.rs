@@ -1,7 +1,8 @@
 pub mod parse;
 
 use crate::adapters::{
-    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    run_plan, uncheckable_candidate, url_path_segment, Adapter, AdapterError, AdapterMeta,
+    CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -358,14 +359,12 @@ impl OllamaAdapter {
             // is what stops the UI offering an Update button for this row
             // (Task 12); `current` and `target` are both the local digest
             // precisely because nothing was learned about the remote one.
-            Err(reason) => Some(UpdateCandidate {
-                key: artifact.key.clone(),
-                current: artifact.version.clone(),
-                target: artifact.version.clone(),
-                channel: UpdateChannel::Digest,
-                checkable: false,
-                warnings: vec![Warning::Message(reason)],
-            }),
+            Err(reason) => Some(uncheckable_candidate(
+                artifact.key.clone(),
+                artifact.version.clone(),
+                UpdateChannel::Digest,
+                reason,
+            )),
         }
     }
 

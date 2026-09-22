@@ -1,6 +1,6 @@
 use crate::adapters::{
-    run_plan, second_token, url_path_segment, validate_package_name, Adapter, AdapterError,
-    AdapterMeta, CheckOptions, CheckOutcome,
+    run_plan, second_token, uncheckable_candidate, url_path_segment, validate_package_name,
+    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -277,14 +277,12 @@ impl CargoAdapter {
                     warnings: Vec::new(),
                 }),
                 Ok(_) => {}
-                Err(reason) => out.push(UpdateCandidate {
+                Err(reason) => out.push(uncheckable_candidate(
                     key,
-                    current: version.clone(),
-                    target: version,
-                    channel: UpdateChannel::Registry,
-                    checkable: false,
-                    warnings: vec![Warning::Message(reason)],
-                }),
+                    version,
+                    UpdateChannel::Registry,
+                    reason,
+                )),
             }
         }
         Ok(out.into())

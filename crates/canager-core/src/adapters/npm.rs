@@ -1,5 +1,6 @@
 use crate::adapters::{
-    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    lookup_failure_reason, run_plan, uncheckable_from_inventory, validate_package_name, Adapter,
+    AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -244,15 +245,27 @@ impl NpmAdapter {
                 Duration::from_secs(60),
             )
             .await?;
-        // npm exits 1 whenever it finds anything outdated — a result, not a
-        // failure. See the per-adapter contract table.
-        if output.exit_code != Some(0) && output.exit_code != Some(1) {
-            return Err(AdapterError::CommandFailed {
-                code: output.exit_code,
-                stderr: output.stderr,
-            });
+        // Exit 0 is the plain answer: whatever is on stdout is the result,
+        // and stdout that will not parse is a real parse error.
+        if output.exit_code == Some(0) {
+            return Ok(parse_outdated_global(&output.stdout, &inst.id)?.into());
         }
-        Ok(parse_outdated_global(&output.stdout, &inst.id)?.into())
+        // npm exits 1 whenever it *finds* anything outdated — a result, not
+        // a failure (per-adapter contract table). So a non-zero exit that
+        // came with findings is that result...
+        if let Ok(found) = parse_outdated_global(&output.stdout, &inst.id) {
+            if !found.is_empty() {
+                return Ok(found.into());
+            }
+        }
+        // ...and a non-zero exit with nothing to show for it is a lookup
+        // that did not happen: npm exits 1 *because* it found something, so
+        // "exit 1 and found nothing" is a contradiction, not good news.
+        // Returning the empty list here is what used to tell a user whose
+        // registry was unreachable that everything was up to date.
+        let reason = lookup_failure_reason("npm outdated -g", output.exit_code, &output.stderr);
+        let installed = self.inventory(inst).await?;
+        Ok(uncheckable_from_inventory(&installed, UpdateChannel::Native, &reason).into())
     }
 
     pub async fn search(
@@ -593,7 +606,9 @@ mod tests {
 
     use crate::adapters::{AdapterError, CheckOptions};
     use crate::events::VecSink;
-    use crate::model::{ArtifactKey, CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock};
+    use crate::model::{
+        ArtifactKey, CancelPolicy, OpKind, OpRequest, Outcome, ResourceLock, Warning,
+    };
     use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -896,6 +911,77 @@ mod tests {
             .expect("exit 1 means updates were found, not a failure")
             .candidates;
         assert_eq!(candidates.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_does_not_call_a_failed_registry_lookup_up_to_date() {
+        // `npm outdated -g --json` exits 1 *when it finds updates*, which is
+        // why exit 1 is accepted at all. A registry that could not be
+        // reached also exits non-zero -- with nothing on stdout and the
+        // reason on stderr -- and reading that as an empty result told the
+        // user "Everything is up to date" about packages Canager had not
+        // managed to ask about. It is the one adapter whose failure mode was
+        // indistinguishable from good news.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "outdated", "-g", "--json"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "npm error code ENOTFOUND\nnpm error network request to https://registry.npmjs.org failed".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let ls = std::fs::read_to_string("../../adapters/fixtures/npm/12.0.2/ls-global.json")
+            .expect("read fixture");
+        runner.respond(
+            vec!["/opt/homebrew/bin/npm", "ls", "-g", "--depth=0", "--json"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: ls,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner);
+        let candidates = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("a registry that did not answer is not a source failure")
+            .candidates;
+        assert_eq!(
+            candidates.len(),
+            6,
+            "one row per installed package, so the page cannot claim to know"
+        );
+        assert!(candidates.iter().all(|c| !c.checkable));
+        let reason = candidates[0]
+            .warnings
+            .iter()
+            .find_map(|w| match w {
+                Warning::Message(m) => Some(m.clone()),
+                _ => None,
+            })
+            .expect("the row carries why");
+        assert!(
+            reason.contains("ENOTFOUND"),
+            "the reason the user reads has to be npm's own: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_still_errors_when_npm_itself_could_not_be_run() {
+        // The other half of the same rule: `Err` is reserved for "the tool
+        // could not be run at all". Nothing is mocked, so the runner reports
+        // no such command -- that must not turn into a page full of
+        // "can't check" rows built from an inventory nobody could read.
+        let adapter = NpmAdapter::new(Arc::new(MockRunner::new()));
+        let result = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]
