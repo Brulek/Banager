@@ -49,6 +49,7 @@
     "available": "Update",
     "cannotCheck": "Can't check",
     "cannotCheckDetail": "Canager couldn't check this one for updates just now. {{message}}",
+    "cannotCheckPlain": "Canager couldn't check this one for updates just now \u2014 it may not have been able to reach the internet. Turn on \u201c{{setting}}\u201d in Settings to see what the tool reported.",
     "readOnly": "Read-only",
     "versionChange": "{{current}} → {{target}}",
     "newBuild": "A newer build of this model is available",

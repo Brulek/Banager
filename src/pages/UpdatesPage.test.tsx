@@ -556,6 +556,60 @@ describe("UpdatesPage", () => {
     expect(reason.className).not.toContain("truncate");
   });
 
+  it("keeps the tool's own error text behind Show technical details", async () => {
+    // Going offline used to paper every row with the same line of English
+    // stderr. Before this branch an outage produced one banner -- npm
+    // returned an empty list, pip/uv/pipx returned Err -- so it was one
+    // sentence in one place. Now every installed package gets a row, and
+    // every row got "pip list --outdated: ERROR: Could not fetch URL
+    // https://pypi.org/simple/" as its description. `show_technical_details`
+    // already promises to hide "the commands Canager actually runs", which
+    // is exactly what that line is (spec §6).
+    const names = ["urllib3", "requests", "certifi"];
+    updates = names.map((name) => ({
+      key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Registry" as const,
+      checkable: false,
+      warnings: [
+        { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
+      ],
+    }));
+    const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
+    expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
+    // What a person who does not write code is told instead, and where to
+    // go if they want the rest.
+    const rows = queryAllByText(/it may not have been able to reach the internet/);
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Show technical details");
+  });
+
+  it("shows the tool's own error text once Show technical details is on", async () => {
+    settings.show_technical_details = true;
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.2.1",
+        channel: "Registry",
+        checkable: false,
+        warnings: [
+          { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
+        ],
+      },
+    ];
+    const { findByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    const reason = await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//);
+    expect(reason.textContent).toMatch(/^Canager couldn't check this one for updates just now\./);
+    expect(reason.className).not.toContain("truncate");
+  });
+
   it("leaves a warning that was written for this audience unwrapped", async () => {
     // Two kinds of text end up on an uncheckable row. `NonRegistrySource`
     // is written for this audience already and reads as a whole sentence;

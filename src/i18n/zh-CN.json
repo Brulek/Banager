@@ -46,6 +46,7 @@
     "available": "更新",
     "cannotCheck": "无法检查",
     "cannotCheckDetail": "Canager 这次没能检查它有没有更新。{{message}}",
+    "cannotCheckPlain": "Canager 这次没能检查它有没有更新,可能是连不上网。在「设置」里打开「{{setting}}」,就能看到工具具体报了什么。",
     "readOnly": "只读",
     "versionChange": "{{current}} → {{target}}",
     "newBuild": "这个模型有新的版本可用",

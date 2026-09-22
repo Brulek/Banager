@@ -283,22 +283,34 @@ export function UpdatesPage() {
    * own (`NonRegistrySource`) was written for this audience and already
    * reads as a whole sentence, so it is rendered as-is. A `Message` is
    * raw text off the wire -- a tool's stderr, an HTTP error -- kept
-   * verbatim on purpose (spec §6 backlogs localising it), which on its
-   * own makes the row's entire description a line of somebody's stderr.
-   * Wrapping it in one localised sentence is what turns that into
-   * something a non-programmer can read: first what happened, then the
-   * detail they can pass on to someone who can act on it.
+   * verbatim on purpose, which on its own makes the row's entire
+   * description a line of somebody's stderr.
+   *
+   * That line is behind `show_technical_details`, which is exactly what
+   * spec §6 says the right shape is: a localised sentence by default, the
+   * raw string behind the switch that already promises to reveal "the
+   * commands Canager actually runs". It matters more than it looks.
+   * Before this branch an index outage produced *one* banner -- npm
+   * returned an empty list, pip/uv/pipx returned `Err` -- and now it
+   * produces one row per installed package, so leaving the stderr on
+   * meant dozens of identical English sentences down the page and
+   * nothing anywhere that reads as "you appear to be offline".
    */
-  const cannotCheckText = (candidate: UpdateCandidate): string =>
-    candidate.warnings
-      .map((warning) => {
-        const raw = warningMessage(warning);
-        return raw === null
-          ? warningText(t, warning)
-          : t("updates.cannotCheckDetail", { message: raw });
-      })
+  const cannotCheckText = (candidate: UpdateCandidate): string => {
+    const parts = candidate.warnings.map((warning) => {
+      const raw = warningMessage(warning);
+      if (raw === null) return warningText(t, warning);
+      return settings?.show_technical_details
+        ? t("updates.cannotCheckDetail", { message: raw })
+        : t("updates.cannotCheckPlain", { setting: t("settings.showTechnicalDetails.label") });
+    });
+    // Distinct, because with the switch off every `Message` on a row
+    // collapses to the same sentence and a row carrying two of them would
+    // otherwise say it twice.
+    return [...new Set(parts)]
       .filter((text): text is string => text !== null && text !== "")
       .join(" ");
+  };
 
   /**
    * The row's description: why Canager could not check this one, or --
