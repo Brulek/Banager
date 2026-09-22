@@ -32,10 +32,7 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+# [profile.release] lives at the workspace root (../Cargo.toml), not here --
+# Cargo only reads profiles from the workspace root; a copy in this member
+# crate's Cargo.toml is silently ignored. See the comment there for why
+# `panic = "abort"` is deliberately left out.

@@ -1,3 +1,24 @@
 [workspace]
 resolver = "2"
 members = ["src-tauri", "crates/canager-core"]
+
+# Cargo only reads [profile.*] from the workspace root -- a copy in a member
+# crate's Cargo.toml (src-tauri's, previously) is silently ignored, which is
+# exactly what cargo's own "profiles for the non root package will be
+# ignored" note says on every build. That left the first signed release
+# build unoptimized and unstripped. See https://tauri.app/concept/size/#cargo-configuration
+#
+# `panic = "abort"` is deliberately NOT set here, even though the Tauri size
+# guide suggests it: crates/canager-core/src/ops/mod.rs releases a resource
+# lock via an AtomicBool-guarded `LockGuard` whose `Drop` impl runs during
+# unwinding if an adapter task panics (see the doc comment on `LockRelease`
+# there, and the contract test in
+# crates/canager-core/tests/ops_panic_test.rs). `panic = "abort"` disables
+# unwinding entirely, so a panicking adapter would abort the whole process
+# instead of letting that Drop run -- turning a recoverable, isolated panic
+# into a dead app. A smaller binary is not worth that trade.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
