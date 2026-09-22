@@ -46,6 +46,50 @@ fn drain_lines(buf: &mut Vec<u8>) -> Vec<String> {
     lines
 }
 
+/// Buffers one chunk, records it in the full transcript, and hands every
+/// complete line it completes to `on_line`.
+fn emit_chunk(
+    chunk: &[u8],
+    buf: &mut Vec<u8>,
+    all_bytes: &mut Vec<u8>,
+    stream: Stream,
+    on_line: &Option<LineCallback>,
+) {
+    buf.extend_from_slice(chunk);
+    all_bytes.extend_from_slice(chunk);
+    for line in drain_lines(buf) {
+        if let Some(cb) = on_line {
+            cb(stream, line);
+        }
+    }
+}
+
+/// How long to keep reading the pipes after the process group has been
+/// killed. `killpg` reaches the whole group, so both write ends should be
+/// closed almost at once and the drain ends on EOF long before this; the
+/// bound is only there so that a descendant which somehow escaped the group
+/// cannot hold a cancelled operation open forever.
+const POST_KILL_DRAIN: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Delivers a trailing line that never got its newline.
+///
+/// A tool's last line need not be terminated -- a prompt, a progress line,
+/// output cut off when the tool was killed. Those bytes were always in the
+/// full transcript, but `on_line` never saw them, and the log drawer is
+/// built entirely from `on_line`: the user read one line less than the tool
+/// actually said, and the missing one is the last, which on a failure is
+/// the one that matters.
+fn flush_partial_line(buf: &mut Vec<u8>, stream: Stream, on_line: &Option<LineCallback>) {
+    if buf.is_empty() {
+        return;
+    }
+    let line = String::from_utf8_lossy(buf).to_string();
+    buf.clear();
+    if let Some(cb) = on_line {
+        cb(stream, line);
+    }
+}
+
 #[async_trait]
 impl CommandRunner for RealRunner {
     async fn run(
@@ -131,36 +175,76 @@ impl CommandRunner for RealRunner {
                 }
                 res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
                     match res {
-                        Ok(0) => stdout_done = true,
-                        Ok(n) => {
-                            stdout_buf.extend_from_slice(&stdout_read_buf[..n]);
-                            stdout_all_bytes.extend_from_slice(&stdout_read_buf[..n]);
-                            for line in drain_lines(&mut stdout_buf) {
-                                if let Some(cb) = &on_line {
-                                    cb(Stream::Stdout, line);
-                                }
-                            }
-                        }
-                        Err(_) => stdout_done = true,
+                        Ok(0) | Err(_) => stdout_done = true,
+                        Ok(n) => emit_chunk(
+                            &stdout_read_buf[..n],
+                            &mut stdout_buf,
+                            &mut stdout_all_bytes,
+                            Stream::Stdout,
+                            &on_line,
+                        ),
                     }
                 }
                 res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
                     match res {
-                        Ok(0) => stderr_done = true,
-                        Ok(n) => {
-                            stderr_buf.extend_from_slice(&stderr_read_buf[..n]);
-                            stderr_all_bytes.extend_from_slice(&stderr_read_buf[..n]);
-                            for line in drain_lines(&mut stderr_buf) {
-                                if let Some(cb) = &on_line {
-                                    cb(Stream::Stderr, line);
-                                }
-                            }
-                        }
-                        Err(_) => stderr_done = true,
+                        Ok(0) | Err(_) => stderr_done = true,
+                        Ok(n) => emit_chunk(
+                            &stderr_read_buf[..n],
+                            &mut stderr_buf,
+                            &mut stderr_all_bytes,
+                            Stream::Stderr,
+                            &on_line,
+                        ),
                     }
                 }
             }
         }
+
+        if timed_out || cancelled {
+            // The loop above left on the kill, not on EOF, so whatever the
+            // child had already written and the loop had not yet read is
+            // still sitting in the pipes -- and the `biased` select makes
+            // that the *likely* case, not a rare one: a read that was ready
+            // in the same poll as the cancel loses to it. Dropping it meant
+            // the transcript stopped short exactly when the user opens the
+            // log drawer to find out what happened.
+            let _ = tokio::time::timeout(POST_KILL_DRAIN, async {
+                while !(stdout_done && stderr_done) {
+                    tokio::select! {
+                        res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
+                            match res {
+                                Ok(0) | Err(_) => stdout_done = true,
+                                Ok(n) => emit_chunk(
+                                    &stdout_read_buf[..n],
+                                    &mut stdout_buf,
+                                    &mut stdout_all_bytes,
+                                    Stream::Stdout,
+                                    &on_line,
+                                ),
+                            }
+                        }
+                        res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
+                            match res {
+                                Ok(0) | Err(_) => stderr_done = true,
+                                Ok(n) => emit_chunk(
+                                    &stderr_read_buf[..n],
+                                    &mut stderr_buf,
+                                    &mut stderr_all_bytes,
+                                    Stream::Stderr,
+                                    &on_line,
+                                ),
+                            }
+                        }
+                    }
+                }
+            })
+            .await;
+        }
+
+        // After the drain, so a trailing unterminated line the child wrote
+        // just before it died is delivered too.
+        flush_partial_line(&mut stdout_buf, Stream::Stdout, &on_line);
+        flush_partial_line(&mut stderr_buf, Stream::Stderr, &on_line);
 
         let exit_code = if timed_out || cancelled {
             let _ = child.wait().await;
@@ -351,5 +435,104 @@ mod tests {
         let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
         assert!(output.cancelled);
         assert_eq!(output.exit_code, None);
+    }
+    #[tokio::test]
+    async fn test_delivers_a_trailing_line_that_never_got_its_newline() {
+        // A tool's last line need not end in one -- a prompt, a progress
+        // line, output cut off when the tool died. It was accumulated into
+        // the transcript but never handed to `on_line`, so the log drawer,
+        // which is built entirely from those callbacks, ended one line
+        // short of what the tool actually said.
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: LineCallback = Arc::new(move |stream, line| {
+            lines_cb.lock().unwrap().push((stream, line));
+        });
+
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "printf 'done\n'; printf 'Password:'; printf 'oops' 1>&2".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+        };
+        let output = runner
+            .run(spec, Some(on_line), CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+
+        assert_eq!(output.exit_code, Some(0));
+        let seen = lines.lock().unwrap().clone();
+        assert!(
+            seen.contains(&(Stream::Stdout, "Password:".to_string())),
+            "trailing stdout line missing from {seen:?}"
+        );
+        assert!(
+            seen.contains(&(Stream::Stderr, "oops".to_string())),
+            "trailing stderr line missing from {seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delivers_what_was_still_in_the_pipe_when_the_child_was_killed() {
+        // Cancelling and timing out both SIGKILL the process group and
+        // leave the loop at once, so anything the child had already written
+        // but the loop had not yet read died with it -- missing from the
+        // exact transcript the user opens the log drawer to read.
+        //
+        // The race is made deterministic: the callback blocks the runtime
+        // while the child writes its second line, and the token is
+        // cancelled from a plain OS thread meanwhile. When the callback
+        // returns, the `biased` select takes the cancel branch before the
+        // ready read, which is precisely the case that used to lose data.
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: LineCallback = Arc::new(move |stream, line| {
+            let first = line == "first";
+            lines_cb.lock().unwrap().push((stream, line));
+            if first {
+                std::thread::sleep(std::time::Duration::from_millis(600));
+            }
+        });
+
+        let cancel = CancellationToken::new();
+        let canceller = cancel.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            canceller.cancel();
+        });
+
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "printf 'first\n'; sleep 0.2; printf 'second\n'; sleep 30".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(30),
+        };
+        let output = runner
+            .run(spec, Some(on_line), cancel)
+            .await
+            .expect("spawn /bin/sh");
+        handle.join().unwrap();
+
+        assert!(output.cancelled);
+        let seen = lines.lock().unwrap().clone();
+        assert!(
+            seen.contains(&(Stream::Stdout, "second".to_string())),
+            "output written before the kill is missing from {seen:?}"
+        );
+        assert!(
+            output.stdout.contains("second"),
+            "output written before the kill is missing from the transcript: {:?}",
+            output.stdout
+        );
     }
 }
