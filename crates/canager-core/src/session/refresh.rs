@@ -20,6 +20,11 @@ impl Session {
     /// abort the whole refresh, and a failing instance's *previous*
     /// artifacts/updates are kept rather than dropped, so a transient
     /// failure never makes something the user installed appear to vanish.
+    /// The one exception is a carried-forward update candidate that this
+    /// round's own inventory contradicts -- the package is no longer
+    /// installed, or no longer at the version the candidate assumed. That
+    /// is not old data, it is data this snapshot knows to be wrong, and it
+    /// is dropped; see the `check_updates` error branch below.
     /// Concurrent calls are serialised: a call that starts while another is
     /// already running waits for it, then returns the snapshot that other
     /// call produced instead of running a second, redundant refresh -- see
@@ -146,6 +151,10 @@ impl Session {
                     let mut updates = Vec::new();
                     let mut errors = Vec::new();
                     let mut stale = false;
+                    // Whether `artifacts` below is this round's answer or
+                    // last round's, which decides whether it may be used
+                    // as evidence against a carried-forward update.
+                    let mut inventory_confirmed = true;
                     match adapter.inventory(&inst).await {
                         Ok(items) => artifacts.extend(items),
                         Err(e) => {
@@ -154,6 +163,7 @@ impl Session {
                                 message: e.to_string(),
                             });
                             stale = true;
+                            inventory_confirmed = false;
                             artifacts.extend(
                                 previous
                                     .artifacts
@@ -184,11 +194,34 @@ impl Session {
                                 message: e.to_string(),
                             });
                             stale = true;
+                            // Keeping the last round's candidates is the
+                            // right instinct -- a failed check is not
+                            // news that everything is up to date -- but
+                            // only where this round's inventory does not
+                            // already contradict them. It succeeded here,
+                            // so a candidate whose package it no longer
+                            // lists, or lists at a different version than
+                            // the candidate assumed, is not stale data:
+                            // it is a row the same snapshot knows is
+                            // wrong, offering to upgrade something that
+                            // was uninstalled or is already upgraded.
+                            //
+                            // When the inventory failed too, `artifacts`
+                            // is itself last round's, carried forward by
+                            // the branch above, so there is no fresh
+                            // evidence to test against and everything is
+                            // kept exactly as before.
                             updates.extend(
                                 previous
                                     .updates
                                     .iter()
                                     .filter(|u| u.key.instance_id == inst.id)
+                                    .filter(|u| {
+                                        !inventory_confirmed
+                                            || artifacts
+                                                .iter()
+                                                .any(|a| a.key == u.key && a.version == u.current)
+                                    })
                                     .cloned(),
                             );
                         }
@@ -333,6 +366,10 @@ mod tests {
         /// brew fills when `brew update` failed.
         notes: HashMap<InstanceId, Vec<InstanceNote>>,
         failing: Vec<InstanceId>,
+        /// Instances whose `check_updates` fails once, the same one-shot
+        /// shape as `failing` -- the half of a per-instance fetch that can
+        /// fail while `inventory` succeeds.
+        failing_updates: Vec<InstanceId>,
         detect_delay: Duration,
         detect_calls: usize,
         block_execute: bool,
@@ -352,6 +389,7 @@ mod tests {
                 updates: HashMap::new(),
                 notes: HashMap::new(),
                 failing: Vec::new(),
+                failing_updates: Vec::new(),
                 detect_delay: Duration::from_millis(0),
                 detect_calls: 0,
                 block_execute: false,
@@ -404,7 +442,14 @@ mod tests {
             inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
-            let s = self.state.lock().unwrap();
+            let mut s = self.state.lock().unwrap();
+            if let Some(pos) = s.failing_updates.iter().position(|id| id == &inst.id) {
+                s.failing_updates.remove(pos);
+                return Err(AdapterError::CommandFailed {
+                    code: Some(1),
+                    stderr: format!("{} update check failed", inst.id),
+                });
+            }
             Ok(CheckOutcome {
                 candidates: s.updates.get(&inst.id).cloned().unwrap_or_default(),
                 notes: s.notes.get(&inst.id).cloned().unwrap_or_default(),
@@ -453,6 +498,12 @@ mod tests {
     }
 
     fn make_artifact(instance_id: &str, name: &str) -> InstalledArtifact {
+        make_artifact_at(instance_id, name, "1.0")
+    }
+
+    /// `make_artifact` at a stated version -- for the one thing an update
+    /// candidate assumes about the package it offers to update.
+    fn make_artifact_at(instance_id: &str, name: &str, version: &str) -> InstalledArtifact {
         InstalledArtifact {
             key: crate::model::ArtifactKey {
                 instance_id: instance_id.to_string(),
@@ -460,7 +511,7 @@ mod tests {
                 name: name.to_string(),
             },
             display_name: name.to_string(),
-            version: "1.0".to_string(),
+            version: version.to_string(),
             reason: InstallReason::Requested,
             description: None,
             homepage: None,
@@ -937,6 +988,142 @@ mod tests {
             checkable: true,
             warnings: Vec::new(),
         }
+    }
+
+    /// The names of every artifact/update in `snapshot`, sorted, so an
+    /// assertion says what is there rather than how many things are there.
+    fn artifact_names(snapshot: &Snapshot) -> Vec<String> {
+        let mut names: Vec<String> = snapshot
+            .artifacts
+            .iter()
+            .map(|a| a.key.name.clone())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn update_names(snapshot: &Snapshot) -> Vec<String> {
+        let mut names: Vec<String> = snapshot
+            .updates
+            .iter()
+            .map(|u| u.key.name.clone())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_update_check_keeps_only_candidates_the_fresh_inventory_confirms() {
+        // A successful inventory is *evidence*, and a carried-forward
+        // update candidate that contradicts it is not "possibly stale
+        // data", it is a row Canager knows is wrong. Uninstall jq and the
+        // next inventory correctly drops it; if the update check then
+        // fails, the old code carried jq's update forward anyway and the
+        // Updates page offered to upgrade a package the same snapshot had
+        // just confirmed is gone. The same shape keeps an update for a
+        // package that was upgraded in the meantime, which does exactly
+        // nothing when run.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_artifact("fake:1", "jq"),
+                    make_artifact("fake:1", "wget"),
+                    make_artifact("fake:1", "curl"),
+                ],
+            );
+            s.updates.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_update("fake:1", "jq"),
+                    make_update("fake:1", "wget"),
+                    make_update("fake:1", "curl"),
+                ],
+            );
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(update_names(&first), vec!["curl", "jq", "wget"]);
+
+        {
+            let mut s = state.lock().unwrap();
+            // jq was uninstalled; wget was upgraded to the very version
+            // its candidate targeted; curl is untouched.
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![
+                    make_artifact_at("fake:1", "wget", "1.1"),
+                    make_artifact("fake:1", "curl"),
+                ],
+            );
+            s.failing_updates.push("fake:1".to_string());
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(second.stale, "precondition: the update check failed");
+        assert_eq!(second.errors.len(), 1, "precondition: and said so");
+        assert_eq!(
+            artifact_names(&second),
+            vec!["curl", "wget"],
+            "precondition: the inventory succeeded and dropped jq"
+        );
+        assert_eq!(
+            update_names(&second),
+            vec!["curl"],
+            "only the candidate the fresh inventory still confirms may be carried forward: \
+             jq is gone and wget is already at the version its candidate targeted, got {:?}",
+            second.updates
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_inventory_still_carries_every_update_candidate_forward() {
+        // The other side of the rule above, and the reason it is
+        // conditional: when the inventory itself failed there is no fresh
+        // evidence to reconfirm against -- the artifacts in this snapshot
+        // are last round's, carried forward by the very same mechanism --
+        // so filtering the candidates against them would only re-derive
+        // last round's consistency while risking dropping rows on a
+        // source that is merely having a bad minute.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.updates
+                .insert("fake:1".to_string(), vec![make_update("fake:1", "jq")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        {
+            let mut s = state.lock().unwrap();
+            s.failing.push("fake:1".to_string());
+            s.failing_updates.push("fake:1".to_string());
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(second.errors.len(), 2, "precondition: both halves failed");
+        assert_eq!(artifact_names(&second), vec!["jq"]);
+        assert_eq!(
+            update_names(&second),
+            vec!["jq"],
+            "with no fresh inventory to contradict it, the candidate stays"
+        );
     }
 
     #[tokio::test]
