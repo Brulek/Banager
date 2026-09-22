@@ -10,7 +10,7 @@
 
 use crate::adapters::{AdapterMeta, Capabilities};
 use crate::model::{
-    CancelPolicy, ManagerInstance, OpRequest, Plan, Reconciled, ResourceLock, Scope,
+    CancelPolicy, ManagerInstance, OpRequest, Plan, ReadOnlyReason, Reconciled, ResourceLock, Scope,
 };
 use crate::runner::HostEnv;
 use std::path::PathBuf;
@@ -51,6 +51,20 @@ pub(super) fn make_instance(adapter_id: &str, id: &str) -> ManagerInstance {
         version: Some("1.0".to_string()),
         healthy: true,
         unverified_version: None,
+        read_only_reason: None,
+    }
+}
+
+/// `make_instance`, but for a source Canager may list and never change --
+/// the capability half of the actionability invariant (spec §2.5).
+pub(super) fn make_read_only_instance(
+    adapter_id: &str,
+    id: &str,
+    reason: ReadOnlyReason,
+) -> ManagerInstance {
+    ManagerInstance {
+        read_only_reason: Some(reason),
+        ..make_instance(adapter_id, id)
     }
 }
 

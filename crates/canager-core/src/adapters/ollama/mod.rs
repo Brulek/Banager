@@ -213,6 +213,7 @@ impl OllamaAdapter {
             healthy,
             version,
             unverified_version,
+            read_only_reason: None,
         }]
     }
 
@@ -548,6 +549,7 @@ mod tests {
             version: Some("0.34.1".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 

@@ -362,6 +362,7 @@ mod tests {
             version: Some("1.0".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         };
         let meta = AdapterMeta {
             id: "fake".to_string(),
@@ -410,6 +411,7 @@ mod tests {
             version: Some("1.0".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         };
         let meta = AdapterMeta {
             id: "fake".to_string(),

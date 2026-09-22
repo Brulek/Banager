@@ -195,6 +195,7 @@ impl PipxAdapter {
             healthy: version.is_some(),
             version,
             unverified_version,
+            read_only_reason: None,
         }]
     }
 
@@ -553,6 +554,7 @@ mod tests {
             version: Some("1.17.3".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 

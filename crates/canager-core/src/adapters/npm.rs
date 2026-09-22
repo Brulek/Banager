@@ -4,8 +4,8 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance,
-    OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
-    UpdateChannel,
+    OpKind, OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, ResourceLock, Scope, SearchHit,
+    UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -75,9 +75,9 @@ pub struct NpmAdapter {
     /// install/uninstall/upgrade. Production always gets
     /// `real_prefix_is_writable`; tests inject a fixed answer via the
     /// `#[cfg(test)]`-only `with_prefix_writable_fn`, mirroring
-    /// `BrewAdapter::with_euid_fn`. This same seam will also gate `detect()`
-    /// once `read_only_reason` lands, so it takes `&Path` rather than
-    /// `&ManagerInstance` on purpose.
+    /// `BrewAdapter::with_euid_fn`. `detect()` asks the same question to
+    /// fill `read_only_reason`, which is why this takes `&Path` (the
+    /// prefix) rather than a `&ManagerInstance` that does not exist yet.
     prefix_writable_fn: fn(&Path) -> bool,
 }
 
@@ -169,6 +169,17 @@ impl NpmAdapter {
             _ => None,
         };
         let unverified_version = self.meta.unverified_version(&version);
+        // Asked once, here, about the prefix npm itself reported -- not
+        // about wherever the `npm` binary happens to live. A Node
+        // installed from nodejs.org's package leaves a root-owned prefix
+        // this user cannot write, and the two pages need to say so
+        // *before* the user clicks anything. `plan()` asks again at click
+        // time: permissions can change in between, so that gate stays.
+        let read_only_reason = if (self.prefix_writable_fn)(&prefix) {
+            None
+        } else {
+            Some(ReadOnlyReason::PrefixNotWritable)
+        };
         vec![ManagerInstance {
             id: Self::instance_id_for(&prefix),
             adapter_id: self.meta.id.clone(),
@@ -178,6 +189,7 @@ impl NpmAdapter {
             healthy: version.is_some(),
             version,
             unverified_version,
+            read_only_reason,
         }]
     }
 
@@ -603,6 +615,7 @@ mod tests {
             version: Some("12.0.2".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 
@@ -716,6 +729,117 @@ mod tests {
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].unverified_version, Some("99.9.9".to_string()));
+    }
+
+    /// A temp directory holding a fake `npm` executable, plus a `HostEnv`
+    /// whose `PATH` is exactly that directory. Returned rather than
+    /// inlined because every detect test needs the same three lines and
+    /// the unique-name dance around them.
+    fn detect_fixture(tag: &str) -> (PathBuf, PathBuf, HostEnv) {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-npm-detect-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let npm_path = fake_exe(&dir, "npm");
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        };
+        (dir, npm_path, env)
+    }
+
+    fn detect_runner(npm_path: &std::path::Path) -> Arc<MockRunner> {
+        let npm_path_str = npm_path.to_str().expect("utf8 path");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm_path_str, "prefix", "-g"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "/opt/homebrew\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.respond(
+            vec![npm_path_str, "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "12.0.2\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
+    #[tokio::test]
+    async fn test_detect_reports_prefix_not_writable_when_npm_cannot_write_where_it_installs() {
+        // The nodejs.org installer's npm: the CLI works, `npm prefix -g`
+        // answers, but the directory it would write into belongs to root.
+        // The instance must still be detected -- Canager lists what is
+        // there -- and must carry the reason it cannot be changed, so the
+        // Updates page can say "install Node with Homebrew instead"
+        // rather than pip's "use pipx or uv".
+        let (dir, npm_path, env) = detect_fixture("readonly");
+        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(|_| false);
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            instances[0].read_only_reason,
+            Some(ReadOnlyReason::PrefixNotWritable)
+        );
+        assert!(!instances[0].writable());
+    }
+
+    #[tokio::test]
+    async fn test_detect_leaves_the_instance_writable_when_the_prefix_is_writable() {
+        let (dir, npm_path, env) = detect_fixture("writable");
+        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(|_| true);
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].read_only_reason, None);
+        assert!(instances[0].writable());
+    }
+
+    #[tokio::test]
+    async fn test_detect_asks_about_the_prefix_npm_reported_not_the_exe_directory() {
+        // The writability question is about `npm prefix -g`'s answer
+        // (`/opt/homebrew`), not about wherever the `npm` binary happens to
+        // live -- a Homebrew npm's exe sits in `{prefix}/bin`, but a
+        // volta/nvm shim's does not.
+        use std::sync::Mutex;
+        static ASKED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+        ASKED.lock().unwrap().clear();
+        fn record(path: &Path) -> bool {
+            ASKED.lock().unwrap().push(path.to_path_buf());
+            true
+        }
+        let (dir, npm_path, env) = detect_fixture("prefix-arg");
+        let adapter = NpmAdapter::new(detect_runner(&npm_path)).with_prefix_writable_fn(record);
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            *ASKED.lock().unwrap(),
+            vec![PathBuf::from("/opt/homebrew")],
+            "detect must ask about the reported prefix exactly once"
+        );
     }
 
     #[tokio::test]

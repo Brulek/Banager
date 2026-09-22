@@ -136,6 +136,7 @@ fn make_instance(id: &str) -> ManagerInstance {
         version: None,
         healthy: true,
         unverified_version: None,
+        read_only_reason: None,
     }
 }
 

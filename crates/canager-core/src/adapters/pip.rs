@@ -4,7 +4,7 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest,
-    Outcome, Plan, Reconciled, Scope, SearchHit, UpdateCandidate, UpdateChannel,
+    Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -135,6 +135,10 @@ impl PipAdapter {
                 healthy: true,
                 version: Some(version),
                 unverified_version,
+                // Not a property of this machine: pip offers no
+                // install/uninstall path Canager can safely drive, so
+                // every pip instance anywhere is read-only by design.
+                read_only_reason: Some(ReadOnlyReason::ByDesign),
             });
         }
         found
@@ -446,7 +450,59 @@ mod tests {
             version: Some("26.2.1".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: Some(ReadOnlyReason::ByDesign),
         }
+    }
+
+    #[tokio::test]
+    async fn test_detect_marks_every_interpreter_read_only_by_design() {
+        // pip is the one source with no install/uninstall path Canager can
+        // safely drive, and that is a property of the tool, not of this
+        // machine's permissions -- so every pip instance, on every Mac,
+        // carries `ByDesign`. This replaces the front end's hardcoded
+        // "pip is the read-only adapter" list: the wire now says so.
+        let dir = std::env::temp_dir().join(format!(
+            "canager-pip-detect-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let python_path = dir.join("python3.14");
+        std::fs::write(&python_path, b"#!/bin/sh\n").expect("write fake python");
+        let python_path_str = python_path.to_str().expect("utf8 path");
+
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![python_path_str, "-m", "pip", "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "pip 26.2.1 from /opt/lib/pip (python 3.14)\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        };
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].version, Some("26.2.1".to_string()));
+        assert_eq!(
+            instances[0].read_only_reason,
+            Some(ReadOnlyReason::ByDesign)
+        );
+        assert!(!instances[0].writable());
     }
 
     #[tokio::test]

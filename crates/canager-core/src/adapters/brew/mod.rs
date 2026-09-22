@@ -221,6 +221,7 @@ impl BrewAdapter {
                 healthy: version.is_some(),
                 version,
                 unverified_version,
+                read_only_reason: None,
             });
         }
         found
@@ -599,6 +600,7 @@ mod tests {
             version: Some("7.0.3".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 
@@ -881,6 +883,7 @@ mod tests {
             version: Some("7.0.3".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         };
 
         adapter
@@ -1148,6 +1151,7 @@ mod plan_execute_tests {
             version: Some("7.0.3".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 
@@ -1170,6 +1174,7 @@ mod plan_execute_tests {
             version: Some("7.0.3".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         };
         let req = OpRequest {
             kind: OpKind::Install,

@@ -145,6 +145,7 @@ impl UvAdapter {
             healthy: version.is_some(),
             version,
             unverified_version,
+            read_only_reason: None,
         }]
     }
 
@@ -436,6 +437,7 @@ mod tests {
             version: Some("0.12.17".to_string()),
             healthy: true,
             unverified_version: None,
+            read_only_reason: None,
         }
     }
 
