@@ -11,7 +11,7 @@ use crate::model::{
     OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UpdateCandidate, UpdateChannel, Warning,
 };
-use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
+use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use parse::{config_digest, layer_digests, parse_tags, parse_version, split_model_reference};
 use std::path::{Component, Path, PathBuf};
@@ -184,6 +184,7 @@ impl OllamaAdapter {
                     env: Vec::new(),
                     cwd: None,
                     timeout: Duration::from_secs(30),
+                    output_use: OutputUse::Parsed,
                 },
                 None,
                 CancellationToken::new(),

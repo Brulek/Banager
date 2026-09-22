@@ -7,7 +7,7 @@
 //! macOS only (see Global Constraints in the phase 0-1 plan), so this is not
 //! a limitation in practice.
 
-use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
+use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunnerError};
 use crate::events::Stream;
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
@@ -37,7 +37,6 @@ impl Default for RealRunner {
 /// operation: on `brew upgrade` of a large formula that is real memory for
 /// no reason, since the only thing the line splitter actually needs is a
 /// cursor saying where the unterminated tail begins.
-#[derive(Default)]
 struct StreamBuffer {
     /// Every byte read from this stream, in order — minus whatever the
     /// middle-elision in [`StreamBuffer::cap`] has dropped. Decoded once,
@@ -55,21 +54,70 @@ struct StreamBuffer {
     head_len: usize,
     /// How many bytes [`StreamBuffer::cap`] has dropped from the middle.
     elided: usize,
+    /// What this stream's bytes are for, and so what may be done to them
+    /// when there are too many. See [`CapPolicy`].
+    policy: CapPolicy,
+    /// Set when a [`CapPolicy::Refuse`] stream went past [`PARSE_CAP`].
+    /// The run fails with [`RunnerError::OutputTooLarge`]; nothing this
+    /// buffer holds is ever returned afterwards.
+    overflowed: bool,
 }
 
-/// How much of each stream is kept when a tool will not stop talking: the
-/// first `HEAD_CAP` bytes and the last `TAIL_CAP` bytes, with a note in
-/// between saying how much went missing.
+/// What a buffer does when it will not fit: shorten, or refuse.
+///
+/// The choice is per *stream*, not per command, because the two streams of
+/// one command are not the same kind of thing. stdout is whatever the
+/// caller said it is ([`OutputUse`]). stderr is a message for a person on
+/// every path this workspace has -- the five-line failure summary in
+/// `run_plan`, the `stderr` an `AdapterError::CommandFailed` carries --
+/// and nothing parses it, so it is always the eliding buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CapPolicy {
+    /// Drop the middle, keep the head and the tail, say so in the text.
+    ElideMiddle,
+    /// Hold up to [`PARSE_CAP`] bytes and fail the whole run past that.
+    Refuse,
+}
+
+impl StreamBuffer {
+    fn new(policy: CapPolicy) -> StreamBuffer {
+        StreamBuffer {
+            bytes: Vec::new(),
+            line_start: 0,
+            head_len: 0,
+            elided: 0,
+            policy,
+            overflowed: false,
+        }
+    }
+}
+
+/// How much of a *transcript* is kept when a tool will not stop talking:
+/// the first `HEAD_CAP` bytes and the last `TAIL_CAP` bytes, with a note
+/// in between saying how much went missing.
 ///
 /// The buffer used to be unbounded, which is harmless for every real
 /// package-manager run — a `brew upgrade` of a dozen formulas is a few
 /// hundred kilobytes — and fatal for the one that goes wrong: a build
 /// looping on a warning, or a fetch drawing a progress bar with no
 /// terminal to collapse the carriage returns, grows the transcript until
-/// the OS kills the app. 1 MiB at each end is an order of magnitude more
-/// than any package-manager output observed here, so nothing real is ever
-/// elided, and it bounds a runaway tool at ~2 MiB per stream (~4 MiB for
-/// an operation's stdout and stderr together) rather than at all of RAM.
+/// the OS kills the app. 1 MiB at each end bounds a runaway tool at ~2 MiB
+/// per stream rather than at all of RAM.
+///
+/// This applies only to bytes a person reads. It used to apply to every
+/// stream of every command, under a comment claiming 2 MiB was "an order
+/// of magnitude more than any package-manager output observed here, so
+/// nothing real is ever elided" — which this repository's own fixture
+/// disproves: `adapters/fixtures/brew/7.0.3/info-installed.json` is
+/// 419,458 bytes for 93 installed formulae and casks, about 4.5 KiB each,
+/// so an ordinary Mac with ~470 of them crosses 2 MiB. `brew info
+/// --installed --json=v2` is parsed, not read, so eliding its middle did
+/// not shorten a log, it corrupted a JSON document: `serde` then failed,
+/// the refresh recorded a `SourceError`, and — the snapshot being in
+/// memory only, so the first refresh after any launch has nothing to
+/// carry forward — the whole Homebrew group vanished from the Installed
+/// page, every launch, for good. Parsed output takes [`PARSE_CAP`]
+/// instead.
 ///
 /// Head *and* tail, rather than either alone, because those are the two
 /// parts a person reading a log actually needs: the head is the command
@@ -77,6 +125,19 @@ struct StreamBuffer {
 /// truncation loses the failure; a plain ring buffer loses the context.
 const HEAD_CAP: usize = 1024 * 1024;
 const TAIL_CAP: usize = 1024 * 1024;
+
+/// The most stdout a [`OutputUse::Parsed`] command may write before the
+/// run is failed outright.
+///
+/// There is no shortening to be had here — half a JSON document is not
+/// half an answer — so the only question is where "this cannot be real"
+/// starts. 64 MiB is about 14,000 Homebrew entries at the 4.5 KiB each
+/// the fixture above measures, roughly thirty times the largest install
+/// anyone plausibly has, and the memory stays bounded either way: past
+/// this the bytes are dropped and the run ends as
+/// [`RunnerError::OutputTooLarge`], which every adapter turns into a
+/// visible per-source error rather than a silently wrong answer.
+const PARSE_CAP: usize = 64 * 1024 * 1024;
 
 impl StreamBuffer {
     /// Records one chunk and hands `on_line` every line that chunk
@@ -107,11 +168,38 @@ impl StreamBuffer {
         self.cap();
     }
 
-    /// Keeps `bytes` bounded by dropping its middle: `HEAD_CAP` bytes from
+    /// Keeps `bytes` bounded, in whichever of the two ways this stream's
+    /// [`CapPolicy`] allows. Called after every chunk; a no-op until the
+    /// relevant cap is exceeded.
+    fn cap(&mut self) {
+        match self.policy {
+            CapPolicy::ElideMiddle => self.cap_by_eliding(),
+            CapPolicy::Refuse => self.cap_by_refusing(),
+        }
+    }
+
+    /// Past [`PARSE_CAP`], remembers that this stream overflowed and stops
+    /// holding its bytes -- this chunk's and every later one's, which is
+    /// why the check is on `overflowed` as well as on the length. The
+    /// bytes are dropped rather than kept because the run is already
+    /// lost: `run` turns `overflowed` into
+    /// [`RunnerError::OutputTooLarge`] and returns no `CommandOutput` at
+    /// all, so nothing will ever read them, and continuing to accumulate
+    /// would defeat the bound this exists to enforce.
+    fn cap_by_refusing(&mut self) {
+        if !self.overflowed && self.bytes.len() <= PARSE_CAP {
+            return;
+        }
+        self.overflowed = true;
+        self.bytes.clear();
+        self.line_start = 0;
+    }
+
+    /// Drops the middle: `HEAD_CAP` bytes from
     /// the start and `TAIL_CAP` from the end survive, everything between
     /// them goes, and `elided` counts what went so the transcript can say
-    /// so. Called after every chunk; a no-op until the cap is exceeded.
-    fn cap(&mut self) {
+    /// so.
+    fn cap_by_eliding(&mut self) {
         if self.bytes.len() <= HEAD_CAP + TAIL_CAP {
             return;
         }
@@ -312,8 +400,14 @@ impl CommandRunner for RealRunner {
         let mut stdout = child.stdout.take().expect("stdout was piped");
         let mut stderr = child.stderr.take().expect("stderr was piped");
 
-        let mut out = StreamBuffer::default();
-        let mut err = StreamBuffer::default();
+        // stdout follows what the caller said it would do with the bytes;
+        // stderr is a message for a person on every path there is, so it
+        // always elides. See `CapPolicy`.
+        let mut out = StreamBuffer::new(match spec.output_use {
+            OutputUse::Transcript => CapPolicy::ElideMiddle,
+            OutputUse::Parsed => CapPolicy::Refuse,
+        });
+        let mut err = StreamBuffer::new(CapPolicy::ElideMiddle);
         // Separate read buffers for stdout/stderr: both branches of the
         // `tokio::select!` below hold a `.read(&mut _)` future live at the
         // same time, so a single shared buffer would need two concurrent
@@ -473,6 +567,15 @@ impl CommandRunner for RealRunner {
             child_code
         };
 
+        // Before any `CommandOutput` is built, so there is no path on
+        // which a caller that asked for `Parsed` output receives bytes
+        // this runner shortened. A failure the adapter turns into a
+        // visible per-source error is the worst this can now do; a parser
+        // reading a spliced document was the worse thing it used to do.
+        if out.overflowed {
+            return Err(RunnerError::OutputTooLarge { limit: PARSE_CAP });
+        }
+
         Ok(CommandOutput {
             exit_code,
             stdout: out.into_transcript(),
@@ -507,6 +610,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, Some(on_line), CancellationToken::new())
@@ -535,6 +639,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, None, CancellationToken::new())
@@ -562,6 +667,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, None, CancellationToken::new())
@@ -582,6 +688,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_millis(200),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, None, CancellationToken::new())
@@ -617,6 +724,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, None, cancel)
@@ -644,6 +752,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
         assert!(output.cancelled);
@@ -672,6 +781,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, Some(on_line), CancellationToken::new())
@@ -729,6 +839,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(30),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, Some(on_line), cancel)
@@ -765,6 +876,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_millis(300),
+            output_use: OutputUse::Transcript,
         };
         let started = std::time::Instant::now();
         let output = runner
@@ -812,6 +924,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let err = runner
             .run(spec, None, CancellationToken::new())
@@ -844,6 +957,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
         };
         let err = runner
             .run(spec, None, CancellationToken::new())
@@ -898,6 +1012,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(30),
+            output_use: OutputUse::Transcript,
         };
         let started = std::time::Instant::now();
         let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
@@ -949,6 +1064,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(20),
+            output_use: OutputUse::Transcript,
         };
         let started = std::time::Instant::now();
         let output = runner
@@ -1004,6 +1120,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(20),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, Some(on_line), CancellationToken::new())
@@ -1039,6 +1156,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(u64::MAX),
+            output_use: OutputUse::Transcript,
         };
         let output = runner
             .run(spec, None, CancellationToken::new())
@@ -1062,7 +1180,7 @@ mod tests {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 
-        let mut buf = StreamBuffer::default();
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         buf.push(b"a\n\nb\r\nc\n", Stream::Stdout, &on_line);
 
         assert_eq!(
@@ -1088,7 +1206,7 @@ mod tests {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 
-        let mut buf = StreamBuffer::default();
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         let mut written = 0usize;
         let mut last = String::new();
         let mut i = 0usize;
@@ -1140,7 +1258,7 @@ mod tests {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 
-        let mut buf = StreamBuffer::default();
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         let chunk = vec![b'x'; 4096];
         for _ in 0..((3 * (HEAD_CAP + TAIL_CAP)) / chunk.len()) {
             buf.push(&chunk, Stream::Stdout, &on_line);
@@ -1154,13 +1272,132 @@ mod tests {
         assert_eq!(seen[0].1.len(), HEAD_CAP + TAIL_CAP);
     }
 
+    #[tokio::test]
+    async fn test_parsed_stdout_past_the_transcript_cap_arrives_whole_and_parses() {
+        // The regression this exists for: the head+tail cap was applied to
+        // every stream of every command, including the stdout of
+        // `brew info --installed --json=v2`, which nobody reads -- a
+        // parser does. `adapters/fixtures/brew/7.0.3/info-installed.json`
+        // is 419,458 bytes for 93 entries, so a Mac with a few hundred
+        // formulae and casks crosses 2 MiB, the middle of the document
+        // was replaced with an English sentence, `serde_json` failed, and
+        // the whole Homebrew section disappeared from the Installed page
+        // on every launch. A parser's input is never shortened.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                // ~3 MiB of valid JSON: comfortably past HEAD_CAP +
+                // TAIL_CAP, nowhere near PARSE_CAP.
+                "printf '['; yes '\"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\",' \
+                 | head -n 70000; printf '\"end\"]'"
+                    .to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(30),
+            output_use: OutputUse::Parsed,
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+
+        assert_eq!(output.exit_code, Some(0));
+        assert!(
+            output.stdout.len() > HEAD_CAP + TAIL_CAP,
+            "the test did not actually exceed the transcript cap: {} bytes",
+            output.stdout.len()
+        );
+        assert!(
+            !output.stdout.contains("elided"),
+            "a parser's input was shortened"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&output.stdout)
+            .expect("stdout must still be the document brew wrote");
+        assert_eq!(
+            parsed.as_array().expect("a JSON array").len(),
+            70001,
+            "every entry must survive"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_parsed_stdout_past_the_parse_cap_fails_loudly_instead_of_splicing() {
+        // The other half of the same rule. Past PARSE_CAP there is no
+        // honest answer left -- half a JSON document is not half an
+        // answer -- so the run ends as an error the adapter turns into a
+        // visible per-source problem, rather than as a `CommandOutput`
+        // whose `stdout` silently is not what the tool wrote.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                format!(
+                    "dd if=/dev/zero bs=1048576 count={} 2>/dev/null",
+                    PARSE_CAP / (1024 * 1024) + 8
+                ),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(60),
+            output_use: OutputUse::Parsed,
+        };
+        let result = runner.run(spec, None, CancellationToken::new()).await;
+        assert!(
+            matches!(result, Err(RunnerError::OutputTooLarge { limit }) if limit == PARSE_CAP),
+            "expected OutputTooLarge, got {:?}",
+            result.map(|o| o.stdout.len())
+        );
+    }
+
+    #[test]
+    fn test_a_refusing_buffer_drops_what_it_holds_once_it_has_overflowed() {
+        // The memory bound has to survive the refusal: a stream that has
+        // already lost the run must not keep accumulating on the way to
+        // the error.
+        let mut buf = StreamBuffer::new(CapPolicy::Refuse);
+        let chunk = vec![b'x'; 1024 * 1024];
+        for _ in 0..(PARSE_CAP / chunk.len() + 4) {
+            buf.push(&chunk, Stream::Stdout, &None);
+        }
+        assert!(
+            buf.overflowed,
+            "the buffer must remember that it overflowed"
+        );
+        assert!(
+            buf.bytes.len() <= chunk.len(),
+            "an overflowed buffer must not keep accumulating: {} bytes",
+            buf.bytes.len()
+        );
+    }
+
+    #[test]
+    fn test_a_refusing_buffer_below_the_parse_cap_never_elides() {
+        // Below PARSE_CAP a parsed stream is byte-for-byte what the tool
+        // wrote, even well past the transcript cap that used to apply to
+        // it.
+        let mut buf = StreamBuffer::new(CapPolicy::Refuse);
+        let chunk = vec![b'x'; 64 * 1024];
+        let rounds = (3 * (HEAD_CAP + TAIL_CAP)) / chunk.len();
+        for _ in 0..rounds {
+            buf.push(&chunk, Stream::Stdout, &None);
+        }
+        assert!(!buf.overflowed);
+        let text = buf.into_transcript();
+        assert_eq!(text.len(), rounds * chunk.len());
+        assert!(!text.contains("elided"));
+    }
+
     #[test]
     fn test_a_transcript_that_is_not_utf8_still_decodes_losslessly_enough() {
         // `into_transcript` hands its `Vec<u8>` straight to
         // `String::from_utf8` so that the common case costs no copy at
         // all; a tool writing raw bytes must still get a transcript
         // rather than an error.
-        let mut buf = StreamBuffer::default();
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
         buf.push(b"before\xffafter\n", Stream::Stdout, &None);
         assert_eq!(buf.into_transcript(), "before\u{fffd}after\n");
     }

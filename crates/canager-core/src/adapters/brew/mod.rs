@@ -10,7 +10,7 @@ use crate::model::{
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
     Scope, SearchHit, Unavailable, Warning,
 };
-use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback};
+use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse};
 use async_trait::async_trait;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
@@ -177,6 +177,12 @@ impl BrewAdapter {
             env: self.env_vec(),
             cwd: None,
             timeout,
+            // `inventory`, `check_updates`, `plan`'s dependent scan and
+            // `search` all hand this stdout to a parser, so it must
+            // arrive whole. `brew update` is the one caller that reads
+            // only the exit code, and refusing an implausible 64 MiB of
+            // it costs that caller nothing.
+            output_use: OutputUse::Parsed,
         };
         Ok(self
             .runner
@@ -260,6 +266,7 @@ impl BrewAdapter {
                     env: self.env_vec(),
                     cwd: None,
                     timeout: Duration::from_secs(30),
+                    output_use: OutputUse::Parsed,
                 };
                 let output = self.runner.run(spec, None, CancellationToken::new()).await;
                 match output {
@@ -557,6 +564,9 @@ impl BrewAdapter {
             env: plan.env.clone(),
             cwd: None,
             timeout: Duration::from_secs(plan.timeout_secs),
+            // Same as `adapters::run_plan`: a transcript for the log
+            // drawer, never parsed.
+            output_use: OutputUse::Transcript,
         };
         let output = self.runner.run(spec, Some(on_line), cancel).await?;
         if output.cancelled || output.timed_out {

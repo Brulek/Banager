@@ -8,7 +8,7 @@ use crate::model::{
     OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, UpdateCandidate,
     UpdateChannel,
 };
-use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
+use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -106,6 +106,7 @@ impl PipAdapter {
                         env: Vec::new(),
                         cwd: None,
                         timeout: Duration::from_secs(30),
+                        output_use: OutputUse::Parsed,
                     },
                     None,
                     CancellationToken::new(),
@@ -171,6 +172,7 @@ impl PipAdapter {
                     env: Vec::new(),
                     cwd: None,
                     timeout: Duration::from_secs(60),
+                    output_use: OutputUse::Parsed,
                 },
                 None,
                 CancellationToken::new(),
@@ -248,6 +250,7 @@ impl PipAdapter {
                     env: Vec::new(),
                     cwd: None,
                     timeout: Duration::from_secs(60),
+                    output_use: OutputUse::Parsed,
                 },
                 None,
                 CancellationToken::new(),

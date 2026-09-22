@@ -3,7 +3,7 @@ use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
     ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
-use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
+use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse};
 use async_trait::async_trait;
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
@@ -419,6 +419,11 @@ pub async fn run_plan(
         env: plan.env.clone(),
         cwd: None,
         timeout: Duration::from_secs(plan.timeout_secs),
+        // A build log on its way to the log drawer. Nothing reads this
+        // command's stdout as data -- the outcome comes from the exit
+        // code and the last five stderr lines -- so a runaway build is
+        // better shortened than turned into a failed operation.
+        output_use: OutputUse::Transcript,
     };
     let output = runner.run(spec, Some(on_line), cancel).await?;
     if output.cancelled || output.timed_out {

@@ -95,6 +95,7 @@ impl CommandRunner for MockRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::OutputUse;
 
     #[tokio::test]
     async fn test_mock_runner_returns_canned_output_and_records_argv() {
@@ -116,6 +117,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Parsed,
         };
         let output = runner
             .run(spec, None, CancellationToken::new())
@@ -142,6 +144,7 @@ mod tests {
             env: vec![],
             cwd: None,
             timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Parsed,
         };
         let result = runner.run(spec, None, CancellationToken::new()).await;
         assert!(matches!(result, Err(RunnerError::NoMock(_))));

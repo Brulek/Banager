@@ -10,7 +10,7 @@ use crate::model::{
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
     Unavailable, UpdateCandidate, UpdateChannel,
 };
-use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
+use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -173,6 +173,7 @@ impl PipxAdapter {
                     env: Vec::new(),
                     cwd: None,
                     timeout: Duration::from_secs(30),
+                    output_use: OutputUse::Parsed,
                 },
                 None,
                 CancellationToken::new(),
@@ -219,6 +220,8 @@ impl PipxAdapter {
             env: Vec::new(),
             cwd: None,
             timeout,
+            // Every caller of this helper hands the result to a parser.
+            output_use: OutputUse::Parsed,
         };
         Ok(self
             .runner

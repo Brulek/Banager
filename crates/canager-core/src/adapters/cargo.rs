@@ -10,7 +10,7 @@ use crate::model::{
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
     Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
-use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
+use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -143,6 +143,7 @@ impl CargoAdapter {
                     env: Vec::new(),
                     cwd: None,
                     timeout: Duration::from_secs(30),
+                    output_use: OutputUse::Parsed,
                 },
                 None,
                 CancellationToken::new(),
