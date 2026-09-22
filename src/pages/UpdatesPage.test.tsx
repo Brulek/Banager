@@ -752,7 +752,7 @@ describe("UpdatesPage", () => {
 
     const alert = await findByRole("alert");
     expect(alert).toHaveTextContent(
-      "Couldn't prepare the update: Start Homebrew, then come back",
+      "Couldn't prepare the update: Start Homebrew and Canager will list",
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);
     expect(queryByRole("dialog")).not.toBeInTheDocument();

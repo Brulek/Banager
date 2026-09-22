@@ -60,17 +60,24 @@ describe("sourceNoticesFor", () => {
   });
 
   it("offers to start Ollama, and only Ollama, when a source is not running", () => {
+    // One state, one sentence: every source that is not running gets the
+    // same copy, named in the user's language. Ollama is the only one
+    // Canager can start, so it is the only one whose notice also carries a
+    // button -- a second wording for the same state is what let a stopped
+    // Ollama read one way in its notice and another in its plan refusal.
     const [ollama] = sourceNoticesFor(
       instance({ adapter_id: "ollama", status: { unavailable: "NotRunning", notes: [] } }),
       "Ollama",
     );
     expect(ollama.axis).toBe("state");
     expect(ollama.variant).toBe("warning");
-    expect(ollama.titleKey).toBe("sourceNotice.ollamaNotRunning.title");
-    expect(ollama.action?.id).toBe("openOllama");
+    expect(ollama.titleKey).toBe("sourceNotice.notRunning.title");
+    expect(ollama.descriptionKey).toBe("sourceNotice.notRunning.description");
+    expect(ollama.values).toEqual({ source: "Ollama" });
+    expect(ollama.action).toEqual({ id: "openOllama", labelKey: "sourceNotice.openOllama" });
 
-    // Any other source that reports NotRunning gets the generic copy, named
-    // in the user's language, and no button: Canager has no way to start it.
+    // Any other source that reports NotRunning gets the same copy and no
+    // button: Canager has no way to start it.
     const [other] = sourceNoticesFor(
       instance({ adapter_id: "brew", status: { unavailable: "NotRunning", notes: [] } }),
       "Homebrew",
@@ -78,6 +85,19 @@ describe("sourceNoticesFor", () => {
     expect(other.titleKey).toBe("sourceNotice.notRunning.title");
     expect(other.values).toEqual({ source: "Homebrew" });
     expect(other.action).toBeUndefined();
+  });
+
+  it("gives a stopped source the same sentence in its notice and in a refusal", () => {
+    // A stopped Ollama used to be described two ways: `ollamaNotRunning`
+    // in its notice, `notRunning` in `issue_plan`'s refusal. One state,
+    // one sentence.
+    const [notice] = sourceNoticesFor(
+      instance({ adapter_id: "ollama", status: { unavailable: "NotRunning", notes: [] } }),
+      "Ollama",
+    );
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "NotRunning" }, "Ollama"),
+    ).toBe(fakeT(notice.descriptionKey, notice.values));
   });
 
   it("tells a root user to reopen Canager rather than that Homebrew is missing", () => {

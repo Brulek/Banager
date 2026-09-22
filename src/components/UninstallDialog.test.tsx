@@ -289,7 +289,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Couldn't check what this would affect: Start Homebrew, then come back",
+        "Couldn't check what this would affect: Start Homebrew and Canager will list",
       ),
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);

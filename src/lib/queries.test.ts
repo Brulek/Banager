@@ -147,9 +147,8 @@ describe("queries", () => {
 
   it("useOpenOllamaApp refreshes once the daemon has had a moment to come up", async () => {
     // open_ollama_app only asks macOS to launch the app. The notice the
-    // button sits in says "Start the Ollama app to see its models and check
-    // for updates", and until this mutation refreshed, it stayed on screen
-    // until the next restart.
+    // button sits in says Ollama isn't running, and until this mutation
+    // refreshed, it stayed on screen until the next restart.
     vi.useFakeTimers();
     try {
       mockInvoke.mockImplementation((cmd: string) => {

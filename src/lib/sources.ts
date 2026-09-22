@@ -119,29 +119,24 @@ export function sourceNoticesFor(
 
   const unavailable = instance.status.unavailable;
   if (unavailable === "NotRunning") {
-    // Ollama is the only source Canager can start for the user, so it is
-    // the only one whose notice carries a button; every other source that
-    // reports NotRunning gets the same words without one, named through
-    // `sourceLabel` so it reads in the user's language.
-    notices.push(
-      instance.adapter_id === "ollama"
-        ? {
-            id: `${instance.id}:not-running`,
-            axis: "state",
-            variant: "warning",
-            titleKey: "sourceNotice.ollamaNotRunning.title",
-            descriptionKey: "sourceNotice.ollamaNotRunning.description",
-            action: { id: "openOllama", labelKey: "sourceNotice.ollamaNotRunning.action" },
-          }
-        : {
-            id: `${instance.id}:not-running`,
-            axis: "state",
-            variant: "warning",
-            titleKey: "sourceNotice.notRunning.title",
-            descriptionKey: "sourceNotice.notRunning.description",
-            values: { source: sourceLabel },
-          },
-    );
+    // One state, one sentence, named through `sourceLabel` so it reads in
+    // the user's language. Ollama is the only source Canager can start, so
+    // it is the only one whose notice carries a button -- but it used to
+    // get a second wording (`sourceNotice.ollamaNotRunning`) to go with the
+    // button, and the refusal `issue_plan` returns for that very same
+    // stopped Ollama kept using this one. Two sentences for one state; the
+    // button is the only part that actually differs.
+    notices.push({
+      id: `${instance.id}:not-running`,
+      axis: "state",
+      variant: "warning",
+      titleKey: "sourceNotice.notRunning.title",
+      descriptionKey: "sourceNotice.notRunning.description",
+      values: { source: sourceLabel },
+      ...(instance.adapter_id === "ollama"
+        ? { action: { id: "openOllama" as const, labelKey: "sourceNotice.openOllama" } }
+        : {}),
+    });
   } else if (unavailable === "NotResponding") {
     notices.push({
       id: `${instance.id}:unreachable`,

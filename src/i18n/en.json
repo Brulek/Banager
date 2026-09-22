@@ -92,15 +92,11 @@
       "title": "{{source}} is installed, but it won't run this way",
       "description": "Canager was started with administrator powers (sudo), and {{source}} refuses to work like that. Quit Canager and open it again the normal way — just double-click it — and your {{source}} software will show up here."
     },
-    "ollamaNotRunning": {
-      "title": "Ollama isn't running",
-      "description": "Start the Ollama app to see its models and check for updates.",
-      "action": "Open Ollama"
-    },
     "notRunning": {
       "title": "{{source}} isn't running",
-      "description": "Start {{source}}, then come back — Canager will list what's in it."
+      "description": "Start {{source}} and Canager will list what's in it and check it for updates."
     },
+    "openOllama": "Open Ollama",
     "indexMayBeStale": {
       "title": "“Up to date” may not be accurate for Homebrew",
       "description": "Canager couldn't download Homebrew's latest list of software, so there may be updates it can't see yet. Check your internet connection, then try again.",
