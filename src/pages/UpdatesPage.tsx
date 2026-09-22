@@ -184,16 +184,21 @@ export function UpdatesPage() {
     return reason ? READ_ONLY_NOTICE_KEYS[reason] : undefined;
   };
 
-  // Two numbers, not one. Folding read-only rows out of a single count told
-  // a user with six outdated pip packages "0 updates available" above six
-  // listed rows; folding them in would promise six Update buttons that are
-  // not there.
-  // A row from a source that is not answering counts here too: it is
-  // listed, it is real, and Canager cannot act on it right now either.
-  const unmanageableCount = visibleUpdates.filter(
-    (u) => readOnlyReasonFor(u) || unavailableInstances.has(u.key.instance_id),
-  ).length;
-  const actionableCount = visibleUpdates.length - unmanageableCount;
+  // Two numbers, not one. Folding unactionable rows out of a single count
+  // told a user with six outdated pip packages "0 updates available" above
+  // six listed rows; folding them in would promise six Update buttons that
+  // are not there.
+  //
+  // The split is `isActionable` itself, so the count and the buttons can
+  // only ever agree. It used to test two of that predicate's three parts
+  // and leave out `checkable`, which counted a row Canager had failed to
+  // check as an available update -- "6 updates available" over six rows
+  // with no buttons, on a machine where the registry had not answered at
+  // all. A row from a source that is not answering counts as unmanageable
+  // too: it is listed, it is real, and Canager cannot act on it right now
+  // either.
+  const actionableCount = visibleUpdates.filter(isActionable).length;
+  const unmanageableCount = visibleUpdates.length - actionableCount;
 
   // Only rows that are selected, still visible *and* still checkable count.
   // The store keeps a selection for a row that has since been ignored;

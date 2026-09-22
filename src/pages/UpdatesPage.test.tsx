@@ -432,6 +432,33 @@ describe("UpdatesPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not count a row it could not check as an available update", async () => {
+    // The headline counts what Canager can act on, and `checkable` is one
+    // of the three things that decides that -- but the count only ever
+    // looked at the other two. A writable, answering source whose registry
+    // lookup failed produced six rows with no buttons under the words "6
+    // updates available": the same claim the empty list used to make, just
+    // with rows under it. The two numbers now come from exactly the
+    // predicate that draws the buttons.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("my-fork");
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+    expect(queryByText("2 updates available")).not.toBeInTheDocument();
+  });
+
   it("says why a row can't be checked even when its source is also read-only", async () => {
     // pip is read-only *and* reaches PyPI, so a failed lookup produces
     // rows where both facts are true at once -- and the read-only advice
