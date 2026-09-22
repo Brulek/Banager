@@ -308,10 +308,21 @@ mod tests {
     use crate::session::{DetectOutcome, Session, Snapshot};
     use async_trait::async_trait;
     use std::collections::HashMap;
+    use std::path::Path;
     use std::sync::atomic::{AtomicI64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
+
+    /// The Homebrew layout the two root tests below run against: an Apple
+    /// Silicon install, and nothing at `/usr/local`. Handed to
+    /// `BrewAdapter::with_path_exists_fn` so these tests assert the same
+    /// thing on an Intel Mac, on a machine with no Homebrew, and on one
+    /// with both prefixes -- they are about brew's root policy, not about
+    /// what the machine running them happens to have installed.
+    fn apple_silicon_layout(path: &Path) -> bool {
+        path == Path::new("/opt/homebrew/bin/brew")
+    }
 
     struct FakeState {
         instances: Vec<ManagerInstance>,
@@ -496,11 +507,10 @@ mod tests {
     #[tokio::test]
     async fn test_refresh_as_root_reports_brew_unavailable_and_leaves_the_others_alone() {
         let runner = Arc::new(MockRunner::new());
-        // Real Homebrew is assumed installed at /opt/homebrew, as
-        // `adapters/brew/mod.rs`'s own detect tests already assume for
-        // CI's macos-latest runners; this response would only be used if
-        // brew's root refusal failed to stop `detect` short of asking the
-        // runner for a version at all.
+        // The Homebrew layout is pinned rather than read off whatever Mac
+        // is running the suite: an Apple Silicon install and nothing else.
+        // The canned `--version` would only be used if brew's root refusal
+        // failed to stop `detect` short of asking the runner at all.
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "--version"],
             CommandOutput {
@@ -511,7 +521,7 @@ mod tests {
                 cancelled: false,
             },
         );
-        let brew = Arc::new(BrewAdapter::new(runner));
+        let brew = Arc::new(BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout));
         let (fake, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -556,7 +566,7 @@ mod tests {
     #[tokio::test]
     async fn test_refresh_as_root_with_only_brew_registered_still_finds_it() {
         let runner = Arc::new(MockRunner::new());
-        let brew = Arc::new(BrewAdapter::new(runner));
+        let brew = Arc::new(BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout));
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![brew], None);
 

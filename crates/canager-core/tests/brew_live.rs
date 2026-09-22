@@ -1,16 +1,77 @@
-//! Live Homebrew smoke test: installs, inventories and removes the tiny GNU
-//! `hello` formula through the real adapter. Runs only when
-//! `CANAGER_LIVE=1` is set AND the test is invoked with `--ignored`, so a
-//! plain `cargo test` never touches the machine.
+//! Live Homebrew tests against the real machine. Both are `#[ignore]`d, so
+//! a plain `cargo test` never runs them and a clean checkout on a Mac with
+//! no Homebrew is still green.
+//!
+//! - `live_detect_finds_the_homebrew_installed_on_this_machine` only reads:
+//!   it probes the real filesystem and runs `brew --version`. This is the
+//!   real-machine half of detect's coverage, the half the unit tests in
+//!   `adapters/brew/mod.rs` gave up when their filesystem probe became
+//!   injectable -- those now prove the *logic* against a pinned layout, and
+//!   this proves the logic still matches a real Homebrew install.
+//! - `live_install_inventory_uninstall_hello` changes the machine, so it
+//!   additionally requires `CANAGER_LIVE=1` and skips loudly without it.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::Adapter;
 use canager_core::events::VecSink;
 use canager_core::model::{ArtifactKey, ArtifactKind, OpKind, OpRequest, Outcome};
 use canager_core::runner::{HostEnv, RealRunner};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+
+#[tokio::test]
+#[ignore = "reads the real filesystem and runs `brew --version`; run with cargo test -p canager-core --test brew_live -- --ignored"]
+async fn live_detect_finds_the_homebrew_installed_on_this_machine() {
+    let adapter = BrewAdapter::new(Arc::new(RealRunner));
+    let env = HostEnv::discover();
+    let instances = Adapter::detect(&adapter, &env).await;
+
+    let on_disk: Vec<&str> = BrewAdapter::CANDIDATE_PATHS
+        .iter()
+        .copied()
+        .filter(|candidate| Path::new(candidate).exists())
+        .collect();
+    if on_disk.is_empty() {
+        eprintln!(
+            "no `brew` at any of {:?}; skipping -- this test asserts about a real \
+             Homebrew and there is none here",
+            BrewAdapter::CANDIDATE_PATHS
+        );
+        assert!(
+            instances.is_empty(),
+            "nothing on disk, so detect must report nothing: {instances:?}"
+        );
+        return;
+    }
+
+    assert_eq!(
+        instances.len(),
+        on_disk.len(),
+        "one instance per `brew` on disk ({on_disk:?}), got {instances:?}"
+    );
+    for (inst, candidate) in instances.iter().zip(&on_disk) {
+        assert_eq!(inst.exe_path, Path::new(candidate));
+        assert_eq!(inst.id, format!("brew:{}", inst.prefix.display()));
+        assert!(
+            inst.exe_path.starts_with(&inst.prefix),
+            "the prefix must be the install root the exe sits under, got {inst:?}"
+        );
+        if env.euid == 0 {
+            assert!(
+                inst.version.is_none(),
+                "as root no brew process is run at all, so there is no version"
+            );
+        } else {
+            assert!(
+                inst.version.is_some(),
+                "a real Homebrew answers `--version`, got {inst:?}"
+            );
+            assert!(inst.available(), "got {inst:?}");
+        }
+    }
+}
 
 #[tokio::test]
 #[ignore = "installs and removes the `hello` formula; run with CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored"]

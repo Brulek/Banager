@@ -55,6 +55,17 @@ pub struct BrewAdapter {
     /// all. Production still reads the real variable, and still reads it
     /// per plan rather than once at startup.
     askpass_fn: fn() -> Option<String>,
+    /// How to ask whether one of `CANDIDATE_PATHS` is on this machine.
+    /// Same fn-pointer seam as `euid_fn` and `askpass_fn`, and as
+    /// `NpmAdapter::prefix_writable_fn`, for the same reason: `detect`'s
+    /// whole job is probing the filesystem, so a test that cannot answer
+    /// that probe can only assert whatever the machine running it happens
+    /// to have. That made every `detect` test here a test of the author's
+    /// Mac -- green on Apple Silicon with Homebrew in `/opt/homebrew`, red
+    /// on an Intel Mac (`/usr/local`), red on a checkout with no Homebrew
+    /// at all, and red again where both prefixes exist. Production always
+    /// gets `|path| path.exists()`; tests hand in a layout.
+    path_exists_fn: fn(&Path) -> bool,
 }
 
 impl BrewAdapter {
@@ -82,6 +93,7 @@ impl BrewAdapter {
             update_ttl: Duration::from_secs(6 * 3600),
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
+            path_exists_fn: |path| path.exists(),
         }
     }
 
@@ -104,6 +116,17 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_askpass_fn(mut self, askpass_fn: fn() -> Option<String>) -> BrewAdapter {
         self.askpass_fn = askpass_fn;
+        self
+    }
+
+    /// Test-only hook to describe the Homebrew layout `detect` should see:
+    /// which of `CANDIDATE_PATHS` exist. `pub(crate)` rather than private
+    /// because `session::refresh`'s own tests build a real `BrewAdapter`
+    /// (deliberately -- what they exercise is brew's own root policy) and
+    /// so need to pin the layout too.
+    #[cfg(test)]
+    pub(crate) fn with_path_exists_fn(mut self, path_exists_fn: fn(&Path) -> bool) -> BrewAdapter {
+        self.path_exists_fn = path_exists_fn;
         self
     }
 
@@ -225,7 +248,7 @@ impl BrewAdapter {
         let mut found = Vec::new();
         for candidate in Self::CANDIDATE_PATHS {
             let path = PathBuf::from(candidate);
-            if !path.exists() {
+            if !(self.path_exists_fn)(&path) {
                 continue;
             }
             let version = if as_root {
@@ -672,6 +695,60 @@ mod tests {
         );
     }
 
+    /// The four Homebrew layouts a contributor's Mac can be in, written as
+    /// answers to the one filesystem question `detect` asks. Every detect
+    /// test below picks one, so what it proves is the same everywhere the
+    /// suite runs -- rather than whatever the machine running it happens
+    /// to have installed.
+    fn apple_silicon_layout(path: &Path) -> bool {
+        path == Path::new("/opt/homebrew/bin/brew")
+    }
+
+    fn intel_layout(path: &Path) -> bool {
+        path == Path::new("/usr/local/bin/brew")
+    }
+
+    fn both_prefixes_layout(path: &Path) -> bool {
+        apple_silicon_layout(path) || intel_layout(path)
+    }
+
+    fn no_homebrew_layout(_path: &Path) -> bool {
+        false
+    }
+
+    /// A `HostEnv` for the detect tests. Brew's `detect` reads only `euid`
+    /// from it -- the candidate paths are absolute, not searched on `PATH`
+    /// -- so the rest is filler.
+    fn detect_env(euid: u32) -> HostEnv {
+        HostEnv {
+            path_dirs: vec![],
+            home: if euid == 0 {
+                PathBuf::from("/var/root")
+            } else {
+                PathBuf::from("/tmp")
+            },
+            euid,
+            cargo_home: None,
+            ollama_host: None,
+        }
+    }
+
+    /// A runner that answers `--version` for one candidate path.
+    fn version_runner(brew_path: &str, version_line: &str) -> Arc<MockRunner> {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![brew_path, "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: version_line.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
     #[tokio::test]
     async fn test_detect_under_root_reports_the_instance_as_refusing_rather_than_missing() {
         // Returning no instance at all here is indistinguishable from
@@ -682,19 +759,9 @@ mod tests {
         // an empty `Vec` cannot say. So the instance is detected and marked
         // unavailable with a reason, which `sourceNoticesFor` turns into
         // that sentence and `Session::issue_plan` turns into a refusal.
-        //
-        // Assumes Homebrew is installed at /opt/homebrew, the same
-        // assumption `test_detect_finds_opt_homebrew_on_this_apple_silicon_mac`
-        // already makes.
         let runner = Arc::new(MockRunner::new());
-        let adapter = BrewAdapter::new(runner.clone());
-        let env = HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/var/root"),
-            euid: 0,
-            cargo_home: None,
-            ollama_host: None,
-        };
+        let adapter = BrewAdapter::new(runner.clone()).with_path_exists_fn(apple_silicon_layout);
+        let env = detect_env(0);
         let instances = adapter.detect(&env).await;
         assert_eq!(instances.len(), 1, "got {instances:?}");
         assert_eq!(instances[0].id, "brew:/opt/homebrew");
@@ -735,59 +802,112 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detect_finds_opt_homebrew_on_this_apple_silicon_mac() {
-        let runner = Arc::new(MockRunner::new());
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "--version"],
-            CommandOutput {
-                exit_code: Some(0),
-                stdout: "Homebrew 7.0.3\n".to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
-        let adapter = BrewAdapter::new(runner);
-        let env = HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
-        };
-        let instances = adapter.detect(&env).await;
-        // Assumes Homebrew is installed at /opt/homebrew, true for Canager's
-        // target (Apple Silicon Macs, per the design spec) and for CI's
-        // macos-latest runners. /usr/local/bin/brew and the Linux path do
-        // not exist on this machine, so exactly one instance is found.
-        assert_eq!(instances.len(), 1);
+    async fn test_detect_finds_the_apple_silicon_prefix() {
+        let runner = version_runner("/opt/homebrew/bin/brew", "Homebrew 7.0.3\n");
+        let adapter = BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert_eq!(instances.len(), 1, "got {instances:?}");
         assert_eq!(instances[0].id, "brew:/opt/homebrew");
+        assert_eq!(
+            instances[0].exe_path,
+            PathBuf::from("/opt/homebrew/bin/brew")
+        );
+        assert_eq!(instances[0].prefix, PathBuf::from("/opt/homebrew"));
         assert_eq!(instances[0].version, Some("7.0.3".to_string()));
         assert!(instances[0].available());
     }
 
     #[tokio::test]
-    async fn test_detect_finds_opt_homebrew_and_its_version_is_verified() {
-        let runner = Arc::new(MockRunner::new());
+    async fn test_detect_finds_the_intel_prefix() {
+        // The same Homebrew, installed where an Intel Mac puts it. This
+        // used to be untestable without owning an Intel Mac, which meant
+        // the `/usr/local` half of `CANDIDATE_PATHS` -- and the
+        // `prefix_for` derivation that turns the exe path back into a
+        // prefix -- was never exercised at all.
+        let runner = version_runner("/usr/local/bin/brew", "Homebrew 7.0.3\n");
+        let adapter = BrewAdapter::new(runner).with_path_exists_fn(intel_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert_eq!(instances.len(), 1, "got {instances:?}");
+        assert_eq!(instances[0].id, "brew:/usr/local");
+        assert_eq!(instances[0].exe_path, PathBuf::from("/usr/local/bin/brew"));
+        assert_eq!(instances[0].prefix, PathBuf::from("/usr/local"));
+        assert_eq!(instances[0].version, Some("7.0.3".to_string()));
+        assert!(instances[0].available());
+    }
+
+    #[tokio::test]
+    async fn test_detect_finds_both_prefixes_as_separate_instances() {
+        // A Mac that has been through a Rosetta phase carries both. They
+        // are two Homebrews, not one: separate ids (which is what keys the
+        // per-instance `brew update` throttle and the operation lock),
+        // separate exe paths, and separate version answers.
+        let runner = version_runner("/opt/homebrew/bin/brew", "Homebrew 7.0.3\n");
         runner.respond(
-            vec!["/opt/homebrew/bin/brew", "--version"],
+            vec!["/usr/local/bin/brew", "--version"],
             CommandOutput {
                 exit_code: Some(0),
-                stdout: "Homebrew 7.0.3\n".to_string(),
+                stdout: "Homebrew 99.9.9\n".to_string(),
                 stderr: String::new(),
                 timed_out: false,
                 cancelled: false,
             },
         );
-        let adapter = BrewAdapter::new(runner);
-        let env = HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
-        };
-        let instances = adapter.detect(&env).await;
+        let adapter = BrewAdapter::new(runner).with_path_exists_fn(both_prefixes_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert_eq!(instances.len(), 2, "got {instances:?}");
+        let ids: Vec<&str> = instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["brew:/opt/homebrew", "brew:/usr/local"],
+            "in CANDIDATE_PATHS order, so the Apple Silicon install is listed first"
+        );
+        assert_eq!(instances[0].version, Some("7.0.3".to_string()));
+        assert_eq!(instances[1].version, Some("99.9.9".to_string()));
+        assert_eq!(
+            instances[1].unverified_version,
+            Some("99.9.9".to_string()),
+            "each instance is judged against brew.toml on its own version"
+        );
+        assert!(instances[0].unverified_version.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_detect_finds_nothing_when_homebrew_is_not_installed() {
+        // A clean Mac with no Homebrew: no instance, and -- the part worth
+        // pinning -- no subprocess either. `detect` must not try to run a
+        // `brew` that is not there.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone()).with_path_exists_fn(no_homebrew_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert!(instances.is_empty(), "got {instances:?}");
+        assert!(
+            runner.calls().is_empty(),
+            "nothing on disk means nothing to ask for a version"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_marks_an_install_that_does_not_answer_as_not_responding() {
+        // The binary is on disk but `--version` fails: the tool is there,
+        // it just did not answer, which is `NotResponding` and not a
+        // missing install. The MockRunner has no canned response for this
+        // argv, which is exactly what that failure looks like here.
+        let adapter =
+            BrewAdapter::new(Arc::new(MockRunner::new())).with_path_exists_fn(intel_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
+        assert_eq!(instances.len(), 1, "got {instances:?}");
+        assert_eq!(instances[0].version, None);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_does_not_flag_a_version_listed_in_brew_toml() {
+        let runner = version_runner("/opt/homebrew/bin/brew", "Homebrew 7.0.3\n");
+        let adapter = BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
         assert_eq!(instances.len(), 1);
         assert!(
             instances[0].unverified_version.is_none(),
@@ -797,26 +917,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_detect_flags_an_unverified_version_not_in_brew_toml() {
-        let runner = Arc::new(MockRunner::new());
-        runner.respond(
-            vec!["/opt/homebrew/bin/brew", "--version"],
-            CommandOutput {
-                exit_code: Some(0),
-                stdout: "Homebrew 99.9.9\n".to_string(),
-                stderr: String::new(),
-                timed_out: false,
-                cancelled: false,
-            },
-        );
-        let adapter = BrewAdapter::new(runner);
-        let env = HostEnv {
-            path_dirs: vec![],
-            home: PathBuf::from("/tmp"),
-            euid: 501,
-            cargo_home: None,
-            ollama_host: None,
-        };
-        let instances = adapter.detect(&env).await;
+        let runner = version_runner("/opt/homebrew/bin/brew", "Homebrew 99.9.9\n");
+        let adapter = BrewAdapter::new(runner).with_path_exists_fn(apple_silicon_layout);
+        let instances = adapter.detect(&detect_env(501)).await;
         assert_eq!(instances.len(), 1);
         assert_eq!(
             instances[0].unverified_version,
