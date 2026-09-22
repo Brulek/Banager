@@ -21,6 +21,7 @@ const snapshot: Snapshot = {
       version: "7.0.3",
       healthy: true,
       unverified_version: null,
+      read_only_reason: null,
     },
   ],
   artifacts: [
@@ -86,6 +87,7 @@ const pipSnapshot: Snapshot = {
       version: "26.2.1",
       healthy: true,
       unverified_version: null,
+      read_only_reason: "ByDesign",
     },
   ],
   artifacts: [
@@ -354,6 +356,7 @@ describe("InstalledPage", () => {
           version: "11.2.0",
           healthy: false,
           unverified_version: null,
+          read_only_reason: null,
         },
       ],
     };
@@ -367,6 +370,60 @@ describe("InstalledPage", () => {
 
     await findByText("jq");
     expect(await findByText("Canager can't reach npm right now")).toBeInTheDocument();
+  });
+
+  it("gives a root-owned npm prefix its own notice and no Uninstall button", async () => {
+    // Read-only, like pip, but for a reason pip's copy would misdescribe:
+    // the tool can install and uninstall perfectly well, it just cannot
+    // write where this machine put it. The fix is to reinstall Node with
+    // Homebrew, and telling this user about pipx or uv is noise.
+    const readOnlyNpmSnapshot: Snapshot = {
+      generation: 1,
+      detect: "Found",
+      instances: [
+        {
+          id: "npm:/usr/local",
+          adapter_id: "npm",
+          exe_path: "/usr/local/bin/npm",
+          prefix: "/usr/local",
+          scope: "User",
+          version: "12.0.2",
+          healthy: true,
+          unverified_version: null,
+          read_only_reason: "PrefixNotWritable",
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "npm:/usr/local", kind: "Package", name: "typescript" },
+          display_name: "typescript",
+          version: "5.6.2",
+          reason: "Requested",
+          description: "TypeScript is a language for application scale JavaScript development",
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: false,
+        },
+      ],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(readOnlyNpmSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
+
+    await findByText("typescript");
+    expect(await findByText("Read-only: npm packages")).toBeInTheDocument();
+    expect(queryByText("Read-only: pip packages")).not.toBeInTheDocument();
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
   });
 
   it("never appends a digest to a model's name, while other sources still show their version", async () => {
@@ -388,6 +445,7 @@ describe("InstalledPage", () => {
           version: null,
           healthy: true,
           unverified_version: null,
+          read_only_reason: null,
         },
       ],
       artifacts: [
@@ -438,6 +496,7 @@ describe("InstalledPage", () => {
           version: null,
           healthy: false,
           unverified_version: null,
+          read_only_reason: null,
         },
       ],
       artifacts: [],

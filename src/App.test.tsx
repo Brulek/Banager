@@ -23,6 +23,7 @@ const snapshot: Snapshot = {
       version: "7.0.3",
       healthy: true,
       unverified_version: null,
+      read_only_reason: null,
     },
   ],
   artifacts: [

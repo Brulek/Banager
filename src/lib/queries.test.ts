@@ -23,6 +23,7 @@ function ollamaInstance(healthy: boolean): ManagerInstance {
     version: null,
     healthy,
     unverified_version: null,
+    read_only_reason: null,
   };
 }
 

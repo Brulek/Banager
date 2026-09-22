@@ -303,6 +303,7 @@ describe("SnapshotStatus", () => {
             version: null,
             healthy: false,
             unverified_version: null,
+            read_only_reason: null,
           },
         ],
       }),

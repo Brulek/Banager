@@ -41,6 +41,14 @@ export interface UpdateCandidate {
   checkable: boolean;
   warnings: string[];
 }
+/**
+ * Why a source can be listed but never changed from Canager. Mirrors
+ * `ReadOnlyReason` in crates/canager-core/src/model.rs: bare-string unit
+ * variants, so a new Rust variant does *not* fail this union at compile
+ * time -- it lands in whatever default branch reads it. `types.test.ts`
+ * keeps a shape test over both spellings.
+ */
+export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
 export interface ManagerInstance {
   id: string;
   adapter_id: string;
@@ -50,6 +58,8 @@ export interface ManagerInstance {
   version: string | null;
   healthy: boolean;
   unverified_version: string | null;
+  /** `null` means writable; see `canWrite()` in src/lib/sources.ts. */
+  read_only_reason: ReadOnlyReason | null;
 }
 export interface Plan {
   request: OpRequest;

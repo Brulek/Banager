@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { Snapshot, Outcome, OperationEvent, UiEvent, Plan, OpSummary, Settings } from "./types";
+import type {
+  Snapshot,
+  Outcome,
+  OperationEvent,
+  UiEvent,
+  Plan,
+  OpSummary,
+  ReadOnlyReason,
+  Settings,
+} from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
 // only strips types, so a JSON-string fixture would pass no matter what
@@ -27,6 +36,7 @@ describe("types", () => {
           version: "7.0.3",
           healthy: true,
           unverified_version: null,
+          read_only_reason: null,
         },
       ],
       artifacts: [
@@ -75,12 +85,25 @@ describe("types", () => {
     expect(parsed.generation).toBe(3);
     expect(parsed.detect).toBe("Found");
     expect(parsed.instances[0].scope).toBe("User");
+    expect(parsed.instances[0].read_only_reason).toBeNull();
     expect(parsed.artifacts[0].key.kind).toBe("Formula");
     expect(parsed.artifacts[1].key.kind).toBe("Cask");
     expect(parsed.artifacts[1].installed_at).toBeNull();
     expect(parsed.updates[0].channel).toBe("Native");
     expect(parsed.stale).toBe(false);
     expect(parsed.errors).toEqual([]);
+  });
+
+  it("spells both ReadOnlyReason variants as bare strings, and writable as null", () => {
+    // `Option<ReadOnlyReason>` on the Rust side: a unit variant serialises
+    // to its bare name, `None` to `null`. Every spelling below has to match
+    // `crates/canager-core/src/model.rs` exactly -- nothing checks this at
+    // compile time, and a typo would silently land every npm row in the
+    // wrong branch of the notice copy.
+    const reasons: ReadOnlyReason[] = ["ByDesign", "PrefixNotWritable"];
+    expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable"]);
+    const writable: ReadOnlyReason | null = null;
+    expect(roundTrip(writable)).toBeNull();
   });
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {

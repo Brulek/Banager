@@ -38,6 +38,8 @@
     "upToDate": "所有内容都已是最新",
     "allIgnored": "没有待处理的更新，其余都已忽略。",
     "count_other": "{{count}} 个可用更新",
+    "countUnmanageable_other": "另有 {{count}} 个无法在这里更新",
+    "noneActionable": "这里没有 Canager 能更新的内容",
     "updateSelected": "更新所选项",
     "update": "更新",
     "ignore": "忽略",
@@ -63,6 +65,10 @@
     "pipReadOnly": {
       "title": "只读:pip 包",
       "description": "Canager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
+    },
+    "prefixNotWritable": {
+      "title": "只读:npm 包",
+      "description": "Canager 只能列出这些,无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node,Canager 就能管理它们了。"
     },
     "unreachable": {
       "title": "Canager 现在连不上 {{source}}",

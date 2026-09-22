@@ -213,9 +213,7 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
   // which sources have something to show.
   if (
     snapshot.artifacts.length === 0 &&
-    !snapshot.instances.some((instance) =>
-      hasSourceNotice(instance.adapter_id, instance.healthy),
-    )
+    !snapshot.instances.some((instance) => hasSourceNotice(instance))
   ) {
     return (
       <EmptyState

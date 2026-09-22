@@ -6,13 +6,18 @@ import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotice } from "../components/SourceNotice";
 import { UninstallDialog } from "../components/UninstallDialog";
-import { ADAPTER_LABEL_KEYS, READ_ONLY_ADAPTER_IDS, hasSourceNotice } from "../lib/sources";
-import type { InstalledArtifact, OpRequest } from "../lib/types";
+import {
+  ADAPTER_LABEL_KEYS,
+  READ_ONLY_NOTICE_KEYS,
+  canWrite,
+  hasSourceNotice,
+} from "../lib/sources";
+import type { InstalledArtifact, OpRequest, ReadOnlyReason } from "../lib/types";
 
 // A group header on its own is one line. A group header that also carries a
-// SourceNotice (pip's read-only note, an unhealthy source's can't-reach-it
-// warning) is a title plus a banner -- a title line, a description line and,
-// for Ollama, a button.
+// SourceNotice (a read-only source's explanation, an unhealthy source's
+// can't-reach-it warning) is a title plus a banner -- a title line, a
+// description line and, for Ollama, a button.
 // Both numbers are only the virtualizer's first guess: every row reports its
 // real height through `measureElement` as soon as it is in the DOM.
 const ROW_ESTIMATE = 56;
@@ -25,11 +30,21 @@ type ListItem =
       label: string;
       adapterId: string;
       healthy: boolean;
+      // Why this source cannot be changed, or null when it can. Carried on
+      // the item rather than re-derived at render time so the notice, the
+      // row's Uninstall button and the virtualizer's height estimate all
+      // answer from the same value.
+      readOnlyReason: ReadOnlyReason | null;
+      // `hasSourceNotice(instance)`, decided once while the list is built.
+      // The virtualizer's `estimateSize` needs it and has only the
+      // `ListItem`, and recomputing the rule there is how the two would
+      // drift.
+      hasNotice: boolean;
       // Task 4's unverified-version badge. Kept here deliberately: this
       // task edits Task 4's file rather than replacing it.
       unverifiedVersion: string | null;
     }
-  | { type: "artifact"; artifact: InstalledArtifact; adapterId: string }
+  | { type: "artifact"; artifact: InstalledArtifact; writable: boolean }
   | { type: "toggle"; instanceId: string; hiddenCount: number };
 
 export function InstalledPage() {
@@ -73,20 +88,24 @@ export function InstalledPage() {
     const result: ListItem[] = [];
     for (const instance of snapshot.instances) {
       const artifacts = byInstance.get(instance.id) ?? [];
-      // A source can need a notice (pip's read-only note, a source Canager
-      // cannot reach) even with nothing installed to list under it -- most
-      // visibly, an unhealthy Ollama daemon that has nothing to report yet.
-      // An unhealthy instance never reaches the artifact fan-out at all, so
-      // its notice is the *only* thing its group ever has to show.
-      const needsNotice = hasSourceNotice(instance.adapter_id, instance.healthy);
+      // A source can need a notice (a read-only source's explanation, a
+      // source Canager cannot reach) even with nothing installed to list
+      // under it -- most visibly, an unhealthy Ollama daemon that has
+      // nothing to report yet. An unhealthy instance never reaches the
+      // artifact fan-out at all, so its notice is the *only* thing its
+      // group ever has to show.
+      const needsNotice = hasSourceNotice(instance);
       if (artifacts.length === 0 && !needsNotice) continue;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+      const writable = canWrite(instance);
       result.push({
         type: "group",
         instanceId: instance.id,
         label: labelKey ? t(labelKey) : instance.adapter_id,
         adapterId: instance.adapter_id,
         healthy: instance.healthy,
+        readOnlyReason: instance.read_only_reason,
+        hasNotice: needsNotice,
         unverifiedVersion: instance.unverified_version,
       });
       // `!== "Dependency"`, not `=== "Requested"`: pip can only ever report
@@ -97,12 +116,12 @@ export function InstalledPage() {
       const primary = artifacts.filter((a) => a.reason !== "Dependency");
       const dependencies = artifacts.filter((a) => a.reason === "Dependency");
       for (const artifact of primary) {
-        result.push({ type: "artifact", artifact, adapterId: instance.adapter_id });
+        result.push({ type: "artifact", artifact, writable });
       }
       if (dependencies.length > 0) {
         if (showDependencies) {
           for (const artifact of dependencies) {
-            result.push({ type: "artifact", artifact, adapterId: instance.adapter_id });
+            result.push({ type: "artifact", artifact, writable });
           }
         } else {
           result.push({ type: "toggle", instanceId: instance.id, hiddenCount: dependencies.length });
@@ -117,9 +136,7 @@ export function InstalledPage() {
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => {
       const item = items[index];
-      return item?.type === "group" && hasSourceNotice(item.adapterId, item.healthy)
-        ? NOTICE_GROUP_ESTIMATE
-        : ROW_ESTIMATE;
+      return item?.type === "group" && item.hasNotice ? NOTICE_GROUP_ESTIMATE : ROW_ESTIMATE;
     },
   });
 
@@ -175,11 +192,19 @@ export function InstalledPage() {
                         </span>
                       ) : null}
                     </p>
-                    {READ_ONLY_ADAPTER_IDS.has(item.adapterId) ? (
+                    {/* Two read-only reasons, two pieces of advice. pip
+                        cannot be driven at all, so the answer is pipx or
+                        uv; an npm with a root-owned prefix works fine and
+                        the answer is to reinstall Node with Homebrew.
+                        `READ_ONLY_NOTICE_KEYS` keeps the pairing in one
+                        place, shared with the Updates page. */}
+                    {item.readOnlyReason ? (
                       <SourceNotice
                         variant="info"
-                        title={t("sourceNotice.pipReadOnly.title")}
-                        description={t("sourceNotice.pipReadOnly.description")}
+                        title={t(`${READ_ONLY_NOTICE_KEYS[item.readOnlyReason]}.title`)}
+                        description={t(
+                          `${READ_ONLY_NOTICE_KEYS[item.readOnlyReason]}.description`,
+                        )}
                       />
                     ) : null}
                     {/* An unhealthy instance means the same thing for every
@@ -245,11 +270,9 @@ export function InstalledPage() {
                     badgeVariant={
                       updatableIds.has(artifactKeyId(item.artifact.key)) ? "info" : "neutral"
                     }
-                    primaryActionLabel={
-                      READ_ONLY_ADAPTER_IDS.has(item.adapterId) ? undefined : t("installed.uninstall")
-                    }
+                    primaryActionLabel={item.writable ? t("installed.uninstall") : undefined}
                     onPrimaryAction={
-                      READ_ONLY_ADAPTER_IDS.has(item.adapterId)
+                      !item.writable
                         ? undefined
                         : () =>
                             setUninstallTarget({

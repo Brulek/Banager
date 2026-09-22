@@ -40,6 +40,9 @@
     "allIgnored": "No pending updates — everything else is ignored.",
     "count_one": "{{count}} update available",
     "count_other": "{{count}} updates available",
+    "countUnmanageable_one": "{{count}} more can't be updated here",
+    "countUnmanageable_other": "{{count}} more can't be updated here",
+    "noneActionable": "Nothing here can be updated by Canager",
     "updateSelected": "Update selected",
     "update": "Update",
     "ignore": "Ignore",
@@ -66,6 +69,10 @@
     "pipReadOnly": {
       "title": "Read-only: pip packages",
       "description": "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
+    },
+    "prefixNotWritable": {
+      "title": "Read-only: npm packages",
+      "description": "Canager can list these but can't update or remove them: npm keeps them in a folder your account isn't allowed to change. That usually means Node was installed with the installer from nodejs.org. Installing Node with Homebrew instead lets Canager manage them."
     },
     "unreachable": {
       "title": "Canager can't reach {{source}} right now",

@@ -25,6 +25,14 @@ const urllib3Key: ArtifactKey = {
   kind: "Package",
   name: "urllib3",
 };
+// An npm whose global prefix this account cannot write -- Node installed
+// from nodejs.org's package. Read-only like pip, for an entirely different
+// reason, and the advice that fixes one is nonsense for the other.
+const typescriptKey: ArtifactKey = {
+  instance_id: "npm:/usr/local",
+  kind: "Package",
+  name: "typescript",
+};
 
 const snapshot: Snapshot = {
   generation: 2,
@@ -43,6 +51,7 @@ const snapshot: Snapshot = {
       version: "7.0.3",
       healthy: true,
       unverified_version: null,
+      read_only_reason: null,
     },
     {
       id: "pip:/usr/bin/python3",
@@ -53,6 +62,18 @@ const snapshot: Snapshot = {
       version: "26.2.1",
       healthy: true,
       unverified_version: null,
+      read_only_reason: "ByDesign",
+    },
+    {
+      id: "npm:/usr/local",
+      adapter_id: "npm",
+      exe_path: "/usr/local/bin/npm",
+      prefix: "/usr/local",
+      scope: "User",
+      version: "12.0.2",
+      healthy: true,
+      unverified_version: null,
+      read_only_reason: "PrefixNotWritable",
     },
   ],
   artifacts: [],
@@ -383,13 +404,83 @@ describe("UpdatesPage", () => {
     // glib's button and checkbox, and only glib's.
     expect(await findAllByRole("button", { name: "Update" })).toHaveLength(1);
     expect(await findAllByRole("checkbox")).toHaveLength(1);
-    // Counted as one update, not two: the pip row is not one the user can act on.
+    // One update the user can act on, and one they cannot -- both said out
+    // loud. Counting only the first left "0 updates available" above six
+    // listed rows on a machine whose only outdated packages were pip's.
     await findByText("1 update available");
+    await findByText("1 more can't be updated here");
     expect(
       await findByText(
         "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("tells an npm user to install Node with Homebrew, not to use pipx or uv", async () => {
+    // Both sources are read-only, for different reasons, and the wire now
+    // says which. Before `read_only_reason` the page hardcoded pip's
+    // advice for every read-only row, so a user whose npm prefix is
+    // root-owned was told to install their JavaScript tooling with a
+    // Python tool.
+    updates = [
+      {
+        key: typescriptKey,
+        current: "5.6.2",
+        target: "5.7.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const { findByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("typescript");
+    expect(
+      await findByText(
+        "Canager can list these but can't update or remove them: npm keeps them in a folder your account isn't allowed to change. That usually means Node was installed with the installer from nodejs.org. Installing Node with Homebrew instead lets Canager manage them.",
+      ),
+    ).toBeInTheDocument();
+    // pip's row keeps pip's advice, right next to it.
+    expect(
+      await findByText(
+        "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+  });
+
+  it("says nothing here can be updated, rather than 0 updates, when every row is read-only", async () => {
+    updates = [
+      {
+        key: urllib3Key,
+        current: "2.2.1",
+        target: "2.3.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+      {
+        key: typescriptKey,
+        current: "5.6.2",
+        target: "5.7.0",
+        channel: "Registry",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("urllib3");
+    expect(await findByText("Nothing here can be updated by Canager")).toBeInTheDocument();
+    expect(queryByText("0 updates available")).not.toBeInTheDocument();
   });
 
   it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {

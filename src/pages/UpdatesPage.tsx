@@ -8,7 +8,7 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
-import { READ_ONLY_ADAPTER_IDS } from "../lib/sources";
+import { READ_ONLY_NOTICE_KEYS } from "../lib/sources";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { CommandPreview } from "../components/CommandPreview";
 import { Dialog } from "../components/ui/Dialog";
@@ -17,6 +17,7 @@ import type {
   InstalledArtifact,
   IssuedPlan,
   OpRequest,
+  ReadOnlyReason,
   UpdateCandidate,
 } from "../lib/types";
 
@@ -100,43 +101,55 @@ export function UpdatesPage() {
 
   // A candidate carries no adapter of its own; the only route from an
   // UpdateCandidate to the source that produced it is its key's
-  // `instance_id`, joined back to the snapshot's instances.
-  const readOnlyInstanceIds = useMemo(
-    () =>
-      new Set(
-        (snapshot?.instances ?? [])
-          .filter((instance) => READ_ONLY_ADAPTER_IDS.has(instance.adapter_id))
-          .map((instance) => instance.id),
-      ),
-    [snapshot],
-  );
+  // `instance_id`, joined back to the snapshot's instances. What comes back
+  // is the *reason* rather than a yes/no, because the two reasons need
+  // different advice and giving the wrong one is worse than giving none.
+  const readOnlyReasons = useMemo(() => {
+    const byInstance = new Map<string, ReadOnlyReason>();
+    for (const instance of snapshot?.instances ?? []) {
+      if (instance.read_only_reason !== null) {
+        byInstance.set(instance.id, instance.read_only_reason);
+      }
+    }
+    return byInstance;
+  }, [snapshot]);
 
   /**
    * Whether this row may offer an Update button and a checkbox. Two
-   * independent reasons it may not, and the wire carries only one of them:
+   * independent reasons it may not, and the wire now carries both:
    *
    * - `checkable: false` -- the adapter could not establish what the remote
    *   version is.
-   * - a read-only source -- pip's `plan()` refuses every operation, yet its
-   *   candidates are built with `checkable: true` because pip genuinely
-   *   *can* check. Offering Update here produced nothing but a raw
-   *   "unsupported: pip is read-only in Canager" string in a dialog.
+   * - a read-only source -- its `plan()` refuses every operation, yet its
+   *   candidates can still be built with `checkable: true` because the tool
+   *   genuinely *can* check. Offering Update here produced nothing but a
+   *   raw "unsupported: pip is read-only in Canager" string in a dialog.
    *
-   * Stopgap: the proper fix is a signal on the wire (an `actionable` flag,
-   * or `Capabilities` surfaced over IPC) rather than the front end knowing
-   * which adapter ids are read-only. That is a later wave; until then this
-   * shares one list with the Installed page (src/lib/sources.ts) so the two
-   * pages cannot disagree about it.
+   * `read_only_reason` replaced a hardcoded list of adapter ids on the
+   * front end. `Session::issue_plan` refuses the same rows in Rust, so a
+   * stale snapshot costs an error message, not a wrong command.
    */
   const isActionable = (candidate: UpdateCandidate): boolean =>
-    candidate.checkable && !readOnlyInstanceIds.has(candidate.key.instance_id);
+    candidate.checkable && !readOnlyReasons.has(candidate.key.instance_id);
 
-  const isReadOnly = (candidate: UpdateCandidate): boolean =>
-    readOnlyInstanceIds.has(candidate.key.instance_id);
+  const readOnlyReasonFor = (candidate: UpdateCandidate): ReadOnlyReason | undefined =>
+    readOnlyReasons.get(candidate.key.instance_id);
 
-  // Counting a row the user cannot act on would promise work that does not
-  // exist: "3 updates available" with one Update button under it.
-  const actionableCount = visibleUpdates.filter((u) => !isReadOnly(u)).length;
+  // The `sourceNotice.*` prefix whose copy explains why this row cannot be
+  // updated here, or undefined when it can. `undefined` is the whole
+  // "actionable" answer for the capability axis, so the row's description
+  // and badge both branch on this one value.
+  const readOnlyNoticeKeyFor = (candidate: UpdateCandidate): string | undefined => {
+    const reason = readOnlyReasonFor(candidate);
+    return reason ? READ_ONLY_NOTICE_KEYS[reason] : undefined;
+  };
+
+  // Two numbers, not one. Folding read-only rows out of a single count told
+  // a user with six outdated pip packages "0 updates available" above six
+  // listed rows; folding them in would promise six Update buttons that are
+  // not there.
+  const unmanageableCount = visibleUpdates.filter((u) => readOnlyReasonFor(u)).length;
+  const actionableCount = visibleUpdates.length - unmanageableCount;
 
   // Only rows that are selected, still visible *and* still checkable count.
   // The store keeps a selection for a row that has since been ignored;
@@ -151,10 +164,10 @@ export function UpdatesPage() {
       visibleUpdates.filter(
         (u) =>
           u.checkable &&
-          !readOnlyInstanceIds.has(u.key.instance_id) &&
+          !readOnlyReasons.has(u.key.instance_id) &&
           selectedUpdates.includes(artifactKeyId(u.key)),
       ),
-    [visibleUpdates, selectedUpdates, readOnlyInstanceIds],
+    [visibleUpdates, selectedUpdates, readOnlyReasons],
   );
 
   // One lookup table instead of a `snapshot.artifacts.find` per row: that
@@ -334,9 +347,18 @@ export function UpdatesPage() {
         </p>
       ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
-        <p className="text-sm text-[var(--color-muted)]">
-          {t("updates.count", { count: actionableCount })}
-        </p>
+        <div className="text-sm text-[var(--color-muted)]">
+          {/* "0 updates available" is a lie when the rows below exist and
+              simply are not Canager's to update; say that instead. */}
+          <p>
+            {actionableCount === 0 && unmanageableCount > 0
+              ? t("updates.noneActionable")
+              : t("updates.count", { count: actionableCount })}
+          </p>
+          {actionableCount > 0 && unmanageableCount > 0 ? (
+            <p>{t("updates.countUnmanageable", { count: unmanageableCount })}</p>
+          ) : null}
+        </div>
         <button
           type="button"
           disabled={selectedVisible.length === 0 || dialogOpen}
@@ -347,70 +369,78 @@ export function UpdatesPage() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {visibleUpdates.map((candidate) => (
-          <ArtifactRow
-            key={artifactKeyId(candidate.key)}
-            name={candidate.key.name}
-            // `checkable: false` means the adapter could not establish what
-            // the remote version is -- a cargo crate installed from git or a
-            // path, an Ollama model whose manifest could not be read, a pipx
-            // tool whose PyPI lookup failed. Such a row must offer no action
-            // and no selection: "Update" on a git-sourced crate would run
-            // `cargo install --force {name}` against the crates.io crate of
-            // the same name, which is a different package. The reason lives
-            // in `warnings`, so it becomes the row's description.
-            description={
-              isReadOnly(candidate)
-                ? // The same guidance the Installed page's pip group carries:
-                  // Canager can see it, cannot touch it, and pipx or uv is
-                  // the way to get a Python tool it can manage.
-                  t("sourceNotice.pipReadOnly.description")
-                : candidate.checkable
-                  ? descriptionFor(candidate)
-                  : candidate.warnings.join(" ")
-            }
-            badgeText={
-              isReadOnly(candidate)
-                ? t("updates.readOnly")
-                : !candidate.checkable
-                  ? t("updates.cannotCheck")
+        {visibleUpdates.map((candidate) => {
+          // Resolved once per row: the row's description and its badge must
+          // agree about whether this source is read-only, and about which
+          // reason it is.
+          const noticeKey = readOnlyNoticeKeyFor(candidate);
+          return (
+            <ArtifactRow
+              key={artifactKeyId(candidate.key)}
+              name={candidate.key.name}
+              // `checkable: false` means the adapter could not establish what
+              // the remote version is -- a cargo crate installed from git or a
+              // path, an Ollama model whose manifest could not be read, a pipx
+              // tool whose PyPI lookup failed. Such a row must offer no action
+              // and no selection: "Update" on a git-sourced crate would run
+              // `cargo install --force {name}` against the crates.io crate of
+              // the same name, which is a different package. The reason lives
+              // in `warnings`, so it becomes the row's description.
+              description={
+                // The same guidance the Installed page's group header for
+                // this source carries, and it differs by reason: pip's rows
+                // point at pipx or uv, an unwritable npm prefix's rows point
+                // at installing Node with Homebrew. One shared map
+                // (src/lib/sources.ts) so the two pages cannot disagree.
+                noticeKey
+                  ? t(`${noticeKey}.description`)
+                  : candidate.checkable
+                    ? descriptionFor(candidate)
+                    : candidate.warnings.join(" ")
+              }
+              badgeText={
+                noticeKey
+                  ? t("updates.readOnly")
+                  : !candidate.checkable
+                    ? t("updates.cannotCheck")
+                    : candidate.warnings.length > 0
+                      ? t("updates.warnings", { count: candidate.warnings.length })
+                      : t("updates.available")
+              }
+              badgeVariant={
+                noticeKey || !candidate.checkable
+                  ? "neutral"
                   : candidate.warnings.length > 0
-                    ? t("updates.warnings", { count: candidate.warnings.length })
-                    : t("updates.available")
-            }
-            badgeVariant={
-              isReadOnly(candidate) || !candidate.checkable
-                ? "neutral"
-                : candidate.warnings.length > 0
-                  ? "warning"
-                  : "info"
-            }
-            primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
-            onPrimaryAction={
-              isActionable(candidate) ? () => openConfirm([candidate]) : undefined
-            }
-            primaryActionDisabled={dialogOpen}
-            selectable={
-              isActionable(candidate)
-                ? {
-                    checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
-                    onToggle: () => toggleUpdate(candidate.key),
-                    ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
-                  }
-                : undefined
-            }
-            secondaryContent={
-              <button
-                type="button"
-                onClick={() => ignore(candidate)}
-                disabled={saveSettings.isPending}
-                className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
-              >
-                {t("updates.ignore")}
-              </button>
-            }
-          />
-        ))}
+                    ? "warning"
+                    : "info"
+              }
+              primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
+              onPrimaryAction={
+                isActionable(candidate) ? () => openConfirm([candidate]) : undefined
+              }
+              primaryActionDisabled={dialogOpen}
+              selectable={
+                isActionable(candidate)
+                  ? {
+                      checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
+                      onToggle: () => toggleUpdate(candidate.key),
+                      ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
+                    }
+                  : undefined
+              }
+              secondaryContent={
+                <button
+                  type="button"
+                  onClick={() => ignore(candidate)}
+                  disabled={saveSettings.isPending}
+                  className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+                >
+                  {t("updates.ignore")}
+                </button>
+              }
+            />
+          );
+        })}
       </div>
       <Dialog
         open={dialogOpen}
