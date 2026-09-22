@@ -6,7 +6,7 @@
 use super::{DetectOutcome, Session, Snapshot, SourceError};
 use crate::adapters::brew::BrewAdapter;
 use crate::adapters::CheckOptions;
-use crate::model::ResourceLock;
+use crate::model::{InstanceNote, ManagerInstance, ResourceLock};
 use crate::runner::HostEnv;
 use std::sync::atomic::Ordering;
 
@@ -25,9 +25,12 @@ impl Session {
     /// already running waits for it, then returns the snapshot that other
     /// call produced instead of running a second, redundant refresh -- see
     /// `refresh_seq` on `Session` for why that check cannot use
-    /// `generation`. An instance the adapter reported as `healthy: false` is
-    /// skipped by the per-instance fetch: that is a *reported state*, not a
-    /// failed refresh (Task 11).
+    /// `generation`. An instance whose `status.unavailable` is set is
+    /// skipped by the per-instance fetch -- that is a *reported state*, not
+    /// a failed refresh (Task 11) -- but it keeps the previous round's
+    /// artifacts and updates, so the "here is what Canager saw last time"
+    /// copy its notice carries is true rather than a promise over an empty
+    /// group.
     pub async fn refresh(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
@@ -95,16 +98,37 @@ impl Session {
             DetectOutcome::Found
         };
 
+        // Seeded before the fan-out because a skipped instance contributes
+        // its carried-forward rows from inside the loop below.
+        let mut artifacts = Vec::new();
+        let mut updates = Vec::new();
         let mut handles = Vec::with_capacity(instances.len());
         for inst in instances.clone() {
-            // Task 11: a source the adapter already reported as not running
-            // is a reported state, not a failed refresh. Fanning out to it
-            // would push a SourceError and set `stale`, which carries
-            // `refreshed_at` forward instead of stamping it -- leaving the
-            // snapshot permanently stale on a machine where, say, Ollama is
-            // installed but not running. It stays in `snapshot.instances` so
-            // the UI can render its notice and offer to start it.
-            if !inst.healthy {
+            // Task 11: a source that already told us it is not answering is
+            // a reported state, not a failed refresh, so it is never fanned
+            // out to. It stays in `snapshot.instances` so the UI can render
+            // its notice and offer to start it -- and it keeps whatever it
+            // reported last time, exactly as the error paths below already
+            // do. Dropping those rows is what made the unreachable notice's
+            // "below is what Canager saw last time" a lie: a stopped Ollama
+            // rendered a group header, that sentence, and no rows at all.
+            // `issue_plan`'s gate (spec §2.5) is what stops those rows
+            // offering an Uninstall button that could not possibly work.
+            if inst.status.unavailable.is_some() {
+                artifacts.extend(
+                    previous
+                        .artifacts
+                        .iter()
+                        .filter(|a| a.key.instance_id == inst.id)
+                        .cloned(),
+                );
+                updates.extend(
+                    previous
+                        .updates
+                        .iter()
+                        .filter(|u| u.key.instance_id == inst.id)
+                        .cloned(),
+                );
                 continue;
             }
             let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
@@ -158,22 +182,41 @@ impl Session {
                             );
                         }
                     }
-                    (artifacts, updates, errors, stale)
+                    // The notes channel. Nothing fills it yet: the only
+                    // producer is `brew update` failing, which arrives with
+                    // `CheckOutcome` in step 4 of the instance-level
+                    // channel design. The join below merges whatever comes
+                    // back into `instances`, because `instances` was cloned
+                    // *before* this fan-out -- writing a note onto `inst`
+                    // here would write it onto the clone and lose it, the
+                    // same trap `SourceError`'s `instance_id` already fell
+                    // into once.
+                    let notes: Vec<InstanceNote> = Vec::new();
+                    (artifacts, updates, errors, stale, notes)
                 }),
             ));
         }
 
-        let mut artifacts = Vec::new();
-        let mut updates = Vec::new();
         let mut errors = detect_errors;
-        let mut stale = !errors.is_empty();
+        // Both halves matter. Dropping the `errors` half would silence the
+        // banner whenever a fan-out failed (a broken tap, `brew outdated`
+        // exiting non-zero): those instances answered `detect()` fine, so
+        // an unavailability-only formula would call that snapshot fresh and
+        // leave the user reading stale data with nothing said about it.
+        // Dropping the unavailability half would go back to calling a
+        // machine with a stopped Ollama completely up to date.
+        let mut stale = !errors.is_empty()
+            || instances
+                .iter()
+                .any(|inst| inst.status.unavailable.is_some());
         for (instance_id, handle) in handles {
             match handle.await {
-                Ok((a, u, e, s)) => {
+                Ok((a, u, e, s, notes)) => {
                     artifacts.extend(a);
                     updates.extend(u);
                     errors.extend(e);
                     stale = stale || s;
+                    merge_instance_notes(&mut instances, &instance_id, notes);
                 }
                 Err(_join_err) => {
                     errors.push(SourceError {
@@ -185,11 +228,17 @@ impl Session {
             }
         }
 
-        let refreshed_at = if stale {
-            previous.refreshed_at
-        } else {
-            Some(self.now())
-        };
+        // Stamped because a refresh *ran*, not because it came back
+        // perfect. Gated on `stale`, a Mac with one permanently unavailable
+        // source carried `refreshed_at: None` for the rest of its life, and
+        // `SnapshotStatus` reads a null timestamp as "Canager has never
+        // finished a check" -- six healthy sources' worth of real data
+        // described as no data at all. What "some of this may be old" means
+        // is `stale`, and that is the flag that carries it.
+        // `Snapshot::empty()` still has `refreshed_at: None`, which is what
+        // keeps the startup branch in `SnapshotStatus` working: nothing but
+        // an uncommitted snapshot can have a null timestamp now.
+        let refreshed_at = Some(self.now());
         let candidate = Snapshot {
             generation: previous.generation,
             detect,
@@ -217,19 +266,43 @@ impl Session {
     }
 }
 
+/// Merge notes a fan-out task produced back onto the instance it belongs
+/// to, matched by id.
+///
+/// `refresh` clones `instances` before spawning, so every per-instance task
+/// holds its own copy and anything it learns about the source has to travel
+/// back by id or be lost. An id with no matching instance is dropped on
+/// purpose: instances only ever shrink between the clone and the join if
+/// something removed one, and inventing an entry for it would put a source
+/// in the snapshot that no `detect()` reported.
+fn merge_instance_notes(
+    instances: &mut [ManagerInstance],
+    instance_id: &str,
+    notes: Vec<InstanceNote>,
+) {
+    if notes.is_empty() {
+        return;
+    }
+    if let Some(inst) = instances.iter_mut().find(|i| i.id == instance_id) {
+        inst.status.notes.extend(notes);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKind, InstallReason, InstalledArtifact, InstanceId, ManagerInstance, OpKind,
-        OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit, UpdateCandidate,
+        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceId, InstanceNote,
+        ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit,
+        Unavailable, UpdateCandidate, UpdateChannel,
     };
     use crate::runner::HostEnv;
     use crate::session::test_support::{make_instance, non_root_env, root_env};
-    use crate::session::{DetectOutcome, Session};
+    use crate::session::{DetectOutcome, Session, Snapshot};
     use async_trait::async_trait;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicI64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
     use tokio_util::sync::CancellationToken;
@@ -451,7 +524,15 @@ mod tests {
                 .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
         }
         let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
+        // A pinned, *moving* clock: the second refresh must be able to
+        // stamp a different timestamp from the first, which a real
+        // wall clock only does if the two land either side of a second.
+        static NOW: AtomicI64 = AtomicI64::new(1_700_000_000);
+        let session = Session::with_adapters(
+            sink,
+            vec![adapter],
+            Some(|| NOW.fetch_add(100, Ordering::SeqCst)),
+        );
         let first = session
             .refresh(&non_root_env(), &CheckOptions::default())
             .await;
@@ -468,9 +549,12 @@ mod tests {
         assert_eq!(second.errors[0].instance_id, "fake:1");
         assert!(second.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(second.artifacts.iter().any(|a| a.key.name == "wget"));
-        assert_eq!(
-            second.refreshed_at, first_refreshed_at,
-            "a refresh with a per-instance failure must not claim a new successful timestamp"
+        assert!(
+            second.refreshed_at > first_refreshed_at,
+            "a refresh that ran is stamped even when a source failed (spec §2.4-1): \
+             {:?} should be newer than {:?}",
+            second.refreshed_at,
+            first_refreshed_at
         );
     }
 
@@ -629,13 +713,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_an_unhealthy_instance_is_a_reported_state_not_a_failed_refresh() {
+    async fn test_an_unavailable_instance_is_a_reported_state_not_a_failed_refresh() {
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
-            let mut down = make_instance("fake", "fake:down");
-            down.healthy = false;
-            s.instances = vec![make_instance("fake", "fake:up"), down];
+            s.instances = vec![
+                make_instance("fake", "fake:up"),
+                crate::testing::unavailable_instance("fake", "fake:down", Unavailable::NotRunning),
+            ];
             s.artifacts
                 .insert("fake:up".to_string(), vec![make_artifact("fake:up", "jq")]);
             s.failing.push("fake:down".to_string());
@@ -649,13 +734,19 @@ mod tests {
 
         assert!(
             snapshot.refreshed_at.is_some(),
-            "a refresh whose only complaint is a source known not to be running has completed"
+            "a refresh that ran has a timestamp, whatever the sources said"
         );
-        assert!(!snapshot.stale);
-        assert!(snapshot.errors.is_empty());
+        assert!(
+            snapshot.errors.is_empty(),
+            "a source that reported it is not running is not a refresh error"
+        );
+        assert!(
+            snapshot.stale,
+            "one source not answering means what is on screen is not the whole truth"
+        );
         assert!(
             snapshot.instances.iter().any(|i| i.id == "fake:down"),
-            "the unhealthy instance stays in the snapshot so the UI can offer to start it"
+            "the unavailable instance stays in the snapshot so the UI can offer to start it"
         );
         assert!(
             !state
@@ -739,5 +830,168 @@ mod tests {
             .expect("refresh task panicked");
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
+    }
+
+    fn make_update(instance_id: &str, name: &str) -> UpdateCandidate {
+        UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            },
+            current: "1.0".to_string(),
+            target: "1.1".to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_source_that_stops_answering_keeps_its_rows_but_offers_no_operations_on_them() {
+        // Spec §2.4-3 and §2.5 together, and neither half is optional. The
+        // notice a stopped source renders says "below is what Canager saw
+        // last time"; before the carry-forward that sentence sat above an
+        // empty group. With the rows back, every one of them would sprout
+        // an Uninstall button that cannot possibly work -- so the gate in
+        // `issue_plan` is what the second half of this test pins down.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.updates
+                .insert("fake:1".to_string(), vec![make_update("fake:1", "jq")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(first.artifacts.len(), 1, "precondition: one artifact known");
+        assert_eq!(first.updates.len(), 1, "precondition: one update known");
+
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![crate::testing::unavailable_instance(
+                "fake",
+                "fake:1",
+                Unavailable::NotRunning,
+            )];
+            s.inventory_calls.clear();
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(
+            second.artifacts.iter().any(|a| a.key.name == "jq"),
+            "an unavailable source keeps the artifacts it reported last time, got {:?}",
+            second.artifacts
+        );
+        assert!(
+            second.updates.iter().any(|u| u.key.name == "jq"),
+            "and the updates too, got {:?}",
+            second.updates
+        );
+        assert!(
+            !state
+                .lock()
+                .unwrap()
+                .inventory_calls
+                .contains(&"fake:1".to_string()),
+            "carrying data forward must not mean asking the dead source again"
+        );
+
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        match session.issue_plan(&req).await {
+            Err(crate::adapters::AdapterError::Refused(message)) => {
+                assert!(
+                    message.contains("fake:1"),
+                    "the refusal must name the instance: {message}"
+                );
+            }
+            other => panic!("a carried-forward row must offer no Uninstall, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_refresh_stamps_refreshed_at_even_when_a_source_failed() {
+        // Spec §2.4-1. Gated on `stale`, one permanently broken source left
+        // `refreshed_at` null for the life of the machine, and a null
+        // timestamp is how `SnapshotStatus` recognises "nothing has ever
+        // been checked" -- six good sources described as no data at all.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.failing.push("fake:1".to_string());
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(|| 1_700_000_000));
+
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(snapshot.stale, "precondition: the fetch failed");
+        assert_eq!(snapshot.errors.len(), 1, "precondition: and said so");
+        assert_eq!(
+            snapshot.refreshed_at,
+            Some(1_700_000_000),
+            "a refresh that ran is stamped; `stale` is what says the data may be old"
+        );
+    }
+
+    #[test]
+    fn test_snapshot_empty_still_has_no_timestamp() {
+        // The one snapshot that may carry `refreshed_at: None` now that
+        // every completed refresh stamps one. `SnapshotStatus`'s startup
+        // branch reads exactly this to tell "still loading" from "checked
+        // and found nothing".
+        assert_eq!(Snapshot::empty().refreshed_at, None);
+    }
+
+    #[test]
+    fn test_merge_instance_notes_merges_by_id_and_ignores_the_rest() {
+        // `instances` is cloned before the fan-out, so a note a spawned
+        // task produced has to travel back by id or be lost -- the same
+        // trap `SourceError`'s `instance_id` fell into once already.
+        let mut instances = vec![
+            crate::testing::manager_instance("fake", "fake:1"),
+            crate::testing::manager_instance("fake", "fake:2"),
+        ];
+        super::merge_instance_notes(
+            &mut instances,
+            "fake:2",
+            vec![InstanceNote::IndexMayBeStale],
+        );
+        assert!(instances[0].status.notes.is_empty());
+        assert_eq!(
+            instances[1].status.notes,
+            vec![InstanceNote::IndexMayBeStale]
+        );
+
+        super::merge_instance_notes(&mut instances, "fake:2", vec![]);
+        assert_eq!(
+            instances[1].status.notes,
+            vec![InstanceNote::IndexMayBeStale],
+            "an empty batch of notes changes nothing"
+        );
+        super::merge_instance_notes(
+            &mut instances,
+            "fake:gone",
+            vec![InstanceNote::IndexMayBeStale],
+        );
+        assert!(
+            instances.iter().all(|i| i.id != "fake:gone"),
+            "a note for an instance nobody detected must not invent one"
+        );
     }
 }

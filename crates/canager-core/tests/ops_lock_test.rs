@@ -3,7 +3,7 @@ use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+    Outcome, Plan, Reconciled, ResourceLock, SearchHit, UpdateCandidate,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
@@ -116,15 +116,9 @@ impl Adapter for FakeAdapter {
 
 fn make_instance(id: &str, prefix: &str) -> ManagerInstance {
     ManagerInstance {
-        id: id.to_string(),
-        adapter_id: "fake".to_string(),
-        exe_path: PathBuf::from("/bin/true"),
         prefix: PathBuf::from(prefix),
-        scope: Scope::User,
         version: None,
-        healthy: true,
-        unverified_version: None,
-        read_only_reason: None,
+        ..canager_core::testing::manager_instance("fake", id)
     }
 }
 

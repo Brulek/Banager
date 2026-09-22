@@ -1,8 +1,9 @@
 use crate::adapters::{second_token, Adapter, AdapterError, AdapterMeta, CheckOptions};
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpRequest,
-    Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, UpdateCandidate, UpdateChannel,
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceStatus, ManagerInstance,
+    OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, UpdateCandidate,
+    UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -130,7 +131,11 @@ impl PipAdapter {
                 exe_path: python_path,
                 prefix,
                 scope: Scope::User,
-                healthy: true,
+                // pip's state axis: `detect()` only ever pushes an
+                // instance whose `--version` answered, so there is nothing
+                // unavailable about it. Read-only is the *capability* axis
+                // below, and the two are independent.
+                status: InstanceStatus::default(),
                 version: Some(version),
                 unverified_version,
                 // Not a property of this machine: pip offers no
@@ -429,15 +434,11 @@ mod tests {
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
-            id: "pip:/opt/homebrew/bin/python3.14".to_string(),
-            adapter_id: "pip".to_string(),
             exe_path: PathBuf::from("/opt/homebrew/bin/python3.14"),
             prefix: PathBuf::from("/opt/homebrew/bin"),
-            scope: Scope::User,
             version: Some("26.2.1".to_string()),
-            healthy: true,
-            unverified_version: None,
             read_only_reason: Some(ReadOnlyReason::ByDesign),
+            ..crate::testing::manager_instance("pip", "pip:/opt/homebrew/bin/python3.14")
         }
     }
 

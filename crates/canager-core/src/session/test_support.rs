@@ -10,7 +10,8 @@
 
 use crate::adapters::AdapterMeta;
 use crate::model::{
-    CancelPolicy, ManagerInstance, OpRequest, Plan, ReadOnlyReason, Reconciled, ResourceLock, Scope,
+    CancelPolicy, ManagerInstance, OpRequest, Plan, ReadOnlyReason, Reconciled, ResourceLock,
+    Unavailable,
 };
 use crate::runner::HostEnv;
 use std::path::PathBuf;
@@ -42,17 +43,7 @@ pub(super) fn root_env() -> HostEnv {
 /// A minimal `ManagerInstance` for a fake adapter, keyed by `id` under
 /// `adapter_id`.
 pub(super) fn make_instance(adapter_id: &str, id: &str) -> ManagerInstance {
-    ManagerInstance {
-        id: id.to_string(),
-        adapter_id: adapter_id.to_string(),
-        exe_path: PathBuf::from("/bin/true"),
-        prefix: PathBuf::from("/"),
-        scope: Scope::User,
-        version: Some("1.0".to_string()),
-        healthy: true,
-        unverified_version: None,
-        read_only_reason: None,
-    }
+    crate::testing::manager_instance(adapter_id, id)
 }
 
 /// `make_instance`, but for a source Canager may list and never change --
@@ -66,6 +57,16 @@ pub(super) fn make_read_only_instance(
         read_only_reason: Some(reason),
         ..make_instance(adapter_id, id)
     }
+}
+
+/// `make_instance`, but for a source that did not answer the last refresh
+/// -- the state half of that same invariant.
+pub(super) fn make_unavailable_instance(
+    adapter_id: &str,
+    id: &str,
+    unavailable: Unavailable,
+) -> ManagerInstance {
+    crate::testing::unavailable_instance(adapter_id, id, unavailable)
 }
 
 /// The `AdapterMeta` every `FakeAdapter` in these test modules registers

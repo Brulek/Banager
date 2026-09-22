@@ -5,9 +5,9 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance,
-    OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
-    UpdateChannel,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
+    Unavailable, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -160,7 +160,14 @@ impl CargoAdapter {
             exe_path,
             prefix: cargo_home,
             scope: Scope::User,
-            healthy: version.is_some(),
+            status: InstanceStatus {
+                // The state axis. `version` is `None` exactly when the
+                // CLI is on PATH but `--version` would not run or could
+                // not be parsed: the tool is there, it just did not
+                // answer.
+                unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                notes: Vec::new(),
+            },
             version,
             unverified_version,
             read_only_reason: None,
@@ -554,16 +561,12 @@ mod tests {
     }
 
     fn test_instance(prefix: PathBuf) -> ManagerInstance {
+        let id = format!("cargo:{}", prefix.display());
         ManagerInstance {
-            id: format!("cargo:{}", prefix.display()),
-            adapter_id: "cargo".to_string(),
             exe_path: PathBuf::from("/Users/brulek/.cargo/bin/cargo"),
             prefix,
-            scope: Scope::User,
             version: Some("1.98.1".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("cargo", &id)
         }
     }
 
@@ -891,7 +894,7 @@ mod tests {
         assert_eq!(instances[0].prefix, PathBuf::from("/opt/cargo"));
         assert_eq!(instances[0].exe_path, cargo_path);
         assert_eq!(instances[0].version, Some("1.98.1".to_string()));
-        assert!(instances[0].healthy);
+        assert!(instances[0].available());
         assert!(
             instances[0].unverified_version.is_none(),
             "1.98.1 is verified in adapters/meta/cargo.toml"

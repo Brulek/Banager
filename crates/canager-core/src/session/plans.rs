@@ -28,12 +28,19 @@ impl Session {
             .ok_or_else(|| {
                 AdapterError::Refused(format!("unknown instance {}", req.instance_id))
             })?;
-        // The actionability gate (spec §2.5). The invariant is that an
-        // operation may be offered only when
-        // `read_only_reason.is_none() && status.unavailable.is_none()`;
-        // this is the writability half. The reachability half arrives with
-        // `InstanceStatus` in step 3 of the instance-level channel design
-        // and belongs on this same `if`, not in a second place.
+        // The actionability gate (spec §2.5), both halves: an operation may
+        // be offered only when
+        // `read_only_reason.is_none() && status.unavailable.is_none()`.
+        //
+        // The two axes are independent and both are load-bearing. A stopped
+        // Ollama is perfectly *writable* -- nothing about its permissions
+        // changed -- and since `refresh` now carries an unavailable
+        // source's previous artifacts forward rather than dropping them,
+        // those rows are on screen. Without the availability half each of
+        // them would carry an Uninstall button whose `ollama rm` cannot
+        // possibly succeed against a daemon that is not listening: the
+        // "offer it, then refuse it" bug this phase exists to remove,
+        // grown back inside its own fix.
         //
         // It lives here rather than in seven `plan()` implementations
         // because this is the one point every operation in the workspace
@@ -41,10 +48,10 @@ impl Session {
         // exactly what the last review round flagged twice. npm's own
         // `Refused` check stays regardless: detect and the click are
         // seconds to hours apart and permissions change in between.
-        if !instance.writable() {
+        if !instance.writable() || !instance.available() {
             return Err(AdapterError::Refused(format!(
-                "{} is read-only ({:?}); Canager offers no operations on it",
-                instance.id, instance.read_only_reason
+                "{} is not something Canager can act on (read-only: {:?}, unavailable: {:?})",
+                instance.id, instance.read_only_reason, instance.status.unavailable
             )));
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
@@ -90,7 +97,7 @@ mod tests {
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
-        Plan, ReadOnlyReason, Reconciled, SearchHit, UpdateCandidate,
+        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate,
     };
     use crate::runner::HostEnv;
     use crate::session::test_support;
@@ -229,6 +236,52 @@ mod tests {
                         );
                     }
                     other => panic!("expected Refused for {reason:?}/{kind:?}, got {other:?}"),
+                }
+            }
+            assert!(
+                session.operations().is_empty(),
+                "a refused plan must never reach the OperationManager"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_refuses_every_operation_on_an_unavailable_instance() {
+        // The other half of the same gate (spec §2.5), and the reason it
+        // has to be a conjunction: this instance is perfectly *writable*.
+        // Nothing about a stopped Ollama's permissions changed, so a
+        // writability-only gate lets every row `refresh` carried forward
+        // from it keep an Uninstall button that cannot possibly succeed.
+        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+            let instance = test_support::make_unavailable_instance("fake", "fake:1", unavailable);
+            assert!(
+                instance.writable(),
+                "precondition: unavailability is not a permissions problem"
+            );
+            let adapter = FakeAdapter::new(vec![instance]);
+            let sink = Arc::new(VecSink::new());
+            let session = Session::with_adapters(sink, vec![adapter], None);
+            session
+                .refresh(&test_support::non_root_env(), &CheckOptions::default())
+                .await;
+
+            for kind in [OpKind::Install, OpKind::Uninstall, OpKind::Upgrade] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: "fake:1".to_string(),
+                    artifact_kind: ArtifactKind::Formula,
+                    name: "jq".to_string(),
+                };
+                match session.issue_plan(&req).await {
+                    Err(AdapterError::Refused(message)) => {
+                        assert!(
+                            message.contains("fake:1"),
+                            "the refusal must name the instance: {message}"
+                        );
+                    }
+                    other => {
+                        panic!("expected Refused for {unavailable:?}/{kind:?}, got {other:?}")
+                    }
                 }
             }
             assert!(

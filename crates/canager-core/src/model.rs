@@ -27,6 +27,46 @@ pub enum ReadOnlyReason {
     PrefixNotWritable,
 }
 
+/// Why a source Canager knows about cannot answer right now. The state
+/// axis, orthogonal to `ReadOnlyReason`: an Ollama that is not running is
+/// still perfectly writable, it just has nothing to say until it starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Unavailable {
+    /// The service is not running and the user can start it themselves
+    /// (Ollama).
+    NotRunning,
+    /// The executable is on PATH but would not run, or its version could
+    /// not be recognised.
+    NotResponding,
+}
+
+/// Something a source answered *with*, that changes how its answer should
+/// be read. Deliberately payload-free: a data-carrying variant would turn
+/// a bare-string unit variant into an externally tagged object on the
+/// wire, and the TypeScript mirror is hand-written (spec §2.3's note). The
+/// stderr text such a payload would carry is a known, accepted loss.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstanceNote {
+    /// `brew update` failed, so the local catalogue may be behind and
+    /// "no updates" may be wrong.
+    IndexMayBeStale,
+}
+
+/// The state axis of a source: can Canager talk to it at all, and is there
+/// anything about this answer the user has to know to read it correctly.
+///
+/// Deliberately *without* a per-instance `refreshed_at` (spec §2.4's note):
+/// `Snapshot::same_content` compares `instances` with the derived
+/// `PartialEq`, so a unix second that moves every refresh would bump the
+/// generation and rebroadcast `SnapshotChanged` on every poll, and there is
+/// no renderer for a relative timestamp anywhere in `src/`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstanceStatus {
+    /// `None` means the source answered.
+    pub unavailable: Option<Unavailable>,
+    pub notes: Vec<InstanceNote>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagerInstance {
     pub id: InstanceId,
@@ -35,7 +75,6 @@ pub struct ManagerInstance {
     pub prefix: PathBuf,
     pub scope: Scope,
     pub version: Option<String>,
-    pub healthy: bool,
     /// None when the adapter's metadata lists no verified versions, or when
     /// the detected version is among them. Some(detected) when it is not,
     /// so the UI can mark the source as running an unverified version (spec
@@ -47,6 +86,11 @@ pub struct ManagerInstance {
     /// as a literal, so the compiler makes each adapter answer the question
     /// exactly once.
     pub read_only_reason: Option<ReadOnlyReason>,
+    /// The state axis: whether this source answered, and anything about
+    /// that answer the user has to know. Replaced `healthy: bool`, which
+    /// was exactly `status.unavailable.is_none()` with no room for a
+    /// reason or a note.
+    pub status: InstanceStatus,
 }
 
 impl ManagerInstance {
@@ -57,6 +101,14 @@ impl ManagerInstance {
     /// `canWrite()` in `src/lib/sources.ts` is its front-end mirror.
     pub fn writable(&self) -> bool {
         self.read_only_reason.is_none()
+    }
+
+    /// Whether this source answered the last refresh. The state half of
+    /// the same invariant; `Session::issue_plan` requires both, because a
+    /// carried-forward artifact from a stopped Ollama must offer no
+    /// Uninstall button (spec §2.5).
+    pub fn available(&self) -> bool {
+        self.status.unavailable.is_none()
     }
 }
 
@@ -204,9 +256,9 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
             unverified_version: None,
             read_only_reason: None,
+            status: InstanceStatus::default(),
         };
         let json = serde_json::to_string(&instance).expect("serialize");
         let back: ManagerInstance = serde_json::from_str(&json).expect("deserialize");
@@ -222,9 +274,9 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("99.9.9".to_string()),
-            healthy: true,
             unverified_version: Some("99.9.9".to_string()),
             read_only_reason: None,
+            status: InstanceStatus::default(),
         };
         let json = serde_json::to_string(&instance).expect("serialize");
         assert!(json.contains("\"unverified_version\":\"99.9.9\""));
@@ -245,9 +297,9 @@ mod tests {
             prefix: PathBuf::from("/opt/homebrew"),
             scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
             unverified_version: None,
             read_only_reason: None,
+            status: InstanceStatus::default(),
         };
         assert!(writable.writable());
         let json = serde_json::to_string(&writable).expect("serialize");
@@ -318,5 +370,35 @@ mod tests {
         let json = serde_json::to_string(&plan).expect("serialize");
         let back: Plan = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(plan, back);
+    }
+
+    #[test]
+    fn test_instance_status_is_default_empty_and_bare_strings_on_the_wire() {
+        // The hand-written TypeScript mirror (`src/lib/types.ts`) spells
+        // this as `{ unavailable: Unavailable | null; notes: InstanceNote[] }`
+        // with bare-string variants, so the wire shape is the contract:
+        // `null` for an available source, `[]` for no notes, and never a
+        // missing key.
+        let status = InstanceStatus::default();
+        assert_eq!(status.unavailable, None);
+        assert!(status.notes.is_empty());
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(json, r#"{"unavailable":null,"notes":[]}"#);
+
+        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+            let status = InstanceStatus {
+                unavailable: Some(unavailable),
+                notes: vec![InstanceNote::IndexMayBeStale],
+            };
+            let json = serde_json::to_string(&status).expect("serialize");
+            assert_eq!(
+                json,
+                format!(r#"{{"unavailable":"{unavailable:?}","notes":["IndexMayBeStale"]}}"#)
+            );
+            assert_eq!(
+                serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+                status
+            );
+        }
     }
 }

@@ -10,6 +10,10 @@ pub mod ops;
 pub mod runner;
 pub mod session;
 pub mod settings;
+/// Fixture constructors shared by this crate's tests, its `tests/`
+/// integration tests and the Tauri shell's tests. See the module doc for
+/// why it is public rather than `#[cfg(test)]`.
+pub mod testing;
 
 pub use events::*;
 pub use model::*;

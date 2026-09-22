@@ -3,8 +3,9 @@ pub mod parse;
 use crate::adapters::{validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions};
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, ManagerInstance,
-    OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceStatus,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
+    Unavailable, UpdateCandidate,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -216,7 +217,14 @@ impl BrewAdapter {
                 exe_path: path,
                 prefix,
                 scope: Scope::User,
-                healthy: version.is_some(),
+                status: InstanceStatus {
+                    // The state axis. `version` is `None` exactly when the
+                    // CLI is on PATH but `--version` would not run or could
+                    // not be parsed: the tool is there, it just did not
+                    // answer.
+                    unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                    notes: Vec::new(),
+                },
                 version,
                 unverified_version,
                 read_only_reason: None,
@@ -579,15 +587,10 @@ mod tests {
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
-            id: "brew:/opt/homebrew".to_string(),
-            adapter_id: "brew".to_string(),
             exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
             prefix: PathBuf::from("/opt/homebrew"),
-            scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
         }
     }
 
@@ -678,7 +681,7 @@ mod tests {
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].id, "brew:/opt/homebrew");
         assert_eq!(instances[0].version, Some("7.0.3".to_string()));
-        assert!(instances[0].healthy);
+        assert!(instances[0].available());
     }
 
     #[tokio::test]
@@ -862,15 +865,10 @@ mod tests {
 
         let inst_opt = test_instance();
         let inst_local = ManagerInstance {
-            id: "brew:/usr/local".to_string(),
-            adapter_id: "brew".to_string(),
             exe_path: PathBuf::from("/usr/local/bin/brew"),
             prefix: PathBuf::from("/usr/local"),
-            scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("brew", "brew:/usr/local")
         };
 
         adapter
@@ -1130,15 +1128,10 @@ mod plan_execute_tests {
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
-            id: "brew:/opt/homebrew".to_string(),
-            adapter_id: "brew".to_string(),
             exe_path: PathBuf::from("/opt/homebrew/bin/brew"),
             prefix: PathBuf::from("/opt/homebrew"),
-            scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
         }
     }
 
@@ -1153,15 +1146,10 @@ mod plan_execute_tests {
         let adapter = BrewAdapter::new(runner.clone());
         let inst_a = test_instance();
         let inst_b = ManagerInstance {
-            id: "brew:/usr/local".to_string(),
-            adapter_id: "brew".to_string(),
             exe_path: PathBuf::from("/usr/local/bin/brew"),
             prefix: PathBuf::from("/usr/local"),
-            scope: Scope::User,
             version: Some("7.0.3".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("brew", "brew:/usr/local")
         };
         let req = OpRequest {
             kind: OpKind::Install,

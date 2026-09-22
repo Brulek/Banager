@@ -5,9 +5,9 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, ManagerInstance,
-    OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
-    UpdateChannel,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
+    Unavailable, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -192,7 +192,14 @@ impl PipxAdapter {
             exe_path,
             prefix,
             scope: Scope::User,
-            healthy: version.is_some(),
+            status: InstanceStatus {
+                // The state axis. `version` is `None` exactly when the
+                // CLI is on PATH but `--version` would not run or could
+                // not be parsed: the tool is there, it just did not
+                // answer.
+                unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                notes: Vec::new(),
+            },
             version,
             unverified_version,
             read_only_reason: None,
@@ -532,15 +539,10 @@ mod tests {
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
-            id: "pipx".to_string(),
-            adapter_id: "pipx".to_string(),
             exe_path: PathBuf::from("/opt/homebrew/bin/pipx"),
             prefix: PathBuf::from("/opt/homebrew/bin"),
-            scope: Scope::User,
             version: Some("1.17.3".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("pipx", "pipx")
         }
     }
 

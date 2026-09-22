@@ -15,11 +15,10 @@ use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
 use canager_core::events::{EventSink, OpId, OperationEvent, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    OpStatus, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+    OpStatus, Outcome, Plan, Reconciled, ResourceLock, SearchHit, UpdateCandidate,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -153,15 +152,8 @@ impl Adapter for FakeAdapter {
 
 fn make_instance(id: &str) -> ManagerInstance {
     ManagerInstance {
-        id: id.to_string(),
-        adapter_id: "fake".to_string(),
-        exe_path: PathBuf::from("/bin/true"),
-        prefix: PathBuf::from("/"),
-        scope: Scope::User,
         version: None,
-        healthy: true,
-        unverified_version: None,
-        read_only_reason: None,
+        ..canager_core::testing::manager_instance("fake", id)
     }
 }
 

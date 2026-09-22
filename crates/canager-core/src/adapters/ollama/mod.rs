@@ -6,8 +6,9 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
-    Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate, UpdateChannel,
+    ArtifactKey, CancelPolicy, InstalledArtifact, InstanceStatus, ManagerInstance, OpKind,
+    OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv};
 use async_trait::async_trait;
@@ -192,7 +193,7 @@ impl OllamaAdapter {
             _ => None,
         };
         let host = host_for(env);
-        let healthy = self
+        let answering = self
             .http
             .send(HttpRequest {
                 method: "GET",
@@ -210,7 +211,15 @@ impl OllamaAdapter {
             exe_path,
             prefix: env.home.join(".ollama"),
             scope: Scope::User,
-            healthy,
+            status: InstanceStatus {
+                // Ollama is the one source whose "not answering" the user
+                // can fix from inside Canager, so it gets `NotRunning` (and
+                // with it the Open Ollama button) rather than the generic
+                // `NotResponding`: the daemon's HTTP port not listening is
+                // what "not running" means for this tool.
+                unavailable: (!answering).then_some(Unavailable::NotRunning),
+                notes: Vec::new(),
+            },
             version,
             unverified_version,
             read_only_reason: None,
@@ -530,15 +539,10 @@ mod tests {
 
     fn test_instance(host: &str, prefix: PathBuf) -> ManagerInstance {
         ManagerInstance {
-            id: format!("ollama:{host}"),
-            adapter_id: "ollama".to_string(),
             exe_path: PathBuf::from("/usr/local/bin/ollama"),
             prefix,
-            scope: Scope::User,
             version: Some("0.34.1".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
+            ..crate::testing::manager_instance("ollama", &format!("ollama:{host}"))
         }
     }
 
@@ -1077,7 +1081,7 @@ mod tests {
         // 0.34.1 is what adapters/meta/ollama.toml pins, so a future meta
         // edit cannot silently start flagging the recorded version.
         assert_eq!(instances[0].unverified_version, None);
-        assert!(instances[0].healthy);
+        assert!(instances[0].available());
         // The ruling this adapter is built on: a background refresh must
         // never run `ollama list`, which launches Ollama.app on macOS.
         assert_eq!(
@@ -1121,7 +1125,12 @@ mod tests {
         // Still one instance, so the UI can offer to start the daemon
         // (Task 12) rather than the source vanishing from the list.
         assert_eq!(instances.len(), 1);
-        assert!(!instances[0].healthy);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotRunning),
+            "a daemon that does not answer /api/tags is NotRunning, which is \
+             what puts the Open Ollama button on its notice"
+        );
         assert_eq!(instances[0].id, "ollama:http://10.0.0.5:11434");
         assert_eq!(instances[0].unverified_version, Some("9.9.9".to_string()));
 

@@ -205,7 +205,7 @@ mod tests {
     use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, UpdateCandidate,
+        Outcome, Plan, Reconciled, ResourceLock, SearchHit, UpdateCandidate,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
@@ -342,17 +342,7 @@ mod tests {
     fn state_with_fake_adapter_and_now(
         now_fn: Option<fn() -> i64>,
     ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
-        let instance = ManagerInstance {
-            id: "fake:1".to_string(),
-            adapter_id: "fake".to_string(),
-            exe_path: PathBuf::from("/bin/true"),
-            prefix: PathBuf::from("/"),
-            scope: Scope::User,
-            version: Some("1.0".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
-        };
+        let instance = canager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
@@ -391,17 +381,7 @@ mod tests {
     /// `session::tests::test_concurrent_refresh_calls_are_coalesced`'s own
     /// use of an artificial delay for the same reason.
     fn state_with_slow_fake_adapter(detect_delay: std::time::Duration) -> Arc<AppState> {
-        let instance = ManagerInstance {
-            id: "fake:1".to_string(),
-            adapter_id: "fake".to_string(),
-            exe_path: PathBuf::from("/bin/true"),
-            prefix: PathBuf::from("/"),
-            scope: Scope::User,
-            version: Some("1.0".to_string()),
-            healthy: true,
-            unverified_version: None,
-            read_only_reason: None,
-        };
+        let instance = canager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
