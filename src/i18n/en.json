@@ -104,6 +104,9 @@
       "action": "Try again"
     }
   },
+  "planRefused": {
+    "sourceGone": "Canager can't find that source on this Mac any more, so it didn't start this. It may have been removed since you opened this."
+  },
   "operations": {
     "idle": "No operation running",
     "current": "{{kind}} {{name}} — {{status}}",

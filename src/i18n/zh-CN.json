@@ -99,6 +99,9 @@
       "action": "重试"
     }
   },
+  "planRefused": {
+    "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了,所以没有开始。它可能在你打开这个窗口之后被卸载了。"
+  },
   "operations": {
     "idle": "当前没有正在进行的操作",
     "current": "{{kind}} {{name}}({{status}})",

@@ -456,8 +456,20 @@ export function UpdatesPage() {
       } catch (e) {
         // A PlanId is single-use and expires after 10 minutes. Whatever the
         // backend said (`Expired`, `Unknown`, anything else), this id is
-        // spent: keep the message verbatim and carry on with the next item.
-        items[i] = { ...item, submitError: errorMessage(e) };
+        // spent: record the reason and carry on with the next item.
+        // Through `planErrorMessage` like the planning failure above, for
+        // the same reason: `submit` re-runs the actionability gate against
+        // the current snapshot, so "that source stopped answering while
+        // you were reading this" is a refusal this path can produce, and
+        // it must not arrive as JSON or as a Rust enum.
+        items[i] = {
+          ...item,
+          submitError: planErrorMessage(
+            t,
+            errorMessage(e),
+            sourceLabelFor(item.candidate.key.instance_id),
+          ),
+        };
       }
       if (!isCurrent(id)) return;
       setBatch({ id, phase: "submitting", items: [...items] });

@@ -265,4 +265,27 @@ describe("planErrorMessage", () => {
       "unknown instance fake:1",
     );
   });
+
+  it("localises the submit-time refusal for a source that stopped answering", () => {
+    // `submit_operation_error` sends the same payload `plan_operation`
+    // does, because `Session::submit` now re-runs the actionability gate
+    // against the current snapshot -- a preview the user was reading when
+    // Ollama stopped is exactly the case that reaches a real person.
+    expect(
+      planErrorMessage(
+        fakeT,
+        '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}',
+        "Ollama",
+      ),
+    ).toBe('sourceNotice.notRunning.description({"source":"Ollama"})');
+  });
+
+  it("localises the submit-time refusal for a source that is gone, without naming it", () => {
+    // The instance is not in the snapshot any more, so the caller's
+    // `sourceLabel` has already fallen back to the raw instance id. The
+    // copy must not interpolate it.
+    expect(planErrorMessage(fakeT, '{"kind":"source_gone"}', "brew:/opt/homebrew")).toBe(
+      "planRefused.sourceGone",
+    );
+  });
 });

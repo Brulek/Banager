@@ -295,6 +295,63 @@ describe("UninstallDialog", () => {
     expect(alert.textContent).not.toMatch(/not_actionable/);
   });
 
+  it("localises the same refusal when it comes back from submit, not from plan", async () => {
+    // `Session::submit` re-runs the actionability gate against the
+    // snapshot that is current when Confirm is clicked, which is the only
+    // way this refusal reaches someone who did nothing wrong: the preview
+    // was fine when it was drawn, and the source stopped answering while
+    // they were reading it. `submit_operation_error` sends the same JSON
+    // `plan_operation_error` does, and this dialog must decode it there
+    // too rather than printing braces at them.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return {
+          generation: 2,
+          detect: "Found",
+          instances: [
+            {
+              id: "brew:/opt/homebrew",
+              adapter_id: "brew",
+              exe_path: "/opt/homebrew/bin/brew",
+              prefix: "/opt/homebrew",
+              scope: "User",
+              version: "7.0.3",
+              status: { unavailable: "NotResponding", notes: [] },
+              unverified_version: null,
+              read_only_reason: null,
+            },
+          ],
+          artifacts: [],
+          updates: [],
+          refreshed_at: 1,
+          stale: false,
+          errors: [],
+        };
+      }
+      if (cmd === "plan_operation") return issuedPlanFor();
+      if (cmd === "submit_operation") {
+        throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotResponding"}';
+      }
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "Couldn't start the uninstall: Homebrew is installed but didn't answer",
+      ),
+    );
+    expect(alert.textContent).not.toMatch(/not_actionable/);
+  });
+
   it("ignores a submit that finishes after the dialog was retargeted", async () => {
     // Deviation from the brief, recorded in the task report: the brief's five
     // tests never exercise the dialog-session guard. A reply belonging to the

@@ -93,12 +93,51 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         canager_core::adapters::AdapterError::NotActionable {
             read_only,
             unavailable,
-        } => serde_json::json!({
-            "kind": "not_actionable",
-            "read_only": read_only,
-            "unavailable": unavailable,
-        })
-        .to_string(),
+        } => not_actionable_json(read_only, unavailable),
+        other => other.to_string(),
+    }
+}
+
+/// The one payload shape both refusals of the actionability gate go out
+/// as, whether the gate refused at `issue_plan` (an `AdapterError`) or at
+/// `submit` (a `SubmitError`): the front end has exactly one decoder for
+/// it (`parseNotActionable` in `src/lib/sources.ts`) and both must feed it
+/// the same thing.
+fn not_actionable_json(
+    read_only: Option<canager_core::model::ReadOnlyReason>,
+    unavailable: Option<canager_core::model::Unavailable>,
+) -> String {
+    serde_json::json!({
+        "kind": "not_actionable",
+        "read_only": read_only,
+        "unavailable": unavailable,
+    })
+    .to_string()
+}
+
+/// `plan_operation_error`'s counterpart for `Session::submit`.
+///
+/// `Unknown` and `Expired` keep `SubmitError`'s own `Display`, which is
+/// already a sentence a person can read. The two refusals the submit-time
+/// actionability re-check produces do not: `NotActionable`'s `Display`
+/// is a `{:?}` of two Rust enums, and this is the refusal a real person is
+/// *most* likely to see -- both pages hide controls for a source that
+/// fails the gate, but nothing can hide a source that failed it in the
+/// second between rendering the preview and clicking Confirm. It goes out
+/// as the same JSON `plan_operation_error` produces, so the front end
+/// renders it with the same localised copy the source's own notice uses.
+/// `SourceGone` has no instance left to carry a reason, so it gets its own
+/// kind rather than a `not_actionable` with two nulls, which would decode
+/// to an empty message.
+fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
+    match e {
+        canager_core::session::SubmitError::NotActionable {
+            read_only,
+            unavailable,
+        } => not_actionable_json(read_only, unavailable),
+        canager_core::session::SubmitError::SourceGone => {
+            serde_json::json!({ "kind": "source_gone" }).to_string()
+        }
         other => other.to_string(),
     }
 }
@@ -123,11 +162,15 @@ pub async fn plan_operation(
 }
 
 /// Consumes the plan stored under `plan_id` (one-time use) and submits
-/// exactly that stored `Plan`. Rejects an unknown, already-submitted, or
-/// expired `plan_id` (`Session::submit`'s `SubmitError`) without ever
+/// exactly that stored `Plan`. Rejects an unknown, already-submitted or
+/// expired `plan_id`, and one whose source no longer passes the
+/// actionability gate (`Session::submit`'s `SubmitError`), without ever
 /// constructing or accepting a `Plan` from the caller.
 pub(crate) fn submit_operation_impl(state: &AppState, plan_id: String) -> Result<u64, String> {
-    state.session.submit(plan_id).map_err(|e| e.to_string())
+    state
+        .session
+        .submit(plan_id)
+        .map_err(submit_operation_error)
 }
 
 #[tauri::command]
@@ -717,6 +760,49 @@ mod tests {
         assert_eq!(parsed["kind"], "not_actionable");
         assert_eq!(parsed["read_only"], "PrefixNotWritable");
         assert_eq!(parsed["unavailable"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_submit_operation_error_localisable_for_the_gate_and_verbatim_for_the_rest() {
+        use canager_core::session::SubmitError;
+
+        // The refusal a real person is most likely to meet: they were
+        // looking at a preview when the source stopped answering. What
+        // reaches them must be the same payload the plan-time refusal
+        // sends, because the front end has one decoder for it.
+        let err = submit_operation_error(SubmitError::NotActionable {
+            read_only: None,
+            unavailable: Some(canager_core::model::Unavailable::NotRunning),
+        });
+        assert!(
+            !err.contains("Some(") && !err.contains("None"),
+            "must not be a Rust Debug dump of the two reasons: {err}"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(parsed["kind"], "not_actionable");
+        assert_eq!(parsed["read_only"], serde_json::Value::Null);
+        assert_eq!(parsed["unavailable"], "NotRunning");
+
+        let gone = submit_operation_error(SubmitError::SourceGone);
+        let parsed: serde_json::Value = serde_json::from_str(&gone)
+            .unwrap_or_else(|e| panic!("expected JSON, got {gone:?} ({e})"));
+        assert_eq!(
+            parsed["kind"], "source_gone",
+            "a vanished source has no reason to name, so it cannot go out as \
+             not_actionable with two nulls -- that decodes to an empty message"
+        );
+
+        // The two that were already sentences stay sentences: wrapping
+        // them in JSON would put braces on screen for no gain.
+        assert_eq!(
+            submit_operation_error(SubmitError::Expired),
+            SubmitError::Expired.to_string()
+        );
+        assert_eq!(
+            submit_operation_error(SubmitError::Unknown),
+            SubmitError::Unknown.to_string()
+        );
     }
 
     #[tokio::test]

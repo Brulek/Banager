@@ -31,7 +31,8 @@ use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
-    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, UpdateCandidate,
+    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, ReadOnlyReason, Unavailable,
+    UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
@@ -151,6 +152,23 @@ pub enum SubmitError {
     Unknown,
     #[error("this plan is older than 10 minutes; preview it again")]
     Expired,
+    /// The snapshot moved between issuing this plan and submitting it, and
+    /// the instance it targets no longer passes the actionability gate
+    /// (spec §2.5) that `issue_plan` checked. Carries the same two axes
+    /// `AdapterError::NotActionable` does, so the shell can render it
+    /// through the same localised copy rather than as a Rust enum -- see
+    /// `submit_operation_error` in `src-tauri/src/ipc.rs`.
+    #[error("that source cannot run this any more: read_only={read_only:?}, unavailable={unavailable:?}")]
+    NotActionable {
+        read_only: Option<ReadOnlyReason>,
+        unavailable: Option<Unavailable>,
+    },
+    /// The same check, for the case where the instance is not in the
+    /// current snapshot at all: the source was uninstalled, or the last
+    /// detection stopped reporting it. There is no read-only/unavailable
+    /// reason to give because there is no instance left to ask.
+    #[error("the source this was prepared for is no longer there")]
+    SourceGone,
 }
 
 pub struct Session {
@@ -167,8 +185,11 @@ pub struct Session {
     /// `generation` alone.
     refresh_seq: AtomicU64,
     /// Plans handed out by `issue_plan` (in `plans.rs`) but not yet
-    /// consumed by `submit`, keyed by `PlanId`.
-    issued_plans: Mutex<HashMap<PlanId, IssuedPlan>>,
+    /// consumed by `submit`, keyed by `PlanId`. The stored value is
+    /// `plans::StoredPlan`, not the `IssuedPlan` the caller previews: the
+    /// snapshot generation a plan was built against is server-side
+    /// bookkeeping that the wire type has no business carrying.
+    issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     now_fn: Option<fn() -> i64>,
 }
 

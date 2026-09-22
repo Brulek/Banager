@@ -33,10 +33,11 @@ export function UninstallDialog({
   const { data: snapshot } = useSnapshot();
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
-  // For the one plan-operation refusal that can reach a real person
-  // verbatim otherwise (`planErrorMessage`'s NotActionable case): the
-  // instance's adapter, and therefore its label, does not change out from
-  // under a stale snapshot even when its read-only/unavailable state does.
+  // For the refusals that can reach a real person verbatim otherwise
+  // (`planErrorMessage`'s NotActionable case, from either `plan_operation`
+  // or `submit_operation`): the instance's adapter, and therefore its
+  // label, does not change out from under a stale snapshot even when its
+  // read-only/unavailable state does.
   const instance = snapshot?.instances?.find((i) => i.id === request.instance_id);
   const labelKey = instance ? ADAPTER_LABEL_KEYS[instance.adapter_id] : undefined;
   const sourceLabel = labelKey ? t(labelKey) : (instance?.adapter_id ?? request.instance_id);
@@ -140,7 +141,9 @@ export function UninstallDialog({
 
         {submitMutation.isError && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {t("uninstall.submitError", { message: submitMutation.error.message })}
+            {t("uninstall.submitError", {
+              message: planErrorMessage(t, submitMutation.error.message, sourceLabel),
+            })}
           </p>
         )}
 

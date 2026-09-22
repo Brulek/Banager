@@ -301,5 +301,32 @@ export function notActionableMessage(
  */
 export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
   const reason = parseNotActionable(raw);
-  return reason ? notActionableMessage(t, reason, sourceLabel) : raw;
+  if (reason) return notActionableMessage(t, reason, sourceLabel);
+  // No `source` interpolation on purpose: the instance is gone from the
+  // snapshot, so the caller's `sourceLabel` has fallen back to the raw
+  // instance id ("brew:/opt/homebrew"), which is the kind of string this
+  // whole function exists to keep off the screen.
+  if (isSourceGone(raw)) return t("planRefused.sourceGone");
+  return raw;
+}
+
+/**
+ * Whether `raw` is the other refusal `Session::submit`'s actionability
+ * re-check can produce: the instance the preview was built against is not
+ * in the snapshot at all any more, so there is no read-only/unavailable
+ * reason to name and `not_actionable` with two nulls would decode to an
+ * empty message. `submit_operation_error` in src-tauri/src/ipc.rs is what
+ * puts this on the wire.
+ */
+function isSourceGone(message: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(message);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as Record<string, unknown>).kind === "source_gone"
+    );
+  } catch {
+    return false;
+  }
 }

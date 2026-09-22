@@ -23,6 +23,25 @@ fn random_plan_id() -> PlanId {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// What `issue_plan` actually stores and `submit` consumes: the
+/// `IssuedPlan` the caller previewed, plus the bookkeeping that decides
+/// whether it may still run.
+///
+/// `generation` is the `Snapshot::generation` the plan was built against,
+/// read *before* `adapter.plan()` is awaited. Reading it afterwards would
+/// stamp a plan built against instance state that a refresh had already
+/// replaced during the await with the number of the snapshot that replaced
+/// it, which is precisely the reading `submit` uses to decide nothing has
+/// changed.
+///
+/// It is deliberately not a field on `IssuedPlan`: that type crosses the
+/// IPC boundary to the front end, which neither needs this nor may
+/// influence it.
+pub(super) struct StoredPlan {
+    pub(super) issued: IssuedPlan,
+    pub(super) generation: u64,
+}
+
 impl Session {
     /// Resolves `req` to its owning adapter, asks it to plan the operation,
     /// then stores the resulting `Plan` under a fresh `PlanId` and returns
@@ -32,17 +51,25 @@ impl Session {
     /// (Task 13), so a plan the operator previewed and then never submitted
     /// does not sit in the map forever.
     pub async fn issue_plan(&self, req: &OpRequest) -> Result<IssuedPlan, AdapterError> {
-        let instance = self
-            .snapshot
-            .lock()
-            .unwrap()
-            .instances
-            .iter()
-            .find(|i| i.id == req.instance_id)
-            .cloned()
-            .ok_or_else(|| {
-                AdapterError::Refused(format!("unknown instance {}", req.instance_id))
-            })?;
+        // Generation and instance are read under one lock, so the number
+        // stored below really is the generation this exact instance came
+        // from. Reading them separately would let a refresh land in
+        // between and stamp the plan with a generation belonging to a
+        // different instance.
+        let (generation, instance) = {
+            let snapshot = self.snapshot.lock().unwrap();
+            (
+                snapshot.generation,
+                snapshot
+                    .instances
+                    .iter()
+                    .find(|i| i.id == req.instance_id)
+                    .cloned(),
+            )
+        };
+        let instance = instance.ok_or_else(|| {
+            AdapterError::Refused(format!("unknown instance {}", req.instance_id))
+        })?;
         // The actionability gate (spec §2.5), both halves: an operation may
         // be offered only when
         // `read_only_reason.is_none() && status.unavailable.is_none()`.
@@ -81,8 +108,14 @@ impl Session {
             issued_at,
         };
         let mut plans = self.issued_plans.lock().unwrap();
-        plans.retain(|_, p| issued_at - p.issued_at <= 600);
-        plans.insert(id, issued.clone());
+        plans.retain(|_, p| issued_at - p.issued.issued_at <= 600);
+        plans.insert(
+            id,
+            StoredPlan {
+                issued: issued.clone(),
+                generation,
+            },
+        );
         Ok(issued)
     }
 
@@ -94,15 +127,67 @@ impl Session {
     /// issued more than 600 seconds ago -- the client can never influence
     /// what actually runs, since nothing it sends is used except this
     /// opaque id.
+    ///
+    /// It also re-runs `issue_plan`'s actionability gate (spec §2.5)
+    /// before handing anything to the `OperationManager`, because
+    /// `issue_plan` alone cannot enforce an invariant about the *current*
+    /// state of a source: a plan issued in generation N can be submitted
+    /// after generation N+1 has made its instance read-only, unavailable
+    /// or absent, and everything the gate refuses to offer would then be
+    /// reachable simply by having previewed it first. The user is clicking
+    /// a button on a row rendered from a snapshot that no longer exists.
+    ///
+    /// The re-check is skipped when `generation` has not moved since the
+    /// plan was issued, and only then: an unchanged generation means
+    /// `Snapshot::same_content` held on every commit in between, so the
+    /// instance the gate already passed is byte-for-byte the instance that
+    /// would be re-resolved. When it has moved, the instance is looked up
+    /// again and re-tested rather than the plan being rejected outright --
+    /// the generation is global and this invariant is per instance, so
+    /// rejecting on any change would invalidate a preview the user is
+    /// reading because some unrelated source gained a package.
+    ///
+    /// This is the last gate `Session` owns, not the last gate there
+    /// should be: the operation still queues behind its resource lock, and
+    /// anything that changes between here and the adapter actually running
+    /// belongs to `OperationManager` and the adapter's own checks (npm's
+    /// `Refused` is the existing example).
     pub fn submit(self: &std::sync::Arc<Self>, plan_id: PlanId) -> Result<OpId, SubmitError> {
-        let issued = {
+        let stored = {
             let mut plans = self.issued_plans.lock().unwrap();
             plans.remove(&plan_id).ok_or(SubmitError::Unknown)?
         };
-        if self.now() - issued.issued_at > 600 {
+        if self.now() - stored.issued.issued_at > 600 {
             return Err(SubmitError::Expired);
         }
-        Ok(self.ops.submit(issued.plan))
+        self.recheck_actionable(&stored)?;
+        Ok(self.ops.submit(stored.issued.plan))
+    }
+
+    /// `issue_plan`'s gate, re-asked of the snapshot that is current now.
+    /// See `submit` for why this exists and why an unchanged generation is
+    /// allowed to skip it.
+    fn recheck_actionable(&self, stored: &StoredPlan) -> Result<(), SubmitError> {
+        let snapshot = self.snapshot.lock().unwrap();
+        if snapshot.generation == stored.generation {
+            return Ok(());
+        }
+        // The id the plan was *planned for*, not one the client sent:
+        // `submit` takes nothing but an opaque token, and every adapter's
+        // `plan()` echoes the request it was given back into `Plan`.
+        let instance_id = &stored.issued.plan.request.instance_id;
+        let instance = snapshot
+            .instances
+            .iter()
+            .find(|i| &i.id == instance_id)
+            .ok_or(SubmitError::SourceGone)?;
+        if !instance.writable() || !instance.available() {
+            return Err(SubmitError::NotActionable {
+                read_only: instance.read_only_reason,
+                unavailable: instance.status.unavailable,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -122,17 +207,55 @@ mod tests {
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
 
+    /// Lets a test suspend `FakeAdapter::plan` exactly where the real
+    /// thing suspends -- inside the `await` in `issue_plan`, after the
+    /// actionability gate has passed and before anything is stored. The
+    /// adapter announces on `entered` that it is in there, then waits on
+    /// `resume`, so the test can commit a whole refresh in between and
+    /// reproduce the issuance race deterministically rather than by
+    /// sleeping and hoping.
+    struct PlanGate {
+        entered: tokio::sync::oneshot::Sender<()>,
+        resume: tokio::sync::oneshot::Receiver<()>,
+    }
+
     struct FakeAdapter {
         meta: AdapterMeta,
-        instances: Vec<ManagerInstance>,
+        instances: std::sync::Mutex<Vec<ManagerInstance>>,
+        plan_gate: std::sync::Mutex<Option<PlanGate>>,
     }
 
     impl FakeAdapter {
         fn new(instances: Vec<ManagerInstance>) -> Arc<FakeAdapter> {
             Arc::new(FakeAdapter {
                 meta: test_support::fake_adapter_meta("fake"),
-                instances,
+                instances: std::sync::Mutex::new(instances),
+                plan_gate: std::sync::Mutex::new(None),
             })
+        }
+
+        /// What the next `detect()` reports -- the host changing under a
+        /// plan the user is still looking at.
+        fn set_instances(&self, instances: Vec<ManagerInstance>) {
+            *self.instances.lock().unwrap() = instances;
+        }
+
+        /// Arms the gate for the next `plan()` call. Returns the handle
+        /// that resolves once `plan()` has been entered, and the sender
+        /// that lets it finish.
+        fn gate_next_plan(
+            &self,
+        ) -> (
+            tokio::sync::oneshot::Receiver<()>,
+            tokio::sync::oneshot::Sender<()>,
+        ) {
+            let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+            let (resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+            *self.plan_gate.lock().unwrap() = Some(PlanGate {
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+            (entered_rx, resume_tx)
         }
     }
 
@@ -143,7 +266,7 @@ mod tests {
         }
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
-            self.instances.clone()
+            self.instances.lock().unwrap().clone()
         }
 
         async fn inventory(
@@ -174,6 +297,14 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
+            // Taken out from under the lock before awaiting: holding a
+            // std::sync guard across an await point is exactly what
+            // clippy's `await_holding_lock` is for.
+            let gate = self.plan_gate.lock().unwrap().take();
+            if let Some(gate) = gate {
+                let _ = gate.entered.send(());
+                let _ = gate.resume.await;
+            }
             Ok(test_support::fake_plan(inst, req))
         }
 
@@ -441,6 +572,209 @@ mod tests {
             .expect("a re-issued plan is submittable once");
         assert_eq!(session.submit(reissued.id), Err(SubmitError::Unknown));
         assert_eq!(session.operations().len(), 2);
+    }
+
+    /// Refreshes `session` and asserts the refresh moved the generation,
+    /// so a test that means "the world changed under this plan" cannot
+    /// quietly stop testing that.
+    async fn refresh_and_expect_a_new_generation(session: &Arc<Session>, before: u64) -> u64 {
+        let snapshot = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(
+            snapshot.generation > before,
+            "precondition: this refresh must move the generation ({} -> {})",
+            before,
+            snapshot.generation
+        );
+        snapshot.generation
+    }
+
+    #[tokio::test]
+    async fn test_submit_is_refused_once_the_source_stopped_answering() {
+        // The gate in `issue_plan` only ever looked at the snapshot that
+        // was current when the preview was *issued*. A plan for a source
+        // that has since stopped answering used to submit anyway: the
+        // invariant this phase exists to establish -- an operation may be
+        // offered only when its instance is writable and available -- was
+        // bypassed by the plan simply being old enough to predate the bad
+        // news, and young enough not to have expired.
+        for unavailable in [Unavailable::NotRunning, Unavailable::NotResponding] {
+            let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+            let sink = Arc::new(VecSink::new());
+            let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+            let generation = session
+                .refresh(&test_support::non_root_env(), &CheckOptions::default())
+                .await
+                .generation;
+            let issued = session
+                .issue_plan(&install_request("fake:1"))
+                .await
+                .expect("issue_plan while the source was answering");
+
+            adapter.set_instances(vec![test_support::make_unavailable_instance(
+                "fake",
+                "fake:1",
+                unavailable,
+            )]);
+            refresh_and_expect_a_new_generation(&session, generation).await;
+
+            assert_eq!(
+                session.submit(issued.id),
+                Err(SubmitError::NotActionable {
+                    read_only: None,
+                    unavailable: Some(unavailable),
+                }),
+            );
+            assert!(
+                session.operations().is_empty(),
+                "a plan whose source stopped answering must never reach the OperationManager"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_is_refused_once_the_source_became_read_only() {
+        // The other half of the same gate, re-checked at the same point:
+        // npm's prefix can stop being writable between the preview and
+        // the click, and `issue_plan`'s verdict is then simply out of date.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_plan(&install_request("fake:1"))
+            .await
+            .expect("issue_plan while the source was writable");
+
+        adapter.set_instances(vec![test_support::make_read_only_instance(
+            "fake",
+            "fake:1",
+            ReadOnlyReason::PrefixNotWritable,
+        )]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::NotActionable {
+                read_only: Some(ReadOnlyReason::PrefixNotWritable),
+                unavailable: None,
+            }),
+        );
+        assert!(session.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_is_refused_once_the_source_is_gone_from_the_snapshot() {
+        // `issue_plan` refuses an instance it cannot find; submitting a
+        // plan for one that has disappeared since has to refuse for the
+        // same reason, and say so differently from "not actionable" --
+        // there is no instance left to carry a reason.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_plan(&install_request("fake:1"))
+            .await
+            .expect("issue_plan while the source was there");
+
+        adapter.set_instances(vec![]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        assert_eq!(session.submit(issued.id), Err(SubmitError::SourceGone));
+        assert!(session.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_survives_a_refresh_that_changed_something_else() {
+        // The deliberate other side of the rule. Rejecting on any
+        // generation change at all would throw away a preview the user is
+        // reading because an unrelated source gained a package -- the
+        // generation is global, the invariant is per instance. What
+        // matters is whether *this* instance still passes the gate.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_plan(&install_request("fake:1"))
+            .await
+            .expect("issue_plan");
+
+        adapter.set_instances(vec![
+            test_support::make_instance("fake", "fake:1"),
+            test_support::make_instance("fake", "fake:2"),
+        ]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        session
+            .submit(issued.id)
+            .expect("a refresh that left this instance alone must not invalidate its preview");
+        assert_eq!(session.operations().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_that_lands_while_planning_is_still_caught_at_submit() {
+        // The issuance race, with the interleaving pinned rather than
+        // slept for:
+        //   1. `issue_plan` passes the gate against generation N and
+        //      suspends inside `adapter.plan()`;
+        //   2. a refresh commits generation N+1, in which the instance is
+        //      no longer answering;
+        //   3. planning resumes and stores a plan stamped *now*.
+        // Capturing the generation after the await would stamp this plan
+        // with N+1 -- the very snapshot that invalidated it -- and submit
+        // would wave it through.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+
+        let (entered, resume) = adapter.gate_next_plan();
+        let planning_session = session.clone();
+        let planning = tokio::spawn(async move {
+            planning_session
+                .issue_plan(&install_request("fake:1"))
+                .await
+        });
+        entered.await.expect("plan() must be entered");
+
+        adapter.set_instances(vec![test_support::make_unavailable_instance(
+            "fake",
+            "fake:1",
+            Unavailable::NotRunning,
+        )]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        resume.send(()).expect("plan() is still waiting");
+        let issued = planning
+            .await
+            .expect("planning task")
+            .expect("planning itself succeeds: it was gated, not failed");
+
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::NotActionable {
+                read_only: None,
+                unavailable: Some(Unavailable::NotRunning),
+            }),
+            "a plan built against a snapshot that was replaced while it was being built \
+             must not be submittable"
+        );
+        assert!(session.operations().is_empty());
     }
 
     static FAKE_NOW: AtomicI64 = AtomicI64::new(0);
