@@ -64,10 +64,10 @@ impl Session {
         // `Refused` check stays regardless: detect and the click are
         // seconds to hours apart and permissions change in between.
         if !instance.writable() || !instance.available() {
-            return Err(AdapterError::Refused(format!(
-                "{} is not something Canager can act on (read-only: {:?}, unavailable: {:?})",
-                instance.id, instance.read_only_reason, instance.status.unavailable
-            )));
+            return Err(AdapterError::NotActionable {
+                read_only: instance.read_only_reason,
+                unavailable: instance.status.unavailable,
+            });
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
@@ -297,13 +297,16 @@ mod tests {
                     name: "jq".to_string(),
                 };
                 match session.issue_plan(&req).await {
-                    Err(AdapterError::Refused(message)) => {
-                        assert!(
-                            message.contains("fake:1"),
-                            "the refusal must name the instance: {message}"
-                        );
+                    Err(AdapterError::NotActionable {
+                        read_only,
+                        unavailable,
+                    }) => {
+                        assert_eq!(read_only, Some(reason));
+                        assert_eq!(unavailable, None);
                     }
-                    other => panic!("expected Refused for {reason:?}/{kind:?}, got {other:?}"),
+                    other => {
+                        panic!("expected NotActionable for {reason:?}/{kind:?}, got {other:?}")
+                    }
                 }
             }
             assert!(
@@ -341,14 +344,15 @@ mod tests {
                     name: "jq".to_string(),
                 };
                 match session.issue_plan(&req).await {
-                    Err(AdapterError::Refused(message)) => {
-                        assert!(
-                            message.contains("fake:1"),
-                            "the refusal must name the instance: {message}"
-                        );
+                    Err(AdapterError::NotActionable {
+                        read_only,
+                        unavailable: got_unavailable,
+                    }) => {
+                        assert_eq!(read_only, None);
+                        assert_eq!(got_unavailable, Some(unavailable));
                     }
                     other => {
-                        panic!("expected Refused for {unavailable:?}/{kind:?}, got {other:?}")
+                        panic!("expected NotActionable for {unavailable:?}/{kind:?}, got {other:?}")
                     }
                 }
             }

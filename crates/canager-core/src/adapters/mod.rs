@@ -1,7 +1,7 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    Reconciled, SearchHit, UpdateCandidate, UpdateChannel, Warning,
+    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -113,6 +113,30 @@ pub enum AdapterError {
     InvalidName(String),
     #[error("unsupported: {0}")]
     Unsupported(String),
+    /// `Session::issue_plan`'s actionability gate (spec §2.5) refused an
+    /// operation the front end should never have offered: both pages hide
+    /// every control for an instance that fails `read_only_reason.is_none()
+    /// && status.unavailable.is_none()`. A user sees this only through a
+    /// stale snapshot or a genuine TOCTOU (detect and the click can be
+    /// seconds to hours apart).
+    ///
+    /// A dedicated variant rather than a `Refused(String)` built from
+    /// `format!("{:?}", ...)` because this one *can* reach a real person,
+    /// and a `{:?}` of two Rust enums is the worst possible thing to show
+    /// someone who does not read Rust -- `ipc.rs` maps these two fields to
+    /// the same localised copy the source's own notice already uses,
+    /// instead of this variant's own `Display` (below), which stays plain
+    /// English for logs and test failure output.
+    ///
+    /// Lives on `AdapterError` rather than a new `SessionError` because
+    /// `issue_plan` constructs it directly, before ever calling
+    /// `adapter.plan()` -- no `Adapter` trait method's signature changes,
+    /// so none of the seven adapters need to know this variant exists.
+    #[error("not actionable (read-only: {read_only:?}, unavailable: {unavailable:?})")]
+    NotActionable {
+        read_only: Option<ReadOnlyReason>,
+        unavailable: Option<Unavailable>,
+    },
 }
 
 /// Percent-encodes one untrusted value for interpolation into a single URL

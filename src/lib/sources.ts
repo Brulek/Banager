@@ -3,7 +3,7 @@
  * pages and the snapshot gate cannot drift apart. Nothing here talks to the
  * backend; these are presentational facts about what arrives over the wire.
  */
-import type { ManagerInstance, ReadOnlyReason } from "./types";
+import type { ManagerInstance, ReadOnlyReason, Unavailable } from "./types";
 
 /** i18n key holding each adapter's human name. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
@@ -181,4 +181,90 @@ export function sourceNoticesFor(
  */
 export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
+}
+
+/** What `Session::issue_plan`'s actionability gate (spec §2.5) refused, as
+ *  `plan_operation_error` in src-tauri/src/ipc.rs put it on the wire. */
+export interface NotActionableReason {
+  read_only: ReadOnlyReason | null;
+  unavailable: Unavailable | null;
+}
+
+/**
+ * Reads the JSON `plan_operation_error` puts on the wire for the one
+ * refusal a stale snapshot or a genuine TOCTOU can surface to a real
+ * person -- both `InstalledPage` and `UpdatesPage` hide every control for
+ * an instance that fails this gate, so it should not normally be reachable
+ * at all. Returns `null` for every other backend error (an unknown
+ * instance, an unregistered adapter, a submit's expired/unknown plan id),
+ * which `planErrorMessage` below then shows verbatim exactly as before
+ * this existed -- those are either bugs nobody but a developer should see,
+ * or already-plain-English text the app already shows as-is.
+ */
+export function parseNotActionable(message: string): NotActionableReason | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    (parsed as Record<string, unknown>).kind !== "not_actionable"
+  ) {
+    return null;
+  }
+  const p = parsed as { read_only?: ReadOnlyReason | null; unavailable?: Unavailable | null };
+  return {
+    read_only: p.read_only ?? null,
+    unavailable: p.unavailable ?? null,
+  };
+}
+
+/** Whatever `useTranslation()`'s `t` needs to look a key up; kept minimal,
+ *  same convention as `Translate` in src/lib/warnings.ts. */
+type Translate = (key: string, options?: Record<string, string>) => string;
+
+/**
+ * `parseNotActionable`'s result, in the exact copy the source's own
+ * notice already uses for these two reasons (`READ_ONLY_NOTICE_KEYS`,
+ * `sourceNotice.notRunning`, `sourceNotice.unreachable`) -- so this
+ * refusal never reads as a raw Rust enum. `sourceLabel` is the adapter's
+ * name in the user's language, exactly as `sourceNoticesFor` takes it.
+ *
+ * Both axes can be set at once (a read-only source can also be silent),
+ * so both parts are joined when present, same as `sourceNoticesFor`
+ * pushing more than one notice for one instance. The read-only copy needs
+ * no source name (spec §7's wording is self-contained); the state copy
+ * always names one, same as `sourceNoticesFor`.
+ */
+export function notActionableMessage(
+  t: Translate,
+  reason: NotActionableReason,
+  sourceLabel: string,
+): string {
+  const parts: string[] = [];
+  if (reason.read_only !== null) {
+    parts.push(t(`${READ_ONLY_NOTICE_KEYS[reason.read_only]}.description`));
+  }
+  if (reason.unavailable === "NotRunning") {
+    parts.push(t("sourceNotice.notRunning.description", { source: sourceLabel }));
+  } else if (reason.unavailable === "NotResponding") {
+    parts.push(t("sourceNotice.unreachable.description", { source: sourceLabel }));
+  }
+  return parts.join(" ");
+}
+
+/**
+ * What a `plan_operation`/`submit_operation` rejection should read as:
+ * `notActionableMessage` when `raw` is the actionability gate's JSON
+ * payload, otherwise `raw` verbatim. Every call site that renders a plan
+ * or submit error (`UpdatesPage`, `UninstallDialog`) goes through this
+ * instead of showing the backend's string directly, so the one refusal
+ * that can reach a real person is never a raw Rust `{:?}`.
+ */
+export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
+  const reason = parseNotActionable(raw);
+  return reason ? notActionableMessage(t, reason, sourceLabel) : raw;
 }

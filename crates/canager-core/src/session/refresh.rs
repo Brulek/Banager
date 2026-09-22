@@ -971,11 +971,12 @@ mod tests {
             name: "jq".to_string(),
         };
         match session.issue_plan(&req).await {
-            Err(crate::adapters::AdapterError::Refused(message)) => {
-                assert!(
-                    message.contains("fake:1"),
-                    "the refusal must name the instance: {message}"
-                );
+            Err(crate::adapters::AdapterError::NotActionable {
+                read_only,
+                unavailable,
+            }) => {
+                assert_eq!(read_only, None);
+                assert_eq!(unavailable, Some(Unavailable::NotRunning));
             }
             other => panic!("a carried-forward row must offer no Uninstall, got {other:?}"),
         }

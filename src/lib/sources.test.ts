@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { canWrite, hasSourceNotice, isAvailable, sourceNoticesFor } from "./sources";
+import {
+  canWrite,
+  hasSourceNotice,
+  isAvailable,
+  notActionableMessage,
+  parseNotActionable,
+  planErrorMessage,
+  sourceNoticesFor,
+} from "./sources";
 import type { ManagerInstance } from "./types";
+
+/** A stub `t`: returns the key with its interpolations inlined -- same
+ *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
+ *  and values were looked up without coupling this test to English copy. */
+function fakeT(key: string, options?: Record<string, unknown>): string {
+  return options && Object.keys(options).length > 0 ? `${key}(${JSON.stringify(options)})` : key;
+}
 
 function instance(over: Partial<ManagerInstance> = {}): ManagerInstance {
   return {
@@ -113,5 +128,75 @@ describe("sourceNoticesFor", () => {
     ]) {
       expect(hasSourceNotice(inst)).toBe(sourceNoticesFor(inst, "Homebrew").length > 0);
     }
+  });
+});
+
+describe("parseNotActionable", () => {
+  it("reads the JSON plan_operation_error puts on the wire for the gate's refusal", () => {
+    expect(
+      parseNotActionable('{"kind":"not_actionable","read_only":"PrefixNotWritable","unavailable":null}'),
+    ).toEqual({ read_only: "PrefixNotWritable", unavailable: null });
+    expect(
+      parseNotActionable('{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}'),
+    ).toEqual({ read_only: null, unavailable: "NotRunning" });
+  });
+
+  it("is null for every other backend error, which stays plain text", () => {
+    expect(parseNotActionable("unknown instance fake:1")).toBeNull();
+    expect(parseNotActionable("no such plan, or it was already submitted")).toBeNull();
+    expect(parseNotActionable("this plan is older than 10 minutes; preview it again")).toBeNull();
+    // Valid JSON, but not this shape -- must not be mistaken for it.
+    expect(parseNotActionable('{"kind":"something_else"}')).toBeNull();
+    expect(parseNotActionable("")).toBeNull();
+  });
+});
+
+describe("notActionableMessage", () => {
+  it("uses the same copy as the read-only notice, needing no source name", () => {
+    expect(
+      notActionableMessage(fakeT, { read_only: "PrefixNotWritable", unavailable: null }, "npm"),
+    ).toBe("sourceNotice.prefixNotWritable.description");
+    expect(
+      notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip"),
+    ).toBe("sourceNotice.pipReadOnly.description");
+  });
+
+  it("uses the same copy as the state notice, naming the source", () => {
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "NotRunning" }, "Ollama"),
+    ).toBe('sourceNotice.notRunning.description({"source":"Ollama"})');
+    expect(
+      notActionableMessage(fakeT, { read_only: null, unavailable: "NotResponding" }, "Homebrew"),
+    ).toBe('sourceNotice.unreachable.description({"source":"Homebrew"})');
+  });
+
+  it("joins both when a source is read-only and silent at once", () => {
+    expect(
+      notActionableMessage(
+        fakeT,
+        { read_only: "PrefixNotWritable", unavailable: "NotResponding" },
+        "npm",
+      ),
+    ).toBe(
+      'sourceNotice.prefixNotWritable.description sourceNotice.unreachable.description({"source":"npm"})',
+    );
+  });
+});
+
+describe("planErrorMessage", () => {
+  it("localises a NotActionable refusal instead of showing it verbatim", () => {
+    expect(
+      planErrorMessage(
+        fakeT,
+        '{"kind":"not_actionable","read_only":"PrefixNotWritable","unavailable":null}',
+        "npm",
+      ),
+    ).toBe("sourceNotice.prefixNotWritable.description");
+  });
+
+  it("shows every other backend error verbatim, exactly as before", () => {
+    expect(planErrorMessage(fakeT, "unknown instance fake:1", "npm")).toBe(
+      "unknown instance fake:1",
+    );
   });
 });

@@ -736,6 +736,28 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("localises a stale-snapshot NotActionable refusal instead of showing the backend's JSON", async () => {
+    // glib's row is actionable in this snapshot (brew is writable and
+    // answering), but a genuine TOCTOU or a stale snapshot can still make
+    // `Session::issue_plan`'s gate refuse it between the click and the
+    // reply. The backend's rejection is JSON, not English -- see
+    // `plan_operation_error` in src-tauri/src/ipc.rs -- and it must never
+    // reach the page verbatim. A single item whose only plan fails never
+    // gets a dialog (nothing issued to preview): the reason goes straight
+    // to the page as an alert.
+    planFailures.glib = '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}';
+    const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+
+    const alert = await findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Couldn't prepare the update: Start Homebrew, then come back",
+    );
+    expect(alert.textContent).not.toMatch(/not_actionable/);
+    expect(queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
     submitFailures["2"] = "this plan is older than 10 minutes; preview it again";
     const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);

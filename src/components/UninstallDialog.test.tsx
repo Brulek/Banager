@@ -245,6 +245,56 @@ describe("UninstallDialog", () => {
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
   });
 
+  it("localises a stale-snapshot NotActionable refusal instead of showing the backend's JSON", async () => {
+    // This is the app's only destructive confirmation screen (spec §6),
+    // and `Session::issue_plan`'s actionability gate (spec §2.5) is the one
+    // refusal that can reach it verbatim through a stale snapshot or a
+    // genuine TOCTOU. `plan_operation_error` (src-tauri/src/ipc.rs) puts
+    // it on the wire as JSON, not English -- it must never show up raw.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return {
+          generation: 1,
+          detect: "Found",
+          instances: [
+            {
+              id: "brew:/opt/homebrew",
+              adapter_id: "brew",
+              exe_path: "/opt/homebrew/bin/brew",
+              prefix: "/opt/homebrew",
+              scope: "User",
+              version: "7.0.3",
+              status: { unavailable: "NotRunning", notes: [] },
+              unverified_version: null,
+              read_only_reason: null,
+            },
+          ],
+          artifacts: [],
+          updates: [],
+          refreshed_at: 1,
+          stale: false,
+          errors: [],
+        };
+      }
+      if (cmd === "plan_operation") {
+        throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}';
+      }
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "Couldn't check what this would affect: Start Homebrew, then come back",
+      ),
+    );
+    expect(alert.textContent).not.toMatch(/not_actionable/);
+  });
+
   it("ignores a submit that finishes after the dialog was retargeted", async () => {
     // Deviation from the brief, recorded in the task report: the brief's five
     // tests never exercise the dialog-session guard. A reply belonging to the

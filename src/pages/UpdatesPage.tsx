@@ -8,7 +8,12 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
-import { ADAPTER_LABEL_KEYS, READ_ONLY_NOTICE_KEYS, sourceNoticesFor } from "../lib/sources";
+import {
+  ADAPTER_LABEL_KEYS,
+  READ_ONLY_NOTICE_KEYS,
+  planErrorMessage,
+  sourceNoticesFor,
+} from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
@@ -308,6 +313,20 @@ export function UpdatesPage() {
     }
   }
 
+  // The source's name in the user's language, for the one refusal that can
+  // reach a real person verbatim otherwise (`planErrorMessage`'s
+  // NotActionable case): a stale snapshot's own read-only/unavailable maps
+  // (`readOnlyReasons`/`unavailableInstances` above) cannot be trusted for
+  // *which* reason applies -- that is exactly what went stale -- but the
+  // instance's adapter, and therefore its label, does not change underneath
+  // it, so this is safe to read from the same snapshot.
+  function sourceLabelFor(instanceId: string): string {
+    const instance = snapshot?.instances.find((i) => i.id === instanceId);
+    if (!instance) return instanceId;
+    const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+    return labelKey ? t(labelKey) : instance.adapter_id;
+  }
+
   async function openConfirm(candidates: UpdateCandidate[]) {
     // A new id retires whatever batch was still planning. Planning has no
     // side effect beyond issuing PlanIds that expire on their own, so the
@@ -336,7 +355,10 @@ export function UpdatesPage() {
       return {
         ...blank(c),
         issued: result.status === "fulfilled" ? result.value : null,
-        planError: result.status === "rejected" ? errorMessage(result.reason) : null,
+        planError:
+          result.status === "rejected"
+            ? planErrorMessage(t, errorMessage(result.reason), sourceLabelFor(c.key.instance_id))
+            : null,
       };
     });
     // Nothing to confirm when no plan came back: the dialog stays shut and

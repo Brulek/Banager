@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { usePlanOperation, useSubmitOperation } from "../lib/queries";
+import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
+import { ADAPTER_LABEL_KEYS, planErrorMessage } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
 import { warningTexts } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
@@ -29,8 +30,16 @@ export function UninstallDialog({
   onSubmitted,
 }: UninstallDialogProps) {
   const { t } = useTranslation();
+  const { data: snapshot } = useSnapshot();
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
+  // For the one plan-operation refusal that can reach a real person
+  // verbatim otherwise (`planErrorMessage`'s NotActionable case): the
+  // instance's adapter, and therefore its label, does not change out from
+  // under a stale snapshot even when its read-only/unavailable state does.
+  const instance = snapshot?.instances?.find((i) => i.id === request.instance_id);
+  const labelKey = instance ? ADAPTER_LABEL_KEYS[instance.adapter_id] : undefined;
+  const sourceLabel = labelKey ? t(labelKey) : (instance?.adapter_id ?? request.instance_id);
   // Monotonic id for "the dialog as it is open right now, for this artifact".
   // Opening, closing or retargeting the dialog retires the previous session,
   // and every callback that runs after an `await` compares the session it was
@@ -123,7 +132,9 @@ export function UninstallDialog({
 
         {planMutation.isError && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {t("uninstall.planError", { message: planMutation.error.message })}
+            {t("uninstall.planError", {
+              message: planErrorMessage(t, planMutation.error.message, sourceLabel),
+            })}
           </p>
         )}
 

@@ -66,6 +66,43 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// design review: IPC accepts only known operations and server-issued
 /// object IDs, never a client-supplied `Plan`. `submit_operation_impl`
 /// below is the only way to actually run it, and takes only the id.
+/// Maps `Session::issue_plan`'s error to the string every `#[tauri::command]`
+/// in this file rejects with. Every variant but one keeps `AdapterError`'s
+/// own `Display` verbatim, exactly as before -- those are refusals that
+/// should never happen outside a bug (an unknown instance, an unregistered
+/// adapter) and are shown as-is on the assumption nobody but a developer
+/// will ever read them.
+///
+/// `NotActionable` is different: both `InstalledPage` and `UpdatesPage`
+/// hide every control for an instance that fails this gate, so a real
+/// person sees it only through a stale snapshot or a genuine TOCTOU -- and
+/// when that happens, `{:?}` of two Rust enums is the worst possible thing
+/// to show someone who does not read Rust. It goes out as a small JSON
+/// object instead, so `src/lib/sources.ts`'s `parseNotActionable` can turn
+/// it into the same localised copy the source's own notice already uses
+/// (`READ_ONLY_NOTICE_KEYS`, `sourceNotice.notRunning`,
+/// `sourceNotice.unreachable`) instead of showing it verbatim.
+///
+/// This is a narrower change than it looks: `plan_operation` still returns
+/// `Result<IssuedPlan, String>`, identical to every other command, so
+/// nothing about the IPC boundary's *type* widens and `src/lib/api.ts`'s
+/// single `call()` choke point needs no special case. Only the *content* of
+/// the string differs for this one refusal.
+fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
+    match e {
+        canager_core::adapters::AdapterError::NotActionable {
+            read_only,
+            unavailable,
+        } => serde_json::json!({
+            "kind": "not_actionable",
+            "read_only": read_only,
+            "unavailable": unavailable,
+        })
+        .to_string(),
+        other => other.to_string(),
+    }
+}
+
 pub(crate) async fn plan_operation_impl(
     state: &AppState,
     request: OpRequest,
@@ -74,7 +111,7 @@ pub(crate) async fn plan_operation_impl(
         .session
         .issue_plan(&request)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(plan_operation_error)
 }
 
 #[tauri::command]
@@ -607,6 +644,81 @@ mod tests {
         );
     }
 
+    /// Builds an `AppState` around a single fake instance, letting the
+    /// caller control its writability/availability -- unlike
+    /// `state_with_fake_adapter`, which always builds a writable, available
+    /// one. The only way to reach `plan_operation`'s `NotActionable`
+    /// mapping is through an instance the gate in `Session::issue_plan`
+    /// refuses.
+    fn state_with_instance(instance: ManagerInstance) -> AppState {
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec![],
+        };
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance,
+            execute_calls: Arc::new(AtomicUsize::new(0)),
+            check_options_calls: Arc::new(Mutex::new(Vec::new())),
+            detect_delay: std::time::Duration::ZERO,
+        });
+        let sink = ChannelSink::new();
+        let session =
+            canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
+        AppState {
+            session,
+            settings_path: temp_settings_path("not-actionable"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_maps_not_actionable_to_structured_json_not_a_debug_dump() {
+        // Both pages hide every control for an instance the actionability
+        // gate (spec §2.5) would refuse, so a real person only ever sees
+        // this through a stale snapshot or a genuine TOCTOU -- and even
+        // then, `AdapterError::NotActionable`'s own `Display` (a `{:?}` of
+        // two Rust enums) must never be what reaches them. `plan_operation`
+        // stays `Result<IssuedPlan, String>` like every other command (no
+        // widened IPC type); what changes is *what the string holds* for
+        // this one case: JSON the front end can localise, not English
+        // prose it can only show verbatim.
+        let instance = canager_core::testing::read_only_instance(
+            "fake",
+            "fake:1",
+            canager_core::model::ReadOnlyReason::PrefixNotWritable,
+        );
+        let state = state_with_instance(instance);
+        refresh_impl(&state).await.expect("refresh_impl");
+
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let err = plan_operation_impl(&state, req)
+            .await
+            .expect_err("a read-only instance must be refused");
+
+        assert!(
+            !err.contains("Some(") && !err.contains("None"),
+            "must not be a Rust Debug dump of the two reasons: {err}"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(parsed["kind"], "not_actionable");
+        assert_eq!(parsed["read_only"], "PrefixNotWritable");
+        assert_eq!(parsed["unavailable"], serde_json::Value::Null);
+    }
+
     #[tokio::test]
     async fn test_submit_and_list_and_cancel_operations_impl_round_trip() {
         let state = state_with_fake_adapter();
@@ -911,7 +1023,7 @@ mod tests {
         // briefly for its output rather than assuming it has finished the
         // instant `spawn()` returns.
         let mut contents = String::new();
-        for _ in 0..100 {
+        for _ in 0..250 {
             if let Ok(s) = std::fs::read_to_string(&out_path) {
                 if !s.is_empty() {
                     contents = s;
