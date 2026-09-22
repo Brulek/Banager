@@ -39,10 +39,33 @@ fn test_parse_search_desc_snapshot() {
     insta::assert_json_snapshot!(result);
 }
 
+/// `brew uses --installed jq` on both recording machines printed nothing:
+/// jq is a leaf there, with no installed formula depending on it. That is a
+/// real recording of a real case -- the one where `plan` attaches no
+/// dependency warning to an uninstall -- so the empty file stays, named for
+/// what produced it. The case where the warning *is* attached needs a
+/// formula that actually has dependents, which is `uses-pcre2.txt` below.
 #[test]
-fn test_parse_uses_snapshot() {
+fn test_parse_uses_with_no_dependents_snapshot() {
     let text = read_fixture("uses-jq.txt");
     let result = parse_uses(&text);
+    insta::assert_json_snapshot!(result);
+}
+
+/// The dependency-warning path: real `brew uses --installed pcre2` output,
+/// four installed formulae deep. Until this fixture existed, the only
+/// recorded `brew uses` output in the repo was the empty one above, so the
+/// half of `plan` that turns dependents into a `Warning` had no recorded
+/// output behind it at all.
+#[test]
+fn test_parse_uses_with_dependents_snapshot() {
+    let text = read_fixture("uses-pcre2.txt");
+    let result = parse_uses(&text);
+    assert!(
+        !result.is_empty(),
+        "this fixture exists to carry a non-empty `brew uses --installed`; \
+         an empty recording here would silently re-open the gap it closed"
+    );
     insta::assert_json_snapshot!(result);
 }
 
