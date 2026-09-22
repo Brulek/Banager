@@ -177,8 +177,11 @@ pub enum UpdateChannel {
 ///
 /// `Message` is the deliberate escape hatch for warnings this step does
 /// not localise: text built at runtime from something Canager cannot know
-/// ahead of time (a subprocess's stderr, an HTTP error, a model's registry
-/// host). Spec §6 backlogs the real fix for those -- showing a localised
+/// ahead of time (a subprocess's stderr, an HTTP error). A warning whose
+/// only unknown is a value -- a registry host, a list of dependents --
+/// does not belong here; it gets a variant with a payload, like
+/// `ThirdPartyRegistry` and `WouldBreak`. Spec §6 backlogs the real fix
+/// for the genuinely unknowable ones -- showing a localised
 /// generic sentence by default and routing the raw text behind
 /// `show_technical_details` -- so `Message` only preserves today's
 /// behaviour (the raw string, unconditionally, in whatever language it
@@ -197,6 +200,12 @@ pub enum Warning {
     /// Installed from a git repository or a local path, not the crates.io
     /// registry Canager checks for updates against.
     NonRegistrySource,
+    /// Installing or upgrading this model downloads it from `host`, a
+    /// registry other than Ollama's own library. Carried only on
+    /// Install/Upgrade plans: where a model came from is a reason to look
+    /// twice before fetching it, and no reason at all to hesitate before
+    /// deleting it.
+    ThirdPartyRegistry { host: String },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -400,6 +409,13 @@ mod tests {
             })
             .unwrap(),
             r#"{"WouldBreak":{"names":["python@3.13"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::ThirdPartyRegistry {
+                host: "modelscope.cn".to_string()
+            })
+            .unwrap(),
+            r#"{"ThirdPartyRegistry":{"host":"modelscope.cn"}}"#
         );
         assert_eq!(
             serde_json::to_string(&Warning::Message("boom".to_string())).unwrap(),

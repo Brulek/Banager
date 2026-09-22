@@ -407,18 +407,28 @@ impl OllamaAdapter {
         ensure_instance_match(req, inst)?;
         validate_model_reference(&req.name)?;
         let lock = ResourceLock(inst.id.clone());
+        // The registry warning belongs to the arm that fetches, not to the
+        // operation as a whole. Computed before this `match` it also rode
+        // onto Uninstall plans, where `UninstallDialog` puts it under
+        // "Before you continue:" -- the one destructive confirmation
+        // screen in the app -- to say something that is no reason to
+        // hesitate about deleting anything.
+        //
         // Named, never blocked: pulling from a third-party registry is a
         // legitimate thing to want, it just has to be said out loud.
         // `Plan::warnings` is already rendered in the preview.
-        let warnings = match third_party_registry(&req.name) {
-            Some(registry) => vec![Warning::Message(format!(
-                "this model comes from {registry}, not Ollama's own model library"
-            ))],
-            None => Vec::new(),
-        };
-        let args = match req.kind {
-            OpKind::Install | OpKind::Upgrade => vec!["pull".to_string(), req.name.clone()],
-            OpKind::Uninstall => vec!["rm".to_string(), req.name.clone()],
+        let (args, warnings) = match req.kind {
+            OpKind::Install | OpKind::Upgrade => (
+                vec!["pull".to_string(), req.name.clone()],
+                third_party_registry(&req.name)
+                    .map(|host| {
+                        vec![Warning::ThirdPartyRegistry {
+                            host: host.to_string(),
+                        }]
+                    })
+                    .unwrap_or_default(),
+            ),
+            OpKind::Uninstall => (vec!["rm".to_string(), req.name.clone()], Vec::new()),
         };
         Ok(Plan {
             request: req.clone(),
@@ -1402,7 +1412,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&fx.root_home);
     }
 
-    async fn plan_for(name: &str) -> Plan {
+    async fn plan_for_kind(name: &str, kind: OpKind) -> Plan {
         let adapter =
             OllamaAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
         let inst = test_instance(
@@ -1410,7 +1420,7 @@ mod tests {
             PathBuf::from("/Users/brulek/.ollama"),
         );
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind,
             instance_id: inst.id.clone(),
             artifact_kind: ArtifactKind::Model,
             name: name.to_string(),
@@ -1420,21 +1430,57 @@ mod tests {
             .expect("plan")
     }
 
+    async fn plan_for(name: &str) -> Plan {
+        plan_for_kind(name, OpKind::Install).await
+    }
+
     #[tokio::test]
     async fn test_plan_warns_when_the_reference_names_a_third_party_registry() {
         // Ollama reads a host-like first segment as a registry, so this
         // pulls from evil.example.com rather than from Ollama's library.
         // The preview shows the argv, but this app's audience will not read
         // a hostname inside a model name as a warning.
+        //
+        // A payload-carrying variant, not a `Message`: `Message` is the
+        // escape hatch for text Canager cannot know ahead of time, and
+        // this sentence is entirely knowable -- only the host is not. As a
+        // `Message` it was an English sentence assembled in Rust, which is
+        // the exact trap spec §6 exists to close.
         let plan = plan_for("evil.example.com/ns/model:tag").await;
-        assert_eq!(plan.warnings.len(), 1, "got {:?}", plan.warnings);
-        let warning = warnings_text(&plan.warnings);
-        assert!(
-            warning.contains("evil.example.com"),
-            "the warning must name the registry, got {warning:?}"
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::ThirdPartyRegistry {
+                host: "evil.example.com".to_string()
+            }],
         );
         // Named, not blocked: the operation still runs as requested.
         assert_eq!(plan.args, vec!["pull", "evil.example.com/ns/model:tag"]);
+    }
+
+    #[tokio::test]
+    async fn test_plan_does_not_warn_about_the_registry_when_removing_a_model() {
+        // Where a model came from is a reason to think before *fetching*
+        // it, and no reason at all to hesitate before deleting it. The
+        // warning used to be computed before `match req.kind`, so it rode
+        // onto the uninstall plan too -- and `UninstallDialog` renders
+        // `plan.warnings` under "Before you continue:", the one
+        // destructive confirmation screen in the app.
+        let plan = plan_for_kind("modelscope.cn/Qwen/Qwen3-8B", OpKind::Uninstall).await;
+        assert!(
+            plan.warnings.is_empty(),
+            "the uninstall confirmation must carry no registry warning, got {:?}",
+            plan.warnings
+        );
+        assert_eq!(plan.args, vec!["rm", "modelscope.cn/Qwen/Qwen3-8B"]);
+
+        // Upgrading re-pulls, so it does warn.
+        let upgrade = plan_for_kind("modelscope.cn/Qwen/Qwen3-8B", OpKind::Upgrade).await;
+        assert_eq!(
+            upgrade.warnings,
+            vec![Warning::ThirdPartyRegistry {
+                host: "modelscope.cn".to_string()
+            }],
+        );
     }
 
     #[tokio::test]

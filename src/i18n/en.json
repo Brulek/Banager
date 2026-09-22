@@ -72,7 +72,8 @@
     "wouldBreak_one": "This will break {{names}}.",
     "wouldBreak_other": "This will break {{count}} other things: {{names}}.",
     "compilesLocally": "This will compile locally and can take several minutes.",
-    "nonRegistrySource": "This wasn't installed from crates.io, so Canager can't check it for updates."
+    "nonRegistrySource": "This wasn't installed from crates.io, so Canager can't check it for updates.",
+    "thirdPartyRegistry": "This model is downloaded from {{host}}, not from Ollama's own model library. Only continue if you trust {{host}}."
   },
   "sourceNotice": {
     "pipReadOnly": {

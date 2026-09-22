@@ -159,6 +159,7 @@ describe("types", () => {
     const compilesLocally: Warning = "CompilesLocally";
     const nonRegistrySource: Warning = "NonRegistrySource";
     const wouldBreak: Warning = { WouldBreak: { names: ["python@3.13"] } };
+    const thirdPartyRegistry: Warning = { ThirdPartyRegistry: { host: "modelscope.cn" } };
     const message: Warning = { Message: "boom" };
 
     expect(roundTrip(dependentsUnknown)).toBe("DependentsUnknown");
@@ -166,6 +167,12 @@ describe("types", () => {
     expect(roundTrip(nonRegistrySource)).toBe("NonRegistrySource");
     expect(JSON.stringify(wouldBreak)).toBe('{"WouldBreak":{"names":["python@3.13"]}}');
     expect(roundTrip(wouldBreak)).toEqual({ WouldBreak: { names: ["python@3.13"] } });
+    expect(JSON.stringify(thirdPartyRegistry)).toBe(
+      '{"ThirdPartyRegistry":{"host":"modelscope.cn"}}',
+    );
+    expect(roundTrip(thirdPartyRegistry)).toEqual({
+      ThirdPartyRegistry: { host: "modelscope.cn" },
+    });
     expect(JSON.stringify(message)).toBe('{"Message":"boom"}');
     expect(roundTrip(message)).toEqual({ Message: "boom" });
   });

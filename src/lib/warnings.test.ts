@@ -15,6 +15,9 @@ describe("warningKey", () => {
     expect(warningKey("CompilesLocally")).toBe("warnings.compilesLocally");
     expect(warningKey("NonRegistrySource")).toBe("warnings.nonRegistrySource");
     expect(warningKey({ WouldBreak: { names: ["python@3.13"] } })).toBe("warnings.wouldBreak");
+    expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
+      "warnings.thirdPartyRegistry",
+    );
   });
 
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
@@ -41,6 +44,15 @@ describe("warningArgs", () => {
     });
   });
 
+  it("interpolates the registry host so the copy can name it in either language", () => {
+    // The sentence used to be assembled in Rust, in English, and shown
+    // verbatim -- including above the Uninstall button, to a zh-CN user
+    // pulling from modelscope.cn.
+    expect(warningArgs({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toEqual({
+      host: "modelscope.cn",
+    });
+  });
+
   it("is empty for every other variant", () => {
     expect(warningArgs("DependentsUnknown")).toEqual({});
     expect(warningArgs("CompilesLocally")).toEqual({});
@@ -61,6 +73,7 @@ describe("warningMessage", () => {
     expect(warningMessage("CompilesLocally")).toBeNull();
     expect(warningMessage("NonRegistrySource")).toBeNull();
     expect(warningMessage({ WouldBreak: { names: ["a"] } })).toBeNull();
+    expect(warningMessage({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBeNull();
   });
 });
 

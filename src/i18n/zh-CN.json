@@ -67,7 +67,8 @@
     "dependentsUnknown": "Canager 无法确定有什么依赖它,卸载可能会影响其他软件。",
     "wouldBreak_other": "卸载后会影响 {{count}} 项:{{names}}。",
     "compilesLocally": "这将在本机编译,可能需要几分钟。",
-    "nonRegistrySource": "这不是从 crates.io 安装的,Canager 无法检查它的更新。"
+    "nonRegistrySource": "这不是从 crates.io 安装的,Canager 无法检查它的更新。",
+    "thirdPartyRegistry": "这个模型要从 {{host}} 下载,不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。"
   },
   "sourceNotice": {
     "pipReadOnly": {

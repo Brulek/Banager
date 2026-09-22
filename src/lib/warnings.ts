@@ -30,6 +30,7 @@ export function warningKey(warning: Warning): string | null {
     }
   }
   if ("WouldBreak" in warning) return "warnings.wouldBreak";
+  if ("ThirdPartyRegistry" in warning) return "warnings.thirdPartyRegistry";
   return null;
 }
 
@@ -39,6 +40,9 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
     const names = warning.WouldBreak.names;
     return { count: names.length, names: names.join(", ") };
   }
+  if (typeof warning !== "string" && "ThirdPartyRegistry" in warning) {
+    return { host: warning.ThirdPartyRegistry.host };
+  }
   return {};
 }
 
@@ -46,8 +50,8 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
  * The raw text of a `Message` warning, or `null` for anything else.
  *
  * Deliberately not looked up through `t()`: the text is built at runtime
- * on the Rust side (a subprocess's stderr, a network error, a per-model
- * registry host) and shown exactly as received, in whatever language it
+ * on the Rust side (a subprocess's stderr, a network error) and shown
+ * exactly as received, in whatever language it
  * came in, because localising it is backlogged behind
  * `show_technical_details` (spec §6) rather than solved by this enum.
  */

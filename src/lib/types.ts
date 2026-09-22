@@ -35,9 +35,10 @@ export interface InstalledArtifact {
 }
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
- * in crates/canager-core/src/model.rs: bare-string unit variants, one
- * externally tagged data variant (`WouldBreak`, whose `names` interpolate
- * and pluralise the copy in `src/lib/warnings.ts`), and a `Message`
+ * in crates/canager-core/src/model.rs: bare-string unit variants,
+ * externally tagged data variants (`WouldBreak`, whose `names` interpolate
+ * and pluralise the copy in `src/lib/warnings.ts`, and
+ * `ThirdPartyRegistry`, whose `host` interpolates it), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
  * carries, same as before this type existed. A new Rust variant this union
@@ -50,6 +51,7 @@ export type Warning =
   | { WouldBreak: { names: string[] } }
   | "CompilesLocally"
   | "NonRegistrySource"
+  | { ThirdPartyRegistry: { host: string } }
   | { Message: string };
 export interface UpdateCandidate {
   key: ArtifactKey;
