@@ -21,6 +21,19 @@ export interface ArtifactRowProps {
   selectable?: ArtifactRowSelectable;
   /** Extra inline content between the description and the badge (Task 12 uses this for an Ignore link). */
   secondaryContent?: ReactNode;
+  /**
+   * Let the description use as many lines as it needs instead of being cut
+   * off at one.
+   *
+   * A description is normally a package's own one-line blurb, where a single
+   * clipped line is the right trade: the name and the badge are what the row
+   * is for. But some rows carry an *explanation* instead -- why this row will
+   * never have an Update button, why Canager could not check it this time --
+   * and an explanation that is cut off mid-sentence has not been given. The
+   * reason usually sits at the end (the tool's own error text, a URL), which
+   * is exactly the part one line loses.
+   */
+  wrapDescription?: boolean;
 }
 
 const BADGE_CLASSES: Record<BadgeVariant, string> = {
@@ -39,6 +52,7 @@ export function ArtifactRow({
   primaryActionDisabled,
   selectable,
   secondaryContent,
+  wrapDescription,
 }: ArtifactRowProps) {
   return (
     <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-2">
@@ -53,7 +67,16 @@ export function ArtifactRow({
       ) : null}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-[var(--color-foreground)]">{name}</p>
-        <p className="truncate text-xs text-[var(--color-muted)]">{description}</p>
+        {/* `break-words` and not just "no truncate": the reason text often
+            ends in a URL or a long unspaced token out of a tool's stderr,
+            which would otherwise run off the row instead of wrapping. */}
+        <p
+          className={`text-xs text-[var(--color-muted)] ${
+            wrapDescription ? "break-words" : "truncate"
+          }`}
+        >
+          {description}
+        </p>
       </div>
       {secondaryContent}
       <span

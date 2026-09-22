@@ -60,6 +60,34 @@ describe("ArtifactRow", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
+  it("clips the description to one line by default", () => {
+    // A package blurb is a nicety next to the name and the badge, so it
+    // gets one line and an ellipsis.
+    const { getByText } = renderWithProviders(
+      <ArtifactRow name="jq" description="a blurb" badgeText="Up to date" badgeVariant="neutral" />,
+    );
+    expect(getByText("a blurb").className).toContain("truncate");
+  });
+
+  it("lets the description wrap when it is an explanation", () => {
+    // jsdom does not lay text out, so this asserts the only thing that
+    // decides whether the user sees the end of the sentence in the real
+    // app: that the single-line clip is off and long unspaced tokens
+    // (a URL out of a tool's stderr) are allowed to break.
+    const { getByText } = renderWithProviders(
+      <ArtifactRow
+        name="urllib3"
+        description="Canager couldn't check this one for updates just now. pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/"
+        badgeText="Read-only"
+        badgeVariant="neutral"
+        wrapDescription
+      />,
+    );
+    const description = getByText(/Could not fetch URL/);
+    expect(description.className).not.toContain("truncate");
+    expect(description.className).toContain("break-words");
+  });
+
   it("renders no primary action button when the row offers none", () => {
     const { queryByRole } = renderWithProviders(
       <ArtifactRow name="numpy" description="desc" badgeText="Up to date" badgeVariant="neutral" />,

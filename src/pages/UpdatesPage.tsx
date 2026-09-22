@@ -510,6 +510,15 @@ export function UpdatesPage() {
               // -- read-only guidance included, since a read-only source
               // can fail a lookup too.
               description={rowDescription(candidate, noticeKey)}
+              // An explanation has to be readable end to end or it has not
+              // been given, and both of the sentences `rowDescription` can
+              // compose are explanations -- the read-only advice and the
+              // reason a lookup failed. Together they run to a few hundred
+              // characters and the reason comes last, so one clipped line
+              // would hide precisely the part this row exists to say. A
+              // package's own blurb keeps the single line: it is a nicety,
+              // not something the user is being asked to act on.
+              wrapDescription={noticeKey !== undefined || !candidate.checkable}
               // Capability first when both apply: "Read-only" is the fact
               // that no button will ever appear on this row, whatever the
               // next refresh finds. That a lookup also failed is on the

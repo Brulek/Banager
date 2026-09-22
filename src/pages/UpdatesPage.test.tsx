@@ -487,9 +487,15 @@ describe("UpdatesPage", () => {
     expect(
       await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//),
     ).toBeInTheDocument();
-    expect(
-      await findByText(/Install Python command-line tools with pipx or uv instead/),
-    ).toBeInTheDocument();
+    const description = await findByText(/Install Python command-line tools with pipx or uv instead/);
+    expect(description).toBeInTheDocument();
+    // Both sentences land in the same element, and the reason is the
+    // second of them -- close to three hundred characters in all. jsdom
+    // applies no CSS, so being in the DOM says nothing about being
+    // visible; the row has to be told not to clip the description to one
+    // line, or the reason is the exact part the real window hides.
+    expect(description.className).not.toContain("truncate");
+    expect(description.textContent).toMatch(/Could not fetch URL https:\/\/pypi\.org\/simple\/$/);
   });
 
   it("leaves a warning that was written for this audience unwrapped", async () => {
