@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useSnapshot,
   useSettings,
@@ -22,6 +23,12 @@ import type {
   ReadOnlyReason,
   UpdateCandidate,
 } from "../lib/types";
+
+// The virtualizer's first guess at a row's height. Every row measures
+// itself through `measureElement` as soon as it is in the DOM, which
+// matters here more than on the Installed page: an uncheckable row wraps
+// its explanation over as many lines as the tool's error text needs.
+const ROW_ESTIMATE = 56;
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -90,6 +97,7 @@ export function UpdatesPage() {
   const selectedUpdates = useUiStore((s) => s.selectedUpdates);
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
 
+  const listRef = useRef<HTMLDivElement>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
   // Monotonic. The batch whose id equals this is the only one allowed to
   // write state; every async continuation checks `isCurrent` after `await`.
@@ -454,6 +462,14 @@ export function UpdatesPage() {
     });
   }
 
+  // Above every early return: hooks cannot be called conditionally, and
+  // three of the returns below are reached before the list is drawn.
+  const rowVirtualizer = useVirtualizer({
+    count: visibleUpdates.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => ROW_ESTIMATE,
+  });
+
   if (isLoading) {
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
   }
@@ -545,83 +561,112 @@ export function UpdatesPage() {
           {t("updates.updateSelected")}
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {visibleUpdates.map((candidate) => {
-          // Resolved once per row: the badge and the row's own actionability
-          // must agree about whether this source is read-only.
-          const readOnly = isReadOnly(candidate);
-          return (
-            <ArtifactRow
-              key={artifactKeyId(candidate.key)}
-              name={candidate.key.name}
-              // `checkable: false` means the adapter could not establish what
-              // the remote version is -- a cargo crate installed from git or a
-              // path, an Ollama model whose manifest could not be read, any
-              // source whose registry lookup could not be made. Such a row
-              // must offer no action and no selection: "Update" on a
-              // git-sourced crate would run `cargo install --force {name}`
-              // against the crates.io crate of the same name, which is a
-              // different package. The reason lives in `warnings`, and
-              // `rowDescription` is what puts it somewhere the user reads
-              // -- read-only guidance included, since a read-only source
-              // can fail a lookup too.
-              description={rowDescription(candidate)}
-              // An explanation has to be readable end to end or it has not
-              // been given. The reason a lookup failed can run to a few
-              // hundred characters and the detail comes last, so one
-              // clipped line would hide precisely the part such a row
-              // exists to say. A package's own blurb keeps the single
-              // line: it is a nicety, not something the user is being
-              // asked to act on.
-              wrapDescription={!candidate.checkable}
-              // Capability first when both apply: "Read-only" is the fact
-              // that no button will ever appear on this row, whatever the
-              // next refresh finds. That a lookup also failed is on the
-              // row already, in words, via `rowDescription`.
-              // Three states, and there is no fourth: nothing in production
-              // builds a `checkable: true` candidate with a warning on it
-              // any more. There used to be an "N warnings" badge here; brew's
-              // `"pinned"` string and its per-candidate "brew update failed"
-              // sentence were its only two producers, and this branch deleted
-              // both (the second is now `InstanceNote::IndexMayBeStale`, a
-              // notice on the source rather than a count on a row). The badge
-              // outlived them, unreachable, which is the exact shape of defect
-              // this phase keeps finding.
-              badgeText={
-                readOnly
-                  ? t("updates.readOnly")
-                  : !candidate.checkable
-                    ? t("updates.cannotCheck")
-                    : t("updates.available")
-              }
-              badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
-              primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
-              onPrimaryAction={
-                isActionable(candidate) ? () => openConfirm([candidate]) : undefined
-              }
-              primaryActionDisabled={dialogOpen}
-              selectable={
-                isActionable(candidate)
-                  ? {
-                      checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
-                      onToggle: () => toggleUpdate(candidate.key),
-                      ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
-                    }
-                  : undefined
-              }
-              secondaryContent={
-                <button
-                  type="button"
-                  onClick={() => ignore(candidate)}
-                  disabled={saveSettings.isPending}
-                  className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
-                >
-                  {t("updates.ignore")}
-                </button>
-              }
-            />
-          );
-        })}
+      {/* Virtualized, like the Installed page. The entry that deferred this
+          reasoned that the page only ever lists "a few to a few dozen"
+          Homebrew updates; phase 3 killed that. A source that cannot reach
+          its registry reports one `checkable: false` candidate per
+          installed package, so a Mac that is merely offline turns this into
+          a list as long as everything it has installed -- and it stalls
+          exactly when the user is already confused about why nothing could
+          be checked. */}
+      <div ref={listRef} className="flex-1 overflow-y-auto">
+        <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const candidate = visibleUpdates[virtualRow.index];
+            // Resolved once per row: the badge and the row's own actionability
+            // must agree about whether this source is read-only.
+            const readOnly = isReadOnly(candidate);
+            return (
+              // No fixed height on the slot: an uncheckable row wraps its
+              // explanation (`wrapDescription`) over as many lines as the
+              // tool's error text needs, so the row reports its real height
+              // back through `measureElement` instead. A fixed height would
+              // let the next row -- later in DOM order, painted on top --
+              // cover the tail of the sentence the row exists to say.
+              <div
+                key={artifactKeyId(candidate.key)}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <ArtifactRow
+                  name={candidate.key.name}
+                  // `checkable: false` means the adapter could not establish what
+                  // the remote version is -- a cargo crate installed from git or a
+                  // path, an Ollama model whose manifest could not be read, any
+                  // source whose registry lookup could not be made. Such a row
+                  // must offer no action and no selection: "Update" on a
+                  // git-sourced crate would run `cargo install --force {name}`
+                  // against the crates.io crate of the same name, which is a
+                  // different package. The reason lives in `warnings`, and
+                  // `rowDescription` is what puts it somewhere the user reads
+                  // -- read-only guidance included, since a read-only source
+                  // can fail a lookup too.
+                  description={rowDescription(candidate)}
+                  // An explanation has to be readable end to end or it has not
+                  // been given. The reason a lookup failed can run to a few
+                  // hundred characters and the detail comes last, so one
+                  // clipped line would hide precisely the part such a row
+                  // exists to say. A package's own blurb keeps the single
+                  // line: it is a nicety, not something the user is being
+                  // asked to act on.
+                  wrapDescription={!candidate.checkable}
+                  // Capability first when both apply: "Read-only" is the fact
+                  // that no button will ever appear on this row, whatever the
+                  // next refresh finds. That a lookup also failed is on the
+                  // row already, in words, via `rowDescription`.
+                  // Three states, and there is no fourth: nothing in production
+                  // builds a `checkable: true` candidate with a warning on it
+                  // any more. There used to be an "N warnings" badge here; brew's
+                  // `"pinned"` string and its per-candidate "brew update failed"
+                  // sentence were its only two producers, and this branch deleted
+                  // both (the second is now `InstanceNote::IndexMayBeStale`, a
+                  // notice on the source rather than a count on a row). The badge
+                  // outlived them, unreachable, which is the exact shape of defect
+                  // this phase keeps finding.
+                  badgeText={
+                    readOnly
+                      ? t("updates.readOnly")
+                      : !candidate.checkable
+                        ? t("updates.cannotCheck")
+                        : t("updates.available")
+                  }
+                  badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
+                  primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
+                  onPrimaryAction={
+                    isActionable(candidate) ? () => openConfirm([candidate]) : undefined
+                  }
+                  primaryActionDisabled={dialogOpen}
+                  selectable={
+                    isActionable(candidate)
+                      ? {
+                          checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
+                          onToggle: () => toggleUpdate(candidate.key),
+                          ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
+                        }
+                      : undefined
+                  }
+                  secondaryContent={
+                    <button
+                      type="button"
+                      onClick={() => ignore(candidate)}
+                      disabled={saveSettings.isPending}
+                      className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+                    >
+                      {t("updates.ignore")}
+                    </button>
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
       <Dialog
         open={dialogOpen}

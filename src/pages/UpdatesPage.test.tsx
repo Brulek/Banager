@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
@@ -174,6 +174,9 @@ function submittedPlanIds() {
   return calls("submit_operation").map(([, args]) => args);
 }
 
+// The height every virtualized row reports back in jsdom.
+const ROW_HEIGHT = 56;
+
 beforeEach(() => {
   settings = {
     language: "System",
@@ -197,6 +200,17 @@ beforeEach(() => {
   releaseSubmit = {};
   releaseSave = [];
   mockInvoke.mockReset();
+  // @tanstack/react-virtual measures its scroll container and every row
+  // through offsetWidth / offsetHeight, which jsdom hardcodes to 0 with no
+  // layout engine behind them. Without these the virtualizer sees a
+  // zero-height viewport and renders no rows at all. Same stubs as
+  // InstalledPage.test.tsx, which virtualized first.
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.getAttribute("data-index") === null ? 600 : ROW_HEIGHT;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "get_snapshot")
       return Promise.resolve({ ...snapshot, updates, instances, artifacts });
@@ -241,6 +255,10 @@ beforeEach(() => {
     }
     return Promise.resolve(undefined);
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("UpdatesPage", () => {
@@ -1140,5 +1158,38 @@ describe("UpdatesPage", () => {
     // The two brew rows still have their buttons: one silent source does
     // not disarm the page.
     expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+  });
+  it("draws only the rows on screen when a failed lookup turns every package into a row", async () => {
+    // Offline, a source cannot establish any remote version, so it reports
+    // one `checkable: false` candidate per installed package instead of
+    // none -- the page that already has to explain "we could not check"
+    // is also the page asked to draw several hundred rows. The old
+    // deferral ("Homebrew only, a few dozen rows") died with phase 3.
+    updates = Array.from({ length: 400 }, (_, index) => ({
+      key: {
+        instance_id: "pip:/usr/bin/python3",
+        kind: "Package" as const,
+        name: `pkg-${String(index).padStart(3, "0")}`,
+      },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Registry" as const,
+      checkable: false,
+      warnings: [{ Message: "Could not reach pypi.org" }],
+    }));
+
+    const { findByText, container } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("pkg-000");
+    const drawn = container.querySelectorAll("[data-index]").length;
+    expect(drawn).toBeGreaterThan(0);
+    // 600px of viewport over 56px rows is about eleven rows plus the
+    // virtualizer's overscan; anything near 400 means the whole list is in
+    // the DOM.
+    expect(drawn).toBeLessThan(40);
+    expect(container.textContent).not.toContain("pkg-399");
+    // The list still knows how long it is, so the scrollbar is honest and
+    // every row is reachable.
+    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
   });
 });
