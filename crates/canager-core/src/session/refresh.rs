@@ -4,7 +4,6 @@
 //! `session/mod.rs` (Task 14); no behaviour change from what shipped there.
 
 use super::{DetectOutcome, Session, Snapshot, SourceError};
-use crate::adapters::brew::BrewAdapter;
 use crate::adapters::CheckOptions;
 use crate::model::{InstanceNote, ManagerInstance, ResourceLock};
 use crate::runner::HostEnv;
@@ -48,20 +47,18 @@ impl Session {
         // reference cannot outlive this function.
         let opts: CheckOptions = *opts;
 
-        if BrewAdapter::refuses_as_root(env) {
-            let refused = Snapshot {
-                generation: previous.generation,
-                detect: DetectOutcome::RefusedAsRoot,
-                instances: Vec::new(),
-                artifacts: Vec::new(),
-                updates: Vec::new(),
-                refreshed_at: Some(self.now()),
-                stale: previous.stale,
-                errors: Vec::new(),
-            };
-            return self.commit(previous, refused);
-        }
-
+        // No root check here: it used to short-circuit the entire refresh
+        // to `RefusedAsRoot` behind `BrewAdapter::refuses_as_root(env)`, but
+        // that predicate is nothing but `env.euid == 0` -- a fact about
+        // *brew*, not about npm, pipx, uv, pip, cargo or ollama, none of
+        // which object to root. A root user with no Homebrew objection saw
+        // every one of the other six adapters disabled and was told
+        // Homebrew refused to run, whether or not Homebrew was even
+        // installed. The decision now lives solely in
+        // `BrewAdapter::detect`, which already returns no instance under
+        // root (see its own doc comment) -- exactly like Homebrew not
+        // being installed at all. Every adapter, brew included, is simply
+        // fanned out to below like any other refresh.
         let mut detect_handles = Vec::with_capacity(self.adapters.len());
         for adapter in self.adapters.values() {
             // Cloned into the task because `tokio::spawn` needs a 'static
@@ -293,6 +290,7 @@ fn merge_instance_notes(
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::brew::BrewAdapter;
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
@@ -300,7 +298,7 @@ mod tests {
         ManagerInstance, OpKind, OpRequest, OpStatus, Outcome, Plan, Reconciled, SearchHit,
         Unavailable, UpdateCandidate, UpdateChannel,
     };
-    use crate::runner::HostEnv;
+    use crate::runner::{CommandOutput, HostEnv, MockRunner};
     use crate::session::test_support::{make_instance, non_root_env, root_env};
     use crate::session::{DetectOutcome, Session, Snapshot};
     use async_trait::async_trait;
@@ -481,31 +479,82 @@ mod tests {
         assert_eq!(snapshot.generation, 1);
     }
 
+    /// The root decision lives entirely in `BrewAdapter::detect` now (spec:
+    /// one adapter's root policy must not disable the other six). Session
+    /// no longer special-cases root at all -- it just runs every adapter's
+    /// `detect()` concurrently, exactly as for any other host state, and
+    /// brew alone comes back empty. A real `BrewAdapter` is used (over a
+    /// `MockRunner`, the same pattern `adapters/brew/mod.rs`'s own detect
+    /// tests use) rather than a second `FakeAdapter`, because the whole
+    /// point under test is brew's *own* root check, not a stand-in for it.
     #[tokio::test]
-    async fn test_refresh_as_root_refuses_without_calling_adapters() {
-        let (adapter, state) = FakeAdapter::new("fake");
-        let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
-        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
-        assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
-        assert!(snapshot.instances.is_empty());
-        assert_eq!(
-            state.lock().unwrap().detect_calls,
-            0,
-            "no adapter should be probed while running as root"
+    async fn test_refresh_as_root_excludes_only_brew_not_the_other_adapters() {
+        let runner = Arc::new(MockRunner::new());
+        // Real Homebrew is assumed installed at /opt/homebrew, as
+        // `adapters/brew/mod.rs`'s own detect tests already assume for
+        // CI's macos-latest runners; this response would only be used if
+        // brew's root refusal failed to short-circuit before touching the
+        // runner at all.
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "Homebrew 7.0.3\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
         );
+        let brew = Arc::new(BrewAdapter::new(runner));
+        let (fake, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![brew, fake], None);
+
+        let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
+
+        assert_eq!(
+            snapshot.detect,
+            DetectOutcome::Found,
+            "the fake adapter still found an instance, so this is an ordinary Found, not a whole-app refusal"
+        );
+        assert!(
+            !snapshot.instances.iter().any(|i| i.adapter_id == "brew"),
+            "brew must contribute no instance while running as root, got {:?}",
+            snapshot.instances
+        );
+        assert!(
+            snapshot.instances.iter().any(|i| i.id == "fake:1"),
+            "an adapter with no root objection must detect normally, got {:?}",
+            snapshot.instances
+        );
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
     }
 
+    /// When brew is the *only* registered adapter, running as root must
+    /// still land on the ordinary "nothing detected" outcome -- not a
+    /// dedicated whole-app state. `RefusedAsRoot` is gone: from `Session`'s
+    /// point of view, a root user with only Homebrew looks exactly like a
+    /// non-root user on a Mac that never installed Homebrew.
     #[tokio::test]
-    async fn test_refresh_as_root_stamps_refreshed_at() {
-        let (adapter, _state) = FakeAdapter::new("fake");
+    async fn test_refresh_as_root_with_only_brew_registered_yields_ordinary_missing() {
+        let runner = Arc::new(MockRunner::new());
+        let brew = Arc::new(BrewAdapter::new(runner));
         let sink = Arc::new(VecSink::new());
-        let session = Session::with_adapters(sink, vec![adapter], None);
+        let session = Session::with_adapters(sink, vec![brew], None);
+
         let snapshot = session.refresh(&root_env(), &CheckOptions::default()).await;
-        assert_eq!(snapshot.detect, DetectOutcome::RefusedAsRoot);
+
+        assert_eq!(snapshot.detect, DetectOutcome::Missing);
+        assert!(snapshot.instances.is_empty());
         assert!(
             snapshot.refreshed_at.is_some(),
-            "a root refusal is a completed refresh and must set refreshed_at"
+            "a refresh that ran is stamped even when every source came back empty"
         );
     }
 

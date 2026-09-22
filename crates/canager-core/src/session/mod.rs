@@ -46,14 +46,16 @@ pub struct SourceError {
     pub message: String,
 }
 
-/// Why an adapter reported no usable instance. `Missing` is the ordinary
-/// "Homebrew is not installed" case; `RefusedAsRoot` must be surfaced
-/// differently in the UI (spec §7 empty states).
+/// Whether any adapter detected a usable instance. There used to be a
+/// third variant, `RefusedAsRoot`, standing for "every adapter is disabled
+/// because Canager is running as root" -- but that was never true: the
+/// root objection belongs to `BrewAdapter` alone, which now simply
+/// contributes no instance under root, the same as when Homebrew is not
+/// installed. `Missing` covers both.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetectOutcome {
     Found,
     Missing,
-    RefusedAsRoot,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
