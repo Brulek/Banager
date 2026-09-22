@@ -348,14 +348,18 @@ export function UpdatesPage() {
       ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
         <div className="text-sm text-[var(--color-muted)]">
-          {/* "0 updates available" is a lie when the rows below exist and
-              simply are not Canager's to update; say that instead. */}
+          {/* Two-part, always: the headline counts what Canager can act on,
+              the second line counts what it cannot. "0 updates available" is
+              a lie when the rows below exist and simply are not Canager's to
+              update, so the headline says that instead -- but the second line
+              stays, because "how many" is exactly what a user staring at six
+              listed rows needs to know. */}
           <p>
             {actionableCount === 0 && unmanageableCount > 0
               ? t("updates.noneActionable")
               : t("updates.count", { count: actionableCount })}
           </p>
-          {actionableCount > 0 && unmanageableCount > 0 ? (
+          {unmanageableCount > 0 ? (
             <p>{t("updates.countUnmanageable", { count: unmanageableCount })}</p>
           ) : null}
         </div>

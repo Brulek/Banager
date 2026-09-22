@@ -264,10 +264,10 @@ impl PipAdapter {
         ))
     }
 
-    /// pip is read-only in Canager (contract: "capabilities() returns false
-    /// for per_item_upgrade, upgrade_all and uninstall, and plan() must
-    /// refuse those kinds with a clear AdapterError::Unsupported rather than
-    /// building an argv nobody should run"). Every `OpKind` refuses here,
+    /// pip is read-only in Canager (contract: `detect()` reports
+    /// `read_only_reason: Some(ReadOnlyReason::ByDesign)`, and `plan()` must
+    /// refuse every kind with a clear `AdapterError::Unsupported` rather than
+    /// building an argv nobody should run). Every `OpKind` refuses here,
     /// before any argv is built, so the UI's install/uninstall/upgrade
     /// affordances for a pip-backed artifact never reach a working `Plan`.
     pub async fn plan(

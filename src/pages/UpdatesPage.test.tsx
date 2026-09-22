@@ -481,6 +481,11 @@ describe("UpdatesPage", () => {
     await findByText("urllib3");
     expect(await findByText("Nothing here can be updated by Canager")).toBeInTheDocument();
     expect(queryByText("0 updates available")).not.toBeInTheDocument();
+    // The headline switching to "nothing here" does not excuse dropping the
+    // number: two listed rows the user cannot act on should still be counted,
+    // or the page says a machine with two stuck packages looks like a machine
+    // with twenty.
+    expect(await findByText("2 more can't be updated here")).toBeInTheDocument();
   });
 
   it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {
