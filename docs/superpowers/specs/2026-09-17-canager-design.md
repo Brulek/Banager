@@ -113,7 +113,7 @@ trait Adapter {
 **Homebrew**（`brew.rs`）
 - 实例：`/opt/homebrew/bin/brew`、`/usr/local/bin/brew` 各为一个实例（Intel 迁移用户可能两者并存）。拒绝以 root 运行。
 - 环境：`HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1 NO_COLOR=1`。
-- 列出：`brew info --installed --json=v2`。formulae：`name`、版本取 `installed` 数组中 `linked_keg` 对应项（数组按时间升序，`[0]` 是最老版本）、`installed_on_request` / `installed_as_dependency` → 安装原因、`desc`、`homepage`。casks：`token`、`installed`（字符串）、`auto_updates`、`desc`、`name[0]`；cask 无安装原因字段，一律视为用户安装。
+- 列出：`brew info --installed --json=v2`。formulae：`name`、版本取 `installed` 数组中 `linked_keg` 对应项（数组按时间升序，`[0]` 是最老版本）、`installed_on_request` → 安装原因、`desc`、`homepage`。**订正（2026-09-22）**：早前本条误写为 `installed_on_request` / `installed_as_dependency` 两个字段共同决定安装原因；实测 brew 的 `installed` 数组每项只有 `installed_on_request` 一个布尔字段，没有单独的 `installed_as_dependency` 字段，`true` → 用户主动安装、`false` → 被依赖带入、字段缺失 → 未知来源，解析器（`crates/canager-core/src/adapters/brew/parse.rs`）也只读这一个字段，此处以代码为准。casks：`token`、`installed`（字符串）、`auto_updates`、`desc`、`name[0]`；cask 无安装原因字段，一律视为用户安装。
 - 查更新：先按 TTL（6 小时）`brew update`，再 `brew outdated --json=v2`（顶层 `formulae` / `casks`）。设置项"包含自更新的应用"对应 `--greedy`，默认关，界面解释"Chrome 这类应用自己更新，勾选后也会列出"。
 - 安装：`brew install --formula {id}` / `brew install --cask {token}`。卸载：`brew uninstall --formula|--cask {id}`，**永不**加 `--ignore-dependencies`；卸载前用 `brew uses --installed {id}` 列出会受影响的包，有则默认阻止。升级：`brew upgrade --formula|--cask {id}`；"全部更新"= 对界面上勾选的每一项分别执行，不跑裸 `brew upgrade`。
 - 搜索：`brew search {query}` + `brew search --desc {query}` 两次；按 `==> Formulae` / `==> Casks` 分节解析，条目格式 `name: desc`。
