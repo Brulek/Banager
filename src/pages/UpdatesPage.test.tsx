@@ -1192,4 +1192,48 @@ describe("UpdatesPage", () => {
     // every row is reachable.
     expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
   });
+  it("says which version you are moving to, with technical details off", async () => {
+    // Spec §6: the one screen whose job is "look before you act". It named
+    // the package, the command and the warnings, and never the version --
+    // unless the technical-details switch happened to be on, which for this
+    // audience it is not. A confirmation that hides what changes is not a
+    // confirmation.
+    expect(settings.show_technical_details).toBe(false);
+
+    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+
+    expect(await within(dialog).findByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+  });
+
+  it("never shows an Ollama model's two digests as a version jump in the confirmation", async () => {
+    // `current` is the local manifest digest and `target` is the registry
+    // manifest's config digest: different hash spaces, unequal even after a
+    // successful pull, and not something to put in front of this audience
+    // either way. The row already knows this; the dialog has to as well.
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+      },
+    ];
+
+    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+
+    expect(
+      await within(dialog).findByText("A newer build of this model is available"),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/sha256:/)).toBeNull();
+    expect(within(dialog).queryByText(/→/)).toBeNull();
+  });
 });

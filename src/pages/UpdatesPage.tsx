@@ -50,7 +50,12 @@ function errorMessage(e: unknown): string {
  * in the dialog with its reason and is never submitted.
  */
 interface BatchItem {
-  key: ArtifactKey;
+  // The whole candidate, not just its key: the confirmation has to say
+  // what version you are moving to, and `current`/`target`/`channel` live
+  // here and nowhere else once the dialog is open. Captured when the batch
+  // is built, so a refresh landing behind the dialog cannot change the
+  // numbers under the command the user is reading.
+  candidate: UpdateCandidate;
   issued: IssuedPlan | null;
   planError: string | null;
   submittedOpId: number | null;
@@ -293,6 +298,24 @@ export function UpdatesPage() {
   };
 
   /**
+   * The version jump for the confirmation dialog, or null when there is no
+   * honest one to show.
+   *
+   * A `Digest` candidate is Ollama: `current` is the local manifest digest
+   * and `target` the registry manifest's config digest -- different hash
+   * spaces, unequal even after a successful pull, and two 64-hex strings
+   * are not something to put in front of this audience. It says "there is
+   * a newer build" instead, exactly as the row does. An empty `current` or
+   * `target` (a source that could name only one side) yields null rather
+   * than a dangling arrow.
+   */
+  const versionJump = (candidate: UpdateCandidate): string | null => {
+    if (candidate.channel === "Digest") return t("updates.newBuild");
+    if (candidate.current === "" || candidate.target === "") return null;
+    return t("updates.versionChange", { current: candidate.current, target: candidate.target });
+  };
+
+  /**
    * What an uncheckable row says about *why* it is uncheckable.
    *
    * Two kinds of text arrive in `warnings`. A warning with a key of its
@@ -378,7 +401,7 @@ export function UpdatesPage() {
     const id = batchIdRef.current + 1;
     batchIdRef.current = id;
     const blank = (c: UpdateCandidate): BatchItem => ({
-      key: c.key,
+      candidate: c,
       issued: null,
       planError: null,
       submittedOpId: null,
@@ -429,7 +452,7 @@ export function UpdatesPage() {
         items[i] = { ...item, submittedOpId: opId };
         // Guarded like every other post-await write: `deselect` mutates the
         // shared selection store, so a superseded batch must not reach it.
-        if (isCurrent(id)) deselect(item.key);
+        if (isCurrent(id)) deselect(item.candidate.key);
       } catch (e) {
         // A PlanId is single-use and expires after 10 minutes. Whatever the
         // backend said (`Expired`, `Unknown`, anything else), this id is
@@ -523,7 +546,7 @@ export function UpdatesPage() {
       ) : null}
       {pageErrors.map((item) => (
         <p
-          key={artifactKeyId(item.key)}
+          key={artifactKeyId(item.candidate.key)}
           role="alert"
           className="px-4 pt-4 text-sm text-[var(--color-danger)]"
         >
@@ -714,10 +737,23 @@ export function UpdatesPage() {
           {(batch?.items ?? []).map((item) => {
             const itemWarnings = item.issued ? warningTexts(t, item.issued.plan.warnings) : [];
             return (
-              <div key={artifactKeyId(item.key)} className="flex flex-col gap-1">
+              <div
+                key={artifactKeyId(item.candidate.key)}
+                className="flex flex-col gap-1"
+              >
                 <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {item.key.name}
+                  {item.candidate.key.name}
                 </p>
+                {/* What you are moving to, spelled out. Spec §6 asks this
+                    screen to show the version jump, and unlike the row's
+                    own description it is *not* behind
+                    `show_technical_details`: a confirmation that names the
+                    command but not the change is not a confirmation. */}
+                {versionJump(item.candidate) !== null ? (
+                  <p className="text-sm text-[var(--color-muted)]">
+                    {versionJump(item.candidate)}
+                  </p>
+                ) : null}
                 {item.planError !== null ? (
                   <p role="alert" className="text-sm text-[var(--color-danger)]">
                     {t("updates.planFailed", { message: item.planError })}
