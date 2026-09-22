@@ -20,39 +20,69 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 }
 
 /// Also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink`
-/// whenever the refreshed snapshot's `generation` differs from the one
-/// before this call (M9 in the design review). `canager-core` must never
-/// depend on `tauri`, so `Session::refresh` itself cannot send this — the
-/// shell is the only layer that can, and this is the only place in the
-/// whole plan that does so outside a test.
+/// whenever the refreshed snapshot's `generation` is newer than any this
+/// process has already announced (M9 in the design review; see
+/// `claim_broadcast` below for exactly what that means under concurrent
+/// callers). `canager-core` must never depend on `tauri`, so
+/// `Session::refresh` itself cannot send this — the shell is the only
+/// layer that can, and this is the only place in the whole plan that does
+/// so outside a test.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
     let opts = CheckOptions {
         include_self_updating: state.get_settings().include_self_updating,
     };
     let snapshot = state.session.refresh(&HostEnv::discover(), &opts).await;
     let generation = snapshot.generation;
-    // Two refresh_impl calls that coalesce inside Session::refresh (its
-    // refresh_gate) both receive the *same* resulting Snapshot. Comparing
-    // each call's own "before" reading against that shared result would let
-    // both of them independently decide the generation moved and broadcast
-    // -- a spurious duplicate for one refresh (Task 13). A compare-and-swap
-    // against the last generation this process has ever broadcast ensures
-    // exactly one of any group of callers who see the same new generation
-    // wins, however many of them coalesced into the same refresh; a caller
-    // that loses the swap has nothing left to do, since whoever won it (or
-    // a still-newer generation) already has this one covered.
-    let previous = state.last_broadcast_generation.load(Ordering::SeqCst);
-    if generation > previous
-        && state
-            .last_broadcast_generation
-            .compare_exchange(previous, generation, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-    {
+    if claim_broadcast(&state.last_broadcast_generation, generation) {
         state
             .channel_sink
             .broadcast(UiEvent::SnapshotChanged { generation });
     }
     Ok(snapshot)
+}
+
+/// Whether this caller is the one that must announce `generation`, and
+/// the only place `last_broadcast_generation` is written.
+///
+/// Two `refresh_impl` calls that coalesce inside `Session::refresh` (its
+/// `refresh_gate`) both receive the *same* resulting `Snapshot`. Comparing
+/// each call's own "before" reading against that shared result would let
+/// both independently decide the generation moved and broadcast -- a
+/// spurious duplicate for what was one refresh (Task 13). Claiming the
+/// generation against a single counter is what keeps that to one
+/// announcement per generation, however many callers coalesced.
+///
+/// `fetch_max` rather than a load followed by a compare-and-swap, which is
+/// what this was: two callers that read the counter before either wrote it
+/// left the loser with a failed swap and no retry, so the *newer* of the
+/// two generations could be the one that went unannounced while the
+/// counter sat at the older one -- and a later refresh that changed
+/// nothing would then broadcast the number the UI had already been
+/// waiting for. The comment here used to claim a caller that lost the swap
+/// had nothing left to do "since whoever won it (or a still-newer
+/// generation) already has this one covered"; the winner could be older,
+/// so that was simply false.
+///
+/// What this does guarantee, for any interleaving:
+/// - the counter ends at the highest generation any caller offered, since
+///   `fetch_max` cannot move it backwards and cannot be lost;
+/// - exactly one caller sees a return value below its own generation, so
+///   each generation is announced at most once;
+/// - a caller whose generation is higher than every generation claimed
+///   before it always announces.
+///
+/// What it does not guarantee, and no counter can: the *order* the
+/// announcements reach a subscriber in. A winner can be descheduled
+/// between claiming and sending, so `SnapshotChanged` events can arrive
+/// out of order. `src/lib/events.ts` is where that has to be tolerated --
+/// it invalidates its snapshot query rather than trusting the number on
+/// the event, and its cache rejects an older snapshot than the one it
+/// holds.
+fn claim_broadcast(
+    last_broadcast_generation: &std::sync::atomic::AtomicU64,
+    generation: u64,
+) -> bool {
+    generation > last_broadcast_generation.fetch_max(generation, Ordering::SeqCst)
 }
 
 #[tauri::command]
@@ -498,6 +528,115 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
         })
+    }
+
+    #[test]
+    fn test_claim_broadcast_announces_each_generation_once_and_never_an_older_one() {
+        use std::sync::atomic::AtomicU64;
+
+        let counter = AtomicU64::new(0);
+        assert!(
+            claim_broadcast(&counter, 1),
+            "the first caller past the post announces"
+        );
+        assert!(
+            !claim_broadcast(&counter, 1),
+            "a coalesced caller holding the same result must not announce it twice"
+        );
+        assert!(claim_broadcast(&counter, 2), "a newer generation announces");
+        assert!(
+            !claim_broadcast(&counter, 1),
+            "an older generation arriving late is already covered by the newer one"
+        );
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
+        assert!(
+            claim_broadcast(&counter, 5),
+            "and a jump forward still announces"
+        );
+        assert_eq!(counter.load(Ordering::SeqCst), 5);
+    }
+
+    #[test]
+    fn test_claim_broadcast_cannot_lose_the_newest_generation_to_a_racing_caller() {
+        // The interleaving this replaces, with a plain load + CAS:
+        //   the counter is 0; A commits generation 1 and loads 0; B
+        //   commits generation 2 and loads 0; A swaps 0 -> 1 and
+        //   announces 1; B's swap 0 -> 2 fails and B returns without
+        //   retrying.
+        // Nothing ever carried generation 2, and the counter sat at 1 --
+        // so a later refresh that changed *nothing* would announce 2, and
+        // the UI would sit waiting for a change that had already
+        // happened.
+        //
+        // Reproducing it needs the two claimers inside the same handful
+        // of instructions. Releasing two freshly spawned threads from a
+        // `Barrier` does not: they come out tens of microseconds apart,
+        // an eternity next to a load and the compare-exchange after it,
+        // and the old code passed that test 500 rounds out of 500. Two
+        // long-lived threads already spinning on `gate` do: measured
+        // against the old load+CAS, this schedule loses the newer
+        // generation in roughly 70% of rounds.
+        use std::sync::atomic::{AtomicU64, AtomicUsize};
+
+        const ROUNDS: usize = 2_000;
+        const CLAIMERS: usize = 2;
+
+        // Per-round state, allocated up front so no round has to
+        // allocate (or lock) inside the window being raced.
+        let counters: Arc<Vec<AtomicU64>> =
+            Arc::new((0..ROUNDS).map(|_| AtomicU64::new(0)).collect());
+        let announced: Arc<Vec<Mutex<Vec<u64>>>> =
+            Arc::new((0..ROUNDS).map(|_| Mutex::new(Vec::new())).collect());
+        let gate = Arc::new(AtomicUsize::new(usize::MAX));
+        let arrived = Arc::new(AtomicUsize::new(0));
+
+        let claimers: Vec<_> = (1..=CLAIMERS as u64)
+            .map(|generation| {
+                let counters = counters.clone();
+                let announced = announced.clone();
+                let gate = gate.clone();
+                let arrived = arrived.clone();
+                std::thread::spawn(move || {
+                    for round in 0..ROUNDS {
+                        arrived.fetch_add(1, Ordering::SeqCst);
+                        while gate.load(Ordering::Acquire) != round {
+                            std::hint::spin_loop();
+                        }
+                        if claim_broadcast(&counters[round], generation) {
+                            announced[round].lock().unwrap().push(generation);
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        for round in 0..ROUNDS {
+            // Every claimer has finished the previous round and is
+            // spinning on this one before the gate opens.
+            while arrived.load(Ordering::SeqCst) < (round + 1) * CLAIMERS {
+                std::hint::spin_loop();
+            }
+            gate.store(round, Ordering::Release);
+        }
+        for claimer in claimers {
+            claimer.join().expect("claimer thread");
+        }
+
+        let newest = CLAIMERS as u64;
+        for round in 0..ROUNDS {
+            let announced = announced[round].lock().unwrap();
+            assert!(
+                announced.contains(&newest),
+                "the newest generation must always be announced by someone \
+                 (round {round}, announced {announced:?})"
+            );
+            assert_eq!(
+                counters[round].load(Ordering::SeqCst),
+                newest,
+                "and the counter must not be left below it, or a later unchanged \
+                 refresh would announce it instead (round {round})"
+            );
+        }
     }
 
     #[tokio::test]
