@@ -1,4 +1,6 @@
-use crate::adapters::{second_token, Adapter, AdapterError, AdapterMeta, CheckOptions};
+use crate::adapters::{
+    second_token, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceStatus, ManagerInstance,
@@ -228,7 +230,7 @@ impl PipAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let args = vec![
             "-m".to_string(),
             "pip".to_string(),
@@ -256,7 +258,7 @@ impl PipAdapter {
                 stderr: output.stderr,
             });
         }
-        parse_pip_outdated(&output.stdout, &inst.id)
+        Ok(parse_pip_outdated(&output.stdout, &inst.id)?.into())
     }
 
     pub async fn search(
@@ -347,7 +349,7 @@ impl Adapter for PipAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         PipAdapter::check_updates(self, inst, opts).await
     }
 
@@ -601,7 +603,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 3);
     }
 

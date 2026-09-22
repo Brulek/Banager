@@ -1,6 +1,6 @@
 use crate::adapters::{
     run_plan, second_token, url_path_segment, validate_package_name, Adapter, AdapterError,
-    AdapterMeta, CheckOptions,
+    AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -246,7 +246,7 @@ impl CargoAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let json = self.read_crates2(inst)?;
         let entries = parse_crates2_entries(&json)?;
         let mut out = Vec::new();
@@ -289,7 +289,7 @@ impl CargoAdapter {
                 }),
             }
         }
-        Ok(out)
+        Ok(out.into())
     }
 
     pub async fn search(
@@ -413,7 +413,7 @@ impl Adapter for CargoAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         CargoAdapter::check_updates(self, inst, opts).await
     }
 
@@ -591,7 +591,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "hexyl");
         assert!(candidates[0].checkable);
@@ -620,7 +621,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert!(candidates.is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -640,7 +642,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
         assert!(candidates[0].warnings[0].contains("git"));
@@ -667,7 +670,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert!(candidates.is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }

@@ -1,6 +1,6 @@
 use crate::adapters::{
     run_plan, url_path_segment, validate_package_name, Adapter, AdapterError, AdapterMeta,
-    CheckOptions,
+    CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -304,7 +304,7 @@ impl PipxAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let native = inst
             .version
             .as_deref()
@@ -324,10 +324,10 @@ impl PipxAdapter {
                     stderr: output.stderr,
                 });
             }
-            Ok(parse_outdated(&output.stdout, &inst.id))
+            Ok(parse_outdated(&output.stdout, &inst.id).into())
         } else {
             let installed = self.inventory(inst).await?;
-            Ok(self.check_outdated_via_pypi(&installed).await)
+            Ok(self.check_outdated_via_pypi(&installed).await.into())
         }
     }
 
@@ -426,7 +426,7 @@ impl Adapter for PipxAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         PipxAdapter::check_updates(self, inst, opts).await
     }
 
@@ -622,7 +622,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "cowsay");
         assert_eq!(candidates[0].channel, UpdateChannel::Native);
@@ -655,7 +656,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "cowsay");
         assert_eq!(candidates[0].target, "6.1");
@@ -687,7 +689,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates should not fail outright on one bad lookup");
+            .expect("check_updates should not fail outright on one bad lookup")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
         assert_eq!(candidates[0].current, "5.0");

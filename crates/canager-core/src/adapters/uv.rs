@@ -1,5 +1,6 @@
 use crate::adapters::{
-    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    run_plan, second_token, validate_package_name, Adapter, AdapterError, AdapterMeta,
+    CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -202,7 +203,7 @@ impl UvAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let output = self
             .run_uv(
                 inst,
@@ -220,7 +221,7 @@ impl UvAdapter {
                 stderr: output.stderr,
             });
         }
-        Ok(parse_tool_list_outdated(&output.stdout, &inst.id))
+        Ok(parse_tool_list_outdated(&output.stdout, &inst.id).into())
     }
 
     pub async fn search(
@@ -322,7 +323,7 @@ impl Adapter for UvAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         UvAdapter::check_updates(self, inst, opts).await
     }
 
@@ -449,7 +450,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].key.name, "ruff");
     }

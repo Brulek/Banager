@@ -1,7 +1,7 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, InstalledArtifact, ManagerInstance, OpRequest, Outcome, Plan, Reconciled,
-    SearchHit, UpdateCandidate,
+    ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
+    Reconciled, SearchHit, UpdateCandidate,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -26,6 +26,45 @@ pub mod uv;
 pub struct CheckOptions {
     /// Homebrew only: include casks that update themselves (`brew outdated --greedy`).
     pub include_self_updating: bool,
+}
+
+/// Everything one `check_updates` call learned: the per-package
+/// candidates, and anything it found out *about the source itself* while
+/// looking.
+///
+/// A struct rather than a tuple because the second element needs a name
+/// that says what it is, and because a third thing to report later must
+/// not mean editing seven adapters' signatures again -- this is the
+/// second time this phase has touched this one (`CheckOptions` was the
+/// first).
+///
+/// Core-internal on purpose: `check_updates` has exactly one production
+/// caller (`Session::refresh`) and never crosses IPC, so this type needs
+/// **no TypeScript mirror**. That is what makes it cheaper than the
+/// alternatives -- `src/lib/types.ts` is hand-written, and a mismatch
+/// there is silent at compile time and wrong at runtime. What does reach
+/// the front end is `InstanceNote`, which already had to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CheckOutcome {
+    pub candidates: Vec<UpdateCandidate>,
+    /// What the source said about itself. Empty for every adapter but
+    /// brew, which reports `IndexMayBeStale` when `brew update` failed.
+    pub notes: Vec<InstanceNote>,
+}
+
+/// Lets the six adapters with nothing to report about themselves write
+/// `Ok(out.into())` instead of naming a struct they never fill.
+///
+/// This conversion is the reason `CheckOutcome` is not a third block of
+/// verbatim seven-adapter duplication: what repeats is one call, not a
+/// literal with a `notes: Vec::new()` in it.
+impl From<Vec<UpdateCandidate>> for CheckOutcome {
+    fn from(candidates: Vec<UpdateCandidate>) -> CheckOutcome {
+        CheckOutcome {
+            candidates,
+            notes: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -165,7 +204,7 @@ pub trait Adapter: Send + Sync {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError>;
+    ) -> Result<CheckOutcome, AdapterError>;
     async fn search(
         &self,
         inst: &ManagerInstance,

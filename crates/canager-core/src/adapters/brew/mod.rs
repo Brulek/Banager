@@ -1,11 +1,13 @@
 pub mod parse;
 
-use crate::adapters::{validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions};
+use crate::adapters::{
+    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+};
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate,
+    Unavailable,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback};
 use async_trait::async_trait;
@@ -261,7 +263,7 @@ impl BrewAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let update_warning = match self.maybe_update(inst).await {
             Ok(()) => None,
             Err(e) => Some(format!(
@@ -285,7 +287,7 @@ impl BrewAdapter {
                 candidate.warnings.push(warning.clone());
             }
         }
-        Ok(candidates)
+        Ok(candidates.into())
     }
 
     pub async fn search(
@@ -543,7 +545,7 @@ impl Adapter for BrewAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         BrewAdapter::check_updates(self, inst, opts).await
     }
 
@@ -805,12 +807,14 @@ mod tests {
         let first = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("first check_updates");
+            .expect("first check_updates")
+            .candidates;
         assert_eq!(first.len(), 1);
         let second = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("second check_updates");
+            .expect("second check_updates")
+            .candidates;
         assert_eq!(second.len(), 1);
 
         let calls = mock_ref.calls();
@@ -946,7 +950,8 @@ mod tests {
         let result = adapter
             .check_updates(&test_instance(), &opts)
             .await
-            .expect("check_updates with --greedy");
+            .expect("check_updates with --greedy")
+            .candidates;
         assert!(result.is_empty());
     }
 
@@ -978,7 +983,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
-            .expect("a failed `brew update` must not fail check_updates");
+            .expect("a failed `brew update` must not fail check_updates")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(
             candidates[0]

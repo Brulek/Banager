@@ -1,7 +1,7 @@
 pub mod parse;
 
 use crate::adapters::{
-    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    run_plan, url_path_segment, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -373,7 +373,7 @@ impl OllamaAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let installed = self.inventory(inst).await?;
         let manifests_root = inst.prefix.join("models/manifests/registry.ollama.ai");
         let mut out = Vec::new();
@@ -382,7 +382,7 @@ impl OllamaAdapter {
                 out.push(candidate);
             }
         }
-        Ok(out)
+        Ok(out.into())
     }
 
     pub async fn search(
@@ -493,7 +493,7 @@ impl Adapter for OllamaAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         OllamaAdapter::check_updates(self, inst, opts).await
     }
 
@@ -702,7 +702,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
         assert!(candidates.is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -774,7 +775,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates");
+            .expect("check_updates")
+            .candidates;
 
         assert_eq!(candidates.len(), 1, "one installed model, one candidate");
         let candidate = &candidates[0];
@@ -828,7 +830,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("check_updates should not fail outright when one model's manifest is missing");
+            .expect("check_updates should not fail outright when one model's manifest is missing")
+            .candidates;
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);
     }
@@ -1255,7 +1258,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("one hostile name must not fail the whole check");
+            .expect("one hostile name must not fail the whole check")
+            .candidates;
 
         assert_eq!(candidates.len(), 1);
         assert!(
@@ -1313,7 +1317,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .expect("one hostile name must not fail the whole check");
+            .expect("one hostile name must not fail the whole check")
+            .candidates;
 
         assert_eq!(candidates.len(), 1);
         assert!(!candidates[0].checkable);

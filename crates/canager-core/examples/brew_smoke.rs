@@ -33,7 +33,8 @@ async fn main() {
         let outdated = adapter
             .check_updates(inst, &CheckOptions::default())
             .await
-            .expect("check_updates failed");
+            .expect("check_updates failed")
+            .candidates;
         println!("  {} outdated artifacts", outdated.len());
         for candidate in outdated.iter().take(10) {
             println!(

@@ -201,11 +201,11 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use async_trait::async_trait;
-    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
+    use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        Outcome, Plan, Reconciled, ResourceLock, SearchHit, UpdateCandidate,
+        Outcome, Plan, Reconciled, ResourceLock, SearchHit,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
@@ -252,9 +252,9 @@ mod tests {
             &self,
             _inst: &ManagerInstance,
             opts: &CheckOptions,
-        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        ) -> Result<CheckOutcome, AdapterError> {
             self.check_options_calls.lock().unwrap().push(*opts);
-            Ok(Vec::new())
+            Ok(CheckOutcome::default())
         }
 
         async fn search(

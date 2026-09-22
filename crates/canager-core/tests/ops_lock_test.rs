@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
+use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    Outcome, Plan, Reconciled, ResourceLock, SearchHit, UpdateCandidate,
+    Outcome, Plan, Reconciled, ResourceLock, SearchHit,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
@@ -58,8 +58,8 @@ impl Adapter for FakeAdapter {
         &self,
         _inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-        Ok(Vec::new())
+    ) -> Result<CheckOutcome, AdapterError> {
+        Ok(CheckOutcome::default())
     }
 
     async fn search(

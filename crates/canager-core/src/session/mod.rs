@@ -224,11 +224,11 @@ impl Session {
 mod tests {
     use super::test_support;
     use super::*;
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, OpKind, OpRequest, OpStatus, Outcome,
-        Reconciled, SearchHit, UpdateCandidate,
+        Reconciled, SearchHit,
     };
     use crate::runner::HostEnv;
     use async_trait::async_trait;
@@ -281,8 +281,8 @@ mod tests {
             &self,
             _inst: &ManagerInstance,
             _opts: &CheckOptions,
-        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-            Ok(Vec::new())
+        ) -> Result<CheckOutcome, AdapterError> {
+            Ok(CheckOutcome::default())
         }
 
         async fn search(

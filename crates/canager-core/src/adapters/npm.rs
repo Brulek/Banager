@@ -1,5 +1,5 @@
 use crate::adapters::{
-    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions,
+    run_plan, validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
@@ -232,7 +232,7 @@ impl NpmAdapter {
         &self,
         inst: &ManagerInstance,
         _opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         let output = self
             .run_npm(
                 inst,
@@ -252,7 +252,7 @@ impl NpmAdapter {
                 stderr: output.stderr,
             });
         }
-        parse_outdated_global(&output.stdout, &inst.id)
+        Ok(parse_outdated_global(&output.stdout, &inst.id)?.into())
     }
 
     pub async fn search(
@@ -375,7 +375,7 @@ impl Adapter for NpmAdapter {
         &self,
         inst: &ManagerInstance,
         opts: &CheckOptions,
-    ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+    ) -> Result<CheckOutcome, AdapterError> {
         NpmAdapter::check_updates(self, inst, opts).await
     }
 
@@ -893,7 +893,8 @@ mod tests {
         let candidates = adapter
             .check_updates(&test_instance(), &CheckOptions::default())
             .await
-            .expect("exit 1 means updates were found, not a failure");
+            .expect("exit 1 means updates were found, not a failure")
+            .candidates;
         assert_eq!(candidates.len(), 1);
     }
 

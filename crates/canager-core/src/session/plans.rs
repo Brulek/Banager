@@ -93,11 +93,11 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
-        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate,
+        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable,
     };
     use crate::runner::HostEnv;
     use crate::session::test_support;
@@ -142,8 +142,8 @@ mod tests {
             &self,
             _inst: &ManagerInstance,
             _opts: &CheckOptions,
-        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
-            Ok(Vec::new())
+        ) -> Result<CheckOutcome, AdapterError> {
+            Ok(CheckOutcome::default())
         }
 
         async fn search(

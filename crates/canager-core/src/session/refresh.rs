@@ -165,8 +165,21 @@ impl Session {
                             );
                         }
                     }
+                    // What this source said about *itself* while checking,
+                    // as opposed to about any one package: `brew update`
+                    // failing means "no updates" may simply be wrong, and
+                    // no package row can carry that. The join below merges
+                    // these back into `instances` by id, because
+                    // `instances` was cloned *before* this fan-out --
+                    // writing a note onto `inst` here would write it onto
+                    // the clone and lose it, the same trap `SourceError`'s
+                    // `instance_id` already fell into once.
+                    let mut notes: Vec<InstanceNote> = Vec::new();
                     match adapter.check_updates(&inst, &opts).await {
-                        Ok(items) => updates.extend(items),
+                        Ok(outcome) => {
+                            updates.extend(outcome.candidates);
+                            notes.extend(outcome.notes);
+                        }
                         Err(e) => {
                             errors.push(SourceError {
                                 instance_id: inst.id.clone(),
@@ -182,16 +195,6 @@ impl Session {
                             );
                         }
                     }
-                    // The notes channel. Nothing fills it yet: the only
-                    // producer is `brew update` failing, which arrives with
-                    // `CheckOutcome` in step 4 of the instance-level
-                    // channel design. The join below merges whatever comes
-                    // back into `instances`, because `instances` was cloned
-                    // *before* this fan-out -- writing a note onto `inst`
-                    // here would write it onto the clone and lose it, the
-                    // same trap `SourceError`'s `instance_id` already fell
-                    // into once.
-                    let notes: Vec<InstanceNote> = Vec::new();
                     (artifacts, updates, errors, stale, notes)
                 }),
             ));
@@ -290,7 +293,7 @@ fn merge_instance_notes(
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions};
+    use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceId, InstanceNote,
@@ -311,6 +314,10 @@ mod tests {
         instances: Vec<ManagerInstance>,
         artifacts: HashMap<InstanceId, Vec<InstalledArtifact>>,
         updates: HashMap<InstanceId, Vec<UpdateCandidate>>,
+        /// What `check_updates` reports *about the source itself*, as
+        /// opposed to about a package -- the `CheckOutcome.notes` channel
+        /// brew fills when `brew update` failed.
+        notes: HashMap<InstanceId, Vec<InstanceNote>>,
         failing: Vec<InstanceId>,
         detect_delay: Duration,
         detect_calls: usize,
@@ -329,6 +336,7 @@ mod tests {
                 instances: Vec::new(),
                 artifacts: HashMap::new(),
                 updates: HashMap::new(),
+                notes: HashMap::new(),
                 failing: Vec::new(),
                 detect_delay: Duration::from_millis(0),
                 detect_calls: 0,
@@ -381,9 +389,12 @@ mod tests {
             &self,
             inst: &ManagerInstance,
             _opts: &CheckOptions,
-        ) -> Result<Vec<UpdateCandidate>, AdapterError> {
+        ) -> Result<CheckOutcome, AdapterError> {
             let s = self.state.lock().unwrap();
-            Ok(s.updates.get(&inst.id).cloned().unwrap_or_default())
+            Ok(CheckOutcome {
+                candidates: s.updates.get(&inst.id).cloned().unwrap_or_default(),
+                notes: s.notes.get(&inst.id).cloned().unwrap_or_default(),
+            })
         }
 
         async fn search(
@@ -956,6 +967,60 @@ mod tests {
         // branch reads exactly this to tell "still loading" from "checked
         // and found nothing".
         assert_eq!(Snapshot::empty().refreshed_at, None);
+    }
+
+    #[tokio::test]
+    async fn test_a_note_a_source_reports_while_checking_reaches_the_snapshot() {
+        // The whole point of `CheckOutcome`: `brew update` failing is a
+        // fact about the *source*, not about any one package, and the only
+        // place the user can be told is the source's own notice. The
+        // instance the fan-out task holds is a clone (`refresh` clones
+        // `instances` before spawning), so a note that is not merged back
+        // by id is silently lost -- the snapshot the UI renders would carry
+        // an empty `notes` and the Updates page would go back to saying
+        // "Everything is up to date" over a catalogue it could not
+        // download.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
+            s.notes
+                .insert("fake:1".to_string(), vec![InstanceNote::IndexMayBeStale]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        let noted = snapshot
+            .instances
+            .iter()
+            .find(|i| i.id == "fake:1")
+            .expect("the instance that reported the note is still in the snapshot");
+        assert_eq!(
+            noted.status.notes,
+            vec![InstanceNote::IndexMayBeStale],
+            "a note from `check_updates` has to travel back to its instance by id"
+        );
+        let quiet = snapshot
+            .instances
+            .iter()
+            .find(|i| i.id == "fake:2")
+            .expect("the other instance is still there");
+        assert!(
+            quiet.status.notes.is_empty(),
+            "and only to that instance, got {:?}",
+            quiet.status.notes
+        );
+        assert!(
+            snapshot.errors.is_empty(),
+            "a note is not an error: the source answered, its answer just has a caveat"
+        );
     }
 
     #[test]
