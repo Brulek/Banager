@@ -5,7 +5,7 @@
 
 use super::{DetectOutcome, Session, Snapshot, SourceError};
 use crate::adapters::CheckOptions;
-use crate::model::{InstanceNote, ManagerInstance, ResourceLock};
+use crate::model::{InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable};
 use crate::runner::HostEnv;
 use std::sync::atomic::Ordering;
 
@@ -34,7 +34,10 @@ impl Session {
     /// a failed refresh (Task 11) -- but it keeps the previous round's
     /// artifacts and updates, so the "here is what Canager saw last time"
     /// copy its notice carries is true rather than a promise over an empty
-    /// group.
+    /// group. An adapter whose `detect()` itself panics or is cancelled is
+    /// the same story a level up: the instances it reported last time are
+    /// kept, marked unavailable, rather than being taken off the screen as
+    /// if the manager had been uninstalled.
     pub async fn refresh(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
@@ -85,6 +88,40 @@ impl Session {
             match handle.await {
                 Ok(found) => instances.extend(found),
                 Err(_join_err) => {
+                    // A detection that panicked (or was cancelled) said
+                    // nothing at all, which is not the same news as "this
+                    // source is not installed on this Mac". Dropping its
+                    // instances took every package the user has from that
+                    // manager off the screen -- the same vanishing act
+                    // the per-instance error paths below exist to
+                    // prevent, one level up.
+                    //
+                    // They come back marked unavailable, which is both
+                    // halves of the truth: the rows are last round's, and
+                    // nothing may be *offered* on a source whose presence
+                    // could not be confirmed (the gate in `issue_plan`,
+                    // spec §2.5, reads exactly this). Being unavailable
+                    // also routes them through the skip-and-carry branch
+                    // below, so this refresh never asks a source nothing
+                    // detected for an inventory. An instance that was
+                    // already unavailable for a more specific reason
+                    // keeps that reason.
+                    instances.extend(
+                        previous
+                            .instances
+                            .iter()
+                            .filter(|i| i.adapter_id == adapter_id)
+                            .map(|i| ManagerInstance {
+                                status: InstanceStatus {
+                                    unavailable: i
+                                        .status
+                                        .unavailable
+                                        .or(Some(Unavailable::NotResponding)),
+                                    notes: i.status.notes.clone(),
+                                },
+                                ..i.clone()
+                            }),
+                    );
                     detect_errors.push(SourceError {
                         instance_id: adapter_id,
                         message: "internal error detecting this source".to_string(),
@@ -257,6 +294,31 @@ impl Session {
                     merge_instance_notes(&mut instances, &instance_id, notes);
                 }
                 Err(_join_err) => {
+                    // The task panicked or was cancelled, so it returned
+                    // nothing -- including whatever it had already
+                    // fetched successfully before it died. Appending
+                    // nothing made every package from this source
+                    // disappear until some later refresh happened to
+                    // succeed, which is exactly what this function's
+                    // documented guarantee rules out. The previous rows
+                    // come forward here, once: this branch is mutually
+                    // exclusive with the `Ok` arm above, and an
+                    // unavailable instance never reaches the fan-out at
+                    // all, so nothing else has carried them already.
+                    artifacts.extend(
+                        previous
+                            .artifacts
+                            .iter()
+                            .filter(|a| a.key.instance_id == instance_id)
+                            .cloned(),
+                    );
+                    updates.extend(
+                        previous
+                            .updates
+                            .iter()
+                            .filter(|u| u.key.instance_id == instance_id)
+                            .cloned(),
+                    );
                     errors.push(SourceError {
                         instance_id,
                         message: "internal error refreshing this instance".to_string(),
@@ -370,6 +432,15 @@ mod tests {
         /// shape as `failing` -- the half of a per-instance fetch that can
         /// fail while `inventory` succeeds.
         failing_updates: Vec<InstanceId>,
+        /// Instances whose `inventory` / `check_updates` *panics* rather
+        /// than returning an error: the per-instance task then never
+        /// returns a value at all and `handle.await` yields a `JoinError`,
+        /// which is a different code path from any `Err` an adapter can
+        /// return. One-shot, like `failing`.
+        panicking_inventory: Vec<InstanceId>,
+        panicking_updates: Vec<InstanceId>,
+        /// Whether `detect` panics, losing the whole adapter's answer.
+        panicking_detect: bool,
         detect_delay: Duration,
         detect_calls: usize,
         block_execute: bool,
@@ -390,6 +461,9 @@ mod tests {
                 notes: HashMap::new(),
                 failing: Vec::new(),
                 failing_updates: Vec::new(),
+                panicking_inventory: Vec::new(),
+                panicking_updates: Vec::new(),
+                panicking_detect: false,
                 detect_delay: Duration::from_millis(0),
                 detect_calls: 0,
                 block_execute: false,
@@ -418,6 +492,12 @@ mod tests {
             if !delay.is_zero() {
                 tokio::time::sleep(delay).await;
             }
+            // Read out, then panic with the guard already dropped: a
+            // panic while holding `state` poisons it, and every *other*
+            // instance's task would then panic on `lock().unwrap()` too,
+            // turning one deliberate failure into an adapter-wide one.
+            let panicking = self.state.lock().unwrap().panicking_detect;
+            assert!(!panicking, "{} detect panicked on purpose", self.meta.id);
             self.state.lock().unwrap().instances.clone()
         }
 
@@ -425,8 +505,22 @@ mod tests {
             &self,
             inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            // Same reason as `detect` above: decide under the lock, panic
+            // after dropping it, so one instance's deliberate panic does
+            // not poison the fixture for every other instance.
+            let panicking = {
+                let mut s = self.state.lock().unwrap();
+                s.inventory_calls.push(inst.id.clone());
+                match s.panicking_inventory.iter().position(|id| id == &inst.id) {
+                    Some(pos) => {
+                        s.panicking_inventory.remove(pos);
+                        true
+                    }
+                    None => false,
+                }
+            };
+            assert!(!panicking, "{} inventory panicked on purpose", inst.id);
             let mut s = self.state.lock().unwrap();
-            s.inventory_calls.push(inst.id.clone());
             if let Some(pos) = s.failing.iter().position(|id| id == &inst.id) {
                 s.failing.remove(pos);
                 return Err(AdapterError::CommandFailed {
@@ -442,6 +536,17 @@ mod tests {
             inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
+            let panicking = {
+                let mut s = self.state.lock().unwrap();
+                match s.panicking_updates.iter().position(|id| id == &inst.id) {
+                    Some(pos) => {
+                        s.panicking_updates.remove(pos);
+                        true
+                    }
+                    None => false,
+                }
+            };
+            assert!(!panicking, "{} update check panicked on purpose", inst.id);
             let mut s = self.state.lock().unwrap();
             if let Some(pos) = s.failing_updates.iter().position(|id| id == &inst.id) {
                 s.failing_updates.remove(pos);
@@ -1124,6 +1229,156 @@ mod tests {
             vec!["jq"],
             "with no fresh inventory to contradict it, the candidate stays"
         );
+    }
+
+    #[tokio::test]
+    async fn test_a_panicking_per_instance_task_keeps_that_instances_previous_rows() {
+        // This module's own contract, at the top of the file: a failing
+        // instance keeps its previous rows so that a transient failure
+        // never makes something the user installed appear to vanish. A
+        // task that *panics* returns no value at all, so the join branch
+        // had nothing to append and appended nothing -- every package
+        // from that source disappeared from the UI until some later
+        // refresh happened to succeed, which is the one outcome the
+        // contract rules out. It is also the branch a cancelled task
+        // takes.
+        for panic_in_updates in [false, true] {
+            let (adapter, state) = FakeAdapter::new("fake");
+            {
+                let mut s = state.lock().unwrap();
+                s.instances = vec![
+                    make_instance("fake", "fake:1"),
+                    make_instance("fake", "fake:2"),
+                ];
+                s.artifacts
+                    .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+                s.artifacts
+                    .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
+                s.updates
+                    .insert("fake:1".to_string(), vec![make_update("fake:1", "jq")]);
+            }
+            let sink = Arc::new(VecSink::new());
+            let session = Session::with_adapters(sink, vec![adapter], None);
+            let first = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            assert_eq!(artifact_names(&first), vec!["jq", "wget"]);
+            assert_eq!(update_names(&first), vec!["jq"]);
+
+            {
+                let mut s = state.lock().unwrap();
+                if panic_in_updates {
+                    // The nastier half: the inventory succeeded inside
+                    // the task and its result is lost with the panic, so
+                    // the carry-forward is the only thing left.
+                    s.panicking_updates.push("fake:1".to_string());
+                } else {
+                    s.panicking_inventory.push("fake:1".to_string());
+                }
+            }
+            let second = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+
+            assert_eq!(second.errors.len(), 1, "the panic is reported as an error");
+            assert_eq!(second.errors[0].instance_id, "fake:1");
+            assert!(second.stale);
+            assert_eq!(
+                artifact_names(&second),
+                vec!["jq", "wget"],
+                "the panicking instance keeps its rows and the healthy one keeps its own \
+                 (panic_in_updates={panic_in_updates})"
+            );
+            assert_eq!(
+                update_names(&second),
+                vec!["jq"],
+                "carried forward exactly once -- not twice, and not zero times \
+                 (panic_in_updates={panic_in_updates})"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_panicking_detect_keeps_that_adapters_previous_instances_and_rows() {
+        // A detection that crashed said nothing -- which is not the same
+        // thing as saying "this source is not installed on this Mac". The
+        // join branch used to record an error and move on, so an adapter
+        // whose `detect` panicked took every instance it had ever
+        // reported, and every package under them, off the screen. They
+        // are kept, marked unavailable: Canager could not ask, so it may
+        // not claim the rows are current, and the actionability gate
+        // (spec §2.5) must not offer operations against them.
+        let (flaky, flaky_state) = FakeAdapter::new("flaky");
+        let (steady, steady_state) = FakeAdapter::new("steady");
+        {
+            let mut s = flaky_state.lock().unwrap();
+            s.instances = vec![make_instance("flaky", "flaky:1")];
+            s.artifacts
+                .insert("flaky:1".to_string(), vec![make_artifact("flaky:1", "jq")]);
+            s.updates
+                .insert("flaky:1".to_string(), vec![make_update("flaky:1", "jq")]);
+        }
+        {
+            let mut s = steady_state.lock().unwrap();
+            s.instances = vec![make_instance("steady", "steady:1")];
+            s.artifacts.insert(
+                "steady:1".to_string(),
+                vec![make_artifact("steady:1", "wget")],
+            );
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![flaky, steady], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(artifact_names(&first), vec!["jq", "wget"]);
+
+        {
+            let mut s = flaky_state.lock().unwrap();
+            s.panicking_detect = true;
+            s.inventory_calls.clear();
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(second.errors.len(), 1, "the panic is reported as an error");
+        assert_eq!(second.errors[0].instance_id, "flaky");
+        assert!(second.stale);
+        let kept = second
+            .instances
+            .iter()
+            .find(|i| i.id == "flaky:1")
+            .expect("an adapter whose detect crashed keeps the instances it reported before");
+        assert_eq!(
+            kept.status.unavailable,
+            Some(Unavailable::NotResponding),
+            "kept as history, not as a source Canager can act on"
+        );
+        assert_eq!(
+            artifact_names(&second),
+            vec!["jq", "wget"],
+            "its packages stay on screen, and the healthy adapter is untouched"
+        );
+        assert_eq!(update_names(&second), vec!["jq"]);
+        assert!(
+            flaky_state.lock().unwrap().inventory_calls.is_empty(),
+            "a carried-forward instance must not be inventoried on this round: \
+             nothing detected it, so there is nothing to ask"
+        );
+
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: "flaky:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        match session.issue_plan(&req).await {
+            Err(crate::adapters::AdapterError::NotActionable { unavailable, .. }) => {
+                assert_eq!(unavailable, Some(Unavailable::NotResponding));
+            }
+            other => panic!("a carried-forward row must offer no Uninstall, got {other:?}"),
+        }
     }
 
     #[tokio::test]
