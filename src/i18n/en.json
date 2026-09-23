@@ -124,7 +124,7 @@
     "programMissing": "Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
     "spawnFailed": "Canager couldn't start {{source}}, so nothing was changed. Your Mac gave this reason: {{detail}}",
     "outputTooLarge": "{{source}} replied with far more than Canager will read, so it stopped before changing anything.",
-    "indexUpdating": "Homebrew is still downloading its latest list of software, and until that finishes it could leave out something that depends on this. Nothing has been changed. Close this and try again in a minute or two.",
+    "indexUpdating": "Homebrew is busy right now, updating or downloading something, and until it finishes the list of what depends on this could be incomplete. Nothing has been changed. Close this and try again in a minute or two.",
     "refused": "Canager stopped before changing anything, because something on its side didn't add up. This is a problem in Canager, not on your Mac."
   },
   "operations": {

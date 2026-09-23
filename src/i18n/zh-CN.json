@@ -117,7 +117,7 @@
     "programMissing": "Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
     "spawnFailed": "Canager 没能启动 {{source}}，什么都没有改动。系统给出的原因是：{{detail}}",
     "outputTooLarge": "{{source}} 的回复太长，超出了 Canager 愿意读取的范围，所以它在改动任何东西之前停了下来。",
-    "indexUpdating": "Homebrew 还在下载最新的软件目录，下载完成之前，它列出的依赖可能不全。什么都没有改动。请关闭后过一两分钟再试。",
+    "indexUpdating": "Homebrew 正在忙着更新或下载东西，完成之前，它列出的依赖可能不全。什么都没有改动。请关闭后过一两分钟再试。",
     "refused": "Canager 发现自己这边有些地方对不上，所以在改动任何东西之前停了下来。这是 Canager 的问题，不是你的 Mac 的问题。"
   },
   "operations": {
