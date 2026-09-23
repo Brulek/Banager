@@ -87,20 +87,27 @@ CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
 
 ## Language
 
-English by default, with a full Simplified Chinese translation. Every string in the UI goes
-through i18n, and a test keeps the two locales in step — a string a Chinese user cannot read is
-treated as a bug. That now includes the actionability refusals Rust sends back: a plan built
-against a source that's read-only, unavailable or gone, or a preview that's expired or already
-been used, each arrives as a small `{"kind": ...}` payload the front end recognises and renders
-in the user's language, not the error's own English `Display`. What is *not* translated is the
-package manager's own output — every line `brew` or `npm` prints in the operation log, and the
-last lines of its stderr when an operation fails, are shown as-is, because there is no way to
-translate another program's text. Canager's own remarks in that log (waiting for Homebrew to
-finish updating, a stream it could no longer read) and its verdicts on the result (the command
-said it worked but the package isn't there) are translated like the rest of the UI. One gap is
-left: when an operation fails for a reason of Canager's own rather than the tool's — the program
-was removed between the check and the run, say — the failure line carries a short technical
-error in English.
+English by default, with a full Simplified Chinese translation. Every label, heading, button and
+message frame goes through i18n, and a test keeps the two locales in step — a sentence a Chinese
+user cannot read is treated as a bug.
+
+Rust's refusals are translated too, not just the frames around them. A plan built against a source
+that is read-only, unavailable or gone, a preview that has expired or already been used, Canager's
+own remarks in the operation log (waiting for Homebrew to finish updating, a stream it could no
+longer read) and its verdicts on a result (the command said it worked but the package isn't there)
+each arrive as a small structured payload the front end renders in the user's language.
+
+Two kinds of text are shown as-is:
+
+- **A package manager's own output.** Every line `brew` or `npm` prints in the operation log, and
+  the last lines of its stderr when an operation fails. That is another program's text, and there
+  is no way to translate it.
+- **Some technical errors that are still Canager's own**, which appear in English inside an
+  otherwise translated sentence. This is a known gap, not a design choice: an operation that fails
+  for a reason of Canager's rather than the tool's (the program was removed between the check and
+  the run, say); an operation Canager can't prepare for a reason other than the refusals above; and
+  a failure to save settings or to refresh. Each should become a structured payload like the
+  refusals, and until it does, the message a Chinese user sees in those cases is partly English.
 
 ## Design notes
 
@@ -129,11 +136,21 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 Homebrew 才跑，平时是跳过的）和 238 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
 不适合依赖它。
 
-界面默认英文，内置完整简体中文。界面里的文字都走 i18n，两种语言由测试保证同步——中文用户读不
-懂的句子算 bug。这现在也包括 Rust 侧返回的“操作不可执行”类结构化拒绝理由：无论是源不可写、连
-不上，还是预览已过期、已经用过，传到前端的都是一个前端认得的 `{"kind": ...}` 小结构，显示成中
-文，而不是那个错误自带的英文原文。真正没有被翻译的，是操作本身失败时套壳的包管理器自己打印的
-内容——brew、npm 自己吐出的报错文本会原样显示，因为那是另一个程序自己的文字，没法翻译。
+界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
+中文用户读不懂的句子算 bug。
+
+Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所针对的来源只读、连不上或已不存在，预览已过期
+或已用过，Canager 自己在操作日志里说的话（等待 Homebrew 更新完毕、某个输出流读不下去了），以及它对
+结果的判断（命令说成功了，但那个包并不在），都以一个结构化的小数据传到前端，用你选的语言显示。
+
+有两类文字会原样显示：
+
+- **包管理器自己的输出。** brew、npm 在操作日志里打印的每一行，以及操作失败时它 stderr 的最后几行。
+  那是另一个程序自己的文字，没法翻译。
+- **一些仍属于 Canager 自己的技术性错误**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
+  为之：操作因为 Canager 这边而不是工具那边的原因失败（比如程序在检查之后、运行之前被删掉了）；操作因
+  上述拒绝理由以外的原因无法准备；以及保存设置或刷新失败。这些都应该像上面的拒绝理由那样改成结构化数据，
+  在那之前，中文用户在这几种情况下看到的提示会夹带英文。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——只有刷新失败，或者
 Homebrew 的索引过期了，才会出现“重试”按钮，不是随时可按的独立刷新控件。
