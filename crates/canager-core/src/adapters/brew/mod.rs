@@ -863,9 +863,9 @@ impl Drop for UpdateFinish {
         if announced {
             // `notify_one` keeps the wake-up if nobody is waiting yet, so
             // it is not lost to a shell that is between two refreshes. One
-            // that lands *during* a refresh is not lost either, because the
-            // shell answers it with `Session::refresh_after_background_change`,
-            // which never merges into the refresh already running.
+            // that lands *during* a refresh is not lost either: the shell
+            // answers it with `Session::refresh`, which never answers a
+            // call with a round that started before the call arrived.
             self.background_change.notify_one();
         }
     }

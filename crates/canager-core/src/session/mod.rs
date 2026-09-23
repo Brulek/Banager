@@ -191,18 +191,25 @@ pub enum SubmitError {
 pub struct Session {
     adapters: HashMap<AdapterId, Arc<dyn Adapter>>,
     ops: Arc<OperationManager>,
-    /// Serialises `refresh()` (in `refresh.rs`): whichever caller acquires
-    /// this first does the real work; anyone already waiting when it
-    /// releases just re-reads `snapshot`. `refresh_after_background_change`
-    /// waits on it too but never re-reads: it always runs its own round
-    /// once it holds the gate (`refresh_round` takes the guard).
+    /// Serialises refresh rounds (in `refresh.rs`): `refresh_round` takes
+    /// the guard by value and holds it through its commit. A caller waiting
+    /// here either runs the next round or, once it holds the gate, re-reads
+    /// `snapshot` -- only when `last_committed_round` says a round that
+    /// started after it arrived has committed.
     refresh_gate: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
-    /// Bumped every time a refresh actually completes, regardless of
-    /// whether its content -- and therefore `generation` -- changed. See
-    /// `refresh.rs`'s doc comment for why a waiter needs this instead of
-    /// `generation` alone.
-    refresh_seq: AtomicU64,
+    /// How many refresh rounds have begun. Bumped by `refresh_round`, under
+    /// `refresh_gate`, before the round reads anything; `refresh` reads it
+    /// on arrival, so a round numbered above that reading began after the
+    /// caller arrived.
+    rounds_started: AtomicU64,
+    /// The number `rounds_started` gave the round whose snapshot is
+    /// `snapshot` now. Written only by `commit`, under `refresh_gate`, and
+    /// on every commit whether or not `generation` moved: a waiter compares
+    /// it with its arrival reading of `rounds_started`, and comparing
+    /// `generation` instead would miss a round that found nothing new (M5
+    /// in the design review) and make the waiter run a redundant one.
+    last_committed_round: AtomicU64,
     /// Plans handed out by `issue_plan` (in `plans.rs`) but not yet
     /// consumed by `submit`, keyed by `PlanId`. The stored value is
     /// `plans::StoredPlan`, not the `IssuedPlan` the caller previews: the
@@ -305,7 +312,8 @@ impl Session {
             ops: Arc::new(ops),
             refresh_gate: tokio::sync::Mutex::new(()),
             snapshot: Mutex::new(Snapshot::empty()),
-            refresh_seq: AtomicU64::new(0),
+            rounds_started: AtomicU64::new(0),
+            last_committed_round: AtomicU64::new(0),
             issued_plans: Mutex::new(HashMap::new()),
             now_fn,
             background_change,
@@ -325,11 +333,10 @@ impl Session {
     /// shows, and the window hears about it the way it hears about every
     /// other change. A wake-up that arrives while nobody is waiting is
     /// kept, one deep (`Notify::notify_one` stores a permit), so one that
-    /// lands mid-refresh is not lost. The refresh it sets off must be
-    /// `refresh_after_background_change`, not `refresh`: a wake-up that
-    /// lands while a refresh is in flight would otherwise be merged into
-    /// that refresh, which may be the very one reporting the update as
-    /// still running -- see that function's doc.
+    /// lands mid-refresh is not lost. The refresh it sets off is an
+    /// ordinary `refresh`, which never answers with a round that started
+    /// before the call arrived -- so not with the round in flight that may
+    /// be the very one reporting the update as still running.
     pub async fn background_change(&self) {
         self.background_change.notified().await
     }

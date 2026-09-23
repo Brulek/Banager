@@ -26,7 +26,8 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 /// callers). `canager-core` must never depend on `tauri`, so
 /// `Session::refresh` itself cannot send this — the shell is the only
 /// layer that can, and `announce` below is the only place that does so
-/// outside a test, for this and for `refresh_on_background_change`.
+/// outside a test (`refresh_on_background_change` refreshes through this
+/// function too).
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
     let snapshot = state
         .session
@@ -112,23 +113,17 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// "still downloading" notice goes and the fresh catalogue shows without
 /// the user pressing anything. Nothing new crosses to the front end.
 ///
-/// Not through `refresh_impl` itself, which calls `Session::refresh`: that
-/// merges a call into a refresh already in flight, and the one in flight
-/// can be the refresh that reported the update as running, still waiting
-/// on a slow source. Its snapshot still says "downloading", and this
-/// wake-up was the last one that update sends, so the notice stuck.
-/// `Session::refresh_after_background_change` always runs a round of its
-/// own that starts after the wake-up; its doc says why that cannot loop.
-/// A failed refresh is already on screen through the snapshot's own
-/// `errors`; there is no one here to hand an error to.
+/// Through `refresh_impl`, so `Session::refresh`, like any other refresh.
+/// The refresh in flight when this wakes can be the one that reported the
+/// update as running, still waiting on a slow source; `Session::refresh`
+/// never answers a call with a round that started before the call
+/// arrived, so this gets a round that starts after the wake-up, and so
+/// after the update ended. `refresh_impl` never returns `Err`; a failed
+/// refresh is on screen through the snapshot's own `errors`.
 pub(crate) async fn refresh_on_background_change(state: &AppState) {
     loop {
         state.session.background_change().await;
-        let snapshot = state
-            .session
-            .refresh_after_background_change(&HostEnv::discover(), &check_options(state))
-            .await;
-        announce(state, snapshot);
+        let _ = refresh_impl(state).await;
     }
 }
 
@@ -867,14 +862,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_refresh_on_background_change_runs_its_own_refresh_when_one_is_in_flight() {
-        // Rereview F1. The loop used to refresh through `refresh_impl`,
-        // i.e. `Session::refresh`, which merges a call that arrives while
-        // a refresh is running into that refresh. When the wake-up (a
-        // `brew update` ending) lands mid-refresh, the refresh in flight
-        // is the one that saw the update running, so the loop got its
-        // stale snapshot back and never read the source again. Here a
-        // refresh is in flight (detection takes 600 ms) when the loop is
-        // woken; the loop must still run a round of its own afterwards.
+        // Rereview F1. `Session::refresh` used to merge a call that
+        // arrives while a refresh is running into that refresh. When the
+        // wake-up (a `brew update` ending) lands mid-refresh, the refresh
+        // in flight is the one that saw the update running, so the loop
+        // got its stale snapshot back and never read the source again.
+        // Here a refresh is in flight (detection takes 600 ms) when the
+        // loop is woken; the loop must still get a round that starts after
+        // the wake-up.
         let background_change = Arc::new(tokio::sync::Notify::new());
         let (state, check_options_calls) = state_with_fake_adapter_and_background_change(
             background_change.clone(),
@@ -1046,16 +1041,27 @@ mod tests {
         });
         subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
 
+        // Two calls coalesce when both arrive while an older round is in
+        // flight: `Session::refresh` answers neither with that round (it
+        // started before they arrived), and the first of them to take the
+        // gate runs the round both then share.
+        let state_leader = state.clone();
+        let leader = tokio::spawn(async move { refresh_impl(&state_leader).await });
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         let state_a = state.clone();
         let state_b = state.clone();
         let (a, b) = tokio::join!(
             tokio::spawn(async move { refresh_impl(&state_a).await }),
             tokio::spawn(async move { refresh_impl(&state_b).await }),
         );
+        leader
+            .await
+            .expect("leader task")
+            .expect("refresh_impl leader");
         let snap_a = a.expect("task a").expect("refresh_impl a");
         let snap_b = b.expect("task b").expect("refresh_impl b");
         assert_eq!(
-            snap_a.generation, snap_b.generation,
+            snap_a, snap_b,
             "precondition: both calls must see the same coalesced result"
         );
 

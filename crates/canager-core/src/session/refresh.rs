@@ -28,12 +28,24 @@ impl Session {
     /// be wrong, and it is dropped; see the `check_updates` error branch
     /// below. A mere disagreement over which version is installed is not
     /// disproof and never drops a row.
-    /// Concurrent calls are serialised: a call that starts while another is
-    /// already running waits for it, then returns the snapshot that other
-    /// call produced instead of running a second, redundant refresh -- see
-    /// `refresh_seq` on `Session` for why that check cannot use
-    /// `generation`. (`refresh_after_background_change` below is the one
-    /// caller that must not be merged, and says why.) An instance whose `status.unavailable` is set is
+    /// Concurrent calls are serialised, and a call is only ever answered
+    /// with a round that *started after the call arrived*: the snapshot it
+    /// gets back never predates its own request. A call that arrives while
+    /// an older round is running waits for that round to finish. Then, if a
+    /// round that started after it arrived has committed since -- another
+    /// caller waiting behind the same round ran it -- it returns that
+    /// round's snapshot; otherwise it runs the next round itself. So every
+    /// caller that arrives during one round shares a single follow-up round
+    /// (the `last_committed_round` check in the body). See
+    /// `rounds_started` / `last_committed_round` on `Session` for the two
+    /// counters, and why neither can be `generation`.
+    ///
+    /// Merging into the round in flight regardless of when it started,
+    /// which this used to do, handed a caller a snapshot read before
+    /// whatever made it call: the refresh after an uninstall got a round
+    /// whose brew worker had already listed the package, and the refresh
+    /// after a background `brew update` ended got the round that reported
+    /// it still running. An instance whose `status.unavailable` is set is
     /// skipped by the per-instance fetch -- that is a *reported state*, not
     /// a failed refresh (Task 11) -- but it keeps the previous round's
     /// artifacts and updates, so the "here is what Canager saw last time"
@@ -52,57 +64,34 @@ impl Session {
         env: &HostEnv,
         opts: &CheckOptions,
     ) -> Snapshot {
-        let seq_before = self.refresh_seq.load(Ordering::SeqCst);
+        // Read before queueing on the gate: any round numbered above this
+        // began after this call arrived (`refresh_round` bumps the counter
+        // under the gate, before it reads anything).
+        let arrived_after = self.rounds_started.load(Ordering::SeqCst);
         let gate = self.refresh_gate.lock().await;
-        if self.refresh_seq.load(Ordering::SeqCst) != seq_before {
+        // Holding the gate, so no round can commit between this check and
+        // the clone. `last_committed_round`, not `rounds_started`: a round
+        // that began after this call but was dropped before committing
+        // left no snapshot behind to share.
+        if self.last_committed_round.load(Ordering::SeqCst) > arrived_after {
             return self.snapshot.lock().unwrap().clone();
         }
         self.refresh_round(gate, env, opts).await
     }
 
-    /// `refresh`, minus the coalescing: this always runs a round of its
-    /// own, after whichever refresh holds `refresh_gate` now has finished,
-    /// and never returns that one's snapshot instead. For the caller
-    /// `Session::background_change` just woke, and nobody else.
-    ///
-    /// That wake-up means a `brew update` a refresh reported as running
-    /// has ended. The refresh that reported it may still be in flight --
-    /// brew's worker returns at once with `IndexUpdating` while cargo's or
-    /// npm's goes on for seconds -- and `refresh` would merge this call
-    /// into it (its `seq_before` check) and hand back that snapshot,
-    /// which still carries `IndexUpdating`. The wake-up was the only one
-    /// that update will ever send (`UpdateFinish::drop` takes `announced`),
-    /// so the notice then stayed on screen for good. Every round this
-    /// function runs starts after the wake-up, so it reads the catalogue
-    /// after the update ended.
-    ///
-    /// It cannot drive itself round and round: it runs one round per
-    /// wake-up, and each wake-up is one `brew update` that a refresh
-    /// announced ending (`join_running_update` sets `announced`, the
-    /// update's `UpdateFinish::drop` takes it). The round it runs starts no
-    /// update of its own to announce: after a success the TTL is fresh
-    /// (`maybe_update`'s `succeeded_at` check), and after a failure
-    /// `unreported_failure` answers `MayBeStale` instead of trying again.
-    /// With nothing in flight it is exactly one round, as `refresh` is.
-    pub async fn refresh_after_background_change(
-        self: &std::sync::Arc<Self>,
-        env: &HostEnv,
-        opts: &CheckOptions,
-    ) -> Snapshot {
-        let gate = self.refresh_gate.lock().await;
-        self.refresh_round(gate, env, opts).await
-    }
-
-    /// One real refresh round, the body both `refresh` and
-    /// `refresh_after_background_change` run. Takes the `refresh_gate`
-    /// guard by value so no round can run without holding it, and holds it
-    /// until the round has committed.
+    /// One real refresh round, the body of `refresh`. Takes the
+    /// `refresh_gate` guard by value so no round can run without holding
+    /// it, and holds it until the round has committed.
     async fn refresh_round(
         self: &std::sync::Arc<Self>,
         _gate: tokio::sync::MutexGuard<'_, ()>,
         env: &HostEnv,
         opts: &CheckOptions,
     ) -> Snapshot {
+        // Numbered before anything is read, under the gate: a caller that
+        // read `rounds_started` below this number arrived before this round
+        // read a thing, and may share it (`refresh`'s check).
+        let round = self.rounds_started.fetch_add(1, Ordering::SeqCst) + 1;
         let previous = self.snapshot.lock().unwrap().clone();
         // Owned copy (CheckOptions is Copy): each per-instance spawned task
         // below needs its own 'static value, and the caller's `&opts`
@@ -519,19 +508,20 @@ impl Session {
             stale,
             errors,
         };
-        self.commit(previous, candidate)
+        self.commit(round, previous, candidate)
     }
 
     /// Assigns the real generation number (bumping only on a content
-    /// change), stores the result as the current snapshot, and marks this
-    /// refresh complete via `refresh_seq` regardless of whether `generation`
-    /// moved (M5 in the design review -- see `refresh_seq`'s field doc).
-    fn commit(&self, previous: Snapshot, mut candidate: Snapshot) -> Snapshot {
+    /// change), stores the result as the current snapshot, and records
+    /// `round` as the last one committed regardless of whether
+    /// `generation` moved (M5 in the design review -- see
+    /// `last_committed_round`'s field doc).
+    fn commit(&self, round: u64, previous: Snapshot, mut candidate: Snapshot) -> Snapshot {
         if !previous.same_content(&candidate) {
             candidate.generation = previous.generation + 1;
         }
         *self.snapshot.lock().unwrap() = candidate.clone();
-        self.refresh_seq.fetch_add(1, Ordering::SeqCst);
+        self.last_committed_round.store(round, Ordering::SeqCst);
         candidate
     }
 }
@@ -1103,8 +1093,48 @@ mod tests {
         );
     }
 
+    /// Starts a refresh that is still in its (slowed) detection when this
+    /// returns, then `callers` more that all arrive while it is in flight,
+    /// and hands back the first one's snapshot and the others'.
+    async fn refresh_behind_one_in_flight(
+        session: &Arc<Session>,
+        callers: usize,
+    ) -> (Snapshot, Vec<Snapshot>) {
+        let first = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        // Well inside the 100 ms detection: the first round holds the gate.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let behind: Vec<_> = (0..callers)
+            .map(|_| {
+                let session = session.clone();
+                tokio::spawn(async move {
+                    session
+                        .refresh(&non_root_env(), &CheckOptions::default())
+                        .await
+                })
+            })
+            .collect();
+        let first = first.await.expect("first task");
+        let mut rest = Vec::new();
+        for handle in behind {
+            rest.push(handle.await.expect("caller task"));
+        }
+        (first, rest)
+    }
+
     #[tokio::test]
     async fn test_concurrent_refresh_calls_are_coalesced() {
+        // Three calls arrive together while a round is in flight. None may
+        // be answered with that round -- it started before they arrived --
+        // and they must not run one round each either: they share exactly
+        // one follow-up round. Before the merge rule changed, all three
+        // were handed the in-flight round's snapshot (one round in total).
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -1113,32 +1143,26 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        let session_a = session.clone();
-        let session_b = session.clone();
-        let (a, b) = tokio::join!(
-            tokio::spawn(async move {
-                session_a
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-            tokio::spawn(async move {
-                session_b
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-        );
-        let snap_a = a.expect("task a");
-        let snap_b = b.expect("task b");
-        assert_eq!(snap_a.generation, snap_b.generation);
+
+        let (_first, rest) = refresh_behind_one_in_flight(&session, 3).await;
+
         assert_eq!(
             state.lock().unwrap().detect_calls,
-            1,
-            "two concurrent refreshes must run detect() only once between them"
+            2,
+            "the round in flight, then exactly one round shared by the three \
+             calls that arrived during it"
+        );
+        assert!(
+            rest.windows(2).all(|w| w[0] == w[1]),
+            "the three share one snapshot: {rest:?}"
         );
     }
 
     #[tokio::test]
     async fn test_concurrent_refresh_calls_with_unchanged_content_are_still_coalesced() {
+        // M5: the shared round finds nothing new, so `generation` does not
+        // move. The callers behind it must still see that it committed
+        // (`last_committed_round`), or each would run a round of its own.
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -1154,27 +1178,121 @@ mod tests {
         let calls_before = state.lock().unwrap().detect_calls;
 
         state.lock().unwrap().detect_delay = Duration::from_millis(100);
-        let session_a = session.clone();
-        let session_b = session.clone();
-        let (a, b) = tokio::join!(
-            tokio::spawn(async move {
-                session_a
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
-            tokio::spawn(async move {
-                session_b
-                    .refresh(&non_root_env(), &CheckOptions::default())
-                    .await
-            }),
+        let (first, rest) = refresh_behind_one_in_flight(&session, 3).await;
+
+        assert!(
+            rest.iter().all(|s| s.generation == first.generation),
+            "precondition: nothing changed, so no round moved the generation"
         );
-        let snap_a = a.expect("task a");
-        let snap_b = b.expect("task b");
-        assert_eq!(snap_a.generation, snap_b.generation);
         assert_eq!(
             state.lock().unwrap().detect_calls,
-            calls_before + 1,
-            "two concurrent refreshes over unchanged content must still run detect() only once between them"
+            calls_before + 2,
+            "the round in flight and one shared round, even though neither \
+             moved the generation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_calls_that_arrive_while_no_round_has_started_share_the_first_one() {
+        // The gate is held (standing in for any moment before a round
+        // numbers itself) while three calls arrive. The first to get it
+        // runs a round that starts after all three arrived, so the other
+        // two share it rather than running their own.
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+
+        let held = session.refresh_gate.lock().await;
+        let callers: Vec<_> = (0..3)
+            .map(|_| {
+                let session = session.clone();
+                tokio::spawn(async move {
+                    session
+                        .refresh(&non_root_env(), &CheckOptions::default())
+                        .await
+                })
+            })
+            .collect();
+        // Let all three read `rounds_started` and queue on the gate.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        drop(held);
+        let mut snapshots = Vec::new();
+        for handle in callers {
+            snapshots.push(handle.await.expect("caller task"));
+        }
+
+        assert_eq!(state.lock().unwrap().detect_calls, 1);
+        assert!(snapshots.windows(2).all(|w| w[0] == w[1]));
+    }
+
+    #[tokio::test]
+    async fn test_a_change_made_while_an_older_round_is_in_flight_reaches_the_next_refresh() {
+        // F2 in the final concurrency review. A round is in flight: the
+        // fast source's worker has read its list and released its lock,
+        // the slow source is still going. An uninstall on the fast source
+        // then runs and finishes (the change to `artifacts` below stands in
+        // for it: the operation's own path takes the instance's resource
+        // lock, which that worker no longer holds, and not `refresh_gate`),
+        // and its follow-up refresh arrives. That refresh used to be
+        // merged into the round in flight and handed back its snapshot,
+        // read before the uninstall -- jq still listed, and nothing left
+        // to correct it.
+        let (fast, fast_state) = FakeAdapter::new("fast");
+        {
+            let mut s = fast_state.lock().unwrap();
+            s.instances = vec![make_instance("fast", "fast:1")];
+            s.artifacts.insert(
+                "fast:1".to_string(),
+                vec![
+                    make_artifact("fast:1", "jq"),
+                    make_artifact("fast:1", "wget"),
+                ],
+            );
+        }
+        let (slow, slow_state) = FakeAdapter::new("slow");
+        {
+            let mut s = slow_state.lock().unwrap();
+            s.instances = vec![make_instance("slow", "slow:1")];
+            s.inventory_delay = Duration::from_millis(400);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![fast, slow], None);
+
+        let in_flight = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        // The fast worker has answered; the slow one is still sleeping.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(fast_state.lock().unwrap().inventory_calls.len() == 1);
+        fast_state
+            .lock()
+            .unwrap()
+            .artifacts
+            .get_mut("fast:1")
+            .unwrap()
+            .retain(|a| a.key.name != "jq");
+
+        let follow_up = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let in_flight = in_flight.await.expect("in-flight task");
+
+        assert!(
+            artifact_names(&in_flight).contains(&"jq".to_string()),
+            "precondition: the round in flight read the list before the \
+             uninstall"
+        );
+        assert!(
+            !artifact_names(&follow_up).contains(&"jq".to_string()),
+            "the refresh after the uninstall must not get a snapshot read \
+             before it: {:?}",
+            artifact_names(&follow_up)
         );
     }
 
@@ -2405,10 +2523,10 @@ mod tests {
         // `brew update` running and brew's worker returns at once with
         // `IndexUpdating`; the refresh itself is still in flight because
         // another source is slow. The update ends mid-refresh and wakes
-        // `background_change`. The shell's loop answered that with
-        // `Session::refresh`, which merged into the refresh in flight and
-        // got back its snapshot -- still `IndexUpdating` -- and that
-        // wake-up was the update's only one, so the notice stuck.
+        // `background_change`. `Session::refresh` used to merge the shell
+        // loop's call into the refresh in flight and hand back its
+        // snapshot -- still `IndexUpdating` -- and that wake-up was the
+        // update's only one, so the notice stuck.
         let runner = Arc::new(MockRunner::new());
         runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
         runner.respond(vec![BREW, "update"], brew_answer(0, ""));
@@ -2457,7 +2575,7 @@ mod tests {
             let env = env.clone();
             tokio::spawn(async move {
                 session.background_change().await;
-                session.refresh_after_background_change(&env, &opts).await
+                session.refresh(&env, &opts).await
             })
         };
         let in_flight = session.refresh(&env, &opts).await;
