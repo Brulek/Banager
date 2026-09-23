@@ -8,6 +8,7 @@ use crate::adapters::CheckOptions;
 use crate::model::{InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable};
 use crate::runner::HostEnv;
 use std::sync::atomic::Ordering;
+use tokio_util::task::AbortOnDropHandle;
 
 impl Session {
     /// Detect every registered adapter's instances concurrently (Task 11: a
@@ -75,6 +76,30 @@ impl Session {
         // instance claiming an id, and "first" has to mean the same thing
         // on every refresh and in every process, or which duplicate wins
         // (and so whose packages the user sees) would flip at random.
+        //
+        // Every task this function spawns -- here and in the per-instance
+        // fan-out below -- is held in an `AbortOnDropHandle`, never a bare
+        // `JoinHandle`. Dropping a bare handle *detaches* its task, so a
+        // caller that dropped this future mid-flight (a `select!`, a
+        // `timeout`, an aborted parent task) used to leave every worker
+        // running on its own, still holding its instance's resource lock
+        // for as long as its commands took -- minutes for brew, 30 s per
+        // installed crate for cargo -- and blocking the next refresh or a
+        // user's operation on that instance for all of it. Aborting on
+        // drop makes that impossible rather than merely unreachable: the
+        // worker's future is dropped at its next await, which drops its
+        // `ResourceLockGuard` (releasing the lock) and the in-flight
+        // `CommandRunner::run` future (which kills the command's process
+        // group -- see `runner::real`'s `GroupKiller`).
+        //
+        // Deliberately not a `JoinSet`: that yields in completion order,
+        // and both joins below depend on *fan-out* order -- detection for
+        // `dedupe_instance_ids`' "first wins", the fan-out for pairing a
+        // panicked task's `JoinError` with the instance whose rows it must
+        // carry forward. An abort-on-drop handle awaits exactly like the
+        // `JoinHandle` it wraps, so a refresh that runs to completion sees
+        // identical join results; the only new `Err` it can produce is a
+        // cancellation, and nothing but dropping this future cancels.
         let mut adapters: Vec<_> = self.adapters.values().collect();
         adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
         let mut detect_handles = Vec::with_capacity(adapters.len());
@@ -88,7 +113,7 @@ impl Session {
             let env = env.clone();
             detect_handles.push((
                 adapter.meta().id.clone(),
-                tokio::spawn(async move { adapter.detect(&env).await }),
+                AbortOnDropHandle::new(tokio::spawn(async move { adapter.detect(&env).await })),
             ));
         }
         let mut instances = Vec::new();
@@ -195,7 +220,7 @@ impl Session {
             // own value rather than borrowing this function's.
             handles.push((
                 inst.id.clone(),
-                tokio::spawn(async move {
+                AbortOnDropHandle::new(tokio::spawn(async move {
                     let _lock = ops
                         .acquire_resource_lock(ResourceLock(inst.id.clone()))
                         .await;
@@ -320,7 +345,7 @@ impl Session {
                         }
                     }
                     (artifacts, updates, errors, stale, notes)
-                }),
+                })),
             ));
         }
 
@@ -547,6 +572,27 @@ mod tests {
         detect_calls: usize,
         block_execute: bool,
         inventory_calls: Vec<InstanceId>,
+        /// Instances whose `inventory` never returns: it records that it
+        /// started, then waits forever. Stands in for a real adapter's
+        /// long-running command (brew's is minutes), so a test can drop a
+        /// refresh while a worker is inside it, holding the lock.
+        blocking_inventory: Vec<InstanceId>,
+        /// How many blocked `inventory` calls have started.
+        inventory_blocked: usize,
+        /// How many blocked `inventory` futures have been *dropped* -- which
+        /// only happens if something cancelled the worker running them.
+        inventory_dropped: usize,
+    }
+
+    /// Counts its own drop into `FakeState::inventory_dropped`: the only
+    /// way a blocked `inventory` future can end is by being dropped, so
+    /// this is the observable proof its worker was cancelled.
+    struct DropSentinel(Arc<Mutex<FakeState>>);
+
+    impl Drop for DropSentinel {
+        fn drop(&mut self) {
+            self.0.lock().unwrap().inventory_dropped += 1;
+        }
     }
 
     struct FakeAdapter {
@@ -570,6 +616,9 @@ mod tests {
                 detect_calls: 0,
                 block_execute: false,
                 inventory_calls: Vec::new(),
+                blocking_inventory: Vec::new(),
+                inventory_blocked: 0,
+                inventory_dropped: 0,
             }));
             let adapter = Arc::new(FakeAdapter {
                 meta: crate::session::test_support::fake_adapter_meta(id),
@@ -622,6 +671,18 @@ mod tests {
                 }
             };
             assert!(!panicking, "{} inventory panicked on purpose", inst.id);
+            let blocking = {
+                let mut s = self.state.lock().unwrap();
+                let blocking = s.blocking_inventory.contains(&inst.id);
+                if blocking {
+                    s.inventory_blocked += 1;
+                }
+                blocking
+            };
+            if blocking {
+                let _sentinel = DropSentinel(self.state.clone());
+                std::future::pending::<()>().await;
+            }
             let mut s = self.state.lock().unwrap();
             if let Some(pos) = s.failing.iter().position(|id| id == &inst.id) {
                 s.failing.remove(pos);
@@ -1180,6 +1241,92 @@ mod tests {
             .expect("refresh task panicked");
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
+    }
+
+    /// Dropping a refresh future mid-flight must cancel its workers, not
+    /// detach them. A detached worker keeps running its adapter's command
+    /// under the instance's resource lock, so a user's operation on that
+    /// instance waits for as long as the command takes -- here, forever,
+    /// because this `inventory` never returns on its own.
+    #[tokio::test]
+    async fn test_dropping_a_refresh_cancels_its_workers_and_releases_their_locks() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+        // One ordinary round first, so `issue_plan` below has an instance
+        // to plan against.
+        session.refresh(&env, &opts).await;
+
+        state.lock().unwrap().blocking_inventory = vec!["fake:1".to_string()];
+        let mut refresh = Box::pin(session.refresh(&env, &opts));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            tokio::select! {
+                _ = &mut refresh => panic!("a refresh whose inventory never returns cannot finish"),
+                _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+            }
+            if state.lock().unwrap().inventory_blocked == 1 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the worker never reached inventory"
+            );
+        }
+        // The worker is now inside `inventory`, holding fake:1's lock.
+        drop(refresh);
+        state.lock().unwrap().blocking_inventory.clear();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while state.lock().unwrap().inventory_dropped == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "dropping the refresh must cancel its worker, not detach it"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // The lock the cancelled worker held is free: an operation on the
+        // same instance runs to completion promptly instead of waiting on
+        // a worker nothing will ever finish.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "an operation on fake:1 must get the lock the dropped refresh's worker held"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // And the refresh gate went with it: the next refresh runs and
+        // finishes, with its data.
+        let snapshot = tokio::time::timeout(Duration::from_secs(2), session.refresh(&env, &opts))
+            .await
+            .expect("a refresh after a dropped one must not hang");
+        assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
+        assert!(snapshot.errors.is_empty(), "{:?}", snapshot.errors);
+        assert_eq!(state.lock().unwrap().inventory_blocked, 1);
+        assert_eq!(state.lock().unwrap().inventory_dropped, 1);
     }
 
     fn make_update(instance_id: &str, name: &str) -> UpdateCandidate {

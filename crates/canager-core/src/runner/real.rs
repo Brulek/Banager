@@ -354,6 +354,43 @@ fn kill_group(pid: Option<libc::pid_t>) {
     }
 }
 
+/// Owns the one `killpg` a run may send, and sends it if the `run` future
+/// is dropped while the child may still be running.
+///
+/// Dropping `run` mid-flight used to orphan the child: `tokio::process::Child`
+/// does not kill on drop, so the command kept going with nothing reading its
+/// pipes and nobody left to stop it. That matters most to `Session::refresh`,
+/// whose workers run their commands under the instance's resource lock and
+/// are aborted when the refresh future is dropped -- the abort releases the
+/// lock, and without this the command the lock was protecting would carry on
+/// underneath the next operation to take it.
+///
+/// Armed from spawn until the child's own exit is seen or the run kills it
+/// itself. Both of those consume the pid, so `killpg` still goes out at most
+/// once per run, and only ever at a pid that has not been reaped: the sole
+/// reaping `wait()` in the read loop disarms this in the same select arm
+/// that observes it, before anything else can be awaited.
+struct GroupKiller(Option<libc::pid_t>);
+
+impl GroupKiller {
+    /// Kill the group now, if it has not already been killed or seen to exit.
+    fn kill(&mut self) {
+        kill_group(self.0.take());
+    }
+
+    /// The child exited on its own and has been reaped; its pid may be
+    /// reused from here on, so it must never be signalled.
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for GroupKiller {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
 /// Waits for an already-killed child, bounded by `POST_KILL_WAIT`.
 async fn reap(child: &mut tokio::process::Child) {
     let _ = tokio::time::timeout(POST_KILL_WAIT, child.wait()).await;
@@ -396,7 +433,9 @@ impl CommandRunner for RealRunner {
         cmd.process_group(0);
 
         let mut child = cmd.spawn()?;
-        let pid = child.id().map(|p| p as libc::pid_t);
+        // Declared after `child`, so on a drop mid-run it is dropped first
+        // and signals the group while the child is still unreaped.
+        let mut group = GroupKiller(child.id().map(|p| p as libc::pid_t));
         let mut stdout = child.stdout.take().expect("stdout was piped");
         let mut stderr = child.stderr.take().expect("stderr was piped");
 
@@ -462,13 +501,14 @@ impl CommandRunner for RealRunner {
                 biased;
                 _ = cancel.cancelled() => {
                     cancelled = true;
-                    kill_group(pid);
+                    group.kill();
                 }
                 _ = &mut sleep => {
                     timed_out = true;
-                    kill_group(pid);
+                    group.kill();
                 }
                 res = child.wait() => {
+                    group.disarm();
                     child_done = true;
                     child_code = res.ok().and_then(|status| status.code());
                 }
@@ -557,7 +597,7 @@ impl CommandRunner for RealRunner {
             // The child was SIGKILLed by this run, so there is no exit code
             // worth reporting — only the flag saying which of the two
             // happened. `reap` is the only `wait()` on these paths, so the
-            // pid `kill_group` used was still a zombie when it used it.
+            // pid `group.kill()` used was still a zombie when it used it.
             reap(&mut child).await;
             None
         } else {
@@ -758,6 +798,61 @@ mod tests {
         assert!(output.cancelled);
         assert_eq!(output.exit_code, None);
     }
+    #[tokio::test]
+    async fn test_dropping_a_run_mid_flight_kills_its_process_group() {
+        // `Session::refresh` aborts its workers when it is dropped, which
+        // drops whatever `run` future they were awaiting. The command must
+        // die with it: an orphaned child would keep working underneath the
+        // resource lock the abort just released. The grandchild is what is
+        // watched, because the shell itself stays an unreaped zombie of
+        // this process for a while and `kill(pid, 0)` still finds a zombie;
+        // the grandchild is reparented and reaped as soon as it dies, and
+        // only a group-wide kill reaches it at all.
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: LineCallback = Arc::new(move |_stream, line| {
+            lines_cb.lock().unwrap().push(line);
+        });
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "sleep 30 & echo $!; wait".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(60),
+            output_use: OutputUse::Transcript,
+        };
+        let mut run = Box::pin(runner.run(spec, Some(on_line), CancellationToken::new()));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let grandchild: libc::pid_t = loop {
+            tokio::select! {
+                _ = &mut run => panic!("`sleep 30` cannot have finished"),
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+            }
+            if let Some(line) = lines.lock().unwrap().first() {
+                break line
+                    .trim()
+                    .parse()
+                    .expect("the shell prints the sleep's pid");
+            }
+            assert!(std::time::Instant::now() < deadline, "no pid printed");
+        };
+        // SAFETY: signal 0 only checks that the pid exists.
+        let alive = || unsafe { libc::kill(grandchild, 0) } == 0;
+        assert!(alive(), "the grandchild must be running before the drop");
+
+        drop(run);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while alive() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "dropping `run` must kill the whole process group, not orphan it"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
+
     #[tokio::test]
     async fn test_delivers_a_trailing_line_that_never_got_its_newline() {
         // A tool's last line need not end in one -- a prompt, a progress
