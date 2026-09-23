@@ -1073,10 +1073,26 @@ struct UpdateRecord {
     /// another update. Such a round reports the failure and leaves it
     /// (`maybe_update` compares with `CheckOptions::round_started`). The
     /// wake-up's refresh gets a round that began after the wake-up
-    /// (`Session::refresh`), so it is the one that takes it -- unless
-    /// another refresh's round began in the moment between the failure and
-    /// the shell's loop picking the wake-up up, which then takes it
-    /// instead.
+    /// (`Session::refresh`), so it is the one that takes it.
+    ///
+    /// Except in one window: another refresh's round that begins between
+    /// the failure and the shell's loop picking the wake-up up began after
+    /// the failure, so it takes the flag. The wake-up's refresh then
+    /// arrives while that round is in flight and does not share it
+    /// (`Session::refresh` shares only a round numbered above the count it
+    /// read on arrival), so it runs a round of its own, which finds no
+    /// flag and the TTL still expired -- a failure never sets
+    /// `succeeded_at` (`UpdateFinish::drop`) -- and starts one fresh `brew
+    /// update`. That is one extra, never a loop: if the fresh update ends
+    /// within the patience, that same round reports how it went and
+    /// nothing is announced; if it outlasts the patience it is announced
+    /// (`join_running_update`), and when it fails its wake-up's round
+    /// takes the new flag and starts nothing, unless yet another refresh
+    /// lands in that same window. The window is normally microseconds. It
+    /// is wider only while the shell's loop (`refresh_on_background_change`
+    /// in src-tauri/src/ipc.rs) is still inside the refresh for an earlier
+    /// wake-up -- on a Mac with Homebrew in both /opt/homebrew and
+    /// /usr/local, say.
     unreported_failure: Option<Instant>,
 }
 
