@@ -100,3 +100,42 @@ describe("i18n keys are reachable", () => {
     expect(orphans, `nothing looks these up: ${orphans.join(", ")}`).toEqual([]);
   });
 });
+
+function flattenEntries(value: unknown, prefix = ""): [string, string][] {
+  if (typeof value === "string") {
+    return [[prefix, value]];
+  }
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+    flattenEntries(child, prefix ? `${prefix}.${key}` : key),
+  );
+}
+
+const CJK = "\\u4e00-\\u9fff";
+// A half-width comma, colon or parenthesis with CJK text pressed against
+// both sides is the most recognisable machine-translation tell in
+// Simplified Chinese -- mainland punctuation (GB/T 15834) uses the
+// full-width forms ， ： （ ） there instead. This does not flag ASCII next
+// to an interpolation, a Latin word or a domain name (crates.io,
+// nodejs.org): those are legitimate half-width uses this file also
+// contains, and only a CJK character on *both* sides marks Chinese prose.
+const ASCII_PUNCT_BETWEEN_CJK = new RegExp(`[${CJK}][,:()][${CJK}]`);
+
+describe("zh-CN uses full-width punctuation in Chinese prose", () => {
+  /**
+   * The Chinese translation drifted back toward untouched machine
+   * translation over several review rounds: half-width ， ： （ ） creeping
+   * in between Chinese characters instead of the full-width forms the rest
+   * of the file already uses. This guards the fix so it can't come back
+   * silently string by string.
+   */
+  it("has no half-width , : ( ) sitting between two CJK characters", () => {
+    const offenders = flattenEntries(zhCN)
+      .filter(([, value]) => ASCII_PUNCT_BETWEEN_CJK.test(value))
+      .map(([key, value]) => `${key}: ${value}`);
+
+    expect(offenders, `half-width punctuation inside Chinese prose:\n${offenders.join("\n")}`).toEqual([]);
+  });
+});

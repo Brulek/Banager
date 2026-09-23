@@ -44,7 +44,7 @@
     "updateSelected": "更新所选项",
     "update": "更新",
     "ignore": "忽略",
-    "ignoreFailed": "没能保存已忽略的更新:{{message}}",
+    "ignoreFailed": "没能保存已忽略的更新：{{message}}",
     "available": "更新",
     "cannotCheck": "无法检查",
     "cannotCheckDetail": "Canager 这次没能检查它有没有更新。{{message}}",
@@ -57,42 +57,42 @@
     "confirmTitle": "确认更新",
     "confirmUpdate": "确认",
     "started": "已开始",
-    "planFailed": "没能准备这次更新:{{message}}",
-    "submitFailed": "没能开始更新:{{message}}",
+    "planFailed": "没能准备这次更新：{{message}}",
+    "submitFailed": "没能开始更新：{{message}}",
     "noneCheckable": "已检查的来源里没有可更新的内容"
   },
   "commandPreview": {
-    "label": "将执行:",
+    "label": "将执行：",
     "needsPassword": "这一步会要求你输入 Mac 密码。"
   },
   "warnings": {
-    "dependentsUnknown": "Canager 无法确定有什么依赖它,卸载可能会影响其他软件。",
-    "wouldBreak_other": "卸载后会影响 {{count}} 项:{{names}}。",
-    "compilesLocally": "这将在本机编译,可能需要几分钟。",
-    "nonRegistrySource": "这不是从 crates.io 安装的,Canager 无法检查它的更新。",
-    "thirdPartyRegistry": "这个模型要从 {{host}} 下载,不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。"
+    "dependentsUnknown": "Canager 无法确定有什么依赖它，卸载可能会影响其他软件。",
+    "wouldBreak_other": "卸载后会影响 {{count}} 项：{{names}}。",
+    "compilesLocally": "这将在本机编译，可能需要几分钟。",
+    "nonRegistrySource": "这不是从 crates.io 安装的，Canager 无法检查它的更新。",
+    "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。"
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "title": "只读:pip 包",
-      "description": "Canager 只能展示通过 pip 安装的内容,无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具,才能在这里管理它们。"
+      "title": "只读：pip 包",
+      "description": "Canager 只能展示通过 pip 安装的内容，无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具，才能在这里管理它们。"
     },
     "prefixNotWritable": {
-      "title": "只读:npm 包",
-      "description": "Canager 只能列出这些,无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node,Canager 就能管理它们了。"
+      "title": "只读：npm 包",
+      "description": "Canager 只能列出这些，无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node，Canager 就能管理它们了。"
     },
     "unreachable": {
       "title": "Canager 现在连不上 {{source}}",
-      "description": "{{source}} 装着,但没有应答,所以 Canager 现在不知道它里面有什么。",
-    "descriptionWithRows": "{{source}} 装着,但没有应答。这里列出的是 Canager 上次问到时看到的内容,之后添加或删除的都不会显示。"
+      "description": "{{source}} 装着，但没有应答，所以 Canager 现在不知道它里面有什么。",
+      "descriptionWithRows": "{{source}} 装着，但没有应答。这里列出的是 Canager 上次问到时看到的内容，之后添加或删除的都不会显示。"
     },
     "refusesAsRoot": {
-      "title": "{{source}} 装着,但这样启动用不了",
-      "description": "这次是用管理员身份(sudo)启动的 Canager,{{source}} 不肯在这种身份下干活。退出 Canager,像平常那样双击重新打开,用 {{source}} 装的东西就会出现在这里。"
+      "title": "{{source}} 装着，但这样启动用不了",
+      "description": "这次是用管理员身份（sudo）启动的 Canager，{{source}} 不肯在这种身份下干活。退出 Canager，像平常那样双击重新打开，用 {{source}} 装的东西就会出现在这里。"
     },
     "notRunning": {
       "title": "{{source}} 没有在运行",
-      "description": "启动 {{source}},Canager 就能列出它里面的内容,也能检查更新。"
+      "description": "启动 {{source}}，Canager 就能列出它里面的内容，也能检查更新。"
     },
     "openOllama": "打开 Ollama",
     "openOllamaFailed": {
@@ -101,12 +101,12 @@
     },
     "indexMayBeStale": {
       "title": "Homebrew 这里的「已是最新」可能不准",
-      "description": "Canager 没能下载 Homebrew 最新的软件目录,所以可能有更新它还看不到。检查一下网络连接,然后重试。",
+      "description": "Canager 没能下载 Homebrew 最新的软件目录，所以可能有更新它还看不到。检查一下网络连接，然后重试。",
       "action": "重试"
     }
   },
   "planRefused": {
-    "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了,所以没有开始。它可能在你打开这个窗口之后被卸载了。",
+    "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。它可能在你打开这个窗口之后被卸载了。",
     "expired": "这份预览已经超过 10 分钟，Canager 没有执行它。请重新查看一次预览，再确认一遍。",
     "unknown": "Canager 已经处理过这份预览，或者它已经失效。请关闭后重新开始这个操作。"
   },
@@ -132,32 +132,32 @@
       "Succeeded": "已成功",
       "Cancelled": "你已取消",
       "Unconfirmed": "结果未确认",
-      "NeedsAttention": "需要留意:{{message}}",
-      "Failed": "失败:{{summary}}"
+      "NeedsAttention": "需要留意：{{message}}",
+      "Failed": "失败：{{summary}}"
     }
   },
   "uninstall": {
-    "title": "卸载 {{name}}?",
-    "description": "继续之前,先看看会发生什么。",
+    "title": "卸载 {{name}}？",
+    "description": "继续之前，先看看会发生什么。",
     "checking": "正在检查会有什么影响…",
-    "planError": "没能检查清楚会有什么影响:{{message}}",
-    "submitError": "没能开始卸载:{{message}}",
-    "warningsTitle": "继续之前请注意:",
-    "affectedTitle": "删除后这些会受影响:",
+    "planError": "没能检查清楚会有什么影响：{{message}}",
+    "submitError": "没能开始卸载：{{message}}",
+    "warningsTitle": "继续之前请注意：",
+    "affectedTitle": "删除后这些会受影响：",
     "confirm": "卸载",
     "cancel": "取消",
-    "confirmDisabledHint": "请先处理上面列出的问题,才能卸载。"
+    "confirmDisabledHint": "请先处理上面列出的问题，才能卸载。"
   },
   "settings": {
     "title": "设置",
     "loading": "正在加载设置…",
     "showTechnicalDetails": {
       "label": "显示技术细节",
-      "description": "显示版本号、文件路径,以及 Canager 实际执行的命令。"
+      "description": "显示版本号、文件路径，以及 Canager 实际执行的命令。"
     },
     "includeSelfUpdating": {
       "label": "包含自更新的应用",
-      "description": "把 Chrome、Docker 这类会自己更新的应用,也列为这里可更新的项目。"
+      "description": "把 Chrome、Docker 这类会自己更新的应用，也列为这里可更新的项目。"
     },
     "language": {
       "label": "语言",
@@ -171,26 +171,26 @@
       "unignore": "取消忽略",
       "unignoreAriaLabel": "取消忽略 {{name}}"
     },
-    "saveError": "保存失败({{message}}),已恢复原来的设置。"
+    "saveError": "保存失败（{{message}}），已恢复原来的设置。"
   },
   "emptyStates": {
     "loadFailed": {
       "title": "没能读取已安装的内容",
-      "description": "上次尝试失败,原因:{{message}}"
+      "description": "上次尝试失败，原因：{{message}}"
     },
     "noSources": {
       "title": "Canager 还没有可管理的内容",
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo 和 Ollama。这台 Mac 上一个都还没装,建议先从 Homebrew 开始。"
+      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo 和 Ollama。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
     },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
-      "description_other": "上次刷新有 {{count}} 个来源没能完成,下面显示的内容可能不是最新的。",
-      "retryFailed": "重试没有成功:{{message}}",
+      "description_other": "上次刷新有 {{count}} 个来源没能完成，下面显示的内容可能不是最新的。",
+      "retryFailed": "重试没有成功：{{message}}",
       "retry": "重试"
     },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
-      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo 或 Ollama 装的东西,都会显示在这里。"
+      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo 或 Ollama 装的东西，都会显示在这里。"
     }
   }
 }
