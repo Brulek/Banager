@@ -10,6 +10,7 @@ import {
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import { ADAPTER_LABEL_KEYS, planErrorMessage, sourceNoticesFor } from "../lib/sources";
+import type { SourceNoticeSpec } from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
@@ -24,11 +25,35 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 
-// The virtualizer's first guess at a row's height. Every row measures
-// itself through `measureElement` as soon as it is in the DOM, which
-// matters here more than on the Installed page: an uncheckable row wraps
-// its explanation over as many lines as the tool's error text needs.
+// The virtualizer's first guesses: a row, and a source's heading when it
+// also carries a banner (a title line, a description line and, for
+// Ollama, a button) -- the same two numbers as the Installed page. Every
+// item measures itself through `measureElement` as soon as it is in the
+// DOM, which matters here more than there: an uncheckable row wraps its
+// explanation over as many lines as the tool's error text needs.
 const ROW_ESTIMATE = 56;
+const NOTICE_GROUP_ESTIMATE = 120;
+
+/**
+ * One slot in the virtualized list: a source's heading, or one of its
+ * rows. The page is grouped by source, like the Installed page, because a
+ * source's notice describes *its* rows and nobody else's. It used to be one
+ * flat list with every notice hoisted above it, and a row carries no
+ * source name -- so "Ollama didn't answer; what's listed here is what
+ * Canager saw last time" sat over five rows of which three were this
+ * minute's Homebrew data, and nothing on screen said which two it meant.
+ */
+type ListItem =
+  | {
+      type: "group";
+      instanceId: string;
+      label: string;
+      // What `sourceNoticesFor` decided this source needs, carried on the
+      // item for the same reason as on the Installed page: `estimateSize`
+      // has only the item to ask whether this heading has a banner.
+      notices: SourceNoticeSpec[];
+    }
+  | { type: "update"; candidate: UpdateCandidate };
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -129,50 +154,84 @@ export function UpdatesPage() {
     return byInstance;
   }, [snapshot]);
 
-  // How many rows each source has on this page. Two notices need it: only
-  // a source with rows here gets its capability notice ("pip is read-only"
-  // is not news on a page listing two Homebrew updates), and a silent
-  // source's copy turns on whether its carried-forward rows actually
-  // exist.
-  const rowsByInstance = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const update of visibleUpdates) {
-      counts.set(update.key.instance_id, (counts.get(update.key.instance_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [visibleUpdates]);
-
-  // What the sources themselves have to say, for the top of this page.
+  // The page, one source at a time: each source's rows, and what that
+  // source has to say about them, decided once here.
   //
   // The *state* axis always: whether Canager could reach a source at all
   // is not on any row, because a source it could not reach may well have
-  // no rows.
+  // no rows -- a stopped Ollama on the first refresh after launch is a
+  // heading and a banner with nothing under it, exactly as on the
+  // Installed page.
   //
-  // The *capability* axis for a source that has rows here. It used to be
-  // excluded, on the grounds that a read-only source's advice was already
-  // on every one of its rows -- which is precisely the problem: that
-  // advice runs to about two hundred characters, so six outdated pip
-  // packages meant six identical paragraphs, and each package's own
-  // description was displaced by the copy that made all six rows look
-  // alike. The Installed page has always said it once, under the group
-  // header. Said once here too.
+  // The *capability* axis only for a source that has rows here: "pip is
+  // read-only" is not news on a page listing two Homebrew updates. When it
+  // does apply it is said once, under the source's own heading, rather
+  // than on each of its rows -- that advice runs to about two hundred
+  // characters, and six outdated pip packages used to mean six identical
+  // paragraphs displacing the six descriptions that tell the rows apart.
   //
-  // Both early returns below run with no visible rows, so every count is
-  // zero there and this list is state-only -- which is what decides
-  // between "Everything is up to date" and "No updates in the sources
-  // Canager could check". A read-only source is one Canager *can* check.
-  const instanceNotices = useMemo(
+  // How many rows a source has is also part of what its notice *says*: a
+  // silent source's "what's listed here is last time's" is true only over
+  // rows it actually has. Because the notice now sits directly above those
+  // rows and no others, "here" means exactly them.
+  //
+  // Iterates `snapshot.instances`, which is every source any candidate can
+  // come from: `refresh` builds `updates` only from instances it also puts
+  // in `instances` (crates/canager-core/src/session/refresh.rs).
+  const groups = useMemo(() => {
+    const byInstance = new Map<string, UpdateCandidate[]>();
+    for (const update of visibleUpdates) {
+      const list = byInstance.get(update.key.instance_id) ?? [];
+      list.push(update);
+      byInstance.set(update.key.instance_id, list);
+    }
+    return (snapshot?.instances ?? []).map((instance) => {
+      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+      const label = labelKey ? t(labelKey) : instance.adapter_id;
+      const rows = byInstance.get(instance.id) ?? [];
+      const notices = sourceNoticesFor(instance, label, rows.length).filter(
+        (notice) => notice.axis === "state" || rows.length > 0,
+      );
+      return { instanceId: instance.id, label, rows, notices };
+    });
+  }, [snapshot, visibleUpdates, t]);
+
+  // What the two early returns below show above their one sentence. Both
+  // run with no visible rows, so every group is empty there and this list
+  // is state-only -- which is what decides between "Everything is up to
+  // date" and "No updates in the sources Canager could check". A read-only
+  // source is one Canager *can* check. With no rows there is nothing for a
+  // notice to be mistaken as describing, so they can stand together.
+  const instanceNotices = groups.flatMap((group) => group.notices);
+
+  // The list proper: each source's heading, then its rows. A source with
+  // neither rows nor anything to say is left out altogether.
+  //
+  // A source with something to say and no rows goes first. When every
+  // notice sat at the top of the page, a stopped Ollama's Open Ollama
+  // button was the first thing anyone saw; in `snapshot.instances` order it
+  // would sit under however many Homebrew rows there are, scrolled out of
+  // sight. Its notice describes no rows, so the top is still an honest
+  // place for it. `sort` is stable, so both halves keep the instances'
+  // order.
+  const items = useMemo<ListItem[]>(
     () =>
-      (snapshot?.instances ?? []).flatMap((instance) => {
-        const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-        const rows = rowsByInstance.get(instance.id) ?? 0;
-        return sourceNoticesFor(
-          instance,
-          labelKey ? t(labelKey) : instance.adapter_id,
-          rows,
-        ).filter((notice) => notice.axis === "state" || rows > 0);
-      }),
-    [snapshot, t, rowsByInstance],
+      [...groups]
+        .sort((a, b) => Number(a.rows.length > 0) - Number(b.rows.length > 0))
+        .flatMap((group): ListItem[] =>
+          group.rows.length === 0 && group.notices.length === 0
+            ? []
+            : [
+                {
+                  type: "group",
+                  instanceId: group.instanceId,
+                  label: group.label,
+                  notices: group.notices,
+                },
+                ...group.rows.map((candidate): ListItem => ({ type: "update", candidate })),
+              ],
+        ),
+    [groups],
   );
 
   // A source that did not answer keeps the candidates it reported last
@@ -216,7 +275,7 @@ export function UpdatesPage() {
 
   // Whether this row's source refuses every operation. The badge is all
   // the row says about it; *why*, and what to do instead, is the source's
-  // own notice at the top of the page, said once.
+  // own notice under its heading, said once.
   const isReadOnly = (candidate: UpdateCandidate): boolean =>
     readOnlyReasons.has(candidate.key.instance_id);
 
@@ -360,7 +419,7 @@ export function UpdatesPage() {
    * the row; but the capability half is a property of the *source*, not of
    * this package, and six rows from one read-only source repeated it six
    * times while displacing the six blurbs that tell them apart. It is the
-   * source's notice at the top of the page now, and the row keeps its own
+   * source's notice under its heading now, and the row keeps its own
    * description back.
    */
   const rowDescription = (candidate: UpdateCandidate): string =>
@@ -500,9 +559,14 @@ export function UpdatesPage() {
   // Above every early return: hooks cannot be called conditionally, and
   // three of the returns below are reached before the list is drawn.
   const rowVirtualizer = useVirtualizer({
-    count: visibleUpdates.length,
+    count: items.length,
     getScrollElement: () => listRef.current,
-    estimateSize: () => ROW_ESTIMATE,
+    estimateSize: (index) => {
+      const item = items[index];
+      return item?.type === "group" && item.notices.length > 0
+        ? NOTICE_GROUP_ESTIMATE
+        : ROW_ESTIMATE;
+    },
   });
 
   if (isLoading) {
@@ -549,13 +613,85 @@ export function UpdatesPage() {
   const pageErrors =
     batch !== null && batch.phase === "done" && !hasIssuedPlan(batch) ? batch.items : [];
 
+  // One update's row. A function rather than inline in the list only so
+  // that the list's `map` can stay about slots -- headings and rows -- while
+  // this stays about what one candidate offers.
+  const updateRow = (candidate: UpdateCandidate) => {
+    // Resolved once per row: the badge and the row's own actionability
+    // must agree about whether this source is read-only.
+    const readOnly = isReadOnly(candidate);
+    return (
+      <ArtifactRow
+        name={candidate.key.name}
+        // `checkable: false` means the adapter could not establish what
+        // the remote version is -- a cargo crate installed from git or a
+        // path, an Ollama model whose manifest could not be read, any
+        // source whose registry lookup could not be made. Such a row
+        // must offer no action and no selection: "Update" on a
+        // git-sourced crate would run `cargo install --force {name}`
+        // against the crates.io crate of the same name, which is a
+        // different package. The reason lives in `warnings`, and
+        // `rowDescription` is what puts it somewhere the user reads.
+        description={rowDescription(candidate)}
+        // An explanation has to be readable end to end or it has not
+        // been given. The reason a lookup failed can run to a few
+        // hundred characters and the detail comes last, so one
+        // clipped line would hide precisely the part such a row
+        // exists to say. A package's own blurb keeps the single
+        // line: it is a nicety, not something the user is being
+        // asked to act on.
+        wrapDescription={!candidate.checkable}
+        // Capability first when both apply: "Read-only" is the fact
+        // that no button will ever appear on this row, whatever the
+        // next refresh finds. That a lookup also failed is on the
+        // row already, in words, via `rowDescription`.
+        // Three states, and there is no fourth: nothing in production
+        // builds a `checkable: true` candidate with a warning on it
+        // any more. There used to be an "N warnings" badge here; brew's
+        // `"pinned"` string and its per-candidate "brew update failed"
+        // sentence were its only two producers, and this branch deleted
+        // both (the second is now `InstanceNote::IndexMayBeStale`, a
+        // notice on the source rather than a count on a row). The badge
+        // outlived them, unreachable, which is the exact shape of defect
+        // this phase keeps finding.
+        badgeText={
+          readOnly
+            ? t("updates.readOnly")
+            : !candidate.checkable
+              ? t("updates.cannotCheck")
+              : t("updates.available")
+        }
+        badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
+        primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
+        onPrimaryAction={
+          isActionable(candidate) ? () => openConfirm([candidate]) : undefined
+        }
+        primaryActionDisabled={dialogOpen}
+        selectable={
+          isActionable(candidate)
+            ? {
+                checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
+                onToggle: () => toggleUpdate(candidate.key),
+                ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
+              }
+            : undefined
+        }
+        secondaryContent={
+          <button
+            type="button"
+            onClick={() => ignore(candidate)}
+            disabled={saveSettings.isPending}
+            className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+          >
+            {t("updates.ignore")}
+          </button>
+        }
+      />
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
-      {instanceNotices.length > 0 ? (
-        <div className="px-4 pt-4">
-          <SourceNotices notices={instanceNotices} />
-        </div>
-      ) : null}
       {pageErrors.map((item) => (
         <p
           key={artifactKeyId(item.candidate.key)}
@@ -607,19 +743,22 @@ export function UpdatesPage() {
       <div ref={listRef} className="flex-1 overflow-y-auto">
         <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const candidate = visibleUpdates[virtualRow.index];
-            // Resolved once per row: the badge and the row's own actionability
-            // must agree about whether this source is read-only.
-            const readOnly = isReadOnly(candidate);
+            const item = items[virtualRow.index];
             return (
-              // No fixed height on the slot: an uncheckable row wraps its
+              // No fixed height on the slot: a heading with a banner is far
+              // taller than a row, and an uncheckable row wraps its
               // explanation (`wrapDescription`) over as many lines as the
-              // tool's error text needs, so the row reports its real height
-              // back through `measureElement` instead. A fixed height would
-              // let the next row -- later in DOM order, painted on top --
-              // cover the tail of the sentence the row exists to say.
+              // tool's error text needs, so each slot reports its real
+              // height back through `measureElement` instead. A fixed height
+              // would let the next slot -- later in DOM order, painted on
+              // top -- cover the tail of the sentence this one exists to
+              // say, or the Ollama banner's button.
               <div
-                key={artifactKeyId(candidate.key)}
+                key={
+                  item.type === "group"
+                    ? `group:${item.instanceId}`
+                    : artifactKeyId(item.candidate.key)
+                }
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
                 style={{
@@ -630,74 +769,16 @@ export function UpdatesPage() {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <ArtifactRow
-                  name={candidate.key.name}
-                  // `checkable: false` means the adapter could not establish what
-                  // the remote version is -- a cargo crate installed from git or a
-                  // path, an Ollama model whose manifest could not be read, any
-                  // source whose registry lookup could not be made. Such a row
-                  // must offer no action and no selection: "Update" on a
-                  // git-sourced crate would run `cargo install --force {name}`
-                  // against the crates.io crate of the same name, which is a
-                  // different package. The reason lives in `warnings`, and
-                  // `rowDescription` is what puts it somewhere the user reads
-                  // -- read-only guidance included, since a read-only source
-                  // can fail a lookup too.
-                  description={rowDescription(candidate)}
-                  // An explanation has to be readable end to end or it has not
-                  // been given. The reason a lookup failed can run to a few
-                  // hundred characters and the detail comes last, so one
-                  // clipped line would hide precisely the part such a row
-                  // exists to say. A package's own blurb keeps the single
-                  // line: it is a nicety, not something the user is being
-                  // asked to act on.
-                  wrapDescription={!candidate.checkable}
-                  // Capability first when both apply: "Read-only" is the fact
-                  // that no button will ever appear on this row, whatever the
-                  // next refresh finds. That a lookup also failed is on the
-                  // row already, in words, via `rowDescription`.
-                  // Three states, and there is no fourth: nothing in production
-                  // builds a `checkable: true` candidate with a warning on it
-                  // any more. There used to be an "N warnings" badge here; brew's
-                  // `"pinned"` string and its per-candidate "brew update failed"
-                  // sentence were its only two producers, and this branch deleted
-                  // both (the second is now `InstanceNote::IndexMayBeStale`, a
-                  // notice on the source rather than a count on a row). The badge
-                  // outlived them, unreachable, which is the exact shape of defect
-                  // this phase keeps finding.
-                  badgeText={
-                    readOnly
-                      ? t("updates.readOnly")
-                      : !candidate.checkable
-                        ? t("updates.cannotCheck")
-                        : t("updates.available")
-                  }
-                  badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
-                  primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
-                  onPrimaryAction={
-                    isActionable(candidate) ? () => openConfirm([candidate]) : undefined
-                  }
-                  primaryActionDisabled={dialogOpen}
-                  selectable={
-                    isActionable(candidate)
-                      ? {
-                          checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
-                          onToggle: () => toggleUpdate(candidate.key),
-                          ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
-                        }
-                      : undefined
-                  }
-                  secondaryContent={
-                    <button
-                      type="button"
-                      onClick={() => ignore(candidate)}
-                      disabled={saveSettings.isPending}
-                      className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
-                    >
-                      {t("updates.ignore")}
-                    </button>
-                  }
-                />
+                {item.type === "group" ? (
+                  <div className="px-4 py-2">
+                    <p className="text-xs font-semibold uppercase text-[var(--color-muted)]">
+                      {item.label}
+                    </p>
+                    <SourceNotices notices={item.notices} />
+                  </div>
+                ) : (
+                  updateRow(item.candidate)
+                )}
               </div>
             );
           })}

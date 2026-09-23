@@ -72,9 +72,9 @@ export type SourceNoticeActionId = "openOllama" | "retry";
  * One banner a source needs rendered, as data: which i18n keys say it,
  * what to interpolate into them, and what (if anything) the user can do
  * about it. No `t()` and no JSX, so the rule can be tested directly and,
- * more to the point, so both pages answer from the same rule -- the
- * Installed page's group headers and the Updates page's top notices used
- * to be different code, which is how the Updates page came to say
+ * more to the point, so both pages answer from the same rule -- the two
+ * pages' notices used to be different code, which is how the Updates page
+ * came to say
  * "Everything is up to date" for a source it had not managed to ask.
  */
 export interface SourceNoticeSpec {

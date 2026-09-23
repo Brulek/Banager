@@ -25,11 +25,12 @@ const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
 
 /**
  * One banner about one source: pip's read-only note, or Ollama's "not
- * running" notice with a button to start it. Both pages render these --
- * the Installed page under the source's group header, the Updates page at
- * the top, where a source Canager could not reach has no rows to sit
- * under and the page would otherwise announce that everything is up to
- * date. `SourceNotices` maps `sourceNoticesFor`'s specs onto this.
+ * running" notice with a button to start it. Both pages render these
+ * under the source's own heading, directly above that source's rows and
+ * no one else's; the Updates page also renders them above its "nothing to
+ * update" sentence, where there are no rows at all and the page would
+ * otherwise announce that everything is up to date. `SourceNotices` maps
+ * `sourceNoticesFor`'s specs onto this.
  *
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.

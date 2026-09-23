@@ -75,6 +75,20 @@ const snapshot: Snapshot = {
       unverified_version: null,
       read_only_reason: "PrefixNotWritable",
     },
+    // Writable and answering. Here so the cargo candidates below have a
+    // source to sit under: the page is grouped by source, and `refresh`
+    // never produces a candidate whose instance is not in this list.
+    {
+      id: "cargo:/Users/brulek/.cargo",
+      adapter_id: "cargo",
+      exe_path: "/Users/brulek/.cargo/bin/cargo",
+      prefix: "/Users/brulek/.cargo",
+      scope: "User",
+      version: "1.92.0",
+      status: { unavailable: null, notes: [] },
+      unverified_version: null,
+      read_only_reason: null,
+    },
   ],
   artifacts: [],
   updates: [
@@ -176,6 +190,27 @@ function submittedPlanIds() {
 
 // The height every virtualized row reports back in jsdom.
 const ROW_HEIGHT = 56;
+
+// Which slot of the virtualized list `element` was drawn in. The list is
+// flat in the DOM -- every heading and every row is a sibling carrying its
+// position as `data-index` -- so "under which source's heading" is a
+// question about these numbers.
+function slotOf(element: HTMLElement): number {
+  const slot = element.closest("[data-index]");
+  if (slot === null) throw new Error("not inside a list slot");
+  return Number(slot.getAttribute("data-index"));
+}
+
+function brewCandidate(name: string): Snapshot["updates"][number] {
+  return {
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+    current: "1.0.0",
+    target: "1.1.0",
+    channel: "Native",
+    checkable: true,
+    warnings: [],
+  };
+}
 
 beforeEach(() => {
   settings = {
@@ -459,13 +494,13 @@ describe("UpdatesPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("explains a read-only source once, at the top, and leaves every row its own description", async () => {
+  it("explains a read-only source once, under its own heading, and leaves every row its own description", async () => {
     // Six outdated pip packages used to mean six copies of the same
     // ~200-character paragraph -- roughly twenty lines of screen, because
     // the row is told not to clip an explanation -- and the packages'
     // own blurbs were displaced by it, so the six rows read identically.
     // The Installed page has always said this once, under the group
-    // header. The Updates page now says it once too, at the top.
+    // header. The Updates page now does the same.
     const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
     updates = pipPackages.map((name) => ({
       key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
@@ -500,9 +535,10 @@ describe("UpdatesPage", () => {
   });
 
   it("says nothing about a read-only source that has no rows on this page", async () => {
-    // The notice moved to the top of the page, which is a place it can be
-    // shown for a source that has nothing outdated at all. pip being
-    // read-only is not news on a page listing two Homebrew updates.
+    // A source's heading can be drawn with nothing under it (a silent
+    // source has something to say even with no rows), so the capability
+    // notice has to be held back explicitly. pip being read-only is not
+    // news on a page listing two Homebrew updates.
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("glib");
@@ -765,6 +801,7 @@ describe("UpdatesPage", () => {
     // them as a version jump, and neither is anything to show a person who
     // does not write code. `channel: "Digest"` is the discriminator.
     settings.show_technical_details = true;
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
     updates = [
       {
         key: qwenKey,
@@ -1083,18 +1120,98 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
-  it("shows a silent source's notice above the list when there are updates as well", async () => {
+  it("shows a silent source's notice under its own heading when there are updates as well", async () => {
     instances = [...snapshot.instances, stoppedOllama];
-    const { findByText } = renderWithProviders(<UpdatesPage />);
+    const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("glib");
-    expect(await findByText("Ollama isn't running")).toBeInTheDocument();
+    const glib = await findByText("glib");
+    const notice = await findByText("Ollama isn't running");
+    // A source with no rows has its heading first, so its Open Ollama
+    // button is not scrolled out of sight under Homebrew's list.
+    expect(slotOf(notice)).toBe(0);
+    expect(slotOf(getByText("Ollama"))).toBe(0);
+    expect(slotOf(glib)).toBeGreaterThan(slotOf(getByText("Homebrew")));
+  });
+
+  it("puts a silent source's notice over its own rows, not over another source's", async () => {
+    // The critical case. Homebrew answered with three updates; Ollama did
+    // not answer and its two candidates were carried forward from last
+    // time. The rows carry no source name, so a notice saying "what's
+    // listed here is what Canager saw the last time it did" can only be
+    // read as being about the rows directly under it -- and when every
+    // notice sat at the top of one flat list, that was all five, three of
+    // them this minute's Homebrew data.
+    const llamaKey: ArtifactKey = { ...qwenKey, name: "llama3.2:3b" };
+    instances = [
+      ...snapshot.instances,
+      { ...stoppedOllama, status: { unavailable: "NotResponding", notes: [] } },
+    ];
+    updates = [
+      ...snapshot.updates,
+      brewCandidate("jq"),
+      ...[qwenKey, llamaKey].map((key) => ({
+        key,
+        current: "5642e97495e1",
+        target: "a1b2c3d4e5f6",
+        channel: "Digest" as const,
+        checkable: true,
+        warnings: [],
+      })),
+    ];
+    const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
+
+    const notice = await findByText(
+      "Ollama is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+    );
+    const noticeSlot = slotOf(notice);
+    // The heading that names the source is in the same slot as its notice.
+    expect(slotOf(getByText("Ollama"))).toBe(noticeSlot);
+    // Every Homebrew row is under Homebrew's heading, above Ollama's.
+    const brewSlot = slotOf(getByText("Homebrew"));
+    for (const name of ["glib", "onyx", "jq"]) {
+      const slot = slotOf(getByText(name));
+      expect(slot).toBeGreaterThan(brewSlot);
+      expect(slot).toBeLessThan(noticeSlot);
+    }
+    // And Ollama's two rows are the two directly under its notice.
+    expect(slotOf(getByText("qwen3:8b"))).toBe(noticeSlot + 1);
+    expect(slotOf(getByText("llama3.2:3b"))).toBe(noticeSlot + 2);
+  });
+
+  it("puts a read-only source's notice over its own rows, not over another source's", async () => {
+    // Same shape for pip: "Canager can only show what's installed with
+    // pip" used to sit above nine rows, three of which were Homebrew's and
+    // perfectly updatable.
+    const pipPackages = ["urllib3", "requests", "certifi", "idna", "charset-normalizer", "six"];
+    updates = [
+      ...snapshot.updates,
+      brewCandidate("jq"),
+      ...pipPackages.map((name) => ({
+        key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
+        current: "1.0.0",
+        target: "1.1.0",
+        channel: "Registry" as const,
+        checkable: true,
+        warnings: [],
+      })),
+    ];
+    const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
+
+    const noticeSlot = slotOf(await findByText(/Canager can only show what's installed with pip/));
+    expect(slotOf(getByText("pip"))).toBe(noticeSlot);
+    for (const name of ["glib", "onyx", "jq"]) {
+      expect(slotOf(getByText(name))).toBeLessThan(noticeSlot);
+    }
+    for (const name of pipPackages) {
+      expect(slotOf(getByText(name))).toBeGreaterThan(noticeSlot);
+    }
   });
 
   it("tells the truth about carried-forward rows on this page, both ways round", async () => {
-    // The notice is above a list, so what it says about that list has to
-    // match it. Homebrew is silent and its two candidates were carried
-    // forward, so they are last time's answer and the user needs telling.
+    // The notice is above its source's rows, so what it says about them
+    // has to match them. Homebrew is silent and its two candidates were
+    // carried forward, so they are last time's answer and the user needs
+    // telling.
     instances = [
       { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
       ...snapshot.instances.slice(1),
