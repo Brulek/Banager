@@ -897,6 +897,128 @@ mod tests {
         assert!(output.cancelled);
         assert_eq!(output.exit_code, None);
     }
+
+    #[tokio::test]
+    async fn test_cancel_signals_the_group_exactly_once() {
+        // `kill()` must *consume* the pgid (`Option::take`), not just read
+        // it. `GroupedChild`'s `Drop` fires unconditionally when its
+        // `child` field goes out of scope at the end of `run` -- on every
+        // return, not only the drop-mid-flight path. If `kill()` left the
+        // pgid in place, that final `Drop` would call `killpg` a second
+        // time, after `reap()` has already reaped the child: exactly the
+        // PID-reuse hazard the merge gate ruled out (kill after reap).
+        // `output.cancelled` alone cannot see this -- it is identical
+        // whether the group was signalled once or twice -- so this checks
+        // the count directly through the test-only recorder in
+        // `kill_group`, which cannot exist in a release build.
+        probe::take_spawned();
+        probe::take_kills();
+
+        let runner = RealRunner::new();
+        let cancel = CancellationToken::new();
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            cancel_clone.cancel();
+        });
+
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "sleep 5".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
+        };
+        let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
+        assert!(output.cancelled);
+
+        let spawned = probe::take_spawned();
+        assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
+        let pid = spawned[0];
+        let kills = probe::take_kills();
+        assert_eq!(
+            kills.len(),
+            1,
+            "cancel must signal the group exactly once -- including after \
+             `run` has returned, which is where a lost `take()` would add a \
+             second signal: {kills:?}"
+        );
+        assert_eq!(kills[0].0, pid);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_signals_the_group_exactly_once() {
+        // The timeout arm's mirror of `test_cancel_signals_the_group_exactly_once`:
+        // same guard, same `kill()` call, a different select arm reaching
+        // it. See that test's comment for why counting matters and
+        // `output.timed_out` alone does not.
+        probe::take_spawned();
+        probe::take_kills();
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "sleep 5".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_millis(200),
+            output_use: OutputUse::Transcript,
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        assert!(output.timed_out);
+
+        let spawned = probe::take_spawned();
+        assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
+        let pid = spawned[0];
+        let kills = probe::take_kills();
+        assert_eq!(
+            kills.len(),
+            1,
+            "a timeout must signal the group exactly once -- including after \
+             `run` has returned, which is where a lost `take()` would add a \
+             second signal: {kills:?}"
+        );
+        assert_eq!(kills[0].0, pid);
+    }
+
+    #[tokio::test]
+    async fn test_a_normal_exit_never_signals_the_group() {
+        // The third leg of the same guarantee: a child that exits on its
+        // own must never be `killpg`'d at all. `disarm()` in the `wait()`
+        // arm takes the pgid before anything else can be awaited, so the
+        // guard's own `Drop` at the end of `run` finds nothing left to
+        // kill.
+        probe::take_spawned();
+        probe::take_kills();
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "exit 0".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, Some(0));
+
+        let spawned = probe::take_spawned();
+        assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
+        assert_eq!(
+            probe::take_kills(),
+            Vec::new(),
+            "a child that exits on its own must never be signalled"
+        );
+    }
+
     #[tokio::test]
     async fn test_dropping_a_run_mid_flight_kills_its_process_group() {
         // `Session::refresh` aborts its workers when it is dropped, which
