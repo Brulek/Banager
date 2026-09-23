@@ -2100,7 +2100,37 @@ mod tests {
         assert_eq!(output.stderr, "to stderr\n");
         let seen = lines.lock().unwrap().clone();
         assert_eq!(seen.len(), 501, "every line must reach the log drawer too");
-        assert_eq!(seen[499], (Stream::Stdout, "line-499".to_string()));
+        // Stdout and stderr are two independent pipes, read concurrently
+        // (see the `biased` comment on the main select loop: "the
+        // interleaving *between* the two streams is approximate"). That
+        // is doubly true of the post-exit drain below, whose own select
+        // is unbiased on purpose -- it only has to reach EOF on both, not
+        // preserve an order between them -- so once a child exits before
+        // either pipe has been read even once, which stream's read wins
+        // which poll is a genuine race. Under CPU contention that lets
+        // the single stderr line land anywhere at all relative to the 500
+        // stdout lines, including before every one of them; it was seen
+        // to do exactly that (`stderr` at index 0) under a stress run
+        // alongside parallel `cargo build`s. What the runner does
+        // guarantee, and what the log drawer actually depends on, is
+        // in-order and complete delivery *within* each stream, so that is
+        // what this asserts, instead of a cross-stream position.
+        let stdout_seen: Vec<&str> = seen
+            .iter()
+            .filter(|(s, _)| *s == Stream::Stdout)
+            .map(|(_, line)| line.as_str())
+            .collect();
+        let expected: Vec<String> = (0..500).map(|i| format!("line-{i}")).collect();
+        assert_eq!(
+            stdout_seen, expected,
+            "every stdout line must reach the log drawer too, in order"
+        );
+        let stderr_seen: Vec<&str> = seen
+            .iter()
+            .filter(|(s, _)| *s == Stream::Stderr)
+            .map(|(_, line)| line.as_str())
+            .collect();
+        assert_eq!(stderr_seen, vec!["to stderr"]);
     }
 
     #[tokio::test]
