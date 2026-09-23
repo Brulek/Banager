@@ -140,7 +140,8 @@
       "CancelRequested": "正在取消",
       "Cancelling": "正在取消",
       "Verifying": "正在核实",
-      "Done": "已完成"
+      "Done": "已完成",
+      "waitingForBrewUpdate": "正在等待 Homebrew 完成更新"
     },
     "outcome": {
       "Succeeded": "已成功",

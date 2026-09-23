@@ -12,6 +12,7 @@ export function OperationBar() {
   const cancelMutation = useCancelOperation();
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
+  const logs = useUiStore((s) => s.logs);
 
   // The backend lists operations newest first (Task 3). Showing the newest
   // one — not only an *active* one — is what lets the user see the outcome
@@ -29,6 +30,26 @@ export function OperationBar() {
 
   const isActive = ACTIVE_STATUSES.includes(current.status);
 
+  // "Running" alone used to be the only thing on screen while an install,
+  // upgrade or uninstall waits for a `brew update` a refresh left running
+  // (`BrewAdapter::wait_for_update`, up to `OP_UPDATE_WAIT`): the log
+  // drawer said so (`LogNote::WaitingForBrewUpdate`), but this bar did
+  // not, and it is the only thing visible before the drawer is opened.
+  // There is no separate `OpStatus` for this -- `set_status` in
+  // `ops/mod.rs` never leaves `Running` while `execute` is inside
+  // `wait_for_update` -- so this reads the same log the drawer already
+  // renders (`useUiStore().logs`) instead of adding one: the note this
+  // operation's log most recently carried is the wait starting, and
+  // nothing (no further `Log` or `Note` event) has arrived since to say
+  // it ended.
+  const opLogs = logs.filter((l) => l.opId === current.id);
+  const lastOpLog = opLogs[opLogs.length - 1];
+  const waitingForBrewUpdate =
+    isActive &&
+    lastOpLog !== undefined &&
+    "note" in lastOpLog &&
+    "WaitingForBrewUpdate" in lastOpLog.note;
+
   return (
     <div className="flex h-full items-center justify-between gap-4 px-4">
       <button
@@ -43,7 +64,9 @@ export function OperationBar() {
           {t("operations.current", {
             kind: t(`operations.kind.${current.kind}`),
             name: current.name,
-            status: t(`operations.status.${current.status}`),
+            status: waitingForBrewUpdate
+              ? t("operations.status.waitingForBrewUpdate")
+              : t(`operations.status.${current.status}`),
           })}
         </span>
         {current.status === "Done" && current.outcome ? (

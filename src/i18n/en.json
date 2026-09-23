@@ -147,7 +147,8 @@
       "CancelRequested": "cancelling",
       "Cancelling": "cancelling",
       "Verifying": "verifying",
-      "Done": "done"
+      "Done": "done",
+      "waitingForBrewUpdate": "waiting for Homebrew to finish updating"
     },
     "outcome": {
       "Succeeded": "Succeeded",

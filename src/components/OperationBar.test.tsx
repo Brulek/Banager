@@ -9,7 +9,7 @@ const mockInvoke = vi.mocked(invoke);
 
 beforeEach(() => {
   mockInvoke.mockReset();
-  useUiStore.setState({ drawerOpen: false, focusedOpId: null });
+  useUiStore.setState({ drawerOpen: false, focusedOpId: null, logs: [] });
 });
 
 describe("OperationBar", () => {
@@ -48,6 +48,36 @@ describe("OperationBar", () => {
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 5 }),
     );
+  });
+
+  it("shows the wait for a brew update, not just \"running\", while one is in progress", async () => {
+    // Item (2) of the loose-ends pass: `LogNote::WaitingForBrewUpdate` used
+    // to reach only the log drawer, so this bar -- the only thing on
+    // screen before the drawer is opened -- still said "running" while an
+    // install waited on Homebrew for up to ten minutes.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 5,
+            kind: "Upgrade",
+            instance_id: "brew:/opt/homebrew",
+            artifact_kind: "Cask",
+            name: "onyx",
+            status: "Running",
+            outcome: null,
+            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+    useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
+
+    const { findByRole, findByText } = renderWithProviders(<OperationBar />);
+    await findByText("Updating onyx — waiting for Homebrew to finish updating");
+    // Cancel must still work: the wait is still part of an active op.
+    expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 
   it("keeps a finished operation visible with its outcome and no Cancel button", async () => {
