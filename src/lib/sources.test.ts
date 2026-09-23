@@ -506,4 +506,16 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     expect(en.updates.blocked.Pinned.description).toMatch(/the next time you start Canager\.$/);
     expect(zhCN.updates.blocked.Pinned.description).toMatch(/下次启动 Canager 的时候。$/);
   });
+
+  it("does not say in Chinese that Homebrew is the one who pinned it", () => {
+    // Someone ran `brew pin` -- the user, or a script. "Homebrew 把它固定"
+    // made Homebrew the one who did it; the English never says who.
+    for (const copy of [
+      zhCN.updates.blocked.Pinned.description,
+      zhCN.updates.blocked.Pinned.refused,
+    ]) {
+      expect(copy).not.toMatch(/把[^，。]*固定/);
+      expect(copy).toMatch(/被固定/);
+    }
+  });
 });
