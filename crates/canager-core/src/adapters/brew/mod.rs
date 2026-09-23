@@ -141,8 +141,10 @@ impl BrewAdapter {
     /// enough that a stuck one ends the operation with a sentence saying
     /// so, and nothing changed. The log line the wait prints
     /// (`operations.logNote.waitingForBrewUpdate`) and the sentence it ends
-    /// with (`operations.outcome.CanagerFailed.HomebrewStillUpdating`)
-    /// both name this number: change them with it.
+    /// with (`operations.outcome.CanagerFailed.HomebrewStillUpdating`) both
+    /// interpolate this number as `{{minutes}}` (via `op_update_wait_minutes`
+    /// below) rather than carrying their own copy of it, so there is nothing
+    /// to keep in sync by hand when it changes.
     const OP_UPDATE_WAIT: Duration = Duration::from_secs(10 * 60);
 
     pub const CANDIDATE_PATHS: [&'static str; 3] = [

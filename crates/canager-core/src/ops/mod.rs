@@ -438,8 +438,11 @@ impl OperationManager {
         // finish. That is a permit held doing nothing but waiting, for as
         // long as ten minutes, not a bug in this reasoning: the DAG claim
         // above is about what a permit holder can be *blocked on*, and
-        // `wait_for_update` blocks on Homebrew's own update lock
-        // (`update_lock_for`) or a bounded sleep
+        // `wait_for_update` blocks on Canager's own per-instance update lock
+        // (`update_lock_for` -- an in-process `tokio::sync::Mutex`, not
+        // Homebrew's file-based `var/homebrew/locks/update`;
+        // `crates/canager-core/src/adapters/brew/mod.rs` ~499-501
+        // distinguishes the two) or a bounded sleep
         // (`tokio::time::sleep(self.op_update_wait)`), never on this
         // semaphore or on any `ResourceLock` another op here might be
         // holding. So it still cannot deadlock; it can only make the other
