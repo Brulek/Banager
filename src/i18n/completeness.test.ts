@@ -83,16 +83,21 @@ function forEachToken(sourceFile: ts.SourceFile, node: ts.Node, cb: (token: ts.N
  * pass as a live reference. Built on the TypeScript compiler API
  * (`ts.createSourceFile` plus `ts.getLeadingCommentRanges` /
  * `ts.getTrailingCommentRanges` over every real token) instead of a
- * hand-rolled quote-parity scanner: the previous scanner treated every
- * `'`/`"`/`` ` `` as a string delimiter including the one inside the regex
- * literal `/'/g` at src/lib/format.ts:12, which inverted its notion of
- * "inside a string" for the rest of that file and -- because all files were
- * joined into one haystack before stripping -- for every file read after
- * it too (435 of 635 comments in shipping src survived "stripping",
- * measured against TypeScript's own comment ranges). Operating on the
- * parser's token stream sidesteps the regex-vs-divide ambiguity a raw
- * scanner would hit, and running once per file (see below) means one
- * file's result can never leak into another's regardless.
+ * hand-rolled quote-parity scanner: the previous scanner tracked "inside a
+ * string" as one open/close pair per quote character, so it could not see
+ * a template literal nested inside another template literal's `${...}` --
+ * exactly src/lib/format.ts:12, `` `'${token.replace(/'/g, `'\\''`)}'` ``,
+ * whose inner `` `'\\''` `` opens and closes its own backtick pair before
+ * the outer template does. The old scanner read that inner open-backtick
+ * as closing the *outer* string, which inverted its notion of "inside a
+ * string" for the rest of that file and -- because all files were joined
+ * into one haystack before stripping -- for every file read after it too
+ * (435 of 635 comments in shipping src survived "stripping", measured
+ * against TypeScript's own comment ranges). Operating on the parser's
+ * token stream sidesteps both that nesting and the regex-vs-divide
+ * ambiguity a raw scanner would also hit, and running once per file (see
+ * below) means one file's result can never leak into another's
+ * regardless.
  */
 function stripComments(code: string, fileName: string): string {
   const scriptKind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
@@ -326,26 +331,36 @@ describe("the reachability guard itself", () => {
   });
 
   /**
-   * `stripComments` used to treat every quote character as a string
-   * delimiter, including the one inside a regex literal like `/'/g`
-   * (exactly src/lib/format.ts:12). That flipped the scanner's notion of
-   * "inside a string" for the rest of the file, so a comment sitting after
-   * the regex literal survived "stripping" and a key mentioned only in it
-   * read as referenced. Unlike the single-line haystack the old version of
-   * this self-test used -- which cannot exercise a scanner desync that only
-   * shows up *after* a false quote flips parity -- this one runs a whole
-   * multi-statement file through `stripComments` and checks the comment
-   * that comes after the regex literal.
+   * `stripComments` used to track "inside a string" as one open/close pair
+   * per quote character, so it could not see a template literal nested
+   * inside another template literal's `${...}` -- exactly
+   * src/lib/format.ts:12, `` `'${token.replace(/'/g, `'\\''`)}'` ``, whose
+   * inner `` `'\\''` `` opens and closes its own backtick pair before the
+   * outer template does. Reading that inner open-backtick as the outer
+   * string's close flipped the scanner's notion of "inside a string" for
+   * the rest of the file, so a comment placed after it survived
+   * "stripping" and a key mentioned only in it read as referenced. (The
+   * regex literal `/'/g` earlier on the same line is not the cause: the old
+   * scanner mishandles this line just as badly with the regex changed to
+   * `/x/g` -- and conversely, dropping down to one backslash before the
+   * inner template's closing quotes, instead of the two `token.replace`
+   * actually writes, makes the old scanner strip the comment correctly,
+   * i.e. that shape does not reproduce the bug at all.) Unlike the
+   * single-line haystack the old version of this self-test used -- which
+   * cannot exercise a scanner desync that only shows up *after* the
+   * nesting flips parity -- this one runs a whole multi-statement file
+   * through `stripComments` and checks the comment that comes after the
+   * nested template literal.
    */
-  it("does not lose quote parity inside a regex literal", () => {
+  it("does not desync on a template literal nested inside another template's ${}", () => {
     const file = [
       "export function quote(token: string): string {",
-      "  return `'${token.replace(/'/g, `'\\''`)}'`;",
+      "  return `'${token.replace(/'/g, `'\\\\''`)}'`;",
       "}",
       "// still wired through updates.cannotCheckShort, see below",
       'const other = t("some.other.key");',
     ].join("\n");
-    const stripped = stripComments(file, "regex-quote.ts");
+    const stripped = stripComments(file, "nested-template.ts");
     expect(stripped).toContain("token.replace"); // real code, kept
     expect(stripped).toContain('t("some.other.key")'); // real code after the comment, kept
     expect(stripped).not.toContain("updates.cannotCheckShort"); // the comment, gone
