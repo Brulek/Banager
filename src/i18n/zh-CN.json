@@ -63,7 +63,7 @@
     "blocked": {
       "Pinned": {
         "badge": "已固定",
-        "description": "Homebrew 把它固定在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新。",
+        "description": "Homebrew 把它固定在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次打开它的时候。",
         "refused": "{{source}} 把这个软件固定在了现在的版本，所以 Canager 没有更新它。什么都没有改动。"
       }
     }

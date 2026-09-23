@@ -104,6 +104,29 @@
   「打开 Ollama」和设置开关这两条明确承诺过会刷新的路径已经修好，但一个软件管家没有常驻刷新控件
   是个洞。加常驻控件涉及位置与形态，是产品决定，没有代为决定。
 
+## 每包可操作性（2026-09-24 立，分支 feat/per-package-actionability）
+
+**已做**：`UpdateCandidate.blocked: Option<UpdateBlocked>`，唯一变体 `Pinned`，唯一生产方是 brew 的
+`parse_outdated`（读 `brew outdated --json=v2` 的 `pinned`，公式与 cask 都有）。Rust 侧闸门
+`blocked_upgrade`（`session/plans.rs`）在 `issue_plan` 与 `submit` 复检里拒绝 `Upgrade`；
+更新页 `isActionable` 多一个条件，按钮、勾选、「更新所选」和两个计数一起去掉；行上写「已固定」
+并给出 `brew unpin <名字>`（cask 为 `--cask`）。Canager 不代为解除固定。
+
+**已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
+- **pipx 的 `[pinned]` 解析错误**：`pipx list --outdated` 把被固定的工具写成 `name [pinned]: a -> b`，
+  `pipx.rs` 的 `parse_outdated` 按第一个冒号切，行名变成 `"cowsay [pinned]"`，点「更新」会被
+  `validate_package_name` 以 invalidName 拒绝。正确做法是改读 `pipx list --outdated --output json`
+  的 `pinned` 字段并复用 `UpdateBlocked::Pinned`——但那时 `UPDATE_BLOCKED_KEYS.Pinned.values`
+  （`src/lib/sources.ts`）只会拼 brew 命令，要改成按来源给 `pipx unpin <名字>`。
+- **假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
+  brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。
+  列可更新项时读的输出里都没有这些状态，所以不能靠 `blocked` 提前标出；要么多读一份（`pipx list --json`
+  的 `lock_file`、`brew info --json=v2` 的 `disabled`、`uv tool list --show-version-specifiers`），
+  要么在 `reconcile` 里核对版本真的变了。
+- **已安装页的「有更新」徽标**（`src/pages/InstalledPage.tsx` 的 `updatableIds`）把 `snapshot.updates` 里
+  每一条都算作有更新，包括被固定的和 `checkable: false` 的（一次查询失败会给每个已装包造一条）。
+  这是本分支之前就有的问题，没有改。
+
 ## 阶段 4 之前
 
 - ~~`Adapter::capabilities()` 七份实现零调用方~~ —— **已于 2026-09-22 在 `e4b13b4` 整体删除**。六个字段里界面唯一需要的「能不能写」是每实例的事实（npm 取决于 prefix 权限），静态的每适配器 trait 方法承载不了，所以移到 `ManagerInstance.read_only_reason`；`search` / `upgrade_all` / `background_check` / `cancel_safe` 四个零调用方直接删。阶段 3 曾因这条砍掉 `needs_network` 标志，该裁决依然正确。
@@ -129,7 +152,7 @@
 
 ## 测试数据
 
-- `parse.rs` 的 `pinned` 分支无覆盖：加内联 JSON 单元测试（"不手写 fixture"规则只约束 `adapters/fixtures/` 目录）。
+- ~~`parse.rs` 的 `pinned` 分支无覆盖~~ —— **已于 2026-09-24 在分支 feat/per-package-actionability 解决**：`pinned` 现在被读成 `UpdateCandidate.blocked = Some(Pinned)`，有内联 JSON 单元测试，也有 `adapters/fixtures/brew/7.0.6/outdated-pinned.json`（由真实录制改了四个 pin 字段而来，README 写明，`brew_fixtures.rs` 有测试核对只差这四个值）。
 - `adapters/fixtures/brew/7.0.3/uses-jq.txt` 为空；下次为新 brew 版本重录 fixtures 时，选一个有已装依赖者的 formula（如 `openssl@3`）录 `uses-<formula>.txt`，不得伪造。
 
 ## 工作流与发布

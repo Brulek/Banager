@@ -268,6 +268,10 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // here is a formula or a cask. `--cask` because `brew unpin <name>`
     // resolves a formula first (`to_resolved_formulae_to_casks` in
     // Homebrew's `cmd/unpin.rb`), and a formula can share a cask's name.
+    // The description's promise that the update appears "at the latest
+    // the next time you open it" rests on the refresh every start runs
+    // (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
+    // and on `parse_outdated` reading `pinned` afresh each time.
     values: (key) => ({
       command: key.kind === "Cask" ? `brew unpin --cask ${key.name}` : `brew unpin ${key.name}`,
     }),

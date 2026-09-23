@@ -372,6 +372,9 @@ pip 有六个过期包时标题显示「0 个可用更新」、底下列着六�
   → 给出「更新」按钮 → `brew upgrade` 拒绝 → 用户拿到一行原始英文。这是「提供了然后拒绝」
   的第七例，但**实例级通道收不住它**，它是每包的。正确形状是 `UpdateCandidate.actionable: bool`
   + 理由枚举（`Pinned` 是第一个变体），不是又一轮前端硬编码。
+  —— **已于 2026-09-24 在分支 feat/per-package-actionability 落地**，形状略有不同：没有另设
+  `actionable: bool`，而是 `blocked: Option<UpdateBlocked>` 一个字段（`None` 即可操作），
+  免得布尔值和理由互相矛盾。详见 backlog「每包可操作性」一节。
 - **`{{message}}` 动态英文透传**（见 §6）。
 - **全新 Mac 的安装引导**：现有 `emptyStates.noSources` 点名了七个管理器并建议从 Homebrew 开始，
   但没告诉用户**怎么装**。一个「怎么安装 Homebrew」的按钮比一句建议有用。
