@@ -330,8 +330,8 @@ impl BrewAdapter {
     /// them the download failed and to check their connection. When the
     /// update then ends, its task wakes `background_change`, and the shell
     /// refreshes once: the notice clears and the new catalogue shows, or,
-    /// if the update failed after all, the refresh says *that* -- once,
-    /// without starting another `brew update` of its own (see
+    /// if the update failed after all, the refresh says *that*, without
+    /// starting another `brew update` of its own (see
     /// `UpdateRecord::unreported_failure`).
     ///
     /// A refresh that arrives while an update is running does not wait for
@@ -346,7 +346,7 @@ impl BrewAdapter {
     /// The one thing this cannot prevent is the app itself exiting
     /// mid-update: quitting ends the process, and the update's pipes with
     /// it.
-    async fn maybe_update(&self, inst: &ManagerInstance) -> IndexFreshness {
+    async fn maybe_update(&self, inst: &ManagerInstance, opts: &CheckOptions) -> IndexFreshness {
         if self.refuse_if_root().is_err() {
             return IndexFreshness::MayBeStale;
         }
@@ -373,7 +373,13 @@ impl BrewAdapter {
         let finish = {
             let mut updates = self.updates.lock().unwrap();
             let record = updates.entry(inst.id.clone()).or_default();
-            if std::mem::take(&mut record.unreported_failure) {
+            if let Some(failed_at) = record.unreported_failure {
+                // Only a round that began after the failure takes it; one
+                // that began before reports it and leaves it for the
+                // round the failure's wake-up sets off.
+                if opts.round_started.is_none_or(|t| t >= failed_at) {
+                    record.unreported_failure = None;
+                }
                 return IndexFreshness::MayBeStale;
             }
             if record
@@ -665,7 +671,7 @@ impl BrewAdapter {
         // `brew info` below would read the catalogue while it is being
         // rewritten, so neither runs, and the caller keeps last round's
         // candidates (see `AdapterError::IndexUpdating`).
-        let notes = match self.maybe_update(inst).await {
+        let notes = match self.maybe_update(inst, opts).await {
             IndexFreshness::Current => Vec::new(),
             IndexFreshness::Updating => return Err(AdapterError::IndexUpdating),
             IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
@@ -798,13 +804,27 @@ struct UpdateRecord {
     /// notice would stay on screen, and the old catalogue with it, until
     /// the user happened to do something.
     announced: bool,
-    /// An update a refresh announced then failed, and no refresh has said
-    /// so yet. The next `maybe_update` -- the refresh the failure itself
-    /// set off -- reports `MayBeStale` instead of starting another `brew
+    /// When an update a refresh announced then failed, until a refresh
+    /// round that began after that moment has reported it. While it is
+    /// set, `maybe_update` reports `MayBeStale` and starts no `brew
     /// update`: a failure that started a fresh attempt would, on a network
     /// that fails every one, keep Homebrew updating in a loop nobody asked
-    /// for. The notice's own "Try again" is what starts the next one.
-    unreported_failure: bool,
+    /// for. The refresh after the one that takes it -- the notice's "Try
+    /// again", or any other -- tries again.
+    ///
+    /// A time, not a flag the first reader takes, because the first reader
+    /// can be the wrong round (F1 in the final concurrency review): a
+    /// round that began before the failure but reached brew after it --
+    /// held up in detection by a slow source -- used to take the flag, and
+    /// the round the failure's wake-up sets off then found none and started
+    /// another update. Such a round reports the failure and leaves it
+    /// (`maybe_update` compares with `CheckOptions::round_started`). The
+    /// wake-up's refresh gets a round that began after the wake-up
+    /// (`Session::refresh`), so it is the one that takes it -- unless
+    /// another refresh's round began in the moment between the failure and
+    /// the shell's loop picking the wake-up up, which then takes it
+    /// instead.
+    unreported_failure: Option<Instant>,
 }
 
 /// Writes a finished `brew update`'s result into its `UpdateRecord` when
@@ -856,7 +876,7 @@ impl Drop for UpdateFinish {
             }
             let announced = std::mem::take(&mut record.announced);
             if announced && !self.succeeded {
-                record.unreported_failure = true;
+                record.unreported_failure = Some(Instant::now());
             }
             announced
         };
@@ -1599,6 +1619,7 @@ mod tests {
         let adapter = BrewAdapter::new(runner);
         let opts = CheckOptions {
             include_self_updating: true,
+            ..CheckOptions::default()
         };
         let result = adapter
             .check_updates(&test_instance(), &opts)

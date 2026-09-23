@@ -95,8 +95,13 @@ impl Session {
         let previous = self.snapshot.lock().unwrap().clone();
         // Owned copy (CheckOptions is Copy): each per-instance spawned task
         // below needs its own 'static value, and the caller's `&opts`
-        // reference cannot outlive this function.
-        let opts: CheckOptions = *opts;
+        // reference cannot outlive this function. Stamped with this
+        // round's start, which brew compares with when an update failed
+        // (`UpdateRecord::unreported_failure`).
+        let opts = CheckOptions {
+            round_started: Some(std::time::Instant::now()),
+            ..*opts
+        };
 
         // No root check here: it used to short-circuit the entire refresh
         // to `RefusedAsRoot` behind `BrewAdapter::refuses_as_root(env)`, but
@@ -2606,6 +2611,106 @@ mod tests {
              `check_updates`' own `brew info` for the names"
         );
         assert_eq!(artifact_names(&follow_up), vec!["jq"]);
+    }
+
+    /// How many `brew update`s have been run.
+    fn update_runs(runner: &MockRunner) -> usize {
+        runner
+            .calls()
+            .iter()
+            .filter(|c| c.get(1).map(String::as_str) == Some("update"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn test_a_background_change_after_a_failed_update_starts_no_update_of_its_own() {
+        // F1 in the final concurrency review. An update a refresh
+        // announced fails while another refresh is in flight -- one that
+        // started before the failure but reaches brew after it, because a
+        // slow source holds up detection. That refresh used to consume
+        // `unreported_failure`, so the refresh the failure's wake-up sets
+        // off found no flag, an expired TTL, and started a second `brew
+        // update` nobody asked for.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![BREW, "update"], brew_answer(1, ""));
+        runner.delay(vec![BREW, "update"], Duration::from_millis(400));
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            brew_answer(0, &brew_info_jq("1.6")),
+        );
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2"],
+            brew_answer(0, BREW_OUTDATED_JQ),
+        );
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let brew = Arc::new(
+            BrewAdapter::new(runner.clone())
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_update_patience(Duration::from_millis(100))
+                .with_background_change(background_change.clone()),
+        );
+        // Start the 400 ms update and give up on it after 100 ms, so its
+        // end is announced.
+        let inst = brew.detect(&non_root_env()).await.remove(0);
+        let started = brew.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(started, Err(AdapterError::IndexUpdating)),
+            "got {started:?}"
+        );
+        let (slow, slow_state) = FakeAdapter::new("slow");
+        {
+            let mut s = slow_state.lock().unwrap();
+            s.instances = vec![make_instance("slow", "slow:1")];
+            // Detection waits for every adapter, so brew's worker in the
+            // refresh below starts after this -- after the update failed.
+            s.detect_delay = Duration::from_millis(600);
+        }
+        let session = Session::build(
+            Arc::new(VecSink::new()),
+            vec![brew, slow],
+            None,
+            background_change,
+        );
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        // What `ipc::refresh_on_background_change` does, one iteration.
+        let follow_up = {
+            let session = session.clone();
+            let env = env.clone();
+            tokio::spawn(async move {
+                session.background_change().await;
+                session.refresh(&env, &opts).await
+            })
+        };
+        let in_flight = session.refresh(&env, &opts).await;
+        let follow_up = tokio::time::timeout(Duration::from_secs(10), follow_up)
+            .await
+            .expect("the end of the update must set off a refresh")
+            .expect("follow-up task");
+
+        assert_eq!(
+            brew_notes(&in_flight),
+            vec![InstanceNote::IndexMayBeStale],
+            "the refresh in flight read brew after the failure, and says so"
+        );
+        assert_eq!(
+            brew_notes(&follow_up),
+            vec![InstanceNote::IndexMayBeStale],
+            "the refresh the failure set off says so too"
+        );
+        assert_eq!(
+            update_runs(&runner),
+            1,
+            "neither refresh may start another `brew update`: {:?}",
+            runner.calls()
+        );
+
+        // The rule is "not by itself", not "never": the next refresh --
+        // the notice's "Try again" -- does try again.
+        session.refresh(&env, &opts).await;
+        assert_eq!(update_runs(&runner), 2, "{:?}", runner.calls());
     }
 
     #[tokio::test]

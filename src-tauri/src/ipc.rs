@@ -39,6 +39,7 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
 fn check_options(state: &AppState) -> CheckOptions {
     CheckOptions {
         include_self_updating: state.get_settings().include_self_updating,
+        ..CheckOptions::default()
     }
 }
 

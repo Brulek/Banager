@@ -26,6 +26,14 @@ pub mod uv;
 pub struct CheckOptions {
     /// Homebrew only: include casks that update themselves (`brew outdated --greedy`).
     pub include_self_updating: bool,
+    /// When the refresh round this check is part of began. Set by
+    /// `Session`'s `refresh_round` over whatever the caller passed; `None`,
+    /// a check made outside a refresh, counts as a round beginning now.
+    /// Homebrew only: see `UpdateRecord::unreported_failure`. Never on the
+    /// wire (`serde(skip)`): an `Instant` means nothing outside this
+    /// process.
+    #[serde(skip)]
+    pub round_started: Option<std::time::Instant>,
 }
 
 /// Everything one `check_updates` call learned: the per-package
