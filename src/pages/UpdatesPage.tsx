@@ -448,7 +448,14 @@ export function UpdatesPage() {
     if (candidate.blocked !== null) {
       const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
       const instance = snapshot?.instances.find((i) => i.id === candidate.key.instance_id);
-      return t(copy.description, copy.values(candidate.key, instance));
+      // `auto_updates` is brew's own flag for a cask that updates itself
+      // (`parse_info_installed` in crates/canager-core/src/adapters/brew/
+      // parse.rs); a package missing from `artifacts` gets the plain copy.
+      const selfUpdating = artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true;
+      const description = selfUpdating
+        ? (copy.selfUpdatingDescription ?? copy.description)
+        : copy.description;
+      return t(description, copy.values(candidate.key, instance));
     }
     return descriptionFor(candidate);
   };

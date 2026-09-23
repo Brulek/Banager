@@ -496,6 +496,34 @@ describe("UpdatesPage", () => {
     await findByText(/run \/opt\/homebrew\/bin\/brew unpin --cask onyx in Terminal/);
   });
 
+  it("does not promise a pinned app that updates itself will stay at its version", async () => {
+    // `brew pin` warns that a cask with `auto_updates true` "may update
+    // itself outside Homebrew despite being pinned". Such a row reaches
+    // the page mostly with include_self_updating (`brew outdated --greedy`).
+    settings = { ...settings, include_self_updating: true };
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: "Verify system files structure",
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: true,
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText(
+      "This has been pinned, so neither Homebrew nor Canager will update it. The app updates itself, though, and may still do so despite the pin. To let Homebrew update it, run /opt/homebrew/bin/brew unpin --cask onyx in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+    );
+    expect(queryByText(/keeping this at the version it has now/)).toBeNull();
+  });
+
   it("names the brew that owns a pinned package when a Mac has two, not whichever PATH finds", async () => {
     // A Mac migrated from Intel keeps /usr/local beside /opt/homebrew,
     // and Terminal's `brew` is /opt/homebrew/bin/brew. glib pinned in

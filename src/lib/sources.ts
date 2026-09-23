@@ -246,13 +246,23 @@ interface UpdateBlockedCopy {
   badge: string;
   /** The row's description: why, and what the user can do about it. */
   description: string;
+  /**
+   * `description` for a package that updates itself
+   * (`InstalledArtifact.auto_updates`), or `null` when this reason needs
+   * no separate sentence for one. A reason whose `description` promises
+   * the package stays where it is cannot make that promise to an app that
+   * updates itself outside the tool.
+   */
+  selfUpdatingDescription: string | null;
   /** What `description` interpolates, from the row's own key and the
    *  instance that key's `instance_id` names (`undefined` only if the
    *  snapshot lacks it, which `refresh` never produces: it builds
    *  `updates` only from instances it also puts in `instances`). */
   values: (key: ArtifactKey, instance: ManagerInstance | undefined) => Record<string, string>;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
-   *  refusal, which only a stale Updates page can reach. */
+   *  refusal, which only a stale Updates page can reach. It is given only
+   *  the source's label (`planErrorMessage`'s `sourceLabel`), not the
+   *  package, so it must hold for a self-updating one too. */
   refused: string;
 }
 
@@ -266,6 +276,18 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   Pinned: {
     badge: "updates.blocked.Pinned.badge",
     description: "updates.blocked.Pinned.description",
+    // A pinned cask with `auto_updates true` can still move: `brew pin`
+    // itself warns it "may update itself outside Homebrew despite being
+    // pinned" (Homebrew's `cmd/pin.rb`). `description` says Homebrew is
+    // keeping the package at its version, which such an app does not
+    // honour, so it gets a sentence that promises only what Homebrew and
+    // Canager will not do. Such a cask reaches this page mostly through
+    // `brew outdated --greedy` (`include_self_updating`, `check_updates`
+    // in crates/canager-core/src/adapters/brew/mod.rs), but Homebrew's own
+    // environment settings can list it without that flag
+    // (`outdated_version` in Homebrew's `cask/cask.rb`), which is why the
+    // page asks the package's `auto_updates` and not the setting.
+    selfUpdatingDescription: "updates.blocked.Pinned.descriptionSelfUpdating",
     // The command that releases the pin, for the user to run themselves:
     // Canager does not unpin, which would be a new write operation.
     // brew's `parse_outdated` is `Pinned`'s only producer, so every key

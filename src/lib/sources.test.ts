@@ -503,8 +503,26 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // "it" has just meant the package, and for a pinned cask that is an
     // app, "open it" reads as "open that app". What refreshes is Canager's
     // start (`refreshIntoCache(queryClient, "initial")`), so name Canager.
-    expect(en.updates.blocked.Pinned.description).toMatch(/the next time you start Canager\.$/);
-    expect(zhCN.updates.blocked.Pinned.description).toMatch(/下次启动 Canager 的时候。$/);
+    for (const copy of [
+      en.updates.blocked.Pinned.description,
+      en.updates.blocked.Pinned.descriptionSelfUpdating,
+    ]) {
+      expect(copy).toMatch(/the next time you start Canager\.$/);
+    }
+    for (const copy of [
+      zhCN.updates.blocked.Pinned.description,
+      zhCN.updates.blocked.Pinned.descriptionSelfUpdating,
+    ]) {
+      expect(copy).toMatch(/下次启动 Canager 的时候。$/);
+    }
+  });
+
+  it("does not promise, when refusing, that a pinned package stays at its version", () => {
+    // `refused` is given only the source's label, never the package, so it
+    // is also what a pinned app that updates itself would get -- and `brew
+    // pin` warns such an app may update despite the pin.
+    expect(en.updates.blocked.Pinned.refused).not.toMatch(/version/);
+    expect(zhCN.updates.blocked.Pinned.refused).not.toMatch(/版本/);
   });
 
   it("does not say in Chinese that Homebrew is the one who pinned it", () => {
@@ -512,6 +530,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // made Homebrew the one who did it; the English never says who.
     for (const copy of [
       zhCN.updates.blocked.Pinned.description,
+      zhCN.updates.blocked.Pinned.descriptionSelfUpdating,
       zhCN.updates.blocked.Pinned.refused,
     ]) {
       expect(copy).not.toMatch(/把[^，。]*固定/);
