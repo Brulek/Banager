@@ -206,6 +206,7 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.NotInstalledAfterInstall",
     "NeedsAttention.StillInstalledAfterUninstall",
     "NeedsAttention.GoneAfterUpgrade",
+    "NeedsAttention.UnchangedAfterUpgrade",
     "Failed",
     "FailedSilent",
     "CanagerFailed.Panicked",

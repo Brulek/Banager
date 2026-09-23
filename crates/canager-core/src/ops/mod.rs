@@ -2,7 +2,7 @@ use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
     AdapterId, ArtifactKey, ArtifactKind, Attention, Fault, InstanceId, ManagerInstance, OpKind,
-    OpStatus, Outcome, Plan, ResourceLock,
+    OpStatus, Outcome, Plan, Reconciled, ResourceLock,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,39 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
         | AdapterError::IndexUpdating => Fault::Internal,
     };
     Outcome::CanagerFailed(fault)
+}
+
+/// What an upgrade did to the installed version, judged from two
+/// `reconcile` readings of the same artifact: one taken before the command
+/// ran and one after (both in `run_operation`).
+enum VersionChange {
+    /// Both readings name a version, and they differ.
+    Changed,
+    /// Both readings name a version, and it is the same one.
+    Unchanged,
+    /// There is nothing to compare: the before-reading failed, the package
+    /// was absent in either reading, or a reading carries no version (an
+    /// adapter says `None` when its version string cannot tell one install
+    /// from another -- see `Reconciled::version`). An empty string is
+    /// treated the same way: brew's parser falls back to `""` for a formula
+    /// with no installed entry to read one from (`parse_info_installed`),
+    /// npm's for a package `npm ls` gave no version (`parse_ls_global`),
+    /// and two empty strings being equal says nothing.
+    Unknown,
+}
+
+fn version_change(before: Option<&Reconciled>, after: &Reconciled) -> VersionChange {
+    let known = |r: &Reconciled| -> Option<String> {
+        if !r.present {
+            return None;
+        }
+        r.version.clone().filter(|v| !v.is_empty())
+    };
+    match (before.and_then(known), known(after)) {
+        (Some(b), Some(a)) if b == a => VersionChange::Unchanged,
+        (Some(_), Some(_)) => VersionChange::Changed,
+        _ => VersionChange::Unknown,
+    }
 }
 
 pub struct OpRecord {
@@ -516,6 +549,55 @@ impl OperationManager {
             }
         };
 
+        let key = ArtifactKey {
+            instance_id: plan.request.instance_id.clone(),
+            kind: plan.request.artifact_kind,
+            name: plan.request.name.clone(),
+        };
+
+        // An upgrade's package is installed before the command and after
+        // it, so being present afterwards proves nothing about whether it
+        // was upgraded. What does is its version changing, and for that
+        // there has to be a reading from before. It is taken with the
+        // same `reconcile` the after-reading below uses, so the two come
+        // from one parser reading one source the same way, and only a real
+        // change in what is installed can make them differ. The update
+        // check's `UpdateCandidate.current` / `.target` are not used for
+        // this: they come from a different command and parser, and two
+        // parsers for one tool have already spelled one package's name
+        // differently (brew's `full_name` against `name`), which versions
+        // can do too.
+        //
+        // An `Err` here keeps `before` `None`, and every arm below then
+        // decides exactly as it did before this reading existed. On brew,
+        // that is what happens while a `brew update` a refresh left
+        // running is still going: `inventory` refuses with
+        // `IndexUpdating` (`BrewAdapter::inventory`). Its
+        // `join_running_update` also marks that update `announced`, which
+        // it already is: only `maybe_update` starts one, only from a
+        // refresh's `check_updates` holding this instance's `ResourceLock`
+        // (`refresh_round` in session/refresh.rs), which this op now holds;
+        // and one it leaves running is marked there, the moment the
+        // refresh stops waiting for it. (A refresh dropped during that wait
+        // would leave it unmarked, and this would then mark it, costing one
+        // extra refresh when it ends; nothing drops a refresh today.)
+        //
+        // A Cancel while this reads stops here: nothing was started.
+        // Dropping the read's future kills its command, which for a query
+        // is harmless (the `CommandRunner::run` doc).
+        let before = if plan.request.kind == OpKind::Upgrade {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    self.finish(op_id, Outcome::Cancelled, true);
+                    return;
+                }
+                read = adapter.reconcile(&instance, &key) => read.ok(),
+            }
+        } else {
+            None
+        };
+
         let exec_result = adapter
             .execute(&plan, self.sink.clone(), op_id, cancel.clone())
             .await;
@@ -525,11 +607,6 @@ impl OperationManager {
         }
         self.set_status(op_id, OpStatus::Verifying);
 
-        let key = ArtifactKey {
-            instance_id: plan.request.instance_id.clone(),
-            kind: plan.request.artifact_kind,
-            name: plan.request.name.clone(),
-        };
         let reconciled = adapter.reconcile(&instance, &key).await;
 
         let final_outcome = match exec_result {
@@ -556,40 +633,60 @@ impl OperationManager {
                             Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
                         }
                     }
+                    // The tool exited 0, and the version the package is
+                    // installed at did not move. Every known way to get
+                    // here is a tool that skipped the package and exited 0
+                    // anyway: a locked pipx tool, a uv tool installed with
+                    // `==`, a disabled Homebrew cask, a cask whose
+                    // installed recipe Homebrew cannot load. With no
+                    // before-reading to compare (`Unknown`), presence is
+                    // all there is, and it is taken as success, as it was
+                    // before the reading existed.
                     OpKind::Upgrade => {
-                        // There is no target version to compare against
-                        // here, so presence is the strongest evidence
-                        // available: still present after an upgrade that
-                        // reported success is as good as it gets.
-                        if r.present {
-                            Outcome::Succeeded
-                        } else {
+                        if !r.present {
                             Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
+                        } else {
+                            match version_change(before.as_ref(), &r) {
+                                VersionChange::Unchanged => {
+                                    Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+                                }
+                                VersionChange::Changed | VersionChange::Unknown => {
+                                    Outcome::Succeeded
+                                }
+                            }
                         }
                     }
                 },
             },
             // A cancelled/timed-out execute only tells us the artifact's
-            // *current* presence, not whether this op caused it. That is
-            // proof of success for Install (wasn't there, now is) and
-            // Uninstall (was there, now isn't) — but never for Upgrade,
-            // since the artifact was already present before the op ran, so
-            // presence afterward proves nothing either way.
+            // *current* state, not whether this op caused it. Presence is
+            // proof enough for Install (wasn't there, now is) and
+            // Uninstall (was there, now isn't); for Upgrade the package is
+            // there either way, and the proof is the version having moved
+            // since the before-reading.
             //
             // When the run was stopped by the user's own Cancel (the token
             // is only ever fired by `cancel()`; a timeout never touches
             // it) and reconcile shows the request did *not* take effect,
             // the cancel is what happened, and the user is told so. If the
-            // work finished anyway, the presence arms below report
-            // `Succeeded`, not `Cancelled`: the race goes to whatever
-            // reconcile actually found. Upgrade stays `Unconfirmed` even after a user cancel,
-            // for the same reason as above — nothing here can tell whether
-            // the new version landed before the kill, and `Cancelled` would
-            // read as "it did not".
+            // work finished anyway, the arms below report `Succeeded`, not
+            // `Cancelled`: the race goes to whatever reconcile actually
+            // found. Without a comparison to make -- either reading
+            // failed, or the package is gone -- an upgrade stays
+            // `Unconfirmed`, as it always was before the before-reading.
             Ok(Outcome::Unconfirmed) => {
                 let user_cancelled = cancel.is_cancelled();
                 match plan.request.kind {
-                    OpKind::Upgrade => Outcome::Unconfirmed,
+                    OpKind::Upgrade => match reconciled {
+                        Ok(r) => match version_change(before.as_ref(), &r) {
+                            VersionChange::Changed => Outcome::Succeeded,
+                            VersionChange::Unchanged if user_cancelled => Outcome::Cancelled,
+                            VersionChange::Unchanged | VersionChange::Unknown => {
+                                Outcome::Unconfirmed
+                            }
+                        },
+                        Err(_) => Outcome::Unconfirmed,
+                    },
                     OpKind::Install => match reconciled {
                         Ok(r) if r.present => Outcome::Succeeded,
                         Ok(_) if user_cancelled => Outcome::Cancelled,

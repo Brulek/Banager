@@ -419,6 +419,12 @@ pub enum Attention {
     StillInstalledAfterUninstall,
     /// An upgrade exited 0 and the item is no longer installed at all.
     GoneAfterUpgrade,
+    /// An upgrade exited 0 and the item is still installed at the version
+    /// it was at before: the tool skipped it without saying so in its exit
+    /// code. `run_operation` (`crates/canager-core/src/ops/mod.rs`) builds
+    /// this only when two reads of the installed version, one taken before
+    /// the command and one after, both succeeded and are equal.
+    UnchangedAfterUpgrade,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -434,6 +440,15 @@ pub enum OpStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reconciled {
     pub present: bool,
+    /// The installed version, as the adapter's own inventory spells it.
+    /// `run_operation` compares a reading taken before an upgrade with one
+    /// taken after, so this only has to be read the same way twice, not
+    /// to agree with any other spelling of the same version.
+    ///
+    /// `None` when the artifact is not present, and also when the string
+    /// the inventory has cannot tell one install from another: a Homebrew
+    /// `version :latest` cask is installed as "latest" before and after
+    /// every upgrade (`BrewAdapter::reconcile`).
     pub version: Option<String>,
 }
 
@@ -692,6 +707,11 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Outcome::NeedsAttention(Attention::GoneAfterUpgrade)).unwrap(),
             r#"{"NeedsAttention":"GoneAfterUpgrade"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade))
+                .unwrap(),
+            r#"{"NeedsAttention":"UnchangedAfterUpgrade"}"#
         );
     }
 

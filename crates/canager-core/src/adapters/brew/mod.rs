@@ -1353,7 +1353,21 @@ impl BrewAdapter {
         // the name inventory actually uses first; the presence rule itself
         // is the shared one every adapter applies.
         let key = qualified_key(&artifacts, key);
-        Ok(reconcile_from(artifacts, &key))
+        let mut reconciled = reconcile_from(artifacts, &key);
+        // A cask declared `version :latest` is installed under the version
+        // "latest": `brew info` reports as `installed` the name of the
+        // version directory in its Caskroom metadata
+        // (`Caskroom.cask_installed_version` in Homebrew 7.0.6), and an
+        // upgrade reinstalls it under that same name. `brew outdated
+        // --greedy` lists one whenever its download has changed
+        // (`Cask#outdated_version`), so an upgrade of it
+        // does real work while the version reads the same before and
+        // after. The string cannot tell one install from another, so it is
+        // not offered as one (`Reconciled::version`).
+        if key.kind == ArtifactKind::Cask && reconciled.version.as_deref() == Some("latest") {
+            reconciled.version = None;
+        }
+        Ok(reconciled)
     }
 }
 

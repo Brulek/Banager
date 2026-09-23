@@ -61,6 +61,22 @@ describe("outcomeKey", () => {
       "需要留意：更新命令显示成功，但更新后它已不见了",
     );
   });
+
+  it("says an update that changed nothing changed nothing, and points to the log", () => {
+    // Rust sends this when the tool exited 0 and the installed version
+    // read before the update equals the one read after
+    // (`run_operation` in crates/canager-core/src/ops/mod.rs). It used to
+    // arrive as plain "Succeeded".
+    const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
+    expect(outcomeKey(unchanged)).toBe("NeedsAttention.UnchangedAfterUpgrade");
+    expect(outcomeArgs(unchanged)).toEqual({});
+    expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe(
+      "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe(
+      "需要留意：更新命令显示成功，但版本和更新前一样，程序并没有更新它。操作日志里也许能看到原因。",
+    );
+  });
 });
 
 describe("outcomeKey for Canager's own failures", () => {

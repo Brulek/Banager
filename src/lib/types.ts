@@ -14,7 +14,8 @@ export type DetectOutcome = "Found" | "Missing";
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
-  | "GoneAfterUpgrade";
+  | "GoneAfterUpgrade"
+  | "UnchangedAfterUpgrade";
 // Rust `Fault`: why Canager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are

@@ -1,0 +1,379 @@
+//! An upgrade's outcome, end to end through a real adapter: its own `plan`,
+//! its own `execute`, and its own `reconcile` reading its own inventory
+//! command, with only the commands' output scripted.
+//!
+//! The four "exited 0 and changed nothing" cases below are the ones the
+//! per-package actionability work found (docs/superpowers/backlog.md,
+//! "假「成功」"). Each tool skips the package and still exits 0, so the only
+//! thing that can tell them apart from a real upgrade is that the version
+//! its inventory reports is the same after as before. The inventories are
+//! the recorded fixtures under `adapters/fixtures/`, read unchanged before
+//! and after, which is what a skipped upgrade leaves. The tools' own
+//! messages are copied from their source (named on each) for a realistic
+//! log; the outcome depends only on the exit code and the inventories.
+
+use async_trait::async_trait;
+use canager_core::adapters::brew::BrewAdapter;
+use canager_core::adapters::pipx::PipxAdapter;
+use canager_core::adapters::uv::UvAdapter;
+use canager_core::adapters::Adapter;
+use canager_core::events::VecSink;
+use canager_core::http::MockHttpClient;
+use canager_core::model::{ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome};
+use canager_core::ops::OperationManager;
+use canager_core::runner::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use tokio_util::sync::CancellationToken;
+
+const FIXTURES: &str = "../../adapters/fixtures";
+
+fn fixture(path: &str) -> String {
+    let path = format!("{FIXTURES}/{path}");
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+fn exited_0(stdout: &str, stderr: &str) -> CommandOutput {
+    CommandOutput {
+        exit_code: Some(0),
+        stdout: stdout.to_string(),
+        stderr: stderr.to_string(),
+        timed_out: false,
+        cancelled: false,
+    }
+}
+
+/// Answers each argv with its scripted outputs in order, repeating the
+/// last one -- so an inventory command can read one way before an upgrade
+/// and another way after it. `MockRunner` answers an argv the same way
+/// every time, which covers only the "nothing changed" half.
+#[derive(Default)]
+struct ScriptedRunner {
+    scripts: Mutex<HashMap<Vec<String>, Script>>,
+}
+
+/// How many times an argv has been answered, and its outputs in order.
+type Script = (usize, Vec<CommandOutput>);
+
+impl ScriptedRunner {
+    fn script(&self, argv: &[&str], outputs: Vec<CommandOutput>) {
+        let key = argv.iter().map(|s| s.to_string()).collect();
+        self.scripts.lock().unwrap().insert(key, (0, outputs));
+    }
+}
+
+#[async_trait]
+impl CommandRunner for ScriptedRunner {
+    async fn run(
+        &self,
+        spec: CommandSpec,
+        _on_line: Option<LineCallback>,
+        _cancel: CancellationToken,
+    ) -> Result<CommandOutput, RunnerError> {
+        let mut key = vec![spec.program.to_string_lossy().to_string()];
+        key.extend(spec.args.iter().cloned());
+        let mut scripts = self.scripts.lock().unwrap();
+        let Some((calls, outputs)) = scripts.get_mut(&key) else {
+            return Err(RunnerError::NoMock(key));
+        };
+        let output = outputs[(*calls).min(outputs.len() - 1)].clone();
+        *calls += 1;
+        Ok(output)
+    }
+}
+
+/// Submits an upgrade of `name` through a fresh `OperationManager` and
+/// returns its outcome.
+async fn upgrade(
+    adapter: Arc<dyn Adapter>,
+    inst: ManagerInstance,
+    kind: ArtifactKind,
+    name: &str,
+) -> Outcome {
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Upgrade,
+        instance_id: inst.id.clone(),
+        artifact_kind: kind,
+        name: name.to_string(),
+    };
+    let plan = adapter.plan(&inst, &req).await.expect("plan");
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await.expect("an outcome")
+}
+
+// --- Homebrew -------------------------------------------------------------
+
+const BREW: &str = "/opt/homebrew/bin/brew";
+const BREW_INFO: [&str; 4] = [BREW, "info", "--installed", "--json=v2"];
+
+fn brew_instance() -> ManagerInstance {
+    ManagerInstance {
+        exe_path: PathBuf::from(BREW),
+        prefix: PathBuf::from("/opt/homebrew"),
+        version: Some("7.0.3".to_string()),
+        ..canager_core::testing::manager_instance("brew", "brew:/opt/homebrew")
+    }
+}
+
+/// `brew info --installed --json=v2` as recorded, with `edit` applied.
+fn brew_info(edit: impl FnOnce(&mut serde_json::Value)) -> String {
+    let mut info: serde_json::Value =
+        serde_json::from_str(&fixture("brew/7.0.3/info-installed.json")).expect("fixture");
+    edit(&mut info);
+    info.to_string()
+}
+
+fn cask<'a>(info: &'a mut serde_json::Value, token: &str) -> &'a mut serde_json::Value {
+    info["casks"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|c| c["token"] == token)
+        .unwrap_or_else(|| panic!("no cask {token} in the fixture"))
+}
+
+async fn brew_upgrade_cask(
+    token: &str,
+    upgrade_output: CommandOutput,
+    infos: Vec<String>,
+) -> Outcome {
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[BREW, "upgrade", "--cask", token], vec![upgrade_output]);
+    runner.script(&BREW_INFO, infos.iter().map(|i| exited_0(i, "")).collect());
+    upgrade(
+        Arc::new(BrewAdapter::new(runner)),
+        brew_instance(),
+        ArtifactKind::Cask,
+        token,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_a_disabled_cask_homebrew_skipped_is_not_reported_as_updated() {
+    // C2: `Cask::Upgrade` skips a disabled cask with a warning, not a
+    // failure (`opoo "Not upgrading #{cask.token}, it is ..."`,
+    // `cask/upgrade.rb:60-63` in Homebrew 7.0.6), and exits 0. `onyx` is
+    // outdated in the recording (5.0.2, tap at 5.1.0).
+    let recorded = brew_info(|_| {});
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        exited_0(
+            "",
+            "Warning: Not upgrading onyx, it is disabled because it is discontinued upstream!\n",
+        ),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_cask_whose_installed_recipe_cannot_be_loaded_is_not_reported_as_updated() {
+    // C4: when the installed caskfile cannot be loaded, `Cask::Upgrade`
+    // warns "cannot be upgraded as-is" and skips it (`cask/upgrade.rb:208-213`
+    // in Homebrew 7.0.6), exiting 0. `codexbar` is outdated in the recording.
+    let recorded = brew_info(|_| {});
+    let outcome = brew_upgrade_cask(
+        "codexbar",
+        exited_0(
+            "",
+            "Warning: The cask 'codexbar' cannot be upgraded as-is. To fix this, run:\n\
+             brew reinstall --cask --force codexbar\n",
+        ),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_cask_upgrade_that_moved_its_version_succeeded() {
+    let after = brew_info(|info| cask(info, "onyx")["installed"] = "5.1.0".into());
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        exited_0("==> Upgrading onyx\n", ""),
+        vec![brew_info(|_| {}), after],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_latest_cask_reinstalled_under_the_same_name_is_not_called_unchanged() {
+    // A `version :latest` cask is installed as "latest" before and after
+    // every upgrade, so an equal version says nothing about whether the
+    // upgrade did anything (`BrewAdapter::reconcile`). It must fall back to
+    // presence -- Succeeded -- not claim nothing changed.
+    let latest = brew_info(|info| cask(info, "onyx")["installed"] = "latest".into());
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        exited_0("==> Upgrading onyx\n", ""),
+        vec![latest.clone(), latest],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_formula_upgrade_that_left_its_old_keg_behind_still_reads_as_moved() {
+    // Canager runs brew with `HOMEBREW_NO_INSTALL_CLEANUP=1`, so after an
+    // upgrade the old keg stays and `installed` lists both. The version
+    // read is the linked keg's (`parse_info_installed`), which the upgrade
+    // moved to the new one. `aria2` is at 1.37.0_2 in the recording.
+    let after = brew_info(|info| {
+        let aria2 = info["formulae"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|f| f["name"] == "aria2")
+            .expect("aria2 in the fixture");
+        let mut new_keg = aria2["installed"][0].clone();
+        new_keg["version"] = "1.37.0_3".into();
+        aria2["installed"].as_array_mut().unwrap().push(new_keg);
+        aria2["linked_keg"] = "1.37.0_3".into();
+    });
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(
+        &[BREW, "upgrade", "--formula", "aria2"],
+        vec![exited_0("==> Upgrading aria2\n", "")],
+    );
+    runner.script(
+        &BREW_INFO,
+        vec![exited_0(&brew_info(|_| {}), ""), exited_0(&after, "")],
+    );
+    let outcome = upgrade(
+        Arc::new(BrewAdapter::new(runner)),
+        brew_instance(),
+        ArtifactKind::Formula,
+        "aria2",
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+// --- pipx -----------------------------------------------------------------
+
+const PIPX: &str = "/opt/homebrew/bin/pipx";
+
+async fn pipx_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcome {
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[PIPX, "upgrade", "cowsay"], vec![upgrade_output]);
+    runner.script(
+        &[PIPX, "list", "--json"],
+        lists.iter().map(|l| exited_0(l, "")).collect(),
+    );
+    let inst = ManagerInstance {
+        exe_path: PathBuf::from(PIPX),
+        ..canager_core::testing::manager_instance("pipx", "pipx")
+    };
+    upgrade(
+        Arc::new(PipxAdapter::new(runner, Arc::new(MockHttpClient::new()))),
+        inst,
+        ArtifactKind::Tool,
+        "cowsay",
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_a_locked_pipx_tool_pipx_skipped_is_not_reported_as_updated() {
+    // pipx 1.17.3 returns `UpgradeStatus.LOCKED` for a venv with a lock
+    // file, reporting `version=main_package.package_version` unchanged
+    // (`commands/upgrade.py:270-283`), prints `locked_package_message`
+    // (`commands/common.py:720-721`) and exits 0. The recorded venv has no
+    // lock file (`list.json`, `"lock_file": null`); a locked one differs
+    // only in that field, which the inventory does not read, and its
+    // version reads the same before and after.
+    let recorded = fixture("pipx/1.17.3/list.json");
+    let outcome = pipx_upgrade(
+        exited_0(
+            "Not upgrading locked package cowsay. Update its lock file and run `pipx reinstall cowsay`.\n",
+            "",
+        ),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_pipx_upgrade_that_moved_its_version_succeeded() {
+    let before = fixture("pipx/1.17.3/list.json");
+    let after = before.replace(r#""package_version": "5.0""#, r#""package_version": "6.1""#);
+    assert_ne!(after, before, "the fixture's version field was not found");
+    let outcome = pipx_upgrade(
+        exited_0("upgraded package cowsay\n", ""),
+        vec![before, after],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+// --- uv -------------------------------------------------------------------
+
+const UV: &str = "/opt/homebrew/bin/uv";
+
+async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcome {
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[UV, "tool", "upgrade", "ruff"], vec![upgrade_output]);
+    runner.script(
+        &[UV, "tool", "list", "--show-paths"],
+        lists.iter().map(|l| exited_0(l, "")).collect(),
+    );
+    let inst = ManagerInstance {
+        exe_path: PathBuf::from(UV),
+        ..canager_core::testing::manager_instance("uv", "uv")
+    };
+    upgrade(
+        Arc::new(UvAdapter::new(runner)),
+        inst,
+        ArtifactKind::Tool,
+        "ruff",
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_a_uv_tool_installed_with_an_exact_pin_is_not_reported_as_updated() {
+    // uv 0.12.17 re-resolves a tool installed as `ruff==X` to `X`, prints
+    // "Nothing to upgrade" and a hint, and returns `ExitStatus::Success`
+    // (`upgrade.rs:189-191`, `:217`; see .superpowers/actionability-facts.md).
+    let recorded = fixture("uv/0.12.17/tool-list-show-paths.txt");
+    let outcome = uv_upgrade(
+        exited_0("", "Nothing to upgrade\n"),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_uv_upgrade_that_moved_its_version_succeeded() {
+    let before = fixture("uv/0.12.17/tool-list-show-paths.txt");
+    let after = before.replace("ruff v0.15.0", "ruff v0.15.1");
+    assert_ne!(after, before, "the fixture's version was not found");
+    let outcome = uv_upgrade(
+        exited_0("", "Updated ruff v0.15.0 -> v0.15.1\n"),
+        vec![before, after],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}

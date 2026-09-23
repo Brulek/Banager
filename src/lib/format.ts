@@ -49,6 +49,7 @@ function attentionKey(attention: Attention): string {
     case "NotInstalledAfterInstall":
     case "StillInstalledAfterUninstall":
     case "GoneAfterUpgrade":
+    case "UnchangedAfterUpgrade":
       return attention;
     default: {
       const unhandled: never = attention;

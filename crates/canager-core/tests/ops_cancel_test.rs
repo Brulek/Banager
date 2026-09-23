@@ -48,12 +48,22 @@ enum ExecuteBehavior {
 struct FakeAdapter {
     meta: AdapterMeta,
     behavior: ExecuteBehavior,
-    reconcile_result: Reconciled,
+    /// One reading per `reconcile` call, in order; the last one repeats.
+    /// An upgrade reconciles before `execute` and again after.
+    readings: Vec<Reconciled>,
+    reconcile_calls: AtomicUsize,
+    /// How long the first `reconcile` call takes, so a test can cancel
+    /// while an upgrade is still taking its before-reading.
+    first_reconcile_delay: Duration,
     execute_calls: Arc<AtomicUsize>,
 }
 
 impl FakeAdapter {
     fn new(behavior: ExecuteBehavior, reconcile_result: Reconciled) -> FakeAdapter {
+        FakeAdapter::with_readings(behavior, vec![reconcile_result])
+    }
+
+    fn with_readings(behavior: ExecuteBehavior, readings: Vec<Reconciled>) -> FakeAdapter {
         FakeAdapter {
             meta: AdapterMeta {
                 id: "fake".to_string(),
@@ -65,7 +75,9 @@ impl FakeAdapter {
                 verified_versions: vec![],
             },
             behavior,
-            reconcile_result,
+            readings,
+            reconcile_calls: AtomicUsize::new(0),
+            first_reconcile_delay: Duration::ZERO,
             execute_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -151,7 +163,11 @@ impl Adapter for FakeAdapter {
         _inst: &ManagerInstance,
         _key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        Ok(self.reconcile_result.clone())
+        let nth = self.reconcile_calls.fetch_add(1, Ordering::SeqCst);
+        if nth == 0 {
+            tokio::time::sleep(self.first_reconcile_delay).await;
+        }
+        Ok(self.readings[nth.min(self.readings.len() - 1)].clone())
     }
 }
 
@@ -237,9 +253,21 @@ async fn run_cancelled_mid_execute(
     kind: OpKind,
     reconciled: Reconciled,
 ) -> (Outcome, Vec<OpStatus>) {
+    run_cancelled_mid_execute_with_readings(kind, vec![reconciled]).await
+}
+
+/// `run_cancelled_mid_execute` with one reading per `reconcile` call (see
+/// `FakeAdapter::readings`).
+async fn run_cancelled_mid_execute_with_readings(
+    kind: OpKind,
+    readings: Vec<Reconciled>,
+) -> (Outcome, Vec<OpStatus>) {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink.clone());
-    let adapter = Arc::new(FakeAdapter::new(ExecuteBehavior::WaitForCancel, reconciled));
+    let adapter = Arc::new(FakeAdapter::with_readings(
+        ExecuteBehavior::WaitForCancel,
+        readings,
+    ));
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
 
@@ -256,6 +284,16 @@ async fn run_cancelled_mid_execute(
         Duration::from_millis(1000),
     )
     .await;
+    // `Running` is set before an upgrade's before-reading; cancel only once
+    // `execute` is under way, or this would test a cancel of the reading.
+    let start = Instant::now();
+    while adapter.execute_calls() == 0 {
+        assert!(
+            start.elapsed() < Duration::from_millis(1000),
+            "execute never started"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
     manager.cancel(op_id);
 
     let outcome = manager
@@ -264,6 +302,13 @@ async fn run_cancelled_mid_execute(
         .expect("op must reach Done and report an outcome");
     let trace = status_trace(&sink.snapshot(), op_id);
     (outcome, trace)
+}
+
+fn at(version: &str) -> Reconciled {
+    Reconciled {
+        present: true,
+        version: Some(version.to_string()),
+    }
 }
 
 // (a) Cancel mid-execute: the full status machine runs end to end and
@@ -337,9 +382,10 @@ async fn test_cancelled_uninstall_reports_cancelled_when_still_present() {
 }
 
 #[tokio::test]
-async fn test_cancelled_upgrade_never_reports_succeeded() {
+async fn test_cancelled_upgrade_without_versions_to_compare_stays_unconfirmed() {
     // Upgrade means the artifact was already present before the op ran, so
-    // presence after a cancelled/timed-out execute proves nothing: it must
+    // presence after a cancelled/timed-out execute proves nothing. With no
+    // version in either reading there is nothing else to go on: it must
     // stay Unconfirmed whether the reconcile finds it present or absent.
     let (present_outcome, _) = run_cancelled_mid_execute(
         OpKind::Upgrade,
@@ -565,5 +611,93 @@ async fn test_cancel_immediately_after_submit_never_calls_execute() {
         adapter.execute_calls(),
         0,
         "a cancelled-before-running op must never invoke execute"
+    );
+}
+
+// A cancelled upgrade could only ever say "Unconfirmed": nothing recorded
+// what the version was before. Now an upgrade reads it before the command,
+// and the reading after decides.
+
+#[tokio::test]
+async fn test_cancelled_upgrade_whose_version_did_not_move_is_cancelled() {
+    let (outcome, _) =
+        run_cancelled_mid_execute_with_readings(OpKind::Upgrade, vec![at("1.7.1"), at("1.7.1")])
+            .await;
+    assert_eq!(outcome, Outcome::Cancelled);
+}
+
+#[tokio::test]
+async fn test_cancelled_upgrade_whose_version_moved_succeeded_before_the_stop() {
+    let (outcome, _) =
+        run_cancelled_mid_execute_with_readings(OpKind::Upgrade, vec![at("1.7.1"), at("1.8.0")])
+            .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_timed_out_upgrade_is_succeeded_if_the_version_moved_and_unconfirmed_if_not() {
+    // Nobody pressed Cancel, so an unchanged version is not the user's
+    // cancel: it stays Unconfirmed, as a timed-out install or uninstall
+    // does. A moved version finished before the stop.
+    for (after, expected) in [
+        (at("1.8.0"), Outcome::Succeeded),
+        (at("1.7.1"), Outcome::Unconfirmed),
+    ] {
+        let sink = Arc::new(VecSink::new());
+        let mut manager = OperationManager::new(sink);
+        let adapter = Arc::new(FakeAdapter::with_readings(
+            ExecuteBehavior::TimedOut,
+            vec![at("1.7.1"), after.clone()],
+        ));
+        manager.register_adapter(adapter.clone());
+        let manager = Arc::new(manager);
+
+        let inst = make_instance("fake:/timed-out-upgrade");
+        manager.register_instance(inst.clone());
+        let plan = adapter
+            .plan(&inst, &make_request(OpKind::Upgrade, &inst.id, "pkg"))
+            .await
+            .expect("plan");
+        let op_id = manager.submit(plan);
+
+        assert_eq!(manager.wait(op_id).await, Some(expected), "after {after:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_cancel_during_an_upgrades_before_reading_never_calls_execute() {
+    // The before-reading is an inventory read (`brew info --installed`
+    // took 0.75 s on the Mac this was written on). A Cancel pressed during
+    // it must stop the upgrade there, before its command starts.
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let mut fake = FakeAdapter::with_readings(ExecuteBehavior::WaitForCancel, vec![at("1.7.1")]);
+    fake.first_reconcile_delay = Duration::from_millis(500);
+    let adapter = Arc::new(fake);
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/cancel-before-reading");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Upgrade, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+    let op_id = manager.submit(plan);
+
+    wait_for_status(
+        &manager,
+        op_id,
+        OpStatus::Running,
+        Duration::from_millis(1000),
+    )
+    .await;
+    manager.cancel(op_id);
+
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Cancelled));
+    assert_eq!(
+        adapter.execute_calls(),
+        0,
+        "an upgrade cancelled during its before-reading must never invoke execute"
     );
 }

@@ -166,7 +166,8 @@
       "NeedsAttention": {
         "NotInstalledAfterInstall": "Needs attention: the install reported success, but it isn't installed",
         "StillInstalledAfterUninstall": "Needs attention: the uninstall reported success, but it's still installed",
-        "GoneAfterUpgrade": "Needs attention: the update reported success, but it's no longer installed"
+        "GoneAfterUpgrade": "Needs attention: the update reported success, but it's no longer installed",
+        "UnchangedAfterUpgrade": "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why."
       },
       "Failed": "Failed: {{summary}}",
       "FailedSilent": "Failed. The program didn't say why — the operation log may show more.",
