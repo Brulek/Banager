@@ -116,7 +116,12 @@ const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = probe_homebrew_u
 /// that are about the lock install `probe_homebrew_update_lock` itself
 /// against a prefix they made (`with_update_lock_fn`).
 #[cfg(test)]
-const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| HomebrewUpdateLock::Free(None);
+const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| {
+    HomebrewUpdateLock::Free(LockStamp {
+        dir: None,
+        file: None,
+    })
+};
 
 impl BrewAdapter {
     pub const ENV: [(&'static str, &'static str); 4] = [
@@ -525,8 +530,12 @@ impl BrewAdapter {
     ///   auto-update agent -- held Homebrew's update lock at either end,
     ///   or began in between. Each one opens the lock file with truncation
     ///   before it locks it (`exec 200>"${lock_file}"` in Homebrew's
-    ///   `utils/lock.sh`), which moves the file's mtime, and the stamp
-    ///   carries that (`LockFileId`).
+    ///   `utils/lock.sh`), which moves the file's mtime. One that has to
+    ///   make the file first, because a `brew cleanup` deleted it, adds an
+    ///   entry to the `locks` directory, which moves the directory's mtime
+    ///   -- and so does a `brew cleanup` that deletes the file again before
+    ///   the second stamp, which would otherwise leave no file at either
+    ///   end to compare. The stamp carries both (`LockStamp`).
     ///
     /// What they do not prove:
     /// - That an update which had opened the lock file but not yet locked
@@ -899,27 +908,67 @@ struct CatalogueStamp {
 enum HomebrewUpdateLock {
     /// Some process holds it: a `brew update` is running.
     Held,
-    /// Nobody holds it. `None` when there is no file: `brew cleanup`
-    /// deletes it (`Cleanup#cleanup_lockfiles`), and the next `brew
-    /// update` makes it again.
-    Free(Option<LockFileId>),
+    /// Nobody holds it.
+    Free(LockStamp),
     /// It could not be looked at: the file is there but would not open,
     /// or `fcntl` failed.
     Unobservable,
 }
 
-/// Which lock file this is and when it was last opened for writing.
-/// `brew update` opens it with truncation before it locks it
-/// (`exec 200>"${lock_file}"` in Homebrew's `utils/lock.sh`), which sets
-/// the mtime and ctime even of an empty file, so a `brew update` that
-/// began and ended between two probes still leaves them different; a new
-/// file after `brew cleanup` deleted the old one has a new inode.
+/// What `probe_homebrew_update_lock` read of the lock's directory and
+/// file, for `catalogue_stamp` to compare with a later probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LockFileId {
+struct LockStamp {
+    /// `<prefix>/var/homebrew/locks` itself, or `None` when it could not
+    /// be read (`std::fs::metadata` failed, as when it does not exist
+    /// yet). Making or deleting an entry in a directory sets the
+    /// directory's mtime and ctime, so this changes when the `update` file
+    /// is made or deleted between two probes -- even when there is no file
+    /// at either of them, because a `brew update && brew cleanup` typed in
+    /// Terminal in between made it and deleted it again
+    /// (`test_uninstall_preview_discards_a_brew_uses_that_an_update_and_a_cleanup_ran_during`).
+    ///
+    /// It changes for any other entry made or deleted there too, which
+    /// makes the uninstall preview refuse and ask for a retry when nothing
+    /// touched the catalogue: each curl download -- a bottle, say -- that
+    /// a `brew install`, `upgrade` or `fetch` makes creates and deletes a
+    /// `.download.lock` in this directory (`DownloadLock` in
+    /// `CurlDownloadStrategy#fetch`, unlocked with `unlink: true`, in
+    /// Homebrew 7.0.6), and a package's first `.formula.lock` is made here
+    /// (`LockFile#lock`). That is the safe
+    /// direction: a retry, never a list read while the catalogue was being
+    /// rewritten.
+    dir: Option<FileId>,
+    /// The `update` file, or `None` when there is none: `brew cleanup`
+    /// deletes it (`Cleanup#cleanup_lockfiles`), and the next `brew
+    /// update` makes it again. `brew update` opens it with truncation
+    /// before it locks it (`exec 200>"${lock_file}"` in Homebrew's
+    /// `utils/lock.sh`), which sets its mtime and ctime even when it is
+    /// already empty, so a `brew update` that began and ended between two
+    /// probes still leaves this different.
+    file: Option<FileId>,
+}
+
+/// Which file or directory this is (`dev`, `ino`) and when it last
+/// changed (`mtime`, `ctime`, to the nanosecond).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileId {
     dev: u64,
     ino: u64,
     mtime: (i64, i64),
     ctime: (i64, i64),
+}
+
+impl FileId {
+    fn of(meta: &std::fs::Metadata) -> FileId {
+        use std::os::unix::fs::MetadataExt;
+        FileId {
+            dev: meta.dev(),
+            ino: meta.ino(),
+            mtime: (meta.mtime(), meta.mtime_nsec()),
+            ctime: (meta.ctime(), meta.ctime_nsec()),
+        }
+    }
 }
 
 /// Looks at Homebrew's update lock under `prefix` without taking it.
@@ -935,21 +984,23 @@ struct LockFileId {
 /// `test_update_lock_probe_sees_a_lock_taken_the_way_homebrew_takes_it`
 /// holds one exactly as `lock.sh` does and checks both that this sees it
 /// and that looking never stops `lockf -t 0` from taking it.
-/// The file is opened read-only and never created, so looking leaves
-/// nothing behind.
+/// The file is opened read-only and never created, and the directory is
+/// only `stat`ed, so looking leaves nothing behind.
 ///
 /// On Linux `flock` and `fcntl` locks do not see each other (flock(2)),
-/// so there this never reports `Held`; the file's `LockFileId` still
-/// changes when a `brew update` begins.
+/// so there this never reports `Held`; the `LockStamp` still changes when
+/// a `brew update` begins.
 fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
-    use std::os::unix::fs::MetadataExt;
     use std::os::unix::io::AsRawFd;
 
-    let path = prefix.join("var/homebrew/locks/update");
-    let file = match std::fs::File::open(&path) {
+    let dir_path = prefix.join("var/homebrew/locks");
+    let dir = std::fs::metadata(&dir_path)
+        .ok()
+        .map(|meta| FileId::of(&meta));
+    let file = match std::fs::File::open(dir_path.join("update")) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return HomebrewUpdateLock::Free(None)
+            return HomebrewUpdateLock::Free(LockStamp { dir, file: None })
         }
         Err(_) => return HomebrewUpdateLock::Unobservable,
     };
@@ -970,12 +1021,10 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
         return HomebrewUpdateLock::Unobservable;
     }
     if query.l_type == libc::F_UNLCK as libc::c_short {
-        HomebrewUpdateLock::Free(Some(LockFileId {
-            dev: meta.dev(),
-            ino: meta.ino(),
-            mtime: (meta.mtime(), meta.mtime_nsec()),
-            ctime: (meta.ctime(), meta.ctime_nsec()),
-        }))
+        HomebrewUpdateLock::Free(LockStamp {
+            dir,
+            file: Some(FileId::of(&meta)),
+        })
     } else {
         HomebrewUpdateLock::Held
     }
@@ -3607,9 +3656,14 @@ mod plan_execute_tests {
     #[test]
     fn test_update_lock_probe_sees_a_lock_taken_the_way_homebrew_takes_it() {
         let prefix = scratch_prefix("probe");
-        assert_eq!(
-            probe_homebrew_update_lock(&prefix),
-            HomebrewUpdateLock::Free(None),
+        assert!(
+            matches!(
+                probe_homebrew_update_lock(&prefix),
+                HomebrewUpdateLock::Free(LockStamp {
+                    dir: Some(_),
+                    file: None
+                })
+            ),
             "no file (as after `brew cleanup`) is no update running"
         );
         assert!(
@@ -3623,7 +3677,10 @@ mod plan_execute_tests {
             HomebrewUpdateLock::Held
         );
         drop(holder);
-        let HomebrewUpdateLock::Free(Some(before)) = probe_homebrew_update_lock(&prefix) else {
+        let HomebrewUpdateLock::Free(LockStamp {
+            file: Some(before), ..
+        }) = probe_homebrew_update_lock(&prefix)
+        else {
             panic!("the lock is free and its file is there once the holder has exited");
         };
 
@@ -3654,7 +3711,10 @@ mod plan_execute_tests {
             "probing refused {refused} of 200 `brew update`s the lock"
         );
 
-        let HomebrewUpdateLock::Free(Some(after)) = probe_homebrew_update_lock(&prefix) else {
+        let HomebrewUpdateLock::Free(LockStamp {
+            file: Some(after), ..
+        }) = probe_homebrew_update_lock(&prefix)
+        else {
             panic!("the lock is free again once every update has exited");
         };
         assert_ne!(
@@ -3741,6 +3801,59 @@ mod plan_execute_tests {
         assert!(
             matches!(planned, Err(AdapterError::IndexUpdating)),
             "a dependents list read while Homebrew's own `brew update` ran was shown: {planned:?}"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn test_uninstall_preview_discards_a_brew_uses_that_an_update_and_a_cleanup_ran_during() {
+        // Finding 1.1 of the final review. After a `brew cleanup` there is
+        // no update lock file: `Cleanup#cleanup_lockfiles` deletes every
+        // one nobody holds. A `brew update && brew cleanup` typed in
+        // Terminal while `brew uses` runs makes the file, locks it,
+        // rewrites the catalogue, lets go, and deletes the file again, so
+        // there is no file at either end to have changed. The directory
+        // it was made and deleted in has.
+        let prefix = scratch_prefix("made-and-deleted");
+        let lock_file = prefix.join("var/homebrew/locks/update");
+        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::from_millis(400));
+        let adapter = Arc::new(
+            BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock),
+        );
+        let inst = ManagerInstance {
+            prefix: prefix.clone(),
+            ..test_instance()
+        };
+        assert!(
+            !lock_file.exists(),
+            "setup: no lock file, as after `brew cleanup`"
+        );
+
+        let preview = {
+            let adapter = adapter.clone();
+            let inst = inst.clone();
+            tokio::spawn(async move { adapter.plan(&inst, &uninstall_jq(&inst)).await })
+        };
+        let give_up = Instant::now() + Duration::from_secs(5);
+        while uses_calls(&runner) == 0 && Instant::now() < give_up {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            quick_homebrew_update(&prefix),
+            "setup: the update in between"
+        );
+        std::fs::remove_file(&lock_file).expect("setup: the cleanup in between");
+        assert!(
+            !preview.is_finished(),
+            "setup: the update and the cleanup must be over before `brew uses` answers"
+        );
+
+        let planned = preview.await.expect("preview task panicked");
+        assert!(
+            matches!(planned, Err(AdapterError::IndexUpdating)),
+            "a dependents list read while a `brew update` made, used and a `brew cleanup` \
+             deleted the lock file was shown: {planned:?}"
         );
         let _ = std::fs::remove_dir_all(&prefix);
     }
