@@ -1039,7 +1039,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_a_grandchild_holding_the_pipes_does_not_turn_success_into_a_timeout() {
+    async fn test_a_grandchild_holding_the_pipes_past_the_deadline_does_not_turn_success_into_a_timeout(
+    ) {
         // `( ... ) &` leaves a grandchild that inherited stdout and
         // stderr, so both write ends stay open after the child exits 0.
         // The read loop used to end only on EOF, so it sat there for the
@@ -1048,6 +1049,85 @@ mod tests {
         // including the helper the tool deliberately left running, and
         // reported `timed_out: true, exit_code: None`: `Unconfirmed`, for
         // a command that had succeeded.
+        //
+        // The grandchild here (6 s) deliberately outlives the deadline
+        // (3 s). An earlier version of this test used a 0.5 s grandchild
+        // under a 20 s deadline -- forty times shorter -- which an
+        // EOF-terminated read loop (the very bug this test exists to
+        // forbid) also satisfies: it too returns at ~0.5 s with
+        // `exit_code: Some(0)`, `timed_out: false`, the full stdout and
+        // the marker created, so it passed against the bug with every
+        // assertion green. Only a grandchild that is still holding the
+        // pipes when the deadline would otherwise fire can tell an
+        // end-on-child loop from an end-on-EOF one apart: the old loop
+        // sits there until the 3 s deadline and reports
+        // `timed_out: true, exit_code: None`; the fixed loop returns the
+        // moment the child exits and leaves the grandchild to finish on
+        // its own. (The 0.5 s/20 s shape is kept below, as
+        // `test_a_grandchild_holding_the_pipes_briefly_is_not_sigkilled`,
+        // for the property it does still prove: a helper released well
+        // inside the deadline is not SIGKILLed.)
+        let marker = unique_temp_path("grandchild-outlives-deadline");
+        let _ = std::fs::remove_file(&marker);
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                format!(
+                    "(sleep 6; touch {}) & printf 'work done\\n'; exit 0",
+                    marker.display()
+                ),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(3),
+            output_use: OutputUse::Transcript,
+        };
+        let started = std::time::Instant::now();
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            output.exit_code,
+            Some(0),
+            "the child exited 0 well before the 3 s deadline; a grandchild \
+             still holding the pipes must not turn that into a timeout"
+        );
+        assert!(!output.timed_out);
+        assert!(!output.cancelled);
+        assert_eq!(output.stdout, "work done\n");
+        assert!(
+            elapsed < std::time::Duration::from_secs(3),
+            "the run must end when the child does, not at the 3 s deadline; took {elapsed:?}"
+        );
+
+        // Wait out the grandchild's own 6 s sleep (plus a margin), counted
+        // from when the command was started rather than from now, so a
+        // slow `run()` return does not shorten the wait.
+        let remaining = std::time::Duration::from_secs(7).saturating_sub(started.elapsed());
+        tokio::time::sleep(remaining).await;
+        assert!(
+            marker.exists(),
+            "a helper the tool left running must outlive the operation, not be SIGKILLed by it"
+        );
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    #[tokio::test]
+    async fn test_a_grandchild_holding_the_pipes_briefly_is_not_sigkilled() {
+        // The property the original version of the test above proved,
+        // kept on its own: a grandchild that releases the pipes well
+        // inside the deadline is left running, not SIGKILLed alongside
+        // the group. This shape does *not* distinguish an end-on-child
+        // loop from an end-on-EOF one -- see the long comment on
+        // `test_a_grandchild_holding_the_pipes_past_the_deadline_does_not_turn_success_into_a_timeout`
+        // above -- so it is a narrower, additional check, not the
+        // regression guard.
         let marker = unique_temp_path("grandchild-survives");
         let _ = std::fs::remove_file(&marker);
 
