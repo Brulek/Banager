@@ -12,7 +12,6 @@ export type DetectOutcome = "Found" | "Missing";
 export type Outcome =
   | "Succeeded"
   | "Cancelled"
-  | "PartialSuccess"
   | "Unconfirmed"
   | { NeedsAttention: string }
   | { Failed: { exit_code: number | null; summary: string } };

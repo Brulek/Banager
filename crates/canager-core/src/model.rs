@@ -280,7 +280,6 @@ pub enum Outcome {
     /// artifact exactly as it was before. A cancel that lost the race to the
     /// command finishing is `Succeeded`, not this.
     Cancelled,
-    PartialSuccess,
     NeedsAttention(String),
     Failed {
         exit_code: Option<i32>,

@@ -127,7 +127,6 @@
     "outcome": {
       "Succeeded": "已成功",
       "Cancelled": "你已取消",
-      "PartialSuccess": "部分成功",
       "Unconfirmed": "结果未确认",
       "NeedsAttention": "需要留意:{{message}}",
       "Failed": "失败:{{summary}}"
