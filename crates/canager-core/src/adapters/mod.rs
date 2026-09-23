@@ -1,7 +1,8 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
+    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateBlocked, UpdateCandidate,
+    UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
 use async_trait::async_trait;
@@ -150,6 +151,16 @@ pub enum AdapterError {
         read_only: Option<ReadOnlyReason>,
         unavailable: Option<Unavailable>,
     },
+    /// `Session::issue_plan` was asked to plan an `Upgrade` of a package
+    /// whose own update candidate says the tool will refuse it
+    /// (`UpdateCandidate.blocked`): the per-package half of the same gate
+    /// `NotActionable` is the per-source half of. The Updates page hides
+    /// the button for such a row, so like `NotActionable` this reaches a
+    /// person only through a stale page. `plan_operation_error` in
+    /// src-tauri/src/ipc.rs sends it as `{"kind": "update_blocked"}` with
+    /// the reason, never as this `Display`.
+    #[error("the tool will refuse to update this package ({reason:?})")]
+    UpdateBlocked { reason: UpdateBlocked },
     /// `Session::issue_plan` was asked to plan against an instance that is
     /// not in the snapshot at all -- the source was removed between the
     /// refresh that drew the row and the click. The `issue_plan` twin of

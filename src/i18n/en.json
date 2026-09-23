@@ -65,7 +65,12 @@
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Could not start the update: {{message}}",
-    "noneCheckable": "No updates in the sources Canager could check"
+    "noneCheckable": "No updates in the sources Canager could check",
+    "blocked": {
+      "Pinned": {
+        "refused": "{{source}} is keeping this package at the version it has now (it has been pinned), so Canager didn't update it. Nothing has been changed."
+      }
+    }
   },
   "commandPreview": {
     "label": "This will run:",

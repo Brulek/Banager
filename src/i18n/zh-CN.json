@@ -59,7 +59,12 @@
     "started": "已开始",
     "planFailed": "没能准备这次更新：{{message}}",
     "submitFailed": "没能开始更新：{{message}}",
-    "noneCheckable": "已检查的来源里没有可更新的内容"
+    "noneCheckable": "已检查的来源里没有可更新的内容",
+    "blocked": {
+      "Pinned": {
+        "refused": "{{source}} 把这个软件固定在了现在的版本，所以 Canager 没有更新它。什么都没有改动。"
+      }
+    }
   },
   "commandPreview": {
     "label": "将执行：",

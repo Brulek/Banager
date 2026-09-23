@@ -188,6 +188,7 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
             read_only,
             unavailable,
         } => not_actionable_json(read_only, unavailable),
+        AdapterError::UpdateBlocked { reason } => update_blocked_json(reason),
         // The same bare kind `submit_operation_error` sends for
         // `SubmitError::SourceGone`: one situation, one sentence.
         AdapterError::SourceGone { .. } => serde_json::json!({ "kind": "source_gone" }).to_string(),
@@ -231,6 +232,14 @@ fn not_actionable_json(
     .to_string()
 }
 
+/// The per-package refusal of the same gate (`UpdateCandidate.blocked`),
+/// from `issue_plan` or `submit` alike: the reason as its bare serde
+/// spelling (`"Pinned"`), which `parseUpdateBlocked` in
+/// `src/lib/sources.ts` reads back into its own copy.
+fn update_blocked_json(reason: canager_core::model::UpdateBlocked) -> String {
+    serde_json::json!({ "kind": "update_blocked", "reason": reason }).to_string()
+}
+
 /// `plan_operation_error`'s counterpart for `Session::submit`.
 ///
 /// Every variant goes out as the same small JSON envelope
@@ -255,6 +264,7 @@ fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
             read_only,
             unavailable,
         } => not_actionable_json(read_only, unavailable),
+        canager_core::session::SubmitError::UpdateBlocked { reason } => update_blocked_json(reason),
         canager_core::session::SubmitError::SourceGone => {
             serde_json::json!({ "kind": "source_gone" }).to_string()
         }
@@ -1260,6 +1270,15 @@ mod tests {
         // the Mac the dialog words itself, not Canager's bug.
         let v = parse(AdapterError::IndexUpdating);
         assert_eq!(v, serde_json::json!({ "kind": "index_updating" }));
+        // A pinned package on a stale Updates page: the reason as data,
+        // for `parseUpdateBlocked` in src/lib/sources.ts to word.
+        let v = parse(AdapterError::UpdateBlocked {
+            reason: canager_core::model::UpdateBlocked::Pinned,
+        });
+        assert_eq!(
+            v,
+            serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
+        );
 
         // Errors no `plan()` returns: a broken adapter contract, so
         // Canager's own bug, and none of their text reaches the wire.
@@ -1423,6 +1442,17 @@ mod tests {
         assert_eq!(parsed["kind"], "not_actionable");
         assert_eq!(parsed["read_only"], serde_json::Value::Null);
         assert_eq!(parsed["unavailable"], "NotRunning");
+
+        // The per-package half: the package was pinned after the preview.
+        // Same payload as the plan-time refusal, for the same one decoder.
+        let blocked = submit_operation_error(SubmitError::UpdateBlocked {
+            reason: canager_core::model::UpdateBlocked::Pinned,
+        });
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&blocked)
+                .unwrap_or_else(|e| panic!("expected JSON, got {blocked:?} ({e})")),
+            serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
+        );
 
         let gone = submit_operation_error(SubmitError::SourceGone);
         let parsed: serde_json::Value = serde_json::from_str(&gone)

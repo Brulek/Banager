@@ -351,6 +351,20 @@ describe("planErrorMessage", () => {
     expect(planErrorMessage(fakeT, '{"kind":"expired"}', "Homebrew")).toBe("planRefused.expired");
   });
 
+  it("says a pinned package is being kept where it is, instead of showing the backend's JSON", () => {
+    // `update_blocked` is the per-package refusal of the gate
+    // (`AdapterError::UpdateBlocked` / `SubmitError::UpdateBlocked`,
+    // `update_blocked_json` in src-tauri/src/ipc.rs). The Updates page
+    // hides the button for such a row, so this is the stale-page path.
+    expect(
+      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Pinned"}', "Homebrew"),
+    ).toBe('updates.blocked.Pinned.refused({"source":"Homebrew"})');
+    // A reason this build does not know is shown verbatim, not guessed at.
+    expect(
+      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Held"}', "Homebrew"),
+    ).toBe('{"kind":"update_blocked","reason":"Held"}');
+  });
+
   it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
     expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew")).toBe("planRefused.unknown");
   });

@@ -3,7 +3,13 @@
  * pages and the snapshot gate cannot drift apart. Nothing here talks to the
  * backend; these are presentational facts about what arrives over the wire.
  */
-import type { ManagerInstance, ReadOnlyReason, SourceError, Unavailable } from "./types";
+import type {
+  ManagerInstance,
+  ReadOnlyReason,
+  SourceError,
+  Unavailable,
+  UpdateBlocked,
+} from "./types";
 
 /** i18n key holding each adapter's human name. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
@@ -232,6 +238,36 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
 }
 
+/**
+ * The copy for each reason the tool will refuse to update one package
+ * (`UpdateCandidate.blocked`). A `Record` over the whole `UpdateBlocked`
+ * union: a variant added there without copy here fails `tsc`, where a
+ * `switch` with a default branch would render nothing and compile.
+ *
+ * `refused` is `planErrorMessage`'s sentence for the gate's
+ * `update_blocked` refusal (a stale Updates page).
+ */
+export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, { refused: string }> = {
+  Pinned: {
+    refused: "updates.blocked.Pinned.refused",
+  },
+};
+
+/**
+ * Reads the `{"kind": "update_blocked", "reason": ...}` payload
+ * `update_blocked_json` in src-tauri/src/ipc.rs sends when
+ * `Session::issue_plan` or `Session::submit` refuses to update one package.
+ * `null` for anything else, including a reason this build has no copy for
+ * -- which `planErrorMessage` then shows verbatim rather than guessing at.
+ */
+export function parseUpdateBlocked(message: string): UpdateBlocked | null {
+  const p = parseErrorPayload(message);
+  if (!p || p.kind !== "update_blocked" || typeof p.reason !== "string") return null;
+  return Object.prototype.hasOwnProperty.call(UPDATE_BLOCKED_KEYS, p.reason)
+    ? (p.reason as UpdateBlocked)
+    : null;
+}
+
 /** What `Session::issue_plan`'s actionability gate (spec §2.5) refused, as
  *  `plan_operation_error` in src-tauri/src/ipc.rs put it on the wire. */
 export interface NotActionableReason {
@@ -323,6 +359,8 @@ export function notActionableMessage(
 export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
   const reason = parseNotActionable(raw);
   if (reason) return notActionableMessage(t, reason, sourceLabel);
+  const blocked = parseUpdateBlocked(raw);
+  if (blocked) return t(UPDATE_BLOCKED_KEYS[blocked].refused, { source: sourceLabel });
   // No `source` interpolation on purpose: the instance is gone from the
   // snapshot, so the caller's `sourceLabel` has fallen back to the raw
   // instance id ("brew:/opt/homebrew"), which is the kind of string this

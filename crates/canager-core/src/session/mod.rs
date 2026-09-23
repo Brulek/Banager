@@ -39,7 +39,7 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, ReadOnlyReason, Unavailable,
-    UpdateCandidate,
+    UpdateBlocked, UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
@@ -180,6 +180,14 @@ pub enum SubmitError {
         read_only: Option<ReadOnlyReason>,
         unavailable: Option<Unavailable>,
     },
+    /// The per-package half of the same re-check: a refresh since the
+    /// preview says the tool will now refuse to update this package (it was
+    /// pinned in the meantime). Carries the same reason
+    /// `AdapterError::UpdateBlocked` does, and goes out through the same
+    /// `update_blocked` payload (`submit_operation_error` in
+    /// src-tauri/src/ipc.rs).
+    #[error("the tool will refuse to update this package now ({reason:?})")]
+    UpdateBlocked { reason: UpdateBlocked },
     /// The same check, for the case where the instance is not in the
     /// current snapshot at all: the source was uninstalled, or the last
     /// detection stopped reporting it. There is no read-only/unavailable

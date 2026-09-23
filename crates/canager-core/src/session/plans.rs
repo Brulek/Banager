@@ -5,7 +5,7 @@
 use super::{IssuedPlan, PlanId, Session, SubmitError};
 use crate::adapters::AdapterError;
 use crate::events::OpId;
-use crate::model::OpRequest;
+use crate::model::{OpKind, OpRequest, UpdateBlocked, UpdateCandidate};
 use std::time::{Duration, Instant};
 
 /// How long a previewed plan stays submittable. Ten minutes is long
@@ -67,6 +67,28 @@ pub(crate) struct StoredPlan {
     pub(crate) issued_monotonic: Instant,
 }
 
+/// The per-package half of the actionability gate (spec §8): why the tool
+/// will refuse `req`, when `req` is an `Upgrade` and the snapshot's update
+/// candidate for exactly that package says so (`UpdateCandidate.blocked`).
+///
+/// Only `Upgrade`: every reason so far is about updating. A pinned formula
+/// can still be uninstalled, and blocking that would be a refusal Homebrew
+/// never makes. A package with no candidate at all passes, as it did
+/// before this existed: nothing then says the tool would refuse it.
+fn blocked_upgrade(updates: &[UpdateCandidate], req: &OpRequest) -> Option<UpdateBlocked> {
+    if req.kind != OpKind::Upgrade {
+        return None;
+    }
+    updates
+        .iter()
+        .find(|u| {
+            u.key.instance_id == req.instance_id
+                && u.key.kind == req.artifact_kind
+                && u.key.name == req.name
+        })
+        .and_then(|u| u.blocked)
+}
+
 impl Session {
     /// Resolves `req` to its owning adapter, asks it to plan the operation,
     /// then stores the resulting `Plan` under a fresh `PlanId` and returns
@@ -82,7 +104,10 @@ impl Session {
         // from. Reading them separately would let a refresh land in
         // between and stamp the plan with a generation belonging to a
         // different instance.
-        let (generation, instance) = {
+        //
+        // The package's own verdict (`blocked`) is read under that same
+        // lock, so all three come from the one snapshot `generation` names.
+        let (generation, instance, blocked) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -91,6 +116,7 @@ impl Session {
                     .iter()
                     .find(|i| i.id == req.instance_id)
                     .cloned(),
+                blocked_upgrade(&snapshot.updates, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -121,6 +147,14 @@ impl Session {
                 read_only: instance.read_only_reason,
                 unavailable: instance.status.unavailable,
             });
+        }
+        // The per-package half, after the per-source half: a source that
+        // cannot act at all is the bigger news. Here rather than in brew's
+        // `plan()` for the same one-choke-point reason as above, and so the
+        // Updates page's hidden button is backed by a refusal in Rust, not
+        // only by a page that may be stale.
+        if let Some(reason) = blocked {
+            return Err(AdapterError::UpdateBlocked { reason });
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
@@ -216,6 +250,9 @@ impl Session {
                 unavailable: instance.status.unavailable,
             });
         }
+        if let Some(reason) = blocked_upgrade(&snapshot.updates, &stored.issued.plan.request) {
+            return Err(SubmitError::UpdateBlocked { reason });
+        }
         Ok(())
     }
 }
@@ -227,7 +264,8 @@ mod tests {
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
         ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
-        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable,
+        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateBlocked, UpdateCandidate,
+        UpdateChannel,
     };
     use crate::runner::HostEnv;
     use crate::session::test_support;
@@ -253,6 +291,7 @@ mod tests {
     struct FakeAdapter {
         meta: AdapterMeta,
         instances: std::sync::Mutex<Vec<ManagerInstance>>,
+        updates: std::sync::Mutex<Vec<UpdateCandidate>>,
         plan_gate: std::sync::Mutex<Option<PlanGate>>,
     }
 
@@ -261,8 +300,14 @@ mod tests {
             Arc::new(FakeAdapter {
                 meta: test_support::fake_adapter_meta("fake"),
                 instances: std::sync::Mutex::new(instances),
+                updates: std::sync::Mutex::new(Vec::new()),
                 plan_gate: std::sync::Mutex::new(None),
             })
+        }
+
+        /// What the next `check_updates()` reports.
+        fn set_updates(&self, updates: Vec<UpdateCandidate>) {
+            *self.updates.lock().unwrap() = updates;
         }
 
         /// What the next `detect()` reports -- the host changing under a
@@ -312,7 +357,7 @@ mod tests {
             _inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
-            Ok(CheckOutcome::default())
+            Ok(self.updates.lock().unwrap().clone().into())
         }
 
         async fn search(
@@ -523,6 +568,104 @@ mod tests {
                 "a refused plan must never reach the OperationManager"
             );
         }
+    }
+
+    /// A candidate for `name` on `fake:1`, as a check of that source
+    /// would report it.
+    fn candidate(name: &str, blocked: Option<UpdateBlocked>) -> UpdateCandidate {
+        UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "fake:1".to_string(),
+                kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            },
+            current: "1.0".to_string(),
+            target: "1.1".to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked,
+        }
+    }
+
+    fn request(kind: OpKind, name: &str) -> OpRequest {
+        OpRequest {
+            kind,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_refuses_an_upgrade_the_tool_will_refuse_for_that_package() {
+        // The per-package half of the gate (spec §8). The instance is
+        // writable and answering, so the per-source half passes; what
+        // refuses is `jq`'s own candidate, which says the tool will not
+        // update it (a pinned formula: `brew upgrade jq` exits 1). The
+        // Updates page hides that row's button, and this is what keeps the
+        // invariant when the page is stale.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![
+            candidate("jq", Some(UpdateBlocked::Pinned)),
+            candidate("glib", None),
+        ]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        match session.issue_plan(&request(OpKind::Upgrade, "jq")).await {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::Pinned);
+            }
+            other => panic!("expected UpdateBlocked(Pinned) for jq, got {other:?}"),
+        }
+        // Only that package, and only its update: a sibling on the same
+        // source still plans, and so does removing the pinned one, which
+        // a pin does not stop.
+        session
+            .issue_plan(&request(OpKind::Upgrade, "glib"))
+            .await
+            .expect("an unpinned sibling still plans");
+        session
+            .issue_plan(&request(OpKind::Uninstall, "jq"))
+            .await
+            .expect("a pin blocks updating, not uninstalling");
+        assert!(
+            session.operations().is_empty(),
+            "a refused plan must never reach the OperationManager"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_is_refused_once_the_package_became_blocked() {
+        // The re-check at submit time covers the package too: `jq` was
+        // pinned between the preview and the click, and a refresh saw it.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![candidate("jq", None)]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_plan(&request(OpKind::Upgrade, "jq"))
+            .await
+            .expect("issue_plan while jq was not pinned");
+
+        adapter.set_updates(vec![candidate("jq", Some(UpdateBlocked::Pinned))]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::UpdateBlocked {
+                reason: UpdateBlocked::Pinned,
+            }),
+        );
+        assert!(session.operations().is_empty());
     }
 
     #[tokio::test]
