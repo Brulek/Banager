@@ -479,7 +479,7 @@ describe("UpdatesPage", () => {
     expect(getByText("Pinned")).toBeInTheDocument();
     expect(
       getByText(
-        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you open it.",
+        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you open it.",
       ),
     ).toBeInTheDocument();
     // Counted with what Canager cannot update, not as an available update.
@@ -493,7 +493,33 @@ describe("UpdatesPage", () => {
     updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText(/run brew unpin --cask onyx in Terminal/);
+    await findByText(/run \/opt\/homebrew\/bin\/brew unpin --cask onyx in Terminal/);
+  });
+
+  it("names the brew that owns a pinned package when a Mac has two, not whichever PATH finds", async () => {
+    // A Mac migrated from Intel keeps /usr/local beside /opt/homebrew,
+    // and Terminal's `brew` is /opt/homebrew/bin/brew. glib pinned in
+    // /usr/local has to be released by /usr/local/bin/brew: the other one
+    // answers "glib not pinned" and the row would stay Pinned for good.
+    const intelBrew: Snapshot["instances"][number] = {
+      ...snapshot.instances[0],
+      id: "brew:/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      prefix: "/usr/local",
+    };
+    instances = [snapshot.instances[0], intelBrew];
+    updates = [
+      snapshot.updates[1],
+      {
+        ...snapshot.updates[0],
+        key: { ...glibKey, instance_id: "brew:/usr/local" },
+        blocked: "Pinned",
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText(/run \/usr\/local\/bin\/brew unpin glib in Terminal/);
+    expect(queryByText(/\/opt\/homebrew\/bin\/brew unpin/)).toBeNull();
   });
 
   it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {

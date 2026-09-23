@@ -11,6 +11,7 @@ import type {
   Unavailable,
   UpdateBlocked,
 } from "./types";
+import { displayToken } from "./format";
 
 /** i18n key holding each adapter's human name. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
@@ -245,8 +246,11 @@ interface UpdateBlockedCopy {
   badge: string;
   /** The row's description: why, and what the user can do about it. */
   description: string;
-  /** What `description` interpolates, from the row's own key. */
-  values: (key: ArtifactKey) => Record<string, string>;
+  /** What `description` interpolates, from the row's own key and the
+   *  instance that key's `instance_id` names (`undefined` only if the
+   *  snapshot lacks it, which `refresh` never produces: it builds
+   *  `updates` only from instances it also puts in `instances`). */
+  values: (key: ArtifactKey, instance: ManagerInstance | undefined) => Record<string, string>;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
    *  refusal, which only a stale Updates page can reach. */
   refused: string;
@@ -268,13 +272,31 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // here is a formula or a cask. `--cask` because `brew unpin <name>`
     // resolves a formula first (`to_resolved_formulae_to_casks` in
     // Homebrew's `cmd/unpin.rb`), and a formula can share a cask's name.
+    //
+    // The program is the instance's `exe_path`, the absolute path of the
+    // brew that owns this package, not a bare `brew`: Canager finds brew
+    // by absolute path (`CANDIDATE_PATHS` in
+    // crates/canager-core/src/adapters/brew/mod.rs) and lists
+    // /opt/homebrew and /usr/local side by side, while Terminal's `brew`
+    // is whichever one PATH finds first, or none. On a Mac migrated from
+    // Intel, a formula pinned in /usr/local would get "not pinned" from
+    // /opt/homebrew/bin/brew and the row would say Pinned for good.
+    // `/usr/local/bin/brew unpin` runs on Apple silicon: Homebrew refuses
+    // that prefix only in `perform_preinstall_checks` (its
+    // `Library/Homebrew/install.rb`), which `unpin` never calls. Every
+    // token goes through `displayToken`, as `CommandPreview` does, so a
+    // path with a space in it still pastes as one argument.
     // The description's promise that the update appears "at the latest
     // the next time you open it" rests on the refresh every start runs
     // (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
     // and on `parse_outdated` reading `pinned` afresh each time.
-    values: (key) => ({
-      command: key.kind === "Cask" ? `brew unpin --cask ${key.name}` : `brew unpin ${key.name}`,
-    }),
+    values: (key, instance) => {
+      // The bare name only for an instance the snapshot does not have,
+      // which `values`' doc says cannot happen.
+      const program = instance?.exe_path ?? "brew";
+      const args = key.kind === "Cask" ? ["unpin", "--cask", key.name] : ["unpin", key.name];
+      return { command: [program, ...args].map(displayToken).join(" ") };
+    },
     refused: "updates.blocked.Pinned.refused",
   },
 };

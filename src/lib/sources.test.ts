@@ -11,8 +11,9 @@ import {
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  UPDATE_BLOCKED_KEYS,
 } from "./sources";
-import type { ManagerInstance, SourceError } from "./types";
+import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
 
 /** A stub `t`: returns the key with its interpolations inlined -- same
  *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
@@ -474,5 +475,25 @@ describe("failedSourceCount", () => {
     // instance id -- real instance ids can never collide with it.
     const errors = [err("cargo", "internal error detecting this source"), err("brew:/opt/homebrew")];
     expect(failedSourceCount(errors)).toBe(2);
+  });
+});
+
+describe("UPDATE_BLOCKED_KEYS", () => {
+  it("quotes a brew path with a space in the unpin command, so it pastes as one argument", () => {
+    const instance = {
+      id: "brew:/Users/Alice Smith/homebrew",
+      adapter_id: "brew",
+      exe_path: "/Users/Alice Smith/homebrew/bin/brew",
+      prefix: "/Users/Alice Smith/homebrew",
+      scope: "User",
+      version: "7.0.6",
+      unverified_version: null,
+      read_only_reason: null,
+      status: { unavailable: null, notes: [] },
+    } satisfies ManagerInstance;
+    const key = { instance_id: instance.id, kind: "Formula", name: "glib" } satisfies ArtifactKey;
+    expect(UPDATE_BLOCKED_KEYS.Pinned.values(key, instance)).toEqual({
+      command: "'/Users/Alice Smith/homebrew/bin/brew' unpin glib",
+    });
   });
 });

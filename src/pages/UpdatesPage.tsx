@@ -447,7 +447,8 @@ export function UpdatesPage() {
     if (!candidate.checkable) return cannotCheckText(candidate);
     if (candidate.blocked !== null) {
       const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
-      return t(copy.description, copy.values(candidate.key));
+      const instance = snapshot?.instances.find((i) => i.id === candidate.key.instance_id);
+      return t(copy.description, copy.values(candidate.key, instance));
     }
     return descriptionFor(candidate);
   };
