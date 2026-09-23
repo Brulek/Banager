@@ -109,14 +109,25 @@ Three kinds of text are shown as-is:
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
-  rest of Canager at all while loading or refreshing the list. Canager itself never fails a refresh
-  as a whole: a source it couldn't read is reported in your language, through its own notice and
-  the "Some data might be out of date" banner.
-- **One technical detail that is still Canager's own**, which appears in English inside an
-  otherwise translated sentence. This is a known gap, not a design choice: with "Show technical
-  details" turned on, Canager's own half of why a package couldn't be checked for updates ("exited
-  with code 1"). It should become a structured payload like the refusals, and until it does, the
-  message a Chinese user sees there is partly English.
+  rest of Canager at all while refreshing the list — its own text is shown untranslated, next to
+  the retry button. Short of that, Canager itself never fails a refresh as a whole, but not every
+  source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
+  running, unreachable, or refusing to run as root) is reported in your language, through its own
+  notice. A source that Canager could still reach, but whose software list or update check failed,
+  is not: it only adds to the count in the "Some data might be out of date" banner, which never
+  says which source it was.
+- **A number of technical details that are still Canager's own**, which appear in English inside an
+  otherwise translated sentence. This is a known gap, not a design choice, and it is not just the
+  one case the wording used to name: with "Show technical details" turned on, whenever a package
+  can't be checked for updates Canager's own explanation of why is shown as plain English rather
+  than translated — with the switch off you see only a short generic sentence instead. There are
+  close to a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
+  "... did not finish", or the tool's own first line of stderr) from any lookup that runs a
+  command, and, from the three lookups Canager makes over HTTP instead of a command line, that
+  request's own wording — pipx's PyPI lookup ("PyPI request failed: ...", "PyPI returned status
+  503", "could not parse PyPI response: ..."), Cargo's equivalent for crates.io, and Ollama's
+  equivalent for its own registry. They should all become structured payloads like the refusals
+  above, and until they do, what a Chinese user sees there with the switch on is in English.
 
 ## Design notes
 
@@ -159,11 +170,19 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
 - **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
   几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
   或因为 Canager 不认识的原因无法保存设置时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
-- **应用框架自己的报错**，只出现在一种情况：读取或刷新列表时，窗口完全联系不上 Canager 的其余部分。
-  Canager 自己从不会让整次刷新失败：读不了的来源会用你的语言，通过它自己的提示和“部分数据可能不是最新的”横幅告诉你。
-- **一处仍属于 Canager 自己的技术细节**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
-  为之：打开“显示技术细节”后，某个包无法检查更新时 Canager 自己说明的那一半（“exited with code 1”）。
-  它应该像上面的拒绝理由那样改成结构化数据，在那之前，中文用户在这里看到的提示会夹带英文。
+- **应用框架自己的报错**，只出现在一种情况：刷新列表时，窗口完全联系不上 Canager 的其余部分——这时它
+  自己的文字会原样显示在重试按钮旁边。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
+  来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
+  运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
+  检查失败了，就没有自己的提示——只会计入“部分数据可能不是最新的”横幅里的数字，横幅不会说是哪个来源。
+- **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
+  为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
+  原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
+  接近十来处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
+  finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源；另一类来自另外三个改用
+  HTTP 直接查询软件源的来源——pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源——各自请求
+  失败、返回状态异常、解析失败时的原文提示。这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，
+  中文用户在开关打开时看到的，就是英文。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——只有刷新失败，或者
 Homebrew 的索引过期了，才会出现“重试”按钮，不是随时可按的独立刷新控件。

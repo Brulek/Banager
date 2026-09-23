@@ -84,14 +84,18 @@
   修复**（分支 feat/phase-3-hardening）：refresh 的两层扇出改持 `AbortOnDropHandle`（按扇出顺序
   join 不变，所以结转/备注回并/panic 结转四条路径的 join 结果与原先逐一相同；没用 `JoinSet` 是因为
   它按完成顺序产出）；另外 `RealRunner::run` 在 future 被丢弃时 `killpg` 整组，否则 abort 只放了锁、
-  命令还在锁外跑。`killpg` 仍至多一次，且只打未回收的 pid。
+  命令还在锁外跑。~~`killpg` 仍至多一次，且只打未回收的 pid。~~ —— **已于 2026-09-23 在 `2ee9244`
+  改变**：取消与超时改成先 `SIGTERM` 整组、给 `STOP_GRACE`（5 秒）让它自己收尾，收尾期间用
+  `killpg(pgid, 0)` 探活，还没退的才补一次 `SIGKILL`；一次停止最多两次信号，不再是至多一次。
 - **升级途中取消仍报「结果未确认」而不是「你已取消」。** 这是有意的：升级后包仍在，证明不了新版本
   没在 kill 之前装上。真修需要在执行前先 reconcile 一次记下旧版本。
 - **npm 在 `npm prefix -g` 失败时用可执行文件路径合成一个不可用实例的 ID。** 更理想的是沿用上一轮
   快照里的实例，但那要把上一轮快照穿进 `Adapter::detect` 的签名，七个适配器都得改。
 - **pip 的「不可用」分不清「这个 Python 根本没带 pip」和「pip 装了但坏了」**——两者退出码相同。
-- **`Session` 的 `testing` 模块里有一个会改动实时状态的 `expire_issued_plans`**，而该模块刻意不是
-  `#[cfg(test)]`，所以会进发布版的库。
+- ~~**`Session` 的 `testing` 模块里有一个会改动实时状态的 `expire_issued_plans`**，而该模块刻意不是
+  `#[cfg(test)]`，所以会进发布版的库。~~ —— **已于 2026-09-23 在 `11e5ac8` 修复**：`expire_issued_plans`
+  收进 `test-support` this-crate-only 的 Cargo feature（`crates/canager-core/Cargo.toml`），默认不开，
+  `src-tauri` 的测试通过 `[dev-dependencies]` 单独开它，resolver = "2" 保证不进发布版二进制。
 
 **五、需要作者本人拍板**
 - **整个应用没有刷新按钮。** 唯三的刷新触发点是启动、操作完成、以及两个错误态里的「重试」。
