@@ -196,6 +196,22 @@ export function sourceNoticesFor(
         descriptionKey: "sourceNotice.indexMayBeStale.description",
         action: { id: "retry", labelKey: "sourceNotice.indexMayBeStale.action" },
       });
+    } else if (note === "IndexUpdating") {
+      // Nothing has failed: the download is still going. So an "info"
+      // notice, and no button -- there is nothing for the user to do, and
+      // a "Try again" here could only wait on the same download. The core
+      // refreshes by itself when it ends (`Session::background_change`),
+      // which is what clears this.
+      notices.push({
+        id: `${instance.id}:index-updating`,
+        axis: "state",
+        variant: "info",
+        titleKey: "sourceNotice.indexUpdating.title",
+        descriptionKey: "sourceNotice.indexUpdating.description",
+      });
+    } else {
+      const unhandled: never = note;
+      void unhandled;
     }
   }
 

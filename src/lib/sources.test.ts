@@ -166,6 +166,21 @@ describe("sourceNoticesFor", () => {
     expect(note.action?.id).toBe("retry");
   });
 
+  it("says a still-running download is still running: no failure, no button", () => {
+    // The download has not failed, so the copy must not say it did or send
+    // the user off to check their connection, and there is nothing to
+    // retry: the core refreshes by itself when the download ends.
+    const [note] = sourceNoticesFor(
+      instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }),
+      "Homebrew",
+    );
+    expect(note.axis).toBe("state");
+    expect(note.variant).toBe("info");
+    expect(note.titleKey).toBe("sourceNotice.indexUpdating.title");
+    expect(note.descriptionKey).toBe("sourceNotice.indexUpdating.description");
+    expect(note.action).toBeUndefined();
+  });
+
   it("carries both axes at once, capability first", () => {
     // Independent axes: a source can be read-only *and* silent, and each
     // half is something different for the user to do.
@@ -192,6 +207,7 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: "NotRunning", notes: [] } }),
       instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
       instance({ status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
+      instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }),
     ]) {
       expect(hasSourceNotice(inst)).toBe(sourceNoticesFor(inst, "Homebrew").length > 0);
     }

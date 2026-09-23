@@ -90,6 +90,24 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
     refresh_impl(&state).await
 }
 
+/// Refreshes each time `Session::background_change` says something a
+/// refresh reported has changed by itself -- a `brew update` a refresh
+/// stopped waiting for has ended -- for the life of the app. Spawned once
+/// at startup.
+///
+/// Through `refresh_impl`, so the window learns of the new snapshot the
+/// way it learns of any other, by `SnapshotChanged`: the "still
+/// downloading" notice goes and the fresh catalogue shows without the user
+/// pressing anything. Nothing new crosses to the front end.
+pub(crate) async fn refresh_on_background_change(state: &AppState) {
+    loop {
+        state.session.background_change().await;
+        // A failed refresh is already on screen through the snapshot's own
+        // `errors`; there is no one here to hand an `Err` to.
+        let _ = refresh_impl(state).await;
+    }
+}
+
 /// Resolves and plans `request` through `Session::issue_plan`, returning
 /// the server-issued `IssuedPlan` for the caller to preview. Nothing in
 /// the returned `Plan` is ever accepted back from the client — F1 in the

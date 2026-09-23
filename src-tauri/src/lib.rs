@@ -28,6 +28,10 @@ pub fn run() {
             let settings_path = app.path().app_data_dir()?.join("settings.json");
             let channel_sink = events::ChannelSink::new();
             app.manage(AppState::new(settings_path, channel_sink));
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                ipc::refresh_on_background_change(&handle.state::<AppState>()).await
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

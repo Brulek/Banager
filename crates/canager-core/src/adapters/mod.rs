@@ -48,7 +48,8 @@ pub struct CheckOptions {
 pub struct CheckOutcome {
     pub candidates: Vec<UpdateCandidate>,
     /// What the source said about itself. Empty for every adapter but
-    /// brew, which reports `IndexMayBeStale` when `brew update` failed.
+    /// brew, which reports `IndexMayBeStale` when `brew update` failed and
+    /// `IndexUpdating` when it was still running.
     pub notes: Vec<InstanceNote>,
 }
 

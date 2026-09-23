@@ -110,6 +110,10 @@
       "title": "“Up to date” may not be accurate for Homebrew",
       "description": "Canager couldn't download Homebrew's latest list of software, so there may be updates it can't see yet. Check your internet connection, then try again.",
       "action": "Try again"
+    },
+    "indexUpdating": {
+      "title": "Homebrew is still downloading its latest list of software",
+      "description": "Homebrew's list of available software is taking a while to download, so “up to date” may not be accurate yet. You don't need to do anything: Canager will check again by itself as soon as the download finishes."
     }
   },
   "planRefused": {

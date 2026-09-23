@@ -103,6 +103,10 @@
       "title": "Homebrew 这里的「已是最新」可能不准",
       "description": "Canager 没能下载 Homebrew 最新的软件目录，所以可能有更新它还看不到。检查一下网络连接，然后重试。",
       "action": "重试"
+    },
+    "indexUpdating": {
+      "title": "Homebrew 还在下载最新的软件目录",
+      "description": "Homebrew 的软件目录下载得比较慢，所以「已是最新」暂时可能不准。你什么都不用做：下载一完成，Canager 会自己再检查一遍。"
     }
   },
   "planRefused": {

@@ -22,22 +22,32 @@ use tokio_util::sync::CancellationToken;
 pub struct BrewAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
-    /// Per-instance `brew update` TTL bookkeeping. Keyed by `ManagerInstance
-    /// id` (e.g. `brew:/opt/homebrew` vs `brew:/usr/local`) so that two
-    /// installs of Homebrew each get their own throttle instead of sharing
-    /// a single adapter-wide timer.
+    /// Per-instance `brew update` bookkeeping: when one last succeeded
+    /// (the TTL), whether one is running now, and what the task running
+    /// it owes the refreshes that stopped waiting for it -- see
+    /// `UpdateRecord`. Keyed by `ManagerInstance id` (e.g.
+    /// `brew:/opt/homebrew` vs `brew:/usr/local`) so that two installs of
+    /// Homebrew each get their own throttle instead of sharing a single
+    /// adapter-wide timer.
     ///
-    /// Shared (`Arc`) because the task that runs `brew update` records the
-    /// timestamp itself, and that task can outlive the `check_updates` call
+    /// Shared (`Arc`) because the task that runs `brew update` writes its
+    /// own result here, and that task can outlive the `check_updates` call
     /// that started it -- see `maybe_update`.
-    last_update: Arc<Mutex<HashMap<InstanceId, Instant>>>,
+    updates: Arc<Mutex<HashMap<InstanceId, UpdateRecord>>>,
+    /// Woken when a `brew update` some refresh stopped waiting for has
+    /// ended, one way or the other. That refresh told the user the list
+    /// was still being downloaded (`InstanceNote::IndexUpdating`), and
+    /// nothing else would ever look again: `Session::background_change`
+    /// hands this to the shell, which refreshes, so the notice clears and
+    /// the fresh catalogue shows without the user having to do anything.
+    background_change: Arc<tokio::sync::Notify>,
     /// Serialises `maybe_update` per instance: without this, two
     /// concurrent `check_updates` calls for the same instance could both
     /// observe "TTL expired" before either had recorded a fresh
     /// timestamp, and both run `brew update` concurrently — wasteful, and
     /// two `brew update` processes writing the same Homebrew cache
     /// directory at once is not something Homebrew is designed to
-    /// tolerate. Keyed the same way as `last_update`.
+    /// tolerate. Keyed the same way as `updates`.
     ///
     /// The lock is held by the task that runs `brew update`, not by the
     /// `check_updates` call waiting on it, so it stays held until that
@@ -47,10 +57,9 @@ pub struct BrewAdapter {
     /// background instead of running alongside it.
     update_locks: Mutex<HashMap<InstanceId, Arc<tokio::sync::Mutex<()>>>>,
     update_ttl: Duration,
-    /// How long `check_updates` waits for `brew update` -- one already
-    /// running for this instance, or the one it starts -- before comparing
-    /// against the catalogue it has and saying so with
-    /// `InstanceNote::IndexMayBeStale`. Waiting is all this bounds: when it
+    /// How long `check_updates` waits for the `brew update` it starts
+    /// before comparing against the catalogue it has and saying so with
+    /// `InstanceNote::IndexUpdating`. Waiting is all this bounds: when it
     /// runs out the update is left to finish, never killed. See
     /// `maybe_update` for why.
     update_patience: Duration,
@@ -130,7 +139,8 @@ impl BrewAdapter {
         BrewAdapter {
             runner,
             meta,
-            last_update: Arc::new(Mutex::new(HashMap::new())),
+            updates: Arc::new(Mutex::new(HashMap::new())),
+            background_change: Arc::new(tokio::sync::Notify::new()),
             update_locks: Mutex::new(HashMap::new()),
             update_ttl: Duration::from_secs(6 * 3600),
             update_patience: Self::UPDATE_PATIENCE,
@@ -142,6 +152,14 @@ impl BrewAdapter {
 
     pub fn with_update_ttl(mut self, ttl: Duration) -> BrewAdapter {
         self.update_ttl = ttl;
+        self
+    }
+
+    /// Wakes `notify` whenever a `brew update` a refresh stopped waiting
+    /// for has ended (see the `background_change` field). `Session::new`
+    /// passes the one `Session::background_change` waits on.
+    pub fn with_background_change(mut self, notify: Arc<tokio::sync::Notify>) -> BrewAdapter {
+        self.background_change = notify;
         self
     }
 
@@ -272,15 +290,25 @@ impl BrewAdapter {
     /// `JoinHandle` -- which *detaches* the task when dropped, never aborts
     /// it. Whether this function returns because the patience ran out or is
     /// dropped because its refresh was, the update carries on, keeps
-    /// draining its pipes, and records `last_update` when it succeeds, so
-    /// the next refresh gets the fresh catalogue this one could not wait
-    /// for.
+    /// draining its pipes, and records its result in `updates` when it
+    /// ends.
     ///
-    /// A second refresh arriving while that update is still running waits
-    /// on the same lock, within its own patience: it sees the fresh
-    /// timestamp if the update finishes in time, and otherwise goes on
-    /// with `MayBeStale` without starting a second `brew update` alongside
-    /// the first.
+    /// Running out of patience is not a failure, and is not reported as
+    /// one: the download is still going, and on a slow link to GitHub it
+    /// usually finishes. So it is `Updating`, which the user reads as "the
+    /// list is still being downloaded", never `MayBeStale`, which tells
+    /// them the download failed and to check their connection. When the
+    /// update then ends, its task wakes `background_change`, and the shell
+    /// refreshes once: the notice clears and the new catalogue shows, or,
+    /// if the update failed after all, the refresh says *that* -- once,
+    /// without starting another `brew update` of its own (see
+    /// `UpdateRecord::unreported_failure`).
+    ///
+    /// A refresh that arrives while an update is running does not wait for
+    /// it at all: it reports `Updating` straight away and is covered by the
+    /// same follow-up. It used to wait on the lock for its own two minutes
+    /// and then report the download as failed, while the first one was
+    /// downloading fine.
     ///
     /// The one thing this cannot prevent is the app itself exiting
     /// mid-update: quitting ends the process, and the update's pipes with
@@ -291,21 +319,39 @@ impl BrewAdapter {
         }
         let deadline = tokio::time::Instant::now() + self.update_patience;
         let lock = self.update_lock_for(&inst.id);
-        // An update an earlier refresh stopped waiting for may still hold
-        // this. Waiting for it comes out of the same patience.
-        let guard = match tokio::time::timeout_at(deadline, lock.lock_owned()).await {
+        let guard = match lock.clone().try_lock_owned() {
             Ok(guard) => guard,
-            Err(_) => return IndexFreshness::MayBeStale,
-        };
-        let needs_update = {
-            let last = self.last_update.lock().unwrap();
-            match last.get(&inst.id) {
-                Some(t) => t.elapsed() >= self.update_ttl,
-                None => true,
+            Err(_) => {
+                if self.join_running_update(&inst.id) {
+                    return IndexFreshness::Updating;
+                }
+                // Held, but not by a running update: an update's task
+                // between writing its result and releasing the lock, which
+                // is a moment. (An install or upgrade on this Homebrew
+                // holds it too, but never while a refresh of the same
+                // instance is here: both hold the instance's resource lock
+                // first.)
+                match tokio::time::timeout_at(deadline, lock.lock_owned()).await {
+                    Ok(guard) => guard,
+                    Err(_) => return IndexFreshness::MayBeStale,
+                }
             }
         };
-        if !needs_update {
-            return IndexFreshness::Current;
+        {
+            let mut updates = self.updates.lock().unwrap();
+            let record = updates.entry(inst.id.clone()).or_default();
+            if std::mem::take(&mut record.unreported_failure) {
+                return IndexFreshness::MayBeStale;
+            }
+            if record
+                .succeeded_at
+                .is_some_and(|t| t.elapsed() < self.update_ttl)
+            {
+                return IndexFreshness::Current;
+            }
+            // Set while holding the update lock, so a refresh that finds
+            // the lock taken always finds this too.
+            record.running = true;
         }
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
@@ -319,27 +365,62 @@ impl BrewAdapter {
             output_use: OutputUse::Parsed,
         };
         let runner = self.runner.clone();
-        let last_update = self.last_update.clone();
-        let inst_id = inst.id.clone();
+        let started = Instant::now();
+        let finish = UpdateFinish {
+            updates: self.updates.clone(),
+            inst_id: inst.id.clone(),
+            succeeded: false,
+            background_change: self.background_change.clone(),
+        };
         let update = tokio::spawn(async move {
-            // Held until `brew update` has exited, however long ago the
-            // refresh that started it stopped waiting.
+            // Declared first so it is dropped last: the result is in
+            // `updates` (by `finish`'s drop) before the lock is free.
             let _guard = guard;
-            let succeeded = matches!(
+            // Named, not just assigned through: a closure or async block
+            // that only writes `finish.succeeded` captures that one `bool`
+            // (edition 2021's disjoint captures), which would leave
+            // `finish` -- and its drop -- behind in `maybe_update`.
+            let mut finish = finish;
+            finish.succeeded = matches!(
                 runner.run(spec, None, CancellationToken::new()).await,
                 Ok(output) if output.exit_code == Some(0)
             );
-            if succeeded {
-                last_update.lock().unwrap().insert(inst_id, Instant::now());
-            }
-            succeeded
+            finish.succeeded
         });
         match tokio::time::timeout_at(deadline, update).await {
             Ok(Ok(true)) => IndexFreshness::Current,
-            // Failed, panicked, or still running: `update` is dropped here
-            // (detached, not aborted) in the last case.
-            _ => IndexFreshness::MayBeStale,
+            // It ran and failed, or its task panicked.
+            Ok(_) => IndexFreshness::MayBeStale,
+            // Still running: `update` is dropped here, detached, not
+            // aborted.
+            Err(_) => {
+                if self.join_running_update(&inst.id) {
+                    return IndexFreshness::Updating;
+                }
+                // It ended between the timeout and here.
+                let updates = self.updates.lock().unwrap();
+                match updates.get(&inst.id).and_then(|r| r.succeeded_at) {
+                    Some(t) if t >= started => IndexFreshness::Current,
+                    _ => IndexFreshness::MayBeStale,
+                }
+            }
         }
+    }
+
+    /// If a `brew update` is running for `inst_id`, asks to be told when it
+    /// ends (see `UpdateRecord::announced`) and returns true.
+    ///
+    /// Checked and set under the one `updates` lock the update's own task
+    /// takes to write its result, so the two cannot miss each other: either
+    /// this sees it still running and the task sees `announced`, or this
+    /// sees it finished.
+    fn join_running_update(&self, inst_id: &InstanceId) -> bool {
+        let mut updates = self.updates.lock().unwrap();
+        let record = updates.entry(inst_id.clone()).or_default();
+        if record.running {
+            record.announced = true;
+        }
+        record.running
     }
 
     /// Waits, cancellably, for any `brew update` still finishing for this
@@ -498,6 +579,7 @@ impl BrewAdapter {
         // mirror keeps seeing a bare string on the wire (spec §2.3).
         let notes = match self.maybe_update(inst).await {
             IndexFreshness::Current => Vec::new(),
+            IndexFreshness::Updating => vec![InstanceNote::IndexUpdating],
             IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
         };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
@@ -589,9 +671,73 @@ impl BrewAdapter {
 enum IndexFreshness {
     /// Updated within the TTL, or just now.
     Current,
-    /// `brew update` failed, was refused, or had not finished when the
-    /// refresh stopped waiting for it.
+    /// A `brew update` is still running: the refresh stopped waiting for
+    /// it, or found one already running. Nothing has failed.
+    Updating,
+    /// `brew update` failed, or was refused.
     MayBeStale,
+}
+
+/// What `BrewAdapter` knows about one instance's `brew update`s.
+#[derive(Debug, Default)]
+struct UpdateRecord {
+    /// When the last `brew update` that exited 0 ended. The TTL runs from
+    /// here.
+    succeeded_at: Option<Instant>,
+    /// A `brew update` is running now, in the task `maybe_update` spawned.
+    running: bool,
+    /// A refresh has told the user the running update is still going
+    /// (`IndexUpdating`), so when it ends its task wakes
+    /// `BrewAdapter::background_change`: without a refresh after it, that
+    /// notice would stay on screen, and the old catalogue with it, until
+    /// the user happened to do something.
+    announced: bool,
+    /// An update a refresh announced then failed, and no refresh has said
+    /// so yet. The next `maybe_update` -- the refresh the failure itself
+    /// set off -- reports `MayBeStale` instead of starting another `brew
+    /// update`: a failure that started a fresh attempt would, on a network
+    /// that fails every one, keep Homebrew updating in a loop nobody asked
+    /// for. The notice's own "Try again" is what starts the next one.
+    unreported_failure: bool,
+}
+
+/// Writes a finished `brew update`'s result into its `UpdateRecord` when
+/// dropped, which is what makes it happen even if the run panics: a
+/// `running` left `true` would report "still updating" for the life of the
+/// app.
+struct UpdateFinish {
+    updates: Arc<Mutex<HashMap<InstanceId, UpdateRecord>>>,
+    inst_id: InstanceId,
+    succeeded: bool,
+    background_change: Arc<tokio::sync::Notify>,
+}
+
+impl Drop for UpdateFinish {
+    fn drop(&mut self) {
+        let announced = {
+            // Not `unwrap`: this may run while unwinding, where a second
+            // panic aborts.
+            let mut updates = self
+                .updates
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let record = updates.entry(self.inst_id.clone()).or_default();
+            record.running = false;
+            if self.succeeded {
+                record.succeeded_at = Some(Instant::now());
+            }
+            let announced = std::mem::take(&mut record.announced);
+            if announced && !self.succeeded {
+                record.unreported_failure = true;
+            }
+            announced
+        };
+        if announced {
+            // `notify_one` keeps the wake-up if nobody is waiting yet, so
+            // it is not lost to a shell that is between two refreshes.
+            self.background_change.notify_one();
+        }
+    }
 }
 
 /// The name `inventory()` lists an artifact under, given whatever spelling
@@ -2336,12 +2482,14 @@ mod plan_execute_tests {
         // The live bug: `brew update` had a two-minute timeout, and on a
         // slow network the runner SIGKILLed it wherever it had got to --
         // in the middle of git. Now the refresh stops *waiting* when its
-        // patience runs out, reports the catalogue as possibly stale, and
+        // patience runs out, says the list is still being downloaded, and
         // the update runs on to completion. Scaled down: patience 300 ms,
         // an update that takes 2 s.
         let (dir, inst) = slow_update_brew("outlasts", 2);
+        let background_change = Arc::new(tokio::sync::Notify::new());
         let adapter = BrewAdapter::new(Arc::new(crate::runner::RealRunner::new()))
-            .with_update_patience(Duration::from_millis(300));
+            .with_update_patience(Duration::from_millis(300))
+            .with_background_change(background_change.clone());
 
         let started = Instant::now();
         let outcome = adapter
@@ -2351,9 +2499,10 @@ mod plan_execute_tests {
         let waited = started.elapsed();
         assert_eq!(
             outcome.notes,
-            vec![InstanceNote::IndexMayBeStale],
-            "a refresh that could not wait for `brew update` compared against \
-             the old catalogue, and has to say so"
+            vec![InstanceNote::IndexUpdating],
+            "an update the refresh stopped waiting for is still running, not \
+             failed -- `IndexMayBeStale` would tell the user the download \
+             failed and to check their connection"
         );
         assert!(
             waited < Duration::from_millis(1500),
@@ -2361,21 +2510,27 @@ mod plan_execute_tests {
              the update; took {waited:?}"
         );
 
-        // A second refresh while that update is still running waits on the
-        // same lock, gives up at its own patience, and does not start a
+        // A second refresh while that update is still running does not
+        // wait for it at all -- it used to sit out its own patience on the
+        // lock and then call the download failed -- and does not start a
         // second `brew update` alongside the first.
         let started = Instant::now();
         let second = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
             .expect("second check_updates");
-        assert_eq!(second.notes, vec![InstanceNote::IndexMayBeStale]);
+        assert_eq!(second.notes, vec![InstanceNote::IndexUpdating]);
         assert!(
-            started.elapsed() < Duration::from_millis(1500),
-            "took {:?}",
+            started.elapsed() < Duration::from_millis(250),
+            "a refresh behind a running update must not wait on it; took {:?}",
             started.elapsed()
         );
 
+        // When the update ends, whoever is listening hears about it, so the
+        // notice does not sit there until the user happens to act.
+        tokio::time::timeout(Duration::from_secs(15), background_change.notified())
+            .await
+            .expect("the end of an update a refresh reported as running must be announced");
         assert_eq!(
             wait_for_update_to_finish(&dir).await,
             1,
@@ -2388,8 +2543,9 @@ mod plan_execute_tests {
             "two refreshes must not run two `brew update`s at once"
         );
 
-        // The background update recorded its success, so the next refresh
-        // gets the fresh catalogue without running another one.
+        // The background update recorded its success, so the refresh that
+        // announcement sets off gets the fresh catalogue without running
+        // another one.
         let third = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -2397,6 +2553,118 @@ mod plan_execute_tests {
         assert!(third.notes.is_empty(), "got {:?}", third.notes);
         assert_eq!(line_count(&dir.join("update-started")), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A slow `brew update` answering `output` after `delay`, and an empty
+    /// `brew outdated`.
+    fn runner_with_update(delay: Duration, output: CommandOutput) -> Arc<MockRunner> {
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], output);
+        runner.delay(vec!["/opt/homebrew/bin/brew", "update"], delay);
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
+    fn update_calls(runner: &MockRunner) -> usize {
+        runner
+            .calls()
+            .iter()
+            .filter(|c| c.get(1).map(String::as_str) == Some("update"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn test_a_background_update_that_then_fails_is_reported_once_and_not_retried_by_itself() {
+        // The update a refresh called "still downloading" fails after all.
+        // The refresh its end sets off must say so -- that is when
+        // "couldn't download" becomes true -- and must not start another
+        // `brew update` by itself: on a network that fails every attempt,
+        // that would be an update loop nobody asked for. The notice's own
+        // "Try again" is what starts the next one.
+        let runner = runner_with_update(
+            Duration::from_millis(400),
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "fatal: unable to access GitHub".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_update_patience(Duration::from_millis(100))
+            .with_background_change(background_change.clone());
+        let inst = test_instance();
+
+        let first = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert_eq!(first.notes, vec![InstanceNote::IndexUpdating]);
+
+        tokio::time::timeout(Duration::from_secs(5), background_change.notified())
+            .await
+            .expect("a failed update a refresh reported as running must be announced too");
+        let after = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates after");
+        assert_eq!(after.notes, vec![InstanceNote::IndexMayBeStale]);
+        assert_eq!(
+            update_calls(&runner),
+            1,
+            "the refresh a failure sets off must not start another `brew update`"
+        );
+
+        // "Try again": the failure has been reported, so this one tries.
+        adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("retry");
+        assert_eq!(update_calls(&runner), 2, "Try again must try again");
+    }
+
+    #[tokio::test]
+    async fn test_an_update_the_refresh_waited_out_is_not_announced() {
+        // The follow-up refresh exists for a notice that would otherwise
+        // stay on screen. An update the refresh saw through to the end left
+        // no such notice, so its end must not set off a refresh nobody
+        // needs.
+        let runner = runner_with_update(
+            Duration::from_millis(50),
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let adapter = BrewAdapter::new(runner)
+            .with_update_patience(Duration::from_secs(5))
+            .with_background_change(background_change.clone());
+        let outcome = adapter
+            .check_updates(&test_instance(), &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), background_change.notified())
+                .await
+                .is_err(),
+            "nothing was reported as still running, so nothing needs a follow-up"
+        );
     }
 
     #[tokio::test]
@@ -2475,7 +2743,7 @@ mod plan_execute_tests {
             .check_updates(&inst, &CheckOptions::default())
             .await
             .expect("check_updates");
-        assert_eq!(outcome.notes, vec![InstanceNote::IndexMayBeStale]);
+        assert_eq!(outcome.notes, vec![InstanceNote::IndexUpdating]);
 
         let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
         let sink = Arc::new(VecSink::new());
@@ -2485,7 +2753,12 @@ mod plan_execute_tests {
             .expect("execute");
         assert_eq!(outcome, Outcome::Succeeded);
         assert!(
-            adapter.last_update.lock().unwrap().contains_key(&inst.id),
+            adapter
+                .updates
+                .lock()
+                .unwrap()
+                .get(&inst.id)
+                .is_some_and(|r| r.succeeded_at.is_some()),
             "the install ran before the `brew update` it should have waited for had finished"
         );
         assert!(

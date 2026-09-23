@@ -94,6 +94,11 @@ pub enum InstanceNote {
     /// `brew update` failed, so the local catalogue may be behind and
     /// "no updates" may be wrong.
     IndexMayBeStale,
+    /// `brew update` is still downloading: the refresh stopped waiting for
+    /// it and compared against the catalogue it already had. Nothing has
+    /// failed. When the update ends the shell refreshes again (see
+    /// `Session::background_change`), so this clears by itself.
+    IndexUpdating,
 }
 
 /// The state axis of a source: can Canager talk to it at all, and is there
@@ -657,5 +662,17 @@ mod tests {
                 status
             );
         }
+
+        // Each note is a bare string too.
+        let status = InstanceStatus {
+            unavailable: None,
+            notes: vec![InstanceNote::IndexUpdating],
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert_eq!(json, r#"{"unavailable":null,"notes":["IndexUpdating"]}"#);
+        assert_eq!(
+            serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+            status
+        );
     }
 }

@@ -96,7 +96,7 @@ export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
  */
 export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot";
 /** Mirrors `InstanceNote`; payload-free on purpose, so a bare string. */
-export type InstanceNote = "IndexMayBeStale";
+export type InstanceNote = "IndexMayBeStale" | "IndexUpdating";
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent

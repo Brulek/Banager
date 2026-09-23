@@ -219,6 +219,10 @@ pub struct Session {
     #[cfg(not(any(test, feature = "test-support")))]
     issued_plans: Mutex<HashMap<PlanId, plans::StoredPlan>>,
     now_fn: Option<fn() -> i64>,
+    /// See `background_change`. Handed to the adapters that can change
+    /// state on their own (Homebrew's background `brew update`) by
+    /// `Session::new`.
+    background_change: Arc<tokio::sync::Notify>,
 }
 
 impl Session {
@@ -229,8 +233,11 @@ impl Session {
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
         let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
         let http: Arc<dyn HttpClient> = Arc::new(RealHttpClient::new());
+        let background_change = Arc::new(tokio::sync::Notify::new());
         let adapters: Vec<Arc<dyn Adapter>> = vec![
-            Arc::new(BrewAdapter::new(runner.clone())),
+            Arc::new(
+                BrewAdapter::new(runner.clone()).with_background_change(background_change.clone()),
+            ),
             Arc::new(NpmAdapter::new(runner.clone())),
             Arc::new(PipxAdapter::new(runner.clone(), http.clone())),
             Arc::new(UvAdapter::new(runner.clone())),
@@ -238,14 +245,25 @@ impl Session {
             Arc::new(CargoAdapter::new(runner.clone(), http.clone())),
             Arc::new(OllamaAdapter::new(runner, http)),
         ];
-        Session::with_adapters(sink, adapters, now_fn)
+        Session::build(sink, adapters, now_fn, background_change)
     }
 
-    /// Test seam: build a Session over arbitrary adapters.
+    /// Test seam: build a Session over arbitrary adapters. Its
+    /// `background_change` is wired to nothing: an adapter a test builds
+    /// is given its own `Notify` by the test if it needs one.
     pub fn with_adapters(
         sink: Arc<dyn EventSink>,
         adapters: Vec<Arc<dyn Adapter>>,
         now_fn: Option<fn() -> i64>,
+    ) -> Arc<Session> {
+        Session::build(sink, adapters, now_fn, Arc::new(tokio::sync::Notify::new()))
+    }
+
+    fn build(
+        sink: Arc<dyn EventSink>,
+        adapters: Vec<Arc<dyn Adapter>>,
+        now_fn: Option<fn() -> i64>,
+        background_change: Arc<tokio::sync::Notify>,
     ) -> Arc<Session> {
         let mut ops = OperationManager::new(sink);
         let mut by_id = HashMap::new();
@@ -277,7 +295,25 @@ impl Session {
             refresh_seq: AtomicU64::new(0),
             issued_plans: Mutex::new(HashMap::new()),
             now_fn,
+            background_change,
         })
+    }
+
+    /// Resolves when something a refresh reported has since changed by
+    /// itself, so the snapshot is out of date and only a refresh will say
+    /// so. Today that is one thing: a `brew update` that a refresh stopped
+    /// waiting for, and reported as still running
+    /// (`InstanceNote::IndexUpdating`), has ended.
+    ///
+    /// Nothing in the core refreshes on its own, and the snapshot only
+    /// reaches the window through the shell's `refresh`, which is what
+    /// announces `SnapshotChanged`. So the shell waits on this in a loop and
+    /// refreshes each time it resolves: the notice goes, the new catalogue
+    /// shows, and the window hears about it the way it hears about every
+    /// other change. A wake-up that arrives while nobody is waiting is
+    /// kept, one deep, so one that lands mid-refresh is not lost.
+    pub async fn background_change(&self) {
+        self.background_change.notified().await
     }
 
     fn now(&self) -> i64 {
