@@ -37,6 +37,14 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+# Same crate as the plain `canager-core` entry under [dependencies] above,
+# with `test-support` turned on: resolver v2 unifies features per target,
+# so this only reaches the test build of canager-core, never the release
+# binary's. This is what lets `ipc.rs`'s tests call
+# `canager_core::testing::expire_issued_plans`, which is cfg-gated on that
+# feature specifically so it cannot ship in a release build. See
+# `crates/canager-core/src/testing.rs`.
+canager-core = { path = "../crates/canager-core", features = ["test-support"] }
 
 # [profile.release] lives at the workspace root (../Cargo.toml), not here --
 # Cargo only reads profiles from the workspace root; a copy in this member

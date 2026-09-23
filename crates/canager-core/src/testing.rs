@@ -10,8 +10,17 @@
 //! plausible instance, with this one thing different", and each new field
 //! cost all of them an edit until this existed (spec §5's note).
 //!
-//! Nothing in production may call these; they build instances that describe
-//! no real machine.
+//! Nothing in production may call the fixture constructors above; they
+//! build instances that describe no real machine, so it is harmless for
+//! them to be reachable from a release build.
+//!
+//! `expire_issued_plans` below is not one of those fixtures: it reaches
+//! into a live `Session` and mutates real state, rather than building a
+//! disconnected value. It is gated behind the `test-support` feature (on
+//! top of `cfg(test)`, which alone would hide it from `src-tauri`'s own
+//! tests -- a separate crate, so `cfg(test)` there does not apply to this
+//! one) so that it cannot end up in a release build. See its own doc
+//! comment and this crate's `Cargo.toml` `[features]` section.
 
 use crate::model::{InstanceStatus, ManagerInstance, ReadOnlyReason, Scope, Unavailable};
 use std::path::PathBuf;
@@ -79,6 +88,12 @@ pub fn unavailable_instance(
 /// on the monotonic clock precisely so that nothing anyone can set
 /// decides it (see `session::plans::StoredPlan`), which leaves a test no
 /// clock to move and no ten minutes to spare.
+///
+/// `cfg`-gated behind `test-support` (see `Cargo.toml`) so this mutator
+/// cannot ship in a release build: `src-tauri`'s tests enable the feature
+/// through a `[dev-dependencies]` entry on this crate, which resolver v2
+/// keeps out of the release binary's dependency graph.
+#[cfg(any(test, feature = "test-support"))]
 pub fn expire_issued_plans(session: &crate::session::Session) {
     let lifetime = crate::session::PLAN_LIFETIME + std::time::Duration::from_secs(1);
     for stored in session.issued_plans.lock().unwrap().values_mut() {

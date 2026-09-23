@@ -42,6 +42,16 @@ toml = "1"
 # the build graph.
 getrandom = "0.4"
 
+[features]
+# Gates `testing::expire_issued_plans`, the one item in `testing` that
+# mutates live `Session` state rather than building a disconnected fixture.
+# Left off by default so a release build of this library never contains it;
+# `src-tauri`'s own tests enable it via a `[dev-dependencies]` entry on this
+# same crate with this feature turned on, which resolver v2 keeps scoped to
+# test targets and out of the release binary's dependency graph. See
+# `testing.rs` for the item this gates and why.
+test-support = []
+
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
 # Tests and the `brew_smoke` example run on a multi-thread runtime; the
