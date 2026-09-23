@@ -368,7 +368,7 @@ impl BrewAdapter {
                 }
             }
         };
-        {
+        let finish = {
             let mut updates = self.updates.lock().unwrap();
             let record = updates.entry(inst.id.clone()).or_default();
             if std::mem::take(&mut record.unreported_failure) {
@@ -381,9 +381,17 @@ impl BrewAdapter {
                 return IndexFreshness::Current;
             }
             // Set while holding the update lock, so a refresh that finds
-            // the lock taken always finds this too.
-            record.running = true;
-        }
+            // the lock taken always finds this too -- and only by
+            // `UpdateFinish::begin`, which hands back the guard whose drop
+            // clears it, so nothing can run between setting `running` and
+            // owning the guard.
+            UpdateFinish::begin(
+                record,
+                self.updates.clone(),
+                inst.id.clone(),
+                self.background_change.clone(),
+            )
+        };
         let spec = CommandSpec {
             program: inst.exe_path.clone(),
             args: vec!["update".to_string()],
@@ -397,12 +405,6 @@ impl BrewAdapter {
         };
         let runner = self.runner.clone();
         let started = Instant::now();
-        let finish = UpdateFinish {
-            updates: self.updates.clone(),
-            inst_id: inst.id.clone(),
-            succeeded: false,
-            background_change: self.background_change.clone(),
-        };
         let update = tokio::spawn(async move {
             // Declared first so it is dropped last: the result is in
             // `updates` (by `finish`'s drop) before the lock is free.
@@ -788,6 +790,27 @@ struct UpdateFinish {
     inst_id: InstanceId,
     succeeded: bool,
     background_change: Arc<tokio::sync::Notify>,
+}
+
+impl UpdateFinish {
+    /// Marks `record`'s update running and returns the guard that marks
+    /// it ended. The one place `running` is set to `true`, so a `running`
+    /// with no guard to clear it cannot exist: whatever panics after this,
+    /// in `maybe_update` or in the update's task, drops the guard.
+    fn begin(
+        record: &mut UpdateRecord,
+        updates: Arc<Mutex<HashMap<InstanceId, UpdateRecord>>>,
+        inst_id: InstanceId,
+        background_change: Arc<tokio::sync::Notify>,
+    ) -> UpdateFinish {
+        record.running = true;
+        UpdateFinish {
+            updates,
+            inst_id,
+            succeeded: false,
+            background_change,
+        }
+    }
 }
 
 impl Drop for UpdateFinish {
@@ -2734,6 +2757,80 @@ mod plan_execute_tests {
             "got {retry:?}"
         );
         assert_eq!(update_calls(&runner), 2, "Try again must try again");
+    }
+
+    /// A runner whose `brew update` panics after `delay`; everything else
+    /// goes to `inner`.
+    struct PanickingUpdateRunner {
+        inner: MockRunner,
+        delay: Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::runner::CommandRunner for PanickingUpdateRunner {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            on_line: Option<crate::runner::LineCallback>,
+            cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            if spec.args.first().map(String::as_str) == Some("update") {
+                tokio::time::sleep(self.delay).await;
+                panic!("brew update's runner panicked on purpose");
+            }
+            self.inner.run(spec, on_line, cancel).await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_brew_update_whose_task_panics_still_clears_running_and_wakes_the_loop() {
+        // Rereview F5: `running` is cleared only by `UpdateFinish`'s drop,
+        // and a panic is the case a drop guard is for. If the guard did
+        // not run while unwinding, `running` would stay `true` for the
+        // life of the app -- every later refresh told "still downloading"
+        // and the catalogue never read again -- and nothing would wake the
+        // shell's loop.
+        let inner = MockRunner::new();
+        inner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let runner = Arc::new(PanickingUpdateRunner {
+            inner,
+            delay: Duration::from_millis(300),
+        });
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let adapter = BrewAdapter::new(runner)
+            .with_update_patience(Duration::from_millis(100))
+            .with_background_change(background_change.clone());
+        let inst = test_instance();
+
+        let first = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(first, Err(AdapterError::IndexUpdating)),
+            "got {first:?}"
+        );
+
+        tokio::time::timeout(Duration::from_secs(5), background_change.notified())
+            .await
+            .expect("an announced update whose task panicked must still wake the loop");
+        assert!(
+            !adapter.join_running_update(&inst.id),
+            "the panicked update must not be left marked running"
+        );
+        // And the refresh that wake-up sets off reports the failure,
+        // rather than "still downloading".
+        let after = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates after");
+        assert_eq!(after.notes, vec![InstanceNote::IndexMayBeStale]);
     }
 
     #[tokio::test]
