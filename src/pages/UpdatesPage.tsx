@@ -391,8 +391,14 @@ export function UpdatesPage() {
    * Before this branch an index outage produced *one* banner -- npm
    * returned an empty list, pip/uv/pipx returned `Err` -- and now it
    * produces one row per installed package, so leaving the stderr on
-   * meant dozens of identical English sentences down the page and
-   * nothing anywhere that reads as "you appear to be offline".
+   * meant dozens of identical English sentences down the page.
+   *
+   * With the switch off, the row says only *that* it could not be
+   * checked, in one short sentence. What that might mean and where to look
+   * is said once for the whole page (`hiddenReasonCount` below): it used
+   * to be a 180-character paragraph on every such row, and a single lookup
+   * that cannot reach its index turns every installed package into such a
+   * row, so an offline Mac with seventy npm globals showed seventy copies.
    */
   const cannotCheckText = (candidate: UpdateCandidate): string => {
     const parts = candidate.warnings.map((warning) => {
@@ -400,7 +406,7 @@ export function UpdatesPage() {
       if (raw === null) return warningText(t, warning);
       return settings?.show_technical_details
         ? t("updates.cannotCheckDetail", { message: raw })
-        : t("updates.cannotCheckPlain", { setting: t("settings.showTechnicalDetails.label") });
+        : t("updates.cannotCheckShort");
     });
     // Distinct, because with the switch off every `Message` on a row
     // collapses to the same sentence and a row carrying two of them would
@@ -424,6 +430,28 @@ export function UpdatesPage() {
    */
   const rowDescription = (candidate: UpdateCandidate): string =>
     candidate.checkable ? descriptionFor(candidate) : cannotCheckText(candidate);
+
+  // How many rows `cannotCheckText` gave the short sentence in place of
+  // the tool's own words: exactly its `cannotCheckShort` branch, an
+  // uncheckable row with a `Message` while the switch is off. The page says
+  // what that might mean once, above the list, counting these rows and no
+  // others -- a `NonRegistrySource` row already says its own, different,
+  // reason, and with the switch on every row carries the tool's text.
+  //
+  // It claims no diagnosis. The first line of the tool's stderr is the
+  // only thing that tells "this Mac is offline" from "that index is
+  // refusing you" (`lookup_failure_reason`, crates/canager-core/src/
+  // adapters/mod.rs), and it is precisely what this copy stands in for, so
+  // the sentence names being offline as one possible reason, not as the
+  // reason. These adapters push no `SourceError` for a failed lookup, so no
+  // page-wide banner says any of this either.
+  const hiddenReasonCount = settings?.show_technical_details
+    ? 0
+    : visibleUpdates.filter(
+        (candidate) =>
+          !candidate.checkable &&
+          candidate.warnings.some((warning) => warningMessage(warning) !== null),
+      ).length;
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -745,6 +773,16 @@ export function UpdatesPage() {
           {t("updates.updateSelected")}
         </button>
       </div>
+      {/* Outside the scrolling list, so it stays in view however far down
+          the rows it describes run. */}
+      {hiddenReasonCount > 0 ? (
+        <p className="border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-muted)]">
+          {t("updates.cannotCheckSummary", {
+            count: hiddenReasonCount,
+            setting: t("settings.showTechnicalDetails.label"),
+          })}
+        </p>
+      ) : null}
       {/* Virtualized, like the Installed page. The entry that deferred this
           reasoned that the page only ever lists "a few to a few dozen"
           Homebrew updates; phase 3 killed that. A source that cannot reach

@@ -635,11 +635,63 @@ describe("UpdatesPage", () => {
     await findByText("urllib3");
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
     expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
-    // What a person who does not write code is told instead, and where to
-    // go if they want the rest.
-    const rows = queryAllByText(/it may not have been able to reach the internet/);
-    expect(rows).toHaveLength(3);
-    expect(rows[0].textContent).toContain("Show technical details");
+    // What a person who does not write code is told instead: each row
+    // that it could not be checked, in one short sentence...
+    expect(
+      queryAllByText("Canager couldn't check this one for updates just now."),
+    ).toHaveLength(3);
+    // ...and, once for the page, what that might mean and where to go if
+    // they want the rest.
+    const summary = queryAllByText(/Canager couldn't check 3 of the items below/);
+    expect(summary).toHaveLength(1);
+    expect(summary[0].textContent).toContain("Show technical details");
+  });
+
+  it("says why rows could not be checked once for the page, not once per row", async () => {
+    // Offline, one failed `npm outdated -g` turns every global package into
+    // an uncheckable row. The explanation used to be a 180-character
+    // paragraph on each of them -- seventy globals, seventy copies -- and
+    // these adapters push no SourceError, so no page-wide banner said it
+    // either.
+    updates = Array.from({ length: 70 }, (_, index) => ({
+      key: { instance_id: "npm:/usr/local", kind: "Package" as const, name: `global-${index}` },
+      current: "1.0.0",
+      target: "1.0.0",
+      channel: "Native" as const,
+      checkable: false,
+      warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+    }));
+    const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("global-0");
+    const summary = queryAllByText(/Canager couldn't check 70 of the items below/);
+    expect(summary).toHaveLength(1);
+    // Only one line of the tool's stderr can tell "offline" from "the index
+    // is refusing you", and that line is what this copy stands in for --
+    // so it offers being offline as a possibility, not as the diagnosis.
+    expect(summary[0].textContent).toContain("one possible reason, but not the only one");
+    expect(queryAllByText(/Being offline/)).toHaveLength(1);
+    expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
+  });
+
+  it("does not count a row with its own reason in the page's cannot-check line", async () => {
+    // A git-installed crate says its own, different, reason on its row;
+    // "being offline is one possible reason" is not about it. With only
+    // such rows there is nothing for the page to add.
+    updates = [
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("my-fork");
+    expect(queryByText(/of the items below/)).not.toBeInTheDocument();
   });
 
   it("shows the tool's own error text once Show technical details is on", async () => {
@@ -656,12 +708,15 @@ describe("UpdatesPage", () => {
         ],
       },
     ];
-    const { findByText } = renderWithProviders(<UpdatesPage />);
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("urllib3");
     const reason = await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//);
     expect(reason.textContent).toMatch(/^Canager couldn't check this one for updates just now\./);
     expect(reason.className).not.toContain("truncate");
+    // The row already carries the tool's words, so the page's summary --
+    // which exists to point at this switch -- has nothing to add.
+    expect(queryByText(/of the items below/)).not.toBeInTheDocument();
   });
 
   it("leaves a warning that was written for this audience unwrapped", async () => {
