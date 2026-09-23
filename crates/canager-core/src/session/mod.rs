@@ -193,7 +193,9 @@ pub struct Session {
     ops: Arc<OperationManager>,
     /// Serialises `refresh()` (in `refresh.rs`): whichever caller acquires
     /// this first does the real work; anyone already waiting when it
-    /// releases just re-reads `snapshot`.
+    /// releases just re-reads `snapshot`. `refresh_after_background_change`
+    /// waits on it too but never re-reads: it always runs its own round
+    /// once it holds the gate (`refresh_round` takes the guard).
     refresh_gate: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
     /// Bumped every time a refresh actually completes, regardless of
@@ -322,7 +324,12 @@ impl Session {
     /// refreshes each time it resolves: the notice goes, the new catalogue
     /// shows, and the window hears about it the way it hears about every
     /// other change. A wake-up that arrives while nobody is waiting is
-    /// kept, one deep, so one that lands mid-refresh is not lost.
+    /// kept, one deep (`Notify::notify_one` stores a permit), so one that
+    /// lands mid-refresh is not lost. The refresh it sets off must be
+    /// `refresh_after_background_change`, not `refresh`: a wake-up that
+    /// lands while a refresh is in flight would otherwise be merged into
+    /// that refresh, which may be the very one reporting the update as
+    /// still running -- see that function's doc.
     pub async fn background_change(&self) {
         self.background_change.notified().await
     }

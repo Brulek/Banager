@@ -25,20 +25,32 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
 /// `claim_broadcast` below for exactly what that means under concurrent
 /// callers). `canager-core` must never depend on `tauri`, so
 /// `Session::refresh` itself cannot send this — the shell is the only
-/// layer that can, and this is the only place in the whole plan that does
-/// so outside a test.
+/// layer that can, and `announce` below is the only place that does so
+/// outside a test, for this and for `refresh_on_background_change`.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
-    let opts = CheckOptions {
+    let snapshot = state
+        .session
+        .refresh(&HostEnv::discover(), &check_options(state))
+        .await;
+    Ok(announce(state, snapshot))
+}
+
+fn check_options(state: &AppState) -> CheckOptions {
+    CheckOptions {
         include_self_updating: state.get_settings().include_self_updating,
-    };
-    let snapshot = state.session.refresh(&HostEnv::discover(), &opts).await;
+    }
+}
+
+/// Broadcasts `SnapshotChanged` for `snapshot` if this caller is the one
+/// that claims its generation (`claim_broadcast`), and hands it back.
+fn announce(state: &AppState, snapshot: Snapshot) -> Snapshot {
     let generation = snapshot.generation;
     if claim_broadcast(&state.last_broadcast_generation, generation) {
         state
             .channel_sink
             .broadcast(UiEvent::SnapshotChanged { generation });
     }
-    Ok(snapshot)
+    snapshot
 }
 
 /// Whether this caller is the one that must announce `generation`, and
@@ -95,16 +107,28 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// stopped waiting for has ended -- for the life of the app. Spawned once
 /// at startup.
 ///
-/// Through `refresh_impl`, so the window learns of the new snapshot the
-/// way it learns of any other, by `SnapshotChanged`: the "still
-/// downloading" notice goes and the fresh catalogue shows without the user
-/// pressing anything. Nothing new crosses to the front end.
+/// Through `announce`, as `refresh_impl` is, so the window learns of the
+/// new snapshot the way it learns of any other, by `SnapshotChanged`: the
+/// "still downloading" notice goes and the fresh catalogue shows without
+/// the user pressing anything. Nothing new crosses to the front end.
+///
+/// Not through `refresh_impl` itself, which calls `Session::refresh`: that
+/// merges a call into a refresh already in flight, and the one in flight
+/// can be the refresh that reported the update as running, still waiting
+/// on a slow source. Its snapshot still says "downloading", and this
+/// wake-up was the last one that update sends, so the notice stuck.
+/// `Session::refresh_after_background_change` always runs a round of its
+/// own that starts after the wake-up; its doc says why that cannot loop.
+/// A failed refresh is already on screen through the snapshot's own
+/// `errors`; there is no one here to hand an error to.
 pub(crate) async fn refresh_on_background_change(state: &AppState) {
     loop {
         state.session.background_change().await;
-        // A failed refresh is already on screen through the snapshot's own
-        // `errors`; there is no one here to hand an `Err` to.
-        let _ = refresh_impl(state).await;
+        let snapshot = state
+            .session
+            .refresh_after_background_change(&HostEnv::discover(), &check_options(state))
+            .await;
+        announce(state, snapshot);
     }
 }
 
@@ -724,8 +748,12 @@ mod tests {
     /// with `background_change.notify_one()`, standing in for a real
     /// `BrewAdapter`'s own clone of the same `Notify` firing when a `brew
     /// update` a refresh left running ends.
+    ///
+    /// `detect_delay` is how long every refresh's detection takes, so a
+    /// test can wake the loop while a refresh is still in flight.
     fn state_with_fake_adapter_and_background_change(
         background_change: Arc<tokio::sync::Notify>,
+        detect_delay: std::time::Duration,
     ) -> (Arc<AppState>, Arc<Mutex<Vec<CheckOptions>>>) {
         let instance = canager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
@@ -743,7 +771,7 @@ mod tests {
             instance,
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: check_options_calls.clone(),
-            detect_delay: std::time::Duration::ZERO,
+            detect_delay,
         });
         let sink = ChannelSink::new();
         let session = canager_core::testing::session_with_background_change(
@@ -773,8 +801,10 @@ mod tests {
         // `background_change()`), and that the refresh reaches the window
         // the same way any other one does: a `SnapshotChanged` broadcast.
         let background_change = Arc::new(tokio::sync::Notify::new());
-        let (state, check_options_calls) =
-            state_with_fake_adapter_and_background_change(background_change.clone());
+        let (state, check_options_calls) = state_with_fake_adapter_and_background_change(
+            background_change.clone(),
+            std::time::Duration::ZERO,
+        );
 
         let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
             Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -826,6 +856,59 @@ mod tests {
             UiEvent::SnapshotChanged { .. } => {}
             other => panic!("expected SnapshotChanged, got {other:?}"),
         }
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_refresh_on_background_change_runs_its_own_refresh_when_one_is_in_flight() {
+        // Rereview F1. The loop used to refresh through `refresh_impl`,
+        // i.e. `Session::refresh`, which merges a call that arrives while
+        // a refresh is running into that refresh. When the wake-up (a
+        // `brew update` ending) lands mid-refresh, the refresh in flight
+        // is the one that saw the update running, so the loop got its
+        // stale snapshot back and never read the source again. Here a
+        // refresh is in flight (detection takes 600 ms) when the loop is
+        // woken; the loop must still run a round of its own afterwards.
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let (state, check_options_calls) = state_with_fake_adapter_and_background_change(
+            background_change.clone(),
+            std::time::Duration::from_millis(600),
+        );
+        let loop_state = state.clone();
+        let handle = tokio::spawn(async move { refresh_on_background_change(&loop_state).await });
+
+        let in_flight_state = state.clone();
+        let in_flight = tokio::spawn(async move { refresh_impl(&in_flight_state).await });
+        // Well inside the 600 ms detection: the refresh holds the gate.
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        assert!(
+            check_options_calls.lock().unwrap().is_empty(),
+            "the first refresh must still be in flight when the loop wakes"
+        );
+        background_change.notify_one();
+        in_flight
+            .await
+            .expect("in-flight task")
+            .expect("in-flight refresh");
+
+        let reached_two = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if check_options_calls.lock().unwrap().len() >= 2 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        // Room for an unwanted third round to show up too.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let rounds = check_options_calls.lock().unwrap().len();
+        assert!(
+            reached_two.is_ok() && rounds == 2,
+            "the in-flight refresh and exactly one of the loop's own: got {rounds} \
+             (1 means the loop's refresh was merged into the one in flight)"
+        );
 
         handle.abort();
     }

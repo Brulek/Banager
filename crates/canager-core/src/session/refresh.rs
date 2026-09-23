@@ -32,7 +32,8 @@ impl Session {
     /// already running waits for it, then returns the snapshot that other
     /// call produced instead of running a second, redundant refresh -- see
     /// `refresh_seq` on `Session` for why that check cannot use
-    /// `generation`. An instance whose `status.unavailable` is set is
+    /// `generation`. (`refresh_after_background_change` below is the one
+    /// caller that must not be merged, and says why.) An instance whose `status.unavailable` is set is
     /// skipped by the per-instance fetch -- that is a *reported state*, not
     /// a failed refresh (Task 11) -- but it keeps the previous round's
     /// artifacts and updates, so the "here is what Canager saw last time"
@@ -52,11 +53,56 @@ impl Session {
         opts: &CheckOptions,
     ) -> Snapshot {
         let seq_before = self.refresh_seq.load(Ordering::SeqCst);
-        let _gate = self.refresh_gate.lock().await;
+        let gate = self.refresh_gate.lock().await;
         if self.refresh_seq.load(Ordering::SeqCst) != seq_before {
             return self.snapshot.lock().unwrap().clone();
         }
+        self.refresh_round(gate, env, opts).await
+    }
 
+    /// `refresh`, minus the coalescing: this always runs a round of its
+    /// own, after whichever refresh holds `refresh_gate` now has finished,
+    /// and never returns that one's snapshot instead. For the caller
+    /// `Session::background_change` just woke, and nobody else.
+    ///
+    /// That wake-up means a `brew update` a refresh reported as running
+    /// has ended. The refresh that reported it may still be in flight --
+    /// brew's worker returns at once with `IndexUpdating` while cargo's or
+    /// npm's goes on for seconds -- and `refresh` would merge this call
+    /// into it (its `seq_before` check) and hand back that snapshot,
+    /// which still carries `IndexUpdating`. The wake-up was the only one
+    /// that update will ever send (`UpdateFinish::drop` takes `announced`),
+    /// so the notice then stayed on screen for good. Every round this
+    /// function runs starts after the wake-up, so it reads the catalogue
+    /// after the update ended.
+    ///
+    /// It cannot drive itself round and round: it runs one round per
+    /// wake-up, and each wake-up is one `brew update` that a refresh
+    /// announced ending (`join_running_update` sets `announced`, the
+    /// update's `UpdateFinish::drop` takes it). The round it runs starts no
+    /// update of its own to announce: after a success the TTL is fresh
+    /// (`maybe_update`'s `succeeded_at` check), and after a failure
+    /// `unreported_failure` answers `MayBeStale` instead of trying again.
+    /// With nothing in flight it is exactly one round, as `refresh` is.
+    pub async fn refresh_after_background_change(
+        self: &std::sync::Arc<Self>,
+        env: &HostEnv,
+        opts: &CheckOptions,
+    ) -> Snapshot {
+        let gate = self.refresh_gate.lock().await;
+        self.refresh_round(gate, env, opts).await
+    }
+
+    /// One real refresh round, the body both `refresh` and
+    /// `refresh_after_background_change` run. Takes the `refresh_gate`
+    /// guard by value so no round can run without holding it, and holds it
+    /// until the round has committed.
+    async fn refresh_round(
+        self: &std::sync::Arc<Self>,
+        _gate: tokio::sync::MutexGuard<'_, ()>,
+        env: &HostEnv,
+        opts: &CheckOptions,
+    ) -> Snapshot {
         let previous = self.snapshot.lock().unwrap().clone();
         // Owned copy (CheckOptions is Copy): each per-instance spawned task
         // below needs its own 'static value, and the caller's `&opts`
@@ -612,6 +658,10 @@ mod tests {
         /// Whether `detect` panics, losing the whole adapter's answer.
         panicking_detect: bool,
         detect_delay: Duration,
+        /// How long every `inventory` sleeps before answering: a slow
+        /// source (cargo's per-crate lookups, pipx's PyPI calls) that keeps
+        /// a refresh in flight after a quick one has returned.
+        inventory_delay: Duration,
         detect_calls: usize,
         block_execute: bool,
         inventory_calls: Vec<InstanceId>,
@@ -656,6 +706,7 @@ mod tests {
                 panicking_updates: Vec::new(),
                 panicking_detect: false,
                 detect_delay: Duration::from_millis(0),
+                inventory_delay: Duration::ZERO,
                 detect_calls: 0,
                 block_execute: false,
                 inventory_calls: Vec::new(),
@@ -725,6 +776,10 @@ mod tests {
             if blocking {
                 let _sentinel = DropSentinel(self.state.clone());
                 std::future::pending::<()>().await;
+            }
+            let delay = self.state.lock().unwrap().inventory_delay;
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
             }
             let mut s = self.state.lock().unwrap();
             if let Some(pos) = s.failing.iter().position(|id| id == &inst.id) {
@@ -2342,6 +2397,97 @@ mod tests {
         assert_eq!(fourth.artifacts[0].version, "1.7.1");
         assert!(update_names(&fourth).is_empty());
         assert!(fourth.errors.is_empty() && !fourth.stale);
+    }
+
+    #[tokio::test]
+    async fn test_the_refresh_a_background_change_sets_off_is_not_merged_into_the_one_in_flight() {
+        // The reviewer's probe (rereview F1), kept. A refresh finds a
+        // `brew update` running and brew's worker returns at once with
+        // `IndexUpdating`; the refresh itself is still in flight because
+        // another source is slow. The update ends mid-refresh and wakes
+        // `background_change`. The shell's loop answered that with
+        // `Session::refresh`, which merged into the refresh in flight and
+        // got back its snapshot -- still `IndexUpdating` -- and that
+        // wake-up was the update's only one, so the notice stuck.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
+        runner.delay(vec![BREW, "update"], Duration::from_millis(400));
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            brew_answer(0, &brew_info_jq("1.7.1")),
+        );
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2"],
+            brew_answer(0, BREW_NOTHING),
+        );
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let brew = Arc::new(
+            BrewAdapter::new(runner.clone())
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_update_patience(Duration::from_millis(100))
+                .with_background_change(background_change.clone()),
+        );
+        // Start the 400 ms update: a check that gives up on it after its
+        // 100 ms patience, and so asks to hear when it ends.
+        let inst = brew.detect(&non_root_env()).await.remove(0);
+        let started = brew.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(started, Err(AdapterError::IndexUpdating)),
+            "got {started:?}"
+        );
+        let (slow, slow_state) = FakeAdapter::new("slow");
+        {
+            let mut s = slow_state.lock().unwrap();
+            s.instances = vec![make_instance("slow", "slow:1")];
+            s.inventory_delay = Duration::from_millis(1500);
+        }
+        let session = Session::build(
+            Arc::new(VecSink::new()),
+            vec![brew, slow],
+            None,
+            background_change,
+        );
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        // What `ipc::refresh_on_background_change` does, one iteration.
+        let follow_up = {
+            let session = session.clone();
+            let env = env.clone();
+            tokio::spawn(async move {
+                session.background_change().await;
+                session.refresh_after_background_change(&env, &opts).await
+            })
+        };
+        let in_flight = session.refresh(&env, &opts).await;
+        assert_eq!(
+            brew_notes(&in_flight),
+            vec![InstanceNote::IndexUpdating],
+            "the refresh in flight saw the update running"
+        );
+        let follow_up = tokio::time::timeout(Duration::from_secs(10), follow_up)
+            .await
+            .expect("the end of the update must set off a refresh")
+            .expect("follow-up task");
+
+        assert!(
+            brew_notes(&follow_up).is_empty(),
+            "the refresh after the update ended must read the catalogue, \
+             not hand back the in-flight refresh's snapshot: notes {:?}, \
+             generation {} vs {}, calls {:?}",
+            brew_notes(&follow_up),
+            follow_up.generation,
+            in_flight.generation,
+            runner.calls()
+        );
+        assert_eq!(
+            catalogue_reads(&runner),
+            (2, 1),
+            "the inventory's `brew info`, `brew outdated`, and \
+             `check_updates`' own `brew info` for the names"
+        );
+        assert_eq!(artifact_names(&follow_up), vec!["jq"]);
     }
 
     #[tokio::test]
