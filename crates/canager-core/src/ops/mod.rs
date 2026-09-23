@@ -441,8 +441,9 @@ impl OperationManager {
         // `wait_for_update` blocks on Canager's own per-instance update lock
         // (`update_lock_for` -- an in-process `tokio::sync::Mutex`, not
         // Homebrew's file-based `var/homebrew/locks/update`;
-        // `crates/canager-core/src/adapters/brew/mod.rs` ~499-501
-        // distinguishes the two) or a bounded sleep
+        // `wait_for_update`'s doc in
+        // `crates/canager-core/src/adapters/brew/mod.rs` distinguishes the
+        // two) or a bounded sleep
         // (`tokio::time::sleep(self.op_update_wait)`), never on this
         // semaphore or on any `ResourceLock` another op here might be
         // holding. So it still cannot deadlock; it can only make the other

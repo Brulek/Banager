@@ -98,7 +98,25 @@ pub struct BrewAdapter {
     /// at all, and red again where both prefixes exist. Production always
     /// gets `|path| path.exists()`; tests hand in a layout.
     path_exists_fn: fn(&Path) -> bool,
+    /// How to look at Homebrew's own `brew update` lock under a prefix,
+    /// for `catalogue_stamp`. The same fn-pointer seam as
+    /// `path_exists_fn`: outside this crate's unit tests it is always
+    /// `probe_homebrew_update_lock` (`DEFAULT_UPDATE_LOCK_FN`); inside
+    /// them it reads no lock at all unless a test installs one, so that no
+    /// test here answers differently because the Mac running it happens to
+    /// be in the middle of a `brew update`.
+    update_lock_fn: fn(&Path) -> HomebrewUpdateLock,
 }
+
+/// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
+/// probe in every build but this crate's unit tests.
+#[cfg(not(test))]
+const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = probe_homebrew_update_lock;
+/// In this crate's unit tests, a Homebrew with no update lock file. Tests
+/// that are about the lock install `probe_homebrew_update_lock` itself
+/// against a prefix they made (`with_update_lock_fn`).
+#[cfg(test)]
+const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| HomebrewUpdateLock::Free(None);
 
 impl BrewAdapter {
     pub const ENV: [(&'static str, &'static str); 4] = [
@@ -168,6 +186,7 @@ impl BrewAdapter {
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
             path_exists_fn: |path| path.exists(),
+            update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
         }
     }
 
@@ -226,6 +245,17 @@ impl BrewAdapter {
     #[cfg(test)]
     pub(crate) fn with_path_exists_fn(mut self, path_exists_fn: fn(&Path) -> bool) -> BrewAdapter {
         self.path_exists_fn = path_exists_fn;
+        self
+    }
+
+    /// Test-only hook to choose how `catalogue_stamp` sees Homebrew's own
+    /// update lock (see `update_lock_fn`).
+    #[cfg(test)]
+    fn with_update_lock_fn(
+        mut self,
+        update_lock_fn: fn(&Path) -> HomebrewUpdateLock,
+    ) -> BrewAdapter {
+        self.update_lock_fn = update_lock_fn;
         self
     }
 
@@ -464,22 +494,75 @@ impl BrewAdapter {
         record.running
     }
 
-    /// `None` while a `brew update` is running for `inst_id`, otherwise a
-    /// stamp that changes as soon as another one begins (`UpdateRecord::
-    /// started`). A read of the catalogue takes one before and one after
-    /// and trusts what it read only when both are the same `Some`: then no
-    /// update was running at any moment in between.
+    /// `None` while a `brew update` is running for `inst` that either
+    /// Canager started (`UpdateRecord::running`) or anyone holds Homebrew's
+    /// own update lock for (`HomebrewUpdateLock::Held`), otherwise a stamp.
+    /// A read of the catalogue takes one before and one after and trusts
+    /// what it read only when both are the same `Some`.
+    ///
+    /// What two equal stamps prove:
+    /// - No `brew update` Canager started overlapped the read. The stamp
+    ///   carries `UpdateRecord::started`, which `UpdateFinish::begin` bumps
+    ///   in the same write that sets `running`, both under the `updates`
+    ///   lock this reads them under.
+    /// - No `brew update` from anywhere else -- Terminal, the auto-update
+    ///   Homebrew runs before a `brew install` typed in Terminal, a launchd
+    ///   auto-update agent -- held Homebrew's update lock at either end,
+    ///   or began in between. Each one opens the lock file with truncation
+    ///   before it locks it (`exec 200>"${lock_file}"` in Homebrew's
+    ///   `utils/lock.sh`), which moves the file's mtime, and the stamp
+    ///   carries that (`LockFileId`).
+    ///
+    /// What they do not prove:
+    /// - That an update which had opened the lock file but not yet locked
+    ///   it when the first stamp was taken -- the few milliseconds between
+    ///   `exec 200>` and `lockf -t 0 200` in `lock.sh` -- and then finished
+    ///   before the second, did not overlap: the file looks the same at
+    ///   both ends.
+    /// - Anything about the API catalogue Homebrew downloads outside that
+    ///   lock: every Ruby `brew` command typed in Terminal re-downloads it
+    ///   when its copy is stale (`Homebrew::API.fetch_api_files!`, called
+    ///   from `brew.rb` before the command runs), straight over the old
+    ///   file (`curl --output` in `Utils::Curl.curl_download`). A read
+    ///   that meets that file half-written does not come back as a
+    ///   shorter list: `fetch_json_api_file` answers `JSON::ParserError`
+    ///   by deleting the file and fetching it again, or stopping with an
+    ///   error, and a whole file must still pass `verify_and_parse_jws`.
+    /// - Anything about Homebrew's lock when it cannot be looked at
+    ///   (`HomebrewUpdateLock::Unobservable` at both ends): then the stamp
+    ///   says only what Canager's own count does.
+    ///
+    /// Why what is left is bounded: a dependents list that comes back short
+    /// leaves names off the confirm screen, and one that comes back empty
+    /// enables Confirm (`hasAffected` in `src/components/
+    /// UninstallDialog.tsx`). But `brew uninstall` itself refuses to
+    /// remove a formula or cask that another installed one depends on
+    /// unless it is given `--ignore-dependencies`
+    /// (`Uninstall.handle_unsatisfied_dependents` and
+    /// `Cask::Uninstall.check_dependent_casks` in Homebrew 7.0.6), and the
+    /// plan never passes that flag: its `args` are exactly `uninstall`,
+    /// the kind flag and the name (`OpKind::Uninstall` in `plan`). So the
+    /// realistic cost of a gap is an uninstall Homebrew refuses, with its
+    /// own message, not one that breaks something.
     ///
     /// Unlike `join_running_update` this asks nobody to be told when the
     /// update ends: its one caller, the uninstall preview, refuses and
     /// leaves nothing on screen that a later refresh would have to clear.
-    fn catalogue_stamp(&self, inst_id: &InstanceId) -> Option<u64> {
+    fn catalogue_stamp(&self, inst: &ManagerInstance) -> Option<CatalogueStamp> {
+        let homebrew_lock = match (self.update_lock_fn)(&inst.prefix) {
+            HomebrewUpdateLock::Held => return None,
+            seen => seen,
+        };
         let updates = self.updates.lock().unwrap();
-        match updates.get(inst_id) {
-            Some(record) if record.running => None,
-            Some(record) => Some(record.started),
-            None => Some(0),
-        }
+        let canager_updates = match updates.get(&inst.id) {
+            Some(record) if record.running => return None,
+            Some(record) => record.started,
+            None => 0,
+        };
+        Some(CatalogueStamp {
+            canager_updates,
+            homebrew_lock,
+        })
     }
 
     /// `op_update_wait` rounded down to whole minutes, for the two locale
@@ -783,6 +866,106 @@ enum UpdateWait {
     GaveUp,
 }
 
+/// What `BrewAdapter::catalogue_stamp` hands a read of the catalogue to
+/// compare with the one it takes after.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CatalogueStamp {
+    /// `UpdateRecord::started` for the instance.
+    canager_updates: u64,
+    /// Homebrew's own update lock, never `Held` here: `catalogue_stamp`
+    /// returns `None` for that.
+    homebrew_lock: HomebrewUpdateLock,
+}
+
+/// What `probe_homebrew_update_lock` saw of `<prefix>/var/homebrew/
+/// locks/update`, the lock every `brew update` takes (`lock update` in
+/// Homebrew's `cmd/update.sh`), whoever started it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HomebrewUpdateLock {
+    /// Some process holds it: a `brew update` is running.
+    Held,
+    /// Nobody holds it. `None` when there is no file: `brew cleanup`
+    /// deletes it (`Cleanup#cleanup_lockfiles`), and the next `brew
+    /// update` makes it again.
+    Free(Option<LockFileId>),
+    /// It could not be looked at: the file is there but would not open,
+    /// or `fcntl` failed.
+    Unobservable,
+}
+
+/// Which lock file this is and when it was last opened for writing.
+/// `brew update` opens it with truncation before it locks it
+/// (`exec 200>"${lock_file}"` in Homebrew's `utils/lock.sh`), which sets
+/// the mtime and ctime even of an empty file, so a `brew update` that
+/// began and ended between two probes still leaves them different; a new
+/// file after `brew cleanup` deleted the old one has a new inode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LockFileId {
+    dev: u64,
+    ino: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+}
+
+/// Looks at Homebrew's update lock under `prefix` without taking it.
+///
+/// Homebrew takes that lock with `flock(2)`: on macOS `lock.sh` runs
+/// `lockf -t 0 200` on the descriptor it opened, and `lockf(1)` uses
+/// BSD-style (`flock`) locking. Trying to take it here, even shared and
+/// for an instant, would make a `brew update` typed in Terminal at that
+/// same instant fail with "Another `brew update` process is already
+/// running" -- Homebrew asks with a zero timeout. `F_GETLK` only asks
+/// whether a lock *would* conflict and never takes one, and on macOS it
+/// reports a conflicting `flock` lock too (as `F_WRLCK` with `l_pid` -1):
+/// `test_update_lock_probe_sees_a_lock_taken_the_way_homebrew_takes_it`
+/// holds one exactly as `lock.sh` does and checks both that this sees it
+/// and that looking never stops `lockf -t 0` from taking it.
+/// The file is opened read-only and never created, so looking leaves
+/// nothing behind.
+///
+/// On Linux `flock` and `fcntl` locks do not see each other (flock(2)),
+/// so there this never reports `Held`; the file's `LockFileId` still
+/// changes when a `brew update` begins.
+fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::io::AsRawFd;
+
+    let path = prefix.join("var/homebrew/locks/update");
+    let file = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return HomebrewUpdateLock::Free(None)
+        }
+        Err(_) => return HomebrewUpdateLock::Unobservable,
+    };
+    let Ok(meta) = file.metadata() else {
+        return HomebrewUpdateLock::Unobservable;
+    };
+    // SAFETY: `flock` is a plain C struct for which all-zero bytes are a
+    // valid value; every field `F_GETLK` reads is set below.
+    let mut query: libc::flock = unsafe { std::mem::zeroed() };
+    query.l_type = libc::F_WRLCK as libc::c_short;
+    query.l_whence = libc::SEEK_SET as libc::c_short;
+    query.l_start = 0;
+    query.l_len = 0;
+    // SAFETY: `file` is open for the whole call and `query` is a valid,
+    // exclusively borrowed `flock` for `F_GETLK` to read and overwrite.
+    let rc = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETLK, &mut query) };
+    if rc == -1 {
+        return HomebrewUpdateLock::Unobservable;
+    }
+    if query.l_type == libc::F_UNLCK as libc::c_short {
+        HomebrewUpdateLock::Free(Some(LockFileId {
+            dev: meta.dev(),
+            ino: meta.ino(),
+            mtime: (meta.mtime(), meta.mtime_nsec()),
+            ctime: (meta.ctime(), meta.ctime_nsec()),
+        }))
+    } else {
+        HomebrewUpdateLock::Held
+    }
+}
+
 /// What `BrewAdapter` knows about one instance's `brew update`s.
 #[derive(Debug, Default)]
 struct UpdateRecord {
@@ -958,15 +1141,19 @@ impl BrewAdapter {
                 // rewrites, and this list is what the user confirms an
                 // uninstall against: a half-written read that still
                 // parses would show fewer dependents than will break --
-                // worse than any error. So, as `inventory` does for the
-                // refresh, it is not read while an update runs, and a read
-                // that an update began during is thrown away
-                // (`catalogue_stamp`). Refused rather than waited for: the
-                // dialog would sit on "checking" for minutes with no word
-                // of why; `IndexUpdating` goes out as its own kind
+                // worse than any error. So it is not read while an update
+                // runs -- one Canager started, as `inventory` also checks,
+                // or one holding Homebrew's own update lock -- and a read
+                // that one began during is thrown away. `catalogue_stamp`
+                // says exactly what that does and does not catch, and why
+                // what it misses realistically ends in an uninstall
+                // Homebrew refuses, not one that breaks something. Refused
+                // rather than waited for: the dialog would sit on
+                // "checking" for minutes with no word of why;
+                // `IndexUpdating` goes out as its own kind
                 // (`plan_operation_error` in src-tauri/src/ipc.rs) and the
                 // dialog says Homebrew is updating and to try again.
-                let Some(stamp) = self.catalogue_stamp(&inst.id) else {
+                let Some(stamp) = self.catalogue_stamp(inst) else {
                     return Err(AdapterError::IndexUpdating);
                 };
                 let uses_output = self
@@ -980,7 +1167,7 @@ impl BrewAdapter {
                         Duration::from_secs(120),
                     )
                     .await?;
-                if self.catalogue_stamp(&inst.id) != Some(stamp) {
+                if self.catalogue_stamp(inst) != Some(stamp) {
                     return Err(AdapterError::IndexUpdating);
                 }
                 let mut warnings = Vec::new();
@@ -3211,7 +3398,7 @@ mod plan_execute_tests {
 
         // Once the update is over, trying again gets the real list.
         let give_up = Instant::now() + Duration::from_secs(5);
-        while adapter.catalogue_stamp(&inst.id).is_none() && Instant::now() < give_up {
+        while adapter.catalogue_stamp(&inst).is_none() && Instant::now() < give_up {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let plan = adapter
@@ -3247,7 +3434,7 @@ mod plan_execute_tests {
             .await
             .expect("the refresh's update finishes well inside its patience");
         assert!(
-            adapter.catalogue_stamp(&inst.id).is_some(),
+            adapter.catalogue_stamp(&inst).is_some(),
             "setup: the update must be over before `brew uses` answers"
         );
 
@@ -3257,5 +3444,222 @@ mod plan_execute_tests {
             "a dependents list read while `brew update` ran was shown: {planned:?}"
         );
         assert_eq!(update_calls(&runner), 1, "setup: {:?}", runner.calls());
+    }
+
+    // ---- ... nor one a `brew update` Canager did not start is rewriting ----
+    //
+    // These take Homebrew's update lock the way Homebrew's own `lock.sh`
+    // does on macOS -- `exec 200>` the file, then `lockf -t 0 200` -- in a
+    // real bash, so what they prove is about that lock, not a stand-in.
+
+    /// A fresh directory to act as a Homebrew prefix.
+    fn scratch_prefix(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-brew-lock-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("var/homebrew/locks")).expect("create lock dir");
+        dir
+    }
+
+    /// Holds `prefix`'s update lock, as a running `brew update` does, until
+    /// dropped.
+    #[cfg(target_os = "macos")]
+    struct HomebrewUpdateLockHolder {
+        child: std::process::Child,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl HomebrewUpdateLockHolder {
+        fn hold(prefix: &Path) -> HomebrewUpdateLockHolder {
+            use std::io::BufRead;
+            let mut child = std::process::Command::new("/bin/bash")
+                .arg("-c")
+                .arg(r#"exec 200>"$1"; lockf -t 0 200 || exit 75; echo locked; read -r _"#)
+                .arg("bash")
+                .arg(prefix.join("var/homebrew/locks/update"))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("spawn bash");
+            let mut line = String::new();
+            std::io::BufReader::new(child.stdout.take().unwrap())
+                .read_line(&mut line)
+                .expect("read from bash");
+            assert_eq!(line.trim(), "locked", "setup: bash did not get the lock");
+            HomebrewUpdateLockHolder { child }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Drop for HomebrewUpdateLockHolder {
+        fn drop(&mut self) {
+            // Closing its stdin ends `read`, so bash exits and the lock goes
+            // with its descriptor.
+            drop(self.child.stdin.take());
+            let _ = self.child.wait();
+        }
+    }
+
+    /// Takes `prefix`'s update lock and lets it go at once, as a `brew
+    /// update` with nothing to do would; true when the lock was taken.
+    #[cfg(target_os = "macos")]
+    fn quick_homebrew_update(prefix: &Path) -> bool {
+        std::process::Command::new("/bin/bash")
+            .arg("-c")
+            .arg(r#"exec 200>"$1"; lockf -t 0 200"#)
+            .arg("bash")
+            .arg(prefix.join("var/homebrew/locks/update"))
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("spawn bash")
+            .success()
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_update_lock_probe_sees_a_lock_taken_the_way_homebrew_takes_it() {
+        let prefix = scratch_prefix("probe");
+        assert_eq!(
+            probe_homebrew_update_lock(&prefix),
+            HomebrewUpdateLock::Free(None),
+            "no file (as after `brew cleanup`) is no update running"
+        );
+        assert!(
+            !prefix.join("var/homebrew/locks/update").exists(),
+            "looking must not create the file"
+        );
+
+        let holder = HomebrewUpdateLockHolder::hold(&prefix);
+        assert_eq!(
+            probe_homebrew_update_lock(&prefix),
+            HomebrewUpdateLock::Held
+        );
+        drop(holder);
+        let HomebrewUpdateLock::Free(Some(before)) = probe_homebrew_update_lock(&prefix) else {
+            panic!("the lock is free and its file is there once the holder has exited");
+        };
+
+        // Looking must never be what stops a `brew update` typed in
+        // Terminal: Homebrew asks for the lock with a zero timeout, so a
+        // probe that took it even for an instant would, now and then, make
+        // that update fail with "Another `brew update` process is already
+        // running". Probe as fast as possible while updates start.
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let prober = {
+            let stop = stop.clone();
+            let prefix = prefix.clone();
+            std::thread::spawn(move || {
+                let mut probes = 0u64;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    probe_homebrew_update_lock(&prefix);
+                    probes += 1;
+                }
+                probes
+            })
+        };
+        let refused = (0..200).filter(|_| !quick_homebrew_update(&prefix)).count();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let probes = prober.join().unwrap();
+        assert!(probes > 1000, "setup: the prober barely ran ({probes})");
+        assert_eq!(
+            refused, 0,
+            "probing refused {refused} of 200 `brew update`s the lock"
+        );
+
+        let HomebrewUpdateLock::Free(Some(after)) = probe_homebrew_update_lock(&prefix) else {
+            panic!("the lock is free again once every update has exited");
+        };
+        assert_ne!(
+            before, after,
+            "an update that began and ended between two looks must leave them different"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn test_uninstall_preview_refuses_while_homebrew_holds_its_update_lock() {
+        // A `brew update` typed in Terminal, or the one Homebrew runs
+        // before a Terminal `brew install`, never shows up in
+        // `UpdateRecord`; it does hold Homebrew's own lock.
+        let prefix = scratch_prefix("held");
+        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::ZERO);
+        let adapter =
+            BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock);
+        let inst = ManagerInstance {
+            prefix: prefix.clone(),
+            ..test_instance()
+        };
+
+        let holder = HomebrewUpdateLockHolder::hold(&prefix);
+        let planned = adapter.plan(&inst, &uninstall_jq(&inst)).await;
+        assert!(
+            matches!(planned, Err(AdapterError::IndexUpdating)),
+            "a preview was built while Homebrew's own `brew update` ran: {planned:?}"
+        );
+        assert_eq!(
+            uses_calls(&runner),
+            0,
+            "`brew uses` ran against a catalogue being rewritten: {:?}",
+            runner.calls()
+        );
+
+        drop(holder);
+        let plan = adapter
+            .plan(&inst, &uninstall_jq(&inst))
+            .await
+            .expect("a preview once Homebrew's update has ended");
+        assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
+        let _ = std::fs::remove_dir_all(&prefix);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn test_uninstall_preview_discards_a_brew_uses_that_a_homebrew_update_began_during() {
+        // The lock is free when `brew uses` starts and free again when it
+        // answers; a `brew update` Canager did not start took it and let it
+        // go in between. Looking only at whether it is held would see
+        // nothing; the file's mtime has moved.
+        let prefix = scratch_prefix("between");
+        let runner = runner_with_update_and_uses(Duration::ZERO, Duration::from_millis(400));
+        let adapter = Arc::new(
+            BrewAdapter::new(runner.clone()).with_update_lock_fn(probe_homebrew_update_lock),
+        );
+        let inst = ManagerInstance {
+            prefix: prefix.clone(),
+            ..test_instance()
+        };
+        assert!(quick_homebrew_update(&prefix), "setup: an earlier update");
+
+        let preview = {
+            let adapter = adapter.clone();
+            let inst = inst.clone();
+            tokio::spawn(async move { adapter.plan(&inst, &uninstall_jq(&inst)).await })
+        };
+        let give_up = Instant::now() + Duration::from_secs(5);
+        while uses_calls(&runner) == 0 && Instant::now() < give_up {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            quick_homebrew_update(&prefix),
+            "setup: the update in between"
+        );
+        assert!(
+            !preview.is_finished(),
+            "setup: the update must be over before `brew uses` answers"
+        );
+
+        let planned = preview.await.expect("preview task panicked");
+        assert!(
+            matches!(planned, Err(AdapterError::IndexUpdating)),
+            "a dependents list read while Homebrew's own `brew update` ran was shown: {planned:?}"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
     }
 }
