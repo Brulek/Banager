@@ -76,9 +76,10 @@
 路径对同一实例互不重叠。
 
 推迟项（都有明确形状，下一轮不要当新发现重报）：
-- **实例 ID 跨适配器唯一性只靠约定。** 单个适配器内是构造保证的，跨适配器没有共享构造器、
-  也没人检查重复。最可能打破它的是 pipx 或 uv 返回第二个实例（它们的 ID 是常量）。正确形状：
-  集中构造 ID，refresh 拒绝重复。
+- ~~**实例 ID 跨适配器唯一性只靠约定。**~~ —— **已于 2026-09-23 在 `1d424ad` 修复**（分支
+  feat/phase-3-hardening）：七个适配器统一走 `model::instance_id` 构造（产出与旧 ID 逐字相同，因为
+  ID 持久化在 `Settings.ignored_updates` 里）；`Session::with_adapters` 拒绝重复的适配器 ID；
+  refresh 按适配器 ID 顺序探测，同 ID 只留第一个并记一条点名双方的 `SourceError`。
 - **丢弃一个 refresh future 只会 detach 其 worker，不会取消。** 生产中不可达（唯一调用方总会跑完），
   但若将来有调用方丢弃它，detach 的 worker 可能持资源锁数分钟（brew 约 8 分钟，cargo 每个已装
   crate 30 秒串行累加）。正确形状：`JoinSet` 或取消令牌，让它不可能发生而不只是不可达。
