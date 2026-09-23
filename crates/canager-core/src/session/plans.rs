@@ -357,10 +357,23 @@ mod tests {
 
         async fn check_updates(
             &self,
-            _inst: &ManagerInstance,
+            inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
-            Ok(self.updates.lock().unwrap().clone().into())
+            // Only this instance's candidates, as a real adapter reports
+            // them: `refresh` appends each instance's answer as it comes
+            // (`updates.extend` in session/refresh.rs), so returning the
+            // whole list would put every candidate in the snapshot once
+            // per instance.
+            let updates: Vec<UpdateCandidate> = self
+                .updates
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|u| u.key.instance_id == inst.id)
+                .cloned()
+                .collect();
+            Ok(updates.into())
         }
 
         async fn search(
@@ -591,6 +604,29 @@ mod tests {
         }
     }
 
+    /// `candidate`, on any instance and of any kind.
+    fn candidate_on(
+        instance_id: &str,
+        kind: ArtifactKind,
+        name: &str,
+        blocked: Option<UpdateBlocked>,
+    ) -> UpdateCandidate {
+        let mut c = candidate(name, blocked);
+        c.key.instance_id = instance_id.to_string();
+        c.key.kind = kind;
+        c
+    }
+
+    /// An `Upgrade` of `name` as `kind` on `instance_id`.
+    fn upgrade_on(instance_id: &str, kind: ArtifactKind, name: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: instance_id.to_string(),
+            artifact_kind: kind,
+            name: name.to_string(),
+        }
+    }
+
     fn request(kind: OpKind, name: &str) -> OpRequest {
         OpRequest {
             kind,
@@ -635,6 +671,85 @@ mod tests {
             session.operations().is_empty(),
             "a refused plan must never reach the OperationManager"
         );
+    }
+
+    #[tokio::test]
+    async fn test_a_pinned_formula_does_not_block_the_unpinned_cask_of_the_same_name() {
+        // A formula and a cask can share a name (`docker` is both), and
+        // `brew pin` pins one of them. The gate must refuse the pinned one
+        // and only it: matching on the name alone would refuse the cask,
+        // or let the pinned formula through, depending on which candidate
+        // came first. Both requests are asserted so that either order
+        // catches a gate that ignores `kind`.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_updates(vec![
+            candidate_on(
+                "fake:1",
+                ArtifactKind::Formula,
+                "docker",
+                Some(UpdateBlocked::Pinned),
+            ),
+            candidate_on("fake:1", ArtifactKind::Cask, "docker", None),
+        ]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        session
+            .issue_plan(&upgrade_on("fake:1", ArtifactKind::Cask, "docker"))
+            .await
+            .expect("the unpinned cask plans although a formula of its name is pinned");
+        match session
+            .issue_plan(&upgrade_on("fake:1", ArtifactKind::Formula, "docker"))
+            .await
+        {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::Pinned);
+            }
+            other => panic!("expected UpdateBlocked(Pinned) for the formula, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_pin_in_one_prefix_does_not_block_the_same_formula_in_another() {
+        // A Mac migrated from Intel can have glib in /usr/local and in
+        // /opt/homebrew, each its own instance with its own pins. A pin in
+        // one says nothing about the other. Both requests are asserted so
+        // that either order catches a gate that ignores `instance_id`.
+        let adapter = FakeAdapter::new(vec![
+            test_support::make_instance("fake", "fake:1"),
+            test_support::make_instance("fake", "fake:2"),
+        ]);
+        adapter.set_updates(vec![
+            candidate_on(
+                "fake:1",
+                ArtifactKind::Formula,
+                "glib",
+                Some(UpdateBlocked::Pinned),
+            ),
+            candidate_on("fake:2", ArtifactKind::Formula, "glib", None),
+        ]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        session
+            .issue_plan(&upgrade_on("fake:2", ArtifactKind::Formula, "glib"))
+            .await
+            .expect("glib in the other prefix is not pinned and plans");
+        match session
+            .issue_plan(&upgrade_on("fake:1", ArtifactKind::Formula, "glib"))
+            .await
+        {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::Pinned);
+            }
+            other => panic!("expected UpdateBlocked(Pinned) for glib on fake:1, got {other:?}"),
+        }
     }
 
     #[tokio::test]
