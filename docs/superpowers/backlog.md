@@ -87,8 +87,10 @@
   命令还在锁外跑。~~`killpg` 仍至多一次，且只打未回收的 pid。~~ —— **已于 2026-09-23 在 `2ee9244`
   改变**：取消与超时改成先 `SIGTERM` 整组、给 `STOP_GRACE`（5 秒）让它自己收尾，收尾期间用
   `killpg(pgid, 0)` 探活，还没退的才补一次 `SIGKILL`；一次停止最多两次信号，不再是至多一次。
-- **升级途中取消仍报「结果未确认」而不是「你已取消」。** 这是有意的：升级后包仍在，证明不了新版本
-  没在 kill 之前装上。真修需要在执行前先 reconcile 一次记下旧版本。
+- ~~**升级途中取消仍报「结果未确认」而不是「你已取消」。** 这是有意的：升级后包仍在，证明不了新版本
+  没在 kill 之前装上。真修需要在执行前先 reconcile 一次记下旧版本。~~ —— **已于 2026-09-24 在 `c6ecf5b`
+  修复**：`run_operation`（`ops/mod.rs`）在执行升级前先 reconcile 一次，停下后再读一次，两次版本相同且是用户
+  取消的，报「你已取消」；版本变了，报「已成功」；任一次读失败或读不出版本，照旧报「结果未确认」。
 - **npm 在 `npm prefix -g` 失败时用可执行文件路径合成一个不可用实例的 ID。** 更理想的是沿用上一轮
   快照里的实例，但那要把上一轮快照穿进 `Adapter::detect` 的签名，七个适配器都得改。
 - **pip 的「不可用」分不清「这个 Python 根本没带 pip」和「pip 装了但坏了」**——两者退出码相同。
@@ -122,11 +124,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 - **pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
   （pipx 1.17.3 `commands/pin.py:82-92`，没有只解主包的选项）。Canager 不列注入包（不传
   `--include-injected`），行上的说明没提这一点。
-- **假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
-  brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。
-  列可更新项时读的输出里都没有这些状态，所以不能靠 `blocked` 提前标出；要么多读一份（`pipx list --json`
-  的 `lock_file`、`brew info --json=v2` 的 `disabled`、`uv tool list --show-version-specifiers`），
-  要么在 `reconcile` 里核对版本真的变了。
+- ~~**假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
+  brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。~~
+  —— **已于 2026-09-24 在 `c6ecf5b` 修复**，走的是「核对版本真的变了」这条路：升级前后各用同一个
+  `reconcile` 读一次版本，退出 0 而版本没变时报新结果 `NeedsAttention(UnchangedAfterUpgrade)`
+  （「更新命令显示成功，但版本和更新前一样……」，指向操作日志，四种情况工具都在日志里说了原因）。
+  四种情况各有一个端到端测试（`tests/ops_upgrade_version_test.rs`）。代价是每次升级多一次清单读取；
+  brew 在后台 `brew update` 还没跑完时这次读取会被拒（`IndexUpdating`），那时照旧只看在不在。
+  **仍未做**：更新页事先不知道这些状态，行上照样有「更新」按钮，点了才知道；要提前标出仍得多读上面那几份输出。
 - **卸载被固定的包**：Homebrew 7.0.6 不加 `--force` 时同样拒绝（`uninstall.rb:48-49`、
   `cask/uninstall.rb:42-44`，打一行 `Error: … is pinned. You must unpin it to uninstall.`），
   但用的是 `onoe` 不是 `ofail`，公式这边退出 0，Canager 会得到 `StillInstalledAfterUninstall`。

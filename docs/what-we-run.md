@@ -45,6 +45,13 @@ process's effective user ID is 0 (root).
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 
+Every write command is followed by one run of `<brew> info --installed
+--json=v2` to check what it actually did. An upgrade is also preceded by
+one, so the version installed before can be compared with the version
+installed after (`run_operation` in `crates/canager-core/src/ops/mod.rs`):
+an upgrade that exits 0 and leaves the version where it was is reported as
+needing attention, not as a success.
+
 Canager never passes `--ignore-dependencies` to `brew uninstall`, and never
 runs a bare `brew upgrade` — upgrades are always one invocation per
 confirmed artifact, never "upgrade everything" in a single command.
