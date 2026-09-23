@@ -50,9 +50,11 @@ Being honest about this is part of the point:
 
 - **No search and no catalogue, and no way to install something new.** You can manage what you
   already have; you cannot yet discover or add new things through Canager.
-- **No on-demand refresh.** Canager checks at launch and after each operation. The only "Try
-  again" buttons appear when something already needs one — a failed refresh, or a Homebrew index
-  Canager couldn't update — not as a standalone control you can press at any time.
+- **No on-demand refresh.** Canager checks at launch, after each operation, when a "Try again"
+  button is pressed for something that already needs one — a failed refresh, or a Homebrew index
+  Canager couldn't update — and on its own when a Homebrew index update left running in the
+  background finishes (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). None
+  of that is a standalone control you can press at any time.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -109,9 +111,9 @@ Three kinds of text are shown as-is:
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
-  rest of Canager at all while refreshing the list — its own text is shown untranslated, next to
-  the retry button. Short of that, Canager itself never fails a refresh as a whole, but not every
-  source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
+  rest of Canager at all while loading or refreshing the list — its own text is shown untranslated,
+  next to the retry button. Short of that, Canager itself never fails a refresh as a whole, but not
+  every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
   notice. A source that Canager could still reach, but whose software list or update check failed,
   is not: it only adds to the count in the "Some data might be out of date" banner, which never
@@ -170,7 +172,7 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
 - **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
   几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
   或因为 Canager 不认识的原因无法保存设置时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
-- **应用框架自己的报错**，只出现在一种情况：刷新列表时，窗口完全联系不上 Canager 的其余部分——这时它
+- **应用框架自己的报错**，只出现在一种情况：加载或刷新列表时，窗口完全联系不上 Canager 的其余部分——这时它
   自己的文字会原样显示在重试按钮旁边。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
   运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
@@ -184,5 +186,7 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
   失败、返回状态异常、解析失败时的原文提示。这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，
   中文用户在开关打开时看到的，就是英文。
 
-尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——只有刷新失败，或者
-Homebrew 的索引过期了，才会出现“重试”按钮，不是随时可按的独立刷新控件。
+尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
+点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew
+索引更新自行结束时（`ipc::refresh_on_background_change`，`src-tauri/src/lib.rs:31-34`，不需要用户
+动手）这四种情况下发生，不是随时可按的独立刷新控件。
