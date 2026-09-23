@@ -76,10 +76,12 @@ describe("useOperationEvents", () => {
 
     await waitFor(() => expect(capturedChannel).not.toBeNull());
     capturedChannel!.onmessage({
-      Operation: { Note: { op_id: 3, note: "WaitingForBrewUpdate" } },
+      Operation: { Note: { op_id: 3, note: { WaitingForBrewUpdate: { minutes: 10 } } } },
     });
 
-    expect(useUiStore.getState().logs).toMatchObject([{ opId: 3, note: "WaitingForBrewUpdate" }]);
+    expect(useUiStore.getState().logs).toMatchObject([
+      { opId: 3, note: { WaitingForBrewUpdate: { minutes: 10 } } },
+    ]);
     // A note is a log line, not a status change: it must not fall through
     // to the branch that treats every non-Log event as one.
     expect(invalidateSpy).not.toHaveBeenCalled();

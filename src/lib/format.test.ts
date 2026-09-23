@@ -70,7 +70,7 @@ describe("outcomeKey for Canager's own failures", () => {
     "Panicked",
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },
-    "HomebrewStillUpdating",
+    { HomebrewStillUpdating: { minutes: 10 } },
     "Internal",
   ];
 
@@ -107,10 +107,24 @@ describe("outcomeKey for Canager's own failures", () => {
     });
     expect(outcomeKey({ CanagerFailed: "Panicked" })).toBe("CanagerFailed.Panicked");
     expect(outcomeArgs({ CanagerFailed: "Panicked" })).toEqual({});
+    expect(outcomeKey({ CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } })).toBe(
+      "CanagerFailed.HomebrewStillUpdating",
+    );
+    expect(
+      outcomeArgs({ CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } }),
+    ).toEqual({ minutes: 10 });
     expect(en.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
     expect(zhCN.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
     expect(en.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
     expect(zhCN.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
+    // Item (1) of the loose-ends pass: the "10" in these two sentences
+    // must come from `BrewAdapter::OP_UPDATE_WAIT`
+    // (`Fault::HomebrewStillUpdating`'s `minutes` field), never be a
+    // second, independently-typed copy of the number.
+    expect(en.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
+    expect(zhCN.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
+    expect(en.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");
+    expect(zhCN.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");
   });
 
   it("keeps a tool's own stderr as Failed, and words a silent failure instead of a blank", () => {

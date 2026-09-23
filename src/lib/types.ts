@@ -18,12 +18,13 @@ export type Attention =
 // Rust `Fault`: why Canager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are
-// data (a path, the operating system's own reason), never Canager's prose.
+// data (a path, the operating system's own reason, the minutes
+// `BrewAdapter::OP_UPDATE_WAIT` is), never Canager's prose.
 export type Fault =
   | "Panicked"
   | { ProgramMissing: { program: string } }
   | { SpawnFailed: { detail: string } }
-  | "HomebrewStillUpdating"
+  | { HomebrewStillUpdating: { minutes: number } }
   | "Internal";
 // `Failed.summary` is only ever the tool's own stderr; Canager's own
 // failures are `CanagerFailed`.
@@ -191,7 +192,13 @@ export interface Settings {
 export type Stream = "Stdout" | "Stderr";
 // A line of Canager's own in an operation's log (Rust `LogNote`): a key the
 // front end localises, never text. `Log` lines are the tool's verbatim words.
-export type LogNote = "WaitingForBrewUpdate" | { ReadFailed: { stream: Stream; error: string } };
+// Both variants carry data now (serde's external tagging of a struct
+// variant, a one-key object): `minutes` is `BrewAdapter::OP_UPDATE_WAIT`,
+// threaded through rather than hard-coded into
+// `operations.logNote.waitingForBrewUpdate` so the two can never disagree.
+export type LogNote =
+  | { WaitingForBrewUpdate: { minutes: number } }
+  | { ReadFailed: { stream: Stream; error: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

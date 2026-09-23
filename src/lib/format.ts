@@ -77,7 +77,6 @@ function faultKey(fault: Fault): string {
   if (typeof fault === "string") {
     switch (fault) {
       case "Panicked":
-      case "HomebrewStillUpdating":
       case "Internal":
         return fault;
       default: {
@@ -88,6 +87,7 @@ function faultKey(fault: Fault): string {
   }
   if ("ProgramMissing" in fault) return "ProgramMissing";
   if ("SpawnFailed" in fault) return "SpawnFailed";
+  if ("HomebrewStillUpdating" in fault) return "HomebrewStillUpdating";
   const unhandled: never = fault;
   return unhandled;
 }
@@ -98,6 +98,7 @@ function faultArgs(fault: Fault): Record<string, unknown> {
   if (typeof fault === "string") return {};
   if ("ProgramMissing" in fault) return { program: fault.ProgramMissing.program };
   if ("SpawnFailed" in fault) return { detail: fault.SpawnFailed.detail };
+  if ("HomebrewStillUpdating" in fault) return { minutes: fault.HomebrewStillUpdating.minutes };
   const unhandled: never = fault;
   return unhandled;
 }

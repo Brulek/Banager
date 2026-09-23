@@ -22,8 +22,10 @@ const FOCUSABLE =
  * as plain text would be English sitting among the tool's lines.
  */
 function noteText(t: TFunction, note: LogNote): string {
-  if (note === "WaitingForBrewUpdate") {
-    return t("operations.logNote.waitingForBrewUpdate");
+  if ("WaitingForBrewUpdate" in note) {
+    return t("operations.logNote.waitingForBrewUpdate", {
+      minutes: note.WaitingForBrewUpdate.minutes,
+    });
   }
   if ("ReadFailed" in note) {
     const { stream, error } = note.ReadFailed;

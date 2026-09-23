@@ -454,6 +454,18 @@ impl BrewAdapter {
         record.running
     }
 
+    /// `op_update_wait` rounded down to whole minutes, for the two locale
+    /// sentences that name this bound (`LogNote::WaitingForBrewUpdate` and
+    /// `Fault::HomebrewStillUpdating`, both built from this, never from a
+    /// second copy of the number). Outside tests `op_update_wait` is
+    /// `OP_UPDATE_WAIT`, an exact number of minutes, so the truncation
+    /// never bites in production; a test-shortened wait below one minute
+    /// rounds down to 0, which is fine since no test asserts a sentence
+    /// built from it.
+    fn op_update_wait_minutes(&self) -> u64 {
+        self.op_update_wait.as_secs() / 60
+    }
+
     /// Waits, cancellably and for at most `op_update_wait`, for any `brew
     /// update` still finishing for this instance, and hands back the lock
     /// so the caller can hold it for the length of its own command.
@@ -480,7 +492,9 @@ impl BrewAdapter {
         }
         sink.emit(crate::events::OperationEvent::Note {
             op_id,
-            note: crate::events::LogNote::WaitingForBrewUpdate,
+            note: crate::events::LogNote::WaitingForBrewUpdate {
+                minutes: self.op_update_wait_minutes(),
+            },
         });
         tokio::select! {
             guard = lock.lock_owned() => UpdateWait::Ready(guard),
@@ -953,7 +967,9 @@ impl BrewAdapter {
             UpdateWait::Ready(guard) => guard,
             UpdateWait::Cancelled => return Ok(Outcome::Cancelled),
             UpdateWait::GaveUp => {
-                return Ok(Outcome::CanagerFailed(Fault::HomebrewStillUpdating));
+                return Ok(Outcome::CanagerFailed(Fault::HomebrewStillUpdating {
+                    minutes: self.op_update_wait_minutes(),
+                }));
             }
         };
         run_plan(&self.runner, plan, sink, op_id, cancel).await
@@ -2849,10 +2865,11 @@ mod plan_execute_tests {
                 e,
                 crate::events::OperationEvent::Note {
                     op_id: 1,
-                    note: crate::events::LogNote::WaitingForBrewUpdate,
-                }
+                    note: crate::events::LogNote::WaitingForBrewUpdate { minutes },
+                } if *minutes == BrewAdapter::OP_UPDATE_WAIT.as_secs() / 60
             )),
-            "a wait with no output would look like a hang: {:?}",
+            "a wait with no output would look like a hang, and its minutes must match \
+             OP_UPDATE_WAIT (BrewAdapter::new does not override op_update_wait here): {:?}",
             sink.snapshot()
         );
         // The wait is Canager speaking, not Homebrew: it must arrive as a
@@ -2893,7 +2910,12 @@ mod plan_execute_tests {
             .expect("execute");
         assert_eq!(
             outcome,
-            Outcome::CanagerFailed(Fault::HomebrewStillUpdating)
+            // `minutes` is 200ms rounded down to whole minutes, i.e. 0 --
+            // proof this comes from the adapter's actual `op_update_wait`
+            // (`with_op_update_wait` above), not a hard-coded 10 that
+            // would happen to match the default and hide the wiring
+            // being broken.
+            Outcome::CanagerFailed(Fault::HomebrewStillUpdating { minutes: 0 })
         );
         assert!(
             started.elapsed() < Duration::from_secs(2),

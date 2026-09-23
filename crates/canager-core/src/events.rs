@@ -26,9 +26,14 @@ pub enum Stream {
 pub enum LogNote {
     /// An install, upgrade or uninstall is waiting for a `brew update` a
     /// refresh started to finish before running its own command -- for at
-    /// most ten minutes, and Cancel ends the wait at once. The copy says
-    /// both, since this line is all the user sees while it lasts.
-    WaitingForBrewUpdate,
+    /// most `minutes` minutes, and Cancel ends the wait at once. The copy
+    /// says both, since this line is all the user sees while it lasts.
+    ///
+    /// `minutes` is `BrewAdapter::OP_UPDATE_WAIT` outside tests, carried
+    /// here rather than hard-coded into `operations.logNote.waitingForBrewUpdate`
+    /// so the two can never disagree: see `BrewAdapter::wait_for_update`,
+    /// the only production call site that builds this variant.
+    WaitingForBrewUpdate { minutes: u64 },
     /// Reading one of the command's streams failed, so nothing more from
     /// that stream reaches the log. `error` is the operating system's own
     /// description of the failure, shown as-is like any other text Canager
@@ -108,15 +113,16 @@ mod tests {
 
     #[test]
     fn test_note_wire_shape_is_what_the_typescript_mirror_expects() {
-        // `src/lib/types.ts` hand-mirrors this: externally tagged, a unit
-        // variant as a bare string, a data variant as a one-key object.
+        // `src/lib/types.ts` hand-mirrors this: externally tagged, every
+        // `LogNote` variant a one-key object carrying its data (serde's
+        // external tagging of a struct variant).
         let waiting = OperationEvent::Note {
             op_id: 7,
-            note: LogNote::WaitingForBrewUpdate,
+            note: LogNote::WaitingForBrewUpdate { minutes: 10 },
         };
         assert_eq!(
             serde_json::to_string(&waiting).unwrap(),
-            r#"{"Note":{"op_id":7,"note":"WaitingForBrewUpdate"}}"#
+            r#"{"Note":{"op_id":7,"note":{"WaitingForBrewUpdate":{"minutes":10}}}}"#
         );
         let failed = OperationEvent::Note {
             op_id: 7,

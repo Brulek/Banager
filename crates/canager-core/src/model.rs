@@ -357,10 +357,17 @@ pub enum Fault {
     /// system's own reason, quoted as-is. Nothing was started.
     SpawnFailed { detail: String },
     /// A `brew update` was still running in the background after Canager
-    /// had waited ten minutes for it, so the command was not started:
-    /// installing while Homebrew rewrites its own list of software is not
-    /// something Homebrew guards against. Nothing was started.
-    HomebrewStillUpdating,
+    /// had waited `minutes` minutes for it, so the command was not
+    /// started: installing while Homebrew rewrites its own list of
+    /// software is not something Homebrew guards against. Nothing was
+    /// started.
+    ///
+    /// `minutes` is `BrewAdapter::OP_UPDATE_WAIT` outside tests, carried
+    /// here rather than hard-coded into
+    /// `operations.outcome.CanagerFailed.HomebrewStillUpdating` so the two
+    /// can never disagree: see `BrewAdapter::execute`, the only production
+    /// call site that builds this variant.
+    HomebrewStillUpdating { minutes: u64 },
     /// Something on Canager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Canager, not a state of the Mac.
@@ -581,9 +588,16 @@ mod tests {
             .unwrap(),
             r#"{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}"#
         );
+        assert_eq!(
+            serde_json::to_string(&Outcome::CanagerFailed(Fault::HomebrewStillUpdating {
+                minutes: 10
+            }))
+            .unwrap(),
+            r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#
+        );
         for fault in [
             Fault::Panicked,
-            Fault::HomebrewStillUpdating,
+            Fault::HomebrewStillUpdating { minutes: 10 },
             Fault::Internal,
         ] {
             let json = serde_json::to_string(&Outcome::CanagerFailed(fault.clone())).unwrap();

@@ -69,7 +69,7 @@ describe("LogDrawer", () => {
       const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
 
       act(() => {
-        useUiStore.getState().appendLog({ opId: 1, note: "WaitingForBrewUpdate" });
+        useUiStore.getState().appendLog({ opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } } });
         useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Pouring jq" });
         useUiStore.getState().appendLog({
           opId: 1,

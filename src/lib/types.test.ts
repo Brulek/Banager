@@ -202,10 +202,14 @@ describe("types", () => {
     expect(roundTrip(log)).toEqual({ Log: { op_id: 1, stream: "Stdout", line: "Installing jq" } });
     // Byte-for-byte what `events.rs`'s
     // `test_note_wire_shape_is_what_the_typescript_mirror_expects` asserts
-    // serde emits: a unit `LogNote` is a bare string, a data one a
-    // one-key object.
-    const waiting: OperationEvent = { Note: { op_id: 7, note: "WaitingForBrewUpdate" } };
-    expect(JSON.stringify(waiting)).toBe('{"Note":{"op_id":7,"note":"WaitingForBrewUpdate"}}');
+    // serde emits: every `LogNote` variant is a struct variant, so a
+    // one-key object carrying its data (serde's external tagging).
+    const waiting: OperationEvent = {
+      Note: { op_id: 7, note: { WaitingForBrewUpdate: { minutes: 10 } } },
+    };
+    expect(JSON.stringify(waiting)).toBe(
+      '{"Note":{"op_id":7,"note":{"WaitingForBrewUpdate":{"minutes":10}}}}',
+    );
     const readFailed: OperationEvent = {
       Note: {
         op_id: 7,
