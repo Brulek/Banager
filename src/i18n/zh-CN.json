@@ -39,6 +39,7 @@
     "allIgnored": "没有待处理的更新，其余都已忽略。",
     "count_other": "{{count}} 个可用更新",
     "countUnmanageable_other": "另有 {{count}} 个无法在这里更新",
+    "countListed_other": "下面列出了 {{count}} 个",
     "noneActionable": "这里没有 Canager 能更新的内容",
     "updateSelected": "更新所选项",
     "update": "更新",

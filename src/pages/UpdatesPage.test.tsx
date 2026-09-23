@@ -758,7 +758,9 @@ describe("UpdatesPage", () => {
     // number: two listed rows the user cannot act on should still be counted,
     // or the page says a machine with two stuck packages looks like a machine
     // with twenty.
-    expect(await findByText("2 more can't be updated here")).toBeInTheDocument();
+    expect(await findByText("2 listed below")).toBeInTheDocument();
+    // But not as "2 more": more than the nothing the line above just said.
+    expect(queryByText(/more can't be updated/)).not.toBeInTheDocument();
   });
 
   it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {
@@ -1310,7 +1312,7 @@ describe("UpdatesPage", () => {
     expect(container.textContent).not.toContain("pkg-399");
     // The list still knows how long it is, so the scrollbar is honest and
     // every row is reachable.
-    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
+    expect(await findByText("400 listed below")).toBeInTheDocument();
   });
   it("says which version you are moving to, with technical details off", async () => {
     // Spec §6: the one screen whose job is "look before you act". It named

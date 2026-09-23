@@ -713,14 +713,27 @@ export function UpdatesPage() {
               a lie when the rows below exist and simply are not Canager's to
               update, so the headline says that instead -- but the second line
               stays, because "how many" is exactly what a user staring at six
-              listed rows needs to know. */}
+              listed rows needs to know.
+
+              The second line's wording follows the headline. "6 more can't
+              be updated here" is right under "2 updates available"; under
+              "Nothing here can be updated by Canager" it is "more" than the
+              nothing just stated, on the first line of the page for every
+              offline Mac, every pip-only list and every nodejs.org npm. With
+              nothing actionable, every row is one Canager cannot update --
+              the headline has already said so -- and the line only counts
+              them. */}
           <p>
-            {actionableCount === 0 && unmanageableCount > 0
+            {actionableCount === 0
               ? t("updates.noneActionable")
               : t("updates.count", { count: actionableCount })}
           </p>
           {unmanageableCount > 0 ? (
-            <p>{t("updates.countUnmanageable", { count: unmanageableCount })}</p>
+            <p>
+              {actionableCount === 0
+                ? t("updates.countListed", { count: unmanageableCount })
+                : t("updates.countUnmanageable", { count: unmanageableCount })}
+            </p>
           ) : null}
         </div>
         <button

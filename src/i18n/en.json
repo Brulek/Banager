@@ -43,6 +43,8 @@
     "count_other": "{{count}} updates available",
     "countUnmanageable_one": "{{count}} more can't be updated here",
     "countUnmanageable_other": "{{count}} more can't be updated here",
+    "countListed_one": "{{count}} listed below",
+    "countListed_other": "{{count}} listed below",
     "noneActionable": "Nothing here can be updated by Canager",
     "updateSelected": "Update selected",
     "update": "Update",
