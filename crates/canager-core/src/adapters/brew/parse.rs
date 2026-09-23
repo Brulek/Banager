@@ -1,7 +1,7 @@
 use crate::adapters::AdapterError;
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateCandidate,
-    UpdateChannel,
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateBlocked,
+    UpdateCandidate, UpdateChannel,
 };
 use serde::Deserialize;
 
@@ -184,13 +184,19 @@ struct OutdatedItem {
     #[serde(default)]
     installed_versions: Vec<String>,
     current_version: String,
-    // `pinned` and `pinned_version` used to be listed here too, unread,
-    // behind `#[allow(dead_code)]`. serde ignores keys a struct does not
-    // mention, so declaring them bought nothing at all and the `allow` was
-    // what kept the compiler from saying so. What pinned items actually
-    // need is per-package actionability (`UpdateCandidate.actionable: bool`
-    // plus a reason enum whose first variant is `Pinned`, spec §8), which
-    // is backlogged; it will read them from the JSON then.
+    /// `brew pin`: Homebrew will refuse a named `brew upgrade` of this
+    /// package (exit 1, "Not upgrading 1 pinned package"), yet still lists
+    /// it here. Becomes `UpdateBlocked::Pinned` below. Defaulted rather
+    /// than required: a missing key is a brew that did not say the package
+    /// is pinned, not a malformed reply worth failing the whole source
+    /// over, and the worst it costs is Homebrew's own honest refusal.
+    ///
+    /// `pinned_version` is deliberately not read. Homebrew sets it exactly
+    /// when `pinned` is true (`formula_pin.rb:50-52`, `cask/cask.rb:350-352`
+    /// in 7.0.6), so it carries no second state, and nothing on screen
+    /// needs the number.
+    #[serde(default)]
+    pinned: bool,
 }
 
 /// Parses `brew outdated --json=v2`.
@@ -223,6 +229,7 @@ pub fn parse_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
+            blocked: item.pinned.then_some(UpdateBlocked::Pinned),
         });
     }
 
@@ -345,6 +352,83 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].key.name, "myorg/tap/jq");
+    }
+
+    // `pinned` is the one per-package refusal `brew outdated --json=v2`
+    // reports, on formula and cask entries alike (Homebrew 7.0.6:
+    // `cmd/outdated.rb:196-200`, `cask/cask.rb:472-478`). The recorded
+    // fixture for it is `adapters/fixtures/brew/7.0.6/outdated-pinned.json`
+    // (edited, see its README); these cover the branches directly.
+
+    #[test]
+    fn parse_outdated_marks_a_pinned_formula_and_a_pinned_cask_as_blocked() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "glib",
+                    "installed_versions": ["2.88.3"],
+                    "current_version": "2.90.0",
+                    "pinned": true,
+                    "pinned_version": "2.88.3"
+                },
+                {
+                    "name": "cairo",
+                    "installed_versions": ["1.18.4"],
+                    "current_version": "1.18.6",
+                    "pinned": false,
+                    "pinned_version": null
+                }
+            ],
+            "casks": [
+                {
+                    "name": "onyx",
+                    "installed_versions": ["5.0.2"],
+                    "current_version": "5.1.0",
+                    "pinned": true,
+                    "pinned_version": "5.0.2"
+                }
+            ]
+        }"#;
+
+        let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
+
+        let blocked: Vec<_> = result
+            .iter()
+            .map(|c| (c.key.name.as_str(), c.key.kind, c.blocked))
+            .collect();
+        assert_eq!(
+            blocked,
+            vec![
+                ("glib", ArtifactKind::Formula, Some(UpdateBlocked::Pinned)),
+                ("cairo", ArtifactKind::Formula, None),
+                ("onyx", ArtifactKind::Cask, Some(UpdateBlocked::Pinned)),
+            ]
+        );
+        // Pinned is not "could not check": Homebrew knows the newer
+        // version exactly, and the row should still say what it is.
+        assert!(result.iter().all(|c| c.checkable));
+        assert_eq!(result[0].target, "2.90.0");
+    }
+
+    #[test]
+    fn parse_outdated_treats_an_entry_without_pinned_as_not_pinned() {
+        // Homebrew 7 always writes the key, but a missing one is not a
+        // malformed reply worth failing the whole source over: it is a
+        // brew that did not say the package is pinned.
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "installed_versions": ["1.6"],
+                    "current_version": "1.7"
+                }
+            ],
+            "casks": []
+        }"#;
+
+        let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
+
+        assert_eq!(result[0].blocked, None);
     }
 
     #[test]

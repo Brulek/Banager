@@ -266,6 +266,7 @@ impl CargoAdapter {
                     channel: UpdateChannel::Registry,
                     checkable: false,
                     warnings: vec![Warning::NonRegistrySource],
+                    blocked: None,
                 });
                 continue;
             }
@@ -277,6 +278,7 @@ impl CargoAdapter {
                     channel: UpdateChannel::Registry,
                     checkable: true,
                     warnings: Vec::new(),
+                    blocked: None,
                 }),
                 Ok(_) => {}
                 Err(reason) => out.push(uncheckable_candidate(

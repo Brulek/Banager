@@ -252,6 +252,27 @@ pub enum Warning {
     Message(String),
 }
 
+/// Why the tool itself will refuse to update this one package, although
+/// its source is writable and answering. The per-package half of the
+/// actionability gate (spec §8); `ReadOnlyReason` and `Unavailable` are the
+/// per-source halves.
+///
+/// A variant belongs here only when the tool *reports* the state in the
+/// output Canager already reads to list updates, so the row can be marked
+/// before anyone clicks. States a tool only reveals by refusing (a
+/// disabled formula, a cask whose installer must be run by hand) do not
+/// qualify: `brew outdated --json=v2` carries no field for them
+/// (`cmd/outdated.rb:196-200` in Homebrew 7.0.6 lists all five keys).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateBlocked {
+    /// Homebrew holds this formula or cask at the version it has now
+    /// (`brew pin`). `brew outdated` still lists it, marked `pinned: true`,
+    /// and a named `brew upgrade` of it exits 1 with "Not upgrading 1
+    /// pinned package" (`cmd/upgrade.rb:428-476`, `cask/upgrade.rb:82-90`).
+    /// `parse_outdated` in `adapters/brew/parse.rs` is its only producer.
+    Pinned,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateCandidate {
     pub key: ArtifactKey,
@@ -260,6 +281,12 @@ pub struct UpdateCandidate {
     pub channel: UpdateChannel,
     pub checkable: bool,
     pub warnings: Vec<Warning>,
+    /// `Some` when the tool will refuse to update this package even though
+    /// Canager could check it -- `checkable` says nothing about this: a
+    /// pinned formula's newer version is known exactly. `Session::issue_plan`
+    /// refuses an `Upgrade` of a candidate that carries one, and the Updates
+    /// page's `isActionable` hides the row's button and checkbox for it.
+    pub blocked: Option<UpdateBlocked>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -507,6 +534,50 @@ mod tests {
                 read_only
             );
         }
+    }
+
+    #[test]
+    fn test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent() {
+        // `src/lib/types.ts` spells this field `blocked: UpdateBlocked |
+        // null` and the variant as the bare string "Pinned". Nothing checks
+        // that at compile time across the IPC boundary, so the wire shape
+        // is pinned down here.
+        let candidate = UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "glib".to_string(),
+            },
+            current: "2.88.3".to_string(),
+            target: "2.90.0".to_string(),
+            channel: UpdateChannel::Native,
+            checkable: true,
+            warnings: Vec::new(),
+            blocked: None,
+        };
+        let json = serde_json::to_string(&candidate).expect("serialize");
+        assert!(
+            json.contains("\"blocked\":null"),
+            "an updatable candidate carries an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            candidate
+        );
+
+        let pinned = UpdateCandidate {
+            blocked: Some(UpdateBlocked::Pinned),
+            ..candidate
+        };
+        let json = serde_json::to_string(&pinned).expect("serialize");
+        assert!(
+            json.contains("\"blocked\":\"Pinned\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            pinned
+        );
     }
 
     #[test]

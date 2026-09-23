@@ -259,6 +259,7 @@ pub(crate) fn uncheckable_candidate(
         channel,
         checkable: false,
         warnings: vec![Warning::Message(reason)],
+        blocked: None,
     }
 }
 

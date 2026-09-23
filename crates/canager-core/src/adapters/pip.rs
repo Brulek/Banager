@@ -50,6 +50,7 @@ fn parse_pip_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
+            blocked: None,
         })
         .collect())
 }

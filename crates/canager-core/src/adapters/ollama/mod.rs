@@ -451,6 +451,7 @@ impl OllamaAdapter {
                 channel: UpdateChannel::Digest,
                 checkable: true,
                 warnings: Vec::new(),
+                blocked: None,
             }),
             // Uncheckable: there is no target to claim. `checkable: false`
             // is what stops the UI offering an Update button for this row

@@ -132,6 +132,7 @@ fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
+            blocked: None,
         });
     }
     out
@@ -289,6 +290,7 @@ impl PipxAdapter {
                     channel: UpdateChannel::Registry,
                     checkable: true,
                     warnings: Vec::new(),
+                    blocked: None,
                 }),
                 Ok(_) => {}
                 Err(reason) => out.push(uncheckable_candidate(

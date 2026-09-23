@@ -91,6 +91,7 @@ fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidat
                 channel: UpdateChannel::Native,
                 checkable: true,
                 warnings: Vec::new(),
+                blocked: None,
             })
         })
         .collect()

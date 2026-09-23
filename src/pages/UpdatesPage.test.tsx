@@ -99,6 +99,7 @@ const snapshot: Snapshot = {
       channel: "Native",
       checkable: true,
       warnings: [],
+      blocked: null,
     },
     {
       key: onyxKey,
@@ -107,6 +108,7 @@ const snapshot: Snapshot = {
       channel: "Native",
       checkable: true,
       warnings: [],
+      blocked: null,
     },
   ],
   refreshed_at: 1789700000,
@@ -209,6 +211,7 @@ function brewCandidate(name: string): Snapshot["updates"][number] {
     channel: "Native",
     checkable: true,
     warnings: [],
+    blocked: null,
   };
 }
 
@@ -407,6 +410,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: false,
         warnings: ["NonRegistrySource"],
+        blocked: null,
       },
     ];
     const { findByText, queryByRole } = renderWithProviders(<UpdatesPage />);
@@ -439,6 +443,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: false,
         warnings: ["NonRegistrySource"],
+        blocked: null,
       },
     ];
     act(() => {
@@ -474,6 +479,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
@@ -509,6 +515,7 @@ describe("UpdatesPage", () => {
       channel: "Registry" as const,
       checkable: true,
       warnings: [],
+      blocked: null,
     }));
     artifacts = pipPackages.map((name) => ({
       key: { instance_id: "pip:/usr/bin/python3", kind: "Package" as const, name },
@@ -563,6 +570,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: false,
         warnings: ["NonRegistrySource"],
+        blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -591,6 +599,7 @@ describe("UpdatesPage", () => {
         channel: "Native",
         checkable: false,
         warnings: [{ Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" }],
+        blocked: null,
       },
     ];
     const { findByText } = renderWithProviders(<UpdatesPage />);
@@ -629,6 +638,7 @@ describe("UpdatesPage", () => {
       warnings: [
         { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
       ],
+      blocked: null,
     }));
     const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
 
@@ -660,6 +670,7 @@ describe("UpdatesPage", () => {
       channel: "Native" as const,
       checkable: false,
       warnings: [{ Message: "npm outdated -g: npm error code ENOTFOUND" }],
+      blocked: null,
     }));
     const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
 
@@ -686,6 +697,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: false,
         warnings: ["NonRegistrySource"],
+        blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -706,6 +718,7 @@ describe("UpdatesPage", () => {
         warnings: [
           { Message: "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/" },
         ],
+        blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -733,6 +746,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: false,
         warnings: ["NonRegistrySource"],
+        blocked: null,
       },
     ];
     const { findByText } = renderWithProviders(<UpdatesPage />);
@@ -758,6 +772,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
       {
         key: urllib3Key,
@@ -766,6 +781,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const { findByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
@@ -794,6 +810,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
       {
         key: typescriptKey,
@@ -802,6 +819,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -831,6 +849,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     act(() => {
@@ -867,6 +886,7 @@ describe("UpdatesPage", () => {
         channel: "Digest",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -1213,6 +1233,7 @@ describe("UpdatesPage", () => {
         channel: "Digest" as const,
         checkable: true,
         warnings: [],
+        blocked: null,
       })),
     ];
     const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
@@ -1250,6 +1271,7 @@ describe("UpdatesPage", () => {
         channel: "Registry" as const,
         checkable: true,
         warnings: [],
+        blocked: null,
       })),
     ];
     const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
@@ -1294,6 +1316,7 @@ describe("UpdatesPage", () => {
         channel: "Registry",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const coldStart = renderWithProviders(<UpdatesPage />);
@@ -1323,6 +1346,7 @@ describe("UpdatesPage", () => {
         channel: "Digest",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
     const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
@@ -1353,6 +1377,7 @@ describe("UpdatesPage", () => {
       channel: "Registry" as const,
       checkable: false,
       warnings: [{ Message: "Could not reach pypi.org" }],
+      blocked: null,
     }));
 
     const { findByText, container } = renderWithProviders(<UpdatesPage />);
@@ -1399,6 +1424,7 @@ describe("UpdatesPage", () => {
         channel: "Digest",
         checkable: true,
         warnings: [],
+        blocked: null,
       },
     ];
 

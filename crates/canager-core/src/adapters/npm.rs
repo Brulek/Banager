@@ -549,6 +549,7 @@ fn parse_outdated_global(
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
+            blocked: None,
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));

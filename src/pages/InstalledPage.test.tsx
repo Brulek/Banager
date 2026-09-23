@@ -58,6 +58,7 @@ const snapshot: Snapshot = {
       channel: "Native",
       checkable: true,
       warnings: [],
+      blocked: null,
     },
   ],
   refreshed_at: 1789700000,

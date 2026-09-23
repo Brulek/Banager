@@ -9,6 +9,7 @@ import type {
   ReadOnlyReason,
   InstanceStatus,
   Settings,
+  UpdateBlocked,
   Warning,
 } from "./types";
 
@@ -75,6 +76,7 @@ describe("types", () => {
           channel: "Native",
           checkable: true,
           warnings: [],
+          blocked: null,
         },
       ],
       refreshed_at: 1789700000,
@@ -106,6 +108,17 @@ describe("types", () => {
     expect(roundTrip(reasons)).toEqual(["ByDesign", "PrefixNotWritable"]);
     const writable: ReadOnlyReason | null = null;
     expect(roundTrip(writable)).toBeNull();
+  });
+
+  it("spells UpdateBlocked as a bare string, and an updatable candidate as null", () => {
+    // `Option<UpdateBlocked>` on `UpdateCandidate.blocked` in
+    // crates/canager-core/src/model.rs, whose
+    // `test_update_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
+    // asserts these exact spellings from the Rust side.
+    const reasons: UpdateBlocked[] = ["Pinned"];
+    expect(JSON.stringify(reasons)).toBe('["Pinned"]');
+    const updatable: UpdateBlocked | null = null;
+    expect(roundTrip(updatable)).toBeNull();
   });
 
   it("spells InstanceStatus as an always-present object with bare-string variants", () => {

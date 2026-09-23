@@ -13,7 +13,8 @@ expression: result
     "target": "2.90.0",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   },
   {
     "key": {
@@ -25,7 +26,8 @@ expression: result
     "target": "1.11.1_5",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   },
   {
     "key": {
@@ -37,7 +39,8 @@ expression: result
     "target": "3.2.1",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   },
   {
     "key": {
@@ -49,7 +52,8 @@ expression: result
     "target": "0.1.2",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   },
   {
     "key": {
@@ -61,7 +65,8 @@ expression: result
     "target": "0.60.4",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   },
   {
     "key": {
@@ -73,6 +78,7 @@ expression: result
     "target": "5.1.0",
     "channel": "Native",
     "checkable": true,
-    "warnings": []
+    "warnings": [],
+    "blocked": null
   }
 ]

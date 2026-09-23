@@ -1562,6 +1562,7 @@ mod tests {
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
+            blocked: None,
         }
     }
 
@@ -1581,6 +1582,7 @@ mod tests {
             channel: UpdateChannel::Native,
             checkable: false,
             warnings: Vec::new(),
+            blocked: None,
         }
     }
 

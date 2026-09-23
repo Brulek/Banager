@@ -72,6 +72,14 @@ export type Warning =
   | "NonRegistrySource"
   | { ThirdPartyRegistry: { host: string } }
   | { Message: string };
+/**
+ * Why the tool itself will refuse to update this one package, although its
+ * source is writable and answering. Mirrors `UpdateBlocked` in
+ * crates/canager-core/src/model.rs: bare-string unit variants. Only brew's
+ * `parse_outdated` produces one today (`Pinned`, from `brew outdated`'s
+ * `pinned: true`).
+ */
+export type UpdateBlocked = "Pinned";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;
@@ -79,6 +87,7 @@ export interface UpdateCandidate {
   channel: "Native" | "Registry" | "Digest";
   checkable: boolean;
   warnings: Warning[];
+  blocked: UpdateBlocked | null;
 }
 /**
  * Why a source can be listed but never changed from Canager. Mirrors
