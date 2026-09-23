@@ -110,13 +110,14 @@
 `parse_outdated`（读 `brew outdated --json=v2` 的 `pinned`，公式与 cask 都有）。Rust 侧闸门
 `blocked_upgrade`（`session/plans.rs`）在 `issue_plan` 与 `submit` 复检里拒绝 `Upgrade`；
 更新页 `isActionable` 多一个条件，按钮、勾选、「更新所选」和两个计数一起去掉；行上写「已固定」
-并给出 `brew unpin <名字>`（cask 为 `--cask`）。Canager 不代为解除固定。
+并给出 `<该 brew 的绝对路径> unpin <名字>`（cask 为 `--cask`；路径取自该实例的 `exe_path`，
+以代码样式显示）。自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Canager 不代为解除固定。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
 - **pipx 的 `[pinned]` 解析错误**：`pipx list --outdated` 把被固定的工具写成 `name [pinned]: a -> b`，
   `pipx.rs` 的 `parse_outdated` 按第一个冒号切，行名变成 `"cowsay [pinned]"`，点「更新」会被
   `validate_package_name` 以 invalidName 拒绝。正确做法是改读 `pipx list --outdated --output json`
-  的 `pinned` 字段并复用 `UpdateBlocked::Pinned`——但那时 `UPDATE_BLOCKED_KEYS.Pinned.values`
+  的 `pinned` 字段并复用 `UpdateBlocked::Pinned`——但那时 `UPDATE_BLOCKED_KEYS.Pinned.command`
   （`src/lib/sources.ts`）只会拼 brew 命令，要改成按来源给 `pipx unpin <名字>`。
 - **假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
   brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。
