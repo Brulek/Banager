@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -118,6 +119,39 @@ interface Batch {
 
 function hasIssuedPlan(batch: Batch): boolean {
   return batch.items.some((item) => item.issued !== null);
+}
+
+/**
+ * What `{{command}}` is translated to first, so the sentence can be cut
+ * around it: a private-use character, which neither en.json nor
+ * zh-CN.json contains. The command itself never passes through `t`, so
+ * nothing in it can be taken for this.
+ */
+const COMMAND_SLOT = "";
+
+/**
+ * A translated sentence with `command` set into it as code rather than as
+ * a word of the sentence, so a reader who does not use Terminal can see
+ * where the command starts and stops -- inline, "run brew unpin glib in
+ * Terminal;" invites copying "in Terminal;" along with it. `select-all`
+ * makes one click select the whole command and nothing else.
+ *
+ * A translation that does not hold `COMMAND_SLOT` exactly once (it
+ * dropped or repeated `{{command}}`) gets the command back as plain text
+ * in every place the slot is, rather than a `<code>` in the wrong one.
+ */
+function withCommand(sentence: string, command: string): ReactNode {
+  const parts = sentence.split(COMMAND_SLOT);
+  if (parts.length !== 2) return parts.join(command);
+  return (
+    <>
+      {parts[0]}
+      <code className="select-all rounded bg-[var(--color-hover)] px-1 font-mono text-[var(--color-foreground)]">
+        {command}
+      </code>
+      {parts[1]}
+    </>
+  );
 }
 
 export function UpdatesPage() {
@@ -443,7 +477,7 @@ export function UpdatesPage() {
   // uncheckable one does: it is the one thing on the row the user has to
   // read to understand why there is no button. "Could not check" wins
   // when both are true, since without a check there is no update to block.
-  const rowDescription = (candidate: UpdateCandidate): string => {
+  const rowDescription = (candidate: UpdateCandidate): ReactNode => {
     if (!candidate.checkable) return cannotCheckText(candidate);
     if (candidate.blocked !== null) {
       const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
@@ -455,7 +489,10 @@ export function UpdatesPage() {
       const description = selfUpdating
         ? (copy.selfUpdatingDescription ?? copy.description)
         : copy.description;
-      return t(description, copy.values(candidate.key, instance));
+      return withCommand(
+        t(description, { command: COMMAND_SLOT }),
+        copy.command(candidate.key, instance),
+      );
     }
     return descriptionFor(candidate);
   };

@@ -494,9 +494,9 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       status: { unavailable: null, notes: [] },
     } satisfies ManagerInstance;
     const key = { instance_id: instance.id, kind: "Formula", name: "glib" } satisfies ArtifactKey;
-    expect(UPDATE_BLOCKED_KEYS.Pinned.values(key, instance)).toEqual({
-      command: "'/Users/Alice Smith/homebrew/bin/brew' unpin glib",
-    });
+    expect(UPDATE_BLOCKED_KEYS.Pinned.command(key, instance)).toBe(
+      "'/Users/Alice Smith/homebrew/bin/brew' unpin glib",
+    );
   });
 
   it("says the pin's release shows up when Canager next starts, not when 'it' is next opened", () => {

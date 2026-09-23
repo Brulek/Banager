@@ -203,6 +203,14 @@ function slotOf(element: HTMLElement): number {
   return Number(slot.getAttribute("data-index"));
 }
 
+// A row description whose whole text, across the `<code>` the Updates page
+// sets a command in, is `text`. `getByText` alone matches an element's own
+// text nodes, which no longer hold the whole sentence.
+function wholeSentence(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "P" && element.textContent === text;
+}
+
 function brewCandidate(name: string): Snapshot["updates"][number] {
   return {
     key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
@@ -479,9 +487,14 @@ describe("UpdatesPage", () => {
     expect(getByText("Pinned")).toBeInTheDocument();
     expect(
       getByText(
-        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+        wholeSentence(
+          "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+        ),
       ),
     ).toBeInTheDocument();
+    // Set apart as code, so it is visibly a command and nothing around it
+    // gets copied with it.
+    expect(getByText("/opt/homebrew/bin/brew unpin glib").tagName).toBe("CODE");
     // Counted with what Canager cannot update, not as an available update.
     await findByText("1 update available");
     await findByText("1 more can't be updated here");
@@ -493,7 +506,7 @@ describe("UpdatesPage", () => {
     updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
     const { findByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText(/run \/opt\/homebrew\/bin\/brew unpin --cask onyx in Terminal/);
+    expect((await findByText("/opt/homebrew/bin/brew unpin --cask onyx")).tagName).toBe("CODE");
   });
 
   it("does not promise a pinned app that updates itself will stay at its version", async () => {
@@ -519,7 +532,9 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText(
-      "This has been pinned, so neither Homebrew nor Canager will update it. The app updates itself, though, and may still do so despite the pin. To let Homebrew update it, run /opt/homebrew/bin/brew unpin --cask onyx in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+      wholeSentence(
+        "This has been pinned, so neither Homebrew nor Canager will update it. The app updates itself, though, and may still do so despite the pin. To let Homebrew update it, run /opt/homebrew/bin/brew unpin --cask onyx in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+      ),
     );
     expect(queryByText(/keeping this at the version it has now/)).toBeNull();
   });
@@ -546,7 +561,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText(/run \/usr\/local\/bin\/brew unpin glib in Terminal/);
+    expect((await findByText("/usr/local/bin/brew unpin glib")).tagName).toBe("CODE");
     expect(queryByText(/\/opt\/homebrew\/bin\/brew unpin/)).toBeNull();
   });
 

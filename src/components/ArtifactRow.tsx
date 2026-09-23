@@ -17,7 +17,9 @@ export interface ArtifactRowSelectable {
 
 export interface ArtifactRowProps {
   name: string;
-  description: string;
+  /** Usually a string; a node when part of it is not prose, like the
+   *  Updates page's unpin command rendered as code. */
+  description: ReactNode;
   badgeText: string;
   badgeVariant: BadgeVariant;
   /** Omit both this and `onPrimaryAction` for a row with no primary action

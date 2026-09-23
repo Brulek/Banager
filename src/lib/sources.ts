@@ -254,11 +254,13 @@ interface UpdateBlockedCopy {
    * updates itself outside the tool.
    */
   selfUpdatingDescription: string | null;
-  /** What `description` interpolates, from the row's own key and the
-   *  instance that key's `instance_id` names (`undefined` only if the
-   *  snapshot lacks it, which `refresh` never produces: it builds
-   *  `updates` only from instances it also puts in `instances`). */
-  values: (key: ArtifactKey, instance: ManagerInstance | undefined) => Record<string, string>;
+  /** The command `description`'s `{{command}}` stands for, from the row's
+   *  own key and the instance that key's `instance_id` names (`undefined`
+   *  only if the snapshot lacks it, which `refresh` never produces: it
+   *  builds `updates` only from instances it also puts in `instances`).
+   *  The Updates page renders it as code (`withCommand` in
+   *  src/pages/UpdatesPage.tsx), not as a word of the sentence. */
+  command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
    *  refusal, which only a stale Updates page can reach. It is given only
    *  the source's label (`planErrorMessage`'s `sourceLabel`), not the
@@ -318,12 +320,12 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // one is `SnapshotStatus`'s retry after a failed refresh), and closing
     // the window quits, since `run` in src-tauri/src/lib.rs has no
     // `ExitRequested` handler to keep the app alive without one.
-    values: (key, instance) => {
+    command: (key, instance) => {
       // The bare name only for an instance the snapshot does not have,
-      // which `values`' doc says cannot happen.
+      // which `command`'s doc says cannot happen.
       const program = instance?.exe_path ?? "brew";
       const args = key.kind === "Cask" ? ["unpin", "--cask", key.name] : ["unpin", key.name];
-      return { command: [program, ...args].map(displayToken).join(" ") };
+      return [program, ...args].map(displayToken).join(" ");
     },
     refused: "updates.blocked.Pinned.refused",
   },
