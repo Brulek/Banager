@@ -77,7 +77,9 @@ export type Warning =
  * source is writable and answering. Mirrors `UpdateBlocked` in
  * crates/canager-core/src/model.rs: bare-string unit variants. Only brew's
  * `parse_outdated` produces one today (`Pinned`, from `brew outdated`'s
- * `pinned: true`).
+ * `pinned: true`). Read through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts,
+ * a `Record` over this union, so a variant added here without copy fails
+ * `tsc` rather than rendering nothing.
  */
 export type UpdateBlocked = "Pinned";
 export interface UpdateCandidate {

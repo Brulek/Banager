@@ -463,6 +463,61 @@ describe("UpdatesPage", () => {
     ).toEqual(["glib"]);
   });
 
+  it("offers no Update button and no checkbox for a pinned formula, and says how to release it", async () => {
+    // `brew outdated` lists a pinned formula like any other, and `brew
+    // upgrade glib` then exits 1 with "Not upgrading 1 pinned package".
+    // The row stays -- the newer version is real -- but it offers nothing
+    // Homebrew will refuse, and says why and what the user can do.
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const { findByText, getAllByRole, getByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    // Only onyx's.
+    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("checkbox")).toHaveLength(1);
+    expect(getAllByRole("checkbox")[0]).toHaveAccessibleName("Select onyx for update");
+    expect(getByText("Pinned")).toBeInTheDocument();
+    expect(
+      getByText(
+        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run brew unpin glib in Terminal; Canager will offer the update the next time it checks.",
+      ),
+    ).toBeInTheDocument();
+    // Counted with what Canager cannot update, not as an available update.
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+  });
+
+  it("names the cask form of the unpin command for a pinned cask", async () => {
+    // `brew unpin <name>` resolves a formula first; `--cask` makes it
+    // release the cask even when a formula shares the name.
+    updates = [snapshot.updates[0], { ...snapshot.updates[1], blocked: "Pinned" }];
+    const { findByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText(/run brew unpin --cask onyx in Terminal/);
+  });
+
+  it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {
+    // Selected while it was not pinned; a refresh since says it is. The
+    // selection outlives the row's checkbox, so `isActionable` has to be
+    // what filters the batch, or `brew upgrade --formula glib` would be
+    // planned anyway (and refused by `Session::issue_plan`).
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+      useUiStore.getState().toggleUpdate(onyxKey);
+    });
+
+    const { findByText, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+
+    await findByRole("dialog");
+    expect(
+      calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name),
+    ).toEqual(["onyx"]);
+  });
+
   it("offers no Update button and no checkbox for a pip package, and points at pipx or uv instead", async () => {
     // pip is read-only by design: its plan() refuses every operation with
     // "unsupported: pip is read-only in Canager; use pipx or uv to manage

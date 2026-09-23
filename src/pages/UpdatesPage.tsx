@@ -14,6 +14,7 @@ import {
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import type { SourceNoticeSpec } from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
@@ -253,8 +254,8 @@ export function UpdatesPage() {
   }, [snapshot]);
 
   /**
-   * Whether this row may offer an Update button and a checkbox. Three
-   * independent reasons it may not, and the wire now carries all three:
+   * Whether this row may offer an Update button and a checkbox. Four
+   * independent reasons it may not, and the wire carries all four:
    *
    * - `checkable: false` -- the adapter could not establish what the remote
    *   version is.
@@ -267,14 +268,19 @@ export function UpdatesPage() {
    *   candidates are still listed because `refresh` carries the last
    *   round's forward. `ollama pull` against a daemon that is not
    *   listening cannot succeed.
+   * - `blocked` -- the only one about this package rather than its
+   *   source: the tool will refuse to update it (a pinned Homebrew
+   *   formula or cask; `brew upgrade` of it exits 1).
    *
    * `read_only_reason` replaced a hardcoded list of adapter ids on the
    * front end. `Session::issue_plan` applies the same conjunction in Rust
-   * (spec §2.5), so a stale snapshot costs an error message, not a wrong
-   * command.
+   * (spec §2.5 for the source, `blocked_upgrade` in
+   * crates/canager-core/src/session/plans.rs for the package), so a stale
+   * snapshot costs an error message, not a wrong command.
    */
   const isActionable = (candidate: UpdateCandidate): boolean =>
     candidate.checkable &&
+    candidate.blocked === null &&
     !readOnlyReasons.has(candidate.key.instance_id) &&
     !unavailableInstances.has(candidate.key.instance_id);
 
@@ -312,11 +318,10 @@ export function UpdatesPage() {
   // `isActionable` itself, not a second copy of its conditions. This used
   // to re-spell all three of them forty lines below where the predicate is
   // defined, which agreed with it exactly and would have stopped agreeing
-  // the moment a fourth condition arrived (per-package actionability,
-  // spec §8): the button and the count would drop the row, a selection
-  // made before that refresh would still reach the batch, `issue_plan`
-  // would pass it -- its gate is per *instance* -- and the tool's refusal
-  // would come back as raw English.
+  // the moment a fourth condition arrived -- and one did, `blocked`
+  // (per-package actionability, spec §8). With a copy, the button and the
+  // count would drop a pinned row while a selection made before that
+  // refresh still reached the batch, to be refused by `issue_plan`.
   const selectedVisible = useMemo(
     () =>
       visibleUpdates.filter(
@@ -433,8 +438,19 @@ export function UpdatesPage() {
    * source's notice under its heading now, and the row keeps its own
    * description back.
    */
-  const rowDescription = (candidate: UpdateCandidate): string =>
-    candidate.checkable ? descriptionFor(candidate) : cannotCheckText(candidate);
+  //
+  // A blocked row says why in place of its blurb, for the same reason an
+  // uncheckable one does: it is the one thing on the row the user has to
+  // read to understand why there is no button. "Could not check" wins
+  // when both are true, since without a check there is no update to block.
+  const rowDescription = (candidate: UpdateCandidate): string => {
+    if (!candidate.checkable) return cannotCheckText(candidate);
+    if (candidate.blocked !== null) {
+      const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
+      return t(copy.description, copy.values(candidate.key));
+    }
+    return descriptionFor(candidate);
+  };
 
   // How many rows `cannotCheckText` gave the short sentence in place of
   // the tool's own words: exactly its `cannotCheckShort` branch, an
@@ -673,28 +689,36 @@ export function UpdatesPage() {
         // exists to say. A package's own blurb keeps the single
         // line: it is a nicety, not something the user is being
         // asked to act on.
-        wrapDescription={!candidate.checkable}
+        wrapDescription={!candidate.checkable || candidate.blocked !== null}
         // Capability first when both apply: "Read-only" is the fact
         // that no button will ever appear on this row, whatever the
         // next refresh finds. That a lookup also failed is on the
         // row already, in words, via `rowDescription`.
-        // Three states, and there is no fourth: nothing in production
-        // builds a `checkable: true` candidate with a warning on it
-        // any more. There used to be an "N warnings" badge here; brew's
-        // `"pinned"` string and its per-candidate "brew update failed"
-        // sentence were its only two producers, and this branch deleted
-        // both (the second is now `InstanceNote::IndexMayBeStale`, a
-        // notice on the source rather than a count on a row). The badge
-        // outlived them, unreachable, which is the exact shape of defect
-        // this phase keeps finding.
+        // There is no "N warnings" state: nothing in production builds a
+        // `checkable: true` candidate with a warning on it any more.
+        // That badge's only two producers were brew's `"pinned"` string
+        // and its per-candidate "brew update failed" sentence, and this
+        // branch deleted both (the second is now
+        // `InstanceNote::IndexMayBeStale`, a notice on the source rather
+        // than a count on a row). The badge outlived them, unreachable,
+        // which is the exact shape of defect this phase keeps finding.
+        //
+        // The pin came back as `blocked`, with a badge of its own: checked,
+        // newer version known, and the tool will not install it. The badge
+        // names why ("Pinned") and comes after "could not check" for the
+        // same reason `rowDescription` puts it there.
         badgeText={
           readOnly
             ? t("updates.readOnly")
             : !candidate.checkable
               ? t("updates.cannotCheck")
-              : t("updates.available")
+              : candidate.blocked !== null
+                ? t(UPDATE_BLOCKED_KEYS[candidate.blocked].badge)
+                : t("updates.available")
         }
-        badgeVariant={readOnly || !candidate.checkable ? "neutral" : "info"}
+        badgeVariant={
+          readOnly || !candidate.checkable || candidate.blocked !== null ? "neutral" : "info"
+        }
         primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
         onPrimaryAction={
           isActionable(candidate) ? () => openConfirm([candidate]) : undefined

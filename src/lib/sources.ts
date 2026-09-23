@@ -4,6 +4,7 @@
  * backend; these are presentational facts about what arrives over the wire.
  */
 import type {
+  ArtifactKey,
   ManagerInstance,
   ReadOnlyReason,
   SourceError,
@@ -238,17 +239,38 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
 }
 
+/** What `UPDATE_BLOCKED_KEYS` holds for one reason. */
+interface UpdateBlockedCopy {
+  /** The row's badge on the Updates page, in place of "Update". */
+  badge: string;
+  /** The row's description: why, and what the user can do about it. */
+  description: string;
+  /** What `description` interpolates, from the row's own key. */
+  values: (key: ArtifactKey) => Record<string, string>;
+  /** `planErrorMessage`'s sentence for the gate's `update_blocked`
+   *  refusal, which only a stale Updates page can reach. */
+  refused: string;
+}
+
 /**
  * The copy for each reason the tool will refuse to update one package
  * (`UpdateCandidate.blocked`). A `Record` over the whole `UpdateBlocked`
  * union: a variant added there without copy here fails `tsc`, where a
  * `switch` with a default branch would render nothing and compile.
- *
- * `refused` is `planErrorMessage`'s sentence for the gate's
- * `update_blocked` refusal (a stale Updates page).
  */
-export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, { refused: string }> = {
+export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   Pinned: {
+    badge: "updates.blocked.Pinned.badge",
+    description: "updates.blocked.Pinned.description",
+    // The command that releases the pin, for the user to run themselves:
+    // Canager does not unpin, which would be a new write operation.
+    // brew's `parse_outdated` is `Pinned`'s only producer, so every key
+    // here is a formula or a cask. `--cask` because `brew unpin <name>`
+    // resolves a formula first (`to_resolved_formulae_to_casks` in
+    // Homebrew's `cmd/unpin.rb`), and a formula can share a cask's name.
+    values: (key) => ({
+      command: key.kind === "Cask" ? `brew unpin --cask ${key.name}` : `brew unpin ${key.name}`,
+    }),
     refused: "updates.blocked.Pinned.refused",
   },
 };
