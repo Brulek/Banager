@@ -309,12 +309,27 @@ pub enum Outcome {
     /// artifact exactly as it was before. A cancel that lost the race to the
     /// command finishing is `Succeeded`, not this.
     Cancelled,
-    NeedsAttention(String),
+    /// The command reported success but reconcile disagrees. Carries
+    /// which disagreement, never a sentence: the front end words it in the
+    /// user's language (the drawer and the operation bar both show it).
+    NeedsAttention(Attention),
     Failed {
         exit_code: Option<i32>,
         summary: String,
     },
     Unconfirmed,
+}
+
+/// What reconcile found that the command's own success did not account
+/// for. See [`Outcome::NeedsAttention`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Attention {
+    /// An install exited 0 and the item is not installed.
+    NotInstalledAfterInstall,
+    /// An uninstall exited 0 and the item is still installed.
+    StillInstalledAfterUninstall,
+    /// An upgrade exited 0 and the item is no longer installed at all.
+    GoneAfterUpgrade,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -493,6 +508,17 @@ mod tests {
         let json = serde_json::to_string(&outcome).expect("serialize");
         let back: Outcome = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(outcome, back);
+    }
+
+    #[test]
+    fn test_needs_attention_is_a_bare_variant_name_on_the_wire() {
+        // `src/lib/types.ts` mirrors this as `{ NeedsAttention: Attention }`
+        // with `Attention` a union of bare strings, and `format.ts` builds
+        // the locale key from that string.
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::GoneAfterUpgrade)).unwrap(),
+            r#"{"NeedsAttention":"GoneAfterUpgrade"}"#
+        );
     }
 
     #[test]

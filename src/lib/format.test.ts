@@ -46,4 +46,19 @@ describe("outcomeKey", () => {
     expect(en.operations.outcome.Cancelled).toBe("You cancelled this");
     expect(zhCN.operations.outcome.Cancelled).toBe("你已取消");
   });
+
+  it("words each NeedsAttention from the locale files, not from Rust's English", () => {
+    // It used to carry Rust's own sentence ("package disappeared after
+    // upgrade") and the drawer and the operation bar printed it inside the
+    // translated frame, so a Chinese user read English there.
+    const gone: Outcome = { NeedsAttention: "GoneAfterUpgrade" };
+    expect(outcomeKey(gone)).toBe("NeedsAttention.GoneAfterUpgrade");
+    expect(outcomeArgs(gone)).toEqual({});
+    expect(en.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe(
+      "Needs attention: the update reported success, but it's no longer installed",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe(
+      "需要留意：更新命令显示成功，但更新后它已不见了",
+    );
+  });
 });

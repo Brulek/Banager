@@ -137,15 +137,13 @@ describe("types", () => {
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {
     const succeeded: Outcome = "Succeeded";
-    const needsAttention: Outcome = {
-      NeedsAttention: "command succeeded but the package is not installed",
-    };
+    const needsAttention: Outcome = { NeedsAttention: "GoneAfterUpgrade" };
     const failed: Outcome = { Failed: { exit_code: 1, summary: "boom" } };
 
     expect(roundTrip(succeeded)).toBe("Succeeded");
-    expect(roundTrip(needsAttention)).toEqual({
-      NeedsAttention: "command succeeded but the package is not installed",
-    });
+    // What `model.rs`'s `test_needs_attention_is_a_bare_variant_name_on_the_wire`
+    // asserts serde emits.
+    expect(JSON.stringify(needsAttention)).toBe('{"NeedsAttention":"GoneAfterUpgrade"}');
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
   });

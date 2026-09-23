@@ -13,8 +13,8 @@ use async_trait::async_trait;
 use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+    ArtifactKey, ArtifactKind, Attention, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
+    OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
@@ -170,7 +170,7 @@ async fn test_succeeded_install_absent_needs_attention() {
     let outcome = run_case(OpKind::Install, ReconcileBehavior::Present(false)).await;
     assert_eq!(
         outcome,
-        Outcome::NeedsAttention("command succeeded but the package is not installed".to_string())
+        Outcome::NeedsAttention(Attention::NotInstalledAfterInstall)
     );
 }
 
@@ -191,7 +191,7 @@ async fn test_succeeded_uninstall_present_needs_attention() {
     let outcome = run_case(OpKind::Uninstall, ReconcileBehavior::Present(true)).await;
     assert_eq!(
         outcome,
-        Outcome::NeedsAttention("command succeeded but the package is still installed".to_string())
+        Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
     );
 }
 
@@ -212,7 +212,7 @@ async fn test_succeeded_upgrade_absent_needs_attention() {
     let outcome = run_case(OpKind::Upgrade, ReconcileBehavior::Present(false)).await;
     assert_eq!(
         outcome,
-        Outcome::NeedsAttention("package disappeared after upgrade".to_string())
+        Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
     );
 }
 

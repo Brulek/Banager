@@ -1,8 +1,8 @@
 use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
-    AdapterId, ArtifactKey, ArtifactKind, InstanceId, ManagerInstance, OpKind, OpStatus, Outcome,
-    Plan, ResourceLock,
+    AdapterId, ArtifactKey, ArtifactKind, Attention, InstanceId, ManagerInstance, OpKind, OpStatus,
+    Outcome, Plan, ResourceLock,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -498,18 +498,14 @@ impl OperationManager {
                         if r.present {
                             Outcome::Succeeded
                         } else {
-                            Outcome::NeedsAttention(
-                                "command succeeded but the package is not installed".to_string(),
-                            )
+                            Outcome::NeedsAttention(Attention::NotInstalledAfterInstall)
                         }
                     }
                     OpKind::Uninstall => {
                         if !r.present {
                             Outcome::Succeeded
                         } else {
-                            Outcome::NeedsAttention(
-                                "command succeeded but the package is still installed".to_string(),
-                            )
+                            Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
                         }
                     }
                     OpKind::Upgrade => {
@@ -520,7 +516,7 @@ impl OperationManager {
                         if r.present {
                             Outcome::Succeeded
                         } else {
-                            Outcome::NeedsAttention("package disappeared after upgrade".to_string())
+                            Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
                         }
                     }
                 },

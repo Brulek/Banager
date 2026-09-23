@@ -174,8 +174,16 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
   // src/components/OperationBar.tsx and src/components/LogDrawer.tsx:
   // `t(\`operations.outcome.${outcomeKey(...)}\`)` over every string
   // `outcomeKey()` can return (src/lib/format.ts), which in turn mirrors
-  // `Outcome`'s variant names (src/lib/types.ts).
-  "operations.outcome": ["Succeeded", "Cancelled", "Unconfirmed", "NeedsAttention", "Failed"],
+  // `Outcome`'s variant names and `Attention`'s (src/lib/types.ts).
+  "operations.outcome": [
+    "Succeeded",
+    "Cancelled",
+    "Unconfirmed",
+    "NeedsAttention.NotInstalledAfterInstall",
+    "NeedsAttention.StillInstalledAfterUninstall",
+    "NeedsAttention.GoneAfterUpgrade",
+    "Failed",
+  ],
 };
 
 /**

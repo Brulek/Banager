@@ -137,7 +137,11 @@
       "Succeeded": "已成功",
       "Cancelled": "你已取消",
       "Unconfirmed": "结果未确认",
-      "NeedsAttention": "需要留意：{{message}}",
+      "NeedsAttention": {
+        "NotInstalledAfterInstall": "需要留意：安装命令显示成功，但实际并没有装上",
+        "StillInstalledAfterUninstall": "需要留意：卸载命令显示成功，但实际仍未移除",
+        "GoneAfterUpgrade": "需要留意：更新命令显示成功，但更新后它已不见了"
+      },
       "Failed": "失败：{{summary}}"
     }
   },

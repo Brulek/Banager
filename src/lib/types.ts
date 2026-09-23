@@ -9,11 +9,17 @@ export type OpStatus =
   | "Verifying"
   | "Done";
 export type DetectOutcome = "Found" | "Missing";
+// Rust `Attention`: which way reconcile contradicted a command that
+// reported success. Worded by the front end, per variant.
+export type Attention =
+  | "NotInstalledAfterInstall"
+  | "StillInstalledAfterUninstall"
+  | "GoneAfterUpgrade";
 export type Outcome =
   | "Succeeded"
   | "Cancelled"
   | "Unconfirmed"
-  | { NeedsAttention: string }
+  | { NeedsAttention: Attention }
   | { Failed: { exit_code: number | null; summary: string } };
 export interface ArtifactKey {
   instance_id: string;

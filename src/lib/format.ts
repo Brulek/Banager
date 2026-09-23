@@ -12,16 +12,18 @@ export function displayToken(token: string): string {
   return `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The `operations.outcome.*` key suffix for an Outcome, mirroring its externally tagged variant name. */
+/** The `operations.outcome.*` key suffix for an Outcome, mirroring its
+ *  externally tagged variant name -- and, for `NeedsAttention`, which
+ *  `Attention` it carries, since each has its own sentence. */
 export function outcomeKey(outcome: Outcome): string {
   if (typeof outcome === "string") return outcome;
-  if ("NeedsAttention" in outcome) return "NeedsAttention";
+  if ("NeedsAttention" in outcome) return `NeedsAttention.${outcome.NeedsAttention}`;
   return "Failed";
 }
 
 /** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */
 export function outcomeArgs(outcome: Outcome): Record<string, unknown> {
   if (typeof outcome === "string") return {};
-  if ("NeedsAttention" in outcome) return { message: outcome.NeedsAttention };
+  if ("NeedsAttention" in outcome) return {};
   return { summary: outcome.Failed.summary };
 }
