@@ -4,7 +4,9 @@ import {
   hasSourceNotice,
   isAvailable,
   notActionableMessage,
+  openOllamaErrorMessage,
   parseNotActionable,
+  parseOpenOllamaFailure,
   planErrorMessage,
   sourceNoticesFor,
 } from "./sources";
@@ -286,6 +288,46 @@ describe("planErrorMessage", () => {
     // copy must not interpolate it.
     expect(planErrorMessage(fakeT, '{"kind":"source_gone"}', "brew:/opt/homebrew")).toBe(
       "planRefused.sourceGone",
+    );
+  });
+});
+
+describe("parseOpenOllamaFailure", () => {
+  it("reads the two payloads open_ollama_app rejects with", () => {
+    // The same strings src-tauri/src/ipc.rs locks in
+    // `test_open_ollama_failure_payloads_are_the_two_the_front_end_decodes`.
+    expect(parseOpenOllamaFailure('{"kind":"ollama_open_failed","reason":"not_installed"}')).toBe(
+      "not_installed",
+    );
+    expect(parseOpenOllamaFailure('{"kind":"ollama_open_failed","reason":"launch_failed"}')).toBe(
+      "launch_failed",
+    );
+  });
+
+  it("is null for anything else, including a reason this build does not know", () => {
+    expect(parseOpenOllamaFailure('{"kind":"ollama_open_failed","reason":"something_new"}')).toBeNull();
+    expect(
+      parseOpenOllamaFailure('{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}'),
+    ).toBeNull();
+    expect(parseOpenOllamaFailure("No such file or directory (os error 2)")).toBeNull();
+    expect(parseOpenOllamaFailure("null")).toBeNull();
+    expect(parseOpenOllamaFailure("")).toBeNull();
+  });
+});
+
+describe("openOllamaErrorMessage", () => {
+  it("gives each failure its own copy, never the raw JSON", () => {
+    expect(
+      openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"not_installed"}'),
+    ).toBe("sourceNotice.openOllamaFailed.notInstalled");
+    expect(
+      openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"launch_failed"}'),
+    ).toBe("sourceNotice.openOllamaFailed.launchFailed");
+  });
+
+  it("shows anything it does not recognise verbatim rather than hiding it", () => {
+    expect(openOllamaErrorMessage(fakeT, "command open_ollama_app not found")).toBe(
+      "command open_ollama_app not found",
     );
   });
 });

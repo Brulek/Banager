@@ -98,6 +98,10 @@
       "description": "Start {{source}} and Canager will list what's in it and check it for updates."
     },
     "openOllama": "Open Ollama",
+    "openOllamaFailed": {
+      "notInstalled": "Canager couldn't find the Ollama app on this Mac. The ollama command you may have installed with Homebrew doesn't include the app — it's a separate download. Get the Ollama app from ollama.com, install it, then press Open Ollama again.",
+      "launchFailed": "macOS couldn't open the Ollama app. Try opening Ollama yourself from your Applications folder. If it won't open there either, download it again from ollama.com and reinstall it."
+    },
     "indexMayBeStale": {
       "title": "“Up to date” may not be accurate for Homebrew",
       "description": "Canager couldn't download Homebrew's latest list of software, so there may be updates it can't see yet. Check your internet connection, then try again.",

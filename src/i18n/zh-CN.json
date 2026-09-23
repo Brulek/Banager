@@ -93,6 +93,10 @@
       "description": "启动 {{source}},Canager 就能列出它里面的内容,也能检查更新。"
     },
     "openOllama": "打开 Ollama",
+    "openOllamaFailed": {
+      "notInstalled": "Canager 在这台 Mac 上找不到 Ollama 应用。用 Homebrew 等方式装的 ollama 命令行工具并不包含这个应用，它需要单独下载。请到 ollama.com 下载并安装 Ollama 应用，然后再点一次“打开 Ollama”。",
+      "launchFailed": "macOS 没能打开 Ollama 应用。请到“应用程序”文件夹里自己打开 Ollama 试试。如果在那里也打不开，请从 ollama.com 重新下载并安装。"
+    },
     "indexMayBeStale": {
       "title": "Homebrew 这里的「已是最新」可能不准",
       "description": "Canager 没能下载 Homebrew 最新的软件目录,所以可能有更新它还看不到。检查一下网络连接,然后重试。",

@@ -10,6 +10,12 @@ export interface SourceNoticeProps {
   title: string;
   description?: string;
   action?: SourceNoticeAction;
+  /**
+   * What went wrong the last time `action` was pressed, already in the
+   * user's language. Shown under the description rather than in place of
+   * it: the notice is still true, and its button can be pressed again.
+   */
+  error?: string;
 }
 
 const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
@@ -28,7 +34,7 @@ const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.
  */
-export function SourceNotice({ variant, title, description, action }: SourceNoticeProps) {
+export function SourceNotice({ variant, title, description, action, error }: SourceNoticeProps) {
   return (
     <div
       className={`mb-2 mt-1 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm ${VARIANT_CLASSES[variant]}`}
@@ -36,6 +42,11 @@ export function SourceNotice({ variant, title, description, action }: SourceNoti
       <div className="min-w-0">
         <p className="font-medium">{title}</p>
         {description ? <p className="mt-0.5 text-xs opacity-80">{description}</p> : null}
+        {error ? (
+          <p role="alert" className="mt-1 text-xs font-medium">
+            {error}
+          </p>
+        ) : null}
       </div>
       {action ? (
         <button

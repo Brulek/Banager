@@ -564,6 +564,57 @@ describe("InstalledPage", () => {
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
   });
+
+  it("says why Open Ollama did nothing when there is no Ollama app to open", async () => {
+    // The button used to be able to fail in silence: the backend never
+    // read `open`'s exit status, and even once it did, its structured
+    // rejection had nothing on this side to turn it into words. A snapshot
+    // taken before the app was removed still shows the button, so this is
+    // the path a real person can reach.
+    const ollamaSnapshot: Snapshot = {
+      generation: 1,
+      detect: "Found",
+      instances: [
+        {
+          id: "ollama:http://127.0.0.1:11434",
+          adapter_id: "ollama",
+          exe_path: "/usr/local/bin/ollama",
+          prefix: "/usr/local",
+          scope: "User",
+          version: null,
+          status: { unavailable: "NotRunning", notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [],
+      updates: [],
+      refreshed_at: 1789700000,
+      stale: false,
+      errors: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(ollamaSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "open_ollama_app")
+        return Promise.reject('{"kind":"ollama_open_failed","reason":"not_installed"}');
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByRole, queryByText } = renderWithProviders(
+      <SnapshotStatus>
+        <InstalledPage />
+      </SnapshotStatus>,
+    );
+
+    await findByText("Ollama isn't running");
+    fireEvent.click(getByRole("button", { name: "Open Ollama" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/find the Ollama app on this Mac/);
+    expect(alert).toHaveTextContent(/separate download/);
+    expect(queryByText(/ollama_open_failed/)).not.toBeInTheDocument();
+  });
   it("keeps a stopped source's rows on screen but offers no Uninstall on them", async () => {
     // `refresh` carries an unavailable source's last known artifacts
     // forward, which is what makes the notice's "below is what Canager saw

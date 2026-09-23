@@ -132,8 +132,11 @@ export function sourceNoticesFor(
   const unavailable = instance.status.unavailable;
   if (unavailable === "NotRunning") {
     // One state, one sentence, named through `sourceLabel` so it reads in
-    // the user's language. Ollama is the only source Canager can start, so
-    // it is the only one whose notice carries a button -- but it used to
+    // the user's language. Ollama is the only source Canager can start --
+    // and `OllamaAdapter::detect` says NotRunning only when it can: the
+    // daemon is on this Mac and Ollama.app is installed; otherwise it says
+    // NotResponding -- so it is the only one whose notice carries a
+    // button. It used to
     // get a second wording (`sourceNotice.ollamaNotRunning`) to go with the
     // button, and the refusal `issue_plan` returns for that very same
     // stopped Ollama kept using this one. Two sentences for one state; the
@@ -329,4 +332,56 @@ function isSourceGone(message: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Why the Open Ollama button could not open Ollama, exactly as
+ * `open_ollama_failed_json` in src-tauri/src/ipc.rs puts it on the wire.
+ *
+ * `not_installed`: there is no Ollama.app in /Applications or
+ * ~/Applications. `detect` withholds the button in that case, so this is
+ * reached only through a snapshot taken before the app was removed -- but
+ * it is the case the whole fix is about (`brew install ollama` installs
+ * the command-line tool and no app), so its copy says what to do, not
+ * merely that something failed.
+ *
+ * `launch_failed`: the app is there and `open -a Ollama` said no.
+ */
+export type OpenOllamaFailure = "not_installed" | "launch_failed";
+
+const OPEN_OLLAMA_FAILURE_KEYS: Record<OpenOllamaFailure, string> = {
+  not_installed: "sourceNotice.openOllamaFailed.notInstalled",
+  launch_failed: "sourceNotice.openOllamaFailed.launchFailed",
+};
+
+/**
+ * Reads the payload `open_ollama_app` rejects with, the same way
+ * `parseNotActionable` reads the actionability gate's. `null` for anything
+ * else, including a `reason` this build does not know -- which
+ * `openOllamaErrorMessage` then shows verbatim rather than guessing at.
+ */
+export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const p = parsed as Record<string, unknown>;
+  if (p.kind !== "ollama_open_failed") return null;
+  return p.reason === "not_installed" || p.reason === "launch_failed" ? p.reason : null;
+}
+
+/**
+ * What a rejected Open Ollama press should read as: the localised copy for
+ * a recognised failure, otherwise `raw` verbatim -- the same fallback
+ * `planErrorMessage` uses, so an unexpected error is still visible rather
+ * than swallowed. Before this existed the button's failures were never
+ * shown at all; the backend reported nothing, and so there was nothing to
+ * render.
+ */
+export function openOllamaErrorMessage(t: Translate, raw: string): string {
+  const reason = parseOpenOllamaFailure(raw);
+  return reason ? t(OPEN_OLLAMA_FAILURE_KEYS[reason]) : raw;
 }

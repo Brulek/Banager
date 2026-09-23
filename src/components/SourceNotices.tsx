@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useOpenOllamaApp, useRefresh } from "../lib/queries";
-import type { SourceNoticeSpec } from "../lib/sources";
+import { openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
 import { SourceNotice } from "./SourceNotice";
 
 export interface SourceNoticesProps {
@@ -41,6 +41,15 @@ export function SourceNotices({ notices }: SourceNoticesProps) {
                       ? () => openOllamaApp.mutate()
                       : () => refresh.mutate(),
                 }
+              : undefined
+          }
+          // Only the notice whose button failed says so. Without this a
+          // rejected Open Ollama rendered nothing at all -- the same
+          // silence the backend used to produce by never reading `open`'s
+          // exit status.
+          error={
+            notice.action?.id === "openOllama" && openOllamaApp.error
+              ? openOllamaErrorMessage(t, openOllamaApp.error.message)
               : undefined
           }
         />
