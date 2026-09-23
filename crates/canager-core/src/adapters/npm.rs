@@ -156,7 +156,52 @@ impl NpmAdapter {
             .await;
         let prefix = match &prefix_output {
             Ok(o) if o.exit_code == Some(0) => PathBuf::from(o.stdout.trim()),
-            _ => return Vec::new(),
+            // npm is on `PATH` but would not even answer `npm prefix -g`
+            // -- a malformed `~/.npmrc` makes every npm command exit
+            // non-zero, for instance. Every other adapter that finds its
+            // executable but cannot talk to it (brew/cargo/pipx/uv/ollama,
+            // all on a failed `--version`) still reports the instance,
+            // marked unavailable, so the user is told; returning
+            // `Vec::new()` here instead made npm vanish with no notice and
+            // no `SourceError` -- the exact vanishing act `refresh()`'s
+            // carry-forward exists to prevent, one level below where it
+            // looks for it.
+            //
+            // Every other adapter's id survives this because it never
+            // depended on the command that just failed (brew's three
+            // candidate paths, cargo's `CARGO_HOME`-or-`~/.cargo`) --  npm
+            // has no such fallback; `npm prefix -g`'s answer *is* the only
+            // source of its id, and there is no env-level default global
+            // prefix to substitute. So this id is built from the resolved
+            // executable path instead: stable across rounds of this same
+            // failure (`resolve_exe` answers the same way each time), and
+            // never collides with a real `npm:{prefix}` id, since a real
+            // global prefix never ends in `/bin/npm`. It will simply not
+            // match the id a later, successful round produces -- carrying
+            // this round's non-existent inventory forward to that one
+            // would be wrong access anyway; see `refresh.rs`'s per-instance
+            // carry-forward, which is keyed on exactly this id being
+            // stable while it recurs and does not promise continuity
+            // across a source going from broken to working.
+            _ => {
+                return vec![ManagerInstance {
+                    id: format!("npm:{}", exe_path.display()),
+                    adapter_id: self.meta.id.clone(),
+                    exe_path: exe_path.clone(),
+                    prefix: exe_path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| PathBuf::from("/")),
+                    scope: Scope::User,
+                    status: InstanceStatus {
+                        unavailable: Some(Unavailable::NotResponding),
+                        notes: Vec::new(),
+                    },
+                    version: None,
+                    unverified_version: None,
+                    read_only_reason: None,
+                }];
+            }
         };
         let version_spec = CommandSpec {
             program: exe_path.clone(),
@@ -862,6 +907,57 @@ mod tests {
         assert!(
             runner.calls().is_empty(),
             "no subprocess should run when npm isn't found"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_reports_unavailable_instead_of_vanishing_when_npm_prefix_fails() {
+        // A malformed ~/.npmrc makes every npm command exit non-zero: npm
+        // itself is on PATH, but `npm prefix -g` -- the very command this
+        // adapter's id comes from -- cannot answer. Returning `Vec::new()`
+        // here used to make npm disappear with no unavailable notice and
+        // no SourceError, indistinguishable from npm not being installed
+        // at all. brew/cargo/pipx/uv/ollama all report an instance marked
+        // unavailable on an equivalent failure (their own `--version`);
+        // npm must too.
+        let (dir, npm_path, env) = detect_fixture("prefix-fails");
+        let npm_path_str = npm_path.to_str().expect("utf8 path");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![npm_path_str, "prefix", "-g"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "npm error config Invalid npmrc".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = NpmAdapter::new(runner.clone());
+        let instances = adapter.detect(&env).await;
+        // Stable across repeated failures of this same shape: calling
+        // detect again while npm is still broken must not fabricate a new
+        // id each time, or refresh()'s carry-forward (keyed on the
+        // instance id recurring) could never accumulate anything for it.
+        let instances_again = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+        assert!(!instances[0].available());
+        assert_eq!(instances[0].version, None);
+        assert_eq!(instances_again.len(), 1);
+        assert_eq!(instances[0].id, instances_again[0].id);
+        // And it must not collide with a real `npm:{prefix}` id: no real
+        // global prefix ends in `/bin/npm`.
+        assert_eq!(instances[0].id, format!("npm:{}", npm_path.display()));
+        assert_eq!(
+            runner.calls().len(),
+            2,
+            "must not run --version after prefix already failed to answer, across both detect() calls"
         );
     }
 

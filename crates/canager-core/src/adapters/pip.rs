@@ -5,8 +5,8 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceStatus, ManagerInstance,
-    OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, UpdateCandidate,
-    UpdateChannel,
+    OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, Scope, SearchHit, Unavailable,
+    UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -121,30 +121,41 @@ impl PipAdapter {
                 Ok(o) if o.exit_code == Some(0) => second_token(&o.stdout),
                 _ => None,
             };
-            let Some(version) = version else {
-                continue; // no pip module for this interpreter
-            };
             let prefix = python_path
                 .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| PathBuf::from("/"));
-            let unverified_version = self.meta.unverified_version(&Some(version.clone()));
+            let unverified_version = self.meta.unverified_version(&version);
             found.push(ManagerInstance {
                 id: format!("pip:{}", python_path.display()),
                 adapter_id: self.meta.id.clone(),
                 exe_path: python_path,
                 prefix,
                 scope: Scope::User,
-                // pip's state axis: `detect()` only ever pushes an
-                // instance whose `--version` answered, so there is nothing
-                // unavailable about it. Read-only is the *capability* axis
-                // below, and the two are independent.
-                status: InstanceStatus::default(),
-                version: Some(version),
+                // The state axis. `version` is `None` exactly when this
+                // interpreter would not run `-m pip --version` -- no pip
+                // module for it, or pip crashed, or it timed out; either
+                // way this Python was found but pip could not be reached
+                // through it, the same "found the executable, it didn't
+                // answer" state brew/cargo/pipx/uv/ollama report as
+                // `NotResponding` on their own failed `--version`. This
+                // instance's id needs no command to exist -- it is built
+                // from `python_path`, which `resolve_exe` already
+                // resolved -- so there is no reason to drop the row
+                // instead of reporting it: doing that used to make this
+                // interpreter's pip disappear with no notice and no
+                // `SourceError`, indistinguishable from "there never was a
+                // pip here to ask about".
+                status: InstanceStatus {
+                    unavailable: version.is_none().then_some(Unavailable::NotResponding),
+                    notes: Vec::new(),
+                },
+                version,
                 unverified_version,
                 // Not a property of this machine: pip offers no
                 // install/uninstall path Canager can safely drive, so
-                // every pip instance anywhere is read-only by design.
+                // every pip instance anywhere is read-only by design --
+                // whether or not this round could reach it.
                 read_only_reason: Some(ReadOnlyReason::ByDesign),
             });
         }
@@ -510,6 +521,71 @@ mod tests {
             Some(ReadOnlyReason::ByDesign)
         );
         assert!(!instances[0].writable());
+    }
+
+    #[tokio::test]
+    async fn test_detect_reports_unavailable_instead_of_vanishing_when_pip_module_cannot_be_reached(
+    ) {
+        // The interpreter itself was found on PATH, but `-m pip --version`
+        // did not answer -- no pip module installed for it, or pip
+        // crashed, or it timed out. Every other adapter that finds its
+        // executable but cannot talk to it (brew/cargo/pipx/uv/ollama, all
+        // on a failed `--version`) still reports the instance, marked
+        // unavailable; pip used to `continue` past this interpreter
+        // instead, silently dropping it -- indistinguishable from there
+        // never having been a Python here at all. Unlike npm's id, this
+        // one never depended on the failing command (`python_path` was
+        // already resolved by `resolve_exe`), so there is no reason not to
+        // report it.
+        let dir = std::env::temp_dir().join(format!(
+            "canager-pip-detect-unreachable-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp PATH dir");
+        let python_path = dir.join("python3.14");
+        std::fs::write(&python_path, b"#!/bin/sh\n").expect("write fake python");
+        let python_path_str = python_path.to_str().expect("utf8 path");
+
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![python_path_str, "-m", "pip", "--version"],
+            CommandOutput {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: "No module named pip".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = PipAdapter::new(runner);
+        let env = HostEnv {
+            path_dirs: vec![dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        };
+        let instances = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].id, format!("pip:{}", python_path.display()));
+        assert_eq!(instances[0].version, None);
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding)
+        );
+        assert!(!instances[0].available());
+        // Read-only by design is a property of pip itself, independent of
+        // whether this round could reach it.
+        assert_eq!(
+            instances[0].read_only_reason,
+            Some(ReadOnlyReason::ByDesign)
+        );
     }
 
     #[tokio::test]
