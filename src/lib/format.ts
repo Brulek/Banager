@@ -48,6 +48,7 @@ function faultKey(fault: Fault): string {
       case "Panicked":
       case "SourceGone":
       case "Unsupported":
+      case "HomebrewStillUpdating":
       case "Internal":
         return fault;
       default: {

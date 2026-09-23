@@ -6,7 +6,7 @@ use crate::adapters::{
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceId, InstanceNote,
+    ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, InstanceId, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
     Scope, SearchHit, Unavailable, Warning,
 };
@@ -63,6 +63,11 @@ pub struct BrewAdapter {
     /// runs out the update is left to finish, never killed. See
     /// `maybe_update` for why.
     update_patience: Duration,
+    /// How long an install, upgrade or uninstall waits for a `brew update`
+    /// still running in the background before giving up without having
+    /// started (`Fault::HomebrewStillUpdating`). `OP_UPDATE_WAIT` outside
+    /// tests.
+    op_update_wait: Duration,
     /// How to read the *real* effective UID for the root-refusal check on
     /// every brew subprocess call (not just `detect`, which instead checks
     /// the caller-supplied `HostEnv::euid`). A plain fn pointer (rather than
@@ -115,9 +120,9 @@ impl BrewAdapter {
     ///
     /// It has to exist. The task running `brew update` holds this
     /// instance's update lock, so a `brew update` that never exits would
-    /// leave every later refresh reporting a stale catalogue and every
-    /// install and upgrade on this Homebrew waiting behind it until the app
-    /// is quit. Reaching it stops the update the way every timeout does:
+    /// leave every later refresh reporting it as still running, and every
+    /// install and upgrade on this Homebrew giving up after
+    /// `OP_UPDATE_WAIT`, until the app is quit. Reaching it stops the update the way every timeout does:
     /// SIGTERM first, which git answers by removing its lock files, and a
     /// SIGKILL only if the update is still there a few seconds later. A
     /// hang that ignores SIGTERM too can still leave Homebrew's
@@ -126,6 +131,19 @@ impl BrewAdapter {
     /// for thirty minutes -- not, as the old two-minute timeout did, by any
     /// update that met a slow network.
     const UPDATE_BACKSTOP: Duration = Duration::from_secs(30 * 60);
+
+    /// How long a user's install, upgrade or uninstall waits for a `brew
+    /// update` still running in the background. Without it the only bound
+    /// was `UPDATE_BACKSTOP`, so an update stuck on a dead connection held
+    /// every operation on this Homebrew for half an hour, with a line in
+    /// the log as the only sign. Ten minutes is long enough for a slow but
+    /// working download to finish -- the case waiting is for -- and short
+    /// enough that a stuck one ends the operation with a sentence saying
+    /// so, and nothing changed. The log line the wait prints
+    /// (`operations.logNote.waitingForBrewUpdate`) and the sentence it ends
+    /// with (`operations.outcome.CanagerFailed.HomebrewStillUpdating`)
+    /// both name this number: change them with it.
+    const OP_UPDATE_WAIT: Duration = Duration::from_secs(10 * 60);
 
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
@@ -144,6 +162,7 @@ impl BrewAdapter {
             update_locks: Mutex::new(HashMap::new()),
             update_ttl: Duration::from_secs(6 * 3600),
             update_patience: Self::UPDATE_PATIENCE,
+            op_update_wait: Self::OP_UPDATE_WAIT,
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
             path_exists_fn: |path| path.exists(),
@@ -168,6 +187,13 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_update_patience(mut self, patience: Duration) -> BrewAdapter {
         self.update_patience = patience;
+        self
+    }
+
+    /// Test-only hook to shorten `op_update_wait`.
+    #[cfg(test)]
+    fn with_op_update_wait(mut self, wait: Duration) -> BrewAdapter {
+        self.op_update_wait = wait;
         self
     }
 
@@ -423,33 +449,38 @@ impl BrewAdapter {
         record.running
     }
 
-    /// Waits, cancellably, for any `brew update` still finishing for this
-    /// instance, and returns the lock so the caller can hold it for the
-    /// length of its own command. `None` means the user cancelled while
-    /// waiting and nothing was run.
+    /// Waits, cancellably and for at most `op_update_wait`, for any `brew
+    /// update` still finishing for this instance, and hands back the lock
+    /// so the caller can hold it for the length of its own command.
     ///
     /// The instance's `ResourceLock` does not cover a `brew update` a
     /// refresh has stopped waiting for -- the refresh worker released it
     /// when it moved on -- so without this an install or upgrade could run
     /// while Homebrew is still rewriting the catalogue it installs from.
+    /// Homebrew does not stop that itself: its own `update` lock
+    /// (`var/homebrew/locks/update`) only turns away a second `brew
+    /// update`, and `brew install` never looks at it. Meanwhile `brew
+    /// update` git-merges Homebrew's own Ruby code and `curl`s the package
+    /// list straight over the file an install reads it from.
     async fn wait_for_update(
         &self,
         inst_id: &InstanceId,
         sink: &Arc<dyn EventSink>,
         op_id: OpId,
         cancel: &CancellationToken,
-    ) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    ) -> UpdateWait {
         let lock = self.update_lock_for(inst_id);
         if let Ok(guard) = lock.clone().try_lock_owned() {
-            return Some(guard);
+            return UpdateWait::Ready(guard);
         }
         sink.emit(crate::events::OperationEvent::Note {
             op_id,
             note: crate::events::LogNote::WaitingForBrewUpdate,
         });
         tokio::select! {
-            guard = lock.lock_owned() => Some(guard),
-            _ = cancel.cancelled() => None,
+            guard = lock.lock_owned() => UpdateWait::Ready(guard),
+            _ = cancel.cancelled() => UpdateWait::Cancelled,
+            _ = tokio::time::sleep(self.op_update_wait) => UpdateWait::GaveUp,
         }
     }
 
@@ -678,6 +709,17 @@ enum IndexFreshness {
     MayBeStale,
 }
 
+/// How `BrewAdapter::wait_for_update` ended.
+enum UpdateWait {
+    /// No update is running; hold this for the length of the command.
+    Ready(tokio::sync::OwnedMutexGuard<()>),
+    /// The user pressed Cancel while waiting. Nothing was run.
+    Cancelled,
+    /// The update was still running after `op_update_wait`. Nothing was
+    /// run.
+    GaveUp,
+}
+
 /// What `BrewAdapter` knows about one instance's `brew update`s.
 #[derive(Debug, Default)]
 struct UpdateRecord {
@@ -882,11 +924,15 @@ impl BrewAdapter {
         // summary -- is identical to every other adapter's, so it is
         // `run_plan` and not a hand-kept copy of it.
         self.refuse_if_root()?;
-        let Some(_update_guard) = self
+        let _update_guard = match self
             .wait_for_update(&plan.request.instance_id, &sink, op_id, &cancel)
             .await
-        else {
-            return Ok(Outcome::Cancelled);
+        {
+            UpdateWait::Ready(guard) => guard,
+            UpdateWait::Cancelled => return Ok(Outcome::Cancelled),
+            UpdateWait::GaveUp => {
+                return Ok(Outcome::CanagerFailed(Fault::HomebrewStillUpdating));
+            }
         };
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
@@ -2781,6 +2827,48 @@ mod plan_execute_tests {
             )),
             "Canager's own remark went out as tool output: {:?}",
             sink.snapshot()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_stops_waiting_for_a_stuck_brew_update_without_running_anything() {
+        // A `brew update` stuck on a dead connection used to hold every
+        // install, upgrade and uninstall on this Homebrew for up to
+        // `UPDATE_BACKSTOP`, half an hour. The wait is bounded on its own
+        // now, and ends with a reason the user can read, having run
+        // nothing.
+        let runner = runner_with_slow_update(Duration::from_secs(10));
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_update_patience(Duration::from_millis(100))
+            .with_op_update_wait(Duration::from_millis(200));
+        let inst = test_instance();
+        adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
+        let started = Instant::now();
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(
+            outcome,
+            Outcome::CanagerFailed(Fault::HomebrewStillUpdating)
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the wait must end at its own bound, took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            !runner
+                .calls()
+                .iter()
+                .any(|c| c.get(1).map(String::as_str) == Some("install")),
+            "nothing may be installed alongside a running `brew update`: {:?}",
+            runner.calls()
         );
     }
 

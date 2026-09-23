@@ -191,6 +191,7 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "CanagerFailed.ProgramMissing",
     "CanagerFailed.SpawnFailed",
     "CanagerFailed.Unsupported",
+    "CanagerFailed.HomebrewStillUpdating",
     "CanagerFailed.Internal",
   ],
 };

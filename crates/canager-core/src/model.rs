@@ -359,6 +359,11 @@ pub enum Fault {
     /// The source cannot do this through Canager (pip is read-only).
     /// Nothing was started.
     Unsupported,
+    /// A `brew update` was still running in the background after Canager
+    /// had waited ten minutes for it, so the command was not started:
+    /// installing while Homebrew rewrites its own list of software is not
+    /// something Homebrew guards against. Nothing was started.
+    HomebrewStillUpdating,
     /// Something on Canager's side did not add up (an unregistered
     /// adapter, a queue that closed, an error `execute` has no business
     /// returning). A bug in Canager, not a state of the Mac. Nothing was
@@ -583,6 +588,7 @@ mod tests {
             Fault::Panicked,
             Fault::SourceGone,
             Fault::Unsupported,
+            Fault::HomebrewStillUpdating,
             Fault::Internal,
         ] {
             let json = serde_json::to_string(&Outcome::CanagerFailed(fault.clone())).unwrap();

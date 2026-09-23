@@ -24,8 +24,10 @@ pub enum Stream {
 /// user never sees.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogNote {
-    /// An install or upgrade is waiting for a `brew update` a refresh
-    /// started to finish before running its own command.
+    /// An install, upgrade or uninstall is waiting for a `brew update` a
+    /// refresh started to finish before running its own command -- for at
+    /// most ten minutes, and Cancel ends the wait at once. The copy says
+    /// both, since this line is all the user sees while it lasts.
     WaitingForBrewUpdate,
     /// Reading one of the command's streams failed, so nothing more from
     /// that stream reaches the log. `error` is the operating system's own

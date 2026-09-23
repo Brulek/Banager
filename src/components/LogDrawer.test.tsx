@@ -80,7 +80,7 @@ describe("LogDrawer", () => {
       await findByText("==> Pouring jq");
       const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
       expect(lines).toEqual([
-        "正在等待 Homebrew 完成更新…",
+        "Homebrew 还在下载最新的软件目录，Canager 要等它下载完再开始。通常要几分钟，最多等 10 分钟。不想等的话可以点“取消”，现在还什么都没有改动。",
         "==> Pouring jq",
         "Canager 无法继续读取该命令的错误信息（Input/output error (os error 5)），错误信息到此为止。",
       ]);

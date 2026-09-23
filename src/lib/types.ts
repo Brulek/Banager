@@ -25,6 +25,7 @@ export type Fault =
   | { ProgramMissing: { program: string } }
   | { SpawnFailed: { detail: string } }
   | "Unsupported"
+  | "HomebrewStillUpdating"
   | "Internal";
 // `Failed.summary` is only ever the tool's own stderr; Canager's own
 // failures are `CanagerFailed`.

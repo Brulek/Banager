@@ -72,6 +72,7 @@ describe("outcomeKey for Canager's own failures", () => {
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },
     "Unsupported",
+    "HomebrewStillUpdating",
     "Internal",
   ];
 
