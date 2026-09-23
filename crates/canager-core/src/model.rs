@@ -377,9 +377,11 @@ pub struct Plan {
 pub enum Outcome {
     Succeeded,
     /// The user pressed Cancel and the request did not take effect: either
-    /// the command never started, or it was stopped and reconcile shows the
-    /// artifact exactly as it was before. A cancel that lost the race to the
-    /// command finishing is `Succeeded`, not this.
+    /// the command never started, or an install or uninstall was stopped and
+    /// reconcile shows the artifact still absent or still present. An
+    /// upgrade stopped partway is never this but `Unconfirmed`
+    /// (`run_operation`). A cancel that lost the race to the command
+    /// finishing is `Succeeded`, not this.
     Cancelled,
     /// The command reported success but reconcile disagrees. Carries
     /// which disagreement, never a sentence: the front end words it in the
@@ -403,6 +405,11 @@ pub enum Outcome {
     /// be shown properly: the front end could not translate the first
     /// without mangling the second.
     CanagerFailed(Fault),
+    /// Canager cannot tell what the operation did: the reading after it
+    /// failed, or the command was stopped partway (a Cancel or the timeout)
+    /// and what is installed now does not show whether it took effect.
+    /// Every upgrade stopped partway ends here, whatever its version reads
+    /// (`run_operation` in `ops/mod.rs` says why).
     Unconfirmed,
 }
 

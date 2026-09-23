@@ -11,6 +11,12 @@
 //! and after, which is what a skipped upgrade leaves. The tools' own
 //! messages are copied from their source (named on each) for a realistic
 //! log; the outcome depends only on the exit code and the inventories.
+//!
+//! The "stopped partway" cases at the end of the Homebrew and pipx sections
+//! are the opposite: a command the user cancelled, or the timeout stopped,
+//! is `Unconfirmed` whatever its inventory reads, because these tools write
+//! the version it reports partway through an upgrade (the
+//! `Ok(Outcome::Unconfirmed)` arm of `run_operation` cites their lines).
 
 use async_trait::async_trait;
 use canager_core::adapters::brew::BrewAdapter;
@@ -25,6 +31,7 @@ use canager_core::runner::{CommandOutput, CommandRunner, CommandSpec, LineCallba
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 const FIXTURES: &str = "../../adapters/fixtures";
@@ -44,13 +51,39 @@ fn exited_0(stdout: &str, stderr: &str) -> CommandOutput {
     }
 }
 
+/// How a command was stopped partway, as the runner reports it.
+#[derive(Clone, Copy, Debug)]
+enum Stop {
+    /// The user pressed Cancel.
+    Cancel,
+    /// The command ran past its timeout.
+    Timeout,
+}
+
+impl Stop {
+    fn output(self) -> CommandOutput {
+        CommandOutput {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: matches!(self, Stop::Timeout),
+            cancelled: matches!(self, Stop::Cancel),
+        }
+    }
+}
+
 /// Answers each argv with its scripted outputs in order, repeating the
 /// last one -- so an inventory command can read one way before an upgrade
 /// and another way after it. `MockRunner` answers an argv the same way
 /// every time, which covers only the "nothing changed" half.
+///
+/// An output scripted as cancelled (`Stop::Cancel`) is not returned until
+/// the op's Cancel arrives, as a real run is not: `upgrade` presses Cancel
+/// once `awaiting_cancel` says such a command is running.
 #[derive(Default)]
 struct ScriptedRunner {
     scripts: Mutex<HashMap<Vec<String>, Script>>,
+    awaiting_cancel: Notify,
 }
 
 /// How many times an argv has been answered, and its outputs in order.
@@ -69,23 +102,32 @@ impl CommandRunner for ScriptedRunner {
         &self,
         spec: CommandSpec,
         _on_line: Option<LineCallback>,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> Result<CommandOutput, RunnerError> {
         let mut key = vec![spec.program.to_string_lossy().to_string()];
         key.extend(spec.args.iter().cloned());
-        let mut scripts = self.scripts.lock().unwrap();
-        let Some((calls, outputs)) = scripts.get_mut(&key) else {
-            return Err(RunnerError::NoMock(key));
+        let output = {
+            let mut scripts = self.scripts.lock().unwrap();
+            let Some((calls, outputs)) = scripts.get_mut(&key) else {
+                return Err(RunnerError::NoMock(key));
+            };
+            let output = outputs[(*calls).min(outputs.len() - 1)].clone();
+            *calls += 1;
+            output
         };
-        let output = outputs[(*calls).min(outputs.len() - 1)].clone();
-        *calls += 1;
+        if output.cancelled {
+            self.awaiting_cancel.notify_one();
+            cancel.cancelled().await;
+        }
         Ok(output)
     }
 }
 
 /// Submits an upgrade of `name` through a fresh `OperationManager` and
-/// returns its outcome.
+/// returns its outcome. If `runner` is running a command scripted as
+/// cancelled, presses Cancel on the op, as the user would.
 async fn upgrade(
+    runner: &ScriptedRunner,
     adapter: Arc<dyn Adapter>,
     inst: ManagerInstance,
     kind: ArtifactKind,
@@ -103,6 +145,10 @@ async fn upgrade(
     };
     let plan = adapter.plan(&inst, &req).await.expect("plan");
     let op_id = manager.submit(plan);
+    tokio::select! {
+        outcome = manager.wait(op_id) => return outcome.expect("an outcome"),
+        _ = runner.awaiting_cancel.notified() => manager.cancel(op_id),
+    }
     manager.wait(op_id).await.expect("an outcome")
 }
 
@@ -128,6 +174,15 @@ fn brew_info(edit: impl FnOnce(&mut serde_json::Value)) -> String {
     info.to_string()
 }
 
+fn formula<'a>(info: &'a mut serde_json::Value, name: &str) -> &'a mut serde_json::Value {
+    info["formulae"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|f| f["name"] == name)
+        .unwrap_or_else(|| panic!("no formula {name} in the fixture"))
+}
+
 fn cask<'a>(info: &'a mut serde_json::Value, token: &str) -> &'a mut serde_json::Value {
     info["casks"]
         .as_array_mut()
@@ -146,10 +201,29 @@ async fn brew_upgrade_cask(
     runner.script(&[BREW, "upgrade", "--cask", token], vec![upgrade_output]);
     runner.script(&BREW_INFO, infos.iter().map(|i| exited_0(i, "")).collect());
     upgrade(
-        Arc::new(BrewAdapter::new(runner)),
+        &runner,
+        Arc::new(BrewAdapter::new(runner.clone())),
         brew_instance(),
         ArtifactKind::Cask,
         token,
+    )
+    .await
+}
+
+async fn brew_upgrade_formula(
+    name: &str,
+    upgrade_output: CommandOutput,
+    infos: Vec<String>,
+) -> Outcome {
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[BREW, "upgrade", "--formula", name], vec![upgrade_output]);
+    runner.script(&BREW_INFO, infos.iter().map(|i| exited_0(i, "")).collect());
+    upgrade(
+        &runner,
+        Arc::new(BrewAdapter::new(runner.clone())),
+        brew_instance(),
+        ArtifactKind::Formula,
+        name,
     )
     .await
 }
@@ -233,34 +307,81 @@ async fn test_a_formula_upgrade_that_left_its_old_keg_behind_still_reads_as_move
     // read is the linked keg's (`parse_info_installed`), which the upgrade
     // moved to the new one. `aria2` is at 1.37.0_2 in the recording.
     let after = brew_info(|info| {
-        let aria2 = info["formulae"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|f| f["name"] == "aria2")
-            .expect("aria2 in the fixture");
+        let aria2 = formula(info, "aria2");
         let mut new_keg = aria2["installed"][0].clone();
         new_keg["version"] = "1.37.0_3".into();
         aria2["installed"].as_array_mut().unwrap().push(new_keg);
         aria2["linked_keg"] = "1.37.0_3".into();
     });
-    let runner = Arc::new(ScriptedRunner::default());
-    runner.script(
-        &[BREW, "upgrade", "--formula", "aria2"],
-        vec![exited_0("==> Upgrading aria2\n", "")],
-    );
-    runner.script(
-        &BREW_INFO,
-        vec![exited_0(&brew_info(|_| {}), ""), exited_0(&after, "")],
-    );
-    let outcome = upgrade(
-        Arc::new(BrewAdapter::new(runner)),
-        brew_instance(),
-        ArtifactKind::Formula,
+    let outcome = brew_upgrade_formula(
         "aria2",
+        exited_0("==> Upgrading aria2\n", ""),
+        vec![brew_info(|_| {}), after],
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_formula_upgrade_stopped_before_its_new_keg_was_linked_is_unconfirmed() {
+    // I1 in .superpowers/honest-review.md. Homebrew unlinks the old keg,
+    // pours the new one, then links it in `finish` (install.rb:634-637 in
+    // Homebrew 7.0.6). Stopped between pour and link, `installed` lists
+    // both kegs and `linked_keg` is null, so the version read is the last
+    // keg's (`parse_info_installed`): the new one. The version moved, and
+    // the upgrade did not finish: nothing is linked.
+    let after = brew_info(|info| {
+        let aria2 = formula(info, "aria2");
+        let mut new_keg = aria2["installed"][0].clone();
+        new_keg["version"] = "1.37.0_3".into();
+        aria2["installed"].as_array_mut().unwrap().push(new_keg);
+        aria2["linked_keg"] = serde_json::Value::Null;
+    });
+    for stop in [Stop::Cancel, Stop::Timeout] {
+        let outcome = brew_upgrade_formula(
+            "aria2",
+            stop.output(),
+            vec![brew_info(|_| {}), after.clone()],
+        )
+        .await;
+        assert_eq!(outcome, Outcome::Unconfirmed, "{stop:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_a_cask_upgrade_stopped_after_it_wrote_the_new_version_is_unconfirmed() {
+    // I1, cask. `stage` writes the new version's metadata
+    // (cask/upgrade.rb:460, cask/installer.rb:589-603) before
+    // `install_artifacts` puts the new app in place (cask/upgrade.rb:462).
+    // Stopped in between, the version reads as the new one and the app is
+    // not installed.
+    let after = brew_info(|info| cask(info, "onyx")["installed"] = "5.1.0".into());
+    for stop in [Stop::Cancel, Stop::Timeout] {
+        let outcome = brew_upgrade_cask(
+            "onyx",
+            stop.output(),
+            vec![brew_info(|_| {}), after.clone()],
+        )
+        .await;
+        assert_eq!(outcome, Outcome::Unconfirmed, "{stop:?}");
+    }
+}
+
+#[tokio::test]
+async fn test_a_cask_upgrade_cancelled_before_it_wrote_the_new_version_is_unconfirmed() {
+    // I2, cask. `start_upgrade` has already moved the old app out of
+    // /Applications (cask/upgrade.rb:455), and only `rescue => e` puts it
+    // back (cask/upgrade.rb:502), which SIGTERM's `SignalException` skips.
+    // Cancelled before `stage`, the version reads as before and the app is
+    // gone: "You cancelled this" would say nothing happened.
+    let recorded = brew_info(|_| {});
+    let outcome = brew_upgrade_cask(
+        "onyx",
+        Stop::Cancel.output(),
+        vec![recorded.clone(), recorded],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
 }
 
 // --- pipx -----------------------------------------------------------------
@@ -279,7 +400,11 @@ async fn pipx_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outc
         ..canager_core::testing::manager_instance("pipx", "pipx")
     };
     upgrade(
-        Arc::new(PipxAdapter::new(runner, Arc::new(MockHttpClient::new()))),
+        &runner,
+        Arc::new(PipxAdapter::new(
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+        )),
         inst,
         ArtifactKind::Tool,
         "cowsay",
@@ -324,6 +449,18 @@ async fn test_a_pipx_upgrade_that_moved_its_version_succeeded() {
     assert_eq!(outcome, Outcome::Succeeded);
 }
 
+#[tokio::test]
+async fn test_a_pipx_upgrade_cancelled_before_it_wrote_the_new_version_is_unconfirmed() {
+    // I2 in .superpowers/honest-review.md. pipx 1.17.3 installs the new
+    // package first (`venv.py:778`) and writes the version `pipx list
+    // --json` reports last (`update_package_metadata`, `venv.py:790`), with
+    // no signal handler in between. Cancelled there, the version reads as
+    // before and the venv has already changed.
+    let recorded = fixture("pipx/1.17.3/list.json");
+    let outcome = pipx_upgrade(Stop::Cancel.output(), vec![recorded.clone(), recorded]).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
 // --- uv -------------------------------------------------------------------
 
 const UV: &str = "/opt/homebrew/bin/uv";
@@ -340,7 +477,8 @@ async fn uv_upgrade(upgrade_output: CommandOutput, lists: Vec<String>) -> Outcom
         ..canager_core::testing::manager_instance("uv", "uv")
     };
     upgrade(
-        Arc::new(UvAdapter::new(runner)),
+        &runner,
+        Arc::new(UvAdapter::new(runner.clone())),
         inst,
         ArtifactKind::Tool,
         "ruff",

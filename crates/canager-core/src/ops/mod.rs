@@ -64,9 +64,11 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
     Outcome::CanagerFailed(fault)
 }
 
-/// What an upgrade did to the installed version, judged from two
-/// `reconcile` readings of the same artifact: one taken before the command
-/// ran and one after (both in `run_operation`).
+/// What an upgrade whose tool exited 0 did to the installed version, judged
+/// from two `reconcile` readings of the same artifact: one taken before the
+/// command ran and one after (both in `run_operation`). Only the exit-0 arm
+/// asks: for a command that was stopped partway, the tools' version fields
+/// prove nothing either way (the `Ok(Outcome::Unconfirmed)` arm says why).
 enum VersionChange {
     /// Both readings name a version, and they differ.
     Changed,
@@ -558,8 +560,10 @@ impl OperationManager {
 
         // An upgrade's package is installed before the command and after
         // it, so being present afterwards proves nothing about whether it
-        // was upgraded. What does is its version changing, and for that
-        // there has to be a reading from before. It is taken with the
+        // was upgraded. What does, once the tool has exited 0, is its
+        // version changing, and for that there has to be a reading from
+        // before. (It decides nothing for a command that was stopped: see
+        // the `Ok(Outcome::Unconfirmed)` arm below.) It is taken with the
         // same `reconcile` the after-reading below uses, so the two come
         // from one parser reading one source the same way, and only a real
         // change in what is installed can make them differ. The update
@@ -634,15 +638,19 @@ impl OperationManager {
                             Outcome::NeedsAttention(Attention::StillInstalledAfterUninstall)
                         }
                     }
-                    // The tool exited 0, and the version the package is
-                    // installed at did not move. Every known way to get
-                    // here is a tool that skipped the package and exited 0
-                    // anyway: a locked pipx tool, a uv tool installed with
-                    // `==`, a disabled Homebrew cask, a cask whose
-                    // installed recipe Homebrew cannot load. With no
-                    // before-reading to compare (`Unknown`), presence is
-                    // all there is, and it is taken as success, as it was
-                    // before the reading existed.
+                    // The tool exited 0: it says it ran to the end, so
+                    // the reading after is of a finished run, and the two
+                    // readings say what that run did.
+                    // - Moved: it upgraded the package.
+                    // - Did not move: it skipped the package and exited 0
+                    //   anyway. Every known way to get here is such a
+                    //   tool: a locked pipx tool, a uv tool installed with
+                    //   `==`, a disabled Homebrew cask, a cask whose
+                    //   installed recipe Homebrew cannot load (one test
+                    //   each in tests/ops_upgrade_version_test.rs).
+                    // - Nothing to compare (`Unknown`): presence is all
+                    //   there is, and it is taken as success, as it was
+                    //   before the reading existed.
                     OpKind::Upgrade => {
                         if !r.present {
                             Outcome::NeedsAttention(Attention::GoneAfterUpgrade)
@@ -659,35 +667,74 @@ impl OperationManager {
                     }
                 },
             },
-            // A cancelled/timed-out execute only tells us the artifact's
-            // *current* state, not whether this op caused it. Presence is
-            // proof enough for Install (wasn't there, now is) and
-            // Uninstall (was there, now isn't); for Upgrade the package is
-            // there either way, and the proof is the version having moved
-            // since the before-reading.
+            // The command was stopped: `run_plan` (adapters/mod.rs) turns
+            // a run the runner cancelled or timed out into this, and no
+            // production `execute` returns it any other way (brew's own
+            // Cancel, while it waits for a `brew update`, is `Cancelled`
+            // before its command starts). The reading after it tells us the
+            // artifact's *current* state, not whether this op caused it.
+            // Presence is proof enough for Install (wasn't there, now is)
+            // and Uninstall (was there, now isn't).
             //
             // When the run was stopped by the user's own Cancel (the token
             // is only ever fired by `cancel()`; a timeout never touches
-            // it) and reconcile shows the request did *not* take effect,
-            // the cancel is what happened, and the user is told so. If the
-            // work finished anyway, the arms below report `Succeeded`, not
-            // `Cancelled`: the race goes to whatever reconcile actually
-            // found. Without a comparison to make -- either reading
-            // failed, or the package is gone -- an upgrade stays
-            // `Unconfirmed`, as it always was before the before-reading.
+            // it) and reconcile shows the install or uninstall did *not*
+            // take effect, the cancel is what happened, and the user is
+            // told so. If the work finished anyway, the arms below report
+            // `Succeeded`, not `Cancelled`: the race goes to whatever
+            // reconcile actually found.
+            //
+            // An upgrade stopped here is `Unconfirmed`, whatever its two
+            // version readings say. Do not let the comparison turn it into
+            // `Succeeded` or `Cancelled`: c6ecf5b did, and was wrong both
+            // ways. The runner stops a command with SIGTERM to its process
+            // group (`ProcessGroup::terminate`, runner/real.rs). The tools
+            // write the version this reads partway through an upgrade, not
+            // at its end, and nothing in them runs on SIGTERM to undo the
+            // part already done. (Line numbers are Homebrew 7.0.6 and pipx
+            // 1.17.3.)
+            //
+            // A moved version does not mean the upgrade finished:
+            // - Homebrew upgrades a formula by unlinking the old keg,
+            //   pouring the new one, and only then linking it, in `finish`
+            //   (install.rb:634-637). Homebrew handles INT (brew.rb:22) but
+            //   not TERM, so SIGTERM raises `SignalException`, which its
+            //   `rescue => e` rollbacks do not catch; the `ensure` relinks
+            //   the old keg only `unless formula.latest_version_installed?`
+            //   (install.rb:645), which is true once the new keg is poured.
+            //   Stopped between pour and link, nothing is linked and
+            //   `post_install` never ran, and the reading shows the new keg:
+            //   with `linked_keg` null, `parse_info_installed` takes
+            //   `installed.last()`.
+            // - A cask upgrade writes the new version's metadata in `stage`
+            //   (cask/upgrade.rb:460; `save_caskfile`,
+            //   cask/installer.rb:589-603), which is where
+            //   `Cask#installed_version` reads it from (cask/cask.rb:312-315),
+            //   before `install_artifacts` puts the new app in place
+            //   (cask/upgrade.rb:462). Stopped there, the reading shows the
+            //   new version while the old app is out of /Applications and
+            //   the new one is not in.
+            //
+            // An unchanged version does not mean nothing happened:
+            // - pipx installs the new package first (`venv.py:778`) and
+            //   writes the version `pipx list --json` reports last
+            //   (`update_package_metadata`, `venv.py:790`). pipx sets no
+            //   signal handler, so Python dies on SIGTERM between the two,
+            //   leaving the venv new or half-swapped and the reading at the
+            //   old version.
+            // - A cask upgrade first moves the old app out of /Applications
+            //   (`start_upgrade`, cask/upgrade.rb:455) and puts it back only
+            //   from `rescue => e` (cask/upgrade.rb:502). Stopped before
+            //   `stage`, the reading is the old version and the app is gone.
+            //
+            // Exit 0 is different: the tool itself said it finished, so
+            // the comparison on the `Ok(Outcome::Succeeded)` arm above is
+            // of a finished run. And a Cancel during the before-reading is
+            // `Cancelled`, because `execute` never started (above).
             Ok(Outcome::Unconfirmed) => {
                 let user_cancelled = cancel.is_cancelled();
                 match plan.request.kind {
-                    OpKind::Upgrade => match reconciled {
-                        Ok(r) => match version_change(before.as_ref(), &r) {
-                            VersionChange::Changed => Outcome::Succeeded,
-                            VersionChange::Unchanged if user_cancelled => Outcome::Cancelled,
-                            VersionChange::Unchanged | VersionChange::Unknown => {
-                                Outcome::Unconfirmed
-                            }
-                        },
-                        Err(_) => Outcome::Unconfirmed,
-                    },
+                    OpKind::Upgrade => Outcome::Unconfirmed,
                     OpKind::Install => match reconciled {
                         Ok(r) if r.present => Outcome::Succeeded,
                         Ok(_) if user_cancelled => Outcome::Cancelled,

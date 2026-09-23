@@ -614,35 +614,44 @@ async fn test_cancel_immediately_after_submit_never_calls_execute() {
     );
 }
 
-// A cancelled upgrade could only ever say "Unconfirmed": nothing recorded
-// what the version was before. Now an upgrade reads it before the command,
-// and the reading after decides.
+// An upgrade whose command was stopped partway -- the user's Cancel or the
+// timeout -- is `Unconfirmed`, whatever its version reads before and after.
+// The tools write that version partway through an upgrade, so a stopped run
+// can leave it moved with the upgrade unfinished, or unmoved with the
+// package already changed (the `Ok(Outcome::Unconfirmed)` arm of
+// `run_operation` cites the Homebrew and pipx lines). Only the tool's own
+// exit 0 lets the two readings decide (tests/ops_outcome_test.rs).
 
 #[tokio::test]
-async fn test_cancelled_upgrade_whose_version_did_not_move_is_cancelled() {
-    let (outcome, _) =
-        run_cancelled_mid_execute_with_readings(OpKind::Upgrade, vec![at("1.7.1"), at("1.7.1")])
-            .await;
-    assert_eq!(outcome, Outcome::Cancelled);
-}
-
-#[tokio::test]
-async fn test_cancelled_upgrade_whose_version_moved_succeeded_before_the_stop() {
+async fn test_cancelled_upgrade_whose_version_moved_is_unconfirmed_not_succeeded() {
+    // A Homebrew formula stopped after its new keg is poured and before it
+    // is linked reads as the new version; so does a cask stopped after
+    // `stage` wrote the new metadata and before its app is installed.
+    // Neither upgrade finished.
     let (outcome, _) =
         run_cancelled_mid_execute_with_readings(OpKind::Upgrade, vec![at("1.7.1"), at("1.8.0")])
             .await;
-    assert_eq!(outcome, Outcome::Succeeded);
+    assert_eq!(outcome, Outcome::Unconfirmed);
 }
 
 #[tokio::test]
-async fn test_timed_out_upgrade_is_succeeded_if_the_version_moved_and_unconfirmed_if_not() {
-    // Nobody pressed Cancel, so an unchanged version is not the user's
-    // cancel: it stays Unconfirmed, as a timed-out install or uninstall
-    // does. A moved version finished before the stop.
-    for (after, expected) in [
-        (at("1.8.0"), Outcome::Succeeded),
-        (at("1.7.1"), Outcome::Unconfirmed),
-    ] {
+async fn test_cancelled_upgrade_whose_version_did_not_move_is_unconfirmed_not_cancelled() {
+    // pipx writes the version it reports after its installer has already
+    // changed the venv; a Homebrew cask has moved the old app out of
+    // /Applications before it writes the new version. Stopped in between, the version
+    // reads as before and the package has changed, so "You cancelled this"
+    // is not known to be all that happened.
+    let (outcome, _) =
+        run_cancelled_mid_execute_with_readings(OpKind::Upgrade, vec![at("1.7.1"), at("1.7.1")])
+            .await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+#[tokio::test]
+async fn test_timed_out_upgrade_is_unconfirmed_whether_or_not_the_version_moved() {
+    // The timeout stops a command the same way a Cancel does, so the same
+    // holds: neither reading is evidence of how far the tool got.
+    for after in [at("1.8.0"), at("1.7.1")] {
         let sink = Arc::new(VecSink::new());
         let mut manager = OperationManager::new(sink);
         let adapter = Arc::new(FakeAdapter::with_readings(
@@ -660,7 +669,11 @@ async fn test_timed_out_upgrade_is_succeeded_if_the_version_moved_and_unconfirme
             .expect("plan");
         let op_id = manager.submit(plan);
 
-        assert_eq!(manager.wait(op_id).await, Some(expected), "after {after:?}");
+        assert_eq!(
+            manager.wait(op_id).await,
+            Some(Outcome::Unconfirmed),
+            "after {after:?}"
+        );
     }
 }
 
