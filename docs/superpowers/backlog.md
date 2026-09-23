@@ -80,9 +80,11 @@
   feat/phase-3-hardening）：七个适配器统一走 `model::instance_id` 构造（产出与旧 ID 逐字相同，因为
   ID 持久化在 `Settings.ignored_updates` 里）；`Session::with_adapters` 拒绝重复的适配器 ID；
   refresh 按适配器 ID 顺序探测，同 ID 只留第一个并记一条点名双方的 `SourceError`。
-- **丢弃一个 refresh future 只会 detach 其 worker，不会取消。** 生产中不可达（唯一调用方总会跑完），
-  但若将来有调用方丢弃它，detach 的 worker 可能持资源锁数分钟（brew 约 8 分钟，cargo 每个已装
-  crate 30 秒串行累加）。正确形状：`JoinSet` 或取消令牌，让它不可能发生而不只是不可达。
+- ~~**丢弃一个 refresh future 只会 detach 其 worker，不会取消。**~~ —— **已于 2026-09-23 在 `9c643fe`
+  修复**（分支 feat/phase-3-hardening）：refresh 的两层扇出改持 `AbortOnDropHandle`（按扇出顺序
+  join 不变，所以结转/备注回并/panic 结转四条路径的 join 结果与原先逐一相同；没用 `JoinSet` 是因为
+  它按完成顺序产出）；另外 `RealRunner::run` 在 future 被丢弃时 `killpg` 整组，否则 abort 只放了锁、
+  命令还在锁外跑。`killpg` 仍至多一次，且只打未回收的 pid。
 - **升级途中取消仍报「结果未确认」而不是「你已取消」。** 这是有意的：升级后包仍在，证明不了新版本
   没在 kill 之前装上。真修需要在执行前先 reconcile 一次记下旧版本。
 - **npm 在 `npm prefix -g` 失败时用可执行文件路径合成一个不可用实例的 ID。** 更理想的是沿用上一轮
