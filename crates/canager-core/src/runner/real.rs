@@ -346,6 +346,8 @@ const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(24 * 60 
 /// operation that started them.
 fn kill_group(pid: Option<libc::pid_t>) {
     if let Some(pid) = pid {
+        #[cfg(test)]
+        probe::record_kill(pid);
         // SAFETY: `killpg` takes two integers and no pointers; the worst a
         // stale pid can do here is return ESRCH, which is ignored.
         unsafe {
@@ -354,8 +356,9 @@ fn kill_group(pid: Option<libc::pid_t>) {
     }
 }
 
-/// Owns the one `killpg` a run may send, and sends it if the `run` future
-/// is dropped while the child may still be running.
+/// The spawned child together with the one `killpg` its run may send,
+/// which goes out if the `run` future is dropped while the child may still
+/// be running.
 ///
 /// Dropping `run` mid-flight used to orphan the child: `tokio::process::Child`
 /// does not kill on drop, so the command kept going with nothing reading its
@@ -370,24 +373,121 @@ fn kill_group(pid: Option<libc::pid_t>) {
 /// once per run, and only ever at a pid that has not been reaped: the sole
 /// reaping `wait()` in the read loop disarms this in the same select arm
 /// that observes it, before anything else can be awaited.
-struct GroupKiller(Option<libc::pid_t>);
+///
+/// The `Child` is a field rather than a separate local on purpose. Dropping
+/// a `Child` whose process has already exited reaps it on the spot (tokio's
+/// `Reaper::drop` calls `try_wait`), freeing the pid for reuse. The drop-path
+/// `killpg` must therefore happen before the `Child` is dropped, and the
+/// language guarantees exactly that here: a value's `Drop::drop` runs before
+/// any of its fields are dropped. With two locals the same guarantee rested
+/// on their declaration order, which a one-line rebinding silently reversed.
+struct GroupedChild {
+    child: tokio::process::Child,
+    pgid: Option<libc::pid_t>,
+}
 
-impl GroupKiller {
+impl GroupedChild {
+    /// Takes the freshly spawned child (spawned with `process_group(0)`, so
+    /// its pid is also its group's id) and arms the kill.
+    fn new(child: tokio::process::Child) -> Self {
+        let pgid = child.id().map(|p| p as libc::pid_t);
+        #[cfg(test)]
+        if let Some(pid) = pgid {
+            probe::record_spawn(pid);
+        }
+        Self { child, pgid }
+    }
+
     /// Kill the group now, if it has not already been killed or seen to exit.
     fn kill(&mut self) {
-        kill_group(self.0.take());
+        kill_group(self.pgid.take());
     }
 
     /// The child exited on its own and has been reaped; its pid may be
     /// reused from here on, so it must never be signalled.
     fn disarm(&mut self) {
-        self.0 = None;
+        self.pgid = None;
     }
 }
 
-impl Drop for GroupKiller {
+impl Drop for GroupedChild {
     fn drop(&mut self) {
+        // Runs before `self.child` is dropped, so the child cannot have been
+        // reaped by its own drop yet. See the type's doc comment.
         self.kill();
+    }
+}
+
+/// Test-only hooks that let a test see which child a run spawned and what
+/// state that child was in at the moment its group was signalled.
+///
+/// Thread-local, because `#[tokio::test]` runs each test on its own
+/// current-thread runtime, and both the spawn and the kill happen on the
+/// thread that polls or drops the `run` future. Tests running in parallel
+/// on other threads therefore never see each other's records.
+#[cfg(test)]
+mod probe {
+    use std::cell::RefCell;
+
+    /// What `waitid(WNOWAIT)` said about the child just before `killpg`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum ChildState {
+        /// Not exited yet.
+        Running,
+        /// Exited but not reaped: the pid is still held, so it cannot have
+        /// been reused and `killpg` can only reach this child's own group.
+        Zombie,
+        /// Already reaped (ECHILD): the pid is free and may belong to
+        /// anything by now. A kill in this state is the bug.
+        Reaped,
+    }
+
+    thread_local! {
+        static SPAWNED: RefCell<Vec<libc::pid_t>> = const { RefCell::new(Vec::new()) };
+        static KILLS: RefCell<Vec<(libc::pid_t, ChildState)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Asks, without reaping, whether `pid` is still an unreaped child.
+    pub(super) fn state(pid: libc::pid_t) -> ChildState {
+        // SAFETY: `siginfo_t` is plain data, all-zero is a valid value, and
+        // `waitid` only writes into it. `WNOWAIT` leaves a zombie in place.
+        unsafe {
+            let mut info: libc::siginfo_t = std::mem::zeroed();
+            let rc = libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            );
+            if rc != 0 {
+                ChildState::Reaped
+            } else if info.si_pid() == 0 {
+                ChildState::Running
+            } else {
+                ChildState::Zombie
+            }
+        }
+    }
+
+    pub(super) fn record_spawn(pid: libc::pid_t) {
+        SPAWNED.with(|s| s.borrow_mut().push(pid));
+    }
+
+    pub(super) fn record_kill(pid: libc::pid_t) {
+        let seen = state(pid);
+        KILLS.with(|k| k.borrow_mut().push((pid, seen)));
+    }
+
+    /// Drains this thread's spawn records. Draining rather than reading
+    /// keeps a test from seeing an earlier test's records when libtest runs
+    /// several on one thread (`--test-threads=1`).
+    pub(super) fn take_spawned() -> Vec<libc::pid_t> {
+        SPAWNED.with(|s| std::mem::take(&mut *s.borrow_mut()))
+    }
+
+    /// Drains this thread's kill records. See `take_spawned`.
+    pub(super) fn take_kills() -> Vec<(libc::pid_t, ChildState)> {
+        KILLS.with(|k| std::mem::take(&mut *k.borrow_mut()))
     }
 }
 
@@ -432,12 +532,11 @@ impl CommandRunner for RealRunner {
         cmd.stderr(std::process::Stdio::piped());
         cmd.process_group(0);
 
-        let mut child = cmd.spawn()?;
-        // Declared after `child`, so on a drop mid-run it is dropped first
-        // and signals the group while the child is still unreaped.
-        let mut group = GroupKiller(child.id().map(|p| p as libc::pid_t));
-        let mut stdout = child.stdout.take().expect("stdout was piped");
-        let mut stderr = child.stderr.take().expect("stderr was piped");
+        // Owns the child, so on a drop mid-run its `Drop` signals the group
+        // before the `Child` inside it can reap anything. See `GroupedChild`.
+        let mut child = GroupedChild::new(cmd.spawn()?);
+        let mut stdout = child.child.stdout.take().expect("stdout was piped");
+        let mut stderr = child.child.stderr.take().expect("stderr was piped");
 
         // stdout follows what the caller said it would do with the bytes;
         // stderr is a message for a person on every path there is, so it
@@ -483,7 +582,7 @@ impl CommandRunner for RealRunner {
         // `Child::wait` is cancel-safe, so re-creating its future on every
         // iteration loses nothing, and it is fused: once it has reaped the
         // child it returns the same status again rather than waiting on a
-        // pid that is no longer there. It takes `&mut child`, which the
+        // pid that is no longer there. It takes `&mut child.child`, which the
         // already-`take`n stdout/stderr handles leave free.
         while !child_done && !timed_out && !cancelled {
             tokio::select! {
@@ -501,14 +600,14 @@ impl CommandRunner for RealRunner {
                 biased;
                 _ = cancel.cancelled() => {
                     cancelled = true;
-                    group.kill();
+                    child.kill();
                 }
                 _ = &mut sleep => {
                     timed_out = true;
-                    group.kill();
+                    child.kill();
                 }
-                res = child.wait() => {
-                    group.disarm();
+                res = child.child.wait() => {
+                    child.disarm();
                     child_done = true;
                     child_code = res.ok().and_then(|status| status.code());
                 }
@@ -597,8 +696,8 @@ impl CommandRunner for RealRunner {
             // The child was SIGKILLed by this run, so there is no exit code
             // worth reporting — only the flag saying which of the two
             // happened. `reap` is the only `wait()` on these paths, so the
-            // pid `group.kill()` used was still a zombie when it used it.
-            reap(&mut child).await;
+            // pid `child.kill()` used was still a zombie when it used it.
+            reap(&mut child.child).await;
             None
         } else {
             // The loop cannot end any other way, so the child exited and
@@ -851,6 +950,75 @@ mod tests {
             );
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
+    }
+
+    #[tokio::test]
+    async fn test_dropping_a_run_whose_child_exited_unobserved_signals_before_reaping() {
+        // The one drop where the order of kill and reap matters: the child
+        // has already exited, but the read loop has not polled `wait()`
+        // since, so tokio has not reaped it. Dropping the `Child` would reap
+        // it on the spot (`Reaper::drop` calls `try_wait`) and free its pid
+        // for reuse, so the drop-path `killpg` must come first, while the
+        // child is still a zombie holding the pid. A running child cannot
+        // tell the two orders apart -- nothing reaps it either way -- which
+        // is why the mid-flight drop test above does not cover this.
+        use probe::ChildState;
+
+        probe::take_spawned();
+        probe::take_kills();
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: std::path::PathBuf::from("/bin/sleep"),
+            args: vec!["30".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(60),
+            output_use: OutputUse::Transcript,
+        };
+        let mut run = runner.run(spec, None, CancellationToken::new());
+
+        // One poll spawns the child and parks the loop on its arms. A no-op
+        // waker, so nothing re-polls `run` behind the test's back.
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(
+            run.as_mut().poll(&mut cx).is_pending(),
+            "`sleep 30` cannot have finished on the first poll"
+        );
+        let spawned = probe::take_spawned();
+        assert_eq!(spawned.len(), 1, "one poll spawns exactly one child");
+        let pid = spawned[0];
+        assert_eq!(probe::state(pid), ChildState::Running);
+
+        // End the child from outside -- itself only, not its group, and not
+        // through the run -- then block this thread until it is a zombie.
+        // The runtime is current-thread, so while this thread is blocked
+        // nothing polls `run`, and tokio cannot observe or reap the exit.
+        // SAFETY: plain signal to a pid this test's own run just spawned
+        // and nothing has reaped, so it cannot have been reused.
+        assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while probe::state(pid) != ChildState::Zombie {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the child did not exit after SIGTERM"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        drop(run);
+
+        assert_eq!(
+            probe::take_kills(),
+            vec![(pid, ChildState::Zombie)],
+            "the drop must signal the group exactly once, and while the child \
+             is still an unreaped zombie -- never after its pid was freed"
+        );
+        assert_eq!(
+            probe::state(pid),
+            ChildState::Reaped,
+            "dropping the run must still reap the child, not leak a zombie"
+        );
     }
 
     #[tokio::test]

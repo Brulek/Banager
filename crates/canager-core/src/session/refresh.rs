@@ -90,7 +90,7 @@ impl Session {
         // worker's future is dropped at its next await, which drops its
         // `ResourceLockGuard` (releasing the lock) and the in-flight
         // `CommandRunner::run` future (which kills the command's process
-        // group -- see `runner::real`'s `GroupKiller`).
+        // group -- see `runner::real`'s `GroupedChild`).
         //
         // Deliberately not a `JoinSet`: that yields in completion order,
         // and both joins below depend on *fan-out* order -- detection for
