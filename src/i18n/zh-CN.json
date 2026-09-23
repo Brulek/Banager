@@ -29,6 +29,7 @@
     "upToDate": "已是最新",
     "updateAvailable": "有可用更新",
     "updateIgnored": "已忽略更新",
+    "updateSourceUnavailable": "有新版本，暂时无法更新",
     "noDescription": "暂无描述",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",

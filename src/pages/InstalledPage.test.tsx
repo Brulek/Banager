@@ -361,7 +361,10 @@ describe("InstalledPage", () => {
   describe("the Update available badge", () => {
     // One snapshot with one package per reason the Updates page may list
     // an update and not offer it, plus one it does offer. The badge used
-    // to say "Update available" for every entry in `snapshot.updates`.
+    // to say "Update available" for every entry in `snapshot.updates`, and
+    // then still for a source that did not answer (a stopped Ollama whose
+    // update was carried forward), which has no Update button either.
+    const OLLAMA = "ollama:http://127.0.0.1:11434";
     const artifact = (name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact => ({
       ...snapshot.artifacts[0],
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
@@ -389,6 +392,9 @@ describe("InstalledPage", () => {
         artifact("ignored"),
         artifact("pinned-current", { uninstall_blocked: "Pinned" }),
         artifact("current"),
+        artifact("stopped-model", {
+          key: { instance_id: OLLAMA, kind: "Model", name: "stopped-model" },
+        }),
       ],
       instances: [
         ...snapshot.instances,
@@ -398,6 +404,15 @@ describe("InstalledPage", () => {
           adapter_id: "pipx",
           exe_path: "/opt/homebrew/bin/pipx",
           prefix: "/Users/a/.local",
+        },
+        {
+          ...snapshot.instances[0],
+          id: OLLAMA,
+          adapter_id: "ollama",
+          exe_path: "/usr/local/bin/ollama",
+          prefix: "/Users/a/.ollama",
+          version: "0.13.0",
+          status: { unavailable: "NotRunning", notes: [] },
         },
       ],
       updates: [
@@ -410,6 +425,10 @@ describe("InstalledPage", () => {
         }),
         update("unchecked", { checkable: false, warnings: [{ Message: "timed out" }] }),
         update("ignored"),
+        update("stopped-model", {
+          key: { instance_id: OLLAMA, kind: "Model", name: "stopped-model" },
+          channel: "Registry",
+        }),
       ],
     };
     const mixedSettings: Settings = {
@@ -443,6 +462,8 @@ describe("InstalledPage", () => {
       // Pinned in Homebrew and up to date: still pinned, from the inventory.
       expect(badgeOf(container, "pinned-current")).toBe("Pinned");
       expect(badgeOf(container, "current")).toBe("Up to date");
+      // Its source is not running, so there is no Update button for it.
+      expect(badgeOf(container, "stopped-model")).toBe("Newer version, can't update now");
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
@@ -462,6 +483,9 @@ describe("InstalledPage", () => {
           return row ? within(row).queryByRole("button", { name: "Update" }) !== null : false;
         });
 
+      // The stopped source's update is listed there, with no button: it is
+      // left out of `offered` for that, not for a missing row.
+      expect(updates.queryByText("stopped-model", { selector: "p" })).not.toBeNull();
       expect(badged).toEqual(["offered"]);
       expect(offered).toEqual(badged);
     });

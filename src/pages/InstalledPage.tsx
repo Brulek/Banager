@@ -105,10 +105,12 @@ export function InstalledPage() {
 
   // The badge of a package the Updates page lists. It follows the same
   // `updateStateOf` (src/lib/updateState.ts) that decides the Updates
-  // page's button and badge there, so "Update available" here means an
-  // Update button there, and nothing else does. A `switch` with no default
-  // in a function that must return, so a new `UpdateState` without a badge
-  // here fails `tsc`.
+  // page's button and badge there. "Update available" is returned for
+  // `actionable` alone, which is exactly `isUpdateActionable`, the
+  // predicate that gives a row its Update button on the Updates page; so
+  // "Update available" here means an Update button there, and nothing else
+  // does. A `switch` with no default in a function that must return, so a
+  // new `UpdateState` without a badge here fails `tsc`.
   function listedBadge(state: UpdateState): { text: string; variant: BadgeVariant } {
     switch (state.kind) {
       case "actionable":
@@ -120,9 +122,12 @@ export function InstalledPage() {
       case "cannotCheck":
         return { text: t("updates.cannotCheck"), variant: "neutral" };
       case "sourceUnavailable":
-        // The newer version is real; the group's notice says why Canager
-        // cannot fetch it now. `neutral`: no button anywhere.
-        return { text: t("installed.updateAvailable"), variant: "neutral" };
+        // The source did not answer the last refresh, so the Updates page
+        // has no Update button for this row (`isUpdateActionable`). The
+        // newer version is one an earlier refresh found, carried forward
+        // (session/refresh.rs); the group's notice says Canager cannot
+        // reach the source now.
+        return { text: t("installed.updateSourceUnavailable"), variant: "neutral" };
     }
   }
 
