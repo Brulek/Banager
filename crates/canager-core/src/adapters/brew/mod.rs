@@ -552,9 +552,12 @@ impl BrewAdapter {
     ///   shorter list: `fetch_json_api_file` answers `JSON::ParserError`
     ///   by deleting the file and fetching it again, or stopping with an
     ///   error, and a whole file must still pass `verify_and_parse_jws`.
-    /// - Anything about Homebrew's lock when it cannot be looked at
-    ///   (`HomebrewUpdateLock::Unobservable` at both ends): then the stamp
-    ///   says only what Canager's own count does.
+    /// - Whether Homebrew's lock was held, when the probe could not look
+    ///   (`HomebrewUpdateLock::Unobservable` at both ends). The stamps
+    ///   still compare what it did read -- the directory, and the file's
+    ///   `FileId` when only `fcntl` failed -- so a `brew update` that
+    ///   began in between still shows through those; one that already
+    ///   held the lock at the first stamp does not.
     ///
     /// Why what is left is bounded: a dependents list that comes back short
     /// leaves names off the confirm screen, and one that comes back empty
@@ -910,9 +913,11 @@ enum HomebrewUpdateLock {
     Held,
     /// Nobody holds it.
     Free(LockStamp),
-    /// It could not be looked at: the file is there but would not open,
-    /// or `fcntl` failed.
-    Unobservable,
+    /// Whether it is held could not be seen: the file is there but would
+    /// not open, or `fcntl` failed. Carries what the probe read before
+    /// that -- the directory, and the file's own `FileId` when `fcntl` was
+    /// what failed -- so that two such probes are still compared on it.
+    Unobservable(LockStamp),
 }
 
 /// What `probe_homebrew_update_lock` read of the lock's directory and
@@ -1002,10 +1007,14 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return HomebrewUpdateLock::Free(LockStamp { dir, file: None })
         }
-        Err(_) => return HomebrewUpdateLock::Unobservable,
+        Err(_) => return HomebrewUpdateLock::Unobservable(LockStamp { dir, file: None }),
     };
     let Ok(meta) = file.metadata() else {
-        return HomebrewUpdateLock::Unobservable;
+        return HomebrewUpdateLock::Unobservable(LockStamp { dir, file: None });
+    };
+    let seen = LockStamp {
+        dir,
+        file: Some(FileId::of(&meta)),
     };
     // SAFETY: `flock` is a plain C struct for which all-zero bytes are a
     // valid value; every field `F_GETLK` reads is set below.
@@ -1018,13 +1027,10 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
     // exclusively borrowed `flock` for `F_GETLK` to read and overwrite.
     let rc = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETLK, &mut query) };
     if rc == -1 {
-        return HomebrewUpdateLock::Unobservable;
+        return HomebrewUpdateLock::Unobservable(seen);
     }
     if query.l_type == libc::F_UNLCK as libc::c_short {
-        HomebrewUpdateLock::Free(LockStamp {
-            dir,
-            file: Some(FileId::of(&meta)),
-        })
+        HomebrewUpdateLock::Free(seen)
     } else {
         HomebrewUpdateLock::Held
     }
@@ -3650,6 +3656,43 @@ mod plan_execute_tests {
             .status()
             .expect("spawn bash")
             .success()
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_update_lock_probe_that_cannot_look_at_the_lock_still_compares_what_it_read() {
+        // Finding 1.2 of the final review. When the lock file is there but
+        // will not open, or `fcntl` fails on it, the probe cannot say
+        // whether the lock is held -- but it has read the directory, and
+        // the file's own stamp too when it was `fcntl` that failed. Two
+        // such probes must still differ when those did.
+        use std::os::unix::fs::PermissionsExt;
+        let prefix = scratch_prefix("unopenable");
+        let locks = prefix.join("var/homebrew/locks");
+        let lock_file = locks.join("update");
+        std::fs::write(&lock_file, "").expect("setup: the lock file");
+        std::fs::set_permissions(&lock_file, std::fs::Permissions::from_mode(0o000))
+            .expect("setup: chmod");
+        if std::fs::File::open(&lock_file).is_ok() {
+            // Root opens it all the same, so there is nothing to test.
+            let _ = std::fs::remove_dir_all(&prefix);
+            return;
+        }
+
+        let before = probe_homebrew_update_lock(&prefix);
+        assert!(
+            matches!(before, HomebrewUpdateLock::Unobservable { .. }),
+            "got {before:?}"
+        );
+        let other = locks.join("jq.formula.lock");
+        std::fs::write(&other, "").expect("setup: an entry made");
+        std::fs::remove_file(&other).expect("setup: and deleted");
+        assert_ne!(
+            before,
+            probe_homebrew_update_lock(&prefix),
+            "an entry made and deleted beside a lock file that would not open went unseen"
+        );
+        let _ = std::fs::remove_dir_all(&prefix);
     }
 
     #[cfg(target_os = "macos")]
