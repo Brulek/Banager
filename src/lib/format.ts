@@ -1,4 +1,4 @@
-import type { Fault, Outcome } from "./types";
+import type { Attention, Fault, Outcome } from "./types";
 
 /** Display-only: renders one argv token so the preview cannot blur where one
  *  argument ends and the next begins. Uses an allow-list (the `shlex.quote`
@@ -18,12 +18,43 @@ export function displayToken(token: string): string {
  *  sentence. A `Failed` whose tool said nothing on stderr gets its own
  *  sentence too, rather than "Failed: " and a blank. */
 export function outcomeKey(outcome: Outcome): string {
-  if (typeof outcome === "string") return outcome;
-  if ("NeedsAttention" in outcome) return `NeedsAttention.${outcome.NeedsAttention}`;
+  // Every unit variant by name, not `return outcome`: a new one must fail
+  // to compile here until it has a sentence, rather than reach the screen
+  // as a raw key like `operations.outcome.Skipped`.
+  if (typeof outcome === "string") {
+    switch (outcome) {
+      case "Succeeded":
+      case "Cancelled":
+      case "Unconfirmed":
+        return outcome;
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
+    }
+  }
+  if ("NeedsAttention" in outcome) return `NeedsAttention.${attentionKey(outcome.NeedsAttention)}`;
   if ("Failed" in outcome) return outcome.Failed.summary.trim() ? "Failed" : "FailedSilent";
   if ("CanagerFailed" in outcome) return `CanagerFailed.${faultKey(outcome.CanagerFailed)}`;
   const unhandled: never = outcome;
   return unhandled;
+}
+
+/** The variant name of one way reconcile contradicted a command's success,
+ *  listed for the same reason as `faultKey`'s: each needs a sentence in both
+ *  locales under `operations.outcome.NeedsAttention`, and a template string
+ *  would take a new one without a word. */
+function attentionKey(attention: Attention): string {
+  switch (attention) {
+    case "NotInstalledAfterInstall":
+    case "StillInstalledAfterUninstall":
+    case "GoneAfterUpgrade":
+      return attention;
+    default: {
+      const unhandled: never = attention;
+      return unhandled;
+    }
+  }
 }
 
 /** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */
