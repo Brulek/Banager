@@ -428,6 +428,23 @@ impl OperationManager {
         // permit-wait → permit-held → release — with no cycle back through
         // a resource this op already owns.
         //
+        // "Actively executing" covers more than the tool's own process now,
+        // and is worth naming: the `adapter.execute(...)` call below can
+        // itself block for a while before a brew formula or cask ever
+        // spawns, inside `BrewAdapter::wait_for_update`
+        // (`crates/canager-core/src/adapters/brew/mod.rs`) — up to
+        // `op_update_wait` (`OP_UPDATE_WAIT` outside tests, ten minutes),
+        // while it waits for a `brew update` a refresh left running to
+        // finish. That is a permit held doing nothing but waiting, for as
+        // long as ten minutes, not a bug in this reasoning: the DAG claim
+        // above is about what a permit holder can be *blocked on*, and
+        // `wait_for_update` blocks on Homebrew's own update lock
+        // (`update_lock_for`) or a bounded sleep
+        // (`tokio::time::sleep(self.op_update_wait)`), never on this
+        // semaphore or on any `ResourceLock` another op here might be
+        // holding. So it still cannot deadlock; it can only make the other
+        // two permits this cap allows matter more while it lasts.
+        //
         // Cancellation must still be honored while waiting here: an op
         // cancelled at this stage already holds its resource lock, so
         // — unlike the pre-lock cancellation branches above, which never
