@@ -4,7 +4,7 @@
 //! `session/mod.rs` (Task 14); no behaviour change from what shipped there.
 
 use super::{DetectOutcome, Session, Snapshot, SourceError};
-use crate::adapters::CheckOptions;
+use crate::adapters::{AdapterError, CheckOptions};
 use crate::model::{InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable};
 use crate::runner::HostEnv;
 use std::sync::atomic::Ordering;
@@ -40,7 +40,12 @@ impl Session {
     /// group. An adapter whose `detect()` itself panics or is cancelled is
     /// the same story a level up: the instances it reported last time are
     /// kept, marked unavailable, rather than being taken off the screen as
-    /// if the manager had been uninstalled.
+    /// if the manager had been uninstalled. A source that declines to read
+    /// because its catalogue is being rewritten (`AdapterError::
+    /// IndexUpdating`) keeps its previous rows through the same branches
+    /// as a failed read, but is neither an error nor `stale`: it gets
+    /// `InstanceNote::IndexUpdating` instead, and when the inventory is
+    /// what declined, `check_updates` is not called at all.
     pub async fn refresh(
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
@@ -238,14 +243,24 @@ impl Session {
                     // last round's, which decides whether it may be used
                     // as evidence against a carried-forward update.
                     let mut inventory_confirmed = true;
+                    // The source declined to read its catalogue because it
+                    // is being rewritten (`AdapterError::IndexUpdating`:
+                    // brew, while `brew update` runs). Not an error and not
+                    // `stale` -- nothing failed -- but the same carry-forward
+                    // as a failed read, and a note saying why.
+                    let mut index_updating = false;
                     match adapter.inventory(&inst).await {
                         Ok(items) => artifacts.extend(items),
                         Err(e) => {
-                            errors.push(SourceError {
-                                instance_id: inst.id.clone(),
-                                message: e.to_string(),
-                            });
-                            stale = true;
+                            if matches!(e, AdapterError::IndexUpdating) {
+                                index_updating = true;
+                            } else {
+                                errors.push(SourceError {
+                                    instance_id: inst.id.clone(),
+                                    message: e.to_string(),
+                                });
+                                stale = true;
+                            }
                             inventory_confirmed = false;
                             artifacts.extend(
                                 previous
@@ -266,17 +281,31 @@ impl Session {
                     // the clone and lose it, the same trap `SourceError`'s
                     // `instance_id` already fell into once.
                     let mut notes: Vec<InstanceNote> = Vec::new();
-                    match adapter.check_updates(&inst, &opts).await {
+                    // Not asked at all when the inventory already said the
+                    // catalogue is mid-rewrite: its update check reads the
+                    // same catalogue. Handed to the `Err` arm instead, which
+                    // keeps every previous candidate here because
+                    // `inventory_confirmed` is false.
+                    let checked = if index_updating {
+                        Err(AdapterError::IndexUpdating)
+                    } else {
+                        adapter.check_updates(&inst, &opts).await
+                    };
+                    match checked {
                         Ok(outcome) => {
                             updates.extend(outcome.candidates);
                             notes.extend(outcome.notes);
                         }
                         Err(e) => {
-                            errors.push(SourceError {
-                                instance_id: inst.id.clone(),
-                                message: e.to_string(),
-                            });
-                            stale = true;
+                            if matches!(e, AdapterError::IndexUpdating) {
+                                index_updating = true;
+                            } else {
+                                errors.push(SourceError {
+                                    instance_id: inst.id.clone(),
+                                    message: e.to_string(),
+                                });
+                                stale = true;
+                            }
                             // Keeping the last round's candidates is the
                             // right instinct -- a failed check is not
                             // news that everything is up to date -- but
@@ -329,11 +358,16 @@ impl Session {
                             // failing the next, or vice versa). Narrow,
                             // but this join is not spelling-independent.
                             //
-                            // When the inventory failed too, `artifacts`
-                            // is itself last round's, carried forward by
-                            // the branch above, so there is no fresh
-                            // evidence to test against and everything is
-                            // kept exactly as before.
+                            // When the inventory failed too, or declined
+                            // with `IndexUpdating`, `artifacts` is itself
+                            // last round's, carried forward by the branch
+                            // above, so there is no fresh evidence to test
+                            // against and everything is kept exactly as
+                            // before. When only the update check declined
+                            // (brew's own `brew update` outlasting its
+                            // patience), the inventory was read before
+                            // that update started, so it is fresh evidence
+                            // and the filter applies as for any failure.
                             updates.extend(
                                 previous
                                     .updates
@@ -349,6 +383,9 @@ impl Session {
                                     .cloned(),
                             );
                         }
+                    }
+                    if index_updating {
+                        notes.push(InstanceNote::IndexUpdating);
                     }
                     (artifacts, updates, errors, stale, notes)
                 })),
@@ -2144,6 +2181,212 @@ mod tests {
             vec!["pipx".to_string()],
             "fetched once, not twice"
         );
+    }
+
+    const BREW: &str = "/opt/homebrew/bin/brew";
+
+    fn brew_answer(exit_code: i32, stdout: &str) -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(exit_code),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    /// `brew info --installed --json=v2` listing jq at `version`.
+    fn brew_info_jq(version: &str) -> String {
+        format!(
+            r#"{{"formulae":[{{"name":"jq","desc":"JSON processor","homepage":"https://jqlang.org","linked_keg":"{version}","installed":[{{"version":"{version}","installed_on_request":true,"installed_as_dependency":false,"time":1700000000}}]}}],"casks":[]}}"#
+        )
+    }
+
+    const BREW_OUTDATED_JQ: &str = r#"{"formulae":[{"name":"jq","installed_versions":["1.6"],"current_version":"1.7.1","pinned":false,"pinned_version":null}],"casks":[]}"#;
+    const BREW_NOTHING: &str = r#"{"formulae":[],"casks":[]}"#;
+
+    /// How many times the catalogue has been read, by either reader.
+    fn catalogue_reads(runner: &MockRunner) -> (usize, usize) {
+        let calls = runner.calls();
+        let count = |verb: &str| {
+            calls
+                .iter()
+                .filter(|c| c.get(1).map(String::as_str) == Some(verb))
+                .count()
+        };
+        (count("info"), count("outdated"))
+    }
+
+    fn brew_notes(snapshot: &Snapshot) -> Vec<InstanceNote> {
+        snapshot
+            .instances
+            .iter()
+            .find(|i| i.adapter_id == "brew")
+            .expect("brew is detected")
+            .status
+            .notes
+            .clone()
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_behind_a_running_brew_update_reads_nothing_and_keeps_the_previous_rows()
+    {
+        // `brew update` git-merges Homebrew's own code and `curl`s the
+        // package list over the file `brew info` and `brew outdated` read.
+        // An install waits for it (`BrewAdapter::wait_for_update`); a
+        // refresh used to report "still downloading" and then read that
+        // catalogue anyway, where a half-written file could fail the
+        // refresh or, worse, parse.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            brew_answer(0, &brew_info_jq("1.6")),
+        );
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2"],
+            brew_answer(0, BREW_OUTDATED_JQ),
+        );
+        // Round one's update fails at once, so it reads normally and
+        // leaves no successful update behind: round two starts another.
+        runner.respond(vec![BREW, "update"], brew_answer(1, ""));
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let brew = Arc::new(
+            BrewAdapter::new(runner.clone())
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_update_patience(Duration::from_millis(100))
+                .with_background_change(background_change.clone()),
+        );
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew], None);
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        let first = session.refresh(&env, &opts).await;
+        assert_eq!(artifact_names(&first), vec!["jq"]);
+        assert_eq!(update_names(&first), vec!["jq"]);
+
+        // Round two starts a `brew update` that outlasts its patience. The
+        // inventory was read before it started, so it is fresh; the update
+        // check is not run, and last round's candidate stays.
+        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
+        runner.delay(vec![BREW, "update"], Duration::from_millis(1500));
+        let reads_before = catalogue_reads(&runner);
+        let second = session.refresh(&env, &opts).await;
+        let reads_after = catalogue_reads(&runner);
+        assert_eq!(
+            reads_after,
+            (reads_before.0 + 1, reads_before.1),
+            "one `brew info` from the inventory before the update started, \
+             and no `brew outdated` (nor `check_updates`' own `brew info`) \
+             after it"
+        );
+        assert_eq!(brew_notes(&second), vec![InstanceNote::IndexUpdating]);
+        assert_eq!(artifact_names(&second), vec!["jq"]);
+        assert_eq!(update_names(&second), vec!["jq"]);
+        assert!(
+            second.errors.is_empty() && !second.stale,
+            "a download still running is not a failed refresh: {:?}",
+            second.errors
+        );
+
+        // Round three arrives with that update still running. Whatever the
+        // catalogue would say now must not be read: if it were, jq would
+        // move to 1.7.1 and its update would vanish.
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            brew_answer(0, &brew_info_jq("1.7.1")),
+        );
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2"],
+            brew_answer(0, BREW_NOTHING),
+        );
+        let reads_before = catalogue_reads(&runner);
+        let started = Instant::now();
+        let third = session.refresh(&env, &opts).await;
+        assert!(
+            started.elapsed() < Duration::from_millis(1000),
+            "a refresh behind a running update must not wait for it; took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(
+            catalogue_reads(&runner),
+            reads_before,
+            "neither `brew info` nor `brew outdated` may run while `brew \
+             update` is rewriting the catalogue: {:?}",
+            runner.calls()
+        );
+        assert_eq!(brew_notes(&third), vec![InstanceNote::IndexUpdating]);
+        assert_eq!(
+            third.artifacts, second.artifacts,
+            "the previous rows are kept"
+        );
+        assert_eq!(third.updates, second.updates, "the previous rows are kept");
+        assert!(third.errors.is_empty() && !third.stale);
+
+        // The update ends; the shell's automatic refresh reads normally.
+        tokio::time::timeout(Duration::from_secs(10), background_change.notified())
+            .await
+            .expect("the end of an update a refresh reported must be announced");
+        let fourth = session.refresh(&env, &opts).await;
+        assert!(
+            brew_notes(&fourth).is_empty(),
+            "got {:?}",
+            brew_notes(&fourth)
+        );
+        assert_eq!(
+            catalogue_reads(&runner),
+            (reads_before.0 + 2, reads_before.1 + 1),
+            "the inventory's `brew info`, `brew outdated`, and \
+             `check_updates`' own `brew info` for the names"
+        );
+        assert_eq!(fourth.artifacts[0].version, "1.7.1");
+        assert!(update_names(&fourth).is_empty());
+        assert!(fourth.errors.is_empty() && !fourth.stale);
+    }
+
+    #[tokio::test]
+    async fn test_a_first_refresh_behind_a_running_brew_update_shows_no_rows_it_does_not_have() {
+        // The cold start: nothing to carry forward. The refresh still must
+        // not read the catalogue, so this source has no rows and no error,
+        // only the note. Its copy (`sourceNotice.indexUpdating` in both
+        // locales) mentions no rows, so it promises none. Reachable only
+        // through a refresh dropped after starting the update: any refresh
+        // that runs to its commit puts this instance in the snapshot.
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![BREW, "--version"], brew_answer(0, "Homebrew 7.0.3\n"));
+        runner.respond(vec![BREW, "update"], brew_answer(0, ""));
+        runner.delay(vec![BREW, "update"], Duration::from_millis(1500));
+        runner.respond(
+            vec![BREW, "info", "--installed", "--json=v2"],
+            brew_answer(0, &brew_info_jq("1.6")),
+        );
+        runner.respond(
+            vec![BREW, "outdated", "--json=v2"],
+            brew_answer(0, BREW_OUTDATED_JQ),
+        );
+        let brew = Arc::new(
+            BrewAdapter::new(runner.clone())
+                .with_path_exists_fn(apple_silicon_layout)
+                .with_update_patience(Duration::from_millis(100)),
+        );
+        // An update left running by a check whose refresh never committed.
+        let inst = brew.detect(&non_root_env()).await.remove(0);
+        let started = brew.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(started, Err(AdapterError::IndexUpdating)),
+            "got {started:?}"
+        );
+        let session = Session::with_adapters(Arc::new(VecSink::new()), vec![brew], None);
+
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(catalogue_reads(&runner), (0, 0), "{:?}", runner.calls());
+        assert_eq!(brew_notes(&snapshot), vec![InstanceNote::IndexUpdating]);
+        assert!(snapshot.artifacts.is_empty(), "{:?}", snapshot.artifacts);
+        assert!(snapshot.updates.is_empty(), "{:?}", snapshot.updates);
+        assert!(snapshot.errors.is_empty() && !snapshot.stale);
     }
 
     #[test]

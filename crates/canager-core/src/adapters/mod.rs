@@ -48,8 +48,10 @@ pub struct CheckOptions {
 pub struct CheckOutcome {
     pub candidates: Vec<UpdateCandidate>,
     /// What the source said about itself. Empty for every adapter but
-    /// brew, which reports `IndexMayBeStale` when `brew update` failed and
-    /// `IndexUpdating` when it was still running.
+    /// brew, which reports `IndexMayBeStale` when `brew update` failed.
+    /// A `brew update` still running is not a note here: brew then reads
+    /// no candidates at all and returns `AdapterError::IndexUpdating`,
+    /// which `Session::refresh` turns into `InstanceNote::IndexUpdating`.
     pub notes: Vec<InstanceNote>,
 }
 
@@ -153,6 +155,21 @@ pub enum AdapterError {
     /// keeps that wording for logs and test failure output.
     #[error("unknown instance {instance_id}")]
     SourceGone { instance_id: String },
+    /// The source's package catalogue is being rewritten right now, so the
+    /// adapter did not read it. Only brew returns it: its `inventory`
+    /// while a `brew update` is running for that instance, and its
+    /// `check_updates` when the `brew update` it started outlasts the
+    /// refresh's patience. That update git-merges Homebrew's own Ruby
+    /// code and `curl`s the package list over the file `brew info` and
+    /// `brew outdated` read, so an answer read alongside it could be an
+    /// error or, worse, a parse of a half-written file that succeeds.
+    ///
+    /// Not a failure. `Session::refresh` turns it into
+    /// `InstanceNote::IndexUpdating` rather than a `SourceError`, and
+    /// carries that instance's previous rows forward through the same
+    /// branches a failed read uses.
+    #[error("the package index is being updated")]
+    IndexUpdating,
 }
 
 /// Percent-encodes one untrusted value for interpolation into a single URL

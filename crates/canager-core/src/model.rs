@@ -94,10 +94,13 @@ pub enum InstanceNote {
     /// `brew update` failed, so the local catalogue may be behind and
     /// "no updates" may be wrong.
     IndexMayBeStale,
-    /// `brew update` is still downloading: the refresh stopped waiting for
-    /// it and compared against the catalogue it already had. Nothing has
-    /// failed. When the update ends the shell refreshes again (see
-    /// `Session::background_change`), so this clears by itself.
+    /// `brew update` is still downloading, so the refresh did not read the
+    /// catalogue it is rewriting (`AdapterError::IndexUpdating`). This
+    /// source's update candidates are the previous snapshot's, and so are
+    /// its installed packages unless the refresh read them before it
+    /// started the update itself; with no previous snapshot, there are
+    /// none. Nothing has failed. When the update ends the shell refreshes
+    /// again (see `Session::background_change`), so this clears by itself.
     IndexUpdating,
 }
 

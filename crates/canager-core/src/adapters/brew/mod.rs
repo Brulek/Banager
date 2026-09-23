@@ -58,10 +58,10 @@ pub struct BrewAdapter {
     update_locks: Mutex<HashMap<InstanceId, Arc<tokio::sync::Mutex<()>>>>,
     update_ttl: Duration,
     /// How long `check_updates` waits for the `brew update` it starts
-    /// before comparing against the catalogue it has and saying so with
-    /// `InstanceNote::IndexUpdating`. Waiting is all this bounds: when it
-    /// runs out the update is left to finish, never killed. See
-    /// `maybe_update` for why.
+    /// before giving up on this round's update check and returning
+    /// `AdapterError::IndexUpdating` without running `brew outdated`.
+    /// Waiting is all this bounds: when it runs out the update is left to
+    /// finish, never killed. See `maybe_update` for why.
     update_patience: Duration,
     /// How long an install, upgrade or uninstall waits for a `brew update`
     /// still running in the background before giving up without having
@@ -184,8 +184,10 @@ impl BrewAdapter {
 
     /// Test-only hook to shorten `update_patience`, so a test can watch a
     /// refresh stop waiting for a `brew update` without taking two minutes.
+    /// `pub(crate)` because `session::refresh`'s tests drive a real
+    /// `BrewAdapter` through a whole refresh.
     #[cfg(test)]
-    fn with_update_patience(mut self, patience: Duration) -> BrewAdapter {
+    pub(crate) fn with_update_patience(mut self, patience: Duration) -> BrewAdapter {
         self.update_patience = patience;
         self
     }
@@ -292,8 +294,8 @@ impl BrewAdapter {
     }
 
     /// Brings this Homebrew's catalogue up to date if the TTL says it is
-    /// due, and reports whether what `brew outdated` is about to read is
-    /// current.
+    /// due, and reports whether that catalogue is current, stale, or still
+    /// being rewritten -- in which case `check_updates` does not read it.
     ///
     /// `brew update` is a git operation on Homebrew's own repository. A
     /// SIGKILL partway through it -- which is how `CommandRunner` stops a
@@ -331,10 +333,13 @@ impl BrewAdapter {
     /// `UpdateRecord::unreported_failure`).
     ///
     /// A refresh that arrives while an update is running does not wait for
-    /// it at all: it reports `Updating` straight away and is covered by the
-    /// same follow-up. It used to wait on the lock for its own two minutes
-    /// and then report the download as failed, while the first one was
-    /// downloading fine.
+    /// it at all, and is covered by the same follow-up. It used to wait on
+    /// the lock for its own two minutes and then report the download as
+    /// failed, while the first one was downloading fine. In a refresh it is
+    /// `inventory`, which `Session::refresh` calls first, that finds the
+    /// update running and returns `IndexUpdating`, and the refresh then
+    /// skips `check_updates`; the `join_running_update` below answers a
+    /// `check_updates` called on its own.
     ///
     /// The one thing this cannot prevent is the app itself exiting
     /// mid-update: quitting ends the process, and the update's pipes with
@@ -562,10 +567,21 @@ impl BrewAdapter {
         found
     }
 
+    /// Everything installed in this Homebrew, or
+    /// `AdapterError::IndexUpdating` without running anything while a
+    /// `brew update` is rewriting the catalogue `brew info` would read.
+    ///
+    /// The check goes through `join_running_update`, so the update's end
+    /// wakes `background_change` and the shell refreshes again: the
+    /// refresh that got this reports `IndexUpdating`, and that notice
+    /// clears itself the same way as when `check_updates` reports it.
     pub async fn inventory(
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+        if self.join_running_update(&inst.id) {
+            return Err(AdapterError::IndexUpdating);
+        }
         let output = self
             .run_brew(
                 inst,
@@ -608,9 +624,14 @@ impl BrewAdapter {
         // The stderr detail that sentence carried is gone, deliberately:
         // `InstanceNote` is payload-free so the hand-written TypeScript
         // mirror keeps seeing a bare string on the wire (spec §2.3).
+        //
+        // An update still running is different: `brew outdated` and the
+        // `brew info` below would read the catalogue while it is being
+        // rewritten, so neither runs, and the caller keeps last round's
+        // candidates (see `AdapterError::IndexUpdating`).
         let notes = match self.maybe_update(inst).await {
             IndexFreshness::Current => Vec::new(),
-            IndexFreshness::Updating => vec![InstanceNote::IndexUpdating],
+            IndexFreshness::Updating => return Err(AdapterError::IndexUpdating),
             IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
         };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
@@ -697,13 +718,13 @@ impl BrewAdapter {
     }
 }
 
-/// What `maybe_update` can say about the catalogue `brew outdated` is
-/// about to compare against.
+/// What `maybe_update` can say about this Homebrew's catalogue.
 enum IndexFreshness {
     /// Updated within the TTL, or just now.
     Current,
     /// A `brew update` is still running: the refresh stopped waiting for
-    /// it, or found one already running. Nothing has failed.
+    /// it, or found one already running. Nothing has failed, but the
+    /// catalogue is mid-rewrite, so `check_updates` reads nothing.
     Updating,
     /// `brew update` failed, or was refused.
     MayBeStale,
@@ -729,7 +750,8 @@ struct UpdateRecord {
     /// A `brew update` is running now, in the task `maybe_update` spawned.
     running: bool,
     /// A refresh has told the user the running update is still going
-    /// (`IndexUpdating`), so when it ends its task wakes
+    /// (`AdapterError::IndexUpdating`, which the refresh shows as
+    /// `InstanceNote::IndexUpdating`), so when it ends its task wakes
     /// `BrewAdapter::background_change`: without a refresh after it, that
     /// notice would stay on screen, and the old catalogue with it, until
     /// the user happened to do something.
@@ -1749,10 +1771,10 @@ mod tests {
             .await
             .expect("task a panicked")
             .expect("check_updates a");
-        task_b
-            .await
-            .expect("task b panicked")
-            .expect("check_updates b");
+        // b found a's update still running, so it read nothing and said
+        // so rather than start a second `brew update`.
+        let b = task_b.await.expect("task b panicked");
+        assert!(matches!(b, Err(AdapterError::IndexUpdating)), "got {b:?}");
 
         let update_calls = runner
             .calls()
@@ -2538,17 +2560,13 @@ mod plan_execute_tests {
             .with_background_change(background_change.clone());
 
         let started = Instant::now();
-        let outcome = adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("check_updates");
+        let first = adapter.check_updates(&inst, &CheckOptions::default()).await;
         let waited = started.elapsed();
-        assert_eq!(
-            outcome.notes,
-            vec![InstanceNote::IndexUpdating],
+        assert!(
+            matches!(first, Err(AdapterError::IndexUpdating)),
             "an update the refresh stopped waiting for is still running, not \
              failed -- `IndexMayBeStale` would tell the user the download \
-             failed and to check their connection"
+             failed and to check their connection; got {first:?}"
         );
         assert!(
             waited < Duration::from_millis(1500),
@@ -2561,11 +2579,11 @@ mod plan_execute_tests {
         // lock and then call the download failed -- and does not start a
         // second `brew update` alongside the first.
         let started = Instant::now();
-        let second = adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("second check_updates");
-        assert_eq!(second.notes, vec![InstanceNote::IndexUpdating]);
+        let second = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(second, Err(AdapterError::IndexUpdating)),
+            "got {second:?}"
+        );
         assert!(
             started.elapsed() < Duration::from_millis(250),
             "a refresh behind a running update must not wait on it; took {:?}",
@@ -2652,11 +2670,27 @@ mod plan_execute_tests {
             .with_background_change(background_change.clone());
         let inst = test_instance();
 
-        let first = adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("check_updates");
-        assert_eq!(first.notes, vec![InstanceNote::IndexUpdating]);
+        let first = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(first, Err(AdapterError::IndexUpdating)),
+            "got {first:?}"
+        );
+        // While that update runs, neither reader touches the catalogue it
+        // is rewriting: `check_updates` gave up before `brew outdated`,
+        // and `inventory` declines before `brew info`.
+        let inventory = adapter.inventory(&inst).await;
+        assert!(
+            matches!(inventory, Err(AdapterError::IndexUpdating)),
+            "got {inventory:?}"
+        );
+        assert!(
+            !runner.calls().iter().any(|c| matches!(
+                c.get(1).map(String::as_str),
+                Some("outdated") | Some("info")
+            )),
+            "the catalogue was read while `brew update` was rewriting it: {:?}",
+            runner.calls()
+        );
 
         tokio::time::timeout(Duration::from_secs(5), background_change.notified())
             .await
@@ -2673,10 +2707,13 @@ mod plan_execute_tests {
         );
 
         // "Try again": the failure has been reported, so this one tries.
-        adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("retry");
+        // Its update is as slow as the first, so it too is still running
+        // when the patience runs out.
+        let retry = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(retry, Err(AdapterError::IndexUpdating)),
+            "got {retry:?}"
+        );
         assert_eq!(update_calls(&runner), 2, "Try again must try again");
     }
 
@@ -2785,11 +2822,11 @@ mod plan_execute_tests {
         let adapter =
             BrewAdapter::new(runner.clone()).with_update_patience(Duration::from_millis(100));
         let inst = test_instance();
-        let outcome = adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("check_updates");
-        assert_eq!(outcome.notes, vec![InstanceNote::IndexUpdating]);
+        let checked = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(checked, Err(AdapterError::IndexUpdating)),
+            "got {checked:?}"
+        );
 
         let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
         let sink = Arc::new(VecSink::new());
@@ -2842,10 +2879,11 @@ mod plan_execute_tests {
             .with_update_patience(Duration::from_millis(100))
             .with_op_update_wait(Duration::from_millis(200));
         let inst = test_instance();
-        adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("check_updates");
+        let checked = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(checked, Err(AdapterError::IndexUpdating)),
+            "got {checked:?}"
+        );
 
         let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
         let started = Instant::now();
@@ -2878,10 +2916,11 @@ mod plan_execute_tests {
         let adapter =
             BrewAdapter::new(runner.clone()).with_update_patience(Duration::from_millis(100));
         let inst = test_instance();
-        adapter
-            .check_updates(&inst, &CheckOptions::default())
-            .await
-            .expect("check_updates");
+        let checked = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(checked, Err(AdapterError::IndexUpdating)),
+            "got {checked:?}"
+        );
 
         let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
         let cancel = CancellationToken::new();

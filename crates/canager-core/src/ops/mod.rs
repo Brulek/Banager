@@ -34,7 +34,9 @@ const DEFAULT_MAX_RECORDS: usize = 200;
 /// `Unsupported` (no pip `Plan` can exist: every pip instance is read-only
 /// by design, so `issue_plan`'s gate refuses before pip's `plan()` would).
 /// No `execute` returns `CommandFailed`, `Parse`, `SourceGone`,
-/// `InvalidName` or `NotActionable`. Everything but the two runner errors
+/// `InvalidName`, `NotActionable` or `IndexUpdating` (brew's `execute`
+/// waits for a running `brew update` instead; only its `inventory` and
+/// `check_updates` return that). Everything but the two runner errors
 /// is therefore a bug in Canager, and says so as `Fault::Internal` rather
 /// than as a sentence of its own that nothing can produce.
 fn execute_error_outcome(e: AdapterError) -> Outcome {
@@ -53,7 +55,8 @@ fn execute_error_outcome(e: AdapterError) -> Outcome {
         | AdapterError::InvalidName(_)
         | AdapterError::Unsupported(_)
         | AdapterError::SourceGone { .. }
-        | AdapterError::NotActionable { .. } => Fault::Internal,
+        | AdapterError::NotActionable { .. }
+        | AdapterError::IndexUpdating => Fault::Internal,
     };
     Outcome::CanagerFailed(fault)
 }
