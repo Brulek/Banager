@@ -93,8 +93,14 @@ treated as a bug. That now includes the actionability refusals Rust sends back: 
 against a source that's read-only, unavailable or gone, or a preview that's expired or already
 been used, each arrives as a small `{"kind": ...}` payload the front end recognises and renders
 in the user's language, not the error's own English `Display`. What is *not* translated is the
-package manager's own output when an operation itself fails — what `brew` or `npm` printed to
-stderr is shown as-is, because there is no way to translate another program's text.
+package manager's own output — every line `brew` or `npm` prints in the operation log, and the
+last lines of its stderr when an operation fails, are shown as-is, because there is no way to
+translate another program's text. Canager's own remarks in that log (waiting for Homebrew to
+finish updating, a stream it could no longer read) and its verdicts on the result (the command
+said it worked but the package isn't there) are translated like the rest of the UI. One gap is
+left: when an operation fails for a reason of Canager's own rather than the tool's — the program
+was removed between the check and the run, say — the failure line carries a short technical
+error in English.
 
 ## Design notes
 
