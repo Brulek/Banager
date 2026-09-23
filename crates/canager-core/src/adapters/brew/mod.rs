@@ -407,7 +407,22 @@ impl BrewAdapter {
                 // Only a round that began after the failure takes it; one
                 // that began before reports it and leaves it for the
                 // round the failure's wake-up sets off.
-                if opts.round_started.is_none_or(|t| t >= failed_at) {
+                //
+                // Strictly after, because an `Instant` is no finer than the
+                // clock's tick (41.67 ns on Apple Silicon, where most
+                // back-to-back reads return the same value): a round that
+                // began just before the failure can carry the failure's own
+                // `Instant`, and taking the flag then would let the
+                // wake-up's round start the `brew update` this flag is
+                // there to stop. Leaving a tie costs one more "may be
+                // stale" and cannot strand the flag: the wake-up's round
+                // stamps its start (`round_started` in `refresh_round`)
+                // only after `UpdateFinish::drop` has stamped the failure
+                // and called `notify_one` and the shell's loop has woken to
+                // it, so it lands on a later tick and takes it.
+                // `test_a_round_stamped_in_the_failures_own_tick_leaves_the_failure_for_a_later_one`
+                // sets up the tie exactly.
+                if opts.round_started.is_none_or(|t| t > failed_at) {
                     record.unreported_failure = None;
                 }
                 return IndexFreshness::MayBeStale;
@@ -3010,6 +3025,73 @@ mod plan_execute_tests {
             "got {retry:?}"
         );
         assert_eq!(update_calls(&runner), 2, "Try again must try again");
+    }
+
+    #[tokio::test]
+    async fn test_a_round_stamped_in_the_failures_own_tick_leaves_the_failure_for_a_later_one() {
+        // Finding 3.1 of the final review. An `Instant` is no finer than
+        // the clock's tick, so a round that really began just before an
+        // announced update failed can carry the very same `Instant` as
+        // the failure. It must report the failure and leave it, like any
+        // round that began before it: taking it would leave the round the
+        // failure's wake-up sets off with no flag and an expired TTL, and
+        // that round would start the `brew update` nobody asked for. The
+        // instants are set by hand, so the tie is exact every run.
+        let runner = runner_with_update(
+            Duration::ZERO,
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = BrewAdapter::new(runner.clone());
+        let inst = test_instance();
+        let failed_at = Instant::now();
+        adapter
+            .updates
+            .lock()
+            .unwrap()
+            .entry(inst.id.clone())
+            .or_default()
+            .unreported_failure = Some(failed_at);
+
+        let tied = CheckOptions {
+            round_started: Some(failed_at),
+            ..CheckOptions::default()
+        };
+        let tied = adapter
+            .check_updates(&inst, &tied)
+            .await
+            .expect("the round in the failure's tick");
+        assert_eq!(tied.notes, vec![InstanceNote::IndexMayBeStale]);
+
+        let later = CheckOptions {
+            round_started: Some(failed_at + Duration::from_nanos(1)),
+            ..CheckOptions::default()
+        };
+        let woken = adapter
+            .check_updates(&inst, &later)
+            .await
+            .expect("the round the failure's wake-up sets off");
+        assert_eq!(
+            woken.notes,
+            vec![InstanceNote::IndexMayBeStale],
+            "the round in the failure's tick took the failure, so the round after it \
+             started a `brew update`: {:?}",
+            runner.calls()
+        );
+        assert_eq!(update_calls(&runner), 0, "{:?}", runner.calls());
+
+        // Taken by that round, so the one after tries again: the tie cost
+        // one extra report and the flag did not stick.
+        adapter
+            .check_updates(&inst, &later)
+            .await
+            .expect("the refresh after");
+        assert_eq!(update_calls(&runner), 1, "the refresh after must try again");
     }
 
     /// A runner whose `brew update` panics after `delay`; everything else
