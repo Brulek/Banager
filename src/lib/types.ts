@@ -169,8 +169,13 @@ export interface Settings {
   ignored_updates: ArtifactKey[];
   include_self_updating: boolean;
 }
+export type Stream = "Stdout" | "Stderr";
+// A line of Canager's own in an operation's log (Rust `LogNote`): a key the
+// front end localises, never text. `Log` lines are the tool's verbatim words.
+export type LogNote = "WaitingForBrewUpdate" | { ReadFailed: { stream: Stream; error: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
-  | { Log: { op_id: number; stream: "Stdout" | "Stderr"; line: string } }
+  | { Log: { op_id: number; stream: Stream; line: string } }
+  | { Note: { op_id: number; note: LogNote } }
   | { Finished: { op_id: number; outcome: Outcome } };
 export type UiEvent = { Operation: OperationEvent } | { SnapshotChanged: { generation: number } };

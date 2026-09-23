@@ -122,6 +122,11 @@
     "current": "{{kind}} {{name}} — {{status}}",
     "cancel": "Cancel",
     "logDrawerTitle": "Operation log",
+    "logNote": {
+      "waitingForBrewUpdate": "Waiting for Homebrew to finish updating…",
+      "readFailedStdout": "Canager couldn't read any more of this command's output ({{error}}), so its output ends here.",
+      "readFailedStderr": "Canager couldn't read any more of this command's error messages ({{error}}), so they end here."
+    },
     "kind": {
       "Install": "Installing",
       "Uninstall": "Uninstalling",

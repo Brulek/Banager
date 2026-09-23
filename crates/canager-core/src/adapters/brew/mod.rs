@@ -362,10 +362,9 @@ impl BrewAdapter {
         if let Ok(guard) = lock.clone().try_lock_owned() {
             return Some(guard);
         }
-        sink.emit(crate::events::OperationEvent::Log {
+        sink.emit(crate::events::OperationEvent::Note {
             op_id,
-            stream: crate::events::Stream::Stderr,
-            line: "Waiting for Homebrew to finish updating…".to_string(),
+            note: crate::events::LogNote::WaitingForBrewUpdate,
         });
         tokio::select! {
             guard = lock.lock_owned() => Some(guard),
@@ -2492,9 +2491,22 @@ mod plan_execute_tests {
         assert!(
             sink.snapshot().iter().any(|e| matches!(
                 e,
-                crate::events::OperationEvent::Log { line, .. } if line.contains("Waiting for Homebrew")
+                crate::events::OperationEvent::Note {
+                    op_id: 1,
+                    note: crate::events::LogNote::WaitingForBrewUpdate,
+                }
             )),
             "a wait with no output would look like a hang: {:?}",
+            sink.snapshot()
+        );
+        // The wait is Canager speaking, not Homebrew: it must arrive as a
+        // note the front end localises, never as a verbatim English line.
+        assert!(
+            !sink.snapshot().iter().any(|e| matches!(
+                e,
+                crate::events::OperationEvent::Log { line, .. } if line.contains("Waiting")
+            )),
+            "Canager's own remark went out as tool output: {:?}",
             sink.snapshot()
         );
     }

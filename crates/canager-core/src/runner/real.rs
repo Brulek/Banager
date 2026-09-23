@@ -8,8 +8,10 @@
 //! macOS only (see Global Constraints in the phase 0-1 plan), so this is not
 //! a limitation in practice.
 
-use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunnerError};
-use crate::events::Stream;
+use super::{
+    CommandOutput, CommandRunner, CommandSpec, LineCallback, OutputUse, RunLine, RunnerError,
+};
+use crate::events::{LogNote, Stream};
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -140,6 +142,10 @@ const TAIL_CAP: usize = 1024 * 1024;
 /// visible per-source error rather than a silently wrong answer.
 const PARSE_CAP: usize = 64 * 1024 * 1024;
 
+/// What stands in a transcript for the middle [`StreamBuffer`] dropped.
+/// See `StreamBuffer::into_transcript`.
+const ELISION_MARK: &str = "\n[…]\n";
+
 impl StreamBuffer {
     /// Records one chunk and hands `on_line` every line that chunk
     /// completed. Lines are split on both `\n` and `\r`, so `brew`'s
@@ -245,27 +251,36 @@ impl StreamBuffer {
         }
     }
 
-    /// Notes in the transcript that this stream ended because reading it
-    /// failed, not because the child stopped writing.
+    /// Tells the log that this stream ended because reading it failed, not
+    /// because the child stopped writing.
     ///
     /// `read()` returning an error and `read()` returning 0 both end the
     /// stream here, and the run still reports the child's exit code — so a
-    /// mid-stream `EIO` used to cut the transcript short with nothing
-    /// anywhere saying it had been cut, and the user read a short log of a
-    /// run reported as successful. Nothing can be recovered (the pipe is
-    /// gone), but the hole can at least be visible.
+    /// mid-stream `EIO` used to cut the log short with nothing anywhere
+    /// saying it had been cut, and the user read a short log of a run
+    /// reported as successful. Nothing can be recovered (the pipe is gone),
+    /// but the hole can at least be visible.
+    ///
+    /// The remark goes to `on_line` as a [`LogNote`], not into the
+    /// transcript as text: it is Canager speaking, and the log drawer
+    /// localises what Canager says (it used to be an English
+    /// `[canager: ...]` sentence spliced into the tool's own bytes, where
+    /// it also ended up in a failed run's five-line stderr summary). Any
+    /// half-line already read is delivered first, so the note lands
+    /// after the last thing the tool said, which is where the hole is.
     fn note_read_error(
         &mut self,
         e: &std::io::Error,
         stream: Stream,
         on_line: &Option<LineCallback>,
     ) {
-        let name = match stream {
-            Stream::Stdout => "stdout",
-            Stream::Stderr => "stderr",
-        };
-        let note = format!("\n[canager: reading {name} failed ({e}); output ends here]\n");
-        self.push(note.as_bytes(), stream, on_line);
+        self.flush_partial_line(stream, on_line);
+        if let Some(cb) = on_line {
+            cb(RunLine::Note(LogNote::ReadFailed {
+                stream,
+                error: e.to_string(),
+            }));
+        }
     }
 
     /// Takes one `read()` result on this stream's pipe: records the bytes,
@@ -306,11 +321,15 @@ impl StreamBuffer {
             };
         }
         let mut text = String::from_utf8_lossy(&self.bytes[..self.head_len]).into_owned();
-        text.push_str(&format!(
-            "\n[canager: {} bytes of output elided here; this transcript keeps the \
-             first {} and last {} bytes]\n",
-            self.elided, HEAD_CAP, TAIL_CAP
-        ));
+        // A bare ellipsis, not a sentence. This text is the tool's output,
+        // and its last five stderr lines are shown to the user verbatim as
+        // a failed run's summary -- which reaches back past this marker
+        // whenever the retained tail holds fewer than five lines. An
+        // English "[canager: N bytes elided]" there was Canager speaking
+        // untranslated inside text the UI promises is only the tool's own.
+        // `[…]` is the one omission mark every reader of either locale
+        // already knows, and it needs no translating.
+        text.push_str(ELISION_MARK);
         text.push_str(&String::from_utf8_lossy(&self.bytes[self.head_len..]));
         text
     }
@@ -318,7 +337,10 @@ impl StreamBuffer {
 
 fn emit(raw: &[u8], stream: Stream, on_line: &Option<LineCallback>) {
     if let Some(cb) = on_line {
-        cb(stream, String::from_utf8_lossy(raw).to_string());
+        cb(RunLine::Output(
+            stream,
+            String::from_utf8_lossy(raw).to_string(),
+        ));
     }
 }
 
@@ -897,6 +919,15 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    /// A callback for tests that only look at the tool's own lines. A note
+    /// arriving where none should is a failure, not something to skip.
+    fn output_lines(f: impl Fn(Stream, String) + Send + Sync + 'static) -> LineCallback {
+        Arc::new(move |run_line| match run_line {
+            RunLine::Output(stream, line) => f(stream, line),
+            RunLine::Note(note) => panic!("unexpected note: {note:?}"),
+        })
+    }
+
     fn sh() -> std::path::PathBuf {
         std::path::PathBuf::from("/bin/sh")
     }
@@ -906,7 +937,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |stream, line| {
+        let on_line: LineCallback = output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         });
 
@@ -1268,7 +1299,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |_stream, line| {
+        let on_line: LineCallback = output_lines(move |_stream, line| {
             lines_cb.lock().unwrap().push(line);
         });
         let spec = CommandSpec {
@@ -1420,7 +1451,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |_stream, line| {
+        let on_line: LineCallback = output_lines(move |_stream, line| {
             lines_cb.lock().unwrap().push(line);
         });
         let spec = CommandSpec {
@@ -1548,7 +1579,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |_stream, line| {
+        let on_line: LineCallback = output_lines(move |_stream, line| {
             lines_cb.lock().unwrap().push(line);
         });
         let spec = CommandSpec {
@@ -1619,7 +1650,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |stream, line| {
+        let on_line: LineCallback = output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         });
 
@@ -1666,7 +1697,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |stream, line| {
+        let on_line: LineCallback = output_lines(move |stream, line| {
             let first = line == "first";
             lines_cb.lock().unwrap().push((stream, line));
             if first {
@@ -2036,7 +2067,7 @@ mod tests {
         let runner = RealRunner::new();
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: LineCallback = Arc::new(move |stream, line| {
+        let on_line: LineCallback = output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         });
 
@@ -2107,7 +2138,7 @@ mod tests {
         // drawer and the saved transcript finds out it was a decision.
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: Option<LineCallback> = Some(Arc::new(move |stream, line| {
+        let on_line: Option<LineCallback> = Some(output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 
@@ -2126,6 +2157,50 @@ mod tests {
     }
 
     #[test]
+    fn test_a_failed_read_is_a_note_for_the_log_not_english_in_the_transcript() {
+        // The read error used to be spliced into the tool's bytes as
+        // "[canager: reading stderr failed (...); output ends here]": an
+        // English sentence in Canager's voice that the log drawer showed
+        // verbatim and a failed run's five-line summary could quote. It is
+        // now a `LogNote` the front end localises, after whatever half-line
+        // the tool had got out, and the transcript stays the tool's alone.
+        let seen: Arc<Mutex<Vec<RunLine>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_cb = seen.clone();
+        let on_line: Option<LineCallback> = Some(Arc::new(move |run_line| {
+            seen_cb.lock().unwrap().push(run_line);
+        }));
+
+        let mut buf = StreamBuffer::new(CapPolicy::ElideMiddle);
+        let mut done = false;
+        let first = b"Error: disk full\npartial";
+        buf.take_read(Ok(first.len()), first, &mut done, Stream::Stderr, &on_line);
+        assert!(!done);
+        buf.take_read(
+            Err(std::io::Error::from_raw_os_error(libc::EIO)),
+            &[],
+            &mut done,
+            Stream::Stderr,
+            &on_line,
+        );
+        assert!(done, "a failed read must end the stream");
+        buf.flush_partial_line(Stream::Stderr, &on_line);
+
+        let error = std::io::Error::from_raw_os_error(libc::EIO).to_string();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                RunLine::Output(Stream::Stderr, "Error: disk full".to_string()),
+                RunLine::Output(Stream::Stderr, "partial".to_string()),
+                RunLine::Note(LogNote::ReadFailed {
+                    stream: Stream::Stderr,
+                    error,
+                }),
+            ]
+        );
+        assert_eq!(buf.into_transcript(), "Error: disk full\npartial");
+    }
+
+    #[test]
     fn test_a_runaway_transcript_is_capped_keeping_the_head_and_the_tail() {
         // Unbounded, this is how a build that loops printing a warning
         // takes the app down with it. Capped, the two parts worth reading
@@ -2133,7 +2208,7 @@ mod tests {
         // of), with a note in between saying how much went missing.
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: Option<LineCallback> = Some(Arc::new(move |stream, line| {
+        let on_line: Option<LineCallback> = Some(output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 
@@ -2172,7 +2247,11 @@ mod tests {
             text.ends_with(&format!("{last}\n")),
             "the tail is gone -- which is the half with the error in it"
         );
-        assert!(text.contains("bytes of output elided here"));
+        assert!(text.contains(ELISION_MARK));
+        assert!(
+            !text.contains("canager"),
+            "Canager's own English is back inside the tool's transcript"
+        );
         assert!(text.len() < HEAD_CAP + TAIL_CAP + 512);
     }
 
@@ -2185,7 +2264,7 @@ mod tests {
         // slice range, i.e. a panic inside the operation task.
         let lines: Arc<Mutex<Vec<(Stream, String)>>> = Arc::new(Mutex::new(Vec::new()));
         let lines_cb = lines.clone();
-        let on_line: Option<LineCallback> = Some(Arc::new(move |stream, line| {
+        let on_line: Option<LineCallback> = Some(output_lines(move |stream, line| {
             lines_cb.lock().unwrap().push((stream, line));
         }));
 

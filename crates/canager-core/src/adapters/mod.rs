@@ -3,7 +3,7 @@ use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
     ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
-use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse};
+use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
 use async_trait::async_trait;
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
@@ -408,11 +408,14 @@ pub async fn run_plan(
     cancel: CancellationToken,
 ) -> Result<Outcome, AdapterError> {
     let sink_for_line = sink.clone();
-    let on_line: LineCallback = Arc::new(move |stream, line| {
-        sink_for_line.emit(crate::events::OperationEvent::Log {
-            op_id,
-            stream,
-            line,
+    let on_line: LineCallback = Arc::new(move |run_line| {
+        sink_for_line.emit(match run_line {
+            RunLine::Output(stream, line) => crate::events::OperationEvent::Log {
+                op_id,
+                stream,
+                line,
+            },
+            RunLine::Note(note) => crate::events::OperationEvent::Note { op_id, note },
         });
     });
     let spec = CommandSpec {
@@ -667,6 +670,87 @@ mod tests {
                 exit_code: Some(2),
                 summary: "l3\nl4\nl5\nl6\nl7".to_string(),
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_plan_sends_a_runner_note_to_the_log_as_a_note_not_as_text() {
+        // The one door between a runner's callback and the log drawer. A
+        // note that came out the other side as `Log { line }` would need
+        // English text to carry it, which is the thing `LogNote` exists to
+        // keep out of the log.
+        use crate::events::{LogNote, OperationEvent, Stream, VecSink};
+        use crate::model::{CancelPolicy, OpKind, OpRequest, ResourceLock};
+        use crate::runner::{CommandOutput, RunnerError};
+        use tokio_util::sync::CancellationToken;
+
+        struct NotingRunner;
+        #[async_trait::async_trait]
+        impl CommandRunner for NotingRunner {
+            async fn run(
+                &self,
+                _spec: CommandSpec,
+                on_line: Option<LineCallback>,
+                _cancel: CancellationToken,
+            ) -> Result<CommandOutput, RunnerError> {
+                let cb = on_line.expect("run_plan always streams");
+                cb(RunLine::Output(
+                    Stream::Stdout,
+                    "==> Pouring jq".to_string(),
+                ));
+                cb(RunLine::Note(LogNote::ReadFailed {
+                    stream: Stream::Stdout,
+                    error: "Input/output error (os error 5)".to_string(),
+                }));
+                Ok(CommandOutput {
+                    exit_code: Some(0),
+                    stdout: "==> Pouring jq".to_string(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                })
+            }
+        }
+
+        let plan = Plan {
+            request: OpRequest {
+                kind: OpKind::Install,
+                instance_id: "fake:1".to_string(),
+                artifact_kind: ArtifactKind::Package,
+                name: "jq".to_string(),
+            },
+            program: std::path::PathBuf::from("/bin/fake"),
+            args: Vec::new(),
+            env: Vec::new(),
+            needs_password: false,
+            locks: vec![ResourceLock("fake:1".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: Vec::new(),
+            affected: Vec::new(),
+            timeout_secs: 60,
+        };
+        let runner: Arc<dyn CommandRunner> = Arc::new(NotingRunner);
+        let sink = Arc::new(VecSink::new());
+        run_plan(&runner, &plan, sink.clone(), 9, CancellationToken::new())
+            .await
+            .expect("run_plan");
+
+        assert_eq!(
+            sink.snapshot(),
+            vec![
+                OperationEvent::Log {
+                    op_id: 9,
+                    stream: Stream::Stdout,
+                    line: "==> Pouring jq".to_string(),
+                },
+                OperationEvent::Note {
+                    op_id: 9,
+                    note: LogNote::ReadFailed {
+                        stream: Stream::Stdout,
+                        error: "Input/output error (os error 5)".to_string(),
+                    },
+                },
+            ]
         );
     }
 

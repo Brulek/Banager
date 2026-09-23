@@ -1,4 +1,4 @@
-use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
+use super::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunLine, RunnerError};
 use crate::events::Stream;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -79,12 +79,12 @@ impl CommandRunner for MockRunner {
         if let Some(cb) = on_line {
             for line in output.stdout.split('\n') {
                 if !line.is_empty() {
-                    cb(Stream::Stdout, line.to_string());
+                    cb(RunLine::Output(Stream::Stdout, line.to_string()));
                 }
             }
             for line in output.stderr.split('\n') {
                 if !line.is_empty() {
-                    cb(Stream::Stderr, line.to_string());
+                    cb(RunLine::Output(Stream::Stderr, line.to_string()));
                 }
             }
         }

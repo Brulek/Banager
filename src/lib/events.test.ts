@@ -61,6 +61,30 @@ describe("useOperationEvents", () => {
     ]);
   });
 
+  it("appends Canager's own Note events to the log without refetching operations", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+    await waitFor(() => expect(capturedChannel).not.toBeNull());
+    capturedChannel!.onmessage({
+      Operation: { Note: { op_id: 3, note: "WaitingForBrewUpdate" } },
+    });
+
+    expect(useUiStore.getState().logs).toMatchObject([{ opId: 3, note: "WaitingForBrewUpdate" }]);
+    // A note is a log line, not a status change: it must not fall through
+    // to the branch that treats every non-Log event as one.
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
   it("invalidates the snapshot query on SnapshotChanged", async () => {
     let capturedChannel = null as InstanceType<typeof Channel> | null;
     mockInvoke.mockImplementation((cmd: string, args?: unknown) => {

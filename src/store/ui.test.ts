@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { useUiStore, artifactKeyId } from "./ui";
+import { useUiStore, artifactKeyId, type LogLine } from "./ui";
 import type { ArtifactKey } from "../lib/types";
+
+const lineText = (l: LogLine) => ("line" in l ? l.line : null);
 
 const key: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
 
@@ -61,10 +63,10 @@ describe("useUiStore", () => {
     useUiStore.getState().appendLog({ opId: 2, stream: "Stdout", line: "b" });
     useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "c" });
 
-    expect(useUiStore.getState().logs.map((l) => l.line)).toEqual(["a", "b", "c"]);
+    expect(useUiStore.getState().logs.map(lineText)).toEqual(["a", "b", "c"]);
 
     useUiStore.getState().clearLogs(1);
-    expect(useUiStore.getState().logs.map((l) => l.line)).toEqual(["b"]);
+    expect(useUiStore.getState().logs.map(lineText)).toEqual(["b"]);
   });
 
   it("appendLog keeps only the newest 2000 lines", () => {
@@ -73,8 +75,8 @@ describe("useUiStore", () => {
     }
     const logs = useUiStore.getState().logs;
     expect(logs).toHaveLength(2000);
-    expect(logs[0].line).toBe("line-1");
-    expect(logs[1999].line).toBe("line-2000");
+    expect(lineText(logs[0])).toBe("line-1");
+    expect(lineText(logs[1999])).toBe("line-2000");
   });
 
   it("toggleUpdate adds then removes the key's id from selectedUpdates", () => {

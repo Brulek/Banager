@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
+import i18n from "../i18n";
 
 /// The drawer as it actually appears: something opened it, and there is
 /// page behind it. Both matter for the keyboard, which is why the focus
@@ -57,6 +58,50 @@ describe("LogDrawer", () => {
     // "in order" means the DOM order, not merely that each line exists.
     const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
     expect(lines).toEqual(["Fetching jq", "Installing jq", "warning: cask deprecated"]);
+  });
+
+  it("renders Canager's own notes in the user's language, in place among the tool's lines", async () => {
+    // A note is Canager speaking, so it goes through the locale files: a
+    // Chinese user must not meet English in the one place the app has no
+    // excuse for it. The tool's own line beside it stays verbatim.
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+
+      act(() => {
+        useUiStore.getState().appendLog({ opId: 1, note: "WaitingForBrewUpdate" });
+        useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Pouring jq" });
+        useUiStore.getState().appendLog({
+          opId: 1,
+          note: { ReadFailed: { stream: "Stderr", error: "Input/output error (os error 5)" } },
+        });
+      });
+
+      await findByText("==> Pouring jq");
+      const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
+      expect(lines).toEqual([
+        "正在等待 Homebrew 完成更新…",
+        "==> Pouring jq",
+        "Canager 无法继续读取该命令的错误信息（Input/output error (os error 5)），错误信息到此为止。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says which stream a failed read cut short", async () => {
+    const { findByText } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({
+        opId: 1,
+        note: { ReadFailed: { stream: "Stdout", error: "EIO" } },
+      });
+    });
+
+    await findByText(
+      "Canager couldn't read any more of this command's output (EIO), so its output ends here.",
+    );
   });
 
   it("only shows log lines for the focused operation", async () => {

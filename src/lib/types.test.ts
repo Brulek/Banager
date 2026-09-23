@@ -183,6 +183,21 @@ describe("types", () => {
     const snapshotChanged: UiEvent = { SnapshotChanged: { generation: 7 } };
 
     expect(roundTrip(log)).toEqual({ Log: { op_id: 1, stream: "Stdout", line: "Installing jq" } });
+    // Byte-for-byte what `events.rs`'s
+    // `test_note_wire_shape_is_what_the_typescript_mirror_expects` asserts
+    // serde emits: a unit `LogNote` is a bare string, a data one a
+    // one-key object.
+    const waiting: OperationEvent = { Note: { op_id: 7, note: "WaitingForBrewUpdate" } };
+    expect(JSON.stringify(waiting)).toBe('{"Note":{"op_id":7,"note":"WaitingForBrewUpdate"}}');
+    const readFailed: OperationEvent = {
+      Note: {
+        op_id: 7,
+        note: { ReadFailed: { stream: "Stderr", error: "Input/output error (os error 5)" } },
+      },
+    };
+    expect(JSON.stringify(readFailed)).toBe(
+      '{"Note":{"op_id":7,"note":{"ReadFailed":{"stream":"Stderr","error":"Input/output error (os error 5)"}}}}',
+    );
     const parsedUiEvent = roundTrip(uiEvent);
     expect("Operation" in parsedUiEvent && parsedUiEvent.Operation).toEqual({
       Status: { op_id: 1, status: "Running" },

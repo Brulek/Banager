@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import type { LogNote } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { useOperations } from "../lib/queries";
 import { outcomeArgs, outcomeKey } from "../lib/format";
@@ -12,6 +14,26 @@ const NEAR_BOTTOM_PX = 32;
 // every step in between.
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * The words for one of Canager's own log notes, in the user's language.
+ * Each `LogNote` variant needs a case here: the log is the one place the
+ * app shows text it did not write, and a remark of Canager's that arrived
+ * as plain text would be English sitting among the tool's lines.
+ */
+function noteText(t: TFunction, note: LogNote): string {
+  if (note === "WaitingForBrewUpdate") {
+    return t("operations.logNote.waitingForBrewUpdate");
+  }
+  if ("ReadFailed" in note) {
+    const { stream, error } = note.ReadFailed;
+    return stream === "Stderr"
+      ? t("operations.logNote.readFailedStderr", { error })
+      : t("operations.logNote.readFailedStdout", { error });
+  }
+  const unhandled: never = note;
+  return unhandled;
+}
 
 export function LogDrawer() {
   const { t } = useTranslation();
@@ -127,14 +149,22 @@ export function LogDrawer() {
       </div>
       <ScrollArea className="h-[calc(100%-96px)]" ref={viewportRef} onViewportScroll={handleScroll}>
         <div role="log" className="px-4 py-2 font-mono text-xs">
-          {visibleLogs.map((line) => (
-            <p
-              key={line.seq}
-              className={line.stream === "Stderr" ? "text-[var(--color-danger)]" : undefined}
-            >
-              {line.line}
-            </p>
-          ))}
+          {visibleLogs.map((line) =>
+            "note" in line ? (
+              // Canager's own voice, set apart from the tool's output so
+              // nobody mistakes it for something the tool said.
+              <p key={line.seq} className="font-sans italic text-[var(--color-muted)]">
+                {noteText(t, line.note)}
+              </p>
+            ) : (
+              <p
+                key={line.seq}
+                className={line.stream === "Stderr" ? "text-[var(--color-danger)]" : undefined}
+              >
+                {line.line}
+              </p>
+            ),
+          )}
         </div>
       </ScrollArea>
       {operation?.outcome ? (

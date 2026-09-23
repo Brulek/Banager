@@ -1,14 +1,14 @@
 import { create } from "zustand";
-import type { ArtifactKey } from "../lib/types";
+import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
 export type Page = "installed" | "updates" | "settings";
 
-export interface LogLine {
-  opId: number;
-  stream: "Stdout" | "Stderr";
-  line: string;
-  seq: number;
-}
+// One entry in an operation's log: either a line the tool wrote, shown
+// verbatim, or a note of Canager's own, which the drawer localises.
+export type LogEntry =
+  | { opId: number; stream: Stream; line: string }
+  | { opId: number; note: LogNote };
+export type LogLine = LogEntry & { seq: number };
 
 export interface UiState {
   page: Page;
@@ -27,7 +27,7 @@ export interface UiState {
   focusedOpId: number | null;
   setFocusedOpId(id: number | null): void;
   logs: LogLine[];
-  appendLog(l: Omit<LogLine, "seq">): void;
+  appendLog(l: LogEntry): void;
   clearLogs(opId: number): void;
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;

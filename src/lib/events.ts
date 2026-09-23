@@ -132,9 +132,9 @@ export function useStartupRefresh(): void {
 
 /**
  * Mounted once (by `App`, in Task 13) to bridge the backend's Channel into
- * React state: `Operation.Log` events are appended to the Zustand log ring
- * buffer, `Operation.Status`/`Operation.Finished` invalidate the operations
- * query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
+ * React state: `Operation.Log` and `Operation.Note` events are appended to
+ * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
+ * invalidate the operations query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
  * event additionally triggers a `refresh`: that is the only way the
  * installed/updates lists learn that an uninstall or update changed
  * anything, because nothing on the backend refreshes on its own. Not part of
@@ -161,6 +161,11 @@ export function useOperationEvents(): void {
             opId: opEvent.Log.op_id,
             stream: opEvent.Log.stream,
             line: opEvent.Log.line,
+          });
+        } else if ("Note" in opEvent) {
+          useUiStore.getState().appendLog({
+            opId: opEvent.Note.op_id,
+            note: opEvent.Note.note,
           });
         } else {
           queryClient.invalidateQueries({ queryKey: queryKeys.operations });

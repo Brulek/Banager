@@ -1,4 +1,4 @@
-use crate::events::Stream;
+use crate::events::{LogNote, Stream};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,7 +72,17 @@ pub struct CommandOutput {
     pub cancelled: bool,
 }
 
-pub type LineCallback = Arc<dyn Fn(Stream, String) + Send + Sync>;
+/// One thing a runner hands its [`LineCallback`] while a command runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RunLine {
+    /// A line the command itself wrote, verbatim.
+    Output(Stream, String),
+    /// A remark of the runner's own about the run -- never the command's
+    /// words, and never text: the front end localises it. See [`LogNote`].
+    Note(LogNote),
+}
+
+pub type LineCallback = Arc<dyn Fn(RunLine) + Send + Sync>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {

@@ -115,6 +115,11 @@
     "current": "{{kind}} {{name}}({{status}})",
     "cancel": "取消",
     "logDrawerTitle": "操作日志",
+    "logNote": {
+      "waitingForBrewUpdate": "正在等待 Homebrew 完成更新…",
+      "readFailedStdout": "Canager 无法继续读取该命令的输出（{{error}}），输出到此为止。",
+      "readFailedStderr": "Canager 无法继续读取该命令的错误信息（{{error}}），错误信息到此为止。"
+    },
     "kind": {
       "Install": "正在安装",
       "Uninstall": "正在卸载",
