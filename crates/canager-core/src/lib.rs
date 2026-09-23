@@ -18,8 +18,8 @@
 //! # What it assumes: Unix, and in practice macOS
 //!
 //! This crate is written against POSIX and does not compile on Windows.
-//! It puts every child in its own process group and kills that group with
-//! `killpg` so a `brew` invocation's grandchildren die with it
+//! It puts every child in its own process group and stops that group with
+//! `killpg` so a `brew` invocation's grandchildren stop with it
 //! (`runner::real`), refuses to run a package manager as root via
 //! `geteuid` (`adapters::brew`, `runner::path_env`), and asks `access(2)`
 //! whether npm's global prefix is writable (`adapters::npm`). None of

@@ -55,10 +55,20 @@ pub struct CommandSpec {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandOutput {
+    /// The command's exit code; `None` if it was ended by a signal or
+    /// stopped by the runner.
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    /// The runner stopped the command because `spec.timeout` passed.
+    ///
+    /// Both this and `cancelled` mean the command did not finish. A command
+    /// that exits 0 during the stop's grace period (after SIGTERM, before
+    /// any SIGKILL) finished its work, and is reported as it would have been
+    /// without the stop: both flags false and `exit_code: Some(0)`.
     pub timed_out: bool,
+    /// The runner stopped the command because the cancellation token fired.
+    /// See `timed_out` for a command that finishes while being stopped.
     pub cancelled: bool,
 }
 
@@ -85,15 +95,18 @@ pub trait CommandRunner: Send + Sync {
     /// Runs `spec` to completion, or until `cancel` fires or `spec.timeout`
     /// passes.
     ///
-    /// **Dropping the returned future kills the command.** If the future is
-    /// dropped before it resolves -- by a `select!` or `timeout` around it,
-    /// by aborting the task awaiting it, or by dropping any future that
-    /// contains it, such as a `Session::refresh` -- `RealRunner` SIGKILLs
-    /// the command's whole process group at whatever point it has reached.
-    /// It does not wait for the group to die, since `Drop` cannot await, so
-    /// "killed" here is not yet "dead". A cancel and a timeout end in the
-    /// same SIGKILL; dropping only makes it arrive with no warning to the
-    /// caller.
+    /// A cancel or a timeout stops the command gracefully: `RealRunner`
+    /// sends its whole process group SIGTERM, gives it a few seconds to
+    /// clean up and exit, and SIGKILLs only what is still there after that.
+    ///
+    /// **Dropping the returned future kills the command outright.** If the
+    /// future is dropped before it resolves -- by a `select!` or `timeout`
+    /// around it, by aborting the task awaiting it, or by dropping any
+    /// future that contains it, such as a `Session::refresh` -- `RealRunner`
+    /// SIGKILLs the command's whole process group at whatever point it has
+    /// reached, with no SIGTERM and no grace period: `Drop` cannot await,
+    /// so it can neither wait one out nor wait for the group to die, and
+    /// "killed" here is not yet "dead".
     ///
     /// That is the right thing for a command whose work is worthless if
     /// interrupted and harmless to interrupt -- a query, a download -- and

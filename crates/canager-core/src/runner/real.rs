@@ -1,7 +1,8 @@
 //! `RealRunner` is Unix-only by design for this plan: it puts the spawned
-//! child in its own process group (`process_group(0)`) and kills that whole
-//! group with `libc::killpg` on timeout/cancel, so that a `brew` invocation's
-//! grandchildren (e.g. a `curl` download) die with it. Both APIs are
+//! child in its own process group (`process_group(0)`) and stops that whole
+//! group with `libc::killpg` on timeout/cancel -- SIGTERM, a grace period,
+//! then SIGKILL for whatever is left -- so that a `brew` invocation's
+//! grandchildren (e.g. a `curl` download) stop with it. Both APIs are
 //! POSIX-only, so this module (and the `canager-core` crate as a whole) is
 //! not expected to build or run on non-Unix platforms. Canager v1 targets
 //! macOS only (see Global Constraints in the phase 0-1 plan), so this is not
@@ -267,6 +268,29 @@ impl StreamBuffer {
         self.push(note.as_bytes(), stream, on_line);
     }
 
+    /// Takes one `read()` result on this stream's pipe: records the bytes,
+    /// or marks the stream `done` on EOF or on an error (noting the error
+    /// in the transcript). The one place every read loop in `run` -- the
+    /// main loop, the stop grace period and the final drain -- turns a
+    /// read into transcript, so the three cannot drift apart.
+    fn take_read(
+        &mut self,
+        res: std::io::Result<usize>,
+        read_buf: &[u8],
+        done: &mut bool,
+        stream: Stream,
+        on_line: &Option<LineCallback>,
+    ) {
+        match res {
+            Ok(0) => *done = true,
+            Ok(n) => self.push(&read_buf[..n], stream, on_line),
+            Err(e) => {
+                *done = true;
+                self.note_read_error(&e, stream, on_line);
+            }
+        }
+    }
+
     /// The whole stream, decoded in one go from the accumulated bytes.
     ///
     /// Takes `self`: the buffer is never used again, and handing the
@@ -319,15 +343,44 @@ const POST_KILL_DRAIN: std::time::Duration = std::time::Duration::from_millis(25
 /// give up after this.
 const POST_EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// How long to wait for a SIGKILLed child to be reaped before abandoning it.
+/// How long to wait for a stopped child to be reaped before abandoning it.
 ///
-/// SIGKILL is not instantaneous: a process blocked in an uninterruptible
-/// kernel wait (a read from a stalled disk or a hung network mount) stays
-/// alive until that wait returns, and an unbounded `wait()` would hang the
-/// whole operation — with no upper bound at all — on the path the user
-/// reached by pressing Cancel. Abandoning the child leaks no zombie: Tokio
-/// reaps a dropped `Child` in the background.
+/// Reached after the stop grace period, when the group has either emptied
+/// on its own (the child is a zombie and this returns at once) or been
+/// SIGKILLed. SIGKILL is not instantaneous: a process blocked in an
+/// uninterruptible kernel wait (a read from a stalled disk or a hung
+/// network mount) stays alive until that wait returns, and an unbounded
+/// `wait()` would hang the whole operation — with no upper bound at all —
+/// on the path the user reached by pressing Cancel. Abandoning the child
+/// leaks no zombie: Tokio reaps a dropped `Child` in the background.
 const POST_KILL_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How long a cancelled or timed-out command's process group gets, after
+/// SIGTERM, to exit on its own before whatever is left of it is SIGKILLed.
+///
+/// SIGTERM is the request to stop that tools clean up on: git removes its
+/// `index.lock` (and every other `*.lock` it holds) from its signal
+/// handler, and Ruby (Homebrew), Node (npm), Python (pip, pipx) and Go
+/// (ollama) all run their exit paths or default to a prompt exit. None of
+/// that cleanup is more than a few file operations, so it needs
+/// milliseconds; five seconds leaves two orders of magnitude of headroom
+/// for a machine under load. The grace period ends the moment the group is
+/// empty, so it only costs anything when something in the group ignores
+/// SIGTERM or hangs on it -- and then it is added to the user's wait after
+/// pressing Cancel, which is the other side of the trade: `docker stop`'s
+/// ten seconds or launchd's twenty are for daemons flushing state, not for
+/// a window someone is watching. Five seconds, plus at most
+/// `POST_KILL_WAIT`, keeps a Cancel on the most stubborn command inside
+/// ten seconds.
+const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often the stop grace period checks whether anything is left in the
+/// group. There is no event for "a process group became empty": the
+/// child's own exit has one (SIGCHLD), but reaping it would free the group
+/// id this run still needs to be able to SIGKILL, and grandchildren are not
+/// ours to wait for. So it asks `killpg(pgid, 0)` -- a check, no signal --
+/// this often, which bounds how late a cleanly exiting group is noticed.
+const GROUP_POLL: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// The longest `spec.timeout` this runner will honour literally.
 ///
@@ -341,24 +394,25 @@ const POST_KILL_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 /// `ollama pull`) and cannot overflow.
 const MAX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// SIGKILLs the whole process group, so a `brew` invocation's grandchildren
-/// (a `curl` download, a `git` clone) die with it rather than outliving the
-/// operation that started them.
-fn kill_group(pid: Option<libc::pid_t>) {
-    if let Some(pid) = pid {
-        #[cfg(test)]
-        probe::record_kill(pid);
-        // SAFETY: `killpg` takes two integers and no pointers; the worst a
-        // stale pid can do here is return ESRCH, which is ignored.
-        unsafe {
-            libc::killpg(pid, libc::SIGKILL);
-        }
+/// Sends `sig` to the whole process group, so a `brew` invocation's
+/// grandchildren (a `curl` download, a `git` clone) are stopped with it
+/// rather than outliving the operation that started them.
+///
+/// Called only through `GroupedChild`, which owns the group id and decides
+/// when it is still safe to signal.
+fn signal_group(pgid: libc::pid_t, sig: libc::c_int) {
+    #[cfg(test)]
+    probe::record_signal(pgid, sig);
+    // SAFETY: `killpg` takes two integers and no pointers; the worst a
+    // stale pid can do here is return ESRCH, which is ignored.
+    unsafe {
+        libc::killpg(pgid, sig);
     }
 }
 
-/// The spawned child together with the one `killpg` its run may send,
-/// which goes out if the `run` future is dropped while the child may still
-/// be running.
+/// The spawned child together with the signals its run may send its
+/// process group: at most one SIGTERM and at most one SIGKILL, SIGTERM
+/// first, and never either once the child has been reaped.
 ///
 /// Dropping `run` mid-flight used to orphan the child: `tokio::process::Child`
 /// does not kill on drop, so the command kept going with nothing reading its
@@ -368,11 +422,29 @@ fn kill_group(pid: Option<libc::pid_t>) {
 /// lock, and without this the command the lock was protecting would carry on
 /// underneath the next operation to take it.
 ///
-/// Armed from spawn until the child's own exit is seen or the run kills it
-/// itself. Both of those consume the pid, so `killpg` still goes out at most
-/// once per run, and only ever at a pid that has not been reaped: the sole
-/// reaping `wait()` in the read loop disarms this in the same select arm
-/// that observes it, before anything else can be awaited.
+/// Armed from spawn until the child's own exit is seen, the run SIGKILLs
+/// the group, or a stop finds nothing left in the group to signal. All
+/// three consume the group id, so it is never signalled again after that,
+/// and only ever while the child is unreaped: the sole reaping `wait()` in
+/// the read loop disarms this in the same select arm that observes it,
+/// before anything else can be awaited, and the stop path disarms or kills
+/// before `reap` runs. `terminate` (SIGTERM) deliberately leaves it armed:
+/// the grace period after it still needs to check the group and, if
+/// something ignored the request, SIGKILL it.
+///
+/// **Dropping this SIGKILLs, with no grace period.** A `Drop` cannot await,
+/// so it cannot wait one out, and the alternatives are worse than the kill:
+/// handing the child to a spawned task that waits out the grace period
+/// would let the caller release its resource lock (the refresh worker's
+/// `_lock` drops right after the run) while the command is still running
+/// and writing for up to `STOP_GRACE` -- seconds of an unlocked command
+/// where the kill leaves microseconds -- and needs a live runtime inside a
+/// destructor that may run during shutdown or a panic. Sending SIGTERM and
+/// SIGKILL back to back is a SIGKILL with extra steps: the kill lands before
+/// any handler runs. So the drop path stays SIGKILL, and the commands that
+/// must not be killed are kept off it instead: `brew update` runs in a task
+/// of its own that nothing drops (`BrewAdapter::maybe_update`), and nothing
+/// in production drops any other run except by panicking.
 ///
 /// The `Child` is a field rather than a separate local on purpose. Dropping
 /// a `Child` whose process has already exited reaps it on the spot (tokio's
@@ -384,6 +456,8 @@ fn kill_group(pid: Option<libc::pid_t>) {
 struct GroupedChild {
     child: tokio::process::Child,
     pgid: Option<libc::pid_t>,
+    /// Whether `terminate` has sent its one SIGTERM.
+    terminated: bool,
 }
 
 impl GroupedChild {
@@ -395,16 +469,52 @@ impl GroupedChild {
         if let Some(pid) = pgid {
             probe::record_spawn(pid);
         }
-        Self { child, pgid }
+        Self {
+            child,
+            pgid,
+            terminated: false,
+        }
     }
 
-    /// Kill the group now, if it has not already been killed or seen to exit.
+    /// Ask the group to stop: SIGTERM, once. Stays armed, so the group can
+    /// still be checked with `group_alive` and SIGKILLed with `kill`.
+    fn terminate(&mut self) {
+        if let (Some(pgid), false) = (self.pgid, self.terminated) {
+            self.terminated = true;
+            signal_group(pgid, libc::SIGTERM);
+        }
+    }
+
+    /// Whether anything in the group can still be signalled.
+    ///
+    /// `killpg(pgid, 0)` sends nothing; it answers 0 while at least one
+    /// member can be signalled. On macOS a group whose only member is the
+    /// exited-but-unreaped child answers EPERM, not 0 (measured on Darwin
+    /// 27: a zombie cannot be signalled), and an empty one ESRCH -- both
+    /// mean there is nothing a SIGKILL could still reach. Only asked while
+    /// armed, when the child is unreaped, so the group id cannot yet belong
+    /// to anyone else. Were a kernel to count the zombie as signallable,
+    /// the grace period would simply run to its end and SIGKILL an
+    /// empty group: slower, never wrong.
+    fn group_alive(&self) -> bool {
+        match self.pgid {
+            // SAFETY: signal 0 delivers nothing and takes no pointers.
+            Some(pgid) => (unsafe { libc::killpg(pgid, 0) }) == 0,
+            None => false,
+        }
+    }
+
+    /// SIGKILL the group now, if it has not already been killed, seen to
+    /// exit, or found empty.
     fn kill(&mut self) {
-        kill_group(self.pgid.take());
+        if let Some(pgid) = self.pgid.take() {
+            signal_group(pgid, libc::SIGKILL);
+        }
     }
 
-    /// The child exited on its own and has been reaped; its pid may be
-    /// reused from here on, so it must never be signalled.
+    /// Never signal the group again: the child exited on its own and has
+    /// been reaped, or a stop found nothing left in the group and the child
+    /// is about to be reaped. Either way its pid may be reused from here.
     fn disarm(&mut self) {
         self.pgid = None;
     }
@@ -413,13 +523,15 @@ impl GroupedChild {
 impl Drop for GroupedChild {
     fn drop(&mut self) {
         // Runs before `self.child` is dropped, so the child cannot have been
-        // reaped by its own drop yet. See the type's doc comment.
+        // reaped by its own drop yet. See the type's doc comment for why
+        // this is a SIGKILL and not a graceful stop.
         self.kill();
     }
 }
 
-/// Test-only hooks that let a test see which child a run spawned and what
-/// state that child was in at the moment its group was signalled.
+/// Test-only hooks that let a test see which child a run spawned, and each
+/// signal its group was sent together with the state the child was in at
+/// that moment.
 ///
 /// Thread-local, because `#[tokio::test]` runs each test on its own
 /// current-thread runtime, and both the spawn and the kill happen on the
@@ -429,7 +541,7 @@ impl Drop for GroupedChild {
 mod probe {
     use std::cell::RefCell;
 
-    /// What `waitid(WNOWAIT)` said about the child just before `killpg`.
+    /// What `waitid(WNOWAIT)` said about the child just before a `killpg`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(super) enum ChildState {
         /// Not exited yet.
@@ -438,13 +550,14 @@ mod probe {
         /// been reused and `killpg` can only reach this child's own group.
         Zombie,
         /// Already reaped (ECHILD): the pid is free and may belong to
-        /// anything by now. A kill in this state is the bug.
+        /// anything by now. A signal in this state is the bug.
         Reaped,
     }
 
     thread_local! {
         static SPAWNED: RefCell<Vec<libc::pid_t>> = const { RefCell::new(Vec::new()) };
-        static KILLS: RefCell<Vec<(libc::pid_t, ChildState)>> = const { RefCell::new(Vec::new()) };
+        static SIGNALS: RefCell<Vec<(libc::pid_t, libc::c_int, ChildState)>> =
+            const { RefCell::new(Vec::new()) };
     }
 
     /// Asks, without reaping, whether `pid` is still an unreaped child.
@@ -473,9 +586,9 @@ mod probe {
         SPAWNED.with(|s| s.borrow_mut().push(pid));
     }
 
-    pub(super) fn record_kill(pid: libc::pid_t) {
+    pub(super) fn record_signal(pid: libc::pid_t, sig: libc::c_int) {
         let seen = state(pid);
-        KILLS.with(|k| k.borrow_mut().push((pid, seen)));
+        SIGNALS.with(|k| k.borrow_mut().push((pid, sig, seen)));
     }
 
     /// Drains this thread's spawn records. Draining rather than reading
@@ -485,15 +598,20 @@ mod probe {
         SPAWNED.with(|s| std::mem::take(&mut *s.borrow_mut()))
     }
 
-    /// Drains this thread's kill records. See `take_spawned`.
-    pub(super) fn take_kills() -> Vec<(libc::pid_t, ChildState)> {
-        KILLS.with(|k| std::mem::take(&mut *k.borrow_mut()))
+    /// Drains this thread's signal records, in the order they were sent.
+    /// See `take_spawned`.
+    pub(super) fn take_signals() -> Vec<(libc::pid_t, libc::c_int, ChildState)> {
+        SIGNALS.with(|k| std::mem::take(&mut *k.borrow_mut()))
     }
 }
 
-/// Waits for an already-killed child, bounded by `POST_KILL_WAIT`.
-async fn reap(child: &mut tokio::process::Child) {
-    let _ = tokio::time::timeout(POST_KILL_WAIT, child.wait()).await;
+/// Waits for a stopped child, bounded by `POST_KILL_WAIT`, and returns its
+/// exit status if it was reaped in time.
+async fn reap(child: &mut tokio::process::Child) -> Option<std::process::ExitStatus> {
+    tokio::time::timeout(POST_KILL_WAIT, child.wait())
+        .await
+        .ok()
+        .and_then(Result::ok)
 }
 
 #[async_trait]
@@ -598,39 +716,76 @@ impl CommandRunner for RealRunner {
                 // stderr is read. Measured under a 172 KiB stdout flood,
                 // both the first and the last stderr line still arrived.
                 biased;
-                _ = cancel.cancelled() => {
-                    cancelled = true;
-                    child.kill();
-                }
-                _ = &mut sleep => {
-                    timed_out = true;
-                    child.kill();
-                }
+                // Neither arm signals anything itself: both leave the loop
+                // for the stop below, which asks the group to stop before
+                // it forces it to.
+                _ = cancel.cancelled() => cancelled = true,
+                _ = &mut sleep => timed_out = true,
                 res = child.child.wait() => {
                     child.disarm();
                     child_done = true;
                     child_code = res.ok().and_then(|status| status.code());
                 }
                 res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
-                    match res {
-                        Ok(0) => stdout_done = true,
-                        Ok(n) => out.push(&stdout_read_buf[..n], Stream::Stdout, &on_line),
-                        Err(e) => {
-                            stdout_done = true;
-                            out.note_read_error(&e, Stream::Stdout, &on_line);
-                        }
-                    }
+                    out.take_read(res, &stdout_read_buf, &mut stdout_done, Stream::Stdout, &on_line);
                 }
                 res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
-                    match res {
-                        Ok(0) => stderr_done = true,
-                        Ok(n) => err.push(&stderr_read_buf[..n], Stream::Stderr, &on_line),
-                        Err(e) => {
-                            stderr_done = true;
-                            err.note_read_error(&e, Stream::Stderr, &on_line);
-                        }
+                    err.take_read(res, &stderr_read_buf, &mut stderr_done, Stream::Stderr, &on_line);
+                }
+            }
+        }
+
+        // Cancelled or timed out: stop the group, gracefully first.
+        //
+        // SIGTERM goes to the whole group, then the group gets `STOP_GRACE`
+        // to empty on its own -- git removing its `index.lock`, npm and
+        // pip unwinding -- and only what is still there after that is
+        // SIGKILLed. SIGKILL straight away, which is what this used to do,
+        // gives nothing a chance to clean up: a `brew update` killed that
+        // way inside git leaves `.git/index.lock` behind and Homebrew
+        // refusing to update until someone deletes it by hand.
+        //
+        // The pipes are read throughout. A tool that reports what it is
+        // doing as it cleans up would otherwise fill a pipe nobody is
+        // reading, block on the write, and turn a clean exit into a SIGKILL
+        // at the end of the grace period.
+        //
+        // The child is not reaped here, even once it has exited: its pid
+        // is the group's id, and reaping it could free that id for reuse
+        // while a grandchild that ignored SIGTERM still needs SIGKILLing.
+        // `child.child.wait()` is deliberately not polled; `group_alive`
+        // asks without reaping. Only once the group is SIGKILLed or found
+        // empty -- and the guard disarmed either way -- does `reap` below
+        // collect the child.
+        let stopping = timed_out || cancelled;
+        if stopping {
+            child.terminate();
+            let grace = tokio::time::sleep(STOP_GRACE);
+            tokio::pin!(grace);
+            let mut grace_over = false;
+            while !grace_over && child.group_alive() {
+                tokio::select! {
+                    biased;
+                    _ = &mut grace => grace_over = true,
+                    _ = tokio::time::sleep(GROUP_POLL) => {}
+                    res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
+                        out.take_read(res, &stdout_read_buf, &mut stdout_done, Stream::Stdout, &on_line);
+                    }
+                    res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
+                        err.take_read(res, &stderr_read_buf, &mut stderr_done, Stream::Stderr, &on_line);
                     }
                 }
+            }
+            if child.group_alive() {
+                // Something ignored SIGTERM, or is still cleaning up after
+                // `STOP_GRACE`. The child is unreaped, so the group id is
+                // still ours to signal.
+                child.kill();
+            } else {
+                // Nothing left that a signal could reach. Disarm before
+                // `reap` frees the pid, so the guard's `Drop` has nothing
+                // to send either.
+                child.disarm();
             }
         }
 
@@ -650,7 +805,7 @@ impl CommandRunner for RealRunner {
         // which for a child that took its pipes with it is immediate; the
         // bounds only matter when something outside the child is still
         // holding a write end.
-        let drain_budget = if timed_out || cancelled {
+        let drain_budget = if stopping {
             Some(POST_KILL_DRAIN)
         } else if !(stdout_done && stderr_done) {
             Some(POST_EXIT_DRAIN)
@@ -662,24 +817,10 @@ impl CommandRunner for RealRunner {
                 while !(stdout_done && stderr_done) {
                     tokio::select! {
                         res = stdout.read(&mut stdout_read_buf), if !stdout_done => {
-                            match res {
-                                Ok(0) => stdout_done = true,
-                                Ok(n) => out.push(&stdout_read_buf[..n], Stream::Stdout, &on_line),
-                                Err(e) => {
-                                    stdout_done = true;
-                                    out.note_read_error(&e, Stream::Stdout, &on_line);
-                                }
-                            }
+                            out.take_read(res, &stdout_read_buf, &mut stdout_done, Stream::Stdout, &on_line);
                         }
                         res = stderr.read(&mut stderr_read_buf), if !stderr_done => {
-                            match res {
-                                Ok(0) => stderr_done = true,
-                                Ok(n) => err.push(&stderr_read_buf[..n], Stream::Stderr, &on_line),
-                                Err(e) => {
-                                    stderr_done = true;
-                                    err.note_read_error(&e, Stream::Stderr, &on_line);
-                                }
-                            }
+                            err.take_read(res, &stderr_read_buf, &mut stderr_done, Stream::Stderr, &on_line);
                         }
                     }
                 }
@@ -692,13 +833,39 @@ impl CommandRunner for RealRunner {
         out.flush_partial_line(Stream::Stdout, &on_line);
         err.flush_partial_line(Stream::Stderr, &on_line);
 
-        let exit_code = if timed_out || cancelled {
-            // The child was SIGKILLed by this run, so there is no exit code
-            // worth reporting — only the flag saying which of the two
-            // happened. `reap` is the only `wait()` on these paths, so the
-            // pid `child.kill()` used was still a zombie when it used it.
-            reap(&mut child.child).await;
-            None
+        let exit_code = if stopping {
+            // `reap` is the only `wait()` on these paths, and it runs after
+            // the guard was disarmed or fired, so every signal the stop sent
+            // reached a child that was not yet reaped.
+            match reap(&mut child.child)
+                .await
+                .and_then(|status| status.code())
+            {
+                // It exited 0 inside the grace period: it finished its work.
+                // Either it was already done when the deadline or the cancel
+                // landed (the `biased` select prefers both over `wait()`, so
+                // a child that exited in the same instant still arrives
+                // here), or it completed while SIGTERM was on its way. The
+                // runner believes an exit status of 0 on every other path,
+                // and there is no other evidence to go on here. Reporting it
+                // as timed out or cancelled would tell the caller a
+                // finished command was not -- `brew update` would not record
+                // its update, and an install would come back `Unconfirmed`.
+                // The tools Canager runs report a stop they obeyed as death
+                // by SIGTERM (git, Ruby, Python, Rust and Go all end that
+                // way by default) or a non-zero exit (npm), so a 0 here is
+                // not what obeying looks like.
+                Some(0) => {
+                    timed_out = false;
+                    cancelled = false;
+                    Some(0)
+                }
+                // Stopped by this run -- by SIGTERM, by the SIGKILL after
+                // it, or by its own exit path answering SIGTERM with a
+                // failure status -- so there is no exit code worth
+                // reporting, only the flag saying which of the two happened.
+                _ => None,
+            }
         } else {
             // The loop cannot end any other way, so the child exited and
             // `child_code` is its status: `None` here means it was killed
@@ -900,19 +1067,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_cancel_signals_the_group_exactly_once() {
-        // `kill()` must *consume* the pgid (`Option::take`), not just read
-        // it. `GroupedChild`'s `Drop` fires unconditionally when its
-        // `child` field goes out of scope at the end of `run` -- on every
-        // return, not only the drop-mid-flight path. If `kill()` left the
-        // pgid in place, that final `Drop` would call `killpg` a second
-        // time, after `reap()` has already reaped the child: exactly the
-        // PID-reuse hazard the merge gate ruled out (kill after reap).
-        // `output.cancelled` alone cannot see this -- it is identical
-        // whether the group was signalled once or twice -- so this checks
-        // the count directly through the test-only recorder in
-        // `kill_group`, which cannot exist in a release build.
+        // The stop's contract, pinned through the test-only recorder in
+        // `signal_group` (which cannot exist in a release build): one
+        // SIGTERM, then -- only if something in the group outlasts
+        // `STOP_GRACE` -- one SIGKILL, never either after the child has
+        // been reaped. A child that obeys SIGTERM gets exactly the SIGTERM.
+        //
+        // The exact list is the point. `output.cancelled` is identical
+        // however many signals went out, and the ones that matter are the
+        // ones a lost `Option::take` would add: `GroupedChild`'s `Drop`
+        // fires on every return, after `reap()` has reaped the child, so a
+        // `disarm()` or `kill()` that left the pgid in place would send a
+        // SIGKILL at a freed pid -- exactly the PID-reuse hazard the merge
+        // gate ruled out (signal after reap). The recorded state says the
+        // SIGTERM reached a live child, and the elapsed time says the grace
+        // period ended as soon as the group was empty rather than running
+        // to its end.
+        use probe::ChildState;
+
         probe::take_spawned();
-        probe::take_kills();
+        probe::take_signals();
 
         let runner = RealRunner::new();
         let cancel = CancellationToken::new();
@@ -930,31 +1104,38 @@ mod tests {
             timeout: std::time::Duration::from_secs(5),
             output_use: OutputUse::Transcript,
         };
+        let started = std::time::Instant::now();
         let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
         assert!(output.cancelled);
+        assert_eq!(output.exit_code, None);
 
         let spawned = probe::take_spawned();
         assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
         let pid = spawned[0];
-        let kills = probe::take_kills();
         assert_eq!(
-            kills.len(),
-            1,
-            "cancel must signal the group exactly once -- including after \
-             `run` has returned, which is where a lost `take()` would add a \
-             second signal: {kills:?}"
+            probe::take_signals(),
+            vec![(pid, libc::SIGTERM, ChildState::Running)],
+            "a child that obeys SIGTERM must get exactly one SIGTERM and \
+             nothing else -- including after `run` has returned, which is \
+             where a lost `take()` would add a SIGKILL"
         );
-        assert_eq!(kills[0].0, pid);
+        assert!(
+            elapsed < STOP_GRACE,
+            "the grace period must end when the group empties, not run out; took {elapsed:?}"
+        );
     }
 
     #[tokio::test]
     async fn test_timeout_signals_the_group_exactly_once() {
         // The timeout arm's mirror of `test_cancel_signals_the_group_exactly_once`:
-        // same guard, same `kill()` call, a different select arm reaching
-        // it. See that test's comment for why counting matters and
-        // `output.timed_out` alone does not.
+        // same stop, a different select arm reaching it. See that test's
+        // comment for why the exact list matters and `output.timed_out`
+        // alone does not.
+        use probe::ChildState;
+
         probe::take_spawned();
-        probe::take_kills();
+        probe::take_signals();
 
         let runner = RealRunner::new();
         let spec = CommandSpec {
@@ -965,24 +1146,231 @@ mod tests {
             timeout: std::time::Duration::from_millis(200),
             output_use: OutputUse::Transcript,
         };
+        let started = std::time::Instant::now();
         let output = runner
             .run(spec, None, CancellationToken::new())
             .await
             .expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
         assert!(output.timed_out);
+        assert_eq!(output.exit_code, None);
 
         let spawned = probe::take_spawned();
         assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
         let pid = spawned[0];
-        let kills = probe::take_kills();
         assert_eq!(
-            kills.len(),
-            1,
-            "a timeout must signal the group exactly once -- including after \
-             `run` has returned, which is where a lost `take()` would add a \
-             second signal: {kills:?}"
+            probe::take_signals(),
+            vec![(pid, libc::SIGTERM, ChildState::Running)],
+            "a timeout on a child that obeys SIGTERM must send exactly one \
+             SIGTERM and nothing else"
         );
-        assert_eq!(kills[0].0, pid);
+        assert!(
+            elapsed < STOP_GRACE,
+            "the grace period must end when the group empties, not run out; took {elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_child_that_traps_sigterm_is_given_time_to_clean_up() {
+        // The reason the stop is graceful at all. `brew update` is git
+        // rewriting a checkout; git removes its `index.lock` from its
+        // SIGTERM handler, and a SIGKILL -- which runs no handler -- leaves
+        // the lock behind and Homebrew refusing to update until someone
+        // deletes it by hand. Here the shell stands in for git: it traps
+        // SIGTERM, takes a moment to clean up (longer than a SIGKILL would
+        // have given it: none), says so on stdout, leaves a marker file,
+        // and exits with the conventional 128+15.
+        //
+        // Also pinned: the cleanup's own output reaches the transcript (the
+        // pipes are read through the grace period), the run is still
+        // reported as cancelled (a stop the child obeyed is not the child
+        // finishing), and the group got SIGTERM and nothing else.
+        use probe::ChildState;
+
+        let marker = unique_temp_path("sigterm-cleanup");
+        let _ = std::fs::remove_file(&marker);
+        probe::take_spawned();
+        probe::take_signals();
+
+        let runner = RealRunner::new();
+        let cancel = CancellationToken::new();
+        let canceller = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            canceller.cancel();
+        });
+
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                format!(
+                    "trap 'sleep 0.3; echo cleaning up; echo cleaned > {}; exit 143' TERM; \
+                     sleep 30 & wait",
+                    marker.display()
+                ),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(30),
+            output_use: OutputUse::Transcript,
+        };
+        let started = std::time::Instant::now();
+        let output = runner.run(spec, None, cancel).await.expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
+
+        let cleaned = std::fs::read_to_string(&marker).ok();
+        let _ = std::fs::remove_file(&marker);
+        assert_eq!(
+            cleaned.as_deref(),
+            Some("cleaned\n"),
+            "a child that handles SIGTERM must be given the time to clean up, not SIGKILLed"
+        );
+        assert!(
+            output.cancelled,
+            "the child stopped because it was asked to"
+        );
+        assert!(!output.timed_out);
+        assert_eq!(output.exit_code, None);
+        assert!(
+            output.stdout.contains("cleaning up"),
+            "what the child wrote while cleaning up is missing: {:?}",
+            output.stdout
+        );
+        let pid = probe::take_spawned()[0];
+        assert_eq!(
+            probe::take_signals(),
+            vec![(pid, libc::SIGTERM, ChildState::Running)],
+            "a child that exits inside the grace period must never be SIGKILLed"
+        );
+        assert!(
+            elapsed < STOP_GRACE,
+            "the stop must end when the child does, not when the grace period runs out; \
+             took {elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_child_that_ignores_sigterm_is_sigkilled_after_the_grace_period() {
+        // The other half of the contract: SIGTERM is a request, and a
+        // group that ignores it must still end. The shell ignores SIGTERM
+        // and so does the `sleep` it starts (an ignored signal stays
+        // ignored across fork and exec), so only the SIGKILL at the end of
+        // `STOP_GRACE` can stop either. The grandchild is what is watched:
+        // it is reparented and reaped as soon as it dies, and only a
+        // group-wide signal reaches it at all. Through the timeout arm, so
+        // this and the trap test above cover both ways into the stop.
+        use probe::ChildState;
+
+        probe::take_spawned();
+        probe::take_signals();
+
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: LineCallback = Arc::new(move |_stream, line| {
+            lines_cb.lock().unwrap().push(line);
+        });
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "trap '' TERM; sleep 30 & echo $!; wait".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_millis(300),
+            output_use: OutputUse::Transcript,
+        };
+        let started = std::time::Instant::now();
+        let output = runner
+            .run(spec, Some(on_line), CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        let elapsed = started.elapsed();
+
+        assert!(output.timed_out);
+        assert_eq!(output.exit_code, None);
+        assert!(
+            elapsed >= STOP_GRACE,
+            "a group that ignores SIGTERM must get the whole grace period; took {elapsed:?}"
+        );
+        let pid = probe::take_spawned()[0];
+        assert_eq!(
+            probe::take_signals(),
+            vec![
+                (pid, libc::SIGTERM, ChildState::Running),
+                (pid, libc::SIGKILL, ChildState::Running),
+            ],
+            "SIGTERM, then after the grace period exactly one SIGKILL, both \
+             while the child was unreaped"
+        );
+
+        let grandchild: libc::pid_t = lines
+            .lock()
+            .unwrap()
+            .first()
+            .expect("the shell prints the sleep's pid")
+            .trim()
+            .parse()
+            .expect("the shell prints the sleep's pid");
+        // SAFETY: signal 0 only checks that the pid exists.
+        let alive = || unsafe { libc::kill(grandchild, 0) } == 0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while alive() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "a grandchild that ignores SIGTERM must still be SIGKILLed with its group"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_child_that_finishes_inside_the_grace_period_is_not_timed_out() {
+        // A deadline that lands just before a command finishes used to
+        // SIGKILL it at once and call it timed out, whatever it was about
+        // to report. With a grace period the command can finish, and if it
+        // does -- exits 0 -- the truthful report is that it finished: no
+        // `timed_out`, its exit code, all of its output. (`brew update`
+        // reads exactly this to decide whether to record the update.)
+        // The shell ignores SIGTERM here only so that it survives to
+        // finish; what is under test is how its exit is reported.
+        use probe::ChildState;
+
+        probe::take_spawned();
+        probe::take_signals();
+
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "trap '' TERM; sleep 0.5; echo done".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_millis(150),
+            output_use: OutputUse::Transcript,
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+
+        assert!(
+            !output.timed_out,
+            "a command that finished inside the grace period did not time out"
+        );
+        assert!(!output.cancelled);
+        assert_eq!(output.exit_code, Some(0));
+        assert_eq!(output.stdout, "done\n");
+        let pid = probe::take_spawned()[0];
+        assert_eq!(
+            probe::take_signals(),
+            vec![(pid, libc::SIGTERM, ChildState::Running)],
+            "it was asked to stop once and finished instead; nothing more was sent"
+        );
     }
 
     #[tokio::test]
@@ -993,7 +1381,7 @@ mod tests {
         // guard's own `Drop` at the end of `run` finds nothing left to
         // kill.
         probe::take_spawned();
-        probe::take_kills();
+        probe::take_signals();
 
         let runner = RealRunner::new();
         let spec = CommandSpec {
@@ -1013,7 +1401,7 @@ mod tests {
         let spawned = probe::take_spawned();
         assert_eq!(spawned.len(), 1, "one run spawns exactly one child");
         assert_eq!(
-            probe::take_kills(),
+            probe::take_signals(),
             Vec::new(),
             "a child that exits on its own must never be signalled"
         );
@@ -1087,7 +1475,7 @@ mod tests {
         use probe::ChildState;
 
         probe::take_spawned();
-        probe::take_kills();
+        probe::take_signals();
 
         let runner = RealRunner::new();
         let spec = CommandSpec {
@@ -1131,16 +1519,94 @@ mod tests {
         drop(run);
 
         assert_eq!(
-            probe::take_kills(),
-            vec![(pid, ChildState::Zombie)],
-            "the drop must signal the group exactly once, and while the child \
-             is still an unreaped zombie -- never after its pid was freed"
+            probe::take_signals(),
+            vec![(pid, libc::SIGKILL, ChildState::Zombie)],
+            "the drop must SIGKILL the group exactly once -- a `Drop` cannot \
+             wait out a grace period, so no SIGTERM first -- and while the \
+             child is still an unreaped zombie, never after its pid was freed"
         );
         assert_eq!(
             probe::state(pid),
             ChildState::Reaped,
             "dropping the run must still reap the child, not leak a zombie"
         );
+    }
+
+    #[tokio::test]
+    async fn test_dropping_a_run_during_its_grace_period_sigkills_once() {
+        // A run can be dropped after its stop has sent SIGTERM and while
+        // it is waiting out `STOP_GRACE`. The guard is still armed then --
+        // `terminate` does not consume the group id, precisely so the group
+        // can still be SIGKILLed -- so the drop must SIGKILL it, once, and
+        // the one SIGTERM already sent must not be repeated. The children
+        // ignore SIGTERM, so only that SIGKILL can end them.
+        use probe::ChildState;
+
+        probe::take_spawned();
+        probe::take_signals();
+
+        let runner = RealRunner::new();
+        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let lines_cb = lines.clone();
+        let on_line: LineCallback = Arc::new(move |_stream, line| {
+            lines_cb.lock().unwrap().push(line);
+        });
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec![
+                "-c".to_string(),
+                "trap '' TERM; sleep 30 & echo $!; wait".to_string(),
+            ],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(60),
+            output_use: OutputUse::Transcript,
+        };
+        let cancel = CancellationToken::new();
+        let mut run = Box::pin(runner.run(spec, Some(on_line), cancel.clone()));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let grandchild: libc::pid_t = loop {
+            tokio::select! {
+                _ = &mut run => panic!("`sleep 30` cannot have finished"),
+                _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+            }
+            if let Some(line) = lines.lock().unwrap().first() {
+                break line
+                    .trim()
+                    .parse()
+                    .expect("the shell prints the sleep's pid");
+            }
+            assert!(std::time::Instant::now() < deadline, "no pid printed");
+        };
+
+        // Into the grace period: cancel, then keep polling for a while
+        // that is well inside `STOP_GRACE`.
+        cancel.cancel();
+        tokio::select! {
+            _ = &mut run => panic!("a group that ignores SIGTERM cannot have stopped yet"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {}
+        }
+        drop(run);
+
+        let pid = probe::take_spawned()[0];
+        assert_eq!(
+            probe::take_signals(),
+            vec![
+                (pid, libc::SIGTERM, ChildState::Running),
+                (pid, libc::SIGKILL, ChildState::Running),
+            ],
+            "dropped mid-grace: the one SIGTERM, then the drop's one SIGKILL"
+        );
+        // SAFETY: signal 0 only checks that the pid exists.
+        let alive = || unsafe { libc::kill(grandchild, 0) } == 0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while alive() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "dropping the run mid-grace must still kill the whole group"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
     }
 
     #[tokio::test]
@@ -1187,9 +1653,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_delivers_what_was_still_in_the_pipe_when_the_child_was_killed() {
-        // Cancelling and timing out both SIGKILL the process group and
-        // leave the loop at once, so anything the child had already written
-        // but the loop had not yet read died with it -- missing from the
+        // Cancelling and timing out both leave the read loop at once to stop
+        // the process group, so anything the child had already written but
+        // the loop had not yet read used to die with it -- missing from the
         // exact transcript the user opens the log drawer to read.
         //
         // The race is made deterministic: the callback blocks the runtime

@@ -108,7 +108,10 @@ impl BrewAdapter {
     /// instance's update lock, so a `brew update` that never exits would
     /// leave every later refresh reporting a stale catalogue and every
     /// install and upgrade on this Homebrew waiting behind it until the app
-    /// is quit. Killing a hung update can still leave Homebrew's
+    /// is quit. Reaching it stops the update the way every timeout does:
+    /// SIGTERM first, which git answers by removing its lock files, and a
+    /// SIGKILL only if the update is still there a few seconds later. A
+    /// hang that ignores SIGTERM too can still leave Homebrew's
     /// `.git/index.lock` behind; that is the price of getting the app back,
     /// and it is paid only by a process that has shown no sign of finishing
     /// for thirty minutes -- not, as the old two-minute timeout did, by any
@@ -249,9 +252,10 @@ impl BrewAdapter {
     /// current.
     ///
     /// `brew update` is a git operation on Homebrew's own repository. A
-    /// SIGKILL partway through it -- and SIGKILL is the only way
-    /// `CommandRunner` stops a command, whether by timeout, cancel, or the
-    /// run future being dropped -- can leave `.git/index.lock` behind, and
+    /// SIGKILL partway through it -- which is how `CommandRunner` stops a
+    /// command when the run future is dropped, and how a timeout or cancel
+    /// ends one that has not exited within the grace period after SIGTERM
+    /// -- can leave `.git/index.lock` behind, and
     /// from then on Homebrew refuses to update until someone deletes that
     /// file by hand: not something a person who does not write code can be
     /// expected to know how to do, or that Canager can explain from here.
