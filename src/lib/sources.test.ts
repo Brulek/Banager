@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canWrite,
+  failedSourceCount,
   hasSourceNotice,
   isAvailable,
   notActionableMessage,
@@ -10,7 +11,7 @@ import {
   planErrorMessage,
   sourceNoticesFor,
 } from "./sources";
-import type { ManagerInstance } from "./types";
+import type { ManagerInstance, SourceError } from "./types";
 
 /** A stub `t`: returns the key with its interpolations inlined -- same
  *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
@@ -342,5 +343,44 @@ describe("openOllamaErrorMessage", () => {
     expect(openOllamaErrorMessage(fakeT, "command open_ollama_app not found")).toBe(
       "command open_ollama_app not found",
     );
+  });
+});
+
+describe("failedSourceCount", () => {
+  function err(instance_id: string, message = "boom"): SourceError {
+    return { instance_id, message };
+  }
+
+  it("is 0 for no errors", () => {
+    expect(failedSourceCount([])).toBe(0);
+  });
+
+  it("counts one source once even when inventory and check-updates both failed for it", () => {
+    // The exact shape session/refresh.rs produces for one broken Homebrew:
+    // one SourceError from the inventory fetch, one from check_updates,
+    // same instance_id. The banner says "sources", not "calls".
+    const errors = [
+      err("brew:/opt/homebrew", "brew list failed"),
+      err("brew:/opt/homebrew", "brew outdated failed"),
+    ];
+    expect(failedSourceCount(errors)).toBe(1);
+  });
+
+  it("counts two broken prefixes as two, not four, when each fails both calls", () => {
+    const errors = [
+      err("npm:/opt/homebrew/lib", "npm ls failed"),
+      err("npm:/opt/homebrew/lib", "npm outdated failed"),
+      err("npm:/usr/local/lib", "npm ls failed"),
+      err("npm:/usr/local/lib", "npm outdated failed"),
+    ];
+    expect(failedSourceCount(errors)).toBe(2);
+  });
+
+  it("counts a detect-stage failure (bare adapter id) as its own distinct source", () => {
+    // refresh.rs pushes the detect-panic error with instance_id set to the
+    // adapter id alone (e.g. "cargo"), not a "<adapter_id>:<path>"
+    // instance id -- real instance ids can never collide with it.
+    const errors = [err("cargo", "internal error detecting this source"), err("brew:/opt/homebrew")];
+    expect(failedSourceCount(errors)).toBe(2);
   });
 });

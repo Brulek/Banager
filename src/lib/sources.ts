@@ -3,7 +3,7 @@
  * pages and the snapshot gate cannot drift apart. Nothing here talks to the
  * backend; these are presentational facts about what arrives over the wire.
  */
-import type { ManagerInstance, ReadOnlyReason, Unavailable } from "./types";
+import type { ManagerInstance, ReadOnlyReason, SourceError, Unavailable } from "./types";
 
 /** i18n key holding each adapter's human name. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
@@ -425,4 +425,30 @@ export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | nul
 export function openOllamaErrorMessage(t: Translate, raw: string): string {
   const reason = parseOpenOllamaFailure(raw);
   return reason ? t(OPEN_OLLAMA_FAILURE_KEYS[reason]) : raw;
+}
+
+/**
+ * How many distinct sources a refresh failed for -- the count the stale
+ * banner's "couldn't finish for {{count}} sources" copy promises.
+ * `Snapshot.errors` is not that count: `refresh()`
+ * (`session/refresh.rs`) can push more than one `SourceError` for the
+ * same instance in one round -- inventory and check-updates fail
+ * independently, and each failure gets its own entry -- so a single
+ * broken Homebrew reads as two failed sources, or four for two broken
+ * prefixes. Deduplicating by `instance_id` is what turns "failed calls"
+ * back into "failed sources".
+ *
+ * One `instance_id` here is not always a `ManagerInstance.id`: when an
+ * adapter's own `detect()` panics or is cancelled, `refresh()` has no
+ * instance to blame yet (detect is what produces instances) and pushes
+ * the error against the bare adapter id instead (e.g. `"brew"`, not
+ * `"brew:/opt/homebrew"`). That is still one distinct failed source --
+ * the whole adapter, this round -- and every real `ManagerInstance.id`
+ * is namespaced as `"<adapter_id>:<path>"` (see `InstanceId` in
+ * `model.rs`), so a bare adapter id can never collide with one and
+ * double-count or merge with it. Counting distinct `instance_id` values
+ * is therefore correct across both shapes without telling them apart.
+ */
+export function failedSourceCount(errors: SourceError[]): number {
+  return new Set(errors.map((e) => e.instance_id)).size;
 }

@@ -105,6 +105,37 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 
+  it("counts one broken source once, not twice, when its inventory and update check both failed", async () => {
+    // session/refresh.rs pushes one SourceError from the inventory fetch
+    // and a second from check_updates for the very same instance -- that
+    // is two failed *calls* against one failed *source*. The banner's
+    // copy says "sources"; the count must agree with it rather than with
+    // errors.length.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        generation: 412,
+        refreshed_at: 1700000500,
+        stale: true,
+        errors: [
+          { instance_id: "brew:/opt/homebrew", message: "brew list failed" },
+          { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
+        ],
+      }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(
+      await screen.findByText(
+        "The last refresh couldn't finish for 1 source, so what you see below may be stale.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
     // get_snapshot itself succeeded with the empty startup snapshot, but the
     // startup refresh() IPC call rejected — refreshed_at will never be set.

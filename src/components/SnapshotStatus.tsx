@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRefresh, useSnapshot } from "../lib/queries";
-import { hasSourceNotice } from "../lib/sources";
+import { failedSourceCount, hasSourceNotice } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { EmptyState } from "./EmptyState";
 
@@ -142,7 +142,9 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
               ? t("emptyStates.refreshFailed.retryFailed", {
                   message: refreshMutation.error.message,
                 })
-              : t("emptyStates.refreshFailed.description", { count: snapshot.errors.length })
+              : t("emptyStates.refreshFailed.description", {
+                  count: failedSourceCount(snapshot.errors),
+                })
           }
           action={{
             label: t("emptyStates.refreshFailed.retry"),
