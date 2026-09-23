@@ -393,6 +393,12 @@ interface UninstallBlockedCopy {
    *  `{{command}}` with `command` below, rendered as code
    *  (`withCommand` in src/components/withCommand.tsx). */
   description: string;
+  /** `description` for a row whose source did not answer the last refresh
+   *  (`isAvailable` false; the row was carried forward). Such a row gets no
+   *  Uninstall button until the source answers again, whatever the user
+   *  does about the reason, so it may not promise one sooner. Filled the
+   *  same way as `description`. */
+  descriptionSourceUnavailable: string;
   /** The command both sentences' `{{command}}` stands for. */
   command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
   /** The uninstall dialog's sentence for the gate's `uninstall_blocked`
@@ -418,7 +424,13 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     // crates/canager-core/src/session/refresh.rs), on `parse_info_installed`
     // reading `pinned` afresh each time, and on the refresh every start
     // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts).
+    // It also rests on Homebrew answering that refresh: a row whose source
+    // did not answer is carried forward with no Uninstall button
+    // (`actionable` in src/pages/InstalledPage.tsx needs `isAvailable`), so
+    // it gets `descriptionSourceUnavailable`, which promises Uninstall only
+    // once a check finds Homebrew answering.
     description: "installed.blocked.Pinned.description",
+    descriptionSourceUnavailable: "installed.blocked.Pinned.descriptionSourceUnavailable",
     // `UninstallBlocked::Pinned`'s only producer is brew
     // (`parse_info_installed`), so this is always `brew unpin`, built from
     // the owning instance's `exe_path`, `--cask` for a cask.

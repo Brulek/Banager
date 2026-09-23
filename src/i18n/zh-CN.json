@@ -38,6 +38,7 @@
     "blocked": {
       "Pinned": {
         "description": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，Canager 下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候。",
+        "descriptionSourceUnavailable": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，之后 Canager 检查时只要 {{source}} 有应答，就会提供卸载。",
         "refused": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 没有卸载它，什么都没有改动。想卸载的话，先在「终端」里运行 {{command}} 解除固定。"
       }
     }

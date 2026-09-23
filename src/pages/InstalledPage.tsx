@@ -322,14 +322,19 @@ export function InstalledPage() {
                     // A row the tool will not uninstall says why in place
                     // of its blurb, as a pinned row does on the Updates
                     // page: it is the one thing the user has to read to
-                    // understand why there is no Uninstall button.
+                    // understand why there is no Uninstall button. A row
+                    // of a source that did not answer promises Uninstall
+                    // only once it answers (`descriptionSourceUnavailable`).
                     description={
                       item.artifact.uninstall_blocked !== null
                         ? withCommand(
-                            t(UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].description, {
-                              command: COMMAND_SLOT,
-                              source: item.sourceLabel,
-                            }),
+                            t(
+                              isAvailable(item.instance)
+                                ? UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].description
+                                : UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked]
+                                    .descriptionSourceUnavailable,
+                              { command: COMMAND_SLOT, source: item.sourceLabel },
+                            ),
                             UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].command(
                               item.artifact.key,
                               item.instance,

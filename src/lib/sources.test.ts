@@ -602,8 +602,10 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
   it("names the source and the command in both locales' sentences", () => {
     for (const copy of [
       en.installed.blocked.Pinned.description,
+      en.installed.blocked.Pinned.descriptionSourceUnavailable,
       en.installed.blocked.Pinned.refused,
       zhCN.installed.blocked.Pinned.description,
+      zhCN.installed.blocked.Pinned.descriptionSourceUnavailable,
       zhCN.installed.blocked.Pinned.refused,
     ]) {
       expect(copy).toContain("{{source}}");

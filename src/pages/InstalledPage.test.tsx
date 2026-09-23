@@ -358,6 +358,44 @@ describe("InstalledPage", () => {
     expect(getByText("Internet file retriever")).toBeInTheDocument();
   });
 
+  it("promises Uninstall back on a silent source's pinned row only once the source answers", async () => {
+    // A row carried forward from a Homebrew that did not answer has no
+    // Uninstall button until Homebrew answers a check again, pinned or
+    // not (`actionable` needs `isAvailable`). "The next time it checks,
+    // which at the latest is the next time you start Canager" would not
+    // hold while Homebrew stays silent.
+    const silentSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+      ],
+      artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }],
+      updates: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(silentSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByText, queryAllByRole, queryByText } = renderWithProviders(
+      <InstalledPage />,
+    );
+
+    await findByText("jq");
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(
+      getByText(
+        (_content, element) =>
+          element?.tagName === "P" &&
+          element.textContent ===
+            "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal to release the pin; after that, Canager will offer to uninstall it the next time it checks and Homebrew answers.",
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("/opt/homebrew/bin/brew unpin jq").tagName).toBe("CODE");
+    expect(queryByText(/next time you start Canager/)).toBeNull();
+  });
+
   describe("the Update available badge", () => {
     // One snapshot with one package per reason the Updates page may list
     // an update and not offer it, plus one it does offer. The badge used
