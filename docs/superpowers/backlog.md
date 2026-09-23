@@ -106,19 +106,22 @@
 
 ## 每包可操作性（2026-09-24 立，分支 feat/per-package-actionability）
 
-**已做**：`UpdateCandidate.blocked: Option<UpdateBlocked>`，唯一变体 `Pinned`，唯一生产方是 brew 的
-`parse_outdated`（读 `brew outdated --json=v2` 的 `pinned`，公式与 cask 都有）。Rust 侧闸门
+**已做**：`UpdateCandidate.blocked: Option<UpdateBlocked>`，唯一变体 `Pinned`，生产方有两个：brew 的
+`parse_outdated`（读 `brew outdated --json=v2` 的 `pinned`，公式与 cask 都有），和 pipx 的 `parse_outdated`
+（读 `pipx list --outdated` 行里名字后面的 ` [pinned]`，把它从名字上切掉）。Rust 侧闸门
 `blocked_upgrade`（`session/plans.rs`）在 `issue_plan` 与 `submit` 复检里拒绝 `Upgrade`；
 更新页 `isActionable` 多一个条件，按钮、勾选、「更新所选」和两个计数一起去掉；行上写「已固定」
 并给出 `<该 brew 的绝对路径> unpin <名字>`（cask 为 `--cask`；路径取自该实例的 `exe_path`，
-以代码样式显示）。自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Canager 不代为解除固定。
+以代码样式显示）；pipx 的行写 `<该 pipx 的绝对路径> unpin <名字>`，说明句里的来源名按实例给（Homebrew / pipx）。
+自己会更新的 cask（`auto_updates`）另有一句，不承诺它停在现在的版本。Canager 不代为解除固定。
+pipx 被固定的例子是改过的录制（`adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt`，只插了 ` [pinned]`，
+README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一样，与设计文档「只收真机录制」的字面冲突，
+放哪儿仍待作者拍板。
 
 **已知未做**（事实依据见 `.superpowers/actionability-facts.md`，那是本机未入库的调查记录；下一轮不要当新发现）：
-- **pipx 的 `[pinned]` 解析错误**：`pipx list --outdated` 把被固定的工具写成 `name [pinned]: a -> b`，
-  `pipx.rs` 的 `parse_outdated` 按第一个冒号切，行名变成 `"cowsay [pinned]"`，点「更新」会被
-  `validate_package_name` 以 invalidName 拒绝。正确做法是改读 `pipx list --outdated --output json`
-  的 `pinned` 字段并复用 `UpdateBlocked::Pinned`——但那时 `UPDATE_BLOCKED_KEYS.Pinned.command`
-  （`src/lib/sources.ts`）只会拼 brew 命令，要改成按来源给 `pipx unpin <名字>`。
+- **pipx 的 `unpin` 连注入包一起解除**：`pipx unpin <环境>` 会把该环境里注入的包也一并解除固定
+  （pipx 1.17.3 `commands/pin.py:82-92`，没有只解主包的选项）。Canager 不列注入包（不传
+  `--include-injected`），行上的说明没提这一点。
 - **假「成功」**：pipx 被锁定的工具（有 lock 文件）、uv 用 `==` 装的工具、brew 已停用的 cask（C2）、
   brew 装着的 caskfile 读不出来（C4）——工具都跳过更新却退出 0，Canager 报「成功」而什么都没变。
   列可更新项时读的输出里都没有这些状态，所以不能靠 `blocked` 提前标出；要么多读一份（`pipx list --json`
