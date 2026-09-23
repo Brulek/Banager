@@ -82,6 +82,31 @@ pub enum RunnerError {
 
 #[async_trait::async_trait]
 pub trait CommandRunner: Send + Sync {
+    /// Runs `spec` to completion, or until `cancel` fires or `spec.timeout`
+    /// passes.
+    ///
+    /// **Dropping the returned future kills the command.** If the future is
+    /// dropped before it resolves -- by a `select!` or `timeout` around it,
+    /// by aborting the task awaiting it, or by dropping any future that
+    /// contains it, such as a `Session::refresh` -- `RealRunner` SIGKILLs
+    /// the command's whole process group at whatever point it has reached.
+    /// It does not wait for the group to die, since `Drop` cannot await, so
+    /// "killed" here is not yet "dead". A cancel and a timeout end in the
+    /// same SIGKILL; dropping only makes it arrive with no warning to the
+    /// caller.
+    ///
+    /// That is the right thing for a command whose work is worthless if
+    /// interrupted and harmless to interrupt -- a query, a download -- and
+    /// the wrong thing for one that must not stop halfway. `brew update`
+    /// rewrites a git checkout, and a kill mid-way can leave
+    /// `.git/index.lock` behind and Homebrew refusing to update until the
+    /// file is deleted by hand. A command like that must not be run in a
+    /// future anything might drop: run it in a task of its own and wait on
+    /// that task's `JoinHandle`, which detaches rather than aborts when
+    /// dropped (see `BrewAdapter::maybe_update`).
+    ///
+    /// `MockRunner` does not model this: dropping its future just stops
+    /// waiting, and nothing is killed.
     async fn run(
         &self,
         spec: CommandSpec,

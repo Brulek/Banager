@@ -92,6 +92,12 @@ impl Session {
         // `CommandRunner::run` future (which kills the command's process
         // group -- see `runner::real`'s `GroupedChild`).
         //
+        // That kill lands wherever the command happens to be, so an adapter
+        // whose command must not be stopped halfway has to keep it out of
+        // this future. `brew update` is the one today: `BrewAdapter::
+        // maybe_update` runs it in a detached task of its own, so dropping
+        // a refresh stops the refresh waiting for it but never kills it.
+        //
         // Deliberately not a `JoinSet`: that yields in completion order,
         // and both joins below depend on *fan-out* order -- detection for
         // `dedupe_instance_ids`' "first wins", the fan-out for pairing a

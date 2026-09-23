@@ -26,7 +26,11 @@ pub struct BrewAdapter {
     /// id` (e.g. `brew:/opt/homebrew` vs `brew:/usr/local`) so that two
     /// installs of Homebrew each get their own throttle instead of sharing
     /// a single adapter-wide timer.
-    last_update: Mutex<HashMap<InstanceId, Instant>>,
+    ///
+    /// Shared (`Arc`) because the task that runs `brew update` records the
+    /// timestamp itself, and that task can outlive the `check_updates` call
+    /// that started it -- see `maybe_update`.
+    last_update: Arc<Mutex<HashMap<InstanceId, Instant>>>,
     /// Serialises `maybe_update` per instance: without this, two
     /// concurrent `check_updates` calls for the same instance could both
     /// observe "TTL expired" before either had recorded a fresh
@@ -34,8 +38,22 @@ pub struct BrewAdapter {
     /// two `brew update` processes writing the same Homebrew cache
     /// directory at once is not something Homebrew is designed to
     /// tolerate. Keyed the same way as `last_update`.
+    ///
+    /// The lock is held by the task that runs `brew update`, not by the
+    /// `check_updates` call waiting on it, so it stays held until that
+    /// `brew update` has exited even when the refresh stopped waiting long
+    /// before. `execute` takes it too, so a user's install or upgrade on
+    /// this Homebrew waits for a `brew update` still finishing in the
+    /// background instead of running alongside it.
     update_locks: Mutex<HashMap<InstanceId, Arc<tokio::sync::Mutex<()>>>>,
     update_ttl: Duration,
+    /// How long `check_updates` waits for `brew update` -- one already
+    /// running for this instance, or the one it starts -- before comparing
+    /// against the catalogue it has and saying so with
+    /// `InstanceNote::IndexMayBeStale`. Waiting is all this bounds: when it
+    /// runs out the update is left to finish, never killed. See
+    /// `maybe_update` for why.
+    update_patience: Duration,
     /// How to read the *real* effective UID for the root-refusal check on
     /// every brew subprocess call (not just `detect`, which instead checks
     /// the caller-supplied `HostEnv::euid`). A plain fn pointer (rather than
@@ -76,6 +94,27 @@ impl BrewAdapter {
         ("NO_COLOR", "1"),
     ];
 
+    /// How long a refresh waits for `brew update`. The same two minutes
+    /// that used to be `brew update`'s own timeout, so a refresh on a slow
+    /// network takes no longer than it did; what changed is that running
+    /// out of it no longer kills the update.
+    const UPDATE_PATIENCE: Duration = Duration::from_secs(120);
+
+    /// The one bound on how long `brew update` itself may run before it is
+    /// killed: long enough that only a Homebrew that has genuinely hung
+    /// reaches it, the same half hour an install or upgrade gets.
+    ///
+    /// It has to exist. The task running `brew update` holds this
+    /// instance's update lock, so a `brew update` that never exits would
+    /// leave every later refresh reporting a stale catalogue and every
+    /// install and upgrade on this Homebrew waiting behind it until the app
+    /// is quit. Killing a hung update can still leave Homebrew's
+    /// `.git/index.lock` behind; that is the price of getting the app back,
+    /// and it is paid only by a process that has shown no sign of finishing
+    /// for thirty minutes -- not, as the old two-minute timeout did, by any
+    /// update that met a slow network.
+    const UPDATE_BACKSTOP: Duration = Duration::from_secs(30 * 60);
+
     pub const CANDIDATE_PATHS: [&'static str; 3] = [
         "/opt/homebrew/bin/brew",
         "/usr/local/bin/brew",
@@ -88,9 +127,10 @@ impl BrewAdapter {
         BrewAdapter {
             runner,
             meta,
-            last_update: Mutex::new(HashMap::new()),
+            last_update: Arc::new(Mutex::new(HashMap::new())),
             update_locks: Mutex::new(HashMap::new()),
             update_ttl: Duration::from_secs(6 * 3600),
+            update_patience: Self::UPDATE_PATIENCE,
             euid_fn: || unsafe { libc::geteuid() },
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
             path_exists_fn: |path| path.exists(),
@@ -99,6 +139,14 @@ impl BrewAdapter {
 
     pub fn with_update_ttl(mut self, ttl: Duration) -> BrewAdapter {
         self.update_ttl = ttl;
+        self
+    }
+
+    /// Test-only hook to shorten `update_patience`, so a test can watch a
+    /// refresh stop waiting for a `brew update` without taking two minutes.
+    #[cfg(test)]
+    fn with_update_patience(mut self, patience: Duration) -> BrewAdapter {
+        self.update_patience = patience;
         self
     }
 
@@ -134,8 +182,8 @@ impl BrewAdapter {
     /// except `detect` (which checks the caller-supplied `HostEnv::euid`
     /// instead, by design — see its own doc comment). Called from
     /// `run_brew` (covers inventory/check_updates/search/plan's `uses`
-    /// lookup) and from `execute` (which talks to the runner directly and
-    /// so does not go through `run_brew`).
+    /// lookup), from `maybe_update` and from `execute` (which both talk to
+    /// the runner directly and so do not go through `run_brew`).
     fn refuse_if_root(&self) -> Result<(), AdapterError> {
         if (self.euid_fn)() == 0 {
             return Err(AdapterError::Refused(
@@ -179,9 +227,7 @@ impl BrewAdapter {
             timeout,
             // `inventory`, `check_updates`, `plan`'s dependent scan and
             // `search` all hand this stdout to a parser, so it must
-            // arrive whole. `brew update` is the one caller that reads
-            // only the exit code, and refusing an implausible 64 MiB of
-            // it costs that caller nothing.
+            // arrive whole.
             output_use: OutputUse::Parsed,
         };
         Ok(self
@@ -198,9 +244,55 @@ impl BrewAdapter {
             .clone()
     }
 
-    async fn maybe_update(&self, inst: &ManagerInstance) -> Result<(), AdapterError> {
+    /// Brings this Homebrew's catalogue up to date if the TTL says it is
+    /// due, and reports whether what `brew outdated` is about to read is
+    /// current.
+    ///
+    /// `brew update` is a git operation on Homebrew's own repository. A
+    /// SIGKILL partway through it -- and SIGKILL is the only way
+    /// `CommandRunner` stops a command, whether by timeout, cancel, or the
+    /// run future being dropped -- can leave `.git/index.lock` behind, and
+    /// from then on Homebrew refuses to update until someone deletes that
+    /// file by hand: not something a person who does not write code can be
+    /// expected to know how to do, or that Canager can explain from here.
+    /// Two paths used to deliver that kill: the two-minute timeout this
+    /// command had, which any slow network reached, and dropping the
+    /// refresh (the only way to stop one: `Session::refresh` takes no
+    /// `CancellationToken`), which since the run future learned to kill its
+    /// process group on drop does so at an arbitrary point.
+    ///
+    /// So the waiting and the running are split. `brew update` runs in a
+    /// task of its own, which holds the update lock and runs the command to
+    /// completion (bounded only by `UPDATE_BACKSTOP`); this function waits
+    /// for that task, for at most `update_patience`, through a plain
+    /// `JoinHandle` -- which *detaches* the task when dropped, never aborts
+    /// it. Whether this function returns because the patience ran out or is
+    /// dropped because its refresh was, the update carries on, keeps
+    /// draining its pipes, and records `last_update` when it succeeds, so
+    /// the next refresh gets the fresh catalogue this one could not wait
+    /// for.
+    ///
+    /// A second refresh arriving while that update is still running waits
+    /// on the same lock, within its own patience: it sees the fresh
+    /// timestamp if the update finishes in time, and otherwise goes on
+    /// with `MayBeStale` without starting a second `brew update` alongside
+    /// the first.
+    ///
+    /// The one thing this cannot prevent is the app itself exiting
+    /// mid-update: quitting ends the process, and the update's pipes with
+    /// it.
+    async fn maybe_update(&self, inst: &ManagerInstance) -> IndexFreshness {
+        if self.refuse_if_root().is_err() {
+            return IndexFreshness::MayBeStale;
+        }
+        let deadline = tokio::time::Instant::now() + self.update_patience;
         let lock = self.update_lock_for(&inst.id);
-        let _guard = lock.lock().await;
+        // An update an earlier refresh stopped waiting for may still hold
+        // this. Waiting for it comes out of the same patience.
+        let guard = match tokio::time::timeout_at(deadline, lock.lock_owned()).await {
+            Ok(guard) => guard,
+            Err(_) => return IndexFreshness::MayBeStale,
+        };
         let needs_update = {
             let last = self.last_update.lock().unwrap();
             match last.get(&inst.id) {
@@ -209,22 +301,72 @@ impl BrewAdapter {
             }
         };
         if !needs_update {
-            return Ok(());
+            return IndexFreshness::Current;
         }
-        let output = self
-            .run_brew(inst, vec!["update".to_string()], Duration::from_secs(120))
-            .await?;
-        if output.exit_code != Some(0) {
-            return Err(AdapterError::CommandFailed {
-                code: output.exit_code,
-                stderr: output.stderr,
-            });
+        let spec = CommandSpec {
+            program: inst.exe_path.clone(),
+            args: vec!["update".to_string()],
+            env: self.env_vec(),
+            cwd: None,
+            timeout: Self::UPDATE_BACKSTOP,
+            // Only the exit code is read. `Parsed` still refuses an
+            // implausible 64 MiB of stdout rather than hold it, which costs
+            // this caller nothing.
+            output_use: OutputUse::Parsed,
+        };
+        let runner = self.runner.clone();
+        let last_update = self.last_update.clone();
+        let inst_id = inst.id.clone();
+        let update = tokio::spawn(async move {
+            // Held until `brew update` has exited, however long ago the
+            // refresh that started it stopped waiting.
+            let _guard = guard;
+            let succeeded = matches!(
+                runner.run(spec, None, CancellationToken::new()).await,
+                Ok(output) if output.exit_code == Some(0)
+            );
+            if succeeded {
+                last_update.lock().unwrap().insert(inst_id, Instant::now());
+            }
+            succeeded
+        });
+        match tokio::time::timeout_at(deadline, update).await {
+            Ok(Ok(true)) => IndexFreshness::Current,
+            // Failed, panicked, or still running: `update` is dropped here
+            // (detached, not aborted) in the last case.
+            _ => IndexFreshness::MayBeStale,
         }
-        self.last_update
-            .lock()
-            .unwrap()
-            .insert(inst.id.clone(), Instant::now());
-        Ok(())
+    }
+
+    /// Waits, cancellably, for any `brew update` still finishing for this
+    /// instance, and returns the lock so the caller can hold it for the
+    /// length of its own command. `None` means the user cancelled while
+    /// waiting and nothing was run.
+    ///
+    /// The instance's `ResourceLock` does not cover a `brew update` a
+    /// refresh has stopped waiting for -- the refresh worker released it
+    /// when it moved on -- so without this an install or upgrade could run
+    /// while Homebrew is still rewriting the catalogue it installs from.
+    async fn wait_for_update(
+        &self,
+        inst_id: &InstanceId,
+        sink: &Arc<dyn EventSink>,
+        op_id: OpId,
+        cancel: &CancellationToken,
+    ) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        let lock = self.update_lock_for(inst_id);
+        if let Ok(guard) = lock.clone().try_lock_owned() {
+            return Some(guard);
+        }
+        sink.emit(crate::events::OperationEvent::Log {
+            op_id,
+            stream: crate::events::Stream::Stderr,
+            line: "Waiting for Homebrew to finish updating…".to_string(),
+        });
+        tokio::select! {
+            guard = lock.lock_owned() => Some(guard),
+            _ = cancel.cancelled() => None,
+        }
     }
 
     /// True when `env`'s effective UID means every brew invocation this
@@ -352,8 +494,8 @@ impl BrewAdapter {
         // `InstanceNote` is payload-free so the hand-written TypeScript
         // mirror keeps seeing a bare string on the wire (spec §2.3).
         let notes = match self.maybe_update(inst).await {
-            Ok(()) => Vec::new(),
-            Err(_) => vec![InstanceNote::IndexMayBeStale],
+            IndexFreshness::Current => Vec::new(),
+            IndexFreshness::MayBeStale => vec![InstanceNote::IndexMayBeStale],
         };
         let mut args = vec!["outdated".to_string(), "--json=v2".to_string()];
         if opts.include_self_updating {
@@ -437,6 +579,16 @@ impl BrewAdapter {
         }
         Ok(hits)
     }
+}
+
+/// What `maybe_update` can say about the catalogue `brew outdated` is
+/// about to compare against.
+enum IndexFreshness {
+    /// Updated within the TTL, or just now.
+    Current,
+    /// `brew update` failed, was refused, or had not finished when the
+    /// refresh stopped waiting for it.
+    MayBeStale,
 }
 
 /// The name `inventory()` lists an artifact under, given whatever spelling
@@ -581,6 +733,12 @@ impl BrewAdapter {
         // summary -- is identical to every other adapter's, so it is
         // `run_plan` and not a hand-kept copy of it.
         self.refuse_if_root()?;
+        let Some(_update_guard) = self
+            .wait_for_update(&plan.request.instance_id, &sink, op_id, &cancel)
+            .await
+        else {
+            return Ok(Outcome::Cancelled);
+        };
         run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
@@ -2100,6 +2258,282 @@ mod plan_execute_tests {
             !plan.env.iter().any(|(k, _)| k == "SUDO_ASKPASS"),
             "plan env must not carry an askpass that is not set: {:?}",
             plan.env
+        );
+    }
+
+    // ---- `brew update` is waited for, never killed ----------------------
+    //
+    // `brew update` rewrites Homebrew's git checkout, and a SIGKILL partway
+    // through can leave `.git/index.lock` behind, after which Homebrew will
+    // not update again until someone deletes that file by hand. These run a
+    // real process through `RealRunner` -- `MockRunner` does not kill
+    // anything when its future is dropped or times out -- so a kill would
+    // show up as an update that never finished.
+
+    /// A stand-in `brew` whose `update` takes `update_secs` and leaves a line
+    /// in `update-started` and `update-finished` as it begins and ends, so a
+    /// test can tell an update that was killed from one that completed.
+    fn slow_update_brew(label: &str, update_secs: u32) -> (PathBuf, ManagerInstance) {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-brew-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let exe = dir.join("brew");
+        let script = format!(
+            "#!/bin/sh\n\
+             case \"$1\" in\n\
+             update)\n\
+             echo started >> '{dir}/update-started'\n\
+             /bin/sleep {update_secs}\n\
+             echo finished >> '{dir}/update-finished'\n\
+             ;;\n\
+             outdated|info) echo '{{\"formulae\":[],\"casks\":[]}}' ;;\n\
+             *) exit 1 ;;\n\
+             esac\n",
+            dir = dir.display(),
+        );
+        std::fs::write(&exe, script).expect("write fake brew");
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod fake brew");
+        let inst = ManagerInstance {
+            exe_path: exe,
+            prefix: dir.clone(),
+            version: Some("7.0.3".to_string()),
+            ..crate::testing::manager_instance("brew", &format!("brew:{}", dir.display()))
+        };
+        (dir, inst)
+    }
+
+    fn line_count(path: &Path) -> usize {
+        std::fs::read_to_string(path)
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
+    }
+
+    /// Waits for the fake `brew update` to write its `finished` line, up to
+    /// a bound far past its own run time. Returns how many it wrote.
+    async fn wait_for_update_to_finish(dir: &Path) -> usize {
+        let finished = dir.join("update-finished");
+        let give_up = Instant::now() + Duration::from_secs(15);
+        while line_count(&finished) == 0 && Instant::now() < give_up {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        line_count(&finished)
+    }
+
+    #[tokio::test]
+    async fn test_a_brew_update_that_outlasts_the_refresh_is_left_to_finish() {
+        // The live bug: `brew update` had a two-minute timeout, and on a
+        // slow network the runner SIGKILLed it wherever it had got to --
+        // in the middle of git. Now the refresh stops *waiting* when its
+        // patience runs out, reports the catalogue as possibly stale, and
+        // the update runs on to completion. Scaled down: patience 300 ms,
+        // an update that takes 2 s.
+        let (dir, inst) = slow_update_brew("outlasts", 2);
+        let adapter = BrewAdapter::new(Arc::new(crate::runner::RealRunner::new()))
+            .with_update_patience(Duration::from_millis(300));
+
+        let started = Instant::now();
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        let waited = started.elapsed();
+        assert_eq!(
+            outcome.notes,
+            vec![InstanceNote::IndexMayBeStale],
+            "a refresh that could not wait for `brew update` compared against \
+             the old catalogue, and has to say so"
+        );
+        assert!(
+            waited < Duration::from_millis(1500),
+            "the refresh must stop waiting at its patience, not at the end of \
+             the update; took {waited:?}"
+        );
+
+        // A second refresh while that update is still running waits on the
+        // same lock, gives up at its own patience, and does not start a
+        // second `brew update` alongside the first.
+        let started = Instant::now();
+        let second = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("second check_updates");
+        assert_eq!(second.notes, vec![InstanceNote::IndexMayBeStale]);
+        assert!(
+            started.elapsed() < Duration::from_millis(1500),
+            "took {:?}",
+            started.elapsed()
+        );
+
+        assert_eq!(
+            wait_for_update_to_finish(&dir).await,
+            1,
+            "the `brew update` the refresh stopped waiting for must run to \
+             completion, not be killed"
+        );
+        assert_eq!(
+            line_count(&dir.join("update-started")),
+            1,
+            "two refreshes must not run two `brew update`s at once"
+        );
+
+        // The background update recorded its success, so the next refresh
+        // gets the fresh catalogue without running another one.
+        let third = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("third check_updates");
+        assert!(third.notes.is_empty(), "got {:?}", third.notes);
+        assert_eq!(line_count(&dir.join("update-started")), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_dropping_a_refresh_does_not_kill_its_brew_update() {
+        // The latent bug: `Session::refresh` takes no cancellation token,
+        // so dropping it is the only way to stop one, and dropping a run
+        // future SIGKILLs its command. Nothing drops a refresh today; the
+        // day something wraps one in a timeout, `brew update` must still
+        // not be killed mid-git.
+        let (dir, inst) = slow_update_brew("dropped", 2);
+        let adapter = BrewAdapter::new(Arc::new(crate::runner::RealRunner::new()));
+        let dropped = tokio::time::timeout(
+            Duration::from_millis(300),
+            adapter.check_updates(&inst, &CheckOptions::default()),
+        )
+        .await;
+        assert!(
+            dropped.is_err(),
+            "the refresh should still have been waiting"
+        );
+        assert_eq!(
+            wait_for_update_to_finish(&dir).await,
+            1,
+            "dropping the refresh must detach its `brew update`, not kill it"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An update that answers `exit 0` after `delay`, plus an `install jq`
+    /// that answers at once.
+    fn runner_with_slow_update(delay: Duration) -> Arc<MockRunner> {
+        let ok = CommandOutput {
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], ok.clone());
+        runner.delay(vec!["/opt/homebrew/bin/brew", "update"], delay);
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                ..ok.clone()
+            },
+        );
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
+            ok,
+        );
+        runner
+    }
+
+    fn install_jq(inst: &ManagerInstance) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Install,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_waits_for_a_brew_update_the_refresh_left_running() {
+        // A `brew update` the refresh stopped waiting for is no longer under
+        // the instance's resource lock -- the refresh worker released it
+        // when it moved on -- so an install must wait for it by itself
+        // rather than run while Homebrew is rewriting its catalogue.
+        let runner = runner_with_slow_update(Duration::from_millis(600));
+        let adapter =
+            BrewAdapter::new(runner.clone()).with_update_patience(Duration::from_millis(100));
+        let inst = test_instance();
+        let outcome = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert_eq!(outcome.notes, vec![InstanceNote::IndexMayBeStale]);
+
+        let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
+        let sink = Arc::new(VecSink::new());
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert!(
+            adapter.last_update.lock().unwrap().contains_key(&inst.id),
+            "the install ran before the `brew update` it should have waited for had finished"
+        );
+        assert!(
+            sink.snapshot().iter().any(|e| matches!(
+                e,
+                crate::events::OperationEvent::Log { line, .. } if line.contains("Waiting for Homebrew")
+            )),
+            "a wait with no output would look like a hang: {:?}",
+            sink.snapshot()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_can_be_cancelled_while_waiting_for_a_brew_update() {
+        let runner = runner_with_slow_update(Duration::from_secs(10));
+        let adapter =
+            BrewAdapter::new(runner.clone()).with_update_patience(Duration::from_millis(100));
+        let inst = test_instance();
+        adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        let plan = adapter.plan(&inst, &install_jq(&inst)).await.expect("plan");
+        let cancel = CancellationToken::new();
+        let canceller = {
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                cancel.cancel();
+            })
+        };
+        let started = Instant::now();
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 1, cancel)
+            .await
+            .expect("execute");
+        canceller.await.unwrap();
+        assert_eq!(outcome, Outcome::Cancelled);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "cancel must be answered while waiting, took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            !runner
+                .calls()
+                .iter()
+                .any(|c| c.get(1).map(String::as_str) == Some("install")),
+            "nothing may be installed after the user cancelled: {:?}",
+            runner.calls()
         );
     }
 }
