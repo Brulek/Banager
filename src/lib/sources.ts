@@ -287,9 +287,15 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // token goes through `displayToken`, as `CommandPreview` does, so a
     // path with a space in it still pastes as one argument.
     // The description's promise that the update appears "at the latest
-    // the next time you open it" rests on the refresh every start runs
-    // (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
-    // and on `parse_outdated` reading `pinned` afresh each time.
+    // the next time you start Canager" rests on the refresh every start
+    // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
+    // and on `parse_outdated` reading `pinned` afresh each time. It names
+    // Canager, not "it", because "it" has just meant the package, and for
+    // a pinned cask that is an app "open it" reads as "open that app".
+    // "Start" is the right verb: the page has no refresh button (the only
+    // one is `SnapshotStatus`'s retry after a failed refresh), and closing
+    // the window quits, since `run` in src-tauri/src/lib.rs has no
+    // `ExitRequested` handler to keep the app alive without one.
     values: (key, instance) => {
       // The bare name only for an instance the snapshot does not have,
       // which `values`' doc says cannot happen.

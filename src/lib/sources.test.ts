@@ -14,6 +14,8 @@ import {
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
+import en from "../i18n/en.json";
+import zhCN from "../i18n/zh-CN.json";
 
 /** A stub `t`: returns the key with its interpolations inlined -- same
  *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
@@ -495,5 +497,13 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     expect(UPDATE_BLOCKED_KEYS.Pinned.values(key, instance)).toEqual({
       command: "'/Users/Alice Smith/homebrew/bin/brew' unpin glib",
     });
+  });
+
+  it("says the pin's release shows up when Canager next starts, not when 'it' is next opened", () => {
+    // "it" has just meant the package, and for a pinned cask that is an
+    // app, "open it" reads as "open that app". What refreshes is Canager's
+    // start (`refreshIntoCache(queryClient, "initial")`), so name Canager.
+    expect(en.updates.blocked.Pinned.description).toMatch(/the next time you start Canager\.$/);
+    expect(zhCN.updates.blocked.Pinned.description).toMatch(/下次启动 Canager 的时候。$/);
   });
 });

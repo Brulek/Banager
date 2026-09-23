@@ -479,7 +479,7 @@ describe("UpdatesPage", () => {
     expect(getByText("Pinned")).toBeInTheDocument();
     expect(
       getByText(
-        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you open it.",
+        "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
       ),
     ).toBeInTheDocument();
     // Counted with what Canager cannot update, not as an available update.
