@@ -1,7 +1,7 @@
 pub mod parse;
 
 use crate::adapters::{
-    ensure_instance_match, reconcile_from, validate_package_name, Adapter, AdapterError,
+    ensure_instance_match, reconcile_from, run_plan, validate_package_name, Adapter, AdapterError,
     AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
@@ -10,7 +10,7 @@ use crate::model::{
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
     Scope, SearchHit, Unavailable, Warning,
 };
-use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse};
+use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
@@ -574,41 +574,14 @@ impl BrewAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
+        // brew is the one adapter that must refuse to run at all as root
+        // (Homebrew itself refuses a `sudo brew install`); every other
+        // step of turning a plan into an `Outcome` -- the transcript
+        // spec, the cancelled/timed-out mapping, the five-line stderr
+        // summary -- is identical to every other adapter's, so it is
+        // `run_plan` and not a hand-kept copy of it.
         self.refuse_if_root()?;
-        let sink_for_line = sink.clone();
-        let on_line: LineCallback = Arc::new(move |stream, line| {
-            sink_for_line.emit(crate::events::OperationEvent::Log {
-                op_id,
-                stream,
-                line,
-            });
-        });
-        let spec = CommandSpec {
-            program: plan.program.clone(),
-            args: plan.args.clone(),
-            env: plan.env.clone(),
-            cwd: None,
-            timeout: Duration::from_secs(plan.timeout_secs),
-            // Same as `adapters::run_plan`: a transcript for the log
-            // drawer, never parsed.
-            output_use: OutputUse::Transcript,
-        };
-        let output = self.runner.run(spec, Some(on_line), cancel).await?;
-        if output.cancelled || output.timed_out {
-            return Ok(Outcome::Unconfirmed);
-        }
-        match output.exit_code {
-            Some(0) => Ok(Outcome::Succeeded),
-            code => {
-                let stderr_lines: Vec<&str> = output.stderr.lines().collect();
-                let start = stderr_lines.len().saturating_sub(5);
-                let summary = stderr_lines[start..].join("\n");
-                Ok(Outcome::Failed {
-                    exit_code: code,
-                    summary,
-                })
-            }
-        }
+        run_plan(&self.runner, plan, sink, op_id, cancel).await
     }
 
     pub async fn reconcile(

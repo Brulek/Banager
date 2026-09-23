@@ -394,10 +394,12 @@ pub trait Adapter: Send + Sync {
 /// have taken effect — only `reconcile` can say), and a non-zero exit is
 /// `Failed` carrying the last five stderr lines.
 ///
-/// Every adapter's `execute()` is this function and nothing else. It lives
-/// here so the cancelled/timed-out rule and the five-line summary can only
-/// ever mean one thing; an earlier draft of this phase had six byte-identical
-/// copies of it.
+/// Every adapter's `execute()` calls this function to turn a finished run
+/// into an `Outcome`; brew is the only one that does anything else first
+/// (`refuse_if_root`, since Homebrew itself refuses to run as root). It
+/// lives here so the cancelled/timed-out rule and the five-line summary can
+/// only ever mean one thing; an earlier draft of this phase had six
+/// byte-identical copies of it.
 pub async fn run_plan(
     runner: &Arc<dyn CommandRunner>,
     plan: &Plan,
