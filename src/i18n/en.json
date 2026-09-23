@@ -153,7 +153,7 @@
     "affectedTitle": "These will stop working if you remove it:",
     "confirm": "Uninstall",
     "cancel": "Cancel",
-    "confirmDisabledHint": "Resolve the items above before uninstalling."
+    "affectedBlocksConfirm": "Canager won't remove {{name}} while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave {{name}} where it is."
   },
   "settings": {
     "title": "Settings",

@@ -146,7 +146,7 @@
     "affectedTitle": "删除后这些会受影响：",
     "confirm": "卸载",
     "cancel": "取消",
-    "confirmDisabledHint": "请先处理上面列出的问题，才能卸载。"
+    "affectedBlocksConfirm": "上面这些还需要 {{name}}，Canager 不会把它卸载掉。如果想把它们一起删掉，请先到“已安装”列表里把这些卸载；不想的话，让 {{name}} 留着就行。"
   },
   "settings": {
     "title": "设置",

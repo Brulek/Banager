@@ -19,8 +19,10 @@ export interface UninstallDialogProps {
  * The uninstall confirmation. It plans the operation itself, so the exact
  * command and everything that would break are on screen before anything can
  * be submitted (spec §6), and confirm stays disabled while the plan says
- * something depends on the artifact. The command preview is unconditional:
- * it is not subject to the "show technical details" setting.
+ * something depends on the artifact -- with why, and what to do about it,
+ * printed in the dialog body next to the list of what would break, not
+ * hidden in a `title` on the disabled button itself. The command preview is
+ * unconditional: it is not subject to the "show technical details" setting.
  */
 export function UninstallDialog({
   open,
@@ -116,7 +118,6 @@ export function UninstallDialog({
             type="button"
             onClick={handleConfirm}
             disabled={!plan || hasAffected || submitMutation.isPending}
-            title={hasAffected ? t("uninstall.confirmDisabledHint") : undefined}
             className="rounded-md bg-[var(--color-danger)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
           >
             {t("uninstall.confirm")}
@@ -172,6 +173,16 @@ export function UninstallDialog({
                     <li key={name}>{name}</li>
                   ))}
                 </ul>
+                {/* Why Confirm below is disabled, said in the dialog body rather
+                    than only in a `title` on that disabled button: a disabled
+                    button takes no pointer events and drops out of the tab
+                    order, so neither a mouse hover nor a keyboard/VoiceOver
+                    user ever reached that tooltip. This paragraph is plain
+                    text in the flow, reachable by everyone who reached the
+                    list above it. */}
+                <p className="text-sm text-[var(--color-danger)]">
+                  {t("uninstall.affectedBlocksConfirm", { name: displayName })}
+                </p>
               </div>
             )}
 

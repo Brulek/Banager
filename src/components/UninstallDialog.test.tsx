@@ -88,9 +88,20 @@ describe("UninstallDialog", () => {
     );
 
     await waitFor(() => expect(screen.getByText("jq-cli-wrapper")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    const confirmButton = screen.getByRole("button", { name: "Uninstall" });
+    expect(confirmButton).toBeDisabled();
     expect(
       screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq"),
+    ).toBeInTheDocument();
+    // The reason Confirm is disabled, and what to do about it, is plain text
+    // in the dialog body -- not a `title` on a disabled button, which a
+    // disabled button never actually shows: it takes no pointer events (no
+    // hover) and drops out of the tab order (no keyboard/VoiceOver focus).
+    expect(confirmButton).not.toHaveAttribute("title");
+    expect(
+      screen.getByText(
+        "Canager won't remove jq while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave jq where it is.",
+      ),
     ).toBeInTheDocument();
   });
 
