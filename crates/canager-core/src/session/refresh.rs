@@ -238,12 +238,24 @@ impl Session {
                             // news that everything is up to date -- but
                             // not where this round's inventory positively
                             // disproves one. It succeeded here, so a
-                            // candidate is dropped when the inventory no
-                            // longer lists its package (it was
-                            // uninstalled) or lists it at the very
+                            // *checkable* candidate is dropped when the
+                            // inventory no longer lists its package (it
+                            // was uninstalled) or lists it at the very
                             // version the candidate targets (it was
-                            // already upgraded). Both are rows the same
-                            // snapshot knows are wrong.
+                            // already upgraded). An *uncheckable*
+                            // candidate has no "already upgraded" reading
+                            // to disprove it with: `uncheckable_candidate`
+                            // sets `target == current` by construction
+                            // (`UpdateCandidate` has no "unknown" target),
+                            // so comparing its version to its own target
+                            // would read "still installed, unchanged" --
+                            // true of every uncheckable row that has not
+                            // moved -- as "disproved", dropping every
+                            // "Canager couldn't check" row the instant the
+                            // package sat still. An uncheckable row is
+                            // disproved only by absence; whether it is
+                            // still unresolved is for the next successful
+                            // check to say, not this filter.
                             //
                             // Nothing else counts as disproof, and in
                             // particular a *disagreement* between the two
@@ -253,18 +265,25 @@ impl Session {
                             // installed -- which is a third reading of
                             // the same fact and can differ from the
                             // inventory's for reasons that say nothing
-                            // about whether an update is pending. brew
-                            // was the live example: it keys inventory by
-                            // `full_name`/`full_token` and `brew outdated
-                            // --json=v2` by the bare `name`, so the keys
-                            // never matched for a tapped formula or cask
-                            // and every one of their real pending updates
-                            // vanished the moment `brew outdated` failed
-                            // -- the exact harm the carry-forward exists
-                            // to prevent, reintroduced by the fix that
-                            // narrowed it. That spelling is fixed in the
-                            // adapter, and this rule no longer depends on
-                            // its being fixed.
+                            // about whether an update is pending.
+                            //
+                            // This still joins on `a.key == u.key`, so it
+                            // still depends on the inventory and the
+                            // update check agreeing on that spelling --
+                            // brew is the live example: it keys inventory
+                            // by `full_name`/`full_token` and `brew
+                            // outdated --json=v2` by the bare `name`. The
+                            // adapter closes that gap by re-querying
+                            // `brew info` inside `check_updates` to rename
+                            // each candidate to match, but on that query's
+                            // own failure it deliberately keeps the short
+                            // name (`brew/mod.rs`'s
+                            // `unwrap_or_default`), so a real pending
+                            // update can still be dropped here across two
+                            // independent failures in consecutive rounds
+                            // (the rename succeeding one round, `outdated`
+                            // failing the next, or vice versa). Narrow,
+                            // but this join is not spelling-independent.
                             //
                             // When the inventory failed too, `artifacts`
                             // is itself last round's, carried forward by
@@ -278,9 +297,10 @@ impl Session {
                                     .filter(|u| u.key.instance_id == inst.id)
                                     .filter(|u| {
                                         !inventory_confirmed
-                                            || artifacts
-                                                .iter()
-                                                .any(|a| a.key == u.key && a.version != u.target)
+                                            || artifacts.iter().any(|a| {
+                                                a.key == u.key
+                                                    && (!u.checkable || a.version != u.target)
+                                            })
                                     })
                                     .cloned(),
                             );
@@ -1118,6 +1138,25 @@ mod tests {
         }
     }
 
+    /// A "Canager couldn't check" row, shaped the way
+    /// `adapters::uncheckable_candidate` actually builds one:
+    /// `target == current`, since `UpdateCandidate` has no "unknown"
+    /// target to put there instead.
+    fn make_uncheckable_update(instance_id: &str, name: &str, version: &str) -> UpdateCandidate {
+        UpdateCandidate {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            },
+            current: version.to_string(),
+            target: version.to_string(),
+            channel: UpdateChannel::Native,
+            checkable: false,
+            warnings: Vec::new(),
+        }
+    }
+
     /// The names of every artifact/update in `snapshot`, sorted, so an
     /// assertion says what is there rather than how many things are there.
     fn artifact_names(snapshot: &Snapshot) -> Vec<String> {
@@ -1283,6 +1322,70 @@ mod tests {
             vec!["jq", "wget"],
             "a pending update is not disproved by the inventory reading a \
              different version than the candidate recorded, got {:?}",
+            second.updates
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_failed_update_check_keeps_an_uncheckable_candidate_whose_package_is_unchanged()
+    {
+        // `uncheckable_candidate` sets `target == current` by
+        // construction -- "Canager couldn't check" rows have no "unknown"
+        // target to put there instead. Reusing the checkable disproof
+        // rule (`a.version != u.target`) for these rows reads "still
+        // installed, unchanged" -- true of every uncheckable row whose
+        // package has not moved, which is every one of them, since a
+        // registry outage says nothing about the package itself -- as
+        // "already at target", i.e. disproved. That silently cleared the
+        // Updates page's doubt exactly when a source outage should be
+        // raising it. An uncheckable row must be disproved only by
+        // absence.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.artifacts.insert(
+                "fake:1".to_string(),
+                vec![make_artifact_at("fake:1", "some-model", "1.0")],
+            );
+            s.updates.insert(
+                "fake:1".to_string(),
+                vec![make_uncheckable_update("fake:1", "some-model", "1.0")],
+            );
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(update_names(&first), vec!["some-model"]);
+        assert!(
+            !first.updates[0].checkable,
+            "precondition: the row is uncheckable"
+        );
+
+        {
+            let mut s = state.lock().unwrap();
+            // Still installed at the same version -- nothing changed,
+            // it just still cannot be checked this round either.
+            s.failing_updates.push("fake:1".to_string());
+        }
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert!(second.stale, "precondition: the update check failed");
+        assert_eq!(
+            artifact_names(&second),
+            vec!["some-model"],
+            "precondition: the inventory still confirms the package is installed"
+        );
+        assert_eq!(
+            update_names(&second),
+            vec!["some-model"],
+            "an uncheckable row must not be read as \"already at target\" \
+             merely because the package has not moved; it is disproved \
+             only by absence, got {:?}",
             second.updates
         );
     }
