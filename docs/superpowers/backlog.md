@@ -123,6 +123,12 @@
   列可更新项时读的输出里都没有这些状态，所以不能靠 `blocked` 提前标出；要么多读一份（`pipx list --json`
   的 `lock_file`、`brew info --json=v2` 的 `disabled`、`uv tool list --show-version-specifiers`），
   要么在 `reconcile` 里核对版本真的变了。
+- **卸载被固定的包**：Homebrew 7.0.6 不加 `--force` 时同样拒绝（`uninstall.rb:48-49`、
+  `cask/uninstall.rb:42-44`，打一行 `Error: … is pinned. You must unpin it to uninstall.`），
+  但用的是 `onoe` 不是 `ofail`，公式这边退出 0，Canager 会得到 `StillInstalledAfterUninstall`。
+  `blocked` 只挂在可更新项上，已是最新的被固定包没有候选项可挂，所以这条要在 `InstalledArtifact`
+  上另加信号（`brew info --json=v2` 的公式与 cask 条目都有 `pinned`，`formula.rb:3140`、`cask/cask.rb:574`）。闸门
+  `blocked_upgrade` 目前只管 `Upgrade`。
 - **已安装页的「有更新」徽标**（`src/pages/InstalledPage.tsx` 的 `updatableIds`）把 `snapshot.updates` 里
   每一条都算作有更新，包括被固定的和 `checkable: false` 的（一次查询失败会给每个已装包造一条）。
   这是本分支之前就有的问题，没有改。

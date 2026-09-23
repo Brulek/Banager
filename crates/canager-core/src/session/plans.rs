@@ -71,10 +71,13 @@ pub(crate) struct StoredPlan {
 /// will refuse `req`, when `req` is an `Upgrade` and the snapshot's update
 /// candidate for exactly that package says so (`UpdateCandidate.blocked`).
 ///
-/// Only `Upgrade`: every reason so far is about updating. A pinned formula
-/// can still be uninstalled, and blocking that would be a refusal Homebrew
-/// never makes. A package with no candidate at all passes, as it did
-/// before this existed: nothing then says the tool would refuse it.
+/// Only `Upgrade`, because `blocked` lives on an update candidate and so
+/// speaks only for packages the tool listed as outdated. Homebrew refuses
+/// to uninstall a pinned package too (`uninstall.rb:48-49` and
+/// `cask/uninstall.rb:42-44` in 7.0.6, without `--force`), but a pinned
+/// package that is up to date has no candidate to carry that, so it needs
+/// a signal on `InstalledArtifact` instead (backlog). A package with no
+/// candidate passes, as it did before this existed.
 fn blocked_upgrade(updates: &[UpdateCandidate], req: &OpRequest) -> Option<UpdateBlocked> {
     if req.kind != OpKind::Upgrade {
         return None;
@@ -622,17 +625,12 @@ mod tests {
             }
             other => panic!("expected UpdateBlocked(Pinned) for jq, got {other:?}"),
         }
-        // Only that package, and only its update: a sibling on the same
-        // source still plans, and so does removing the pinned one, which
-        // a pin does not stop.
+        // Only that package: an unpinned sibling on the same source still
+        // plans.
         session
             .issue_plan(&request(OpKind::Upgrade, "glib"))
             .await
             .expect("an unpinned sibling still plans");
-        session
-            .issue_plan(&request(OpKind::Uninstall, "jq"))
-            .await
-            .expect("a pin blocks updating, not uninstalling");
         assert!(
             session.operations().is_empty(),
             "a refused plan must never reach the OperationManager"
