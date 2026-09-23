@@ -75,9 +75,10 @@ export type Warning =
 /**
  * Why the tool itself will refuse to update this one package, although its
  * source is writable and answering. Mirrors `UpdateBlocked` in
- * crates/canager-core/src/model.rs: bare-string unit variants. Only brew's
- * `parse_outdated` produces one today (`Pinned`, from `brew outdated`'s
- * `pinned: true`). Read through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts,
+ * crates/canager-core/src/model.rs: bare-string unit variants. Only
+ * `Pinned` exists, produced by brew's `parse_outdated` (from `brew
+ * outdated`'s `pinned: true`) and pipx's (from `pipx list --outdated`'s
+ * `name [pinned]:`). Read through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts,
  * a `Record` over this union, so a variant added here without copy fails
  * `tsc` rather than rendering nothing.
  */

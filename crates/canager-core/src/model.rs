@@ -265,11 +265,18 @@ pub enum Warning {
 /// (`cmd/outdated.rb:196-200` in Homebrew 7.0.6 lists all five keys).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateBlocked {
-    /// Homebrew holds this formula or cask at the version it has now
-    /// (`brew pin`). `brew outdated` still lists it, marked `pinned: true`,
-    /// and a named `brew upgrade` of it exits 1 with "Not upgrading 1
-    /// pinned package" (`cmd/upgrade.rb:428-476`, `cask/upgrade.rb:82-90`).
-    /// `parse_outdated` in `adapters/brew/parse.rs` is its only producer.
+    /// Someone pinned this package in its tool, which holds it at the
+    /// version it has now. Two tools produce it:
+    /// - Homebrew (`brew pin`), for a formula or a cask. `brew outdated`
+    ///   still lists it, marked `pinned: true`, and a named `brew upgrade`
+    ///   of it exits 1 with "Not upgrading 1 pinned package"
+    ///   (`cmd/upgrade.rb:428-476`, `cask/upgrade.rb:82-90`). Read by
+    ///   `parse_outdated` in `adapters/brew/parse.rs`.
+    /// - pipx (`pipx pin`), for a tool. `pipx list --outdated` still lists
+    ///   it, as `name [pinned]: old -> new` (pipx 1.17.3's
+    ///   `commands/outdated.py:243`), and `pipx upgrade` of it changes
+    ///   nothing but exits 0 (`commands/upgrade.py:408-409` and `:74-81`).
+    ///   Read by `parse_outdated` in `adapters/pipx.rs`.
     Pinned,
 }
 

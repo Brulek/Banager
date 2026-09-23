@@ -8,7 +8,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel,
+    Unavailable, UpdateBlocked, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -95,10 +95,29 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
     Ok(out)
 }
 
+/// What `pipx list --outdated` puts between a pinned tool's name and the
+/// colon: `f"{subject}{' [pinned]' if package.pinned else ''}: ..."` in
+/// `_package_message` (pipx's `commands/outdated.py:238-244`, the same at
+/// every tag from 1.16.0, where `--outdated` first exists, to 1.17.6).
+const PINNED_MARKER: &str = " [pinned]";
+
 /// Parses `pipx list --outdated`'s prose output: one `name: old -> new`
 /// line per outdated tool, and the literal sentence `pipx found no
 /// available upgrades.` when there are none. An unmatched line is skipped,
 /// never treated as an error (this phase's documented trap for pipx).
+///
+/// A tool someone ran `pipx pin` on is still listed, as
+/// `name [pinned]: old -> new`: `list` never sets the `upgradable_only`
+/// that alone drops it (pipx's `commands/outdated.py:191-192`). The marker
+/// is cut off the name and becomes `UpdateBlocked::Pinned`, because
+/// `pipx upgrade` of that tool changes nothing (`_upgrade_package` returns
+/// `UpgradeStatus.PINNED` at `commands/upgrade.py:408-409`) and still
+/// exits 0 (`upgrade()` builds its `OperationResult` without an
+/// `exit_code`, `commands/upgrade.py:74-81`, whose default is
+/// `EXIT_CODE_OK`, `result.py:65`), so running it would be a false
+/// "Succeeded". Left on the name, the marker made the row's key
+/// `cowsay [pinned]`, which matches no installed tool and which
+/// `validate_package_name` refuses.
 fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
     let trimmed = text.trim();
     if trimmed.is_empty() || trimmed == "pipx found no available upgrades." {
@@ -114,6 +133,10 @@ fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
             continue;
         };
         let name = name.trim();
+        let (name, blocked) = match name.strip_suffix(PINNED_MARKER) {
+            Some(bare) => (bare.trim_end(), Some(UpdateBlocked::Pinned)),
+            None => (name, None),
+        };
         let Some((old, new)) = versions.trim().split_once("->") else {
             continue;
         };
@@ -132,7 +155,7 @@ fn parse_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidate> {
             channel: UpdateChannel::Native,
             checkable: true,
             warnings: Vec::new(),
-            blocked: None,
+            blocked,
         });
     }
     out
@@ -506,6 +529,52 @@ mod tests {
         assert_eq!(candidates[0].target, "6.1");
         assert_eq!(candidates[0].channel, UpdateChannel::Native);
         assert!(candidates[0].checkable);
+        assert_eq!(candidates[0].blocked, None);
+    }
+
+    const RECORDED_OUTDATED: &str = "../../adapters/fixtures/pipx/1.17.3/list-outdated.txt";
+    const PINNED_OUTDATED: &str = "../../adapters/fixtures/pipx/1.17.3/list-outdated-pinned.txt";
+
+    fn read_fixture(path: &str) -> String {
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+    }
+
+    /// The fixture README's claim, checked: take the one ` [pinned]` back
+    /// out of the edited file and it is the recording, byte for byte. If
+    /// someone re-records one file and not the other, or edits anything
+    /// besides the marker, this fails instead of the fixture quietly
+    /// becoming hand-written.
+    #[test]
+    fn test_pinned_fixture_differs_from_the_recording_only_by_the_marker() {
+        let recorded = read_fixture(RECORDED_OUTDATED);
+        let edited = read_fixture(PINNED_OUTDATED);
+        assert_eq!(
+            edited.matches(PINNED_MARKER).count(),
+            1,
+            "exactly one marker was inserted"
+        );
+        assert_eq!(
+            edited.replacen("cowsay [pinned]:", "cowsay:", 1),
+            recorded,
+            "the marker, after `cowsay`, is the only difference"
+        );
+    }
+
+    #[test]
+    fn test_parse_outdated_names_a_pinned_tool_without_its_marker_and_blocks_it() {
+        // `pipx list --outdated` prints a pinned tool as
+        // `cowsay [pinned]: 5.0 -> 6.1` (pipx's `commands/outdated.py:243`).
+        // The name is what every operation is handed and what the row's key
+        // must match in the inventory, so the marker cannot stay on it; it
+        // becomes the same signal a pinned Homebrew formula carries.
+        let candidates = parse_outdated(&read_fixture(PINNED_OUTDATED), "pipx");
+        assert_eq!(candidates.len(), 1, "a pinned tool is still listed");
+        assert_eq!(candidates[0].key.name, "cowsay");
+        assert_eq!(candidates[0].key.kind, ArtifactKind::Tool);
+        assert_eq!(candidates[0].current, "5.0");
+        assert_eq!(candidates[0].target, "6.1");
+        assert!(candidates[0].checkable);
+        assert_eq!(candidates[0].blocked, Some(UpdateBlocked::Pinned));
     }
 
     #[test]
@@ -883,5 +952,98 @@ mod tests {
             http.calls(),
             vec!["https://pypi.org/pypi/evil%2F..%2Fsimple%3Fx=1/json".to_string()]
         );
+    }
+
+    /// A `Session` whose only source is a real `PipxAdapter`, refreshed
+    /// once: `pipx --version` answers 1.17.3 (at the 1.16 floor for
+    /// `list --outdated`), `list --json` is the recorded fixture and
+    /// `list --outdated` answers `outdated`. The pipx executable is a file
+    /// in a fresh temp directory used only as a fake PATH entry, as in the
+    /// detect test above; nothing installed on the machine is touched.
+    async fn refreshed_pipx_session(outdated: String) -> Arc<crate::session::Session> {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "canager-pipx-session-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp PATH dir");
+        let exe_path = tmp_dir.join("pipx");
+        std::fs::write(&exe_path, b"#!/bin/sh\n").expect("write fake pipx executable");
+        let exe = exe_path.to_str().expect("utf8 temp path");
+
+        let ok = |stdout: String| CommandOutput {
+            exit_code: Some(0),
+            stdout,
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec![exe, "--version"], ok("1.17.3\n".to_string()));
+        runner.respond(
+            vec![exe, "list", "--json"],
+            ok(read_fixture(
+                "../../adapters/fixtures/pipx/1.17.3/list.json",
+            )),
+        );
+        runner.respond(vec![exe, "list", "--outdated"], ok(outdated));
+        let env = HostEnv {
+            path_dirs: vec![tmp_dir.clone()],
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        };
+        let adapter: Arc<dyn Adapter> =
+            Arc::new(PipxAdapter::new(runner, Arc::new(MockHttpClient::new())));
+        let session =
+            crate::session::Session::with_adapters(Arc::new(VecSink::new()), vec![adapter], None);
+        session.refresh(&env, &CheckOptions::default()).await;
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        session
+    }
+
+    fn upgrade_cowsay() -> OpRequest {
+        OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "pipx".to_string(),
+            artifact_kind: ArtifactKind::Tool,
+            name: "cowsay".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_the_session_refuses_to_upgrade_a_pinned_pipx_tool_like_a_pinned_formula() {
+        // `pipx upgrade cowsay` on a pinned cowsay exits 0 having changed
+        // nothing (see `parse_outdated`), so the refusal has to come from
+        // Canager: the same `blocked_upgrade` gate in `issue_plan` that
+        // refuses a pinned Homebrew formula (session/plans.rs).
+        let session = refreshed_pipx_session(read_fixture(PINNED_OUTDATED)).await;
+        match session.issue_plan(&upgrade_cowsay()).await {
+            Err(AdapterError::UpdateBlocked { reason }) => {
+                assert_eq!(reason, UpdateBlocked::Pinned);
+            }
+            other => panic!("expected UpdateBlocked(Pinned) for cowsay, got {other:?}"),
+        }
+        assert!(
+            session.operations().is_empty(),
+            "a refused plan must never reach the OperationManager"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_the_session_still_plans_the_upgrade_of_an_unpinned_pipx_tool() {
+        // The recording itself: the same tool, not pinned, still plans, so
+        // the refusal above is the pin's doing and not something else about
+        // this setup.
+        let session = refreshed_pipx_session(read_fixture(RECORDED_OUTDATED)).await;
+        let issued = session
+            .issue_plan(&upgrade_cowsay())
+            .await
+            .expect("an unpinned tool plans");
+        assert_eq!(issued.plan.args, vec!["upgrade", "cowsay"]);
     }
 }

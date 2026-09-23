@@ -304,7 +304,9 @@ export function UpdatesPage() {
    *   listening cannot succeed.
    * - `blocked` -- the only one about this package rather than its
    *   source: the tool will refuse to update it (a pinned Homebrew
-   *   formula or cask; `brew upgrade` of it exits 1).
+   *   formula or cask, whose `brew upgrade` exits 1, or a pinned pipx
+   *   tool, whose `pipx upgrade` changes nothing; `UpdateBlocked::Pinned`
+   *   in crates/canager-core/src/model.rs).
    *
    * `read_only_reason` replaced a hardcoded list of adapter ids on the
    * front end. `Session::issue_plan` applies the same conjunction in Rust
@@ -490,7 +492,10 @@ export function UpdatesPage() {
         ? (copy.selfUpdatingDescription ?? copy.description)
         : copy.description;
       return withCommand(
-        t(description, { command: COMMAND_SLOT }),
+        t(description, {
+          command: COMMAND_SLOT,
+          source: sourceLabelFor(candidate.key.instance_id),
+        }),
         copy.command(candidate.key, instance),
       );
     }

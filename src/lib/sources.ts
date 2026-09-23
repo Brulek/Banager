@@ -244,7 +244,10 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
 interface UpdateBlockedCopy {
   /** The row's badge on the Updates page, in place of "Update". */
   badge: string;
-  /** The row's description: why, and what the user can do about it. */
+  /** The row's description: why, and what the user can do about it. The
+   *  Updates page fills `{{source}}` with the owning source's label
+   *  (`sourceLabelFor`) and `{{command}}` with `command` below, so one
+   *  sentence serves every tool that produces the reason. */
   description: string;
   /**
    * `description` for a package that updates itself
@@ -288,14 +291,36 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // in crates/canager-core/src/adapters/brew/mod.rs), but Homebrew's own
     // environment settings can list it without that flag
     // (`outdated_version` in Homebrew's `cask/cask.rb`), which is why the
-    // page asks the package's `auto_updates` and not the setting.
+    // page asks the package's `auto_updates` and not the setting. The
+    // sentence names Homebrew, not `{{source}}`: of `Pinned`'s two
+    // producers only brew ever sets `auto_updates` (`parse_list` in
+    // crates/canager-core/src/adapters/pipx.rs writes `false`).
     selfUpdatingDescription: "updates.blocked.Pinned.descriptionSelfUpdating",
     // The command that releases the pin, for the user to run themselves:
     // Canager does not unpin, which would be a new write operation.
-    // brew's `parse_outdated` is `Pinned`'s only producer, so every key
-    // here is a formula or a cask. `--cask` because `brew unpin <name>`
-    // resolves a formula first (`to_resolved_formulae_to_casks` in
-    // Homebrew's `cmd/unpin.rb`), and a formula can share a cask's name.
+    // `Pinned` has two producers, brew's and pipx's `parse_outdated`
+    // (crates/canager-core/src/adapters/brew/parse.rs and
+    // adapters/pipx.rs), so the command is built for whichever tool owns
+    // the key. The tool is the instance's `adapter_id`; for an instance
+    // the snapshot lacks, the part of the key's `instance_id` before any
+    // `:`, which is the adapter id (`instance_id` in
+    // crates/canager-core/src/model.rs writes it first and asserts it has
+    // no `:` of its own).
+    //
+    // pipx: `pipx unpin <name>`. That is how pipx itself spells it when it
+    // refuses a pinned upgrade ("Run `pipx unpin {result.environment}` to
+    // unpin it.", pipx 1.17.3's `commands/upgrade.py:473`), and `unpin`
+    // takes one positional ENVIRONMENT and nothing else (`_add_unpin`,
+    // `main.py:969-978`). The name is the one `parse_outdated` read off
+    // the line, and pipx canonicalizes it into the venv's directory name
+    // (`_venv_dir`, `main.py:1752-1753`; `get_venv_dir`, `venv.py:142-144`).
+    // The program is the instance's `exe_path`, the pipx Canager found on
+    // its own PATH (`resolve_exe` in `PipxAdapter::detect`), which
+    // Terminal's PATH may not include.
+    //
+    // brew: `--cask` because `brew unpin <name>` resolves a formula first
+    // (`to_resolved_formulae_to_casks` in Homebrew's `cmd/unpin.rb`), and
+    // a formula can share a cask's name.
     //
     // The program is the instance's `exe_path`, the absolute path of the
     // brew that owns this package, not a bare `brew`: Canager finds brew
@@ -321,8 +346,12 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // the window quits, since `run` in src-tauri/src/lib.rs has no
     // `ExitRequested` handler to keep the app alive without one.
     command: (key, instance) => {
+      const adapterId = instance?.adapter_id ?? key.instance_id.split(":")[0];
       // The bare name only for an instance the snapshot does not have,
       // which `command`'s doc says cannot happen.
+      if (adapterId === "pipx") {
+        return [instance?.exe_path ?? "pipx", "unpin", key.name].map(displayToken).join(" ");
+      }
       const program = instance?.exe_path ?? "brew";
       const args = key.kind === "Cask" ? ["unpin", "--cask", key.name] : ["unpin", key.name];
       return [program, ...args].map(displayToken).join(" ");

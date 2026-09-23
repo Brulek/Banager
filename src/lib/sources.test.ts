@@ -499,6 +499,41 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     );
   });
 
+  it("builds pipx's own unpin command for a pinned pipx tool, from the pipx Canager found", () => {
+    // pipx spells it `pipx unpin <name>` (its `commands/upgrade.py:473`);
+    // a brew-shaped `brew unpin cowsay` would answer "No available formula".
+    const pipx = {
+      id: "pipx",
+      adapter_id: "pipx",
+      exe_path: "/Users/Alice Smith/.local/bin/pipx",
+      prefix: "/Users/Alice Smith/.local/bin",
+      scope: "User",
+      version: "1.17.3",
+      unverified_version: null,
+      read_only_reason: null,
+      status: { unavailable: null, notes: [] },
+    } satisfies ManagerInstance;
+    const key = { instance_id: "pipx", kind: "Tool", name: "cowsay" } satisfies ArtifactKey;
+    expect(UPDATE_BLOCKED_KEYS.Pinned.command(key, pipx)).toBe(
+      "'/Users/Alice Smith/.local/bin/pipx' unpin cowsay",
+    );
+    // An instance missing from the snapshot still gets the right tool,
+    // read off the key's own `instance_id`.
+    expect(UPDATE_BLOCKED_KEYS.Pinned.command(key, undefined)).toBe("pipx unpin cowsay");
+  });
+
+  it("names the pinned package's own source in the description, not always Homebrew", () => {
+    // pipx produces `Pinned` too, so "Homebrew is keeping this" would be
+    // false on a pipx row.
+    for (const copy of [
+      en.updates.blocked.Pinned.description,
+      zhCN.updates.blocked.Pinned.description,
+    ]) {
+      expect(copy).toContain("{{source}}");
+      expect(copy).not.toContain("Homebrew");
+    }
+  });
+
   it("says the pin's release shows up when Canager next starts, not when 'it' is next opened", () => {
     // "it" has just meant the package, and for a pinned cask that is an
     // app, "open it" reads as "open that app". What refreshes is Canager's

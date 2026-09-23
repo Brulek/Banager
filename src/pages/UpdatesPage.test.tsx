@@ -565,6 +565,57 @@ describe("UpdatesPage", () => {
     expect(queryByText(/\/opt\/homebrew\/bin\/brew unpin/)).toBeNull();
   });
 
+  it("names pipx and pipx's own unpin command on a pinned pipx tool", async () => {
+    // `pipx list --outdated` lists a pinned tool as `cowsay [pinned]: 5.0
+    // -> 6.1`, and `pipx upgrade cowsay` then changes nothing and exits 0.
+    // The row must say pipx, not Homebrew, and give the command pipx
+    // itself names ("Run `pipx unpin cowsay` to unpin it"), from the pipx
+    // Canager found.
+    const pipx: Snapshot["instances"][number] = {
+      id: "pipx",
+      adapter_id: "pipx",
+      exe_path: "/opt/homebrew/bin/pipx",
+      prefix: "/opt/homebrew/bin",
+      scope: "User",
+      version: "1.17.3",
+      status: { unavailable: null, notes: [] },
+      unverified_version: null,
+      read_only_reason: null,
+    };
+    instances = [snapshot.instances[0], pipx];
+    updates = [
+      snapshot.updates[0],
+      {
+        key: { instance_id: "pipx", kind: "Tool", name: "cowsay" },
+        current: "5.0",
+        target: "6.1",
+        channel: "Native",
+        checkable: true,
+        warnings: [],
+        blocked: "Pinned",
+      },
+    ];
+    const { findByText, getAllByRole, getByText, queryByText } = renderWithProviders(
+      <UpdatesPage />,
+    );
+
+    await findByText("cowsay");
+    // Only glib's.
+    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("checkbox")).toHaveLength(1);
+    expect(getAllByRole("checkbox")[0]).toHaveAccessibleName("Select glib for update");
+    expect(
+      getByText(
+        wholeSentence(
+          "pipx is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/pipx unpin cowsay in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("/opt/homebrew/bin/pipx unpin cowsay").tagName).toBe("CODE");
+    expect(queryByText(/brew unpin/)).toBeNull();
+    expect(queryByText(/Homebrew is keeping/)).toBeNull();
+  });
+
   it("keeps a pinned candidate out of Update selected even when it was selected earlier", async () => {
     // Selected while it was not pinned; a refresh since says it is. The
     // selection outlives the row's checkbox, so `isActionable` has to be
