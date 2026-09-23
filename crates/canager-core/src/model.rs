@@ -4,6 +4,35 @@ use std::path::PathBuf;
 pub type InstanceId = String; // "brew:/opt/homebrew"
 pub type AdapterId = String; // "brew"
 
+/// The one way an adapter builds a `ManagerInstance.id`: its own adapter id,
+/// optionally followed by `:` and whatever tells its instances apart (a
+/// prefix, a Python path, a host). `None` is for an adapter that only ever
+/// has one instance, whose id is then the adapter id itself (`"pipx"`,
+/// `"uv"`).
+///
+/// This is what makes ids unique *across* adapters by construction rather
+/// than by convention: adapter ids are unique (`Session::with_adapters`
+/// refuses a duplicate) and contain no `:`, so an id built here for one
+/// adapter can never equal an id built here for another. Uniqueness
+/// *within* an adapter is still that adapter's job -- a single-instance
+/// adapter that one day returns two instances would repeat its id -- and
+/// `Session::refresh` is what catches that case, loudly.
+///
+/// Every id this produces is byte-for-byte what the adapters wrote by hand
+/// before it existed. That matters: ids are persisted, inside the
+/// `ArtifactKey`s of `Settings.ignored_updates`, so changing their shape
+/// would silently un-ignore every update the user had ignored.
+pub fn instance_id(adapter_id: &str, qualifier: Option<&str>) -> InstanceId {
+    debug_assert!(
+        !adapter_id.contains(':'),
+        "adapter id {adapter_id:?} must not contain ':'"
+    );
+    match qualifier {
+        None => adapter_id.to_string(),
+        Some(q) => format!("{adapter_id}:{q}"),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Scope {
     User,
@@ -307,6 +336,22 @@ pub struct Reconciled {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_instance_id_reproduces_every_shape_already_persisted() {
+        // Ids live on disk inside `Settings.ignored_updates`; the shared
+        // constructor must not change a single one of them.
+        assert_eq!(instance_id("pipx", None), "pipx");
+        assert_eq!(instance_id("uv", None), "uv");
+        assert_eq!(
+            instance_id("brew", Some("/opt/homebrew")),
+            "brew:/opt/homebrew"
+        );
+        assert_eq!(
+            instance_id("ollama", Some("127.0.0.1:11434")),
+            "ollama:127.0.0.1:11434"
+        );
+    }
 
     #[test]
     fn test_manager_instance_round_trips_through_json() {

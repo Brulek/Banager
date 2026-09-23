@@ -113,8 +113,8 @@ impl NpmAdapter {
             .collect()
     }
 
-    fn instance_id_for(prefix: &Path) -> String {
-        format!("npm:{}", prefix.display())
+    fn instance_id_for(&self, prefix: &Path) -> String {
+        crate::model::instance_id(&self.meta.id, Some(&prefix.display().to_string()))
     }
 
     async fn run_npm(
@@ -185,7 +185,10 @@ impl NpmAdapter {
             // across a source going from broken to working.
             _ => {
                 return vec![ManagerInstance {
-                    id: format!("npm:{}", exe_path.display()),
+                    id: crate::model::instance_id(
+                        &self.meta.id,
+                        Some(&exe_path.display().to_string()),
+                    ),
                     adapter_id: self.meta.id.clone(),
                     exe_path: exe_path.clone(),
                     prefix: exe_path
@@ -232,7 +235,7 @@ impl NpmAdapter {
             Some(ReadOnlyReason::PrefixNotWritable)
         };
         vec![ManagerInstance {
-            id: Self::instance_id_for(&prefix),
+            id: self.instance_id_for(&prefix),
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix,

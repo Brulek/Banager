@@ -157,7 +157,7 @@ impl CargoAdapter {
         };
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
-            id: format!("cargo:{}", cargo_home.display()),
+            id: crate::model::instance_id(&self.meta.id, Some(&cargo_home.display().to_string())),
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix: cargo_home,

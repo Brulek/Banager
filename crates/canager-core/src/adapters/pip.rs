@@ -127,7 +127,10 @@ impl PipAdapter {
                 .unwrap_or_else(|| PathBuf::from("/"));
             let unverified_version = self.meta.unverified_version(&version);
             found.push(ManagerInstance {
-                id: format!("pip:{}", python_path.display()),
+                id: crate::model::instance_id(
+                    &self.meta.id,
+                    Some(&python_path.display().to_string()),
+                ),
                 adapter_id: self.meta.id.clone(),
                 exe_path: python_path,
                 prefix,

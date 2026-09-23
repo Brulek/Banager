@@ -160,8 +160,8 @@ impl BrewAdapter {
             .unwrap_or_else(|| PathBuf::from("/"))
     }
 
-    fn instance_id_for(prefix: &Path) -> String {
-        format!("brew:{}", prefix.display())
+    fn instance_id_for(&self, prefix: &Path) -> String {
+        crate::model::instance_id(&self.meta.id, Some(&prefix.display().to_string()))
     }
 
     async fn run_brew(
@@ -277,7 +277,7 @@ impl BrewAdapter {
             let unverified_version = self.meta.unverified_version(&version);
             let prefix = Self::prefix_for(&path);
             found.push(ManagerInstance {
-                id: Self::instance_id_for(&prefix),
+                id: self.instance_id_for(&prefix),
                 adapter_id: self.meta.id.clone(),
                 exe_path: path,
                 prefix,

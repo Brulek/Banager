@@ -250,8 +250,24 @@ impl Session {
         let mut ops = OperationManager::new(sink);
         let mut by_id = HashMap::new();
         for adapter in adapters {
+            let id = adapter.meta().id.clone();
+            // Both halves of what `model::instance_id` relies on to keep
+            // instance ids unique across adapters. A duplicate adapter id
+            // used to replace the earlier adapter here without a word;
+            // this is a programming error in the fixed registration list
+            // (or a test's), never something a user's machine can cause,
+            // so it fails at construction rather than at some later
+            // refresh.
+            assert!(
+                !id.contains(':'),
+                "adapter id {id:?} must not contain ':' (see model::instance_id)"
+            );
             ops.register_adapter(adapter.clone());
-            by_id.insert(adapter.meta().id.clone(), adapter);
+            let replaced = by_id.insert(id.clone(), adapter);
+            assert!(
+                replaced.is_none(),
+                "two adapters registered with the same id {id:?}"
+            );
         }
         Arc::new(Session {
             adapters: by_id,

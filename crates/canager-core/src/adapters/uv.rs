@@ -139,7 +139,7 @@ impl UvAdapter {
             .unwrap_or_else(|| PathBuf::from("/"));
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
-            id: "uv".to_string(),
+            id: crate::model::instance_id(&self.meta.id, None),
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix,

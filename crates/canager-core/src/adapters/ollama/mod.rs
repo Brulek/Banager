@@ -283,7 +283,7 @@ impl OllamaAdapter {
             .unwrap_or(false);
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
-            id: format!("ollama:{host}"),
+            id: crate::model::instance_id(&self.meta.id, Some(&host)),
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix: env.home.join(".ollama"),

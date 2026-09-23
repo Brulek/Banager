@@ -70,8 +70,15 @@ impl Session {
         // against brew alone, with the action that resolves it, instead of
         // silently disabling the other six. Every adapter, brew included,
         // is simply fanned out to below like any other refresh.
-        let mut detect_handles = Vec::with_capacity(self.adapters.len());
-        for adapter in self.adapters.values() {
+        // Fanned out in adapter-id order, not `HashMap` order, and joined in
+        // the same order below: `dedupe_instance_ids` keeps the *first*
+        // instance claiming an id, and "first" has to mean the same thing
+        // on every refresh and in every process, or which duplicate wins
+        // (and so whose packages the user sees) would flip at random.
+        let mut adapters: Vec<_> = self.adapters.values().collect();
+        adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
+        let mut detect_handles = Vec::with_capacity(adapters.len());
+        for adapter in adapters {
             // Cloned into the task because `tokio::spawn` needs a 'static
             // future: iterating `values()` by reference would tie it to
             // `&self`. (Written as an explicit clone rather than
@@ -131,6 +138,12 @@ impl Session {
                 }
             }
         }
+        // Before anything is keyed on `inst.id` -- the ops registry just
+        // below, the resource locks, the note merge-back, every
+        // carry-forward filter -- because all of them assume one instance
+        // per id and would otherwise misattribute silently.
+        let (mut instances, duplicate_errors) = dedupe_instance_ids(instances);
+        detect_errors.extend(duplicate_errors);
         for inst in &instances {
             self.ops.register_instance(inst.clone());
         }
@@ -407,6 +420,52 @@ impl Session {
         self.refresh_seq.fetch_add(1, Ordering::SeqCst);
         candidate
     }
+}
+
+/// Keep the first instance for each id and drop every later one, with a
+/// `SourceError` for each drop naming both adapters involved.
+///
+/// Every step after detection keys on `ManagerInstance.id` and assumes it
+/// is unique: `merge_instance_notes` writes onto the *first* match, the
+/// carry-forward filters pull `previous` rows by id (so two instances
+/// sharing one would each carry the same rows, duplicating them), and
+/// `OperationManager::register_instance` overwrites by id (so a plan for
+/// one could run against the other's executable). `model::instance_id`
+/// makes a collision *across* adapters impossible, but a collision within
+/// one adapter is still possible -- pipx and uv have constant ids, so a
+/// second instance from either would repeat it -- and no step downstream
+/// would notice. Refusing it here, once, turns that silent
+/// misattribution into a visible error.
+///
+/// Dropped rather than merged or renamed: there is no correct owner to
+/// merge into, and a synthesised id would be a new source with no history
+/// the next round could not reproduce. The instance that is kept is the
+/// one detected first, in the adapter-id order `refresh` fans out in, then
+/// the order its adapter returned them, so the choice is stable from one
+/// refresh to the next and the same error does not bump `generation`.
+///
+/// `stale` follows from the error through the usual `!errors.is_empty()`:
+/// something the detector reported is not on screen, which is exactly
+/// what that banner means.
+fn dedupe_instance_ids(
+    instances: Vec<ManagerInstance>,
+) -> (Vec<ManagerInstance>, Vec<SourceError>) {
+    let mut kept: Vec<ManagerInstance> = Vec::with_capacity(instances.len());
+    let mut errors = Vec::new();
+    for inst in instances {
+        match kept.iter().find(|k| k.id == inst.id) {
+            Some(first) => errors.push(SourceError {
+                instance_id: inst.id.clone(),
+                message: format!(
+                    "two sources reported the same instance id {:?} ({} and {}); \
+                     showing only the first",
+                    inst.id, first.adapter_id, inst.adapter_id
+                ),
+            }),
+            None => kept.push(inst),
+        }
+    }
+    (kept, errors)
 }
 
 /// Merge notes a fan-out task produced back onto the instance it belongs
@@ -1783,5 +1842,166 @@ mod tests {
             instances.iter().all(|i| i.id != "fake:gone"),
             "a note for an instance nobody detected must not invent one"
         );
+    }
+
+    type FakePair = (Arc<FakeAdapter>, Arc<Mutex<FakeState>>);
+
+    /// Two adapters with different adapter ids that both claim instance id
+    /// `"shared"`: each with its own package, alpha with an update, beta
+    /// with a note. Only a hand-built id can do this -- `model::instance_id`
+    /// cannot -- which is exactly the case refresh has to stay safe
+    /// against, because nothing downstream of detection checks.
+    fn colliding_adapters() -> (FakePair, FakePair) {
+        let (alpha, alpha_state) = FakeAdapter::new("alpha");
+        let (beta, beta_state) = FakeAdapter::new("beta");
+        {
+            let mut s = alpha_state.lock().unwrap();
+            s.instances = vec![make_instance("alpha", "shared")];
+            s.artifacts
+                .insert("shared".to_string(), vec![make_artifact("shared", "jq")]);
+            s.updates
+                .insert("shared".to_string(), vec![make_update("shared", "jq")]);
+        }
+        {
+            let mut s = beta_state.lock().unwrap();
+            s.instances = vec![make_instance("beta", "shared")];
+            s.artifacts
+                .insert("shared".to_string(), vec![make_artifact("shared", "wget")]);
+            s.notes
+                .insert("shared".to_string(), vec![InstanceNote::IndexMayBeStale]);
+        }
+        ((alpha, alpha_state), (beta, beta_state))
+    }
+
+    #[tokio::test]
+    async fn test_a_duplicate_instance_id_across_adapters_keeps_the_first_and_says_so() {
+        // Before refresh checked, both "shared" instances went through the
+        // fan-out: beta's note was merged onto the *first* match (alpha's
+        // instance, which never reported it), both packages were listed
+        // under one source, and the ops registry kept whichever instance
+        // registered last. Now the second one is refused, by name, and
+        // the first is untouched. Registration order must not matter:
+        // "first" is adapter-id order, so the same one wins every time.
+        for alpha_registered_first in [true, false] {
+            let ((alpha, _), (beta, _)) = colliding_adapters();
+            let adapters: Vec<Arc<dyn Adapter>> = if alpha_registered_first {
+                vec![alpha, beta]
+            } else {
+                vec![beta, alpha]
+            };
+            let sink = Arc::new(VecSink::new());
+            let session = Session::with_adapters(sink, adapters, None);
+
+            let snapshot = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+
+            assert_eq!(snapshot.instances.len(), 1, "{:?}", snapshot.instances);
+            let kept = &snapshot.instances[0];
+            assert_eq!(kept.id, "shared");
+            assert_eq!(kept.adapter_id, "alpha", "adapter-id order decides");
+            assert!(
+                kept.status.notes.is_empty(),
+                "beta's note must not land on alpha's instance, got {:?}",
+                kept.status.notes
+            );
+            assert_eq!(artifact_names(&snapshot), vec!["jq"]);
+            assert_eq!(update_names(&snapshot), vec!["jq"]);
+
+            assert_eq!(snapshot.errors.len(), 1, "{:?}", snapshot.errors);
+            let err = &snapshot.errors[0];
+            assert_eq!(err.instance_id, "shared");
+            assert!(
+                err.message.contains("alpha") && err.message.contains("beta"),
+                "the error has to name both sides of the collision: {}",
+                err.message
+            );
+            assert!(snapshot.stale, "something detected is not on screen");
+
+            // Deterministic: the same collision next round is the same
+            // snapshot, so it does not bump `generation` either.
+            let again = session
+                .refresh(&non_root_env(), &CheckOptions::default())
+                .await;
+            assert_eq!(again.instances, snapshot.instances);
+            assert_eq!(again.errors, snapshot.errors);
+            assert_eq!(again.generation, snapshot.generation);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_duplicate_instance_id_does_not_duplicate_carried_forward_rows() {
+        // The carry-forward half of the same hazard: every carry-forward
+        // filter pulls `previous` rows by id, so two instances sharing one
+        // would each carry the same rows and the snapshot would list them
+        // twice. Fail the kept instance's inventory and update check so
+        // both of its previous rows come forward, and check they come
+        // forward exactly once.
+        let ((alpha, alpha_state), (beta, _)) = colliding_adapters();
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![alpha, beta], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        {
+            let mut s = alpha_state.lock().unwrap();
+            s.failing.push("shared".to_string());
+            s.failing_updates.push("shared".to_string());
+        }
+
+        let second = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(artifact_names(&second), vec!["jq"]);
+        assert_eq!(update_names(&second), vec!["jq"]);
+    }
+
+    #[tokio::test]
+    async fn test_a_single_adapter_repeating_its_own_instance_id_is_refused_too() {
+        // The collision `model::instance_id` cannot rule out: pipx and uv
+        // build their id with no qualifier, so a second instance from
+        // either would repeat it exactly. Same handling as across
+        // adapters -- the first one detected wins.
+        let (adapter, state) = FakeAdapter::new("pipx");
+        {
+            let mut s = state.lock().unwrap();
+            let mut second = make_instance("pipx", "pipx");
+            second.exe_path = std::path::PathBuf::from("/usr/local/bin/pipx");
+            s.instances = vec![make_instance("pipx", "pipx"), second];
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+
+        assert_eq!(snapshot.instances.len(), 1);
+        assert_ne!(
+            snapshot.instances[0].exe_path,
+            std::path::PathBuf::from("/usr/local/bin/pipx"),
+            "the first instance the adapter returned is the one kept"
+        );
+        assert_eq!(snapshot.errors.len(), 1);
+        assert_eq!(snapshot.errors[0].instance_id, "pipx");
+        let inventoried = state.lock().unwrap().inventory_calls.clone();
+        assert_eq!(
+            inventoried,
+            vec!["pipx".to_string()],
+            "fetched once, not twice"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "two adapters registered with the same id")]
+    fn test_registering_two_adapters_with_one_id_fails_at_construction() {
+        // A duplicate adapter id used to replace the first adapter in the
+        // map without a word, and adapter-id uniqueness is half of what
+        // makes `model::instance_id` collision-free across adapters.
+        let (first, _) = FakeAdapter::new("fake");
+        let (second, _) = FakeAdapter::new("fake");
+        let sink = Arc::new(VecSink::new());
+        let _ = Session::with_adapters(sink, vec![first, second], None);
     }
 }
