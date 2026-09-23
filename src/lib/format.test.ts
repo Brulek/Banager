@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { displayToken } from "./format";
+import { displayToken, outcomeArgs, outcomeKey } from "./format";
+import type { Outcome } from "./types";
+import en from "../i18n/en.json";
+import zhCN from "../i18n/zh-CN.json";
 
 describe("displayToken", () => {
   it("leaves a plain token alone", () => {
@@ -32,5 +35,15 @@ describe("displayToken", () => {
     expect(displayToken("gautham-v/tap/claudebar")).toBe("gautham-v/tap/claudebar");
     expect(displayToken("--formula")).toBe("--formula");
     expect(displayToken("python@3.13")).toBe("python@3.13");
+  });
+});
+
+describe("outcomeKey", () => {
+  it("gives the user's own cancel its own words in both languages", () => {
+    const cancelled: Outcome = "Cancelled";
+    expect(outcomeKey(cancelled)).toBe("Cancelled");
+    expect(outcomeArgs(cancelled)).toEqual({});
+    expect(en.operations.outcome.Cancelled).toBe("You cancelled this");
+    expect(zhCN.operations.outcome.Cancelled).toBe("你已取消");
   });
 });

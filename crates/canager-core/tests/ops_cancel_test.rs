@@ -34,6 +34,10 @@ enum ExecuteBehavior {
     /// killed mid-flight (cancelled or timed out), whose real effect is
     /// only known after reconciliation.
     WaitForCancel,
+    /// Reports the execution as unconfirmed straight away, without anyone
+    /// having cancelled -- models a run the runner stopped at its timeout.
+    /// Only the user's Cancel may ever be reported as `Cancelled`.
+    TimedOut,
     /// Simulates real work that ignores cancellation entirely and just
     /// takes some time, then reports success. Used for scenarios where the
     /// op must actually run to completion (or must still be queued while a
@@ -134,6 +138,7 @@ impl Adapter for FakeAdapter {
                 cancel.cancelled().await;
                 Ok(Outcome::Unconfirmed)
             }
+            ExecuteBehavior::TimedOut => Ok(Outcome::Unconfirmed),
             ExecuteBehavior::Work(duration) => {
                 tokio::time::sleep(*duration).await;
                 Ok(Outcome::Succeeded)
@@ -285,9 +290,10 @@ async fn test_cancel_mid_execute_emits_full_status_sequence() {
             OpStatus::Done,
         ],
     );
-    // Install + present:false after a cancelled execute must not be
-    // reported as a silent success.
-    assert_eq!(outcome, Outcome::Unconfirmed);
+    // Install + present:false after the user's cancel: nothing was
+    // installed, and the user is told it was their cancel -- never a silent
+    // success, and never "unconfirmed" when reconcile confirmed it.
+    assert_eq!(outcome, Outcome::Cancelled);
 }
 
 // (b) Outcome mapping per OpKind after a cancelled execute.
@@ -318,6 +324,19 @@ async fn test_cancelled_uninstall_reports_succeeded_when_absent() {
 }
 
 #[tokio::test]
+async fn test_cancelled_uninstall_reports_cancelled_when_still_present() {
+    let (outcome, _trace) = run_cancelled_mid_execute(
+        OpKind::Uninstall,
+        Reconciled {
+            present: true,
+            version: None,
+        },
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Cancelled);
+}
+
+#[tokio::test]
 async fn test_cancelled_upgrade_never_reports_succeeded() {
     // Upgrade means the artifact was already present before the op ran, so
     // presence after a cancelled/timed-out execute proves nothing: it must
@@ -343,10 +362,44 @@ async fn test_cancelled_upgrade_never_reports_succeeded() {
     assert_eq!(absent_outcome, Outcome::Unconfirmed);
 }
 
-// (c) Cancel while still Queued (waiting for a lock held by a sibling op)
-// must report NoChange and never let the op run.
+// A run that ended unconfirmed because it timed out, not because the user
+// cancelled, must never be reported as the user's cancellation -- even when
+// reconcile shows the request did not take effect.
 #[tokio::test]
-async fn test_cancel_while_queued_reports_no_change_and_never_runs() {
+async fn test_timed_out_run_is_unconfirmed_not_cancelled() {
+    for (kind, present) in [(OpKind::Install, false), (OpKind::Uninstall, true)] {
+        let sink = Arc::new(VecSink::new());
+        let mut manager = OperationManager::new(sink);
+        let adapter = Arc::new(FakeAdapter::new(
+            ExecuteBehavior::TimedOut,
+            Reconciled {
+                present,
+                version: None,
+            },
+        ));
+        manager.register_adapter(adapter.clone());
+        let manager = Arc::new(manager);
+
+        let inst = make_instance("fake:/timed-out");
+        manager.register_instance(inst.clone());
+        let plan = adapter
+            .plan(&inst, &make_request(kind, &inst.id, "pkg"))
+            .await
+            .expect("plan");
+        let op_id = manager.submit(plan);
+
+        assert_eq!(
+            manager.wait(op_id).await,
+            Some(Outcome::Unconfirmed),
+            "{kind:?} that timed out"
+        );
+    }
+}
+
+// (c) Cancel while still Queued (waiting for a lock held by a sibling op)
+// must report Cancelled and never let the op run.
+#[tokio::test]
+async fn test_cancel_while_queued_reports_cancelled_and_never_runs() {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink.clone());
     let adapter = Arc::new(FakeAdapter::new(
@@ -386,7 +439,7 @@ async fn test_cancel_while_queued_reports_no_change_and_never_runs() {
     manager.cancel(id_b);
 
     let outcome_b = manager.wait(id_b).await;
-    assert_eq!(outcome_b, Some(Outcome::NoChange));
+    assert_eq!(outcome_b, Some(Outcome::Cancelled));
 
     let trace_b = status_trace(&sink.snapshot(), id_b);
     assert!(
@@ -507,7 +560,7 @@ async fn test_cancel_immediately_after_submit_never_calls_execute() {
     manager.cancel(op_id);
 
     let outcome = manager.wait(op_id).await;
-    assert_eq!(outcome, Some(Outcome::NoChange));
+    assert_eq!(outcome, Some(Outcome::Cancelled));
     assert_eq!(
         adapter.execute_calls(),
         0,

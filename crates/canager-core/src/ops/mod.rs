@@ -334,8 +334,9 @@ impl OperationManager {
             }
             if cancel.is_cancelled() {
                 // Never actually started (still waiting for a lock held by
-                // another op), so nothing on the system changed.
-                self.finish(op_id, Outcome::NoChange, false);
+                // another op), so nothing on the system changed: the user's
+                // cancel is the whole story.
+                self.finish(op_id, Outcome::Cancelled, false);
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -366,7 +367,7 @@ impl OperationManager {
         // `release_locks: true` is required, not `false` (which would leak
         // them forever since nothing else will ever release them).
         if cancel.is_cancelled() {
-            self.finish(op_id, Outcome::NoChange, true);
+            self.finish(op_id, Outcome::Cancelled, true);
             return;
         }
 
@@ -402,16 +403,28 @@ impl OperationManager {
         let _permit: OwnedSemaphorePermit = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
-                self.finish(op_id, Outcome::NoChange, true);
+                self.finish(op_id, Outcome::Cancelled, true);
                 return;
             }
             permit = self.semaphore.clone().acquire_owned() => {
                 match permit {
                     Ok(p) => p,
                     Err(_) => {
-                        // The semaphore was closed (manager torn down);
-                        // treat exactly like a cancellation.
-                        self.finish(op_id, Outcome::NoChange, true);
+                        // `acquire_owned` only fails on a closed semaphore,
+                        // and nothing ever closes this one — so this arm is
+                        // not expected to run. If it ever does, the command
+                        // never started, but nobody asked for that: it is
+                        // not the user's cancellation, so it must not be
+                        // reported as one.
+                        self.finish(
+                            op_id,
+                            Outcome::Failed {
+                                exit_code: None,
+                                summary: "the operation queue closed before this could start"
+                                    .to_string(),
+                            },
+                            true,
+                        );
                         return;
                     }
                 }
@@ -518,17 +531,33 @@ impl OperationManager {
             // Uninstall (was there, now isn't) — but never for Upgrade,
             // since the artifact was already present before the op ran, so
             // presence afterward proves nothing either way.
-            Ok(Outcome::Unconfirmed) => match plan.request.kind {
-                OpKind::Upgrade => Outcome::Unconfirmed,
-                OpKind::Install => match reconciled {
-                    Ok(r) if r.present => Outcome::Succeeded,
-                    _ => Outcome::Unconfirmed,
-                },
-                OpKind::Uninstall => match reconciled {
-                    Ok(r) if !r.present => Outcome::Succeeded,
-                    _ => Outcome::Unconfirmed,
-                },
-            },
+            //
+            // When the run was stopped by the user's own Cancel (the token
+            // is only ever fired by `cancel()`; a timeout never touches
+            // it) and reconcile shows the request did *not* take effect,
+            // the cancel is what happened, and the user is told so. If the
+            // work finished anyway, the presence arms below report
+            // `Succeeded`, not `Cancelled`: the race goes to whatever
+            // reconcile actually found. Upgrade stays `Unconfirmed` even after a user cancel,
+            // for the same reason as above — nothing here can tell whether
+            // the new version landed before the kill, and `Cancelled` would
+            // read as "it did not".
+            Ok(Outcome::Unconfirmed) => {
+                let user_cancelled = cancel.is_cancelled();
+                match plan.request.kind {
+                    OpKind::Upgrade => Outcome::Unconfirmed,
+                    OpKind::Install => match reconciled {
+                        Ok(r) if r.present => Outcome::Succeeded,
+                        Ok(_) if user_cancelled => Outcome::Cancelled,
+                        _ => Outcome::Unconfirmed,
+                    },
+                    OpKind::Uninstall => match reconciled {
+                        Ok(r) if !r.present => Outcome::Succeeded,
+                        Ok(_) if user_cancelled => Outcome::Cancelled,
+                        _ => Outcome::Unconfirmed,
+                    },
+                }
+            }
             Ok(other) => other,
             Err(e) => Outcome::Failed {
                 exit_code: None,

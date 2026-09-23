@@ -11,7 +11,7 @@ export type OpStatus =
 export type DetectOutcome = "Found" | "Missing";
 export type Outcome =
   | "Succeeded"
-  | "NoChange"
+  | "Cancelled"
   | "PartialSuccess"
   | "Unconfirmed"
   | { NeedsAttention: string }

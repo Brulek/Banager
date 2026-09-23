@@ -175,7 +175,7 @@ Windows：winget（走 COM API，不解析 CLI 表格；PowerShell 模块不预�
 - `UpdateCandidate { artifact: ArtifactKey, current, target, channel: Native|Registry|Digest, checkable: bool, warnings: [] }`
 - `SearchHit { adapter_id, key, name, description?, kind }`
 - `Plan { op, instance_id, argv_preview, needs_password: bool, locks: [ResourceLock], cancel_policy: SafeKill|KillThenReconcile|NoCancel, warnings: [], estimated: { download?, duration? } }`
-- `Operation { id, plan, status, started_at, finished_at, outcome?: Succeeded|NoChange|PartialSuccess|NeedsAttention|Failed|Unconfirmed, log_path }`
+- `Operation { id, plan, status, started_at, finished_at, outcome?: Succeeded|Cancelled|PartialSuccess|NeedsAttention|Failed|Unconfirmed, log_path }`
   - 状态机：`Queued → Running → (CancelRequested → Cancelling) → Verifying → Done`
 - `CatalogEntry { id, category, name{en,zh}, summary{en,zh}, why{en,zh}, homepage, install: [{ platform, adapter_id, key, note? }], prerequisites: [catalog_id] }`（无 `safe_to_remove` 字段）
 - `Settings { language, show_technical_details, background_check, check_interval_hours, launch_at_login, close_to_menubar, greedy_casks, enabled_adapters[], ignored_updates[] }`

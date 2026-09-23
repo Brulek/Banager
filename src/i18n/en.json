@@ -131,7 +131,7 @@
     },
     "outcome": {
       "Succeeded": "Succeeded",
-      "NoChange": "No change needed",
+      "Cancelled": "You cancelled this",
       "PartialSuccess": "Partially succeeded",
       "Unconfirmed": "Result unconfirmed",
       "NeedsAttention": "Needs attention: {{message}}",

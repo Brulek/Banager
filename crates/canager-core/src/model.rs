@@ -275,7 +275,11 @@ pub struct Plan {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
     Succeeded,
-    NoChange,
+    /// The user pressed Cancel and the request did not take effect: either
+    /// the command never started, or it was stopped and reconcile shows the
+    /// artifact exactly as it was before. A cancel that lost the race to the
+    /// command finishing is `Succeeded`, not this.
+    Cancelled,
     PartialSuccess,
     NeedsAttention(String),
     Failed {
