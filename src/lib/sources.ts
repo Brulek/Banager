@@ -305,6 +305,15 @@ interface UpdateBlockedCopy {
    *  (`sourceLabelFor`) and `{{command}}` with `command` below, so one
    *  sentence serves every tool that produces the reason. */
   description: string;
+  /** `description` for a candidate whose owning instance did not answer
+   *  the last refresh (`isAvailable` false, or the instance missing from
+   *  the snapshot). Such a row gets no Update button until the source
+   *  answers again (`updateStateOf` in src/lib/updateState.ts checks
+   *  `blocked` before `sourceUnavailable`, so a pinned-and-silent row is
+   *  still badged and described as blocked, not as unavailable), so it
+   *  may not promise the update sooner than that. Filled the same way as
+   *  `description`. */
+  descriptionSourceUnavailable: string;
   /**
    * `description` for a package that updates itself
    * (`InstalledArtifact.auto_updates`), or `null` when this reason needs
@@ -313,6 +322,12 @@ interface UpdateBlockedCopy {
    * updates itself outside the tool.
    */
   selfUpdatingDescription: string | null;
+  /** `selfUpdatingDescription` for a self-updating package whose owning
+   *  instance did not answer the last refresh, or `null` when
+   *  `selfUpdatingDescription` itself is `null`. Same reasoning as
+   *  `descriptionSourceUnavailable`, for the sentence that does not
+   *  promise the package stays put. */
+  selfUpdatingDescriptionSourceUnavailable: string | null;
   /** The command `description`'s `{{command}}` stands for, from the row's
    *  own key and the instance that key's `instance_id` names (`undefined`
    *  only if the snapshot lacks it, which `refresh` never produces: it
@@ -336,7 +351,32 @@ interface UpdateBlockedCopy {
 export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   Pinned: {
     badge: "updates.blocked.Pinned.badge",
+    // `description` (and `descriptionSelfUpdating` below) promise the
+    // update appears "at the latest the next time you start Canager".
+    // That rests on the refresh every start runs
+    // (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
+    // and on `parse_outdated` reading `pinned` afresh each time -- and,
+    // just as much, on the owning instance answering that refresh: a
+    // candidate whose instance is unavailable is carried forward from the
+    // last snapshot that did answer, and gets no Update button regardless
+    // of the pin (`isUpdateActionable` in src/lib/updateState.ts needs
+    // `isAvailable`). `UpdatesPage.tsx`'s `rowDescription` picks
+    // `description` when the candidate's instance (found the same way the
+    // row's command is, `snapshot.instances.find` on `candidate.key.
+    // instance_id`) is available, and `descriptionSourceUnavailable`
+    // otherwise, which promises the update only once a check finds the
+    // source answering again -- never "the next time you start Canager",
+    // which such a row cannot back up.
+    //
+    // Both sentences name Canager, not "it", because "it" has just meant
+    // the package, and for a pinned cask that is an app -- "open it" reads
+    // as "open that app". "Start" is the right verb for `description`
+    // and `selfUpdatingDescription`: the page has no refresh button (the
+    // only one is `SnapshotStatus`'s retry after a failed refresh), and
+    // closing the window quits, since `run` in src-tauri/src/lib.rs has
+    // no `ExitRequested` handler to keep the app alive without one.
     description: "updates.blocked.Pinned.description",
+    descriptionSourceUnavailable: "updates.blocked.Pinned.descriptionSourceUnavailable",
     // A pinned cask with `auto_updates true` can still move: `brew pin`
     // itself warns it "may update itself outside Homebrew despite being
     // pinned" (Homebrew's `cmd/pin.rb`). `description` says Homebrew is
@@ -350,18 +390,13 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // page asks the package's `auto_updates` and not the setting. The
     // sentence names Homebrew, not `{{source}}`: of `Pinned`'s two
     // producers only brew ever sets `auto_updates` (`parse_list` in
-    // crates/canager-core/src/adapters/pipx.rs writes `false`).
+    // crates/canager-core/src/adapters/pipx.rs writes `false`). Such a
+    // cask can be under a silent Homebrew too, so it gets the same
+    // unavailable/available split as `description`, against
+    // `descriptionSelfUpdatingSourceUnavailable`.
     selfUpdatingDescription: "updates.blocked.Pinned.descriptionSelfUpdating",
-    // The description's promise that the update appears "at the latest
-    // the next time you start Canager" rests on the refresh every start
-    // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
-    // and on `parse_outdated` reading `pinned` afresh each time. It names
-    // Canager, not "it", because "it" has just meant the package, and for
-    // a pinned cask that is an app "open it" reads as "open that app".
-    // "Start" is the right verb: the page has no refresh button (the only
-    // one is `SnapshotStatus`'s retry after a failed refresh), and closing
-    // the window quits, since `run` in src-tauri/src/lib.rs has no
-    // `ExitRequested` handler to keep the app alive without one.
+    selfUpdatingDescriptionSourceUnavailable:
+      "updates.blocked.Pinned.descriptionSelfUpdatingSourceUnavailable",
     command: unpinCommand,
     refused: "updates.blocked.Pinned.refused",
   },

@@ -149,8 +149,10 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   说明句原本一律承诺「下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候」，可 Homebrew 没应答时
   这一行是结转下来的，Homebrew 再次应答之前不会有「卸载」按钮；同日改成：来源没应答的行换用
   `descriptionSourceUnavailable`，只说「之后 Canager 检查时只要 Homebrew 有应答，就会提供卸载」。
-  **仍未做**：更新页被固定的行（`updates.blocked.Pinned.description` 与 `descriptionSelfUpdating`）对没应答的
-  来源也作同样的承诺，没有改。
+  更新页被固定的行（`updates.blocked.Pinned.description` 与 `descriptionSelfUpdating`）当时对没应答的来源
+  也作同样的假承诺，已在分支 feat/per-package-actionability 上同样补了
+  `descriptionSourceUnavailable` / `descriptionSelfUpdatingSourceUnavailable` 修掉：`UpdatesPage.tsx` 的
+  `rowDescription` 按候选自己实例（`snapshot.instances.find`，与其命令用的是同一份查找）是否应答挑选句子。
   Canager 不传 `--force`，也不代为解除固定。pipx 不产生它：`pipx uninstall` 照样删除被固定的工具
   （pipx 1.17.3 `commands/uninstall.py` 不读 `pinned`）。
 - ~~**已安装页的「有更新」徽标**~~ —— **已于 2026-09-24 修复**：原先 `updatableIds` 把 `snapshot.updates`

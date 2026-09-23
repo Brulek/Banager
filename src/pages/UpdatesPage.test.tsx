@@ -540,6 +540,36 @@ describe("UpdatesPage", () => {
     expect(queryByText(/keeping this at the version it has now/)).toBeNull();
   });
 
+  it("promises a silent source's pinned row the update only once the source answers", async () => {
+    // `updateStateOf` checks `blocked` before `sourceUnavailable`, so a
+    // pinned candidate under a Homebrew that did not answer is still
+    // badged and described as Pinned, not as unavailable -- but the row
+    // gets no Update button either way until Homebrew answers a check
+    // again (`isUpdateActionable` needs `isAvailable`). "The next time it
+    // checks, which at the latest is the next time you start Canager"
+    // does not hold while Homebrew stays silent.
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
+      ...snapshot.instances.slice(1),
+    ];
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const { findByText, getByText, queryByText, queryAllByRole } = renderWithProviders(
+      <UpdatesPage />,
+    );
+
+    await findByText("glib");
+    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+    expect(getByText("Pinned")).toBeInTheDocument();
+    expect(
+      getByText(
+        wholeSentence(
+          "Homebrew is keeping this at the version it has now, because it has been pinned, so Canager won't update it. To let it update, run /opt/homebrew/bin/brew unpin glib in Terminal; after that, Canager will offer the update the next time it checks and Homebrew answers.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/next time you start Canager/)).toBeNull();
+  });
+
   it("names the brew that owns a pinned package when a Mac has two, not whichever PATH finds", async () => {
     // A Mac migrated from Intel keeps /usr/local beside /opt/homebrew,
     // and Terminal's `brew` is /opt/homebrew/bin/brew. glib pinned in

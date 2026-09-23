@@ -12,6 +12,7 @@ import {
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
+  isAvailable,
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
@@ -437,9 +438,19 @@ export function UpdatesPage() {
       // (`parse_info_installed` in crates/canager-core/src/adapters/brew/
       // parse.rs); a package missing from `artifacts` gets the plain copy.
       const selfUpdating = artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true;
-      const description = selfUpdating
-        ? (copy.selfUpdatingDescription ?? copy.description)
-        : copy.description;
+      // A blocked candidate under a source that did not answer the last
+      // refresh is carried forward and gets no Update button either way
+      // (`isUpdateActionable` needs `isAvailable`), so its sentence may
+      // not promise the update "the next time it checks" -- only once
+      // the source answers again.
+      const sourceUnavailable = instance === undefined || !isAvailable(instance);
+      const description = sourceUnavailable
+        ? selfUpdating
+          ? (copy.selfUpdatingDescriptionSourceUnavailable ?? copy.descriptionSourceUnavailable)
+          : copy.descriptionSourceUnavailable
+        : selfUpdating
+          ? (copy.selfUpdatingDescription ?? copy.description)
+          : copy.description;
       return withCommand(
         t(description, {
           command: COMMAND_SLOT,

@@ -73,7 +73,9 @@
       "Pinned": {
         "badge": "已固定",
         "description": "它在 {{source}} 里被固定（pin）在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次启动 Canager 的时候。",
+        "descriptionSourceUnavailable": "它在 {{source}} 里被固定（pin）在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，之后 Canager 检查时只要 {{source}} 有应答，就会提供更新。",
         "descriptionSelfUpdating": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次启动 Canager 的时候。",
+        "descriptionSelfUpdatingSourceUnavailable": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，之后 Canager 检查时只要 Homebrew 有应答，就会提供更新。",
         "refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Canager 没有更新它。什么都没有改动。"
       }
     }
