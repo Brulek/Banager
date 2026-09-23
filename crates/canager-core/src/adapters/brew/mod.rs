@@ -456,6 +456,24 @@ impl BrewAdapter {
         record.running
     }
 
+    /// `None` while a `brew update` is running for `inst_id`, otherwise a
+    /// stamp that changes as soon as another one begins (`UpdateRecord::
+    /// started`). A read of the catalogue takes one before and one after
+    /// and trusts what it read only when both are the same `Some`: then no
+    /// update was running at any moment in between.
+    ///
+    /// Unlike `join_running_update` this asks nobody to be told when the
+    /// update ends: its one caller, the uninstall preview, refuses and
+    /// leaves nothing on screen that a later refresh would have to clear.
+    fn catalogue_stamp(&self, inst_id: &InstanceId) -> Option<u64> {
+        let updates = self.updates.lock().unwrap();
+        match updates.get(inst_id) {
+            Some(record) if record.running => None,
+            Some(record) => Some(record.started),
+            None => Some(0),
+        }
+    }
+
     /// `op_update_wait` rounded down to whole minutes, for the two locale
     /// sentences that name this bound (`LogNote::WaitingForBrewUpdate` and
     /// `Fault::HomebrewStillUpdating`, both built from this, never from a
@@ -765,6 +783,12 @@ struct UpdateRecord {
     succeeded_at: Option<Instant>,
     /// A `brew update` is running now, in the task `maybe_update` spawned.
     running: bool,
+    /// How many `brew update`s have begun for this instance, counted by
+    /// `UpdateFinish::begin`, the one place `running` is set. It lets a
+    /// read that must not overlap an update (`catalogue_stamp`) notice one
+    /// that began *and* ended while it ran, which `running` alone, sampled
+    /// before and after, cannot see.
+    started: u64,
     /// A refresh has told the user the running update is still going
     /// (`AdapterError::IndexUpdating`, which the refresh shows as
     /// `InstanceNote::IndexUpdating`), so when it ends its task wakes
@@ -804,6 +828,7 @@ impl UpdateFinish {
         background_change: Arc<tokio::sync::Notify>,
     ) -> UpdateFinish {
         record.running = true;
+        record.started += 1;
         UpdateFinish {
             updates,
             inst_id,
@@ -907,6 +932,21 @@ impl BrewAdapter {
                     ArtifactKind::Cask => "--cask",
                     _ => "--formula",
                 };
+                // `brew uses` reads the same catalogue `brew update`
+                // rewrites, and this list is what the user confirms an
+                // uninstall against: a half-written read that still
+                // parses would show fewer dependents than will break --
+                // worse than any error. So, as `inventory` does for the
+                // refresh, it is not read while an update runs, and a read
+                // that an update began during is thrown away
+                // (`catalogue_stamp`). Refused rather than waited for: the
+                // dialog would sit on "checking" for minutes with no word
+                // of why; `IndexUpdating` goes out as its own kind
+                // (`plan_operation_error` in src-tauri/src/ipc.rs) and the
+                // dialog says Homebrew is updating and to try again.
+                let Some(stamp) = self.catalogue_stamp(&inst.id) else {
+                    return Err(AdapterError::IndexUpdating);
+                };
                 let uses_output = self
                     .run_brew(
                         inst,
@@ -918,6 +958,9 @@ impl BrewAdapter {
                         Duration::from_secs(120),
                     )
                     .await?;
+                if self.catalogue_stamp(&inst.id) != Some(stamp) {
+                    return Err(AdapterError::IndexUpdating);
+                }
                 let mut warnings = Vec::new();
                 let affected = if uses_output.exit_code == Some(0) {
                     parse_uses(&uses_output.stdout)
@@ -3073,5 +3116,123 @@ mod plan_execute_tests {
             "nothing may be installed after the user cancelled: {:?}",
             runner.calls()
         );
+    }
+
+    // ---- the uninstall preview does not read a catalogue mid-update ----
+
+    fn uninstall_jq(inst: &ManagerInstance) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        }
+    }
+
+    /// `runner_with_slow_update`, plus a `brew uses` that names one
+    /// dependent after `uses_delay`.
+    fn runner_with_update_and_uses(update: Duration, uses_delay: Duration) -> Arc<MockRunner> {
+        let runner = runner_with_slow_update(update);
+        let uses = vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"];
+        runner.respond(
+            uses.clone(),
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "python@3.13\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner.delay(uses, uses_delay);
+        runner
+    }
+
+    fn uses_calls(runner: &MockRunner) -> usize {
+        runner
+            .calls()
+            .iter()
+            .filter(|c| c.get(1).map(String::as_str) == Some("uses"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn test_uninstall_preview_during_a_brew_update_refuses_without_running_brew_uses() {
+        // The list of what an uninstall would break is what the user
+        // confirms against. Read from a catalogue `brew update` is halfway
+        // through rewriting, it could parse and still be short. So while
+        // an update runs the preview reads nothing and says why
+        // (`IndexUpdating`, which the dialog words as "Homebrew is
+        // updating, try again shortly").
+        let runner = runner_with_update_and_uses(Duration::from_millis(400), Duration::ZERO);
+        let adapter =
+            BrewAdapter::new(runner.clone()).with_update_patience(Duration::from_millis(50));
+        let inst = test_instance();
+        let checked = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        assert!(
+            matches!(checked, Err(AdapterError::IndexUpdating)),
+            "setup: the refresh must have left the update running, got {checked:?}"
+        );
+
+        let planned = adapter.plan(&inst, &uninstall_jq(&inst)).await;
+        assert!(
+            matches!(planned, Err(AdapterError::IndexUpdating)),
+            "got {planned:?}"
+        );
+        assert_eq!(
+            uses_calls(&runner),
+            0,
+            "`brew uses` ran against a catalogue being rewritten: {:?}",
+            runner.calls()
+        );
+
+        // Once the update is over, trying again gets the real list.
+        let give_up = Instant::now() + Duration::from_secs(5);
+        while adapter.catalogue_stamp(&inst.id).is_none() && Instant::now() < give_up {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let plan = adapter
+            .plan(&inst, &uninstall_jq(&inst))
+            .await
+            .expect("a preview after the update has ended");
+        assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_uninstall_preview_discards_a_brew_uses_that_a_brew_update_began_during() {
+        // The check before `brew uses` finds no update running; a refresh
+        // then starts one, and it both begins and ends while `brew uses`
+        // is still reading. Sampling `running` before and after would see
+        // `false` both times; the answer overlapped an update all the
+        // same, so it is not shown.
+        let runner =
+            runner_with_update_and_uses(Duration::from_millis(50), Duration::from_millis(400));
+        let adapter = Arc::new(BrewAdapter::new(runner.clone()));
+        let inst = test_instance();
+
+        let preview = {
+            let adapter = adapter.clone();
+            let inst = inst.clone();
+            tokio::spawn(async move { adapter.plan(&inst, &uninstall_jq(&inst)).await })
+        };
+        let give_up = Instant::now() + Duration::from_secs(5);
+        while uses_calls(&runner) == 0 && Instant::now() < give_up {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("the refresh's update finishes well inside its patience");
+        assert!(
+            adapter.catalogue_stamp(&inst.id).is_some(),
+            "setup: the update must be over before `brew uses` answers"
+        );
+
+        let planned = preview.await.expect("preview task panicked");
+        assert!(
+            matches!(planned, Err(AdapterError::IndexUpdating)),
+            "a dependents list read while `brew update` ran was shown: {planned:?}"
+        );
+        assert_eq!(update_calls(&runner), 1, "setup: {:?}", runner.calls());
     }
 }

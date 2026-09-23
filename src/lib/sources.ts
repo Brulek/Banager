@@ -336,10 +336,14 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
 /**
  * The `planRefused.*` key for each kind `plan_operation_error` sends with
  * no field but its `kind` -- Canager's own reasons, whose Rust wording is
- * for logs and is dropped before it reaches the wire.
+ * for logs and is dropped before it reaches the wire. `index_updating` is
+ * brew's uninstall preview declining to read Homebrew's catalogue while
+ * `brew update` rewrites it (`catalogue_stamp` in
+ * crates/canager-core/src/adapters/brew/mod.rs).
  */
 const PLAN_FAILURE_KEYS: Record<string, string> = {
   output_too_large: "planRefused.outputTooLarge",
+  index_updating: "planRefused.indexUpdating",
   refused: "planRefused.refused",
 };
 

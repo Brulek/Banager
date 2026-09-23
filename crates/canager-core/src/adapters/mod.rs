@@ -157,17 +157,21 @@ pub enum AdapterError {
     SourceGone { instance_id: String },
     /// The source's package catalogue is being rewritten right now, so the
     /// adapter did not read it. Only brew returns it: its `inventory`
-    /// while a `brew update` is running for that instance, and its
+    /// while a `brew update` is running for that instance, its
     /// `check_updates` when the `brew update` it started outlasts the
-    /// refresh's patience. That update git-merges Homebrew's own Ruby
-    /// code and `curl`s the package list over the file `brew info` and
-    /// `brew outdated` read, so an answer read alongside it could be an
-    /// error or, worse, a parse of a half-written file that succeeds.
+    /// refresh's patience, and its uninstall `plan` when an update is
+    /// running before or begins during its `brew uses`. That update
+    /// git-merges Homebrew's own Ruby code and `curl`s the package list
+    /// over the file `brew info`, `brew outdated` and `brew uses` read, so
+    /// an answer read alongside it could be an error or, worse, a parse of
+    /// a half-written file that succeeds.
     ///
     /// Not a failure. `Session::refresh` turns it into
     /// `InstanceNote::IndexUpdating` rather than a `SourceError`, and
     /// carries that instance's previous rows forward through the same
-    /// branches a failed read uses.
+    /// branches a failed read uses. From `plan` it reaches the uninstall
+    /// dialog as the `index_updating` kind (`plan_operation_error` in
+    /// src-tauri/src/ipc.rs), which asks the user to try again shortly.
     #[error("the package index is being updated")]
     IndexUpdating,
 }

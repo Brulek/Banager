@@ -293,6 +293,7 @@ describe("planErrorMessage", () => {
   it("words each of Canager's own planning failures itself, naming the source", () => {
     for (const [kind, key] of [
       ["output_too_large", "planRefused.outputTooLarge"],
+      ["index_updating", "planRefused.indexUpdating"],
       ["refused", "planRefused.refused"],
     ]) {
       expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew")).toBe(

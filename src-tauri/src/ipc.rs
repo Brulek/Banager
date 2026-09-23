@@ -155,7 +155,10 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// - **Canager's own words** go out with no prose at all, only data the
 ///   front end can interpolate into its own sentence: `source_gone`,
 ///   `invalid_name` (the name), `program_missing` (the path),
-///   `output_too_large`, and `refused` for everything that is a bug in
+///   `output_too_large`, `index_updating` (brew's uninstall preview
+///   would not read Homebrew's catalogue while `brew update` rewrites
+///   it, and the user should try again shortly), and `refused` for
+///   everything that is a bug in
 ///   Canager rather than a state of the Mac (an instance/request mismatch,
 ///   an unregistered adapter, a test-only `NoMock`). `Refused` carries an
 ///   English string in Rust; it is dropped here on purpose -- it is for
@@ -165,16 +168,18 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 ///   `spawn_failed` carries the operating system's reason it could not
 ///   start the tool.
 ///
-/// `Parse`, `CommandFailed`, `Unsupported` and `IndexUpdating` have no kind
-/// of their own because no `plan()` returns them: brew's is the only one
-/// that runs a command (`brew uses`), and it turns that command's failure
-/// into `Warning::DependentsUnknown` rather than an error; the others run
-/// nothing. `IndexUpdating` comes only from brew's `inventory` and
-/// `check_updates`, which its `plan()` does not call. pip's `plan()` does refuse with `Unsupported`, but every pip
+/// `Parse`, `CommandFailed` and `Unsupported` have no kind of their own
+/// because no `plan()` returns them: brew's is the only one that runs a
+/// command (`brew uses`), and it turns that command's failure into
+/// `Warning::DependentsUnknown` rather than an error; the others run
+/// nothing. pip's `plan()` does refuse with `Unsupported`, but every pip
 /// instance is read-only by design, so `issue_plan`'s gate refuses first
 /// with `not_actionable`. They go out as `refused` -- if one ever arrives,
 /// an adapter broke that contract, which is Canager's bug. A kind of their
 /// own would be copy in two locales that nothing can make appear.
+/// `IndexUpdating` is not one of them: brew's uninstall `plan()` returns it
+/// (the `catalogue_stamp` checks around its `brew uses`) while a `brew
+/// update` is running, a state of the Mac that passes by itself.
 ///
 /// `plan_operation` still returns `Result<IssuedPlan, String>`, identical to
 /// every other command, so `src/lib/api.ts`'s single `call()` choke point
@@ -204,12 +209,12 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         AdapterError::Runner(RunnerError::OutputTooLarge { .. }) => {
             serde_json::json!({ "kind": "output_too_large" }).to_string()
         }
+        AdapterError::IndexUpdating => serde_json::json!({ "kind": "index_updating" }).to_string(),
         AdapterError::Runner(RunnerError::NoMock(_))
         | AdapterError::Refused(_)
         | AdapterError::Parse(_)
         | AdapterError::CommandFailed { .. }
-        | AdapterError::Unsupported(_)
-        | AdapterError::IndexUpdating => serde_json::json!({ "kind": "refused" }).to_string(),
+        | AdapterError::Unsupported(_) => serde_json::json!({ "kind": "refused" }).to_string(),
     }
 }
 
@@ -1244,6 +1249,10 @@ mod tests {
             instance_id: "brew:/opt/homebrew".to_string(),
         });
         assert_eq!(v, serde_json::json!({ "kind": "source_gone" }));
+        // brew's uninstall preview while `brew update` runs: a state of
+        // the Mac the dialog words itself, not Canager's bug.
+        let v = parse(AdapterError::IndexUpdating);
+        assert_eq!(v, serde_json::json!({ "kind": "index_updating" }));
 
         // Errors no `plan()` returns: a broken adapter contract, so
         // Canager's own bug, and none of their text reaches the wire.
@@ -1254,7 +1263,6 @@ mod tests {
                 stderr: "Error: No such keg".to_string(),
             },
             AdapterError::Unsupported("pip is read-only in Canager".to_string()),
-            AdapterError::IndexUpdating,
         ] {
             assert_eq!(parse(e), serde_json::json!({ "kind": "refused" }));
         }
