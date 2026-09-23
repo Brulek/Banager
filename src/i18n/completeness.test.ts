@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as ts from "typescript";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
+import { READ_ONLY_NOTICE_KEYS } from "../lib/sources";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,65 +58,80 @@ function collectSourceFiles(dir: string): string[] {
 }
 
 /**
- * Strips `//` and `/* *\/` comments out of TS/TSX source, so a key that
- * only survives in a stale comment ("see also `foo.bar`") cannot pass as
- * a live reference. String and template literals are copied through
- * untouched -- comment markers are only recognised outside of one -- which
- * is what keeps a `//` inside a URL or a backtick used for Markdown-style
- * code spans in a comment (`` `refresh()` `` and friends, all over this
- * codebase) from being misread. This is a single-pass scanner, not a
- * parser: it does not need to, because nothing that ships nests a
- * template literal inside another template literal's `${}`, and nothing
- * that ships puts `//` or `/*` inside a string (both verified by grepping
- * the tree when this was written).
+ * Every leaf token of `sourceFile`, in source order -- every punctuation
+ * mark, keyword, identifier and literal, not just the "significant" nodes
+ * `ts.forEachChild` visits. `getChildren()` is backed by the real parser
+ * output (it re-derives the token list the parser already produced), so a
+ * `/like/this/` that the parser resolved as a single RegularExpressionLiteral
+ * token comes back as one leaf, never as a run of characters a naive
+ * scanner would re-interpret quote by quote. That is what a hand-rolled
+ * scanner cannot do without reimplementing the parser's regex/divide
+ * disambiguation.
  */
-function stripComments(code: string): string {
-  let out = "";
-  let i = 0;
-  const n = code.length;
-  while (i < n) {
-    const c = code[i];
-    const c2 = code[i + 1];
-    if (c === "/" && c2 === "/") {
-      while (i < n && code[i] !== "\n") i += 1;
-      continue;
-    }
-    if (c === "/" && c2 === "*") {
-      i += 2;
-      while (i < n && !(code[i] === "*" && code[i + 1] === "/")) i += 1;
-      i = Math.min(i + 2, n);
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      const quote = c;
-      out += c;
-      i += 1;
-      while (i < n && code[i] !== quote) {
-        if (code[i] === "\\" && i + 1 < n) {
-          out += code[i] + code[i + 1];
-          i += 2;
-          continue;
-        }
-        out += code[i];
-        i += 1;
-      }
-      if (i < n) {
-        out += code[i];
-        i += 1;
-      }
-      continue;
-    }
-    out += c;
-    i += 1;
+function forEachToken(sourceFile: ts.SourceFile, node: ts.Node, cb: (token: ts.Node) => void): void {
+  const children = node.getChildren(sourceFile);
+  if (children.length === 0) {
+    cb(node);
+    return;
   }
+  for (const child of children) forEachToken(sourceFile, child, cb);
+}
+
+/**
+ * Strips `//` and `/* *\/` comments out of one TS/TSX file's source, so a
+ * key that only survives in a stale comment ("see also `foo.bar`") cannot
+ * pass as a live reference. Built on the TypeScript compiler API
+ * (`ts.createSourceFile` plus `ts.getLeadingCommentRanges` /
+ * `ts.getTrailingCommentRanges` over every real token) instead of a
+ * hand-rolled quote-parity scanner: the previous scanner treated every
+ * `'`/`"`/`` ` `` as a string delimiter including the one inside the regex
+ * literal `/'/g` at src/lib/format.ts:12, which inverted its notion of
+ * "inside a string" for the rest of that file and -- because all files were
+ * joined into one haystack before stripping -- for every file read after
+ * it too (435 of 635 comments in shipping src survived "stripping",
+ * measured against TypeScript's own comment ranges). Operating on the
+ * parser's token stream sidesteps the regex-vs-divide ambiguity a raw
+ * scanner would hit, and running once per file (see below) means one
+ * file's result can never leak into another's regardless.
+ */
+function stripComments(code: string, fileName: string): string {
+  const scriptKind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, scriptKind);
+  const fullText = sourceFile.getFullText();
+
+  const seenStart = new Set<number>();
+  const commentRanges: ts.CommentRange[] = [];
+  function collect(ranges: ts.CommentRange[] | undefined): void {
+    if (!ranges) return;
+    for (const range of ranges) {
+      if (seenStart.has(range.pos)) continue;
+      seenStart.add(range.pos);
+      commentRanges.push(range);
+    }
+  }
+  forEachToken(sourceFile, sourceFile, (token) => {
+    collect(ts.getLeadingCommentRanges(fullText, token.getFullStart()));
+    collect(ts.getTrailingCommentRanges(fullText, token.end));
+  });
+  commentRanges.sort((a, b) => a.pos - b.pos);
+
+  let out = "";
+  let last = 0;
+  for (const { pos, end } of commentRanges) {
+    out += fullText.slice(last, pos);
+    out += " "; // keep tokens either side from fusing into one identifier
+    last = end;
+  }
+  out += fullText.slice(last);
   return out;
 }
 
-const rawSource = collectSourceFiles(SRC_DIR)
-  .map((file) => readFileSync(file, "utf-8"))
+// Each file is parsed and stripped on its own -- never as a shared
+// haystack -- so a parse quirk in one file has no way to reach another's
+// comments. Only after stripping are the per-file results joined.
+const source = collectSourceFiles(SRC_DIR)
+  .map((file) => stripComments(readFileSync(file, "utf-8"), file))
   .join("\n");
-
-const source = stripComments(rawSource);
 
 const IDENT_CHAR = /[A-Za-z0-9_]/;
 
@@ -195,6 +212,23 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
 };
 
 /**
+ * `${prefix}.title` / `${prefix}.description` (src/lib/sources.ts:127-128)
+ * and `${READ_ONLY_NOTICE_KEYS[reason.read_only]}.description`
+ * (src/lib/sources.ts:298) -- the mirror image of `INTERPOLATED_SUBTREES`
+ * above: here the *tail* is static and the *head* is interpolated. `prefix`
+ * is only ever one of `READ_ONLY_NOTICE_KEYS`'s values, so those values --
+ * imported from src/lib/sources.ts, not copied here, so this cannot drift
+ * from the map that actually drives the interpolation -- are the complete
+ * set of heads this pattern can produce. The old rule accepted *any* string
+ * literal anywhere in the tree as a stand-in head, which let unrelated page
+ * names ("updates", "settings", "installed" -- string literals elsewhere,
+ * for `nav.*`) pair with this file's `}.title`/`}.description` call sites
+ * and pass phantom keys like `updates.description` as referenced.
+ */
+const READ_ONLY_NOTICE_HEADS: readonly string[] = Object.values(READ_ONLY_NOTICE_KEYS);
+const INTERPOLATED_HEAD_TAILS = ["title", "description"] as const;
+
+/**
  * Whether anything that ships still looks this key up.
  *
  * Most call sites spell the key out, so the first check finds them. Two
@@ -207,9 +241,11 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
  *   "any key under this head", which is as far as a head match alone can
  *   tell you.
  * - an interpolated head and a static tail -- `t(\`${prefix}.description\`)`
- *   over a lookup table (`READ_ONLY_NOTICE_KEYS`). Both halves have to be
- *   present: the head as a whole string literal, the tail spelled out
- *   after an interpolation.
+ *   over a lookup table (`READ_ONLY_NOTICE_KEYS`). Checked against
+ *   `READ_ONLY_NOTICE_HEADS` above: the tail must be one of the two this
+ *   codebase actually interpolates *and* the head must be one of the
+ *   values `prefix` can hold -- not "any string literal anywhere", which
+ *   is as far as a bare-literal match alone can tell you.
  */
 function isReferenced(key: string, haystack: string = source): boolean {
   if (occursAsToken(haystack, key)) return true;
@@ -220,11 +256,10 @@ function isReferenced(key: string, haystack: string = source): boolean {
     if (tails.includes(tail) && haystack.includes(`${head}.\${`)) return true;
   }
 
-  const segments = key.split(".");
-  for (let i = 1; i < segments.length; i += 1) {
-    const head = segments.slice(0, i).join(".");
-    const tail = segments.slice(i).join(".");
-    if (haystack.includes(`"${head}"`) && occursAsToken(haystack, `}.${tail}`, { before: false })) {
+  for (const tail of INTERPOLATED_HEAD_TAILS) {
+    if (!key.endsWith(`.${tail}`)) continue;
+    const head = key.slice(0, key.length - tail.length - 1);
+    if (READ_ONLY_NOTICE_HEADS.includes(head) && occursAsToken(haystack, `}.${tail}`, { before: false })) {
       return true;
     }
   }
@@ -286,11 +321,66 @@ describe("the reachability guard itself", () => {
   it("does not count a mention inside a comment as a use", () => {
     const commentOnly = "// still wired through updates.cannotCheckShort, see below\n";
     expect(commentOnly.includes("updates.cannotCheckShort")).toBe(true); // present in the raw text
-    expect(isReferenced("updates.cannotCheckShort", stripComments(commentOnly))).toBe(false);
+    expect(isReferenced("updates.cannotCheckShort", stripComments(commentOnly, "self-test.ts"))).toBe(false);
     expect(isReferenced("updates.cannotCheckShort")).toBe(true); // the real call site still counts
   });
 
-  /** The base case the other three exist to protect: an unused key with no
+  /**
+   * `stripComments` used to treat every quote character as a string
+   * delimiter, including the one inside a regex literal like `/'/g`
+   * (exactly src/lib/format.ts:12). That flipped the scanner's notion of
+   * "inside a string" for the rest of the file, so a comment sitting after
+   * the regex literal survived "stripping" and a key mentioned only in it
+   * read as referenced. Unlike the single-line haystack the old version of
+   * this self-test used -- which cannot exercise a scanner desync that only
+   * shows up *after* a false quote flips parity -- this one runs a whole
+   * multi-statement file through `stripComments` and checks the comment
+   * that comes after the regex literal.
+   */
+  it("does not lose quote parity inside a regex literal", () => {
+    const file = [
+      "export function quote(token: string): string {",
+      "  return `'${token.replace(/'/g, `'\\''`)}'`;",
+      "}",
+      "// still wired through updates.cannotCheckShort, see below",
+      'const other = t("some.other.key");',
+    ].join("\n");
+    const stripped = stripComments(file, "regex-quote.ts");
+    expect(stripped).toContain("token.replace"); // real code, kept
+    expect(stripped).toContain('t("some.other.key")'); // real code after the comment, kept
+    expect(stripped).not.toContain("updates.cannotCheckShort"); // the comment, gone
+    expect(isReferenced("updates.cannotCheckShort", stripped)).toBe(false);
+  });
+
+  /**
+   * `${prefix}.title` / `${prefix}.description` (src/lib/sources.ts) is the
+   * only place this codebase interpolates an i18n key's *head*. The old
+   * rule accepted any string literal anywhere as a stand-in for `prefix` --
+   * so the page names `"updates"`, `"settings"`, `"installed"` (string
+   * literals elsewhere, for `nav.*`) paired with this file's unrelated
+   * `}.title`/`}.description` call sites and cleared keys nothing defines
+   * or reads. None of the five exist in en.json; this checks the guard
+   * against the real tree, the shape that would have let them slip in
+   * silently as new keys.
+   */
+  it("does not let an interpolated head claim a static tail from an unrelated call site", () => {
+    for (const phantom of [
+      "updates.description",
+      "updates.title",
+      "settings.description",
+      "installed.title",
+      "installed.description",
+    ]) {
+      expect(isReferenced(phantom)).toBe(false);
+    }
+    // the real call site's own heads still pass
+    expect(isReferenced("sourceNotice.pipReadOnly.title")).toBe(true);
+    expect(isReferenced("sourceNotice.pipReadOnly.description")).toBe(true);
+    expect(isReferenced("sourceNotice.prefixNotWritable.title")).toBe(true);
+    expect(isReferenced("sourceNotice.prefixNotWritable.description")).toBe(true);
+  });
+
+  /** The base case the other five exist to protect: an unused key with no
    * prefix trick, no interpolated head and no comment involved is still
    * caught. */
   it("still finds a genuine orphan", () => {
