@@ -384,6 +384,9 @@ export function parseUpdateBlocked(message: string): UpdateBlocked | null {
 
 /** What `UNINSTALL_BLOCKED_KEYS` holds for one reason. */
 interface UninstallBlockedCopy {
+  /** The Installed page row's badge when no listed update speaks for the
+   *  package (`installedBadge` in src/pages/InstalledPage.tsx). */
+  badge: string;
   /** The Installed page row's description in place of the package's blurb:
    *  why there is no Uninstall button, and what the user can do about it.
    *  The page fills `{{source}}` with the owning source's label and
@@ -406,6 +409,9 @@ interface UninstallBlockedCopy {
  */
 export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCopy> = {
   Pinned: {
+    // The same word the Updates page's pinned row uses, so a package that
+    // is pinned reads "Pinned" on both pages.
+    badge: "updates.blocked.Pinned.badge",
     // The promise that Uninstall comes back "the next time it checks, at
     // the latest the next time you start Canager" rests on every refresh
     // reading the inventory again (`adapter.inventory` in `refresh_round`,

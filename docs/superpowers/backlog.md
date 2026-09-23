@@ -142,9 +142,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   拼的 `unpin` 命令（与更新页共用 `unpinCommand`，以代码样式显示）；卸载确认框遇到这条拒绝时单独措辞。
   Canager 不传 `--force`，也不代为解除固定。pipx 不产生它：`pipx uninstall` 照样删除被固定的工具
   （pipx 1.17.3 `commands/uninstall.py` 不读 `pinned`）。
-- **已安装页的「有更新」徽标**（`src/pages/InstalledPage.tsx` 的 `updatableIds`）把 `snapshot.updates` 里
-  每一条都算作有更新，包括被固定的和 `checkable: false` 的（一次查询失败会给每个已装包造一条）。
-  这是本分支之前就有的问题，没有改。
+- ~~**已安装页的「有更新」徽标**~~ —— **已于 2026-09-24 修复**：原先 `updatableIds` 把 `snapshot.updates`
+  里每一条都算作有更新，包括被固定的、`checkable: false` 的和被忽略的。现在两页共用
+  `src/lib/updateState.ts`：`notIgnored` 决定更新页列出哪些，`updateStateOf` 决定每一条是可更新、只读、
+  查不了、被工具拒绝（`blocked`）还是来源没响应；更新页的按钮、勾选、计数和徽标，已安装页的徽标，都从它来，
+  两处 `switch` 都没有 `default`，新增状态不写文案 `tsc` 就不过。已安装页只在更新页会给「更新」按钮时写
+  「有可用更新」；被固定的写「已固定」（有更新时读 `blocked`，已是最新时读 `uninstall_blocked`），查不了的写
+  「无法检查」，只读来源写「只读」，被忽略的写「已忽略更新」。有测试把两页逐行对照。
+  更新页一处可见变化：来源没响应的行，徽标仍写「更新」，但颜色从 `info` 改成 `neutral`，与其余没有按钮的行一致。
 
 ## 阶段 4 之前
 

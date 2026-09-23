@@ -3,8 +3,15 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
+import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
-import type { OpRequest, Settings, Snapshot } from "../lib/types";
+import type {
+  InstalledArtifact,
+  OpRequest,
+  Settings,
+  Snapshot,
+  UpdateCandidate,
+} from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -349,6 +356,115 @@ describe("InstalledPage", () => {
     // The explanation replaces the blurb; the unpinned row keeps its own.
     expect(queryByText("Lightweight and flexible command-line JSON processor")).toBeNull();
     expect(getByText("Internet file retriever")).toBeInTheDocument();
+  });
+
+  describe("the Update available badge", () => {
+    // One snapshot with one package per reason the Updates page may list
+    // an update and not offer it, plus one it does offer. The badge used
+    // to say "Update available" for every entry in `snapshot.updates`.
+    const artifact = (name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact => ({
+      ...snapshot.artifacts[0],
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+      display_name: name,
+      description: `${name} blurb`,
+      ...over,
+    });
+    const update = (
+      name: string,
+      over: Partial<UpdateCandidate> = {},
+    ): UpdateCandidate => ({
+      ...snapshot.updates[0],
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+      ...over,
+    });
+    const mixed: Snapshot = {
+      ...snapshot,
+      artifacts: [
+        artifact("offered"),
+        artifact("pinned-outdated", { uninstall_blocked: "Pinned" }),
+        artifact("pipx-pinned", {
+          key: { instance_id: "pipx", kind: "Tool", name: "pipx-pinned" },
+        }),
+        artifact("unchecked"),
+        artifact("ignored"),
+        artifact("pinned-current", { uninstall_blocked: "Pinned" }),
+        artifact("current"),
+      ],
+      instances: [
+        ...snapshot.instances,
+        {
+          ...snapshot.instances[0],
+          id: "pipx",
+          adapter_id: "pipx",
+          exe_path: "/opt/homebrew/bin/pipx",
+          prefix: "/Users/a/.local",
+        },
+      ],
+      updates: [
+        update("offered"),
+        update("pinned-outdated", { blocked: "Pinned" }),
+        update("pipx-pinned", {
+          key: { instance_id: "pipx", kind: "Tool", name: "pipx-pinned" },
+          channel: "Registry",
+          blocked: "Pinned",
+        }),
+        update("unchecked", { checkable: false, warnings: [{ Message: "timed out" }] }),
+        update("ignored"),
+      ],
+    };
+    const mixedSettings: Settings = {
+      ...settings,
+      ignored_updates: [{ instance_id: "brew:/opt/homebrew", kind: "Formula", name: "ignored" }],
+    };
+
+    beforeEach(() => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_snapshot") return Promise.resolve(mixed);
+        if (cmd === "get_settings") return Promise.resolve(mixedSettings);
+        return Promise.resolve(undefined);
+      });
+    });
+
+    /** The badge on `name`'s row: the row is the name's grandparent. */
+    function badgeOf(container: HTMLElement, name: string): string | null | undefined {
+      const nameEl = within(container).getByText(name, { selector: "p" });
+      return nameEl.parentElement?.parentElement?.querySelector("span.rounded-full")?.textContent;
+    }
+
+    it("says Update available only for an update the Updates page offers", async () => {
+      const { container, findByText } = renderWithProviders(<InstalledPage />);
+      await findByText("current");
+
+      expect(badgeOf(container, "offered")).toBe("Update available");
+      expect(badgeOf(container, "pinned-outdated")).toBe("Pinned");
+      expect(badgeOf(container, "pipx-pinned")).toBe("Pinned");
+      expect(badgeOf(container, "unchecked")).toBe("Can't check");
+      expect(badgeOf(container, "ignored")).toBe("Update ignored");
+      // Pinned in Homebrew and up to date: still pinned, from the inventory.
+      expect(badgeOf(container, "pinned-current")).toBe("Pinned");
+      expect(badgeOf(container, "current")).toBe("Up to date");
+    });
+
+    it("agrees with the Updates page's buttons row for row", async () => {
+      const installed = renderWithProviders(<InstalledPage />);
+      await installed.findByText("current");
+      const badged = mixed.artifacts
+        .map((a) => a.display_name)
+        .filter((name) => badgeOf(installed.container, name) === "Update available");
+      installed.unmount();
+
+      const updates = renderWithProviders(<UpdatesPage />);
+      await updates.findByText("offered");
+      const offered = mixed.updates
+        .map((u) => u.key.name)
+        .filter((name) => {
+          const row = updates.queryByText(name, { selector: "p" })?.parentElement?.parentElement;
+          return row ? within(row).queryByRole("button", { name: "Update" }) !== null : false;
+        });
+
+      expect(badged).toEqual(["offered"]);
+      expect(offered).toEqual(badged);
+    });
   });
 
   it("hides the uninstall button and shows a read-only note for pip rows", async () => {

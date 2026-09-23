@@ -28,10 +28,12 @@ import type {
   ArtifactKey,
   InstalledArtifact,
   IssuedPlan,
+  ManagerInstance,
   OpRequest,
-  ReadOnlyReason,
   UpdateCandidate,
 } from "../lib/types";
+import { isUpdateActionable, notIgnored, updateStateOf } from "../lib/updateState";
+import type { UpdateState } from "../lib/updateState";
 
 // The virtualizer's first guesses: a row, and a source's heading when it
 // also carries a banner (a title line, a description line and, for
@@ -141,25 +143,20 @@ export function UpdatesPage() {
   // write state; every async continuation checks `isCurrent` after `await`.
   const batchIdRef = useRef(0);
 
+  // `notIgnored` (src/lib/updateState.ts), which the Installed page's
+  // badge reads too.
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
-    const ignored = new Set(settings.ignored_updates.map((k) => artifactKeyId(k)));
-    return snapshot.updates.filter((u) => !ignored.has(artifactKeyId(u.key)));
+    return notIgnored(snapshot.updates, settings.ignored_updates);
   }, [snapshot, settings]);
 
   // A candidate carries no adapter of its own; the only route from an
   // UpdateCandidate to the source that produced it is its key's
-  // `instance_id`, joined back to the snapshot's instances. What comes back
-  // is the *reason* rather than a yes/no, because the two reasons need
-  // different advice and giving the wrong one is worse than giving none.
-  const readOnlyReasons = useMemo(() => {
-    const byInstance = new Map<string, ReadOnlyReason>();
-    for (const instance of snapshot?.instances ?? []) {
-      if (instance.read_only_reason !== null) {
-        byInstance.set(instance.id, instance.read_only_reason);
-      }
-    }
-    return byInstance;
+  // `instance_id`, joined back to the snapshot's instances.
+  const instancesById = useMemo(() => {
+    const byId = new Map<string, ManagerInstance>();
+    for (const instance of snapshot?.instances ?? []) byId.set(instance.id, instance);
+    return byId;
   }, [snapshot]);
 
   // The page, one source at a time: each source's rows, and what that
@@ -242,19 +239,6 @@ export function UpdatesPage() {
     [groups],
   );
 
-  // A source that did not answer keeps the candidates it reported last
-  // time (`refresh` carries them forward), so these rows are on screen --
-  // and none of them may offer a button. `Session::issue_plan` refuses
-  // them in Rust whatever this says; offering an action and then refusing
-  // it is the exact pattern this phase exists to remove.
-  const unavailableInstances = useMemo(() => {
-    const ids = new Set<string>();
-    for (const instance of snapshot?.instances ?? []) {
-      if (instance.status.unavailable !== null) ids.add(instance.id);
-    }
-    return ids;
-  }, [snapshot]);
-
   /**
    * Whether this row may offer an Update button and a checkbox. Four
    * independent reasons it may not, and the wire carries all four:
@@ -265,34 +249,30 @@ export function UpdatesPage() {
    *   candidates can still be built with `checkable: true` because the tool
    *   genuinely *can* check. Offering Update here produced nothing but a
    *   raw "unsupported: pip is read-only in Canager" string in a dialog.
-   * - a source that is not answering -- the two axes are independent, and
-   *   this one is new: a stopped Ollama is perfectly writable, and its
-   *   candidates are still listed because `refresh` carries the last
-   *   round's forward. `ollama pull` against a daemon that is not
-   *   listening cannot succeed.
+   * - a source that is not answering -- the two axes are independent: a
+   *   stopped Ollama is perfectly writable, and its candidates are still
+   *   listed because `refresh` carries the last round's forward, so these
+   *   rows are on screen. `ollama pull` against a daemon that is not
+   *   listening cannot succeed, and offering an action and then refusing
+   *   it is the exact pattern this phase exists to remove.
    * - `blocked` -- the only one about this package rather than its
    *   source: the tool will refuse to update it (a pinned Homebrew
    *   formula or cask, whose `brew upgrade` exits 1, or a pinned pipx
    *   tool, whose `pipx upgrade` changes nothing; `UpdateBlocked::Pinned`
    *   in crates/canager-core/src/model.rs).
    *
-   * `read_only_reason` replaced a hardcoded list of adapter ids on the
-   * front end. `Session::issue_plan` applies the same conjunction in Rust
-   * (spec §2.5 for the source, `blocked_upgrade` in
-   * crates/canager-core/src/session/plans.rs for the package), so a stale
-   * snapshot costs an error message, not a wrong command.
+   * All four are `updateStateOf` in src/lib/updateState.ts, which the
+   * Installed page's badge reads too, so the two pages cannot disagree
+   * about whether a package can be updated. `Session::issue_plan` applies
+   * the same conjunction in Rust (spec §2.5 for the source,
+   * `blocked_upgrade` in crates/canager-core/src/session/plans.rs for the
+   * package), so a stale snapshot costs an error message, not a wrong
+   * command.
    */
+  const stateOf = (candidate: UpdateCandidate): UpdateState =>
+    updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
   const isActionable = (candidate: UpdateCandidate): boolean =>
-    candidate.checkable &&
-    candidate.blocked === null &&
-    !readOnlyReasons.has(candidate.key.instance_id) &&
-    !unavailableInstances.has(candidate.key.instance_id);
-
-  // Whether this row's source refuses every operation. The badge is all
-  // the row says about it; *why*, and what to do instead, is the source's
-  // own notice under its heading, said once.
-  const isReadOnly = (candidate: UpdateCandidate): boolean =>
-    readOnlyReasons.has(candidate.key.instance_id);
+    isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id));
 
   // Two numbers, not one. Folding unactionable rows out of a single count
   // told a user with six outdated pip packages "0 updates available" above
@@ -332,8 +312,9 @@ export function UpdatesPage() {
         (u) => isActionable(u) && selectedUpdates.includes(artifactKeyId(u.key)),
       ),
     // `isActionable` is rebuilt every render and so cannot be a dependency;
-    // these are the three values it closes over, which is the same thing.
-    [visibleUpdates, selectedUpdates, readOnlyReasons, unavailableInstances],
+    // `instancesById` is the one value it closes over, which is the same
+    // thing.
+    [visibleUpdates, selectedUpdates, instancesById],
   );
 
   // One lookup table instead of a `snapshot.artifacts.find` per row: that
@@ -507,9 +488,8 @@ export function UpdatesPage() {
 
   // The source's name in the user's language, for the one refusal that can
   // reach a real person verbatim otherwise (`planErrorMessage`'s
-  // NotActionable case): a stale snapshot's own read-only/unavailable maps
-  // (`readOnlyReasons`/`unavailableInstances` above) cannot be trusted for
-  // *which* reason applies -- that is exactly what went stale -- but the
+  // NotActionable case): a stale snapshot's own read-only/unavailable
+  // state (`stateOf` above) cannot be trusted for *which* reason applies -- that is exactly what went stale -- but the
   // instance's adapter, and therefore its label, does not change underneath
   // it, so this is safe to read from the same snapshot.
   function sourceLabelFor(instanceId: string): string {
@@ -680,13 +660,29 @@ export function UpdatesPage() {
   const pageErrors =
     batch !== null && batch.phase === "done" && !hasIssuedPlan(batch) ? batch.items : [];
 
+  // The row's badge, one per `UpdateState`. A `switch` with no default, so
+  // a state added to `UpdateState` without a badge here fails `tsc`.
+  function updateBadgeText(state: UpdateState): string {
+    switch (state.kind) {
+      case "readOnly":
+        return t("updates.readOnly");
+      case "cannotCheck":
+        return t("updates.cannotCheck");
+      case "blocked":
+        return t(UPDATE_BLOCKED_KEYS[state.reason].badge);
+      case "sourceUnavailable":
+      case "actionable":
+        return t("updates.available");
+    }
+  }
+
   // One update's row. A function rather than inline in the list only so
   // that the list's `map` can stay about slots -- headings and rows -- while
   // this stays about what one candidate offers.
   const updateRow = (candidate: UpdateCandidate) => {
     // Resolved once per row: the badge and the row's own actionability
-    // must agree about whether this source is read-only.
-    const readOnly = isReadOnly(candidate);
+    // must agree.
+    const state = stateOf(candidate);
     return (
       <ArtifactRow
         name={candidate.key.name}
@@ -725,21 +721,16 @@ export function UpdatesPage() {
         // newer version known, and the tool will not install it. The badge
         // names why ("Pinned") and comes after "could not check" for the
         // same reason `rowDescription` puts it there.
-        badgeText={
-          readOnly
-            ? t("updates.readOnly")
-            : !candidate.checkable
-              ? t("updates.cannotCheck")
-              : candidate.blocked !== null
-                ? t(UPDATE_BLOCKED_KEYS[candidate.blocked].badge)
-                : t("updates.available")
-        }
-        badgeVariant={
-          readOnly || !candidate.checkable || candidate.blocked !== null ? "neutral" : "info"
-        }
-        primaryActionLabel={isActionable(candidate) ? t("updates.update") : undefined}
+        //
+        // A source that is not answering keeps the plain "Update" badge:
+        // the newer version is real, and the source's own notice under its
+        // heading says why there is no button. It is `neutral`, like every
+        // row Canager cannot act on (`BadgeVariant`).
+        badgeText={updateBadgeText(state)}
+        badgeVariant={state.kind === "actionable" ? "info" : "neutral"}
+        primaryActionLabel={state.kind === "actionable" ? t("updates.update") : undefined}
         onPrimaryAction={
-          isActionable(candidate) ? () => openConfirm([candidate]) : undefined
+          state.kind === "actionable" ? () => openConfirm([candidate]) : undefined
         }
         primaryActionDisabled={dialogOpen}
         selectable={

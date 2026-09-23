@@ -28,6 +28,7 @@
     "uninstall": "Uninstall",
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
+    "updateIgnored": "Update ignored",
     "noDescription": "No description available",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",

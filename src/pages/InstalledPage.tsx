@@ -12,9 +12,13 @@ import {
   isAvailable,
   sourceNoticesFor,
   UNINSTALL_BLOCKED_KEYS,
+  UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
+import { notIgnored, updateStateOf } from "../lib/updateState";
+import type { UpdateState } from "../lib/updateState";
+import type { BadgeVariant } from "../components/ArtifactRow";
 import type { SourceNoticeSpec } from "../lib/sources";
-import type { InstalledArtifact, ManagerInstance, OpRequest } from "../lib/types";
+import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 
 // A group header on its own is one line. A group header that also carries a
@@ -82,10 +86,62 @@ export function InstalledPage() {
     displayName: string;
   } | null>(null);
 
-  const updatableIds = useMemo(
-    () => new Set((snapshot?.updates ?? []).map((u) => artifactKeyId(u.key))),
-    [snapshot],
-  );
+  // The updates the Updates page lists (`notIgnored`), and the ids of the
+  // ones the user ignored there. This used to be every entry in
+  // `snapshot.updates`, so a pinned package, one Canager could not check
+  // and one the user had ignored were all "Update available" here while
+  // the Updates page offered none of them.
+  const { listedUpdates, ignoredIds } = useMemo(() => {
+    const listed = new Map<string, UpdateCandidate>();
+    const all = snapshot?.updates ?? [];
+    for (const u of notIgnored(all, settings?.ignored_updates ?? [])) {
+      listed.set(artifactKeyId(u.key), u);
+    }
+    const ignored = new Set(
+      all.map((u) => artifactKeyId(u.key)).filter((id) => !listed.has(id)),
+    );
+    return { listedUpdates: listed, ignoredIds: ignored };
+  }, [snapshot, settings]);
+
+  // The badge of a package the Updates page lists. It follows the same
+  // `updateStateOf` (src/lib/updateState.ts) that decides the Updates
+  // page's button and badge there, so "Update available" here means an
+  // Update button there, and nothing else does. A `switch` with no default
+  // in a function that must return, so a new `UpdateState` without a badge
+  // here fails `tsc`.
+  function listedBadge(state: UpdateState): { text: string; variant: BadgeVariant } {
+    switch (state.kind) {
+      case "actionable":
+        return { text: t("installed.updateAvailable"), variant: "info" };
+      case "blocked":
+        return { text: t(UPDATE_BLOCKED_KEYS[state.reason].badge), variant: "neutral" };
+      case "readOnly":
+        return { text: t("updates.readOnly"), variant: "neutral" };
+      case "cannotCheck":
+        return { text: t("updates.cannotCheck"), variant: "neutral" };
+      case "sourceUnavailable":
+        // The newer version is real; the group's notice says why Canager
+        // cannot fetch it now. `neutral`: no button anywhere.
+        return { text: t("installed.updateAvailable"), variant: "neutral" };
+    }
+  }
+
+  // The row's badge.
+  function installedBadge(
+    artifact: InstalledArtifact,
+    instance: ManagerInstance,
+  ): { text: string; variant: BadgeVariant } {
+    const id = artifactKeyId(artifact.key);
+    const candidate = listedUpdates.get(id);
+    if (candidate !== undefined) return listedBadge(updateStateOf(candidate, instance));
+    // Pinned in Homebrew with no update listed: still pinned, which is
+    // why the row has no Uninstall button (`uninstall_blocked`).
+    if (artifact.uninstall_blocked !== null) {
+      return { text: t(UNINSTALL_BLOCKED_KEYS[artifact.uninstall_blocked].badge), variant: "neutral" };
+    }
+    if (ignoredIds.has(id)) return { text: t("installed.updateIgnored"), variant: "neutral" };
+    return { text: t("installed.upToDate"), variant: "neutral" };
+  }
 
   const items = useMemo<ListItem[]>(() => {
     if (!snapshot) return [];
@@ -277,14 +333,8 @@ export function InstalledPage() {
                         : (item.artifact.description ?? t("installed.noDescription"))
                     }
                     wrapDescription={item.artifact.uninstall_blocked !== null}
-                    badgeText={
-                      updatableIds.has(artifactKeyId(item.artifact.key))
-                        ? t("installed.updateAvailable")
-                        : t("installed.upToDate")
-                    }
-                    badgeVariant={
-                      updatableIds.has(artifactKeyId(item.artifact.key)) ? "info" : "neutral"
-                    }
+                    badgeText={installedBadge(item.artifact, item.instance).text}
+                    badgeVariant={installedBadge(item.artifact, item.instance).variant}
                     // The source's verdict and the package's own: a pinned
                     // Homebrew package is refused by `brew uninstall`
                     // (`UninstallBlocked::Pinned`), and `Session::issue_plan`
