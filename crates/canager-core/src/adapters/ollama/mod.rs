@@ -152,17 +152,92 @@ fn host_of(inst: &ManagerInstance) -> &str {
     inst.id.strip_prefix("ollama:").unwrap_or(DEFAULT_HOST)
 }
 
+/// The two places a macOS install of Ollama puts its app bundle: the
+/// system-wide `/Applications`, and the per-user `~/Applications` that a
+/// drag-install into the user's own folder produces.
+///
+/// A list rather than a single path so the caller can be told where to
+/// look, which is what makes [`ollama_app_in`] testable without an
+/// Ollama.app on the machine running the tests.
+pub fn ollama_app_roots(home: &Path) -> Vec<PathBuf> {
+    vec![PathBuf::from("/Applications"), home.join("Applications")]
+}
+
+/// The Ollama.app bundle under any of `roots`, or `None` when there is
+/// none.
+///
+/// A bundle is a directory, so `is_dir` is the check -- `exists` would
+/// also answer yes to a stray file named `Ollama.app`.
+pub fn ollama_app_in(roots: &[PathBuf]) -> Option<PathBuf> {
+    roots
+        .iter()
+        .map(|root| root.join("Ollama.app"))
+        .find(|path| path.is_dir())
+}
+
+/// [`ollama_app_in`] over [`ollama_app_roots`]: the real question, asked
+/// the real way. Used by `detect` to decide whether there is anything for
+/// the Open Ollama button to open, and by the Tauri command behind that
+/// button to say why it cannot.
+pub fn ollama_app_path(home: &Path) -> Option<PathBuf> {
+    ollama_app_in(&ollama_app_roots(home))
+}
+
+/// Whether `host` -- a daemon URL as [`host_for`] builds it -- names this
+/// Mac. Only then can launching the local Ollama.app bring it up: with
+/// `OLLAMA_HOST` pointing at another machine, the app would start a
+/// daemon here and the one Canager is asking would stay exactly as silent.
+///
+/// The unspecified addresses count as this Mac because that is how a
+/// client treats them: `OLLAMA_HOST=0.0.0.0` is Ollama's documented way to
+/// listen on every interface, and a request to `0.0.0.0` lands on the
+/// loopback. Anything that does not parse is not known to be local.
+fn host_is_this_mac(host: &str) -> bool {
+    match url::Url::parse(host)
+        .ok()
+        .and_then(|u| u.host().map(|h| h.to_owned()))
+    {
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback() || ip.is_unspecified(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback() || ip.is_unspecified(),
+        None => false,
+    }
+}
+
+fn real_ollama_app_present(env: &HostEnv) -> bool {
+    ollama_app_path(&env.home).is_some()
+}
+
 pub struct OllamaAdapter {
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
     meta: AdapterMeta,
+    /// Whether Ollama.app is installed, which is the difference between
+    /// the two states a silent daemon can be in. Production always gets
+    /// [`real_ollama_app_present`]; tests inject a fixed answer through
+    /// the `#[cfg(test)]`-only `with_app_present_fn`, mirroring
+    /// `NpmAdapter::with_prefix_writable_fn` -- without which every test
+    /// of this would pass or fail depending on whether the machine
+    /// running it happens to have Ollama installed.
+    app_present_fn: fn(&HostEnv) -> bool,
 }
 
 impl OllamaAdapter {
     pub fn new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> OllamaAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../../adapters/meta/ollama.toml"))
             .expect("adapters/meta/ollama.toml must parse");
-        OllamaAdapter { runner, http, meta }
+        OllamaAdapter {
+            runner,
+            http,
+            meta,
+            app_present_fn: real_ollama_app_present,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_app_present_fn(mut self, f: fn(&HostEnv) -> bool) -> OllamaAdapter {
+        self.app_present_fn = f;
+        self
     }
 
     /// The `ollama` binary's own version is read via a lightweight CLI call
@@ -214,12 +289,33 @@ impl OllamaAdapter {
             prefix: env.home.join(".ollama"),
             scope: Scope::User,
             status: InstanceStatus {
-                // Ollama is the one source whose "not answering" the user
-                // can fix from inside Canager, so it gets `NotRunning` (and
-                // with it the Open Ollama button) rather than the generic
-                // `NotResponding`: the daemon's HTTP port not listening is
-                // what "not running" means for this tool.
-                unavailable: (!answering).then_some(Unavailable::NotRunning),
+                // `NotRunning` is the one state whose notice carries a
+                // button that fixes it from inside Canager: Open Ollama,
+                // which runs `open -a Ollama`. So it is given only when
+                // that button can work -- the daemon Canager asked is on
+                // this Mac, and there is an Ollama.app here to open.
+                // Anything else that is not answering is `NotResponding`,
+                // whose notice claims nothing Canager cannot do.
+                //
+                // The comment that used to sit here called Ollama "the
+                // one source whose not-answering the user can fix from
+                // inside Canager" and gave `NotRunning` to any silent
+                // daemon with `ollama` on PATH. That was false twice
+                // over. `brew install ollama` -- Homebrew being the first
+                // source this project's README lists -- installs the CLI
+                // and no app, so those users got a button that ran `open
+                // -a Ollama`, failed into a nulled stderr, and did
+                // nothing, every time, with no message. And with
+                // `OLLAMA_HOST` naming another machine, opening the app
+                // here starts a daemon here, which is not the one being
+                // asked.
+                unavailable: if answering {
+                    None
+                } else if host_is_this_mac(&host) && (self.app_present_fn)(env) {
+                    Some(Unavailable::NotRunning)
+                } else {
+                    Some(Unavailable::NotResponding)
+                },
                 notes: Vec::new(),
             },
             version,
@@ -1128,9 +1224,12 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
-            ollama_host: Some("http://10.0.0.5:11434".to_string()),
+            // A non-default port on this Mac, so the id assertion below
+            // still proves the instance is keyed by the configured host.
+            ollama_host: Some("http://localhost:11500".to_string()),
         };
-        let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()));
+        let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
+            .with_app_present_fn(|_| true);
         let instances = adapter.detect(&env).await;
 
         // Still one instance, so the UI can offer to start the daemon
@@ -1139,13 +1238,171 @@ mod tests {
         assert_eq!(
             instances[0].status.unavailable,
             Some(Unavailable::NotRunning),
-            "a daemon that does not answer /api/tags is NotRunning, which is \
-             what puts the Open Ollama button on its notice"
+            "a daemon that does not answer /api/tags, on a Mac that has \
+             Ollama.app, is NotRunning -- which is what puts the Open \
+             Ollama button on its notice"
         );
-        assert_eq!(instances[0].id, "ollama:http://10.0.0.5:11434");
+        assert_eq!(instances[0].id, "ollama:http://localhost:11500");
         assert_eq!(instances[0].unverified_version, Some("9.9.9".to_string()));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_detect_does_not_offer_to_open_an_app_that_is_not_installed() {
+        // `brew install ollama` installs the CLI and no app. Such a user
+        // used to get "Ollama isn't running" over an Open Ollama button
+        // that ran `open -a Ollama`, failed, and did nothing at all --
+        // every launch, forever, with no message. `NotRunning` is the one
+        // state whose notice carries that button, so it is now reserved
+        // for the case where there is something to open; without the app
+        // the daemon is simply not answering.
+        let tmp_dir = isolated_path_dir("detect-cli-only");
+        let exe_path = tmp_dir.join("ollama");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "ollama version is 9.9.9\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let env = HostEnv {
+            path_dirs: vec![tmp_dir.clone()],
+            home: PathBuf::from("/tmp/fake-home"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        };
+        let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
+            .with_app_present_fn(|_| false);
+        let instances = adapter.detect(&env).await;
+
+        assert_eq!(instances.len(), 1, "the source must still be listed");
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding),
+            "with no Ollama.app there is nothing for the Open button to \
+             open, so this must not be the state that shows one"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_detect_does_not_offer_to_open_the_app_for_a_daemon_on_another_machine() {
+        // With `OLLAMA_HOST` naming another machine, Open Ollama would
+        // start a daemon on this Mac and leave the one Canager is asking
+        // exactly as silent -- a button that cannot do what it says. So
+        // even with Ollama.app installed here, this is NotResponding.
+        let tmp_dir = isolated_path_dir("detect-remote-host");
+        let exe_path = tmp_dir.join("ollama");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![exe_path.to_str().expect("utf8 temp path"), "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: "ollama version is 9.9.9\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let env = HostEnv {
+            path_dirs: vec![tmp_dir.clone()],
+            home: PathBuf::from("/tmp/fake-home"),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: Some("http://10.0.0.5:11434".to_string()),
+        };
+        let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
+            .with_app_present_fn(|_| true);
+        let instances = adapter.detect(&env).await;
+
+        assert_eq!(instances.len(), 1, "the source must still be listed");
+        assert_eq!(instances[0].id, "ollama:http://10.0.0.5:11434");
+        assert_eq!(
+            instances[0].status.unavailable,
+            Some(Unavailable::NotResponding),
+            "opening Ollama.app here cannot bring up a daemon on 10.0.0.5"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_host_is_this_mac_accepts_only_addresses_that_reach_this_mac() {
+        for local in [
+            DEFAULT_HOST,
+            "http://localhost:11434",
+            "http://LOCALHOST:11434",
+            "http://127.0.0.2:11434",
+            "http://0.0.0.0:11434",
+            "http://[::1]:11434",
+            "http://[::]:11434",
+        ] {
+            assert!(host_is_this_mac(local), "{local} is this Mac");
+        }
+        for remote in [
+            "http://10.0.0.5:11434",
+            "http://gpu-box.local:11434",
+            "https://ollama.example.com",
+            "not a url",
+        ] {
+            assert!(
+                !host_is_this_mac(remote),
+                "{remote} is not known to be this Mac"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ollama_app_in_finds_the_bundle_in_either_root_and_nothing_otherwise() {
+        let base = isolated_path_dir("ollama-app-roots");
+        let system = base.join("Applications");
+        let user = base.join("home/Applications");
+        std::fs::create_dir_all(&system).expect("create system root");
+        std::fs::create_dir_all(&user).expect("create user root");
+        let roots = vec![system.clone(), user.clone()];
+
+        assert_eq!(ollama_app_in(&roots), None, "nothing installed yet");
+
+        std::fs::create_dir_all(user.join("Ollama.app")).expect("create user bundle");
+        assert_eq!(
+            ollama_app_in(&roots),
+            Some(user.join("Ollama.app")),
+            "a drag-install into ~/Applications counts"
+        );
+
+        std::fs::create_dir_all(system.join("Ollama.app")).expect("create system bundle");
+        assert_eq!(
+            ollama_app_in(&roots),
+            Some(system.join("Ollama.app")),
+            "the first root wins when both have one"
+        );
+
+        // A plain file of the right name is not a bundle.
+        let only_file = base.join("only-file");
+        std::fs::create_dir_all(&only_file).expect("create third root");
+        std::fs::write(only_file.join("Ollama.app"), b"not a bundle").expect("write decoy");
+        assert_eq!(ollama_app_in(&[only_file]), None);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_ollama_app_roots_are_the_two_places_macos_puts_an_app() {
+        let roots = ollama_app_roots(Path::new("/Users/someone"));
+        assert_eq!(
+            roots,
+            vec![
+                PathBuf::from("/Applications"),
+                PathBuf::from("/Users/someone/Applications"),
+            ]
+        );
     }
 
     #[tokio::test]

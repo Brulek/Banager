@@ -271,49 +271,137 @@ fn open_ollama_app_argv() -> (&'static std::path::Path, Vec<String>) {
     )
 }
 
-/// Fire-and-forget: launches (or focuses) the Ollama.app the user already
-/// has installed, for the "Ollama isn't running" notice's button. Takes no
-/// input at all, so there is nothing here for the front end to build an
-/// argv from or for a caller to influence -- unlike a package operation,
-/// this never goes through Session/Plan because it is not a package
-/// management action.
+/// How long `open_ollama_app_impl_with` waits for `/usr/bin/open` to
+/// report what happened before giving up on an answer.
 ///
-/// `program` is a parameter purely so tests can point it at an inert binary:
-/// `cargo test --workspace` runs on the developer's machine and on CI, and a
-/// test that really ran `open -a Ollama` would launch a GUI app on both.
+/// `open -a` returns as soon as LaunchServices has accepted (or refused)
+/// the request -- it does not wait for the app to finish starting, which
+/// is what `-W` would do -- so in practice this is milliseconds. The
+/// bound exists so that a wedged LaunchServices cannot leave the Open
+/// Ollama button spinning forever; past it the launch is reported as
+/// under way, which is what the front end's own poll then confirms or
+/// does not.
+const OPEN_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// The payload the Open Ollama button's failures go out as, in the same
+/// shape and for the same reason as `not_actionable_json` above: a
+/// `kind` the front end can recognise and a `reason` it can localise,
+/// rather than an English sentence written in Rust that a zh-CN user
+/// would read in English. Decoded by `parseOpenOllamaFailure` in
+/// `src/lib/sources.ts`.
+fn open_ollama_failed_json(reason: &str) -> String {
+    serde_json::json!({ "kind": "ollama_open_failed", "reason": reason }).to_string()
+}
+
+/// Launches (or focuses) Ollama.app for the "Ollama isn't running"
+/// notice's button. Takes no input at all, so there is nothing here for
+/// the front end to build an argv from or for a caller to influence --
+/// unlike a package operation, this never goes through Session/Plan
+/// because it is not a package management action.
+///
+/// It used to be fire-and-forget: spawn, reap on a detached thread,
+/// return `Ok(())` without ever reading the exit status. The front end
+/// treats `Ok` as success and renders nothing, so a user whose `open -a
+/// Ollama` failed -- the commonest cause being `brew install ollama`,
+/// which installs the CLI and no app -- pressed a button that did
+/// nothing, forever, with no message. The exit status is read now, and a
+/// failure comes back as something the notice can say out loud.
+///
+/// The three standard streams stay nulled. Nothing here parses them: the
+/// two outcomes this reports apart are decided by whether Ollama.app
+/// exists (`open_ollama_app_impl`) and by the exit status, not by
+/// matching English against `open`'s stderr, which would break on a
+/// non-English Mac.
+///
+/// `program` is a parameter purely so tests can point it at an inert
+/// binary: `cargo test --workspace` runs on the developer's machine and
+/// on CI, and a test that really ran `open -a Ollama` would launch a GUI
+/// app on both.
 fn open_ollama_app_impl_with(program: &std::path::Path) -> Result<(), String> {
     let (_default_program, args) = open_ollama_app_argv();
     // `spawn()` inherits the parent's stdin/stdout/stderr by default, which
-    // hands this fire-and-forget child Canager's own console and pipes for
-    // no reason -- it takes no input and nothing here ever reads its
-    // output. Nulling all three is the same "share nothing it does not
-    // need" rule `run_plan` already applies to every package-manager
-    // command; this is the one launch in the app that bypasses `run_plan`
-    // and so had been missed.
+    // hands this child Canager's own console and pipes for no reason -- it
+    // takes no input and nothing here ever reads its output. Nulling all
+    // three is the same "share nothing it does not need" rule `run_plan`
+    // already applies to every package-manager command; this is the one
+    // launch in the app that bypasses `run_plan` and so had been missed.
     let mut child = std::process::Command::new(program)
         .args(&args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| e.to_string())?;
-    // Reap on a background thread instead of leaving a zombie: `open` exits
-    // almost immediately once it has handed off to (or failed to find)
-    // Ollama.app, and this command must return without waiting for that.
+        .map_err(|_| open_ollama_failed_json("launch_failed"))?;
+    // Waited for on a background thread rather than inline, so the bound
+    // above is a bound: `recv_timeout` returns whether or not the child
+    // ever does, and the thread still reaps it either way instead of
+    // leaving a zombie.
+    let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = child.wait();
+        let _ = tx.send(child.wait().map(|status| status.success()));
     });
-    Ok(())
+    match rx.recv_timeout(OPEN_ANSWER_TIMEOUT) {
+        Ok(Ok(true)) => Ok(()),
+        Ok(Ok(false)) | Ok(Err(_)) => Err(open_ollama_failed_json("launch_failed")),
+        // No answer within the bound. Reported as success, on purpose,
+        // and this is the reasoning rather than a default:
+        //
+        // - The case that made this button silently useless -- no
+        //   Ollama.app at all -- never gets here. `open_ollama_app_impl`
+        //   answers `not_installed` before spawning, and `open -a` for an
+        //   app LaunchServices cannot find refuses in milliseconds, which
+        //   the arm above reports. So a slow answer is not the bug this
+        //   function was rewritten to surface.
+        // - What can make `open` slow is macOS being busy with a launch
+        //   that is working: a cold start on a loaded machine, or the
+        //   first open of a freshly downloaded app, which Gatekeeper
+        //   verifies and then asks the user about ("downloaded from the
+        //   internet, open it?") before the launch completes. Saying
+        //   "couldn't open Ollama" beside that dialog would be the wrong
+        //   message at the worst moment.
+        // - Success is not the last word. The front end's `onSuccess`
+        //   polls for the daemon, and if it never answers the "isn't
+        //   running" notice simply stays up with its button, so the user
+        //   still sees that nothing has changed. What is given up is only
+        //   the reason, for a failure that arrives after 20 s; the thread
+        //   still reaps the child when it does.
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(()),
+        // The waiting thread dropped its sender without sending, which
+        // only a panic inside `Child::wait` could do. There is then no
+        // exit status to read either way; treated like the timeout for
+        // the same last reason -- the poll, not this, decides whether the
+        // notice clears.
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(()),
+    }
 }
 
 pub(crate) fn open_ollama_app_impl() -> Result<(), String> {
+    // Asked before spawning, because `open`'s own refusal cannot be told
+    // apart from any other failure without matching English text against
+    // its stderr. This is the case worth telling apart: `brew install
+    // ollama` -- Homebrew being the first source this project's README
+    // lists -- installs the CLI and no app, and "there is no Ollama app
+    // on this Mac" is a different thing to say than "it would not
+    // start". `detect` asks the same question and withholds the button
+    // entirely when the answer is no, so reaching this is either a TOCTOU
+    // (the app was removed since the last refresh) or a stale snapshot.
+    if canager_core::adapters::ollama::ollama_app_path(&HostEnv::discover().home).is_none() {
+        return Err(open_ollama_failed_json("not_installed"));
+    }
     let (program, _args) = open_ollama_app_argv();
     open_ollama_app_impl_with(program)
 }
 
 #[tauri::command]
 pub async fn open_ollama_app() -> Result<(), String> {
-    open_ollama_app_impl()
+    // On the blocking pool, not inline: `open_ollama_app_impl` now waits
+    // (up to `OPEN_ANSWER_TIMEOUT`) for `open` to answer, and doing that
+    // inside an async command would hold one of the async runtime's
+    // worker threads -- the ones every other command and the refresh run
+    // on -- for as long as LaunchServices takes.
+    tauri::async_runtime::spawn_blocking(open_ollama_app_impl)
+        .await
+        .unwrap_or_else(|_| Err(open_ollama_failed_json("launch_failed")))
 }
 
 #[cfg(test)]
@@ -1183,7 +1271,34 @@ mod tests {
     fn test_open_ollama_app_impl_with_reports_a_missing_program_instead_of_panicking() {
         let err = open_ollama_app_impl_with(std::path::Path::new("/definitely/not/a/program"))
             .expect_err("a missing program must be an Err, not a panic");
-        assert!(!err.is_empty());
+        assert_eq!(err, open_ollama_failed_json("launch_failed"));
+    }
+
+    #[test]
+    fn test_open_ollama_app_impl_with_reports_a_program_that_exits_nonzero() {
+        // The whole finding: this used to spawn, reap on a detached
+        // thread and return `Ok(())` without ever looking at the exit
+        // status, so a failed `open -a Ollama` -- stderr nulled, nothing
+        // read -- reached the front end as success and rendered nothing.
+        // A user with the CLI and no app pressed a button that did
+        // nothing at all, forever, with no message.
+        let err = open_ollama_app_impl_with(std::path::Path::new("/usr/bin/false"))
+            .expect_err("a non-zero exit must not be reported as success");
+        assert_eq!(err, open_ollama_failed_json("launch_failed"));
+    }
+
+    #[test]
+    fn test_open_ollama_failure_payloads_are_the_two_the_front_end_decodes() {
+        // Locked here because the copy on the other side keys off these
+        // exact strings, and `src/lib/sources.ts` has a matching test.
+        assert_eq!(
+            open_ollama_failed_json("not_installed"),
+            r#"{"kind":"ollama_open_failed","reason":"not_installed"}"#
+        );
+        assert_eq!(
+            open_ollama_failed_json("launch_failed"),
+            r#"{"kind":"ollama_open_failed","reason":"launch_failed"}"#
+        );
     }
 
     #[test]

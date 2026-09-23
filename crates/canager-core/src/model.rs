@@ -32,11 +32,16 @@ pub enum ReadOnlyReason {
 /// still perfectly writable, it just has nothing to say until it starts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Unavailable {
-    /// The service is not running and the user can start it themselves
-    /// (Ollama).
+    /// The service is not running and Canager can start it: the notice
+    /// carries a button that does. Today that is only an Ollama whose
+    /// daemon is on this Mac and whose Ollama.app is installed -- see
+    /// `OllamaAdapter::detect`, which gives a silent daemon it cannot start
+    /// `NotResponding` instead.
     NotRunning,
     /// The executable is on PATH but would not run, or its version could
-    /// not be recognised.
+    /// not be recognised, or a service did not answer and Canager has no
+    /// way to start it (an Ollama installed as the command-line tool only,
+    /// or one whose `OLLAMA_HOST` names another machine).
     NotResponding,
     /// The tool is installed but refuses to do anything while Canager is
     /// running as root, so Canager never even asked it (Homebrew).
