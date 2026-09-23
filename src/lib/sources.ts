@@ -228,11 +228,12 @@ export interface NotActionableReason {
  * refusal a stale snapshot or a genuine TOCTOU can surface to a real
  * person -- both `InstalledPage` and `UpdatesPage` hide every control for
  * an instance that fails this gate, so it should not normally be reachable
- * at all. Returns `null` for every other backend error (an unknown
- * instance, an unregistered adapter, a submit's expired/unknown plan id),
- * which `planErrorMessage` below then shows verbatim exactly as before
- * this existed -- those are either bugs nobody but a developer should see,
- * or already-plain-English text the app already shows as-is.
+ * at all. Returns `null` for every other backend error, including the
+ * other `kind`s `submit_operation_error` sends (`source_gone`, `expired`,
+ * `unknown`, each read by its own function below) and genuine bugs (an
+ * unknown instance, an unregistered adapter) that `planErrorMessage` still
+ * shows verbatim -- those are not this project's own copy, so there is
+ * nothing to localise.
  */
 export function parseNotActionable(message: string): NotActionableReason | null {
   let parsed: unknown;
@@ -297,10 +298,13 @@ export function notActionableMessage(
 /**
  * What a `plan_operation`/`submit_operation` rejection should read as:
  * `notActionableMessage` when `raw` is the actionability gate's JSON
- * payload, otherwise `raw` verbatim. Every call site that renders a plan
- * or submit error (`UpdatesPage`, `UninstallDialog`) goes through this
- * instead of showing the backend's string directly, so the one refusal
- * that can reach a real person is never a raw Rust `{:?}`.
+ * payload, the matching `planRefused.*` copy for `submit_operation_error`'s
+ * three other structured kinds, otherwise `raw` verbatim. Every call site
+ * that renders a plan or submit error (`UpdatesPage`, `UninstallDialog`)
+ * goes through this instead of showing the backend's string directly, so
+ * no refusal that can reach a real person is ever a raw Rust `{:?}` or
+ * this project's own English reaching someone reading Canager in another
+ * language.
  */
 export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
   const reason = parseNotActionable(raw);
@@ -310,7 +314,30 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
   // instance id ("brew:/opt/homebrew"), which is the kind of string this
   // whole function exists to keep off the screen.
   if (isSourceGone(raw)) return t("planRefused.sourceGone");
+  if (isExpired(raw)) return t("planRefused.expired");
+  if (isUnknownPlan(raw)) return t("planRefused.unknown");
   return raw;
+}
+
+/**
+ * Reads the bare `{"kind": "..."}` envelope `submit_operation_error` in
+ * src-tauri/src/ipc.rs sends for its three reasons that carry no extra
+ * fields (`source_gone`, `expired`, `unknown` -- `not_actionable`'s own
+ * two fields go through `parseNotActionable` above instead). `null` for
+ * anything that is not that shape, including a plain string or JSON
+ * without a string `kind`; the three functions below each compare the
+ * result to their one kind rather than duplicating this parse.
+ */
+function submitErrorKind(message: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const kind = (parsed as Record<string, unknown>).kind;
+  return typeof kind === "string" ? kind : null;
 }
 
 /**
@@ -322,16 +349,30 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
  * puts this on the wire.
  */
 function isSourceGone(message: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(message);
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as Record<string, unknown>).kind === "source_gone"
-    );
-  } catch {
-    return false;
-  }
+  return submitErrorKind(message) === "source_gone";
+}
+
+/**
+ * Whether `raw` is `SubmitError::Expired`: the preview is more than 10
+ * minutes old (spec's plan lifetime), so `Session::submit` refused to run
+ * it blind. `submit_operation_error` used to send this as
+ * `SubmitError::Expired`'s own `Display`, hardcoded English that reached a
+ * zh-CN user unlocalised; it now sends `{"kind": "expired"}` like every
+ * other structured refusal, and `planRefused.expired` (both locales) is
+ * what tells the person to look at the preview again.
+ */
+function isExpired(message: string): boolean {
+  return submitErrorKind(message) === "expired";
+}
+
+/**
+ * Whether `raw` is `SubmitError::Unknown`: `plan_id` was never issued, or
+ * was already consumed by an earlier submit of the same preview. Same
+ * unlocalised-`Display` history as `isExpired` above; `planRefused.unknown`
+ * is what tells the person to start the action again.
+ */
+function isUnknownPlan(message: string): boolean {
+  return submitErrorKind(message) === "unknown";
 }
 
 /**

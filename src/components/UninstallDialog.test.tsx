@@ -191,10 +191,13 @@ describe("UninstallDialog", () => {
     expect(submitCalls()).toHaveLength(0);
   });
 
-  it("shows the backend's error verbatim, re-plans, and submits the fresh id only when confirmed again", async () => {
-    // The dialog sat open past the PlanId's 10-minute lifetime (or the id was
-    // already consumed): the backend rejects with a bare string, and the
-    // stale preview must not be resubmittable with the same id.
+  it("localises an expired plan, re-plans, and submits the fresh id only when confirmed again", async () => {
+    // The dialog sat open past the PlanId's 10-minute lifetime: the backend
+    // rejects with `{"kind":"expired"}` (see `submit_operation_error` in
+    // src-tauri/src/ipc.rs), which `planErrorMessage` turns into
+    // `planRefused.expired` rather than showing the JSON or this project's
+    // own hardcoded English. The stale preview must not be resubmittable
+    // with the same id.
     let planCalls = 0;
     let submitAttempts = 0;
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -205,7 +208,7 @@ describe("UninstallDialog", () => {
       if (cmd === "submit_operation") {
         submitAttempts += 1;
         if (submitAttempts === 1) {
-          throw "this plan is older than 10 minutes; preview it again";
+          throw '{"kind":"expired"}';
         }
         return 7;
       }
@@ -228,7 +231,7 @@ describe("UninstallDialog", () => {
     fireEvent.click(confirmButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "this plan is older than 10 minutes; preview it again",
+      "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
     );
     await waitFor(() => expect(planCalls).toBe(2));
     // Confirm re-enables only once the fresh plan has arrived; its preview is

@@ -147,18 +147,22 @@ fn not_actionable_json(
 
 /// `plan_operation_error`'s counterpart for `Session::submit`.
 ///
-/// `Unknown` and `Expired` keep `SubmitError`'s own `Display`, which is
-/// already a sentence a person can read. The two refusals the submit-time
-/// actionability re-check produces do not: `NotActionable`'s `Display`
-/// is a `{:?}` of two Rust enums, and this is the refusal a real person is
-/// *most* likely to see -- both pages hide controls for a source that
-/// fails the gate, but nothing can hide a source that failed it in the
-/// second between rendering the preview and clicking Confirm. It goes out
-/// as the same JSON `plan_operation_error` produces, so the front end
-/// renders it with the same localised copy the source's own notice uses.
-/// `SourceGone` has no instance left to carry a reason, so it gets its own
-/// kind rather than a `not_actionable` with two nulls, which would decode
-/// to an empty message.
+/// Every variant goes out as the same small JSON envelope
+/// `not_actionable_json` uses (`{"kind": "..."}`, plus whatever extra
+/// fields that one kind carries), so `src/lib/sources.ts`'s
+/// `planErrorMessage` never shows a bare English sentence to someone who
+/// does not read English. `Unknown` and `Expired` used to keep
+/// `SubmitError`'s own `Display` verbatim on the theory that it was
+/// "already a sentence a person can read" -- but it is a sentence in this
+/// project's *source* language, and a zh-CN user previewing an uninstall
+/// that outlives the 10-minute window read this project's own English
+/// back at them. That is the same class of bug `NotActionable`'s JSON
+/// treatment fixed below: a `{:?}` of two Rust enums and a hardcoded
+/// English sentence are both "not this user's language" from the front
+/// end's point of view. `SourceGone`, `Expired` and `Unknown` all carry no
+/// extra fields, so each gets its own bare `kind` rather than a
+/// `not_actionable` with two nulls, which would decode to an empty
+/// message.
 fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
     match e {
         canager_core::session::SubmitError::NotActionable {
@@ -168,7 +172,12 @@ fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
         canager_core::session::SubmitError::SourceGone => {
             serde_json::json!({ "kind": "source_gone" }).to_string()
         }
-        other => other.to_string(),
+        canager_core::session::SubmitError::Expired => {
+            serde_json::json!({ "kind": "expired" }).to_string()
+        }
+        canager_core::session::SubmitError::Unknown => {
+            serde_json::json!({ "kind": "unknown" }).to_string()
+        }
     }
 }
 
@@ -990,7 +999,7 @@ mod tests {
     }
 
     #[test]
-    fn test_submit_operation_error_localisable_for_the_gate_and_verbatim_for_the_rest() {
+    fn test_submit_operation_error_sends_structured_json_for_every_variant() {
         use canager_core::session::SubmitError;
 
         // The refusal a real person is most likely to meet: they were
@@ -1020,16 +1029,28 @@ mod tests {
              not_actionable with two nulls -- that decodes to an empty message"
         );
 
-        // The two that were already sentences stay sentences: wrapping
-        // them in JSON would put braces on screen for no gain.
-        assert_eq!(
-            submit_operation_error(SubmitError::Expired),
-            SubmitError::Expired.to_string()
+        // `Expired` and `Unknown` used to keep `SubmitError`'s own
+        // `Display` -- this project's own English, unlocalised, reaching
+        // whichever locale the user is running in. They now go out as the
+        // same bare-kind envelope `SourceGone` does, so
+        // `src/lib/sources.ts` can render them in the user's language.
+        let expired = submit_operation_error(SubmitError::Expired);
+        assert!(
+            !expired.contains("older than 10 minutes"),
+            "must not be the hardcoded English Display any more: {expired}"
         );
-        assert_eq!(
-            submit_operation_error(SubmitError::Unknown),
-            SubmitError::Unknown.to_string()
+        let parsed: serde_json::Value = serde_json::from_str(&expired)
+            .unwrap_or_else(|e| panic!("expected JSON, got {expired:?} ({e})"));
+        assert_eq!(parsed["kind"], "expired");
+
+        let unknown = submit_operation_error(SubmitError::Unknown);
+        assert!(
+            !unknown.contains("already submitted"),
+            "must not be the hardcoded English Display any more: {unknown}"
         );
+        let parsed: serde_json::Value = serde_json::from_str(&unknown)
+            .unwrap_or_else(|e| panic!("expected JSON, got {unknown:?} ({e})"));
+        assert_eq!(parsed["kind"], "unknown");
     }
 
     #[tokio::test]
@@ -1100,8 +1121,10 @@ mod tests {
         refresh_impl(&state).await.expect("refresh_impl");
         let err = submit_operation_impl(&state, "forged-plan-id".to_string())
             .expect_err("an unissued plan id must be rejected");
-        assert!(
-            err.contains("no such plan"),
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(
+            parsed["kind"], "unknown",
             "expected the Unknown-plan error, got: {err}"
         );
         assert_eq!(
@@ -1130,8 +1153,10 @@ mod tests {
         submit_operation_impl(&state, issued.id.clone()).expect("the first submit must succeed");
         let err = submit_operation_impl(&state, issued.id)
             .expect_err("resubmitting the same plan id must be rejected");
-        assert!(
-            err.contains("no such plan"),
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(
+            parsed["kind"], "unknown",
             "expected the Unknown-plan error, got: {err}"
         );
 
@@ -1168,8 +1193,10 @@ mod tests {
 
         let err = submit_operation_impl(&state, issued.id)
             .expect_err("a plan older than its lifetime must be rejected");
-        assert!(
-            err.contains("older than 10 minutes"),
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(
+            parsed["kind"], "expired",
             "expected the Expired-plan error, got: {err}"
         );
         assert_eq!(

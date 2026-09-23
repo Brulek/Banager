@@ -208,9 +208,11 @@ describe("parseNotActionable", () => {
 
   it("is null for every other backend error, which stays plain text", () => {
     expect(parseNotActionable("unknown instance fake:1")).toBeNull();
-    expect(parseNotActionable("no such plan, or it was already submitted")).toBeNull();
-    expect(parseNotActionable("this plan is older than 10 minutes; preview it again")).toBeNull();
-    // Valid JSON, but not this shape -- must not be mistaken for it.
+    // Valid JSON, and other structured kinds `submit_operation_error` sends
+    // -- must not be mistaken for `not_actionable`'s shape.
+    expect(parseNotActionable('{"kind":"source_gone"}')).toBeNull();
+    expect(parseNotActionable('{"kind":"expired"}')).toBeNull();
+    expect(parseNotActionable('{"kind":"unknown"}')).toBeNull();
     expect(parseNotActionable('{"kind":"something_else"}')).toBeNull();
     expect(parseNotActionable("")).toBeNull();
   });
@@ -289,6 +291,17 @@ describe("planErrorMessage", () => {
     expect(planErrorMessage(fakeT, '{"kind":"source_gone"}', "brew:/opt/homebrew")).toBe(
       "planRefused.sourceGone",
     );
+  });
+
+  it("localises an expired plan instead of showing SubmitError::Expired's own English", () => {
+    // `submit_operation_error` used to send `SubmitError::Expired`'s
+    // `Display` verbatim -- this project's own English, unlocalised. It
+    // now sends `{"kind":"expired"}` like every other structured refusal.
+    expect(planErrorMessage(fakeT, '{"kind":"expired"}', "Homebrew")).toBe("planRefused.expired");
+  });
+
+  it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
+    expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew")).toBe("planRefused.unknown");
   });
 });
 

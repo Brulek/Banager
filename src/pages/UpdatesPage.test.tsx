@@ -796,10 +796,13 @@ describe("UpdatesPage", () => {
     expect(submittedPlanIds()).toEqual([]);
   });
 
-  it("shows the backend's rejection verbatim and submits a fresh plan id only after a second Confirm", async () => {
-    // The dialog sat open past the PlanId's 10-minute lifetime (or the id
-    // was already consumed): the backend rejects with a bare string.
-    submitFailures["1"] = "this plan is older than 10 minutes; preview it again";
+  it("localises an expired plan and submits a fresh plan id only after a second Confirm", async () => {
+    // The dialog sat open past the PlanId's 10-minute lifetime: the backend
+    // rejects with `{"kind":"expired"}` (see `submit_operation_error` in
+    // src-tauri/src/ipc.rs), which `planErrorMessage` renders as
+    // `planRefused.expired` rather than showing the JSON or this project's
+    // own hardcoded English.
+    submitFailures["1"] = '{"kind":"expired"}';
     const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
@@ -808,7 +811,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: this plan is older than 10 minutes; preview it again",
+      "Could not start the update: This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
     );
     // The dead id is not retried on its own, and the dialog stays open so
     // the failure can be read rather than blinking away.
@@ -885,7 +888,7 @@ describe("UpdatesPage", () => {
   });
 
   it("after one item starts and the next fails, a retry re-plans and submits only the failed one", async () => {
-    submitFailures["2"] = "this plan is older than 10 minutes; preview it again";
+    submitFailures["2"] = '{"kind":"expired"}';
     const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     const checkboxes = await findAllByRole("checkbox");
@@ -900,7 +903,7 @@ describe("UpdatesPage", () => {
     // glib started, onyx did not, and the dialog says which is which.
     await within(dialog).findByText("Started");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: this plan is older than 10 minutes; preview it again",
+      "Could not start the update: This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
     );
     expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]);
     // A started item leaves the selection at once; the failed one stays.

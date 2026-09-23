@@ -152,8 +152,18 @@ pub struct IssuedPlan {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum SubmitError {
+    /// `plan_id` was never issued, or was already consumed by an earlier
+    /// `submit` of the same preview. This `Display` is for developer-facing
+    /// contexts (logs, panics, other tests in this crate); the shell never
+    /// sends it to the front end verbatim -- `submit_operation_error` in
+    /// `src-tauri/src/ipc.rs` turns it into `{"kind": "unknown"}` so
+    /// `src/lib/sources.ts` can show `planRefused.unknown` in the user's
+    /// own language instead of this project's own English.
     #[error("no such plan, or it was already submitted")]
     Unknown,
+    /// `plan_id` is still stored but was issued more than the plan's
+    /// lifetime ago. Same note as `Unknown` above: `submit_operation_error`
+    /// sends `{"kind": "expired"}`, not this `Display`.
     #[error("this plan is older than 10 minutes; preview it again")]
     Expired,
     /// The snapshot moved between issuing this plan and submitting it, and
