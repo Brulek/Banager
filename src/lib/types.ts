@@ -21,10 +21,8 @@ export type Attention =
 // data (a path, the operating system's own reason), never Canager's prose.
 export type Fault =
   | "Panicked"
-  | "SourceGone"
   | { ProgramMissing: { program: string } }
   | { SpawnFailed: { detail: string } }
-  | "Unsupported"
   | "HomebrewStillUpdating"
   | "Internal";
 // `Failed.summary` is only ever the tool's own stderr; Canager's own

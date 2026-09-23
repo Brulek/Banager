@@ -103,9 +103,9 @@ front end renders in the user's language.
 Three kinds of text are shown as-is:
 
 - **Another program's own words.** Every line `brew` or `npm` prints in the operation log, and
-  the last lines of its stderr when an operation fails or when it objects while Canager is
-  preparing one; the reason macOS gives when it can't start a tool, whether Canager is preparing an
-  operation or running one, or can't save Canager's settings for a cause Canager doesn't recognise.
+  the last lines of its stderr when an operation fails; the reason macOS gives when it can't start
+  a tool, whether Canager is preparing an operation or running one, or can't save Canager's
+  settings for a cause Canager doesn't recognise.
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
@@ -156,8 +156,8 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
 
 有三类文字会原样显示：
 
-- **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时、或者 Canager 准备操作时它提出
-  异议时它 stderr 的最后几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
+- **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
+  几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
   或因为 Canager 不认识的原因无法保存设置时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
 - **应用框架自己的报错**，只出现在一种情况：读取或刷新列表时，窗口完全联系不上 Canager 的其余部分。
   Canager 自己从不会让整次刷新失败：读不了的来源会用你的语言，通过它自己的提示和“部分数据可能不是最新的”横幅告诉你。

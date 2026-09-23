@@ -130,16 +130,26 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 ///
 /// - **Canager's own words** go out with no prose at all, only data the
 ///   front end can interpolate into its own sentence: `source_gone`,
-///   `invalid_name` (the name), `unsupported`, `parse_failed`,
-///   `program_missing` (the path), `output_too_large`, and `refused` for
-///   everything that is a bug in Canager rather than a state of the Mac
-///   (an instance/request mismatch, an unregistered adapter, a test-only
-///   `NoMock`). `Unsupported`, `Parse` and `Refused` carry an English
-///   string in Rust; it is dropped here on purpose -- it is for logs.
+///   `invalid_name` (the name), `program_missing` (the path),
+///   `output_too_large`, and `refused` for everything that is a bug in
+///   Canager rather than a state of the Mac (an instance/request mismatch,
+///   an unregistered adapter, a test-only `NoMock`). `Refused` carries an
+///   English string in Rust; it is dropped here on purpose -- it is for
+///   logs.
 /// - **Another program's words** are kept verbatim, for the front end to
 ///   quote inside a translated sentence that says what happened:
-///   `command_failed` carries the tool's stderr, `spawn_failed` the
-///   operating system's reason it could not start the tool.
+///   `spawn_failed` carries the operating system's reason it could not
+///   start the tool.
+///
+/// `Parse`, `CommandFailed` and `Unsupported` have no kind of their own
+/// because no `plan()` returns them: brew's is the only one that runs a
+/// command (`brew uses`), and it turns that command's failure into
+/// `Warning::DependentsUnknown` rather than an error; the others run
+/// nothing. pip's `plan()` does refuse with `Unsupported`, but every pip
+/// instance is read-only by design, so `issue_plan`'s gate refuses first
+/// with `not_actionable`. They go out as `refused` -- if one ever arrives,
+/// an adapter broke that contract, which is Canager's bug. A kind of their
+/// own would be copy in two locales that nothing can make appear.
 ///
 /// `plan_operation` still returns `Result<IssuedPlan, String>`, identical to
 /// every other command, so `src/lib/api.ts`'s single `call()` choke point
@@ -158,11 +168,6 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         AdapterError::InvalidName(name) => {
             serde_json::json!({ "kind": "invalid_name", "name": name }).to_string()
         }
-        AdapterError::Unsupported(_) => serde_json::json!({ "kind": "unsupported" }).to_string(),
-        AdapterError::Parse(_) => serde_json::json!({ "kind": "parse_failed" }).to_string(),
-        AdapterError::CommandFailed { stderr, .. } => {
-            serde_json::json!({ "kind": "command_failed", "stderr": stderr.trim() }).to_string()
-        }
         AdapterError::Runner(RunnerError::NotFound(program)) => serde_json::json!({
             "kind": "program_missing",
             "program": program.display().to_string(),
@@ -174,9 +179,11 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         AdapterError::Runner(RunnerError::OutputTooLarge { .. }) => {
             serde_json::json!({ "kind": "output_too_large" }).to_string()
         }
-        AdapterError::Runner(RunnerError::NoMock(_)) | AdapterError::Refused(_) => {
-            serde_json::json!({ "kind": "refused" }).to_string()
-        }
+        AdapterError::Runner(RunnerError::NoMock(_))
+        | AdapterError::Refused(_)
+        | AdapterError::Parse(_)
+        | AdapterError::CommandFailed { .. }
+        | AdapterError::Unsupported(_) => serde_json::json!({ "kind": "refused" }).to_string(),
     }
 }
 
@@ -1016,12 +1023,6 @@ mod tests {
             v,
             serde_json::json!({ "kind": "invalid_name", "name": "-rf" })
         );
-        let v = parse(AdapterError::Unsupported(
-            "pip is read-only in Canager; use pipx or uv to manage jq".to_string(),
-        ));
-        assert_eq!(v, serde_json::json!({ "kind": "unsupported" }));
-        let v = parse(AdapterError::Parse("unexpected token".to_string()));
-        assert_eq!(v, serde_json::json!({ "kind": "parse_failed" }));
         let v = parse(AdapterError::Refused(
             "no adapter registered for fake".to_string(),
         ));
@@ -1044,18 +1045,20 @@ mod tests {
         });
         assert_eq!(v, serde_json::json!({ "kind": "source_gone" }));
 
+        // Errors no `plan()` returns: a broken adapter contract, so
+        // Canager's own bug, and none of their text reaches the wire.
+        for e in [
+            AdapterError::Parse("unexpected token".to_string()),
+            AdapterError::CommandFailed {
+                code: Some(1),
+                stderr: "Error: No such keg".to_string(),
+            },
+            AdapterError::Unsupported("pip is read-only in Canager".to_string()),
+        ] {
+            assert_eq!(parse(e), serde_json::json!({ "kind": "refused" }));
+        }
+
         // Another program's words: kept verbatim for the front end to quote.
-        let v = parse(AdapterError::CommandFailed {
-            code: Some(1),
-            stderr: "Error: No such keg: /opt/homebrew/Cellar/jq\n".to_string(),
-        });
-        assert_eq!(
-            v,
-            serde_json::json!({
-                "kind": "command_failed",
-                "stderr": "Error: No such keg: /opt/homebrew/Cellar/jq",
-            })
-        );
         let v = parse(AdapterError::Runner(RunnerError::Spawn(
             std::io::Error::from(std::io::ErrorKind::PermissionDenied),
         )));

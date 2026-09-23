@@ -292,8 +292,6 @@ describe("planErrorMessage", () => {
 
   it("words each of Canager's own planning failures itself, naming the source", () => {
     for (const [kind, key] of [
-      ["unsupported", "planRefused.unsupported"],
-      ["parse_failed", "planRefused.parseFailed"],
       ["output_too_large", "planRefused.outputTooLarge"],
       ["refused", "planRefused.refused"],
     ]) {
@@ -314,16 +312,6 @@ describe("planErrorMessage", () => {
         "Homebrew",
       ),
     ).toBe('planRefused.programMissing({"program":"/opt/homebrew/bin/brew"})');
-  });
-
-  it("quotes the tool's own stderr inside a translated sentence", () => {
-    expect(
-      planErrorMessage(fakeT, '{"kind":"command_failed","stderr":"Error: No such keg"}', "Homebrew"),
-    ).toBe('planRefused.commandFailed({"source":"Homebrew","stderr":"Error: No such keg"})');
-    // Nothing to quote: a sentence that does not end in an empty colon.
-    expect(planErrorMessage(fakeT, '{"kind":"command_failed","stderr":"  "}', "Homebrew")).toBe(
-      'planRefused.commandFailedSilent({"source":"Homebrew"})',
-    );
   });
 
   it("quotes the system's reason a tool could not start inside a translated sentence", () => {

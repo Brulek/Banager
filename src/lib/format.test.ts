@@ -68,10 +68,8 @@ describe("outcomeKey for Canager's own failures", () => {
   // `test_canager_failed_is_externally_tagged_on_the_wire`).
   const faults: Fault[] = [
     "Panicked",
-    "SourceGone",
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },
-    "Unsupported",
     "HomebrewStillUpdating",
     "Internal",
   ];

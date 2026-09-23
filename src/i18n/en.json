@@ -121,10 +121,6 @@
     "expired": "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
     "unknown": "Canager already acted on this preview, or it's no longer available. Close this and start the action again.",
     "invalidName": "“{{name}}” doesn't look like a name Canager can safely hand to {{source}}, so it stopped before changing anything.",
-    "unsupported": "{{source}} can't do this through Canager. Nothing was changed.",
-    "parseFailed": "Canager couldn't make sense of what {{source}} replied, so it stopped before changing anything.",
-    "commandFailed": "{{source}} reported a problem, so Canager stopped before changing anything. In its own words: {{stderr}}",
-    "commandFailedSilent": "{{source}} reported a problem without saying what it was, so Canager stopped before changing anything.",
     "programMissing": "Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
     "spawnFailed": "Canager couldn't start {{source}}, so nothing was changed. Your Mac gave this reason: {{detail}}",
     "outputTooLarge": "{{source}} replied with far more than Canager will read, so it stopped before changing anything.",
@@ -166,10 +162,8 @@
       "FailedSilent": "Failed. The program didn't say why — the operation log may show more.",
       "CanagerFailed": {
         "Panicked": "Failed: something went wrong inside Canager while it was doing this. Check the list to see whether anything changed.",
-        "SourceGone": "Failed: Canager can't find this source on your Mac any more, so it didn't start. Nothing was changed.",
         "ProgramMissing": "Failed: Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
         "SpawnFailed": "Failed: Canager couldn't start the program, so nothing was changed. Your Mac gave this reason: {{detail}}",
-        "Unsupported": "Failed: this source can't do that through Canager. Nothing was changed.",
         "HomebrewStillUpdating": "Failed: Canager waited 10 minutes and Homebrew was still downloading its latest list of software, so it didn't start this. Nothing was changed. Your internet connection may be slow or interrupted — try again in a little while.",
         "Internal": "Failed: something on Canager's side didn't add up, so it didn't start and nothing was changed. This is a problem in Canager, not on your Mac."
       }

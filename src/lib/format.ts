@@ -46,8 +46,6 @@ function faultKey(fault: Fault): string {
   if (typeof fault === "string") {
     switch (fault) {
       case "Panicked":
-      case "SourceGone":
-      case "Unsupported":
       case "HomebrewStillUpdating":
       case "Internal":
         return fault;

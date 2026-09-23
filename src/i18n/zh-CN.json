@@ -114,10 +114,6 @@
     "expired": "这份预览已经超过 10 分钟，Canager 没有执行它。请重新查看一次预览，再确认一遍。",
     "unknown": "Canager 已经处理过这份预览，或者它已经失效。请关闭后重新开始这个操作。",
     "invalidName": "“{{name}}”不像是 Canager 能放心交给 {{source}} 的名字，所以它在改动任何东西之前停了下来。",
-    "unsupported": "{{source}} 无法通过 Canager 完成这个操作，什么都没有改动。",
-    "parseFailed": "Canager 没能看懂 {{source}} 的回复，所以在改动任何东西之前停了下来。",
-    "commandFailed": "{{source}} 报告了一个问题，所以 Canager 在改动任何东西之前停了下来。它的原话是：{{stderr}}",
-    "commandFailedSilent": "{{source}} 报告了问题，但没有说明是什么，所以 Canager 在改动任何东西之前停了下来。",
     "programMissing": "Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
     "spawnFailed": "Canager 没能启动 {{source}}，什么都没有改动。系统给出的原因是：{{detail}}",
     "outputTooLarge": "{{source}} 的回复太长，超出了 Canager 愿意读取的范围，所以它在改动任何东西之前停了下来。",
@@ -159,10 +155,8 @@
       "FailedSilent": "失败。这个程序没有说明原因，操作日志里也许能看到更多。",
       "CanagerFailed": {
         "Panicked": "失败：Canager 在执行过程中自己出了问题。请看一下列表，确认有没有发生变化。",
-        "SourceGone": "失败：Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。什么都没有改动。",
         "ProgramMissing": "失败：Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
         "SpawnFailed": "失败：Canager 没能启动这个程序，什么都没有改动。系统给出的原因是：{{detail}}",
-        "Unsupported": "失败：这个来源无法通过 Canager 完成这个操作。什么都没有改动。",
         "HomebrewStillUpdating": "失败：Canager 等了 10 分钟，Homebrew 还在下载最新的软件目录，所以没有开始。什么都没有改动。可能是网络太慢或者断了，过一会儿再试一次。",
         "Internal": "失败：Canager 发现自己这边有些地方对不上，所以没有开始，什么都没有改动。这是 Canager 的问题，不是你的 Mac 的问题。"
       }

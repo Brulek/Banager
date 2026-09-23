@@ -21,38 +21,38 @@ const DEFAULT_MAX_RECORDS: usize = 200;
 
 /// The `Outcome` for an `Err` out of `Adapter::execute`.
 ///
-/// Only `CommandFailed` is another program's words -- a tool (or the
-/// Ollama daemon) answering with an error -- and it stays `Failed`, whose
-/// `summary` is only ever that kind of text. Everything else is a reason of
-/// Canager's own and becomes a `Fault` the front end words in the user's
-/// language; the English `Display` of `AdapterError` never reaches the
-/// wire. The split follows `plan_operation_error` in `src-tauri/src/ipc.rs`,
-/// which sorts the same errors the same way when they come out of `plan`.
+/// Every `Err` here is a reason of Canager's own, worded by the front end
+/// in the user's language; the English `Display` of `AdapterError` never
+/// reaches the wire. A tool that ran and failed is not an `Err` at all:
+/// `run_plan` turns its exit code and stderr into `Ok(Outcome::Failed)`.
 ///
-/// Today's adapters only ever return a runner error, brew's root refusal
-/// or pip's `Unsupported` from `execute`; the rest are mapped so the match
-/// stays total, and all of them are bugs rather than states of the Mac.
+/// What today's adapters can return from `execute`: a runner error from
+/// `run_plan` (`NotFound` and `Spawn` are states of the Mac and get their
+/// own `Fault`; `OutputTooLarge` cannot happen for a transcript run and
+/// `NoMock` is a test runner's), brew's root refusal (the gate refuses a
+/// root Homebrew first, as `Unavailable::RefusesAsRoot`) and pip's
+/// `Unsupported` (no pip `Plan` can exist: every pip instance is read-only
+/// by design, so `issue_plan`'s gate refuses before pip's `plan()` would).
+/// No `execute` returns `CommandFailed`, `Parse`, `SourceGone`,
+/// `InvalidName` or `NotActionable`. Everything but the two runner errors
+/// is therefore a bug in Canager, and says so as `Fault::Internal` rather
+/// than as a sentence of its own that nothing can produce.
 fn execute_error_outcome(e: AdapterError) -> Outcome {
     let fault = match e {
-        AdapterError::CommandFailed { code, stderr } => {
-            return Outcome::Failed {
-                exit_code: code,
-                summary: stderr.trim().to_string(),
-            };
-        }
         AdapterError::Runner(RunnerError::NotFound(program)) => Fault::ProgramMissing {
             program: program.display().to_string(),
         },
         AdapterError::Runner(RunnerError::Spawn(io)) => Fault::SpawnFailed {
             detail: io.to_string(),
         },
-        AdapterError::SourceGone { .. } => Fault::SourceGone,
-        AdapterError::Unsupported(_) => Fault::Unsupported,
         AdapterError::Runner(RunnerError::NoMock(_))
         | AdapterError::Runner(RunnerError::OutputTooLarge { .. })
+        | AdapterError::CommandFailed { .. }
         | AdapterError::Parse(_)
         | AdapterError::Refused(_)
         | AdapterError::InvalidName(_)
+        | AdapterError::Unsupported(_)
+        | AdapterError::SourceGone { .. }
         | AdapterError::NotActionable { .. } => Fault::Internal,
     };
     Outcome::CanagerFailed(fault)
@@ -466,10 +466,17 @@ impl OperationManager {
             let instances = self.instances.lock().unwrap();
             instances.get(&plan.request.instance_id).cloned()
         };
+        // Always found in production: `Session::submit` is the only caller
+        // of `submit`, it only runs a plan `issue_plan` built from an
+        // instance in the snapshot, every instance a refresh commits to the
+        // snapshot is registered here first (`refresh`, before it commits),
+        // and `instances` is insert-only. A source that has gone since the
+        // preview is refused by `Session::submit` itself, as
+        // `SubmitError::SourceGone`. So a miss is Canager's own bug.
         let instance = match instance {
             Some(i) => i,
             None => {
-                self.finish(op_id, Outcome::CanagerFailed(Fault::SourceGone), true);
+                self.finish(op_id, Outcome::CanagerFailed(Fault::Internal), true);
                 return;
             }
         };

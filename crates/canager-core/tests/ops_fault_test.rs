@@ -1,7 +1,7 @@
-//! Contract tests for which failures reach the front end as
-//! `Outcome::Failed` (a tool's own words) and which as
-//! `Outcome::CanagerFailed` (a reason of Canager's own, worded by the front
-//! end in the user's language).
+//! Contract tests for how an `Err` out of `Adapter::execute` reaches the
+//! front end: always as `Outcome::CanagerFailed` (a reason of Canager's
+//! own, worded by the front end in the user's language), never as
+//! `Outcome::Failed`, whose `summary` is only ever a tool's own words.
 //!
 //! Before this split, `run_operation` put English sentences of its own
 //! ("unknown instance ...", "runner: program not found: ...") into
@@ -192,49 +192,40 @@ async fn test_a_program_macos_would_not_start_carries_only_the_systems_reason() 
 }
 
 #[tokio::test]
-async fn test_a_tools_own_error_stays_failed_with_only_its_own_words() {
-    let outcome = run_execute_error(Box::new(|| AdapterError::CommandFailed {
-        code: Some(1),
-        stderr: "Error: No such keg\n".to_string(),
-    }))
-    .await;
-    assert_eq!(
-        outcome,
-        Outcome::Failed {
-            exit_code: Some(1),
-            summary: "Error: No such keg".to_string(),
-        }
-    );
+async fn test_every_error_but_a_missing_or_unstartable_program_is_canagers_own_bug() {
+    // A tool that ran and failed never gets here: `run_plan` makes that an
+    // `Ok(Outcome::Failed)`. What does arrive as an `Err` is Canager's own,
+    // and none of its English reaches the wire.
+    let errors: Vec<MakeError> = vec![
+        Box::new(|| AdapterError::Refused("refusing to run Homebrew as root".to_string())),
+        Box::new(|| AdapterError::Unsupported("pip is read-only in Canager".to_string())),
+        Box::new(|| AdapterError::CommandFailed {
+            code: Some(1),
+            stderr: "Error: No such keg\n".to_string(),
+        }),
+        Box::new(|| AdapterError::Parse("unexpected token".to_string())),
+    ];
+    for make_error in errors {
+        assert_eq!(
+            run_execute_error(make_error).await,
+            Outcome::CanagerFailed(Fault::Internal)
+        );
+    }
 }
 
 #[tokio::test]
-async fn test_unsupported_and_canagers_own_bugs_carry_no_prose() {
-    assert_eq!(
-        run_execute_error(Box::new(|| AdapterError::Unsupported(
-            "pip is read-only in Canager".to_string()
-        )))
-        .await,
-        Outcome::CanagerFailed(Fault::Unsupported)
-    );
-    assert_eq!(
-        run_execute_error(Box::new(|| AdapterError::Refused(
-            "refusing to run Homebrew as root".to_string()
-        )))
-        .await,
-        Outcome::CanagerFailed(Fault::Internal)
-    );
-}
-
-#[tokio::test]
-async fn test_a_plan_for_an_unregistered_instance_is_source_gone() {
-    // The instance the plan names was never registered (or has since been
-    // replaced): what used to be "unknown instance fake:/gone".
+async fn test_a_plan_for_an_unregistered_instance_is_an_internal_fault() {
+    // Cannot happen through `Session::submit` (every instance in the
+    // snapshot is registered first, and a source that has gone since the
+    // preview is refused there as `SubmitError::SourceGone`), so reaching
+    // it at all is a bug in Canager -- what used to be "unknown instance
+    // fake:/gone".
     let inst = instance("fake:/present", "fake");
     let adapter = Arc::new(FailingAdapter::new(Box::new(|| {
         AdapterError::Refused("execute must not be reached".to_string())
     })));
     let outcome = run(adapter, inst, "fake:/gone").await;
-    assert_eq!(outcome, Outcome::CanagerFailed(Fault::SourceGone));
+    assert_eq!(outcome, Outcome::CanagerFailed(Fault::Internal));
 }
 
 #[tokio::test]

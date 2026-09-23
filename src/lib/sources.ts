@@ -246,7 +246,7 @@ export interface NotActionableReason {
  * an instance that fails this gate, so it should not normally be reachable
  * at all. Returns `null` for every other backend error, including the
  * other `kind`s `submit_operation_error` and `plan_operation_error` send
- * (`source_gone`, `expired`, `unknown`, `refused`, `command_failed`, ...),
+ * (`source_gone`, `expired`, `unknown`, `refused`, `spawn_failed`, ...),
  * each read further down.
  */
 export function parseNotActionable(message: string): NotActionableReason | null {
@@ -339,8 +339,6 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
  * for logs and is dropped before it reaches the wire.
  */
 const PLAN_FAILURE_KEYS: Record<string, string> = {
-  unsupported: "planRefused.unsupported",
-  parse_failed: "planRefused.parseFailed",
   output_too_large: "planRefused.outputTooLarge",
   refused: "planRefused.refused",
 };
@@ -349,12 +347,11 @@ const PLAN_FAILURE_KEYS: Record<string, string> = {
  * The rest of `plan_operation_error`'s kinds (src-tauri/src/ipc.rs), in
  * the user's language; `null` for anything that is not one of them.
  *
- * Two of them quote another program verbatim, inside a sentence that says
- * what happened: `command_failed` carries the tool's own stderr and
- * `spawn_failed` the operating system's reason it could not start the
- * tool. Neither is Canager's text, so neither can be translated -- but the
- * sentence around each is. `invalid_name` and `program_missing` carry data
- * (the name, the path), not prose.
+ * One of them quotes another program verbatim, inside a sentence that
+ * says what happened: `spawn_failed` carries the operating system's reason
+ * it could not start the tool. That is not Canager's text, so it cannot be
+ * translated -- but the sentence around it is. `invalid_name` and
+ * `program_missing` carry data (the name, the path), not prose.
  */
 function planFailureMessage(t: Translate, raw: string, sourceLabel: string): string | null {
   const p = parseErrorPayload(raw);
@@ -369,12 +366,6 @@ function planFailureMessage(t: Translate, raw: string, sourceLabel: string): str
       return t("planRefused.invalidName", { name: text(p.name), source: sourceLabel });
     case "program_missing":
       return t("planRefused.programMissing", { program: text(p.program) });
-    case "command_failed": {
-      const stderr = text(p.stderr).trim();
-      return stderr
-        ? t("planRefused.commandFailed", { source: sourceLabel, stderr })
-        : t("planRefused.commandFailedSilent", { source: sourceLabel });
-    }
     case "spawn_failed":
       return t("planRefused.spawnFailed", { source: sourceLabel, detail: text(p.detail) });
     default:

@@ -347,27 +347,21 @@ pub enum Fault {
     /// Canager crashed partway through. The command may or may not have
     /// run, so only a fresh look at the list can say what changed.
     Panicked,
-    /// The source was removed between the preview and the run. Nothing
-    /// was started.
-    SourceGone,
     /// The program the plan names was not there when Canager went to run
     /// it. Nothing was started.
     ProgramMissing { program: String },
     /// macOS would not start the program; `detail` is the operating
     /// system's own reason, quoted as-is. Nothing was started.
     SpawnFailed { detail: String },
-    /// The source cannot do this through Canager (pip is read-only).
-    /// Nothing was started.
-    Unsupported,
     /// A `brew update` was still running in the background after Canager
     /// had waited ten minutes for it, so the command was not started:
     /// installing while Homebrew rewrites its own list of software is not
     /// something Homebrew guards against. Nothing was started.
     HomebrewStillUpdating,
     /// Something on Canager's side did not add up (an unregistered
-    /// adapter, a queue that closed, an error `execute` has no business
-    /// returning). A bug in Canager, not a state of the Mac. Nothing was
-    /// started.
+    /// adapter or instance, a queue that closed, an error `execute` has no
+    /// business returning). A bug in Canager, not a state of the Mac.
+    /// Nothing was started.
     Internal,
 }
 
@@ -586,8 +580,6 @@ mod tests {
         );
         for fault in [
             Fault::Panicked,
-            Fault::SourceGone,
-            Fault::Unsupported,
             Fault::HomebrewStillUpdating,
             Fault::Internal,
         ] {
