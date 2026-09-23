@@ -17,7 +17,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786419383,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -33,7 +34,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762028,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -49,7 +51,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762028,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -65,7 +68,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -81,7 +85,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -97,7 +102,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411428,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -113,7 +119,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625481,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -129,7 +136,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244404,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -145,7 +153,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244404,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -161,7 +170,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786419383,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -177,7 +187,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625415,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -193,7 +204,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -209,7 +221,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783829237,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -225,7 +238,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244409,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -241,7 +255,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -257,7 +272,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625611,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -273,7 +289,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -289,7 +306,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244419,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -305,7 +323,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625612,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -321,7 +340,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625612,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -337,7 +357,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625612,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -353,7 +374,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625527,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -369,7 +391,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762028,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -385,7 +408,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244419,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -401,7 +425,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762037,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -417,7 +442,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786419383,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -433,7 +459,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411429,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -449,7 +476,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -465,7 +493,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625611,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -481,7 +510,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -497,7 +527,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -513,7 +544,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -529,7 +561,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -545,7 +578,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -561,7 +595,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -577,7 +612,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244404,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -593,7 +629,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786419383,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -609,7 +646,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -625,7 +663,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -641,7 +680,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786419383,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -657,7 +697,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -673,7 +714,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762035,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -689,7 +731,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411429,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -705,7 +748,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625481,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -721,7 +765,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244410,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -737,7 +782,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244410,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -753,7 +799,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244410,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -769,7 +816,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244410,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -785,7 +833,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -801,7 +850,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -817,7 +867,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -833,7 +884,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762035,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -849,7 +901,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -865,7 +918,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789618191,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -881,7 +935,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789618191,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -897,7 +952,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1785834773,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -913,7 +969,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411428,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -929,7 +986,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -945,7 +1003,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -961,7 +1020,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -977,7 +1037,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -993,7 +1054,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625612,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1009,7 +1071,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789636459,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1025,7 +1088,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762037,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1041,7 +1105,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1057,7 +1122,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789618188,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1073,7 +1139,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411429,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1089,7 +1156,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244417,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1105,7 +1173,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244409,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1121,7 +1190,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244418,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1137,7 +1207,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244411,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1153,7 +1224,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625613,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1169,7 +1241,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625626,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1185,7 +1258,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789618190,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1201,7 +1275,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1217,7 +1292,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625481,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1233,7 +1309,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625481,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1249,7 +1326,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1265,7 +1343,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625546,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1281,7 +1360,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1785909313,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1297,7 +1377,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411429,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1313,7 +1394,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762035,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1329,7 +1411,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244420,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1345,7 +1428,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1786411429,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1361,7 +1445,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789625481,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1377,7 +1462,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1784519176,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1393,7 +1479,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1788244409,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1409,7 +1496,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1789618190,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1425,7 +1513,8 @@ expression: result
     "size_bytes": null,
     "installed_at": 1783762035,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1441,7 +1530,8 @@ expression: result
     "size_bytes": null,
     "installed_at": null,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1457,7 +1547,8 @@ expression: result
     "size_bytes": null,
     "installed_at": null,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1473,7 +1564,8 @@ expression: result
     "size_bytes": null,
     "installed_at": null,
     "path": null,
-    "auto_updates": true
+    "auto_updates": true,
+    "uninstall_blocked": null
   },
   {
     "key": {
@@ -1489,6 +1581,7 @@ expression: result
     "size_bytes": null,
     "installed_at": null,
     "path": null,
-    "auto_updates": false
+    "auto_updates": false,
+    "uninstall_blocked": null
   }
 ]

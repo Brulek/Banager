@@ -305,6 +305,7 @@ describe("SnapshotStatus", () => {
             installed_at: null,
             path: null,
             auto_updates: false,
+            uninstall_blocked: null,
           },
         ],
       }),

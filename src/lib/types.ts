@@ -52,7 +52,17 @@ export interface InstalledArtifact {
   installed_at: number | null;
   path: string | null;
   auto_updates: boolean;
+  uninstall_blocked: UninstallBlocked | null;
 }
+/**
+ * Why the tool itself will refuse to uninstall this one package. Mirrors
+ * `UninstallBlocked` in crates/canager-core/src/model.rs: bare-string unit
+ * variants. Only `Pinned` exists, produced by brew's `parse_info_installed`
+ * (from `brew info --installed --json=v2`'s `pinned: true`). Read through
+ * `UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over this
+ * union, so a variant added here without copy fails `tsc`.
+ */
+export type UninstallBlocked = "Pinned";
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,

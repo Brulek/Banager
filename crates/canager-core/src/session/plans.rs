@@ -5,7 +5,9 @@
 use super::{IssuedPlan, PlanId, Session, SubmitError};
 use crate::adapters::AdapterError;
 use crate::events::OpId;
-use crate::model::{OpKind, OpRequest, UpdateBlocked, UpdateCandidate};
+use crate::model::{
+    InstalledArtifact, OpKind, OpRequest, UninstallBlocked, UpdateBlocked, UpdateCandidate,
+};
 use std::time::{Duration, Instant};
 
 /// How long a previewed plan stays submittable. Ten minutes is long
@@ -72,12 +74,10 @@ pub(crate) struct StoredPlan {
 /// candidate for exactly that package says so (`UpdateCandidate.blocked`).
 ///
 /// Only `Upgrade`, because `blocked` lives on an update candidate and so
-/// speaks only for packages the tool listed as outdated. Homebrew refuses
-/// to uninstall a pinned package too (`uninstall.rb:48-49` and
-/// `cask/uninstall.rb:42-44` in 7.0.6, without `--force`), but a pinned
-/// package that is up to date has no candidate to carry that, so it needs
-/// a signal on `InstalledArtifact` instead (backlog). A package with no
-/// candidate passes, as it did before this existed.
+/// speaks only for packages the tool listed as outdated. The uninstall
+/// refusal is read from the inventory instead (`blocked_uninstall`), since
+/// a pinned package that is up to date has no candidate to carry it. A
+/// package with no candidate passes, as it did before this existed.
 fn blocked_upgrade(updates: &[UpdateCandidate], req: &OpRequest) -> Option<UpdateBlocked> {
     if req.kind != OpKind::Upgrade {
         return None;
@@ -90,6 +90,28 @@ fn blocked_upgrade(updates: &[UpdateCandidate], req: &OpRequest) -> Option<Updat
                 && u.key.name == req.name
         })
         .and_then(|u| u.blocked)
+}
+
+/// `blocked_upgrade`'s twin for `Uninstall`: why the tool will refuse to
+/// uninstall exactly the package `req` names, as the snapshot's inventory
+/// entry for it says (`InstalledArtifact.uninstall_blocked`, set for a
+/// pinned Homebrew formula or cask by `parse_info_installed`). Matched on
+/// instance, kind and name like the upgrade gate, so a pinned formula does
+/// not block the cask of the same name, nor the same formula in another
+/// prefix. A package the snapshot does not list passes: this gate only
+/// ever refuses what the tool itself would.
+fn blocked_uninstall(artifacts: &[InstalledArtifact], req: &OpRequest) -> Option<UninstallBlocked> {
+    if req.kind != OpKind::Uninstall {
+        return None;
+    }
+    artifacts
+        .iter()
+        .find(|a| {
+            a.key.instance_id == req.instance_id
+                && a.key.kind == req.artifact_kind
+                && a.key.name == req.name
+        })
+        .and_then(|a| a.uninstall_blocked)
 }
 
 impl Session {
@@ -108,9 +130,10 @@ impl Session {
         // between and stamp the plan with a generation belonging to a
         // different instance.
         //
-        // The package's own verdict (`blocked`) is read under that same
-        // lock, so all three come from the one snapshot `generation` names.
-        let (generation, instance, blocked) = {
+        // The package's own verdicts (`blocked`, `uninstall_blocked`) are
+        // read under that same lock, so all of them come from the one
+        // snapshot `generation` names.
+        let (generation, instance, blocked, uninstall_blocked) = {
             let snapshot = self.snapshot.lock().unwrap();
             (
                 snapshot.generation,
@@ -120,6 +143,7 @@ impl Session {
                     .find(|i| i.id == req.instance_id)
                     .cloned(),
                 blocked_upgrade(&snapshot.updates, req),
+                blocked_uninstall(&snapshot.artifacts, req),
             )
         };
         let instance = instance.ok_or_else(|| AdapterError::SourceGone {
@@ -158,6 +182,9 @@ impl Session {
         // only by a page that may be stale.
         if let Some(reason) = blocked {
             return Err(AdapterError::UpdateBlocked { reason });
+        }
+        if let Some(reason) = uninstall_blocked {
+            return Err(AdapterError::UninstallBlocked { reason });
         }
         let adapter = self.adapters.get(&instance.adapter_id).ok_or_else(|| {
             AdapterError::Refused(format!("no adapter registered for {}", instance.adapter_id))
@@ -256,6 +283,9 @@ impl Session {
         if let Some(reason) = blocked_upgrade(&snapshot.updates, &stored.issued.plan.request) {
             return Err(SubmitError::UpdateBlocked { reason });
         }
+        if let Some(reason) = blocked_uninstall(&snapshot.artifacts, &stored.issued.plan.request) {
+            return Err(SubmitError::UninstallBlocked { reason });
+        }
         Ok(())
     }
 }
@@ -266,9 +296,9 @@ mod tests {
     use crate::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use crate::events::{EventSink, OpId, VecSink};
     use crate::model::{
-        ArtifactKey, ArtifactKind, InstalledArtifact, ManagerInstance, OpKind, OpRequest, Outcome,
-        Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateBlocked, UpdateCandidate,
-        UpdateChannel,
+        ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, OpKind,
+        OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, SearchHit, Unavailable,
+        UninstallBlocked, UpdateBlocked, UpdateCandidate, UpdateChannel,
     };
     use crate::runner::HostEnv;
     use crate::session::test_support;
@@ -295,6 +325,7 @@ mod tests {
         meta: AdapterMeta,
         instances: std::sync::Mutex<Vec<ManagerInstance>>,
         updates: std::sync::Mutex<Vec<UpdateCandidate>>,
+        artifacts: std::sync::Mutex<Vec<InstalledArtifact>>,
         plan_gate: std::sync::Mutex<Option<PlanGate>>,
     }
 
@@ -304,8 +335,14 @@ mod tests {
                 meta: test_support::fake_adapter_meta("fake"),
                 instances: std::sync::Mutex::new(instances),
                 updates: std::sync::Mutex::new(Vec::new()),
+                artifacts: std::sync::Mutex::new(Vec::new()),
                 plan_gate: std::sync::Mutex::new(None),
             })
+        }
+
+        /// What the next `inventory()` reports.
+        fn set_artifacts(&self, artifacts: Vec<InstalledArtifact>) {
+            *self.artifacts.lock().unwrap() = artifacts;
         }
 
         /// What the next `check_updates()` reports.
@@ -350,9 +387,18 @@ mod tests {
 
         async fn inventory(
             &self,
-            _inst: &ManagerInstance,
+            inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-            Ok(Vec::new())
+            // Only this instance's artifacts, for the reason
+            // `check_updates` below gives.
+            Ok(self
+                .artifacts
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|a| a.key.instance_id == inst.id)
+                .cloned()
+                .collect())
         }
 
         async fn check_updates(
@@ -776,6 +822,139 @@ mod tests {
             session.submit(issued.id),
             Err(SubmitError::UpdateBlocked {
                 reason: UpdateBlocked::Pinned,
+            }),
+        );
+        assert!(session.operations().is_empty());
+    }
+
+    /// An installed `name` of `kind` on `instance_id`, as an inventory of
+    /// that source would report it.
+    fn installed_on(
+        instance_id: &str,
+        kind: ArtifactKind,
+        name: &str,
+        uninstall_blocked: Option<UninstallBlocked>,
+    ) -> InstalledArtifact {
+        InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: instance_id.to_string(),
+                kind,
+                name: name.to_string(),
+            },
+            display_name: name.to_string(),
+            version: "1.0".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked,
+        }
+    }
+
+    fn uninstall_on(instance_id: &str, kind: ArtifactKind, name: &str) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            ..upgrade_on(instance_id, kind, name)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_issue_plan_refuses_an_uninstall_the_tool_will_refuse_for_that_package() {
+        // `brew uninstall` refuses a pinned formula without `--force` and
+        // still exits 0 (`UninstallBlocked::Pinned`). `jq` is up to date,
+        // so it has no update candidate: the refusal must come from the
+        // inventory. Its unpinned sibling, the same formula in another
+        // prefix, and the cask of the same name all still plan, so the
+        // gate matches instance, kind and name.
+        let adapter = FakeAdapter::new(vec![
+            test_support::make_instance("fake", "fake:1"),
+            test_support::make_instance("fake", "fake:2"),
+        ]);
+        adapter.set_artifacts(vec![
+            installed_on(
+                "fake:1",
+                ArtifactKind::Formula,
+                "jq",
+                Some(UninstallBlocked::Pinned),
+            ),
+            installed_on("fake:1", ArtifactKind::Formula, "glib", None),
+            installed_on("fake:1", ArtifactKind::Cask, "jq", None),
+            installed_on("fake:2", ArtifactKind::Formula, "jq", None),
+        ]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        match session
+            .issue_plan(&uninstall_on("fake:1", ArtifactKind::Formula, "jq"))
+            .await
+        {
+            Err(AdapterError::UninstallBlocked { reason }) => {
+                assert_eq!(reason, UninstallBlocked::Pinned);
+            }
+            other => panic!("expected UninstallBlocked(Pinned) for jq, got {other:?}"),
+        }
+        for (instance_id, kind, name) in [
+            ("fake:1", ArtifactKind::Formula, "glib"),
+            ("fake:1", ArtifactKind::Cask, "jq"),
+            ("fake:2", ArtifactKind::Formula, "jq"),
+        ] {
+            session
+                .issue_plan(&uninstall_on(instance_id, kind, name))
+                .await
+                .unwrap_or_else(|e| panic!("{name} ({kind:?}) on {instance_id} must plan: {e:?}"));
+        }
+        // An upgrade is not an uninstall: the inventory's verdict speaks
+        // only for `Uninstall`; the upgrade gate reads the candidate.
+        session
+            .issue_plan(&upgrade_on("fake:1", ArtifactKind::Formula, "jq"))
+            .await
+            .expect("uninstall_blocked does not refuse an upgrade");
+        assert!(
+            session.operations().is_empty(),
+            "a refused plan must never reach the OperationManager"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_submit_is_refused_once_the_package_became_uninstall_blocked() {
+        // The re-check at submit time covers the inventory too: `jq` was
+        // pinned between the preview and the click, and a refresh saw it.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "jq",
+            None,
+        )]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter.clone()], None);
+        let generation = session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await
+            .generation;
+        let issued = session
+            .issue_plan(&uninstall_on("fake:1", ArtifactKind::Formula, "jq"))
+            .await
+            .expect("issue_plan while jq was not pinned");
+
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Formula,
+            "jq",
+            Some(UninstallBlocked::Pinned),
+        )]);
+        refresh_and_expect_a_new_generation(&session, generation).await;
+
+        assert_eq!(
+            session.submit(issued.id),
+            Err(SubmitError::UninstallBlocked {
+                reason: UninstallBlocked::Pinned,
             }),
         );
         assert!(session.operations().is_empty());

@@ -22,6 +22,7 @@ import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
 import { CommandPreview } from "../components/CommandPreview";
+import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Dialog } from "../components/ui/Dialog";
 import type {
   ArtifactKey,
@@ -119,39 +120,6 @@ interface Batch {
 
 function hasIssuedPlan(batch: Batch): boolean {
   return batch.items.some((item) => item.issued !== null);
-}
-
-/**
- * What `{{command}}` is translated to first, so the sentence can be cut
- * around it: a private-use character, which neither en.json nor
- * zh-CN.json contains. The command itself never passes through `t`, so
- * nothing in it can be taken for this.
- */
-const COMMAND_SLOT = "";
-
-/**
- * A translated sentence with `command` set into it as code rather than as
- * a word of the sentence, so a reader who does not use Terminal can see
- * where the command starts and stops -- inline, "run brew unpin glib in
- * Terminal;" invites copying "in Terminal;" along with it. `select-all`
- * makes one click select the whole command and nothing else.
- *
- * A translation that does not hold `COMMAND_SLOT` exactly once (it
- * dropped or repeated `{{command}}`) gets the command back as plain text
- * in every place the slot is, rather than a `<code>` in the wrong one.
- */
-function withCommand(sentence: string, command: string): ReactNode {
-  const parts = sentence.split(COMMAND_SLOT);
-  if (parts.length !== 2) return parts.join(command);
-  return (
-    <>
-      {parts[0]}
-      <code className="select-all rounded bg-[var(--color-hover)] px-1 font-mono text-[var(--color-foreground)]">
-        {command}
-      </code>
-      {parts[1]}
-    </>
-  );
 }
 
 export function UpdatesPage() {

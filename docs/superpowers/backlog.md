@@ -132,12 +132,16 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   四种情况各有一个端到端测试（`tests/ops_upgrade_version_test.rs`）。代价是每次升级多一次清单读取；
   brew 在后台 `brew update` 还没跑完时这次读取会被拒（`IndexUpdating`），那时照旧只看在不在。
   **仍未做**：更新页事先不知道这些状态，行上照样有「更新」按钮，点了才知道；要提前标出仍得多读上面那几份输出。
-- **卸载被固定的包**：Homebrew 7.0.6 不加 `--force` 时同样拒绝（`uninstall.rb:48-49`、
-  `cask/uninstall.rb:42-44`，打一行 `Error: … is pinned. You must unpin it to uninstall.`），
-  但用的是 `onoe` 不是 `ofail`，公式这边退出 0，Canager 会得到 `StillInstalledAfterUninstall`。
-  `blocked` 只挂在可更新项上，已是最新的被固定包没有候选项可挂，所以这条要在 `InstalledArtifact`
-  上另加信号（`brew info --json=v2` 的公式与 cask 条目都有 `pinned`，`formula.rb:3140`、`cask/cask.rb:574`）。闸门
-  `blocked_upgrade` 目前只管 `Upgrade`。
+- ~~**卸载被固定的包**~~ —— **已于 2026-09-24 修复**：Homebrew 7.0.6 不加 `--force` 时拒绝卸载被固定的包
+  （`uninstall.rb:48-49`、`cask/uninstall.rb:40-44`），用的是 `onoe` 不是 `ofail`，公式这边退出 0。
+  现在从清单读 `pinned`（`brew info --installed --json=v2` 的公式与 cask 条目都有，`formula.rb:3140`、
+  `cask/cask.rb:574`），写进新字段 `InstalledArtifact.uninstall_blocked: Option<UninstallBlocked>`（唯一变体
+  `Pinned`，唯一生产方 brew 的 `parse_info_installed`）。闸门 `blocked_uninstall`（`session/plans.rs`）在
+  `issue_plan` 与 `submit` 复检里拒绝 `Uninstall`，按实例、类型、名字三者匹配；IPC 报
+  `{"kind":"uninstall_blocked"}`。已安装页该行没有「卸载」按钮，说明句替换简介，给出由该实例 `exe_path`
+  拼的 `unpin` 命令（与更新页共用 `unpinCommand`，以代码样式显示）；卸载确认框遇到这条拒绝时单独措辞。
+  Canager 不传 `--force`，也不代为解除固定。pipx 不产生它：`pipx uninstall` 照样删除被固定的工具
+  （pipx 1.17.3 `commands/uninstall.py` 不读 `pinned`）。
 - **已安装页的「有更新」徽标**（`src/pages/InstalledPage.tsx` 的 `updatableIds`）把 `snapshot.updates` 里
   每一条都算作有更新，包括被固定的和 `checkable: false` 的（一次查询失败会给每个已装包造一条）。
   这是本分支之前就有的问题，没有改。

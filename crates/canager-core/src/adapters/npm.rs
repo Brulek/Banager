@@ -511,6 +511,7 @@ fn parse_ls_global(
             installed_at: None,
             path: None,
             auto_updates: false,
+            uninstall_blocked: None,
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));

@@ -200,6 +200,36 @@ pub struct InstalledArtifact {
     pub installed_at: Option<i64>, // unix seconds
     pub path: Option<PathBuf>,
     pub auto_updates: bool,
+    /// `Some` when the tool will refuse to uninstall this package. Read
+    /// from the inventory, not the update check, so it is known for every
+    /// installed package, up to date or not. `Session::issue_plan` and
+    /// `Session::submit` refuse an `Uninstall` of an artifact that carries
+    /// one (`blocked_uninstall` in session/plans.rs), and the Installed
+    /// page hides that row's Uninstall button.
+    pub uninstall_blocked: Option<UninstallBlocked>,
+}
+
+/// Why the tool itself will refuse to uninstall this one package, although
+/// its source is writable and answering. The uninstall twin of
+/// `UpdateBlocked`: same rule for what belongs here (the tool reports the
+/// state in the output Canager already reads, here the inventory), and
+/// its own type because the two refusals have different producers. pipx
+/// pins too, but `pipx uninstall` removes a pinned tool (pipx 1.17.3's
+/// `commands/uninstall.py` never reads `pinned`), so pipx is a producer
+/// of `UpdateBlocked::Pinned` and not of this.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UninstallBlocked {
+    /// `brew pin`, for a formula or a cask. Without `--force`, which
+    /// Canager never passes, `brew uninstall` prints "Error: <name> is
+    /// pinned. You must unpin it to uninstall." and skips it
+    /// (`uninstall.rb:48-49`, `cask/uninstall.rb:40-44` in Homebrew 7.0.6).
+    /// For a formula it still exits 0, because that message goes through
+    /// `onoe`, not `ofail`, so without this Canager ran the command and
+    /// then reported `StillInstalledAfterUninstall`. Read by
+    /// `parse_info_installed` in `adapters/brew/parse.rs`, from the
+    /// `pinned` key `brew info --installed --json=v2` writes for every
+    /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
+    Pinned,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -598,6 +628,53 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
+            pinned
+        );
+    }
+
+    #[test]
+    fn test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent() {
+        // `src/lib/types.ts` spells this field `uninstall_blocked:
+        // UninstallBlocked | null` and the variant as the bare string
+        // "Pinned".
+        let artifact = InstalledArtifact {
+            key: ArtifactKey {
+                instance_id: "brew:/opt/homebrew".to_string(),
+                kind: ArtifactKind::Formula,
+                name: "glib".to_string(),
+            },
+            display_name: "glib".to_string(),
+            version: "2.88.3".to_string(),
+            reason: InstallReason::Requested,
+            description: None,
+            homepage: None,
+            size_bytes: None,
+            installed_at: None,
+            path: None,
+            auto_updates: false,
+            uninstall_blocked: None,
+        };
+        let json = serde_json::to_string(&artifact).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":null"),
+            "a removable artifact carries an explicit null, not a missing key: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
+            artifact
+        );
+
+        let pinned = InstalledArtifact {
+            uninstall_blocked: Some(UninstallBlocked::Pinned),
+            ..artifact
+        };
+        let json = serde_json::to_string(&pinned).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":\"Pinned\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
             pinned
         );
     }

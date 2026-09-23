@@ -1,8 +1,8 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UpdateBlocked, UpdateCandidate,
-    UpdateChannel, Warning,
+    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UninstallBlocked, UpdateBlocked,
+    UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
 use async_trait::async_trait;
@@ -161,6 +161,15 @@ pub enum AdapterError {
     /// the reason, never as this `Display`.
     #[error("the tool will refuse to update this package ({reason:?})")]
     UpdateBlocked { reason: UpdateBlocked },
+    /// `Session::issue_plan` was asked to plan an `Uninstall` of a package
+    /// whose own inventory entry says the tool will refuse it
+    /// (`InstalledArtifact.uninstall_blocked`). The uninstall twin of
+    /// `UpdateBlocked`: the Installed page hides the button for such a
+    /// row, so this reaches a person only through a stale page, and
+    /// `plan_operation_error` in src-tauri/src/ipc.rs sends it as
+    /// `{"kind": "uninstall_blocked"}` with the reason.
+    #[error("the tool will refuse to uninstall this package ({reason:?})")]
+    UninstallBlocked { reason: UninstallBlocked },
     /// `Session::issue_plan` was asked to plan against an instance that is
     /// not in the snapshot at all -- the source was removed between the
     /// refresh that drew the row and the click. The `issue_plan` twin of
@@ -829,6 +838,7 @@ mod tests {
             installed_at: None,
             path: None,
             auto_updates: false,
+            uninstall_blocked: None,
         }
     }
 

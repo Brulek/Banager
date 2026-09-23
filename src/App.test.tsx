@@ -38,6 +38,7 @@ const snapshot: Snapshot = {
       installed_at: 1783762037,
       path: null,
       auto_updates: false,
+      uninstall_blocked: null,
     },
   ],
   updates: [],

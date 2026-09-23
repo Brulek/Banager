@@ -8,6 +8,7 @@ import type {
   ManagerInstance,
   ReadOnlyReason,
   SourceError,
+  UninstallBlocked,
   Unavailable,
   UpdateBlocked,
 } from "./types";
@@ -240,6 +241,61 @@ export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
 }
 
+/**
+ * The command that releases the pin on `key`, for the user to run
+ * themselves: Canager does not unpin, which would be a new write
+ * operation. Both `UPDATE_BLOCKED_KEYS.Pinned` and
+ * `UNINSTALL_BLOCKED_KEYS.Pinned` build their command with this. Their
+ * producers are brew's `parse_outdated` and `parse_info_installed`
+ * (crates/canager-core/src/adapters/brew/parse.rs) and pipx's
+ * `parse_outdated` (adapters/pipx.rs), so the command is built for
+ * whichever tool owns the key. The tool is the instance's `adapter_id`; for an instance
+ * the snapshot lacks, the part of the key's `instance_id` before any
+ * `:`, which is the adapter id (`instance_id` in
+ * crates/canager-core/src/model.rs writes it first and asserts it has
+ * no `:` of its own).
+ *
+ * pipx: `pipx unpin <name>`. That is how pipx itself spells it when it
+ * refuses a pinned upgrade ("Run `pipx unpin {result.environment}` to
+ * unpin it.", pipx 1.17.3's `commands/upgrade.py:473`), and `unpin`
+ * takes one positional ENVIRONMENT and nothing else (`_add_unpin`,
+ * `main.py:969-978`). The name is the one `parse_outdated` read off
+ * the line, and pipx canonicalizes it into the venv's directory name
+ * (`_venv_dir`, `main.py:1752-1753`; `get_venv_dir`, `venv.py:142-144`).
+ * The program is the instance's `exe_path`, the pipx Canager found on
+ * its own PATH (`resolve_exe` in `PipxAdapter::detect`), which
+ * Terminal's PATH may not include.
+ *
+ * brew: `--cask` because `brew unpin <name>` resolves a formula first
+ * (`to_resolved_formulae_to_casks` in Homebrew's `cmd/unpin.rb`), and
+ * a formula can share a cask's name.
+ *
+ * The program is the instance's `exe_path`, the absolute path of the
+ * brew that owns this package, not a bare `brew`: Canager finds brew
+ * by absolute path (`CANDIDATE_PATHS` in
+ * crates/canager-core/src/adapters/brew/mod.rs) and lists
+ * /opt/homebrew and /usr/local side by side, while Terminal's `brew`
+ * is whichever one PATH finds first, or none. On a Mac migrated from
+ * Intel, a formula pinned in /usr/local would get "not pinned" from
+ * /opt/homebrew/bin/brew and the row would say Pinned for good.
+ * `/usr/local/bin/brew unpin` runs on Apple silicon: Homebrew refuses
+ * that prefix only in `perform_preinstall_checks` (its
+ * `Library/Homebrew/install.rb`), which `unpin` never calls. Every
+ * token goes through `displayToken`, as `CommandPreview` does, so a
+ * path with a space in it still pastes as one argument.
+ */
+export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undefined): string {
+  const adapterId = instance?.adapter_id ?? key.instance_id.split(":")[0];
+  // The bare program name only for an instance the snapshot does not
+  // have, which `UpdateBlockedCopy.command`'s doc says cannot happen.
+  if (adapterId === "pipx") {
+    return [instance?.exe_path ?? "pipx", "unpin", key.name].map(displayToken).join(" ");
+  }
+  const program = instance?.exe_path ?? "brew";
+  const args = key.kind === "Cask" ? ["unpin", "--cask", key.name] : ["unpin", key.name];
+  return [program, ...args].map(displayToken).join(" ");
+}
+
 /** What `UPDATE_BLOCKED_KEYS` holds for one reason. */
 interface UpdateBlockedCopy {
   /** The row's badge on the Updates page, in place of "Update". */
@@ -296,45 +352,6 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // producers only brew ever sets `auto_updates` (`parse_list` in
     // crates/canager-core/src/adapters/pipx.rs writes `false`).
     selfUpdatingDescription: "updates.blocked.Pinned.descriptionSelfUpdating",
-    // The command that releases the pin, for the user to run themselves:
-    // Canager does not unpin, which would be a new write operation.
-    // `Pinned` has two producers, brew's and pipx's `parse_outdated`
-    // (crates/canager-core/src/adapters/brew/parse.rs and
-    // adapters/pipx.rs), so the command is built for whichever tool owns
-    // the key. The tool is the instance's `adapter_id`; for an instance
-    // the snapshot lacks, the part of the key's `instance_id` before any
-    // `:`, which is the adapter id (`instance_id` in
-    // crates/canager-core/src/model.rs writes it first and asserts it has
-    // no `:` of its own).
-    //
-    // pipx: `pipx unpin <name>`. That is how pipx itself spells it when it
-    // refuses a pinned upgrade ("Run `pipx unpin {result.environment}` to
-    // unpin it.", pipx 1.17.3's `commands/upgrade.py:473`), and `unpin`
-    // takes one positional ENVIRONMENT and nothing else (`_add_unpin`,
-    // `main.py:969-978`). The name is the one `parse_outdated` read off
-    // the line, and pipx canonicalizes it into the venv's directory name
-    // (`_venv_dir`, `main.py:1752-1753`; `get_venv_dir`, `venv.py:142-144`).
-    // The program is the instance's `exe_path`, the pipx Canager found on
-    // its own PATH (`resolve_exe` in `PipxAdapter::detect`), which
-    // Terminal's PATH may not include.
-    //
-    // brew: `--cask` because `brew unpin <name>` resolves a formula first
-    // (`to_resolved_formulae_to_casks` in Homebrew's `cmd/unpin.rb`), and
-    // a formula can share a cask's name.
-    //
-    // The program is the instance's `exe_path`, the absolute path of the
-    // brew that owns this package, not a bare `brew`: Canager finds brew
-    // by absolute path (`CANDIDATE_PATHS` in
-    // crates/canager-core/src/adapters/brew/mod.rs) and lists
-    // /opt/homebrew and /usr/local side by side, while Terminal's `brew`
-    // is whichever one PATH finds first, or none. On a Mac migrated from
-    // Intel, a formula pinned in /usr/local would get "not pinned" from
-    // /opt/homebrew/bin/brew and the row would say Pinned for good.
-    // `/usr/local/bin/brew unpin` runs on Apple silicon: Homebrew refuses
-    // that prefix only in `perform_preinstall_checks` (its
-    // `Library/Homebrew/install.rb`), which `unpin` never calls. Every
-    // token goes through `displayToken`, as `CommandPreview` does, so a
-    // path with a space in it still pastes as one argument.
     // The description's promise that the update appears "at the latest
     // the next time you start Canager" rests on the refresh every start
     // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
@@ -345,17 +362,7 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // one is `SnapshotStatus`'s retry after a failed refresh), and closing
     // the window quits, since `run` in src-tauri/src/lib.rs has no
     // `ExitRequested` handler to keep the app alive without one.
-    command: (key, instance) => {
-      const adapterId = instance?.adapter_id ?? key.instance_id.split(":")[0];
-      // The bare name only for an instance the snapshot does not have,
-      // which `command`'s doc says cannot happen.
-      if (adapterId === "pipx") {
-        return [instance?.exe_path ?? "pipx", "unpin", key.name].map(displayToken).join(" ");
-      }
-      const program = instance?.exe_path ?? "brew";
-      const args = key.kind === "Cask" ? ["unpin", "--cask", key.name] : ["unpin", key.name];
-      return [program, ...args].map(displayToken).join(" ");
-    },
+    command: unpinCommand,
     refused: "updates.blocked.Pinned.refused",
   },
 };
@@ -372,6 +379,66 @@ export function parseUpdateBlocked(message: string): UpdateBlocked | null {
   if (!p || p.kind !== "update_blocked" || typeof p.reason !== "string") return null;
   return Object.prototype.hasOwnProperty.call(UPDATE_BLOCKED_KEYS, p.reason)
     ? (p.reason as UpdateBlocked)
+    : null;
+}
+
+/** What `UNINSTALL_BLOCKED_KEYS` holds for one reason. */
+interface UninstallBlockedCopy {
+  /** The Installed page row's description in place of the package's blurb:
+   *  why there is no Uninstall button, and what the user can do about it.
+   *  The page fills `{{source}}` with the owning source's label and
+   *  `{{command}}` with `command` below, rendered as code
+   *  (`withCommand` in src/components/withCommand.tsx). */
+  description: string;
+  /** The command both sentences' `{{command}}` stands for. */
+  command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
+  /** The uninstall dialog's sentence for the gate's `uninstall_blocked`
+   *  refusal, which only a stale Installed page can reach. Filled the same
+   *  way as `description`. */
+  refused: string;
+}
+
+/**
+ * The copy for each reason the tool will refuse to uninstall one package
+ * (`InstalledArtifact.uninstall_blocked`). A `Record` over the whole
+ * `UninstallBlocked` union, so a variant added there without copy here
+ * fails `tsc`.
+ */
+export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCopy> = {
+  Pinned: {
+    // The promise that Uninstall comes back "the next time it checks, at
+    // the latest the next time you start Canager" rests on every refresh
+    // reading the inventory again (`adapter.inventory` in `refresh_round`,
+    // crates/canager-core/src/session/refresh.rs), on `parse_info_installed`
+    // reading `pinned` afresh each time, and on the refresh every start
+    // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts).
+    description: "installed.blocked.Pinned.description",
+    // `UninstallBlocked::Pinned`'s only producer is brew
+    // (`parse_info_installed`), so this is always `brew unpin`, built from
+    // the owning instance's `exe_path`, `--cask` for a cask.
+    command: unpinCommand,
+    refused: "installed.blocked.Pinned.refused",
+  },
+};
+
+/**
+ * Reads the `{"kind": "uninstall_blocked", "reason": ...}` payload
+ * `uninstall_blocked_json` in src-tauri/src/ipc.rs sends when
+ * `Session::issue_plan` or `Session::submit` refuses to uninstall one
+ * package. `null` for anything else, including a reason this build has no
+ * copy for.
+ *
+ * Only the uninstall dialog (src/components/UninstallDialog.tsx) can
+ * receive this payload, because `blocked_uninstall` in
+ * crates/canager-core/src/session/plans.rs refuses nothing but an
+ * `Uninstall`. It reads it before `planErrorMessage`, because its sentence
+ * carries the unpin command as code, and a plain string cannot.
+ */
+export function parseUninstallBlocked(message: string): UninstallBlocked | null {
+  const p = parseErrorPayload(message);
+  if (!p || p.kind !== "uninstall_blocked" || typeof p.reason !== "string") return null;
+  return Object.prototype.hasOwnProperty.call(UNINSTALL_BLOCKED_KEYS, p.reason)
+    ? (p.reason as UninstallBlocked)
     : null;
 }
 

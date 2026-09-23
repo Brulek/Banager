@@ -53,6 +53,7 @@ pub fn parse_tags(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact
             installed_at: None,
             path: None,
             auto_updates: false,
+            uninstall_blocked: None,
         })
         .collect())
 }

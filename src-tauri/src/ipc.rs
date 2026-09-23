@@ -189,6 +189,7 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
             unavailable,
         } => not_actionable_json(read_only, unavailable),
         AdapterError::UpdateBlocked { reason } => update_blocked_json(reason),
+        AdapterError::UninstallBlocked { reason } => uninstall_blocked_json(reason),
         // The same bare kind `submit_operation_error` sends for
         // `SubmitError::SourceGone`: one situation, one sentence.
         AdapterError::SourceGone { .. } => serde_json::json!({ "kind": "source_gone" }).to_string(),
@@ -240,6 +241,15 @@ fn update_blocked_json(reason: canager_core::model::UpdateBlocked) -> String {
     serde_json::json!({ "kind": "update_blocked", "reason": reason }).to_string()
 }
 
+/// `update_blocked_json`'s twin for an uninstall the tool will refuse
+/// (`InstalledArtifact.uninstall_blocked`), from `issue_plan` or `submit`
+/// alike. A kind of its own, not `update_blocked` with a flag, because the
+/// front end words the two differently: `parseUninstallBlocked` in
+/// `src/lib/sources.ts` reads this one, for the uninstall dialog.
+fn uninstall_blocked_json(reason: canager_core::model::UninstallBlocked) -> String {
+    serde_json::json!({ "kind": "uninstall_blocked", "reason": reason }).to_string()
+}
+
 /// `plan_operation_error`'s counterpart for `Session::submit`.
 ///
 /// Every variant goes out as the same small JSON envelope
@@ -265,6 +275,9 @@ fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
             unavailable,
         } => not_actionable_json(read_only, unavailable),
         canager_core::session::SubmitError::UpdateBlocked { reason } => update_blocked_json(reason),
+        canager_core::session::SubmitError::UninstallBlocked { reason } => {
+            uninstall_blocked_json(reason)
+        }
         canager_core::session::SubmitError::SourceGone => {
             serde_json::json!({ "kind": "source_gone" }).to_string()
         }
@@ -1279,6 +1292,15 @@ mod tests {
             v,
             serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
         );
+        // A pinned package on a stale Installed page: a kind of its own,
+        // for `parseUninstallBlocked` in src/lib/sources.ts to word.
+        let v = parse(AdapterError::UninstallBlocked {
+            reason: canager_core::model::UninstallBlocked::Pinned,
+        });
+        assert_eq!(
+            v,
+            serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })
+        );
 
         // Errors no `plan()` returns: a broken adapter contract, so
         // Canager's own bug, and none of their text reaches the wire.
@@ -1452,6 +1474,14 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&blocked)
                 .unwrap_or_else(|e| panic!("expected JSON, got {blocked:?} ({e})")),
             serde_json::json!({ "kind": "update_blocked", "reason": "Pinned" })
+        );
+        let blocked = submit_operation_error(SubmitError::UninstallBlocked {
+            reason: canager_core::model::UninstallBlocked::Pinned,
+        });
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&blocked)
+                .unwrap_or_else(|e| panic!("expected JSON, got {blocked:?} ({e})")),
+            serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })
         );
 
         let gone = submit_operation_error(SubmitError::SourceGone);

@@ -39,7 +39,7 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, ReadOnlyReason, Unavailable,
-    UpdateBlocked, UpdateCandidate,
+    UninstallBlocked, UpdateBlocked, UpdateCandidate,
 };
 use crate::ops::{OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
@@ -188,6 +188,13 @@ pub enum SubmitError {
     /// src-tauri/src/ipc.rs).
     #[error("the tool will refuse to update this package now ({reason:?})")]
     UpdateBlocked { reason: UpdateBlocked },
+    /// The same re-check for an `Uninstall`: a refresh since the preview
+    /// says the tool will now refuse to uninstall this package (it was
+    /// pinned in the meantime). Goes out as the `uninstall_blocked`
+    /// payload `AdapterError::UninstallBlocked` uses
+    /// (`submit_operation_error` in src-tauri/src/ipc.rs).
+    #[error("the tool will refuse to uninstall this package now ({reason:?})")]
+    UninstallBlocked { reason: UninstallBlocked },
     /// The same check, for the case where the instance is not in the
     /// current snapshot at all: the source was uninstalled, or the last
     /// detection stopped reporting it. There is no read-only/unavailable

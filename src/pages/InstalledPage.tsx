@@ -6,9 +6,16 @@ import { useUiStore, artifactKeyId } from "../store/ui";
 import { ArtifactRow } from "../components/ArtifactRow";
 import { SourceNotices } from "../components/SourceNotices";
 import { UninstallDialog } from "../components/UninstallDialog";
-import { ADAPTER_LABEL_KEYS, canWrite, isAvailable, sourceNoticesFor } from "../lib/sources";
+import {
+  ADAPTER_LABEL_KEYS,
+  canWrite,
+  isAvailable,
+  sourceNoticesFor,
+  UNINSTALL_BLOCKED_KEYS,
+} from "../lib/sources";
 import type { SourceNoticeSpec } from "../lib/sources";
-import type { InstalledArtifact, OpRequest } from "../lib/types";
+import type { InstalledArtifact, ManagerInstance, OpRequest } from "../lib/types";
+import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 
 // A group header on its own is one line. A group header that also carries a
 // SourceNotice (a read-only source's explanation, a silent source's
@@ -46,6 +53,12 @@ type ListItem =
       // §2.5); this is what stops the button being offered in the first
       // place.
       actionable: boolean;
+      // The source this row belongs to, and its name in the user's
+      // language: a row the tool will not uninstall
+      // (`uninstall_blocked`) says so in a sentence that names the source
+      // and gives the command built from this instance's `exe_path`.
+      instance: ManagerInstance;
+      sourceLabel: string;
     }
   | { type: "toggle"; instanceId: string; hiddenCount: number; expanded: boolean };
 
@@ -122,7 +135,7 @@ export function InstalledPage() {
       const primary = artifacts.filter((a) => a.reason !== "Dependency");
       const dependencies = artifacts.filter((a) => a.reason === "Dependency");
       for (const artifact of primary) {
-        result.push({ type: "artifact", artifact, actionable });
+        result.push({ type: "artifact", artifact, actionable, instance, sourceLabel: label });
       }
       if (dependencies.length > 0) {
         // The toggle row is pushed in *both* states, not only while the
@@ -131,7 +144,7 @@ export function InstalledPage() {
         const expanded = expandedDependencies.includes(instance.id);
         if (expanded) {
           for (const artifact of dependencies) {
-            result.push({ type: "artifact", artifact, actionable });
+            result.push({ type: "artifact", artifact, actionable, instance, sourceLabel: label });
           }
         }
         result.push({
@@ -245,7 +258,25 @@ export function InstalledPage() {
                           })
                         : item.artifact.display_name
                     }
-                    description={item.artifact.description ?? t("installed.noDescription")}
+                    // A row the tool will not uninstall says why in place
+                    // of its blurb, as a pinned row does on the Updates
+                    // page: it is the one thing the user has to read to
+                    // understand why there is no Uninstall button.
+                    description={
+                      item.artifact.uninstall_blocked !== null
+                        ? withCommand(
+                            t(UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].description, {
+                              command: COMMAND_SLOT,
+                              source: item.sourceLabel,
+                            }),
+                            UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].command(
+                              item.artifact.key,
+                              item.instance,
+                            ),
+                          )
+                        : (item.artifact.description ?? t("installed.noDescription"))
+                    }
+                    wrapDescription={item.artifact.uninstall_blocked !== null}
                     badgeText={
                       updatableIds.has(artifactKeyId(item.artifact.key))
                         ? t("installed.updateAvailable")
@@ -254,9 +285,17 @@ export function InstalledPage() {
                     badgeVariant={
                       updatableIds.has(artifactKeyId(item.artifact.key)) ? "info" : "neutral"
                     }
-                    primaryActionLabel={item.actionable ? t("installed.uninstall") : undefined}
+                    // The source's verdict and the package's own: a pinned
+                    // Homebrew package is refused by `brew uninstall`
+                    // (`UninstallBlocked::Pinned`), and `Session::issue_plan`
+                    // refuses it in Rust whatever this page shows.
+                    primaryActionLabel={
+                      item.actionable && item.artifact.uninstall_blocked === null
+                        ? t("installed.uninstall")
+                        : undefined
+                    }
                     onPrimaryAction={
-                      !item.actionable
+                      !item.actionable || item.artifact.uninstall_blocked !== null
                         ? undefined
                         : () =>
                             setUninstallTarget({

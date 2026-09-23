@@ -1,10 +1,16 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
-import { ADAPTER_LABEL_KEYS, planErrorMessage } from "../lib/sources";
+import {
+  ADAPTER_LABEL_KEYS,
+  parseUninstallBlocked,
+  planErrorMessage,
+  UNINSTALL_BLOCKED_KEYS,
+} from "../lib/sources";
 import type { OpRequest } from "../lib/types";
 import { warningTexts } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
+import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { Dialog } from "./ui/Dialog";
 
 export interface UninstallDialogProps {
@@ -72,6 +78,28 @@ export function UninstallDialog({
   // over an empty list.
   const planWarnings = warningTexts(t, plan?.warnings ?? []);
 
+  // The one refusal this dialog words itself rather than through
+  // `planErrorMessage`: the tool will not uninstall this package (a pinned
+  // Homebrew formula or cask, `uninstall_blocked` in
+  // crates/canager-core/src/session/plans.rs), which only a stale Installed
+  // page can reach. Its sentence is not "couldn't check what this would
+  // affect" -- Canager did check -- and it carries the unpin command, set
+  // apart as code as on the Installed page's row.
+  function refusalText(raw: string, frame: "uninstall.planError" | "uninstall.submitError") {
+    const blocked = parseUninstallBlocked(raw);
+    if (blocked === null) {
+      return t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
+    }
+    const copy = UNINSTALL_BLOCKED_KEYS[blocked];
+    return withCommand(
+      t(copy.refused, { command: COMMAND_SLOT, source: sourceLabel }),
+      copy.command(
+        { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name },
+        instance,
+      ),
+    );
+  }
+
   function handleConfirm() {
     if (!issued) return;
     const session = sessionRef.current;
@@ -134,17 +162,13 @@ export function UninstallDialog({
 
         {planMutation.isError && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {t("uninstall.planError", {
-              message: planErrorMessage(t, planMutation.error.message, sourceLabel),
-            })}
+            {refusalText(planMutation.error.message, "uninstall.planError")}
           </p>
         )}
 
         {submitMutation.isError && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {t("uninstall.submitError", {
-              message: planErrorMessage(t, submitMutation.error.message, sourceLabel),
-            })}
+            {refusalText(submitMutation.error.message, "uninstall.submitError")}
           </p>
         )}
 

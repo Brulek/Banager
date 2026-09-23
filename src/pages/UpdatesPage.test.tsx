@@ -527,6 +527,7 @@ describe("UpdatesPage", () => {
         installed_at: null,
         path: null,
         auto_updates: true,
+        uninstall_blocked: null,
       },
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
@@ -703,6 +704,7 @@ describe("UpdatesPage", () => {
       installed_at: null,
       path: null,
       auto_updates: false,
+      uninstall_blocked: null,
     }));
     const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
 

@@ -880,6 +880,7 @@ mod tests {
             installed_at: None,
             path: None,
             auto_updates: false,
+            uninstall_blocked: None,
         }
     }
 

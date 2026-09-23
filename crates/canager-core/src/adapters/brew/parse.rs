@@ -1,7 +1,7 @@
 use crate::adapters::AdapterError;
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UpdateBlocked,
-    UpdateCandidate, UpdateChannel,
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UninstallBlocked,
+    UpdateBlocked, UpdateCandidate, UpdateChannel,
 };
 use serde::Deserialize;
 
@@ -34,6 +34,15 @@ struct FormulaInfo {
     linked_keg: Option<String>,
     #[serde(default)]
     installed: Vec<FormulaInstalledEntry>,
+    /// `brew pin`. `brew info --json=v2` writes it for every formula
+    /// (`"pinned" => pinned?`, `formula.rb:3140` in Homebrew 7.0.6), and
+    /// casks have the same key (`CaskInfo.pinned`). Becomes
+    /// `UninstallBlocked::Pinned` in `parse_info_installed`. Defaulted for
+    /// the same reason as `OutdatedItem.pinned`: a missing key is a brew
+    /// that did not say the package is pinned, and the worst it costs is
+    /// Homebrew's own refusal.
+    #[serde(default)]
+    pinned: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +75,10 @@ struct CaskInfo {
     installed: Option<String>,
     #[serde(default)]
     auto_updates: Option<bool>,
+    /// `brew pin --cask` (`"pinned" => pinned?`, `cask/cask.rb:574`). See
+    /// `FormulaInfo.pinned`.
+    #[serde(default)]
+    pinned: bool,
 }
 
 /// Parses `brew info --installed --json=v2`. For each formula, picks the
@@ -79,6 +92,9 @@ struct CaskInfo {
 /// install-reason field in brew's JSON, so they are always `Requested`.
 ///
 /// Both top-level partitions must be present; see `InfoInstalledRoot`.
+///
+/// A pinned formula or cask gets `uninstall_blocked: Some(Pinned)`:
+/// `brew uninstall` without `--force` refuses it (`UninstallBlocked`).
 ///
 /// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
 /// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or
@@ -138,6 +154,7 @@ pub fn parse_info_installed(
             installed_at,
             path: None,
             auto_updates: false,
+            uninstall_blocked: f.pinned.then_some(UninstallBlocked::Pinned),
         });
     }
 
@@ -162,6 +179,7 @@ pub fn parse_info_installed(
             installed_at: None,
             path: None,
             auto_updates: c.auto_updates.unwrap_or(false),
+            uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
         });
     }
 
@@ -496,6 +514,86 @@ mod tests {
         let json = r#"{"formulae": [], "casks": []}"#;
         let result = parse_outdated(json, "brew:/opt/homebrew").expect("parse");
         assert!(result.is_empty());
+    }
+
+    // `brew info --installed --json=v2` writes `pinned` for every formula
+    // and every cask (Homebrew 7.0.6: `formula.rb:3140`, `cask/cask.rb:574`;
+    // the recorded `7.0.3/info-installed.json` has it, `false`, on all 93
+    // entries). A pinned package is one `brew uninstall` refuses without
+    // `--force` (`uninstall.rb:48-49`, `cask/uninstall.rb:40-44`), and the
+    // inventory is the only read that covers pinned packages that are up
+    // to date.
+
+    #[test]
+    fn parse_info_installed_marks_a_pinned_formula_and_a_pinned_cask_as_uninstall_blocked() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "glib",
+                    "linked_keg": "2.88.3",
+                    "installed": [{ "version": "2.88.3", "installed_on_request": true }],
+                    "pinned": true,
+                    "outdated": false
+                },
+                {
+                    "name": "cairo",
+                    "linked_keg": "1.18.4",
+                    "installed": [{ "version": "1.18.4", "installed_on_request": true }],
+                    "pinned": false,
+                    "outdated": false
+                }
+            ],
+            "casks": [
+                {
+                    "token": "onyx",
+                    "full_token": "onyx",
+                    "name": ["OnyX"],
+                    "installed": "5.0.2",
+                    "pinned": true,
+                    "pinned_version": "5.0.2",
+                    "outdated": false
+                }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        let blocked: Vec<_> = result
+            .iter()
+            .map(|a| (a.key.name.as_str(), a.key.kind, a.uninstall_blocked))
+            .collect();
+        assert_eq!(
+            blocked,
+            vec![
+                (
+                    "glib",
+                    ArtifactKind::Formula,
+                    Some(UninstallBlocked::Pinned)
+                ),
+                ("cairo", ArtifactKind::Formula, None),
+                ("onyx", ArtifactKind::Cask, Some(UninstallBlocked::Pinned)),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_info_installed_treats_an_entry_without_pinned_as_not_pinned() {
+        let json = r#"{
+            "formulae": [
+                {
+                    "name": "jq",
+                    "linked_keg": "1.8.2",
+                    "installed": [{ "version": "1.8.2", "installed_on_request": true }]
+                }
+            ],
+            "casks": [
+                { "token": "onyx", "installed": "5.0.2" }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/opt/homebrew").expect("parse");
+
+        assert!(result.iter().all(|a| a.uninstall_blocked.is_none()));
     }
 
     #[test]

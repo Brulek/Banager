@@ -309,6 +309,64 @@ describe("UninstallDialog", () => {
     expect(alert.textContent).not.toMatch(/not_actionable/);
   });
 
+  it("says a pinned package was not uninstalled and gives the unpin command as code", async () => {
+    // A stale Installed page can still offer Uninstall on a package pinned
+    // since the last refresh; `Session::issue_plan` refuses it
+    // (`blocked_uninstall` in crates/canager-core/src/session/plans.rs)
+    // and `uninstall_blocked_json` in src-tauri/src/ipc.rs sends this.
+    // It is not "couldn't check what this would affect": Canager did.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return {
+          generation: 1,
+          detect: "Found",
+          instances: [
+            {
+              id: "brew:/usr/local",
+              adapter_id: "brew",
+              exe_path: "/usr/local/bin/brew",
+              prefix: "/usr/local",
+              scope: "User",
+              version: "7.0.6",
+              status: { unavailable: null, notes: [] },
+              unverified_version: null,
+              read_only_reason: null,
+            },
+          ],
+          artifacts: [],
+          updates: [],
+          refreshed_at: 1,
+          stale: false,
+          errors: [],
+        };
+      }
+      if (cmd === "plan_operation") {
+        throw '{"kind":"uninstall_blocked","reason":"Pinned"}';
+      }
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog
+        open
+        onOpenChange={() => {}}
+        request={{ ...request, instance_id: "brew:/usr/local", artifact_kind: "Cask", name: "onyx" }}
+        displayName="OnyX"
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager didn't uninstall it. Nothing has been changed. To uninstall it, first run /usr/local/bin/brew unpin --cask onyx in Terminal to release the pin.",
+      ),
+    );
+    // The owning brew's own path, not whichever `brew` Terminal finds.
+    expect(screen.getByText("/usr/local/bin/brew unpin --cask onyx").tagName).toBe("CODE");
+    expect(alert.textContent).not.toMatch(/uninstall_blocked|Couldn't check/);
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  });
+
   it("localises the same refusal when it comes back from submit, not from plan", async () => {
     // `Session::submit` re-runs the actionability gate against the
     // snapshot that is current when Confirm is clicked, which is the only

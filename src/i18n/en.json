@@ -34,7 +34,13 @@
     "showDependencies_other": "{{count}} components installed by other software",
     "hideDependencies_one": "Hide the {{count}} component installed by other software",
     "hideDependencies_other": "Hide the {{count}} components installed by other software",
-    "unverifiedVersion": "Unverified version ({{version}})"
+    "unverifiedVersion": "Unverified version ({{version}})",
+    "blocked": {
+      "Pinned": {
+        "description": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run {{command}} in Terminal to release the pin; Canager will offer to uninstall it the next time it checks, which at the latest is the next time you start Canager.",
+        "refused": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager didn't uninstall it. Nothing has been changed. To uninstall it, first run {{command}} in Terminal to release the pin."
+      }
+    }
   },
   "updates": {
     "upToDate": "Everything is up to date",

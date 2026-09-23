@@ -32,7 +32,13 @@
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",
     "hideDependencies_other": "收起这 {{count}} 个由其他软件附带安装的组件",
-    "unverifiedVersion": "未验证版本（{{version}}）"
+    "unverifiedVersion": "未验证版本（{{version}}）",
+    "blocked": {
+      "Pinned": {
+        "description": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，Canager 下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候。",
+        "refused": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 没有卸载它，什么都没有改动。想卸载的话，先在「终端」里运行 {{command}} 解除固定。"
+      }
+    }
   },
   "updates": {
     "upToDate": "所有内容都已是最新",

@@ -36,6 +36,7 @@ const snapshot: Snapshot = {
       installed_at: 1783762037,
       path: null,
       auto_updates: false,
+      uninstall_blocked: null,
     },
     {
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" },
@@ -48,6 +49,7 @@ const snapshot: Snapshot = {
       installed_at: 1788244409,
       path: null,
       auto_updates: false,
+      uninstall_blocked: null,
     },
   ],
   updates: [
@@ -107,6 +109,7 @@ const pipSnapshot: Snapshot = {
       installed_at: null,
       path: null,
       auto_updates: false,
+      uninstall_blocked: null,
     },
   ],
   updates: [],
@@ -294,6 +297,60 @@ describe("InstalledPage", () => {
     await findByText("Unverified version (99.9.9)");
   });
 
+  it("offers no Uninstall on a pinned package, and says how to release the pin", async () => {
+    // `brew uninstall jq` refuses a pinned formula without `--force` and
+    // still exits 0 (`UninstallBlocked::Pinned` in
+    // crates/canager-core/src/model.rs), so the row must not offer it. jq
+    // is up to date: the pin comes from the inventory, not from an update.
+    // The cask shows the `--cask` form; the unpinned formula keeps its button.
+    const pinnedSnapshot: Snapshot = {
+      ...snapshot,
+      artifacts: [
+        { ...snapshot.artifacts[0], uninstall_blocked: "Pinned" },
+        {
+          ...snapshot.artifacts[0],
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
+          display_name: "OnyX",
+          description: "Verify system files structure",
+          uninstall_blocked: "Pinned",
+        },
+        {
+          ...snapshot.artifacts[0],
+          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "wget" },
+          display_name: "wget",
+          description: "Internet file retriever",
+        },
+      ],
+      updates: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(pinnedSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getAllByRole, getByText, queryByText } = renderWithProviders(
+      <InstalledPage />,
+    );
+
+    await findByText("wget");
+    // Only wget's.
+    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(
+      getByText(
+        (_content, element) =>
+          element?.tagName === "P" &&
+          element.textContent ===
+            "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal to release the pin; Canager will offer to uninstall it the next time it checks, which at the latest is the next time you start Canager.",
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("/opt/homebrew/bin/brew unpin jq").tagName).toBe("CODE");
+    expect(getByText("/opt/homebrew/bin/brew unpin --cask onyx").tagName).toBe("CODE");
+    // The explanation replaces the blurb; the unpinned row keeps its own.
+    expect(queryByText("Lightweight and flexible command-line JSON processor")).toBeNull();
+    expect(getByText("Internet file retriever")).toBeInTheDocument();
+  });
+
   it("hides the uninstall button and shows a read-only note for pip rows", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_snapshot") return Promise.resolve(pipSnapshot);
@@ -447,6 +504,7 @@ describe("InstalledPage", () => {
           installed_at: null,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
       ],
       updates: [],
@@ -503,6 +561,7 @@ describe("InstalledPage", () => {
           installed_at: null,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
       ],
     };
@@ -652,6 +711,7 @@ describe("InstalledPage", () => {
           installed_at: null,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
       ],
       updates: [],
@@ -696,6 +756,7 @@ describe("InstalledPage", () => {
           installed_at: null,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
       ],
     };

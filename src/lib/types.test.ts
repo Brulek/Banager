@@ -9,6 +9,7 @@ import type {
   ReadOnlyReason,
   InstanceStatus,
   Settings,
+  UninstallBlocked,
   UpdateBlocked,
   Warning,
 } from "./types";
@@ -54,6 +55,7 @@ describe("types", () => {
           installed_at: 1783762037,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
         {
           key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
@@ -66,6 +68,7 @@ describe("types", () => {
           installed_at: null,
           path: null,
           auto_updates: false,
+          uninstall_blocked: null,
         },
       ],
       updates: [
@@ -119,6 +122,17 @@ describe("types", () => {
     expect(JSON.stringify(reasons)).toBe('["Pinned"]');
     const updatable: UpdateBlocked | null = null;
     expect(roundTrip(updatable)).toBeNull();
+  });
+
+  it("spells UninstallBlocked as a bare string, and a removable artifact as null", () => {
+    // `Option<UninstallBlocked>` on `InstalledArtifact.uninstall_blocked`
+    // in crates/canager-core/src/model.rs, whose
+    // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
+    // asserts these exact spellings from the Rust side.
+    const reasons: UninstallBlocked[] = ["Pinned"];
+    expect(JSON.stringify(reasons)).toBe('["Pinned"]');
+    const removable: UninstallBlocked | null = null;
+    expect(roundTrip(removable)).toBeNull();
   });
 
   it("spells InstanceStatus as an always-present object with bare-string variants", () => {

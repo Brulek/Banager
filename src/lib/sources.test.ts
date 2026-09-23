@@ -8,9 +8,11 @@ import {
   openOllamaErrorMessage,
   parseNotActionable,
   parseOpenOllamaFailure,
+  parseUninstallBlocked,
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  UNINSTALL_BLOCKED_KEYS,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
@@ -571,5 +573,53 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       expect(copy).not.toMatch(/把[^，。]*固定/);
       expect(copy).toMatch(/被固定/);
     }
+  });
+});
+
+describe("UNINSTALL_BLOCKED_KEYS", () => {
+  it("builds the same unpin command the Updates page gives, from the owning brew", () => {
+    // One builder for both refusals (`unpinCommand`), so a pinned
+    // package's two rows cannot give two different commands.
+    const brew = instance({
+      id: "brew:/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      prefix: "/usr/local",
+    });
+    for (const kind of ["Formula", "Cask"] as const) {
+      const key = { instance_id: brew.id, kind, name: "onyx" } satisfies ArtifactKey;
+      expect(UNINSTALL_BLOCKED_KEYS.Pinned.command(key, brew)).toBe(
+        UPDATE_BLOCKED_KEYS.Pinned.command(key, brew),
+      );
+    }
+    expect(
+      UNINSTALL_BLOCKED_KEYS.Pinned.command(
+        { instance_id: brew.id, kind: "Cask", name: "onyx" },
+        brew,
+      ),
+    ).toBe("/usr/local/bin/brew unpin --cask onyx");
+  });
+
+  it("names the source and the command in both locales' sentences", () => {
+    for (const copy of [
+      en.installed.blocked.Pinned.description,
+      en.installed.blocked.Pinned.refused,
+      zhCN.installed.blocked.Pinned.description,
+      zhCN.installed.blocked.Pinned.refused,
+    ]) {
+      expect(copy).toContain("{{source}}");
+      expect(copy.split("{{command}}")).toHaveLength(2);
+    }
+  });
+});
+
+describe("parseUninstallBlocked", () => {
+  it("reads the reason out of the uninstall gate's payload and nothing else", () => {
+    expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Pinned"}')).toBe("Pinned");
+    // The upgrade gate's payload is a different refusal with different copy.
+    expect(parseUninstallBlocked('{"kind":"update_blocked","reason":"Pinned"}')).toBeNull();
+    // A reason this build has no copy for is not guessed at.
+    expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Held"}')).toBeNull();
+    expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"toString"}')).toBeNull();
+    expect(parseUninstallBlocked("not json")).toBeNull();
   });
 });
