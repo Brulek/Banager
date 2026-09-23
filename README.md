@@ -9,9 +9,9 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by ~310 Rust and ~210
-> front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here
-> is ready to rely on.
+> **Status: pre-release.** The core and the UI work and are covered by 359 Rust tests (plus 2 more
+> that touch a real Homebrew and only run with `--ignored`) and 238 front-end tests, but there is
+> no downloadable build yet — v0.1 is being prepared. Nothing here is ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
 
@@ -38,8 +38,9 @@ This app runs package managers on your behalf, so the boundary matters more than
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
-- **You see the exact command before it runs.** Every install, update and uninstall shows its
-  real argv, what it will affect, and whether it needs your password.
+- **You see the exact command before it runs.** Every update and uninstall shows its real argv
+  and whether it needs your password. An uninstall also says what it will affect — an update
+  never touches anything else, so it has nothing to report there.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language.
 
@@ -47,9 +48,11 @@ This app runs package managers on your behalf, so the boundary matters more than
 
 Being honest about this is part of the point:
 
-- **No search and no catalogue.** You can manage what you already have; you cannot yet discover
-  new things through Canager.
-- **No refresh button.** It checks at launch and after each operation. This is a known gap.
+- **No search and no catalogue, and no way to install something new.** You can manage what you
+  already have; you cannot yet discover or add new things through Canager.
+- **No on-demand refresh.** Canager checks at launch and after each operation. The only "Try
+  again" buttons appear when something already needs one — a failed refresh, or a Homebrew index
+  Canager couldn't update — not as a standalone control you can press at any time.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -73,8 +76,10 @@ pnpm test
 pnpm exec tsc -p tsconfig.json
 ```
 
-`cargo test --workspace` has one `#[ignore]`d test that really installs and removes a Homebrew
-formula. CI runs it; run it yourself with:
+`cargo test --workspace` has two `#[ignore]`d tests in `crates/canager-core/tests/brew_live.rs`,
+both skipped by a plain `cargo test`: one only reads the real Homebrew on the machine running it,
+the other installs and removes the `hello` formula and refuses to touch anything without
+`CANAGER_LIVE=1`. CI runs both; run them yourself with:
 
 ```bash
 CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
@@ -82,9 +87,14 @@ CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
 
 ## Language
 
-English by default, with a full Simplified Chinese translation. Every user-facing string goes
-through i18n and both locales are kept in step by a test — a string a Chinese user cannot read
-is treated as a bug, including error text coming back from Rust.
+English by default, with a full Simplified Chinese translation. Every string in the UI goes
+through i18n, and a test keeps the two locales in step — a string a Chinese user cannot read is
+treated as a bug. That now includes the actionability refusals Rust sends back: a plan built
+against a source that's read-only, unavailable or gone, or a preview that's expired or already
+been used, each arrives as a small `{"kind": ...}` payload the front end recognises and renders
+in the user's language, not the error's own English `Display`. What is *not* translated is the
+package manager's own output when an operation itself fails — what `brew` or `npm` printed to
+stderr is shown as-is, because there is no way to translate another program's text.
 
 ## Design notes
 
@@ -109,10 +119,15 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有约 310 个 Rust 测试和约 210 个前端测试，但还没有
-可下载的版本，v0.1 正在准备。现在还不适合依赖它。
+**目前处于发布前阶段**，核心与界面已经可用、有 359 个 Rust 测试（另有 2 个要连着真实的
+Homebrew 才跑，平时是跳过的）和 238 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
+不适合依赖它。
 
-界面默认英文，内置完整简体中文。所有面向用户的文字都走 i18n，两种语言由测试保证同步——
-中文用户读不懂的句子算 bug，包括 Rust 侧返回的错误文本。
+界面默认英文，内置完整简体中文。界面里的文字都走 i18n，两种语言由测试保证同步——中文用户读不
+懂的句子算 bug。这现在也包括 Rust 侧返回的“操作不可执行”类结构化拒绝理由：无论是源不可写、连
+不上，还是预览已过期、已经用过，传到前端的都是一个前端认得的 `{"kind": ...}` 小结构，显示成中
+文，而不是那个错误自带的英文原文。真正没有被翻译的，是操作本身失败时套壳的包管理器自己打印的
+内容——brew、npm 自己吐出的报错文本会原样显示，因为那是另一个程序自己的文字，没法翻译。
 
-尚未支持：搜索与软件目录、刷新按钮、macOS 以外的平台。
+尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——只有刷新失败，或者
+Homebrew 的索引过期了，才会出现“重试”按钮，不是随时可按的独立刷新控件。
