@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { displayToken, outcomeArgs, outcomeKey } from "./format";
-import type { Outcome } from "./types";
+import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 
@@ -60,5 +60,68 @@ describe("outcomeKey", () => {
     expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe(
       "需要留意：更新命令显示成功，但更新后它已不见了",
     );
+  });
+});
+
+describe("outcomeKey for Canager's own failures", () => {
+  // Every `Fault` variant, as serde sends it (see model.rs's
+  // `test_canager_failed_is_externally_tagged_on_the_wire`).
+  const faults: Fault[] = [
+    "Panicked",
+    "SourceGone",
+    { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
+    { SpawnFailed: { detail: "Permission denied (os error 13)" } },
+    "Unsupported",
+    "Internal",
+  ];
+
+  function lookup(locale: unknown, key: string): unknown {
+    return key
+      .split(".")
+      .reduce<unknown>(
+        (node, part) =>
+          node && typeof node === "object" ? (node as Record<string, unknown>)[part] : undefined,
+        locale,
+      );
+  }
+
+  it("gives every Fault its own sentence in both languages", () => {
+    const keys = new Set<string>();
+    for (const fault of faults) {
+      const key = `operations.outcome.${outcomeKey({ CanagerFailed: fault })}`;
+      keys.add(key);
+      expect(typeof lookup(en, key), key).toBe("string");
+      expect(typeof lookup(zhCN, key), key).toBe("string");
+    }
+    expect(keys.size).toBe(faults.length);
+  });
+
+  it("passes a fault's data, never a sentence, to its translation", () => {
+    expect(outcomeKey({ CanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toBe(
+      "CanagerFailed.ProgramMissing",
+    );
+    expect(outcomeArgs({ CanagerFailed: { ProgramMissing: { program: "/x/brew" } } })).toEqual({
+      program: "/x/brew",
+    });
+    expect(outcomeArgs({ CanagerFailed: { SpawnFailed: { detail: "EACCES" } } })).toEqual({
+      detail: "EACCES",
+    });
+    expect(outcomeKey({ CanagerFailed: "Panicked" })).toBe("CanagerFailed.Panicked");
+    expect(outcomeArgs({ CanagerFailed: "Panicked" })).toEqual({});
+    expect(en.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
+    expect(zhCN.operations.outcome.CanagerFailed.ProgramMissing).toContain("{{program}}");
+    expect(en.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
+    expect(zhCN.operations.outcome.CanagerFailed.SpawnFailed).toContain("{{detail}}");
+  });
+
+  it("keeps a tool's own stderr as Failed, and words a silent failure instead of a blank", () => {
+    expect(outcomeKey({ Failed: { exit_code: 1, summary: "Error: No such keg\n" } })).toBe(
+      "Failed",
+    );
+    expect(outcomeArgs({ Failed: { exit_code: 1, summary: "Error: No such keg\n" } })).toEqual({
+      summary: "Error: No such keg",
+    });
+    expect(outcomeKey({ Failed: { exit_code: 1, summary: "  \n" } })).toBe("FailedSilent");
+    expect(zhCN.operations.outcome.FailedSilent).not.toContain("{{");
   });
 });

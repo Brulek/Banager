@@ -174,7 +174,9 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
   // src/components/OperationBar.tsx and src/components/LogDrawer.tsx:
   // `t(\`operations.outcome.${outcomeKey(...)}\`)` over every string
   // `outcomeKey()` can return (src/lib/format.ts), which in turn mirrors
-  // `Outcome`'s variant names and `Attention`'s (src/lib/types.ts).
+  // `Outcome`'s variant names, `Attention`'s and `Fault`'s
+  // (src/lib/types.ts), plus `FailedSilent` for a tool that failed without
+  // a word on stderr.
   "operations.outcome": [
     "Succeeded",
     "Cancelled",
@@ -183,6 +185,13 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "NeedsAttention.StillInstalledAfterUninstall",
     "NeedsAttention.GoneAfterUpgrade",
     "Failed",
+    "FailedSilent",
+    "CanagerFailed.Panicked",
+    "CanagerFailed.SourceGone",
+    "CanagerFailed.ProgramMissing",
+    "CanagerFailed.SpawnFailed",
+    "CanagerFailed.Unsupported",
+    "CanagerFailed.Internal",
   ],
 };
 

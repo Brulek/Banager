@@ -146,6 +146,25 @@ describe("types", () => {
     expect(JSON.stringify(needsAttention)).toBe('{"NeedsAttention":"GoneAfterUpgrade"}');
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
+
+    // What `model.rs`'s `test_canager_failed_is_externally_tagged_on_the_wire`
+    // asserts serde emits: a unit `Fault` is a bare string, a data one a
+    // single-key object.
+    const panicked: Outcome = { CanagerFailed: "Panicked" };
+    const missing: Outcome = {
+      CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
+    };
+    const spawn: Outcome = {
+      CanagerFailed: { SpawnFailed: { detail: "Permission denied (os error 13)" } },
+    };
+    expect(JSON.stringify(panicked)).toBe('{"CanagerFailed":"Panicked"}');
+    expect(JSON.stringify(missing)).toBe(
+      '{"CanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}',
+    );
+    expect(JSON.stringify(spawn)).toBe(
+      '{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}',
+    );
+    expect(roundTrip(missing)).toEqual(missing);
   });
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {

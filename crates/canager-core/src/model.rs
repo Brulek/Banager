@@ -313,11 +313,52 @@ pub enum Outcome {
     /// which disagreement, never a sentence: the front end words it in the
     /// user's language (the drawer and the operation bar both show it).
     NeedsAttention(Attention),
+    /// The tool ran and failed. `summary` is the last lines of the tool's
+    /// own stderr and nothing else: the front end shows it as-is, quoted
+    /// inside a translated sentence, because it is another program's words.
+    /// A failure of Canager's own is `CanagerFailed`, never this.
     Failed {
         exit_code: Option<i32>,
         summary: String,
     },
+    /// Canager itself could not carry the operation out -- not the tool.
+    /// Carries which reason, never a sentence: the front end words it in
+    /// the user's language, the same way it does `NeedsAttention`.
+    ///
+    /// These used to be English sentences of Canager's own ("operation
+    /// panicked", "runner: program not found: ...") inside `Failed`'s
+    /// `summary`, sharing one string with a tool's stderr, so neither could
+    /// be shown properly: the front end could not translate the first
+    /// without mangling the second.
+    CanagerFailed(Fault),
     Unconfirmed,
+}
+
+/// Why Canager itself could not carry an operation out. See
+/// [`Outcome::CanagerFailed`]. Fields carry data, never Canager's prose:
+/// a path, or the operating system's own reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Fault {
+    /// Canager crashed partway through. The command may or may not have
+    /// run, so only a fresh look at the list can say what changed.
+    Panicked,
+    /// The source was removed between the preview and the run. Nothing
+    /// was started.
+    SourceGone,
+    /// The program the plan names was not there when Canager went to run
+    /// it. Nothing was started.
+    ProgramMissing { program: String },
+    /// macOS would not start the program; `detail` is the operating
+    /// system's own reason, quoted as-is. Nothing was started.
+    SpawnFailed { detail: String },
+    /// The source cannot do this through Canager (pip is read-only).
+    /// Nothing was started.
+    Unsupported,
+    /// Something on Canager's side did not add up (an unregistered
+    /// adapter, a queue that closed, an error `execute` has no business
+    /// returning). A bug in Canager, not a state of the Mac. Nothing was
+    /// started.
+    Internal,
 }
 
 /// What reconcile found that the command's own success did not account
@@ -508,6 +549,41 @@ mod tests {
         let json = serde_json::to_string(&outcome).expect("serialize");
         let back: Outcome = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(outcome, back);
+    }
+
+    #[test]
+    fn test_canager_failed_is_externally_tagged_on_the_wire() {
+        // `src/lib/types.ts` mirrors `Fault` as a union of bare strings
+        // (unit variants) and single-key objects (data variants), and
+        // `format.ts` builds the locale key from the variant name.
+        assert_eq!(
+            serde_json::to_string(&Outcome::CanagerFailed(Fault::Panicked)).unwrap(),
+            r#"{"CanagerFailed":"Panicked"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::CanagerFailed(Fault::ProgramMissing {
+                program: "/opt/homebrew/bin/brew".to_string()
+            }))
+            .unwrap(),
+            r#"{"CanagerFailed":{"ProgramMissing":{"program":"/opt/homebrew/bin/brew"}}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Outcome::CanagerFailed(Fault::SpawnFailed {
+                detail: "Permission denied (os error 13)".to_string()
+            }))
+            .unwrap(),
+            r#"{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}"#
+        );
+        for fault in [
+            Fault::Panicked,
+            Fault::SourceGone,
+            Fault::Unsupported,
+            Fault::Internal,
+        ] {
+            let json = serde_json::to_string(&Outcome::CanagerFailed(fault.clone())).unwrap();
+            let back: Outcome = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, Outcome::CanagerFailed(fault));
+        }
     }
 
     #[test]

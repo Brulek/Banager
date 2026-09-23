@@ -15,12 +15,26 @@ export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
   | "GoneAfterUpgrade";
+// Rust `Fault`: why Canager itself could not carry an operation out.
+// Unit variants are bare strings, data variants single-key objects (serde's
+// external tagging). Worded by the front end, per variant; the fields are
+// data (a path, the operating system's own reason), never Canager's prose.
+export type Fault =
+  | "Panicked"
+  | "SourceGone"
+  | { ProgramMissing: { program: string } }
+  | { SpawnFailed: { detail: string } }
+  | "Unsupported"
+  | "Internal";
+// `Failed.summary` is only ever the tool's own stderr; Canager's own
+// failures are `CanagerFailed`.
 export type Outcome =
   | "Succeeded"
   | "Cancelled"
   | "Unconfirmed"
   | { NeedsAttention: Attention }
-  | { Failed: { exit_code: number | null; summary: string } };
+  | { Failed: { exit_code: number | null; summary: string } }
+  | { CanagerFailed: Fault };
 export interface ArtifactKey {
   instance_id: string;
   kind: ArtifactKind;

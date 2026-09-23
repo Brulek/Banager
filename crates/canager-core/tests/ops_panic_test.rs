@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+    ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, ManagerInstance, OpKind,
+    OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
@@ -136,7 +136,7 @@ fn make_instance(id: &str) -> ManagerInstance {
 }
 
 #[tokio::test]
-async fn test_panic_in_execute_reports_failed_and_releases_the_lock() {
+async fn test_panic_in_execute_reports_a_canager_fault_and_releases_the_lock() {
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink);
     let should_panic = Arc::new(AtomicBool::new(true));
@@ -159,11 +159,10 @@ async fn test_panic_in_execute_reports_failed_and_releases_the_lock() {
 
     let outcome1 = wait_with_timeout(&manager, id1).await;
     match outcome1 {
-        Outcome::Failed { exit_code, summary } => {
-            assert_eq!(exit_code, None);
-            assert_eq!(summary, "operation panicked");
-        }
-        other => panic!("expected Failed, got {other:?}"),
+        // Canager's own failure, as a reason the front end words -- not an
+        // English sentence in `Failed`'s `summary`, which is the tool's.
+        Outcome::CanagerFailed(Fault::Panicked) => {}
+        other => panic!("expected CanagerFailed(Panicked), got {other:?}"),
     }
 
     // Second op, same resource lock: if the panic leaked the lock, this

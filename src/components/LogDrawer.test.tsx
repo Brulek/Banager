@@ -124,6 +124,29 @@ describe("LogDrawer", () => {
     await findByText("Succeeded");
   });
 
+  it("words Canager's own failure in the user's language, quoting only the path", async () => {
+    // This used to arrive as `Failed` with Rust's English in its summary
+    // ("runner: program not found: /opt/homebrew/bin/brew"), printed inside
+    // the translated "失败：" frame.
+    mockInvoke.mockResolvedValue([
+      {
+        ...runningOp,
+        status: "Done",
+        outcome: { CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } },
+      },
+    ]);
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
+      await findByText(
+        "失败：Canager 找不到 /opt/homebrew/bin/brew，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
+      );
+      expect(queryByText(/program not found/)).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("does not render when the drawer is closed", () => {
     useUiStore.setState({ drawerOpen: false });
     const { queryByRole } = renderWithProviders(<LogDrawer />);

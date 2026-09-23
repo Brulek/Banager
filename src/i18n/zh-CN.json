@@ -151,7 +151,16 @@
         "StillInstalledAfterUninstall": "需要留意：卸载命令显示成功，但实际仍未移除",
         "GoneAfterUpgrade": "需要留意：更新命令显示成功，但更新后它已不见了"
       },
-      "Failed": "失败：{{summary}}"
+      "Failed": "失败：{{summary}}",
+      "FailedSilent": "失败。这个程序没有说明原因，操作日志里也许能看到更多。",
+      "CanagerFailed": {
+        "Panicked": "失败：Canager 在执行过程中自己出了问题。请看一下列表，确认有没有发生变化。",
+        "SourceGone": "失败：Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。什么都没有改动。",
+        "ProgramMissing": "失败：Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
+        "SpawnFailed": "失败：Canager 没能启动这个程序，什么都没有改动。系统给出的原因是：{{detail}}",
+        "Unsupported": "失败：这个来源无法通过 Canager 完成这个操作。什么都没有改动。",
+        "Internal": "失败：Canager 发现自己这边有些地方对不上，所以没有开始，什么都没有改动。这是 Canager 的问题，不是你的 Mac 的问题。"
+      }
     }
   },
   "uninstall": {

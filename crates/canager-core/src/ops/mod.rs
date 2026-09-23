@@ -1,9 +1,10 @@
-use crate::adapters::Adapter;
+use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
-    AdapterId, ArtifactKey, ArtifactKind, Attention, InstanceId, ManagerInstance, OpKind, OpStatus,
-    Outcome, Plan, ResourceLock,
+    AdapterId, ArtifactKey, ArtifactKind, Attention, Fault, InstanceId, ManagerInstance, OpKind,
+    OpStatus, Outcome, Plan, ResourceLock,
 };
+use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -17,6 +18,45 @@ use tokio_util::sync::CancellationToken;
 /// operation ever submitted in the process's lifetime stays in `records`
 /// (and therefore in `summaries()`) forever.
 const DEFAULT_MAX_RECORDS: usize = 200;
+
+/// The `Outcome` for an `Err` out of `Adapter::execute`.
+///
+/// Only `CommandFailed` is another program's words -- a tool (or the
+/// Ollama daemon) answering with an error -- and it stays `Failed`, whose
+/// `summary` is only ever that kind of text. Everything else is a reason of
+/// Canager's own and becomes a `Fault` the front end words in the user's
+/// language; the English `Display` of `AdapterError` never reaches the
+/// wire. The split follows `plan_operation_error` in `src-tauri/src/ipc.rs`,
+/// which sorts the same errors the same way when they come out of `plan`.
+///
+/// Today's adapters only ever return a runner error, brew's root refusal
+/// or pip's `Unsupported` from `execute`; the rest are mapped so the match
+/// stays total, and all of them are bugs rather than states of the Mac.
+fn execute_error_outcome(e: AdapterError) -> Outcome {
+    let fault = match e {
+        AdapterError::CommandFailed { code, stderr } => {
+            return Outcome::Failed {
+                exit_code: code,
+                summary: stderr.trim().to_string(),
+            };
+        }
+        AdapterError::Runner(RunnerError::NotFound(program)) => Fault::ProgramMissing {
+            program: program.display().to_string(),
+        },
+        AdapterError::Runner(RunnerError::Spawn(io)) => Fault::SpawnFailed {
+            detail: io.to_string(),
+        },
+        AdapterError::SourceGone { .. } => Fault::SourceGone,
+        AdapterError::Unsupported(_) => Fault::Unsupported,
+        AdapterError::Runner(RunnerError::NoMock(_))
+        | AdapterError::Runner(RunnerError::OutputTooLarge { .. })
+        | AdapterError::Parse(_)
+        | AdapterError::Refused(_)
+        | AdapterError::InvalidName(_)
+        | AdapterError::NotActionable { .. } => Fault::Internal,
+    };
+    Outcome::CanagerFailed(fault)
+}
 
 pub struct OpRecord {
     pub id: OpId,
@@ -273,14 +313,7 @@ impl OperationManager {
         tokio::spawn(async move {
             if let Err(join_err) = handle.await {
                 if join_err.is_panic() {
-                    manager_for_panic.finish(
-                        op_id,
-                        Outcome::Failed {
-                            exit_code: None,
-                            summary: "operation panicked".to_string(),
-                        },
-                        true,
-                    );
+                    manager_for_panic.finish(op_id, Outcome::CanagerFailed(Fault::Panicked), true);
                 }
             }
         });
@@ -418,11 +451,7 @@ impl OperationManager {
                         // reported as one.
                         self.finish(
                             op_id,
-                            Outcome::Failed {
-                                exit_code: None,
-                                summary: "the operation queue closed before this could start"
-                                    .to_string(),
-                            },
+                            Outcome::CanagerFailed(Fault::Internal),
                             true,
                         );
                         return;
@@ -440,14 +469,7 @@ impl OperationManager {
         let instance = match instance {
             Some(i) => i,
             None => {
-                self.finish(
-                    op_id,
-                    Outcome::Failed {
-                        exit_code: None,
-                        summary: format!("unknown instance {}", plan.request.instance_id),
-                    },
-                    true,
-                );
+                self.finish(op_id, Outcome::CanagerFailed(Fault::SourceGone), true);
                 return;
             }
         };
@@ -456,14 +478,7 @@ impl OperationManager {
         let adapter = match adapter {
             Some(a) => a,
             None => {
-                self.finish(
-                    op_id,
-                    Outcome::Failed {
-                        exit_code: None,
-                        summary: format!("no adapter registered for {}", instance.adapter_id),
-                    },
-                    true,
-                );
+                self.finish(op_id, Outcome::CanagerFailed(Fault::Internal), true);
                 return;
             }
         };
@@ -555,10 +570,7 @@ impl OperationManager {
                 }
             }
             Ok(other) => other,
-            Err(e) => Outcome::Failed {
-                exit_code: None,
-                summary: e.to_string(),
-            },
+            Err(e) => execute_error_outcome(e),
         };
 
         self.finish(op_id, final_outcome, true);
