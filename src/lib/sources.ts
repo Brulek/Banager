@@ -298,13 +298,13 @@ export function notActionableMessage(
 /**
  * What a `plan_operation`/`submit_operation` rejection should read as:
  * `notActionableMessage` when `raw` is the actionability gate's JSON
- * payload, the matching `planRefused.*` copy for `submit_operation_error`'s
- * three other structured kinds, otherwise `raw` verbatim. Every call site
- * that renders a plan or submit error (`UpdatesPage`, `UninstallDialog`)
- * goes through this instead of showing the backend's string directly, so
- * no refusal that can reach a real person is ever a raw Rust `{:?}` or
- * this project's own English reaching someone reading Canager in another
- * language.
+ * payload, the matching `planRefused.*` copy for every other structured
+ * kind `submit_operation_error` and `plan_operation_error` send, otherwise
+ * `raw` verbatim. Every call site that renders a plan or submit error
+ * (`UpdatesPage`, `UninstallDialog`) goes through this instead of showing
+ * the backend's string directly, so no refusal that can reach a real
+ * person is ever a raw Rust `{:?}` or this project's own English reaching
+ * someone reading Canager in another language.
  */
 export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
   const reason = parseNotActionable(raw);
@@ -316,19 +316,65 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
   if (isSourceGone(raw)) return t("planRefused.sourceGone");
   if (isExpired(raw)) return t("planRefused.expired");
   if (isUnknownPlan(raw)) return t("planRefused.unknown");
-  return raw;
+  return planFailureMessage(t, raw, sourceLabel) ?? raw;
 }
 
 /**
- * Reads the bare `{"kind": "..."}` envelope `submit_operation_error` in
- * src-tauri/src/ipc.rs sends for its three reasons that carry no extra
- * fields (`source_gone`, `expired`, `unknown` -- `not_actionable`'s own
- * two fields go through `parseNotActionable` above instead). `null` for
- * anything that is not that shape, including a plain string or JSON
- * without a string `kind`; the three functions below each compare the
- * result to their one kind rather than duplicating this parse.
+ * The `planRefused.*` key for each kind `plan_operation_error` sends with
+ * no field but its `kind` -- Canager's own reasons, whose Rust wording is
+ * for logs and is dropped before it reaches the wire.
  */
-function submitErrorKind(message: string): string | null {
+const PLAN_FAILURE_KEYS: Record<string, string> = {
+  unsupported: "planRefused.unsupported",
+  parse_failed: "planRefused.parseFailed",
+  output_too_large: "planRefused.outputTooLarge",
+  refused: "planRefused.refused",
+};
+
+/**
+ * The rest of `plan_operation_error`'s kinds (src-tauri/src/ipc.rs), in
+ * the user's language; `null` for anything that is not one of them.
+ *
+ * Two of them quote another program verbatim, inside a sentence that says
+ * what happened: `command_failed` carries the tool's own stderr and
+ * `spawn_failed` the operating system's reason it could not start the
+ * tool. Neither is Canager's text, so neither can be translated -- but the
+ * sentence around each is. `invalid_name` and `program_missing` carry data
+ * (the name, the path), not prose.
+ */
+function planFailureMessage(t: Translate, raw: string, sourceLabel: string): string | null {
+  const p = parseErrorPayload(raw);
+  if (!p) return null;
+  // `typeof`, not truthiness: a `kind` like "toString" finds a function
+  // on the object's prototype, not a key.
+  const key: unknown = PLAN_FAILURE_KEYS[p.kind as string];
+  if (typeof key === "string") return t(key, { source: sourceLabel });
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  switch (p.kind) {
+    case "invalid_name":
+      return t("planRefused.invalidName", { name: text(p.name), source: sourceLabel });
+    case "program_missing":
+      return t("planRefused.programMissing", { program: text(p.program) });
+    case "command_failed": {
+      const stderr = text(p.stderr).trim();
+      return stderr
+        ? t("planRefused.commandFailed", { source: sourceLabel, stderr })
+        : t("planRefused.commandFailedSilent", { source: sourceLabel });
+    }
+    case "spawn_failed":
+      return t("planRefused.spawnFailed", { source: sourceLabel, detail: text(p.detail) });
+    default:
+      return null;
+  }
+}
+
+/**
+ * Reads the `{"kind": "...", ...}` envelope every structured rejection in
+ * src-tauri/src/ipc.rs uses. `null` for anything that is not a JSON object
+ * with a string `kind`, including a plain string; each decoder in this
+ * file reads its own fields off the result rather than repeating the parse.
+ */
+function parseErrorPayload(message: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(message);
@@ -336,8 +382,19 @@ function submitErrorKind(message: string): string | null {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const kind = (parsed as Record<string, unknown>).kind;
-  return typeof kind === "string" ? kind : null;
+  const p = parsed as Record<string, unknown>;
+  return typeof p.kind === "string" ? p : null;
+}
+
+/**
+ * The bare `kind` of `submit_operation_error`'s three reasons that carry
+ * no extra fields (`source_gone`, `expired`, `unknown` -- `not_actionable`'s
+ * own two fields go through `parseNotActionable` above instead); the three
+ * functions below each compare the result to their one kind.
+ */
+function submitErrorKind(message: string): string | null {
+  const p = parseErrorPayload(message);
+  return p ? (p.kind as string) : null;
 }
 
 /**
@@ -425,6 +482,35 @@ export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | nul
 export function openOllamaErrorMessage(t: Translate, raw: string): string {
   const reason = parseOpenOllamaFailure(raw);
   return reason ? t(OPEN_OLLAMA_FAILURE_KEYS[reason]) : raw;
+}
+
+/** Why writing the settings file failed, as `settings_save_error` in
+ *  src-tauri/src/ipc.rs puts it on the wire. */
+const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
+  permission_denied: "settingsSaveFailed.permissionDenied",
+  disk_full: "settingsSaveFailed.diskFull",
+  read_only: "settingsSaveFailed.readOnly",
+};
+
+/**
+ * What a rejected `set_settings` should read as, as a phrase for the
+ * caller's own frame (`settings.saveError`, `updates.ignoreFailed`) to
+ * interpolate. The three reasons a person can act on are worded here;
+ * `other` quotes the operating system's own description verbatim inside
+ * a translated phrase, since that text is the system's, not Canager's.
+ * Anything that is not the payload at all is shown verbatim, the same
+ * fallback `planErrorMessage` uses, so an unexpected error is still
+ * visible rather than swallowed.
+ */
+export function settingsSaveErrorMessage(t: Translate, raw: string): string {
+  const p = parseErrorPayload(raw);
+  if (!p || p.kind !== "settings_save_failed") return raw;
+  const key: unknown =
+    typeof p.reason === "string" ? SETTINGS_SAVE_FAILURE_KEYS[p.reason] : undefined;
+  if (typeof key === "string") return t(key);
+  return t("settingsSaveFailed.other", {
+    detail: typeof p.detail === "string" ? p.detail : "",
+  });
 }
 
 /**

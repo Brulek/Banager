@@ -97,34 +97,68 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// object IDs, never a client-supplied `Plan`. `submit_operation_impl`
 /// below is the only way to actually run it, and takes only the id.
 /// Maps `Session::issue_plan`'s error to the string every `#[tauri::command]`
-/// in this file rejects with. Every variant but one keeps `AdapterError`'s
-/// own `Display` verbatim, exactly as before -- those are refusals that
-/// should never happen outside a bug (an unknown instance, an unregistered
-/// adapter) and are shown as-is on the assumption nobody but a developer
-/// will ever read them.
+/// in this file rejects with: always a small `{"kind": ...}` JSON object,
+/// never `AdapterError`'s own `Display`, which is this project's English.
+/// `src/lib/sources.ts`'s `planErrorMessage` turns each kind into a
+/// sentence in the user's language.
 ///
-/// `NotActionable` is different: both `InstalledPage` and `UpdatesPage`
-/// hide every control for an instance that fails this gate, so a real
-/// person sees it only through a stale snapshot or a genuine TOCTOU -- and
-/// when that happens, `{:?}` of two Rust enums is the worst possible thing
-/// to show someone who does not read Rust. It goes out as a small JSON
-/// object instead, so `src/lib/sources.ts`'s `parseNotActionable` can turn
-/// it into the same localised copy the source's own notice already uses
-/// (`READ_ONLY_NOTICE_KEYS`, `sourceNotice.notRunning`,
-/// `sourceNotice.unreachable`) instead of showing it verbatim.
+/// This used to send every variant but `NotActionable` as its `Display`,
+/// on the theory that they were refusals only a developer would ever see.
+/// Some are (an unregistered adapter), but not all: a source removed after
+/// the last refresh, a name the validator will not pass to a tool, Homebrew
+/// gone between the check and the dependents scan -- each put an English
+/// sentence inside a Chinese frame. The kinds split along whose words the
+/// detail is:
 ///
-/// This is a narrower change than it looks: `plan_operation` still returns
-/// `Result<IssuedPlan, String>`, identical to every other command, so
-/// nothing about the IPC boundary's *type* widens and `src/lib/api.ts`'s
-/// single `call()` choke point needs no special case. Only the *content* of
-/// the string differs for this one refusal.
+/// - **Canager's own words** go out with no prose at all, only data the
+///   front end can interpolate into its own sentence: `source_gone`,
+///   `invalid_name` (the name), `unsupported`, `parse_failed`,
+///   `program_missing` (the path), `output_too_large`, and `refused` for
+///   everything that is a bug in Canager rather than a state of the Mac
+///   (an instance/request mismatch, an unregistered adapter, a test-only
+///   `NoMock`). `Unsupported`, `Parse` and `Refused` carry an English
+///   string in Rust; it is dropped here on purpose -- it is for logs.
+/// - **Another program's words** are kept verbatim, for the front end to
+///   quote inside a translated sentence that says what happened:
+///   `command_failed` carries the tool's stderr, `spawn_failed` the
+///   operating system's reason it could not start the tool.
+///
+/// `plan_operation` still returns `Result<IssuedPlan, String>`, identical to
+/// every other command, so `src/lib/api.ts`'s single `call()` choke point
+/// needs no special case. Only the *content* of the string is structured.
 fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
+    use canager_core::adapters::AdapterError;
+    use canager_core::runner::RunnerError;
     match e {
-        canager_core::adapters::AdapterError::NotActionable {
+        AdapterError::NotActionable {
             read_only,
             unavailable,
         } => not_actionable_json(read_only, unavailable),
-        other => other.to_string(),
+        // The same bare kind `submit_operation_error` sends for
+        // `SubmitError::SourceGone`: one situation, one sentence.
+        AdapterError::SourceGone { .. } => serde_json::json!({ "kind": "source_gone" }).to_string(),
+        AdapterError::InvalidName(name) => {
+            serde_json::json!({ "kind": "invalid_name", "name": name }).to_string()
+        }
+        AdapterError::Unsupported(_) => serde_json::json!({ "kind": "unsupported" }).to_string(),
+        AdapterError::Parse(_) => serde_json::json!({ "kind": "parse_failed" }).to_string(),
+        AdapterError::CommandFailed { stderr, .. } => {
+            serde_json::json!({ "kind": "command_failed", "stderr": stderr.trim() }).to_string()
+        }
+        AdapterError::Runner(RunnerError::NotFound(program)) => serde_json::json!({
+            "kind": "program_missing",
+            "program": program.display().to_string(),
+        })
+        .to_string(),
+        AdapterError::Runner(RunnerError::Spawn(io)) => {
+            serde_json::json!({ "kind": "spawn_failed", "detail": io.to_string() }).to_string()
+        }
+        AdapterError::Runner(RunnerError::OutputTooLarge { .. }) => {
+            serde_json::json!({ "kind": "output_too_large" }).to_string()
+        }
+        AdapterError::Runner(RunnerError::NoMock(_)) | AdapterError::Refused(_) => {
+            serde_json::json!({ "kind": "refused" }).to_string()
+        }
     }
 }
 
@@ -246,7 +280,34 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String
 }
 
 pub(crate) fn set_settings_impl(state: &AppState, settings: Settings) -> Result<(), String> {
-    state.set_settings(settings).map_err(|e| e.to_string())
+    state.set_settings(settings).map_err(settings_save_error)
+}
+
+/// Why writing the settings file failed, as a `{"kind":
+/// "settings_save_failed", "reason": ...}` payload `src/lib/sources.ts`'s
+/// `settingsSaveErrorMessage` reads -- the same envelope every other
+/// refusal in this file uses. It used to be the `io::Error`'s `Display`,
+/// which reached a zh-CN user as English inside the translated "couldn't
+/// save that change" frame.
+///
+/// The three reasons a person can do something about get a `reason` the
+/// front end words itself. Anything else is `other`, with the operating
+/// system's own description kept verbatim in `detail` for the front end to
+/// quote: that is the OS's text, not Canager's, and there is no honest way
+/// to translate a reason Canager did not anticipate.
+fn settings_save_error(e: std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let reason = match e.kind() {
+        ErrorKind::PermissionDenied => "permission_denied",
+        ErrorKind::StorageFull => "disk_full",
+        ErrorKind::ReadOnlyFilesystem => "read_only",
+        _ => "other",
+    };
+    let mut payload = serde_json::json!({ "kind": "settings_save_failed", "reason": reason });
+    if reason == "other" {
+        payload["detail"] = serde_json::Value::String(e.to_string());
+    }
+    payload.to_string()
 }
 
 #[tauri::command]
@@ -906,7 +967,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plan_operation_impl_maps_session_error_to_string() {
+    async fn test_plan_operation_impl_maps_an_unknown_instance_to_source_gone() {
         let state = state_with_fake_adapter();
         let req = OpRequest {
             kind: OpKind::Install,
@@ -917,10 +978,116 @@ mod tests {
         let err = plan_operation_impl(&state, req)
             .await
             .expect_err("expected an error for an unknown instance");
-        assert!(
-            err.contains("does-not-exist"),
-            "error string should name the unknown instance, got: {err}"
+        // The same bare kind `submit_operation_error` sends for a source
+        // that vanished, so the front end has one sentence for both -- and
+        // never the Rust `Display` ("unknown instance does-not-exist").
+        assert_eq!(err, r#"{"kind":"source_gone"}"#);
+    }
+
+    #[test]
+    fn test_plan_operation_error_never_sends_canagers_own_english() {
+        use canager_core::runner::RunnerError;
+        let parse = |e: AdapterError| -> serde_json::Value {
+            let raw = plan_operation_error(e);
+            serde_json::from_str(&raw).unwrap_or_else(|_| panic!("not JSON: {raw}"))
+        };
+
+        // Canager's own words: the kind and data only, no prose.
+        let v = parse(AdapterError::InvalidName("-rf".to_string()));
+        assert_eq!(
+            v,
+            serde_json::json!({ "kind": "invalid_name", "name": "-rf" })
         );
+        let v = parse(AdapterError::Unsupported(
+            "pip is read-only in Canager; use pipx or uv to manage jq".to_string(),
+        ));
+        assert_eq!(v, serde_json::json!({ "kind": "unsupported" }));
+        let v = parse(AdapterError::Parse("unexpected token".to_string()));
+        assert_eq!(v, serde_json::json!({ "kind": "parse_failed" }));
+        let v = parse(AdapterError::Refused(
+            "no adapter registered for fake".to_string(),
+        ));
+        assert_eq!(v, serde_json::json!({ "kind": "refused" }));
+        let v = parse(AdapterError::Runner(RunnerError::NoMock(vec![])));
+        assert_eq!(v, serde_json::json!({ "kind": "refused" }));
+        let v = parse(AdapterError::Runner(RunnerError::NotFound(
+            std::path::PathBuf::from("/opt/homebrew/bin/brew"),
+        )));
+        assert_eq!(
+            v,
+            serde_json::json!({ "kind": "program_missing", "program": "/opt/homebrew/bin/brew" })
+        );
+        let v = parse(AdapterError::Runner(RunnerError::OutputTooLarge {
+            limit: 1024,
+        }));
+        assert_eq!(v, serde_json::json!({ "kind": "output_too_large" }));
+        let v = parse(AdapterError::SourceGone {
+            instance_id: "brew:/opt/homebrew".to_string(),
+        });
+        assert_eq!(v, serde_json::json!({ "kind": "source_gone" }));
+
+        // Another program's words: kept verbatim for the front end to quote.
+        let v = parse(AdapterError::CommandFailed {
+            code: Some(1),
+            stderr: "Error: No such keg: /opt/homebrew/Cellar/jq\n".to_string(),
+        });
+        assert_eq!(
+            v,
+            serde_json::json!({
+                "kind": "command_failed",
+                "stderr": "Error: No such keg: /opt/homebrew/Cellar/jq",
+            })
+        );
+        let v = parse(AdapterError::Runner(RunnerError::Spawn(
+            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        )));
+        assert_eq!(v["kind"], "spawn_failed");
+        assert!(
+            v["detail"].as_str().is_some_and(|d| !d.is_empty()),
+            "spawn_failed must carry the OS's reason, got {v}"
+        );
+    }
+
+    #[test]
+    fn test_settings_save_error_names_the_reason_and_keeps_only_the_oss_text() {
+        use std::io::{Error, ErrorKind};
+        let parse = |e: Error| -> serde_json::Value {
+            serde_json::from_str(&settings_save_error(e)).unwrap()
+        };
+        assert_eq!(
+            parse(Error::from(ErrorKind::PermissionDenied)),
+            serde_json::json!({ "kind": "settings_save_failed", "reason": "permission_denied" })
+        );
+        assert_eq!(
+            parse(Error::from(ErrorKind::StorageFull)),
+            serde_json::json!({ "kind": "settings_save_failed", "reason": "disk_full" })
+        );
+        assert_eq!(
+            parse(Error::from(ErrorKind::ReadOnlyFilesystem)),
+            serde_json::json!({ "kind": "settings_save_failed", "reason": "read_only" })
+        );
+        assert_eq!(
+            parse(Error::other("Input/output error (os error 5)")),
+            serde_json::json!({
+                "kind": "settings_save_failed",
+                "reason": "other",
+                "detail": "Input/output error (os error 5)",
+            })
+        );
+    }
+
+    #[test]
+    fn test_set_settings_impl_rejects_with_the_structured_payload() {
+        // A settings path whose parent is a regular file: `create_dir_all`
+        // cannot succeed, whatever user runs the test.
+        let blocker = temp_settings_path("blocker");
+        std::fs::write(&blocker, b"not a directory").unwrap();
+        let state = AppState::new(blocker.join("settings.json"), ChannelSink::new());
+        let err = set_settings_impl(&state, Settings::default())
+            .expect_err("saving under a file must fail");
+        let v: serde_json::Value = serde_json::from_str(&err).unwrap();
+        assert_eq!(v["kind"], "settings_save_failed");
+        std::fs::remove_file(&blocker).ok();
     }
 
     /// Builds an `AppState` around a single fake instance, letting the

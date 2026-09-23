@@ -131,12 +131,27 @@ pub enum AdapterError {
     /// Lives on `AdapterError` rather than a new `SessionError` because
     /// `issue_plan` constructs it directly, before ever calling
     /// `adapter.plan()` -- no `Adapter` trait method's signature changes,
-    /// so none of the seven adapters need to know this variant exists.
+    /// so no adapter *needs* to know this variant exists. npm's `plan()`
+    /// returns it anyway, for a prefix that stopped being writable after
+    /// `detect` looked: that is the gate's own read-only reason, found late.
     #[error("not actionable (read-only: {read_only:?}, unavailable: {unavailable:?})")]
     NotActionable {
         read_only: Option<ReadOnlyReason>,
         unavailable: Option<Unavailable>,
     },
+    /// `Session::issue_plan` was asked to plan against an instance that is
+    /// not in the snapshot at all -- the source was removed between the
+    /// refresh that drew the row and the click. The `issue_plan` twin of
+    /// `SubmitError::SourceGone`, and sent to the front end the same way
+    /// (`{"kind": "source_gone"}`), so both read as the same localised
+    /// sentence.
+    ///
+    /// It used to be a `Refused(format!("unknown instance ..."))`, which
+    /// `ipc.rs` could only pass on as this project's English: a free-form
+    /// string gives the front end nothing to translate. The `Display`
+    /// keeps that wording for logs and test failure output.
+    #[error("unknown instance {instance_id}")]
+    SourceGone { instance_id: String },
 }
 
 /// Percent-encodes one untrusted value for interpolation into a single URL

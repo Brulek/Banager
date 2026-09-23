@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSaveSettings } from "../lib/queries";
+import { settingsSaveErrorMessage } from "../lib/sources";
 import type { Settings, Language } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
@@ -73,7 +74,11 @@ export function SettingsPage() {
       <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
 
       {saveMutation.isError && (
-        <p role="alert">{t("settings.saveError", { message: saveMutation.error.message })}</p>
+        <p role="alert">
+          {t("settings.saveError", {
+            message: settingsSaveErrorMessage(t, saveMutation.error.message),
+          })}
+        </p>
       )}
 
       <div className="flex items-center justify-between gap-4">

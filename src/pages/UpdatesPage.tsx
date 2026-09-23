@@ -9,7 +9,12 @@ import {
   useSubmitOperation,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
-import { ADAPTER_LABEL_KEYS, planErrorMessage, sourceNoticesFor } from "../lib/sources";
+import {
+  ADAPTER_LABEL_KEYS,
+  planErrorMessage,
+  settingsSaveErrorMessage,
+  sourceNoticesFor,
+} from "../lib/sources";
 import type { SourceNoticeSpec } from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
 import { ArtifactRow } from "../components/ArtifactRow";
@@ -731,7 +736,9 @@ export function UpdatesPage() {
       ))}
       {saveSettings.isError ? (
         <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
-          {t("updates.ignoreFailed", { message: saveSettings.error.message })}
+          {t("updates.ignoreFailed", {
+            message: settingsSaveErrorMessage(t, saveSettings.error.message),
+          })}
         </p>
       ) : null}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">

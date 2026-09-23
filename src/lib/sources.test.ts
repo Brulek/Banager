@@ -9,6 +9,7 @@ import {
   parseNotActionable,
   parseOpenOllamaFailure,
   planErrorMessage,
+  settingsSaveErrorMessage,
   sourceNoticesFor,
 } from "./sources";
 import type { ManagerInstance, SourceError } from "./types";
@@ -265,10 +266,54 @@ describe("planErrorMessage", () => {
     ).toBe("sourceNotice.prefixNotWritable.description");
   });
 
-  it("shows every other backend error verbatim, exactly as before", () => {
+  it("shows a string that is not a structured payload verbatim, rather than swallowing it", () => {
     expect(planErrorMessage(fakeT, "unknown instance fake:1", "npm")).toBe(
       "unknown instance fake:1",
     );
+    // A kind this build does not know is not guessed at either.
+    expect(planErrorMessage(fakeT, '{"kind":"toString"}', "npm")).toBe('{"kind":"toString"}');
+  });
+
+  it("words each of Canager's own planning failures itself, naming the source", () => {
+    for (const [kind, key] of [
+      ["unsupported", "planRefused.unsupported"],
+      ["parse_failed", "planRefused.parseFailed"],
+      ["output_too_large", "planRefused.outputTooLarge"],
+      ["refused", "planRefused.refused"],
+    ]) {
+      expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew")).toBe(
+        `${key}({"source":"Homebrew"})`,
+      );
+    }
+  });
+
+  it("interpolates the data an invalid name or a missing program carries", () => {
+    expect(planErrorMessage(fakeT, '{"kind":"invalid_name","name":"-rf"}', "npm")).toBe(
+      'planRefused.invalidName({"name":"-rf","source":"npm"})',
+    );
+    expect(
+      planErrorMessage(
+        fakeT,
+        '{"kind":"program_missing","program":"/opt/homebrew/bin/brew"}',
+        "Homebrew",
+      ),
+    ).toBe('planRefused.programMissing({"program":"/opt/homebrew/bin/brew"})');
+  });
+
+  it("quotes the tool's own stderr inside a translated sentence", () => {
+    expect(
+      planErrorMessage(fakeT, '{"kind":"command_failed","stderr":"Error: No such keg"}', "Homebrew"),
+    ).toBe('planRefused.commandFailed({"source":"Homebrew","stderr":"Error: No such keg"})');
+    // Nothing to quote: a sentence that does not end in an empty colon.
+    expect(planErrorMessage(fakeT, '{"kind":"command_failed","stderr":"  "}', "Homebrew")).toBe(
+      'planRefused.commandFailedSilent({"source":"Homebrew"})',
+    );
+  });
+
+  it("quotes the system's reason a tool could not start inside a translated sentence", () => {
+    expect(
+      planErrorMessage(fakeT, '{"kind":"spawn_failed","detail":"Permission denied (os error 13)"}', "npm"),
+    ).toBe('planRefused.spawnFailed({"source":"npm","detail":"Permission denied (os error 13)"})');
   });
 
   it("localises the submit-time refusal for a source that stopped answering", () => {
@@ -303,6 +348,34 @@ describe("planErrorMessage", () => {
 
   it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
     expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew")).toBe("planRefused.unknown");
+  });
+});
+
+describe("settingsSaveErrorMessage", () => {
+  it("words the reasons a person can act on itself", () => {
+    for (const [reason, key] of [
+      ["permission_denied", "settingsSaveFailed.permissionDenied"],
+      ["disk_full", "settingsSaveFailed.diskFull"],
+      ["read_only", "settingsSaveFailed.readOnly"],
+    ]) {
+      expect(
+        settingsSaveErrorMessage(fakeT, JSON.stringify({ kind: "settings_save_failed", reason })),
+      ).toBe(key);
+    }
+  });
+
+  it("quotes the system's own text for any other reason, inside a translated phrase", () => {
+    expect(
+      settingsSaveErrorMessage(
+        fakeT,
+        '{"kind":"settings_save_failed","reason":"other","detail":"Input/output error (os error 5)"}',
+      ),
+    ).toBe('settingsSaveFailed.other({"detail":"Input/output error (os error 5)"})');
+  });
+
+  it("shows anything that is not the payload verbatim", () => {
+    expect(settingsSaveErrorMessage(fakeT, "boom")).toBe("boom");
+    expect(settingsSaveErrorMessage(fakeT, '{"kind":"expired"}')).toBe('{"kind":"expired"}');
   });
 });
 

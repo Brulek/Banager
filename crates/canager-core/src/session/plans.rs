@@ -93,8 +93,8 @@ impl Session {
                     .cloned(),
             )
         };
-        let instance = instance.ok_or_else(|| {
-            AdapterError::Refused(format!("unknown instance {}", req.instance_id))
+        let instance = instance.ok_or_else(|| AdapterError::SourceGone {
+            instance_id: req.instance_id.clone(),
         })?;
         // The actionability gate (spec §2.5), both halves: an operation may
         // be offered only when
@@ -526,14 +526,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_issue_plan_for_unknown_instance_is_refused() {
+    async fn test_issue_plan_for_unknown_instance_is_source_gone() {
         let adapter = FakeAdapter::new(vec![]);
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
         let req = install_request("does-not-exist");
         match session.issue_plan(&req).await {
-            Err(AdapterError::Refused(_)) => {}
-            other => panic!("expected Refused, got {other:?}"),
+            Err(AdapterError::SourceGone { instance_id }) => {
+                assert_eq!(instance_id, "does-not-exist");
+            }
+            other => panic!("expected SourceGone, got {other:?}"),
         }
     }
 

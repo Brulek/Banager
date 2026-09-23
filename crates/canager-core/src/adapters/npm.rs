@@ -356,11 +356,18 @@ impl NpmAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        // The same refusal the actionability gate in `Session::issue_plan`
+        // gives a prefix `detect` already found read-only, because it is the
+        // same fact found later: permissions can change between detect and
+        // the click. Sent as `NotActionable` rather than a `Refused` string
+        // so the front end words it with the very sentence the source's own
+        // notice uses (`sourceNotice.prefixNotWritable`), in the user's
+        // language, instead of this adapter's English.
         if !(self.prefix_writable_fn)(&inst.prefix) {
-            return Err(AdapterError::Refused(format!(
-                "{} is not writable; this npm install is read-only for the current user",
-                inst.prefix.display()
-            )));
+            return Err(AdapterError::NotActionable {
+                read_only: Some(ReadOnlyReason::PrefixNotWritable),
+                unavailable: None,
+            });
         }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
@@ -1175,8 +1182,11 @@ mod tests {
         };
         let result = adapter.plan(&inst, &req).await;
         match result {
-            Err(AdapterError::Refused(_)) => {}
-            other => panic!("expected Refused, got {other:?}"),
+            Err(AdapterError::NotActionable {
+                read_only: Some(ReadOnlyReason::PrefixNotWritable),
+                unavailable: None,
+            }) => {}
+            other => panic!("expected NotActionable(PrefixNotWritable), got {other:?}"),
         }
     }
 

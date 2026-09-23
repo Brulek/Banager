@@ -91,7 +91,7 @@
     "unreachable": {
       "title": "Canager can't reach {{source}} right now",
       "description": "{{source}} is installed but didn't answer, so Canager doesn't know what's in it right now.",
-    "descriptionWithRows": "{{source}} is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing."
+      "descriptionWithRows": "{{source}} is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing."
     },
     "refusesAsRoot": {
       "title": "{{source}} is installed, but it won't run this way",
@@ -115,7 +115,16 @@
   "planRefused": {
     "sourceGone": "Canager can't find that source on this Mac any more, so it didn't start this. It may have been removed since you opened this.",
     "expired": "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
-    "unknown": "Canager already acted on this preview, or it's no longer available. Close this and start the action again."
+    "unknown": "Canager already acted on this preview, or it's no longer available. Close this and start the action again.",
+    "invalidName": "“{{name}}” doesn't look like a name Canager can safely hand to {{source}}, so it stopped before changing anything.",
+    "unsupported": "{{source}} can't do this through Canager. Nothing was changed.",
+    "parseFailed": "Canager couldn't make sense of what {{source}} replied, so it stopped before changing anything.",
+    "commandFailed": "{{source}} reported a problem, so Canager stopped before changing anything. In its own words: {{stderr}}",
+    "commandFailedSilent": "{{source}} reported a problem without saying what it was, so Canager stopped before changing anything.",
+    "programMissing": "Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
+    "spawnFailed": "Canager couldn't start {{source}}, so nothing was changed. Your Mac gave this reason: {{detail}}",
+    "outputTooLarge": "{{source}} replied with far more than Canager will read, so it stopped before changing anything.",
+    "refused": "Canager stopped before changing anything, because something on its side didn't add up. This is a problem in Canager, not on your Mac."
   },
   "operations": {
     "idle": "No operation running",
@@ -188,6 +197,12 @@
       "unignoreAriaLabel": "Stop ignoring {{name}}"
     },
     "saveError": "Couldn't save that change ({{message}}). It's been reverted."
+  },
+  "settingsSaveFailed": {
+    "permissionDenied": "Canager isn't allowed to write to the folder where it keeps its settings",
+    "diskFull": "your Mac's disk is full",
+    "readOnly": "the disk where Canager keeps its settings can't be written to",
+    "other": "your Mac gave this reason: {{detail}}"
   },
   "emptyStates": {
     "loadFailed": {
