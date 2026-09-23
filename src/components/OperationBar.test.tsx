@@ -80,6 +80,37 @@ describe("OperationBar", () => {
     expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 
+  it("shows cancelling, not the brew-update wait, once Cancel is pressed during the wait", async () => {
+    // F5 fix: `cancel()` (ops/mod.rs) moves the record straight to
+    // CancelRequested when the user presses Cancel, without waiting for
+    // `wait_for_update` to notice -- so the last log line an op carries
+    // can still be `WaitingForBrewUpdate` even though the op is no longer
+    // just waiting. The bar must say "cancelling", not repeat the stale
+    // wait note, once status has moved off Running.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 5,
+            kind: "Upgrade",
+            instance_id: "brew:/opt/homebrew",
+            artifact_kind: "Cask",
+            name: "onyx",
+            status: "CancelRequested",
+            outcome: null,
+            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+    useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
+
+    const { findByText, queryByText } = renderWithProviders(<OperationBar />);
+    await findByText("Updating onyx — cancelling");
+    expect(queryByText("Updating onyx — waiting for Homebrew to finish updating")).not.toBeInTheDocument();
+  });
+
   it("keeps a finished operation visible with its outcome and no Cancel button", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "list_operations") {

@@ -36,16 +36,28 @@ export function OperationBar() {
   // drawer said so (`LogNote::WaitingForBrewUpdate`), but this bar did
   // not, and it is the only thing visible before the drawer is opened.
   // There is no separate `OpStatus` for this -- `set_status` in
-  // `ops/mod.rs` never leaves `Running` while `execute` is inside
-  // `wait_for_update` -- so this reads the same log the drawer already
-  // renders (`useUiStore().logs`) instead of adding one: the note this
+  // `ops/mod.rs` leaves the record's status at `Running` for the whole of
+  // `execute`, including any time it spends inside `wait_for_update` --
+  // so this reads the same log the drawer already renders
+  // (`useUiStore().logs`) instead of adding one: the note this
   // operation's log most recently carried is the wait starting, and
   // nothing (no further `Log` or `Note` event) has arrived since to say
   // it ended.
+  //
+  // Gated on `current.status === "Running"`, not on `isActive`: `cancel()`
+  // (`ops/mod.rs`) sets the record's status straight to `CancelRequested`
+  // as soon as the user presses Cancel, independent of and before
+  // `execute`/`wait_for_update` notice the cancellation, so a cancel
+  // pressed during the wait leaves this operation `CancelRequested` (then
+  // briefly `Cancelling`) while the last log line is still the same
+  // `WaitingForBrewUpdate` note. Without this guard that combination read
+  // as "waiting for Homebrew to finish updating" even though the op was
+  // no longer just waiting -- it had a cancel in flight -- which told the
+  // user their Cancel click had not registered.
   const opLogs = logs.filter((l) => l.opId === current.id);
   const lastOpLog = opLogs[opLogs.length - 1];
   const waitingForBrewUpdate =
-    isActive &&
+    current.status === "Running" &&
     lastOpLog !== undefined &&
     "note" in lastOpLog &&
     "WaitingForBrewUpdate" in lastOpLog.note;
