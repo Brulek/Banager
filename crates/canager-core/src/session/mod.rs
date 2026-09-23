@@ -250,7 +250,10 @@ impl Session {
 
     /// Test seam: build a Session over arbitrary adapters. Its
     /// `background_change` is wired to nothing: an adapter a test builds
-    /// is given its own `Notify` by the test if it needs one.
+    /// is given its own `Notify` by the test if it needs one. A test that
+    /// instead needs *this* session's own `background_change()` to resolve
+    /// -- proving something that waits on it, rather than on an adapter's
+    /// copy -- wants `crate::testing::session_with_background_change`.
     pub fn with_adapters(
         sink: Arc<dyn EventSink>,
         adapters: Vec<Arc<dyn Adapter>>,
@@ -259,7 +262,15 @@ impl Session {
         Session::build(sink, adapters, now_fn, Arc::new(tokio::sync::Notify::new()))
     }
 
-    fn build(
+    /// `pub(crate)`, not private: `crate::testing::session_with_background_change`
+    /// (a separate module, but the same crate) is the only other caller,
+    /// and exists for exactly the reason `with_adapters`'s own doc comment
+    /// gives for not wiring a test's `background_change` to anything --
+    /// except that the Tauri shell's tests need it wired to a `Notify`
+    /// *they* hold, to prove `ipc::refresh_on_background_change` reacts to
+    /// it, and `src-tauri` is a different crate that cannot see a private
+    /// item here at all, `#[cfg(test)]` or not.
+    pub(crate) fn build(
         sink: Arc<dyn EventSink>,
         adapters: Vec<Arc<dyn Adapter>>,
         now_fn: Option<fn() -> i64>,

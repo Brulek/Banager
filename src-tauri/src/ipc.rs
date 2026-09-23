@@ -715,6 +715,121 @@ mod tests {
         })
     }
 
+    /// Like `state_with_fake_adapter_and_now`, but the `Session`'s own
+    /// `background_change` -- the one `ipc::refresh_on_background_change`
+    /// loops on -- is wired to `background_change` itself, via
+    /// `canager_core::testing::session_with_background_change`
+    /// (`Session::with_adapters` wires it to a `Notify` nobody outside the
+    /// session ever gets a handle to). A test can then wake it directly
+    /// with `background_change.notify_one()`, standing in for a real
+    /// `BrewAdapter`'s own clone of the same `Notify` firing when a `brew
+    /// update` a refresh left running ends.
+    fn state_with_fake_adapter_and_background_change(
+        background_change: Arc<tokio::sync::Notify>,
+    ) -> (Arc<AppState>, Arc<Mutex<Vec<CheckOptions>>>) {
+        let instance = canager_core::testing::manager_instance("fake", "fake:1");
+        let meta = AdapterMeta {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            kind: "fake".to_string(),
+            platforms: vec!["macos".to_string()],
+            homepage: "https://example.invalid".to_string(),
+            schema_version: 1,
+            verified_versions: vec![],
+        };
+        let check_options_calls = Arc::new(Mutex::new(Vec::new()));
+        let adapter: Arc<dyn Adapter> = Arc::new(FakeAdapter {
+            meta,
+            instance,
+            execute_calls: Arc::new(AtomicUsize::new(0)),
+            check_options_calls: check_options_calls.clone(),
+            detect_delay: std::time::Duration::ZERO,
+        });
+        let sink = ChannelSink::new();
+        let session = canager_core::testing::session_with_background_change(
+            sink.clone(),
+            vec![adapter],
+            background_change,
+        );
+        let state = Arc::new(AppState {
+            session,
+            settings_path: temp_settings_path("ipc-background-change"),
+            settings: std::sync::Mutex::new(Settings::default()),
+            channel_sink: sink,
+            last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+        });
+        (state, check_options_calls)
+    }
+
+    #[tokio::test]
+    async fn test_refresh_on_background_change_refreshes_exactly_once_and_broadcasts_snapshot_changed(
+    ) {
+        // `ipc::refresh_on_background_change` had no test at all. This
+        // proves the one thing it exists for: a single background change
+        // -- standing in for a real `brew update` a refresh left running
+        // finally ending -- makes the loop refresh exactly once (not zero,
+        // the loop never having woken; not more than once, an extra spurious
+        // wake or a loop that free-runs instead of re-`.await`ing
+        // `background_change()`), and that the refresh reaches the window
+        // the same way any other one does: a `SnapshotChanged` broadcast.
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let (state, check_options_calls) =
+            state_with_fake_adapter_and_background_change(background_change.clone());
+
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let loop_state = state.clone();
+        let handle = tokio::spawn(async move { refresh_on_background_change(&loop_state).await });
+
+        // No race to guard here: `Notify::notify_one` stores a permit when
+        // nobody is waiting yet, which the loop's first
+        // `background_change().await` then consumes immediately -- so this
+        // works whether or not the spawned task has reached that await
+        // point by the time this runs.
+        background_change.notify_one();
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if !check_options_calls.lock().unwrap().is_empty() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("a background change must make refresh_on_background_change refresh");
+
+        // Give any *unwanted* extra wake a chance to land too, so "exactly
+        // one" below is not just "at least one, measured too early".
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert_eq!(
+            check_options_calls.lock().unwrap().len(),
+            1,
+            "one background change must refresh exactly once"
+        );
+        let events = received.lock().unwrap().clone();
+        assert_eq!(
+            events.len(),
+            1,
+            "and broadcast exactly one SnapshotChanged: {events:?}"
+        );
+        match &events[0] {
+            UiEvent::SnapshotChanged { .. } => {}
+            other => panic!("expected SnapshotChanged, got {other:?}"),
+        }
+
+        handle.abort();
+    }
+
     #[test]
     fn test_claim_broadcast_announces_each_generation_once_and_never_an_older_one() {
         use std::sync::atomic::AtomicU64;
