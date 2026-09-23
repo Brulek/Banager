@@ -229,11 +229,9 @@ export interface NotActionableReason {
  * person -- both `InstalledPage` and `UpdatesPage` hide every control for
  * an instance that fails this gate, so it should not normally be reachable
  * at all. Returns `null` for every other backend error, including the
- * other `kind`s `submit_operation_error` sends (`source_gone`, `expired`,
- * `unknown`, each read by its own function below) and genuine bugs (an
- * unknown instance, an unregistered adapter) that `planErrorMessage` still
- * shows verbatim -- those are not this project's own copy, so there is
- * nothing to localise.
+ * other `kind`s `submit_operation_error` and `plan_operation_error` send
+ * (`source_gone`, `expired`, `unknown`, `refused`, `command_failed`, ...),
+ * each read further down.
  */
 export function parseNotActionable(message: string): NotActionableReason | null {
   let parsed: unknown;
