@@ -29,6 +29,10 @@ export function OperationBar() {
   }
 
   const isActive = ACTIVE_STATUSES.includes(current.status);
+  // `OperationManager::cancel` (ops/mod.rs) refuses a `NoCancel` op at
+  // every status, so a Cancel button for one would promise something the
+  // backend will not do. No adapter produces `NoCancel` yet.
+  const cancellable = current.cancel_policy !== "NoCancel";
 
   // "Running" alone used to be the only thing on screen while an install,
   // upgrade or uninstall waits for a `brew update` a refresh left running
@@ -87,7 +91,7 @@ export function OperationBar() {
           </span>
         ) : null}
       </button>
-      {isActive ? (
+      {isActive && cancellable ? (
         <button
           type="button"
           onClick={() => cancelMutation.mutate(current.id)}

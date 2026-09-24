@@ -1,8 +1,8 @@
 use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
-    AdapterId, ArtifactKey, ArtifactKind, Attention, Fault, InstanceId, ManagerInstance, OpKind,
-    OpStatus, Outcome, Plan, Reconciled, ResourceLock,
+    AdapterId, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault, InstanceId,
+    ManagerInstance, OpKind, OpStatus, Outcome, Plan, Reconciled, ResourceLock,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -203,6 +203,28 @@ pub struct OpSummary {
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
     pub argv_preview: Vec<String>, // program followed by args
+    /// The plan's `cancel_policy`. The front end reads it to offer no
+    /// Cancel button for a `NoCancel` op (`OperationBar.tsx`), the same
+    /// op `cancel` below would refuse.
+    pub cancel_policy: CancelPolicy,
+}
+
+/// Why `OperationManager::cancel` changed nothing. The IPC layer
+/// (`cancel_operation_impl`, src-tauri/src/ipc.rs) reports `NoCancel` to
+/// the front end and keeps `NotPending` silent, as a lost race always was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CancelRefused {
+    /// The op's plan says `CancelPolicy::NoCancel`: the user cannot cancel
+    /// it, at any status. Its command ends on its own or at the plan's
+    /// `timeout_secs`, which the runner enforces on a deadline of its own
+    /// (`RealRunner::run`, runner/real.rs), never through the token this
+    /// refusal leaves unfired -- so a NoCancel op still stops at its
+    /// timeout, and `run_operation` reconciles it then like any other
+    /// stopped run.
+    NoCancel,
+    /// No op has this id, or it is past `Running` (`Verifying`/`Done`), or
+    /// a cancel is already in flight (`CancelRequested`/`Cancelling`).
+    NotPending,
 }
 
 impl OperationManager {
@@ -267,6 +289,7 @@ impl OperationManager {
                     status: r.status,
                     outcome: r.outcome.clone(),
                     argv_preview,
+                    cancel_policy: r.plan.cancel_policy,
                 }
             })
             .collect();
@@ -274,26 +297,39 @@ impl OperationManager {
         summaries
     }
 
-    pub fn cancel(&self, op_id: OpId) {
+    /// Asks the op to stop. `Ok(())` means the request went through: the
+    /// record is now `CancelRequested` and its token has fired, which
+    /// `run_operation` and the runner act on. An `Err` means nothing
+    /// changed, and says why.
+    pub fn cancel(&self, op_id: OpId) -> Result<(), CancelRefused> {
         let mut records = self.records.lock().unwrap();
-        if let Some(r) = records.get_mut(&op_id) {
-            // Only a still-pending op can be cancelled. Once it has moved
-            // past Running (Verifying/Done) — or is already
-            // CancelRequested/Cancelling — cancelling again must be a
-            // no-op: forcing it back to CancelRequested here would corrupt
-            // a finished record and make `wait()` (which only returns on
-            // Done) hang forever.
-            if !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
-                return;
-            }
-            r.status = OpStatus::CancelRequested;
-            r.cancel.cancel();
-            drop(records);
-            self.sink.emit(OperationEvent::Status {
-                op_id,
-                status: OpStatus::CancelRequested,
-            });
+        let Some(r) = records.get_mut(&op_id) else {
+            return Err(CancelRefused::NotPending);
+        };
+        // The policy is checked before the status: a NoCancel op is never
+        // cancellable, so the answer is the same at every status -- the
+        // same answer the front end reads off `OpSummary::cancel_policy`
+        // to offer no Cancel button at any status.
+        if r.plan.cancel_policy == CancelPolicy::NoCancel {
+            return Err(CancelRefused::NoCancel);
         }
+        // Only a still-pending op can be cancelled. Once it has moved
+        // past Running (Verifying/Done) — or is already
+        // CancelRequested/Cancelling — cancelling again must be a
+        // no-op: forcing it back to CancelRequested here would corrupt
+        // a finished record and make `wait()` (which only returns on
+        // Done) hang forever.
+        if !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
+            return Err(CancelRefused::NotPending);
+        }
+        r.status = OpStatus::CancelRequested;
+        r.cancel.cancel();
+        drop(records);
+        self.sink.emit(OperationEvent::Status {
+            op_id,
+            status: OpStatus::CancelRequested,
+        });
+        Ok(())
     }
 
     pub async fn wait(&self, op_id: OpId) -> Option<Outcome> {
@@ -603,6 +639,10 @@ impl OperationManager {
             None
         };
 
+        // A NoCancel plan gets the same live token as any other. Nothing
+        // fires it (`cancel` refuses first), so its `execute` ends when the
+        // command does or at `plan.timeout_secs`, which the runner keeps on
+        // a deadline of its own (see `CancelRefused::NoCancel`).
         let exec_result = adapter
             .execute(&plan, self.sink.clone(), op_id, cancel.clone())
             .await;

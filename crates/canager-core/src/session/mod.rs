@@ -41,7 +41,7 @@ use crate::model::{
     AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, ReadOnlyReason, Unavailable,
     UninstallBlocked, UpdateBlocked, UpdateCandidate,
 };
-use crate::ops::{OpSummary, OperationManager};
+use crate::ops::{CancelRefused, OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -370,7 +370,7 @@ impl Session {
         self.snapshot.lock().unwrap().clone()
     }
 
-    pub fn cancel(&self, op_id: OpId) {
+    pub fn cancel(&self, op_id: OpId) -> Result<(), CancelRefused> {
         self.ops.cancel(op_id)
     }
 
@@ -550,7 +550,7 @@ mod tests {
         }
         assert_eq!(session.operations().len(), 1);
 
-        session.cancel(op_id);
+        session.cancel(op_id).expect("cancel a Running op");
 
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {

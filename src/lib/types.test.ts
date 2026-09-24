@@ -283,6 +283,7 @@ describe("types", () => {
       status: "Running",
       outcome: null,
       argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jq"],
+      cancel_policy: "KillThenReconcile",
     };
     const settings: Settings = {
       language: "ZhCn",

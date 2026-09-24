@@ -148,6 +148,14 @@ export interface ManagerInstance {
    */
   status: InstanceStatus;
 }
+/**
+ * What the user's Cancel does to an operation. Mirrors `CancelPolicy` in
+ * crates/canager-core/src/model.rs: bare-string unit variants.
+ * `OperationBar.tsx` reads the copy `OpSummary` carries and offers no
+ * Cancel button for `NoCancel`, which `OperationManager::cancel` would
+ * refuse. No adapter produces `NoCancel` yet.
+ */
+export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 export interface Plan {
   request: OpRequest;
   program: string;
@@ -155,7 +163,7 @@ export interface Plan {
   env: [string, string][];
   needs_password: boolean;
   locks: string[];
-  cancel_policy: "SafeKill" | "KillThenReconcile" | "NoCancel";
+  cancel_policy: CancelPolicy;
   warnings: Warning[];
   affected: string[];
   timeout_secs: number;
@@ -190,6 +198,7 @@ export interface OpSummary {
   status: OpStatus;
   outcome: Outcome | null;
   argv_preview: string[];
+  cancel_policy: CancelPolicy;
 }
 export interface SourceError {
   instance_id: string;

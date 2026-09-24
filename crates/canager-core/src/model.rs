@@ -349,10 +349,20 @@ pub struct OpRequest {
     pub name: String,
 }
 
+/// What the user's Cancel does to an operation built from this plan.
+/// `OperationManager::cancel` (ops/mod.rs) reads it, and the front end
+/// reads the copy `OpSummary` carries (`OperationBar.tsx`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CancelPolicy {
-    SafeKill,
+    /// Cancel fires the op's token. A command already running is stopped
+    /// by the runner and `run_operation` reconciles what is installed
+    /// afterwards; one not yet started never starts. Every `Plan` an
+    /// adapter builds today says this (pip's `plan()` builds none).
     KillThenReconcile,
+    /// Cancel is refused; the op runs to its end or to its
+    /// `Plan::timeout_secs`. No adapter produces this yet: a standalone
+    /// self-updating installer (`claude update`, `rustup self update`) is
+    /// the expected first.
     NoCancel,
 }
 

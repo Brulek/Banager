@@ -1456,7 +1456,7 @@ mod tests {
             );
         }
 
-        session.cancel(op_id);
+        session.cancel(op_id).expect("cancel a Running op");
         let snapshot = tokio::time::timeout(Duration::from_secs(2), refresh_task)
             .await
             .expect("refresh must not hang once the blocking operation is cancelled")

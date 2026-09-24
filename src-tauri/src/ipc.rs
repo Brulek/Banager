@@ -2,7 +2,7 @@ use crate::events::UiEvent;
 use crate::state::AppState;
 use canager_core::adapters::CheckOptions;
 use canager_core::model::OpRequest;
-use canager_core::ops::OpSummary;
+use canager_core::ops::{CancelRefused, OpSummary};
 use canager_core::runner::HostEnv;
 use canager_core::session::{IssuedPlan, Snapshot};
 use canager_core::settings::Settings;
@@ -326,9 +326,18 @@ pub async fn submit_operation(state: State<'_, AppState>, plan_id: String) -> Re
     submit_operation_impl(&state, plan_id)
 }
 
+/// A `NoCancel` op refuses, as `{"kind":"no_cancel"}` in the JSON shape
+/// `submit_operation_error` uses. The front end's only Cancel control
+/// (`OperationBar.tsx`, the one caller of `useCancelOperation`) is not
+/// offered for such an op, reading `OpSummary.cancel_policy`, so this is
+/// the backstop and nothing there words it. A cancel that finds nothing
+/// pending (the op finished first, or a cancel is already in flight) stays
+/// `Ok(())`, as it always was: losing that race is not an error.
 pub(crate) fn cancel_operation_impl(state: &AppState, op_id: u64) -> Result<(), String> {
-    state.session.cancel(op_id);
-    Ok(())
+    match state.session.cancel(op_id) {
+        Ok(()) | Err(CancelRefused::NotPending) => Ok(()),
+        Err(CancelRefused::NoCancel) => Err(serde_json::json!({ "kind": "no_cancel" }).to_string()),
+    }
 }
 
 #[tauri::command]
@@ -579,6 +588,10 @@ mod tests {
         /// get_settings/set_settings.
         check_options_calls: Arc<Mutex<Vec<CheckOptions>>>,
         detect_delay: std::time::Duration,
+        /// What every plan this adapter builds says about Cancel. Only
+        /// `test_cancel_operation_impl_refuses_a_no_cancel_op` sets
+        /// `NoCancel`; every other fixture keeps `KillThenReconcile`.
+        cancel_policy: CancelPolicy,
     }
 
     #[async_trait]
@@ -630,7 +643,7 @@ mod tests {
                 env: vec![],
                 needs_password: false,
                 locks: vec![ResourceLock(inst.id.clone())],
-                cancel_policy: CancelPolicy::KillThenReconcile,
+                cancel_policy: self.cancel_policy,
                 warnings: vec![],
                 affected: vec![],
                 timeout_secs: 60,
@@ -683,7 +696,19 @@ mod tests {
     /// which must prove a rejected `submit` never reaches the runner and
     /// must simulate a plan aging past its expiry window (F1 in the design
     /// review). `state_with_fake_adapter` above delegates to this with
-    /// `None`, so there is exactly one place that builds this fixture.
+    /// `None`, and this delegates to `state_with_fake_adapter_and_policy`
+    /// with `KillThenReconcile`, so there is exactly one place that builds
+    /// this fixture.
+    fn state_with_fake_adapter_and_now(
+        now_fn: Option<fn() -> i64>,
+    ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
+        state_with_fake_adapter_and_policy(now_fn, CancelPolicy::KillThenReconcile)
+    }
+
+    /// Where `state_with_fake_adapter` and `state_with_fake_adapter_and_now`
+    /// both end up; see the latter for the counter and the clock.
+    /// `cancel_policy` is what every plan the fake builds will say about
+    /// Cancel.
     ///
     /// `session` and `channel_sink` share the *same* `ChannelSink` (N1 in
     /// the design review): the two used to be built from separate
@@ -692,8 +717,9 @@ mod tests {
     /// registered through `AppState.channel_sink`, and no test caught it
     /// because every test only ever broadcast directly on `channel_sink`
     /// rather than checking that a *real* operation's events arrive.
-    fn state_with_fake_adapter_and_now(
+    fn state_with_fake_adapter_and_policy(
         now_fn: Option<fn() -> i64>,
+        cancel_policy: CancelPolicy,
     ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
         let instance = canager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
@@ -713,6 +739,7 @@ mod tests {
             execute_calls: execute_calls.clone(),
             check_options_calls: check_options_calls.clone(),
             detect_delay: std::time::Duration::ZERO,
+            cancel_policy,
         });
         let sink = ChannelSink::new();
         let session =
@@ -750,6 +777,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay,
+            cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
         let session =
@@ -796,6 +824,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: check_options_calls.clone(),
             detect_delay,
+            cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
         let session = canager_core::testing::session_with_background_change(
@@ -1390,6 +1419,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay: std::time::Duration::ZERO,
+            cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
         let session =
@@ -1555,7 +1585,10 @@ mod tests {
         let summaries = list_operations_impl(&state).expect("list_operations_impl");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].id, op_id);
+        assert_eq!(summaries[0].cancel_policy, CancelPolicy::KillThenReconcile);
 
+        // The op finished before this Cancel: a cancel that lost that race
+        // is silent, as it always was, not an error.
         cancel_operation_impl(&state, op_id).expect("cancel_operation_impl on a finished op");
 
         let events = received.lock().unwrap();
@@ -1573,6 +1606,40 @@ mod tests {
             )),
             "the real operation's Finished event must reach a subscriber through AppState.channel_sink"
         );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_operation_impl_refuses_a_no_cancel_op() {
+        // The summary says `NoCancel`, which is what `OperationBar.tsx`
+        // reads to offer no Cancel button; and if a cancel arrives anyway,
+        // it is refused as `{"kind":"no_cancel"}`. The refusal is by policy,
+        // not by status: the round-trip test above cancels the same shape
+        // of op after the same wait and gets `Ok(())`.
+        let (state, _execute_calls, _check_options_calls) =
+            state_with_fake_adapter_and_policy(None, CancelPolicy::NoCancel);
+        refresh_impl(&state).await.expect("refresh_impl");
+
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "claude".to_string(),
+        };
+        let issued = plan_operation_impl(&state, req)
+            .await
+            .expect("plan_operation_impl");
+        let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let summaries = list_operations_impl(&state).expect("list_operations_impl");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].cancel_policy, CancelPolicy::NoCancel);
+
+        let err = cancel_operation_impl(&state, op_id)
+            .expect_err("a NoCancel op's cancel must be refused");
+        let parsed: serde_json::Value = serde_json::from_str(&err)
+            .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
+        assert_eq!(parsed["kind"], "no_cancel");
     }
 
     #[tokio::test]

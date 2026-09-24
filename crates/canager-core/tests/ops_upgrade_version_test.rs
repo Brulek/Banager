@@ -147,7 +147,7 @@ async fn upgrade(
     let op_id = manager.submit(plan);
     tokio::select! {
         outcome = manager.wait(op_id) => return outcome.expect("an outcome"),
-        _ = runner.awaiting_cancel.notified() => manager.cancel(op_id),
+        _ = runner.awaiting_cancel.notified() => manager.cancel(op_id).expect("cancel a Running op"),
     }
     manager.wait(op_id).await.expect("an outcome")
 }

@@ -33,6 +33,7 @@ describe("OperationBar", () => {
             status: "Running",
             outcome: null,
             argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+            cancel_policy: "KillThenReconcile",
           },
         ]);
       }
@@ -67,6 +68,7 @@ describe("OperationBar", () => {
             status: "Running",
             outcome: null,
             argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+            cancel_policy: "KillThenReconcile",
           },
         ]);
       }
@@ -99,6 +101,7 @@ describe("OperationBar", () => {
             status: "CancelRequested",
             outcome: null,
             argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
+            cancel_policy: "KillThenReconcile",
           },
         ]);
       }
@@ -124,6 +127,7 @@ describe("OperationBar", () => {
             status: "Done",
             outcome: { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"" } },
             argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jqq"],
+            cancel_policy: "KillThenReconcile",
           },
         ]);
       }
@@ -133,6 +137,36 @@ describe("OperationBar", () => {
     const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
 
     await findByText('Failed: No available formula with the name "jqq"');
+    expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  });
+
+  it("offers no Cancel button for a running operation whose plan says NoCancel", async () => {
+    // `OperationManager::cancel` (ops/mod.rs) refuses such an op, so a
+    // button here would promise something the backend will not do. No
+    // adapter produces `NoCancel` yet; this is the shape a standalone
+    // self-updating installer is expected to send.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 7,
+            kind: "Upgrade",
+            instance_id: "claude:/Users/me/.local/bin/claude",
+            artifact_kind: "Binary",
+            name: "claude",
+            status: "Running",
+            outcome: null,
+            argv_preview: ["/Users/me/.local/bin/claude", "update"],
+            cancel_policy: "NoCancel",
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
+
+    await findByText("Updating claude — running");
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 });

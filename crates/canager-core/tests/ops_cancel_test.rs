@@ -17,7 +17,7 @@ use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
     OpStatus, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
 };
-use canager_core::ops::OperationManager;
+use canager_core::ops::{CancelRefused, OperationManager};
 use canager_core::runner::HostEnv;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -55,6 +55,10 @@ struct FakeAdapter {
     /// How long the first `reconcile` call takes, so a test can cancel
     /// while an upgrade is still taking its before-reading.
     first_reconcile_delay: Duration,
+    /// What every plan this adapter builds says about Cancel. The policy
+    /// matrix at the end of this file sets `NoCancel`; every other test
+    /// keeps the `KillThenReconcile` the constructors default to.
+    cancel_policy: CancelPolicy,
     execute_calls: Arc<AtomicUsize>,
 }
 
@@ -78,6 +82,7 @@ impl FakeAdapter {
             readings,
             reconcile_calls: AtomicUsize::new(0),
             first_reconcile_delay: Duration::ZERO,
+            cancel_policy: CancelPolicy::KillThenReconcile,
             execute_calls: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -130,7 +135,7 @@ impl Adapter for FakeAdapter {
             env: vec![],
             needs_password: false,
             locks: vec![ResourceLock(inst.id.clone())],
-            cancel_policy: CancelPolicy::KillThenReconcile,
+            cancel_policy: self.cancel_policy,
             warnings: vec![],
             affected: vec![],
             timeout_secs: 60,
@@ -294,7 +299,9 @@ async fn run_cancelled_mid_execute_with_readings(
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    manager.cancel(op_id);
+    manager
+        .cancel(op_id)
+        .expect("a KillThenReconcile op accepts a cancel while Running");
 
     let outcome = manager
         .wait(op_id)
@@ -482,7 +489,9 @@ async fn test_cancel_while_queued_reports_cancelled_and_never_runs() {
         Duration::from_millis(1000),
     )
     .await;
-    manager.cancel(id_b);
+    manager
+        .cancel(id_b)
+        .expect("a KillThenReconcile op accepts a cancel while Queued");
 
     let outcome_b = manager.wait(id_b).await;
     assert_eq!(outcome_b, Some(Outcome::Cancelled));
@@ -540,7 +549,11 @@ async fn test_cancel_after_done_is_a_no_op() {
         })
         .count();
 
-    manager.cancel(op_id);
+    assert_eq!(
+        manager.cancel(op_id),
+        Err(CancelRefused::NotPending),
+        "a Done op has nothing left to cancel"
+    );
     // Give any (incorrect) async side effect a moment to land before we
     // assert its absence.
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -603,7 +616,9 @@ async fn test_cancel_immediately_after_submit_never_calls_execute() {
     // Nothing else holds this resource's lock, so `submit` will find it free
     // on the very first poll.
     let op_id = manager.submit(plan);
-    manager.cancel(op_id);
+    manager
+        .cancel(op_id)
+        .expect("a KillThenReconcile op accepts a cancel right after submit");
 
     let outcome = manager.wait(op_id).await;
     assert_eq!(outcome, Some(Outcome::Cancelled));
@@ -705,12 +720,188 @@ async fn test_cancel_during_an_upgrades_before_reading_never_calls_execute() {
         Duration::from_millis(1000),
     )
     .await;
-    manager.cancel(op_id);
+    manager
+        .cancel(op_id)
+        .expect("a KillThenReconcile op accepts a cancel during its before-reading");
 
     assert_eq!(manager.wait(op_id).await, Some(Outcome::Cancelled));
     assert_eq!(
         adapter.execute_calls(),
         0,
         "an upgrade cancelled during its before-reading must never invoke execute"
+    );
+}
+
+// --- The policy matrix ----------------------------------------------------
+//
+// `Plan::cancel_policy` decides what the user's Cancel does. Every test
+// above runs `KillThenReconcile`, which every `Plan` an adapter builds
+// today says: the cancel is accepted, the command is stopped and the op is
+// reconciled. A
+// `NoCancel` plan -- none produced yet; a standalone self-updating
+// installer is the expected first -- refuses the Cancel outright and runs
+// to its end. `cancel` says which happened: `Ok(())`, or
+// `Err(CancelRefused::NoCancel)`, or `Err(CancelRefused::NotPending)` for
+// an op that does not exist or has nothing left to cancel, so a caller can
+// tell a refusal by policy from a cancel that simply lost the race.
+
+fn no_cancel_adapter(behavior: ExecuteBehavior) -> Arc<FakeAdapter> {
+    let mut fake = FakeAdapter::new(
+        behavior,
+        Reconciled {
+            present: true,
+            version: None,
+        },
+    );
+    fake.cancel_policy = CancelPolicy::NoCancel;
+    Arc::new(fake)
+}
+
+#[tokio::test]
+async fn test_no_cancel_op_refuses_cancel_while_running_and_runs_to_completion() {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
+    let adapter = no_cancel_adapter(ExecuteBehavior::Work(Duration::from_millis(200)));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/no-cancel-running");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Install, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+    let op_id = manager.submit(plan);
+
+    wait_for_status(
+        &manager,
+        op_id,
+        OpStatus::Running,
+        Duration::from_millis(1000),
+    )
+    .await;
+    assert_eq!(manager.cancel(op_id), Err(CancelRefused::NoCancel));
+
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Succeeded));
+    let trace = status_trace(&sink.snapshot(), op_id);
+    assert!(
+        !trace.contains(&OpStatus::CancelRequested) && !trace.contains(&OpStatus::Cancelling),
+        "a refused cancel must leave no trace of one: {trace:?}"
+    );
+    assert_eq!(adapter.execute_calls(), 1, "the command ran, once");
+}
+
+#[tokio::test]
+async fn test_no_cancel_op_refuses_cancel_while_queued_and_still_runs() {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink.clone());
+    let adapter = no_cancel_adapter(ExecuteBehavior::Work(Duration::from_millis(200)));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/no-cancel-queued");
+    manager.register_instance(inst.clone());
+    let plan_a = adapter
+        .plan(&inst, &make_request(OpKind::Install, &inst.id, "a"))
+        .await
+        .expect("plan a");
+    let plan_b = adapter
+        .plan(&inst, &make_request(OpKind::Install, &inst.id, "b"))
+        .await
+        .expect("plan b");
+
+    // Both plans share inst's ResourceLock, so op_b sits Queued while op_a
+    // is Running.
+    let id_a = manager.submit(plan_a);
+    let id_b = manager.submit(plan_b);
+    wait_for_status(
+        &manager,
+        id_a,
+        OpStatus::Running,
+        Duration::from_millis(1000),
+    )
+    .await;
+    assert_eq!(manager.cancel(id_b), Err(CancelRefused::NoCancel));
+
+    assert_eq!(manager.wait(id_b).await, Some(Outcome::Succeeded));
+    let trace_b = status_trace(&sink.snapshot(), id_b);
+    assert!(
+        trace_b.contains(&OpStatus::Running),
+        "a NoCancel op whose cancel was refused while Queued still runs: {trace_b:?}"
+    );
+    assert_eq!(adapter.execute_calls(), 2, "both commands ran");
+}
+
+#[tokio::test]
+async fn test_no_cancel_op_that_timed_out_ends_unconfirmed() {
+    // Nothing fires a NoCancel op's token (`cancel` refuses before it
+    // would), so its only stop is the plan's timeout. The runner enforces
+    // that on its own deadline, never through the token
+    // (`RealRunner::run`, runner/real.rs; `test_timeout_kills_process_group`
+    // there runs with a token nobody fires, which is exactly a NoCancel
+    // op's), and `run_plan` reports the stopped run as `Unconfirmed`. This
+    // fake stands in for that report and proves the policy changes nothing
+    // on the way from there to the outcome: a timed-out NoCancel op ends
+    // `Unconfirmed`, the same as a timed-out KillThenReconcile one
+    // (`test_timed_out_run_is_unconfirmed_not_cancelled`), never hangs and
+    // is never called the user's cancel.
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let adapter = no_cancel_adapter(ExecuteBehavior::TimedOut);
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/no-cancel-timed-out");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Upgrade, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+    let op_id = manager.submit(plan);
+
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Unconfirmed));
+}
+
+#[tokio::test]
+async fn test_kill_then_reconcile_cancel_is_accepted_once_and_not_pending_after() {
+    let sink = Arc::new(VecSink::new());
+    let mut manager = OperationManager::new(sink);
+    let adapter = Arc::new(FakeAdapter::new(
+        ExecuteBehavior::Work(Duration::from_millis(200)),
+        Reconciled {
+            present: true,
+            version: None,
+        },
+    ));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+
+    let inst = make_instance("fake:/kill-then-reconcile");
+    manager.register_instance(inst.clone());
+    let plan = adapter
+        .plan(&inst, &make_request(OpKind::Install, &inst.id, "pkg"))
+        .await
+        .expect("plan");
+    let op_id = manager.submit(plan);
+
+    wait_for_status(
+        &manager,
+        op_id,
+        OpStatus::Running,
+        Duration::from_millis(1000),
+    )
+    .await;
+    assert_eq!(manager.cancel(op_id), Ok(()));
+    // A second Cancel finds one already in flight: nothing more to do.
+    assert_eq!(manager.cancel(op_id), Err(CancelRefused::NotPending));
+
+    // `Work` ignores the token and finishes; reconcile finds the package
+    // present, so the race goes to the command (see `Outcome::Cancelled`).
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Succeeded));
+    assert_eq!(manager.cancel(op_id), Err(CancelRefused::NotPending));
+    assert_eq!(
+        manager.cancel(op_id + 1000),
+        Err(CancelRefused::NotPending),
+        "an id nothing was submitted under"
     );
 }
