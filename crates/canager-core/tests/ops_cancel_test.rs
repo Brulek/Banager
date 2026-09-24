@@ -737,13 +737,14 @@ async fn test_cancel_during_an_upgrades_before_reading_never_calls_execute() {
 // `Plan::cancel_policy` decides what the user's Cancel does. Every test
 // above runs `KillThenReconcile`, which every `Plan` an adapter builds
 // today says: the cancel is accepted, the command is stopped and the op is
-// reconciled. A
-// `NoCancel` plan -- none produced yet; a standalone self-updating
-// installer is the expected first -- refuses the Cancel outright and runs
-// to its end. `cancel` says which happened: `Ok(())`, or
-// `Err(CancelRefused::NoCancel)`, or `Err(CancelRefused::NotPending)` for
-// an op that does not exist or has nothing left to cancel, so a caller can
-// tell a refusal by policy from a cancel that simply lost the race.
+// reconciled. A `NoCancel` plan -- none produced yet; a standalone
+// self-updating installer is the expected first -- refuses the Cancel once
+// the op is Running and runs to its end; while the op is still Queued,
+// nothing has started, so the cancel is accepted and it never runs.
+// `cancel` says which happened: `Ok(())`, or `Err(CancelRefused::NoCancel)`,
+// or `Err(CancelRefused::NotPending)` for an op that does not exist or has
+// nothing left to cancel, so a caller can tell a refusal by policy from a
+// cancel that simply lost the race.
 
 fn no_cancel_adapter(behavior: ExecuteBehavior) -> Arc<FakeAdapter> {
     let mut fake = FakeAdapter::new(
@@ -789,10 +790,20 @@ async fn test_no_cancel_op_refuses_cancel_while_running_and_runs_to_completion()
         "a refused cancel must leave no trace of one: {trace:?}"
     );
     assert_eq!(adapter.execute_calls(), 1, "the command ran, once");
+    // Past Running the policy no longer decides: a Done NoCancel op is
+    // NotPending, the same as a Done op of any other plan.
+    assert_eq!(manager.cancel(op_id), Err(CancelRefused::NotPending));
 }
 
 #[tokio::test]
-async fn test_no_cancel_op_refuses_cancel_while_queued_and_still_runs() {
+async fn test_no_cancel_op_queued_is_cancelled_and_never_runs() {
+    // NoCancel exists so a self-updating installer is not killed mid-run.
+    // A Queued op has spawned nothing, so there is nothing that rationale
+    // protects, and nothing else bounds the wait: the runner counts
+    // `Plan::timeout_secs` from spawn, which a Queued op has not reached.
+    // So a Queued NoCancel op takes the ordinary token path: its cancel is
+    // accepted, it finishes `Cancelled` before `execute`, and its command
+    // never starts.
     let sink = Arc::new(VecSink::new());
     let mut manager = OperationManager::new(sink.clone());
     let adapter = no_cancel_adapter(ExecuteBehavior::Work(Duration::from_millis(200)));
@@ -821,21 +832,29 @@ async fn test_no_cancel_op_refuses_cancel_while_queued_and_still_runs() {
         Duration::from_millis(1000),
     )
     .await;
-    assert_eq!(manager.cancel(id_b), Err(CancelRefused::NoCancel));
+    assert_eq!(
+        manager.cancel(id_b),
+        Ok(()),
+        "a NoCancel op accepts a cancel while Queued: nothing has started"
+    );
 
-    assert_eq!(manager.wait(id_b).await, Some(Outcome::Succeeded));
+    assert_eq!(manager.wait(id_b).await, Some(Outcome::Cancelled));
     let trace_b = status_trace(&sink.snapshot(), id_b);
     assert!(
-        trace_b.contains(&OpStatus::Running),
-        "a NoCancel op whose cancel was refused while Queued still runs: {trace_b:?}"
+        !trace_b.contains(&OpStatus::Running),
+        "a NoCancel op cancelled while Queued must never run: {trace_b:?}"
     );
-    assert_eq!(adapter.execute_calls(), 2, "both commands ran");
+
+    // The sibling that held the lock is unaffected, and only its command
+    // ran.
+    assert_eq!(manager.wait(id_a).await, Some(Outcome::Succeeded));
+    assert_eq!(adapter.execute_calls(), 1, "only op_a's command ran");
 }
 
 #[tokio::test]
 async fn test_no_cancel_op_that_timed_out_ends_unconfirmed() {
-    // Nothing fires a NoCancel op's token (`cancel` refuses before it
-    // would), so its only stop is the plan's timeout. The runner enforces
+    // Once a NoCancel op is Running nothing fires its token (`cancel`
+    // refuses), so its only stop is the plan's timeout. The runner enforces
     // that on its own deadline, never through the token
     // (`RealRunner::run`, runner/real.rs; `test_timeout_kills_process_group`
     // there runs with a token nobody fires, which is exactly a NoCancel

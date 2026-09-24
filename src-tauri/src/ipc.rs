@@ -326,13 +326,15 @@ pub async fn submit_operation(state: State<'_, AppState>, plan_id: String) -> Re
     submit_operation_impl(&state, plan_id)
 }
 
-/// A `NoCancel` op refuses, as `{"kind":"no_cancel"}` in the JSON shape
-/// `submit_operation_error` uses. The front end's only Cancel control
+/// A `NoCancel` op that is Running refuses, as `{"kind":"no_cancel"}` in
+/// the JSON shape `submit_operation_error` uses; one still Queued is
+/// cancelled like any other. The front end's only Cancel control
 /// (`OperationBar.tsx`, the one caller of `useCancelOperation`) is not
-/// offered for such an op, reading `OpSummary.cancel_policy`, so this is
-/// the backstop and nothing there words it. A cancel that finds nothing
-/// pending (the op finished first, or a cancel is already in flight) stays
-/// `Ok(())`, as it always was: losing that race is not an error.
+/// offered for a Running `NoCancel` op, reading `OpSummary.cancel_policy`
+/// and `status`, so this is the backstop and nothing there words it. A
+/// cancel that finds nothing pending (the op finished first, or a cancel
+/// is already in flight) stays `Ok(())`, as it always was: losing that
+/// race is not an error.
 pub(crate) fn cancel_operation_impl(state: &AppState, op_id: u64) -> Result<(), String> {
     match state.session.cancel(op_id) {
         Ok(()) | Err(CancelRefused::NotPending) => Ok(()),
@@ -567,7 +569,7 @@ mod tests {
     use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+        OpStatus, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -588,8 +590,15 @@ mod tests {
         /// get_settings/set_settings.
         check_options_calls: Arc<Mutex<Vec<CheckOptions>>>,
         detect_delay: std::time::Duration,
+        /// How long `execute()` takes before it reports success, so a
+        /// test can act on an op while it is still `Running` (or, with two
+        /// ops on the one instance, while the second is still `Queued`).
+        /// Only the two NoCancel cancel tests set it; every other fixture
+        /// keeps it zero and `execute()` returns at once.
+        execute_delay: std::time::Duration,
         /// What every plan this adapter builds says about Cancel. Only
-        /// `test_cancel_operation_impl_refuses_a_no_cancel_op` sets
+        /// `test_cancel_operation_impl_refuses_a_running_no_cancel_op` and
+        /// `test_cancel_operation_impl_cancels_a_queued_no_cancel_op` set
         /// `NoCancel`; every other fixture keeps `KillThenReconcile`.
         cancel_policy: CancelPolicy,
     }
@@ -658,6 +667,9 @@ mod tests {
             _cancel: CancellationToken,
         ) -> Result<Outcome, AdapterError> {
             self.execute_calls.fetch_add(1, Ordering::SeqCst);
+            if !self.execute_delay.is_zero() {
+                tokio::time::sleep(self.execute_delay).await;
+            }
             Ok(Outcome::Succeeded)
         }
 
@@ -702,13 +714,18 @@ mod tests {
     fn state_with_fake_adapter_and_now(
         now_fn: Option<fn() -> i64>,
     ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
-        state_with_fake_adapter_and_policy(now_fn, CancelPolicy::KillThenReconcile)
+        state_with_fake_adapter_and_policy(
+            now_fn,
+            CancelPolicy::KillThenReconcile,
+            std::time::Duration::ZERO,
+        )
     }
 
     /// Where `state_with_fake_adapter` and `state_with_fake_adapter_and_now`
     /// both end up; see the latter for the counter and the clock.
     /// `cancel_policy` is what every plan the fake builds will say about
-    /// Cancel.
+    /// Cancel, and `execute_delay` how long the fake's `execute()` takes
+    /// (see the field).
     ///
     /// `session` and `channel_sink` share the *same* `ChannelSink` (N1 in
     /// the design review): the two used to be built from separate
@@ -720,6 +737,7 @@ mod tests {
     fn state_with_fake_adapter_and_policy(
         now_fn: Option<fn() -> i64>,
         cancel_policy: CancelPolicy,
+        execute_delay: std::time::Duration,
     ) -> (AppState, Arc<AtomicUsize>, Arc<Mutex<Vec<CheckOptions>>>) {
         let instance = canager_core::testing::manager_instance("fake", "fake:1");
         let meta = AdapterMeta {
@@ -739,6 +757,7 @@ mod tests {
             execute_calls: execute_calls.clone(),
             check_options_calls: check_options_calls.clone(),
             detect_delay: std::time::Duration::ZERO,
+            execute_delay,
             cancel_policy,
         });
         let sink = ChannelSink::new();
@@ -777,6 +796,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay,
+            execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
@@ -824,6 +844,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: check_options_calls.clone(),
             detect_delay,
+            execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
@@ -1419,6 +1440,7 @@ mod tests {
             execute_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay: std::time::Duration::ZERO,
+            execute_delay: std::time::Duration::ZERO,
             cancel_policy: CancelPolicy::KillThenReconcile,
         });
         let sink = ChannelSink::new();
@@ -1608,15 +1630,48 @@ mod tests {
         );
     }
 
+    /// Polls `list_operations_impl` every 10 ms until `op_id`'s summary
+    /// says `target`, or panics after `timeout`. The fake's `execute()`
+    /// returns at once unless the fixture was given an `execute_delay`, so
+    /// a test that needs an op still `Running` or `Queued` sets one and
+    /// waits here rather than sleeping a guessed interval.
+    async fn wait_for_op_status(
+        state: &AppState,
+        op_id: u64,
+        target: OpStatus,
+        timeout: std::time::Duration,
+    ) {
+        let start = std::time::Instant::now();
+        loop {
+            let summaries = list_operations_impl(state).expect("list_operations_impl");
+            if summaries
+                .iter()
+                .any(|s| s.id == op_id && s.status == target)
+            {
+                return;
+            }
+            assert!(
+                start.elapsed() < timeout,
+                "timed out after {timeout:?} waiting for op {op_id} to reach {target:?}: {summaries:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
     #[tokio::test]
-    async fn test_cancel_operation_impl_refuses_a_no_cancel_op() {
-        // The summary says `NoCancel`, which is what `OperationBar.tsx`
-        // reads to offer no Cancel button; and if a cancel arrives anyway,
-        // it is refused as `{"kind":"no_cancel"}`. The refusal is by policy,
-        // not by status: the round-trip test above cancels the same shape
-        // of op after the same wait and gets `Ok(())`.
-        let (state, _execute_calls, _check_options_calls) =
-            state_with_fake_adapter_and_policy(None, CancelPolicy::NoCancel);
+    async fn test_cancel_operation_impl_refuses_a_running_no_cancel_op() {
+        // The summary says `NoCancel`, which `OperationBar.tsx` reads with
+        // the status to offer no Cancel button once the op is Running; and
+        // if a cancel arrives anyway while it is Running, it is refused as
+        // `{"kind":"no_cancel"}`. The op must still be Running when the
+        // cancel lands: the fake's `execute()` is held for 300 ms and the
+        // status is polled, since a cancel that finds the op finished is
+        // `Ok(())` as in the round-trip test above, whatever the plan said.
+        let (state, _execute_calls, _check_options_calls) = state_with_fake_adapter_and_policy(
+            None,
+            CancelPolicy::NoCancel,
+            std::time::Duration::from_millis(300),
+        );
         refresh_impl(&state).await.expect("refresh_impl");
 
         let req = OpRequest {
@@ -1629,17 +1684,91 @@ mod tests {
             .await
             .expect("plan_operation_impl");
         let op_id = submit_operation_impl(&state, issued.id).expect("submit_operation_impl");
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        wait_for_op_status(
+            &state,
+            op_id,
+            OpStatus::Running,
+            std::time::Duration::from_millis(1000),
+        )
+        .await;
 
         let summaries = list_operations_impl(&state).expect("list_operations_impl");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].cancel_policy, CancelPolicy::NoCancel);
 
         let err = cancel_operation_impl(&state, op_id)
-            .expect_err("a NoCancel op's cancel must be refused");
+            .expect_err("a Running NoCancel op's cancel must be refused");
         let parsed: serde_json::Value = serde_json::from_str(&err)
             .unwrap_or_else(|e| panic!("expected JSON, got {err:?} ({e})"));
         assert_eq!(parsed["kind"], "no_cancel");
+    }
+
+    #[tokio::test]
+    async fn test_cancel_operation_impl_cancels_a_queued_no_cancel_op() {
+        // A NoCancel op that is still Queued has spawned nothing, so its
+        // cancel goes through like any other op's -- `Ok(())`, not
+        // `{"kind":"no_cancel"}` -- and it ends `Cancelled` without its
+        // command ever running. Two ops on the one instance share its
+        // resource lock, so the second sits Queued while the first is held
+        // Running by the fake's 300 ms `execute()`.
+        let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_policy(
+            None,
+            CancelPolicy::NoCancel,
+            std::time::Duration::from_millis(300),
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+
+        let mut ids = Vec::new();
+        for name in ["claude", "codex"] {
+            let req = OpRequest {
+                kind: OpKind::Upgrade,
+                instance_id: "fake:1".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: name.to_string(),
+            };
+            let issued = plan_operation_impl(&state, req)
+                .await
+                .expect("plan_operation_impl");
+            ids.push(submit_operation_impl(&state, issued.id).expect("submit_operation_impl"));
+        }
+        let (first, second) = (ids[0], ids[1]);
+        wait_for_op_status(
+            &state,
+            first,
+            OpStatus::Running,
+            std::time::Duration::from_millis(1000),
+        )
+        .await;
+        let queued = list_operations_impl(&state)
+            .expect("list_operations_impl")
+            .into_iter()
+            .find(|s| s.id == second)
+            .expect("the second op is listed");
+        assert_eq!(queued.status, OpStatus::Queued);
+        assert_eq!(queued.cancel_policy, CancelPolicy::NoCancel);
+
+        cancel_operation_impl(&state, second).expect("a Queued NoCancel op's cancel goes through");
+
+        wait_for_op_status(
+            &state,
+            second,
+            OpStatus::Done,
+            std::time::Duration::from_millis(1000),
+        )
+        .await;
+        let done = list_operations_impl(&state)
+            .expect("list_operations_impl")
+            .into_iter()
+            .find(|s| s.id == second)
+            .expect("the second op is still listed");
+        assert_eq!(done.outcome, Some(Outcome::Cancelled));
+        // Only the first op's command ran; the first is still Running or
+        // has since finished, either way its one call is the total.
+        assert_eq!(
+            execute_calls.load(Ordering::SeqCst),
+            1,
+            "a NoCancel op cancelled while Queued must never run its command"
+        );
     }
 
     #[tokio::test]

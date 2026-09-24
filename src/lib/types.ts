@@ -151,9 +151,11 @@ export interface ManagerInstance {
 /**
  * What the user's Cancel does to an operation. Mirrors `CancelPolicy` in
  * crates/canager-core/src/model.rs: bare-string unit variants.
- * `OperationBar.tsx` reads the copy `OpSummary` carries and offers no
- * Cancel button for `NoCancel`, which `OperationManager::cancel` would
- * refuse. No adapter produces `NoCancel` yet.
+ * `OperationBar.tsx` reads the copy `OpSummary` carries, with its
+ * `status`, and offers no Cancel button for a Running `NoCancel` op,
+ * which `OperationManager::cancel` would refuse; a Queued one keeps the
+ * button, since nothing has started and the cancel is accepted. No
+ * adapter produces `NoCancel` yet.
  */
 export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 export interface Plan {

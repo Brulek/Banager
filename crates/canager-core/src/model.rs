@@ -359,10 +359,13 @@ pub enum CancelPolicy {
     /// afterwards; one not yet started never starts. Every `Plan` an
     /// adapter builds today says this (pip's `plan()` builds none).
     KillThenReconcile,
-    /// Cancel is refused; the op runs to its end or to its
-    /// `Plan::timeout_secs`. No adapter produces this yet: a standalone
-    /// self-updating installer (`claude update`, `rustup self update`) is
-    /// the expected first.
+    /// Cancel is refused once the op is Running, and its command then ends
+    /// on its own or at `Plan::timeout_secs`, which the runner counts from
+    /// spawn. While the op is still Queued nothing has started and no
+    /// timeout is counting, so Cancel is accepted as under
+    /// `KillThenReconcile` and the command never starts. No adapter
+    /// produces this yet: a standalone self-updating installer (`claude
+    /// update`, `rustup self update`) is the expected first.
     NoCancel,
 }
 

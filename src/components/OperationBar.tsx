@@ -29,10 +29,13 @@ export function OperationBar() {
   }
 
   const isActive = ACTIVE_STATUSES.includes(current.status);
-  // `OperationManager::cancel` (ops/mod.rs) refuses a `NoCancel` op at
-  // every status, so a Cancel button for one would promise something the
-  // backend will not do. No adapter produces `NoCancel` yet.
-  const cancellable = current.cancel_policy !== "NoCancel";
+  // `OperationManager::cancel` (ops/mod.rs) refuses a `NoCancel` op once
+  // it is Running, so a Cancel button for one would promise something the
+  // backend will not do. While it is still Queued nothing has started and
+  // the backend accepts the cancel, so the button stays: without it the
+  // user could not drop a NoCancel op waiting behind another op's lock.
+  // No adapter produces `NoCancel` yet.
+  const cancellable = current.cancel_policy !== "NoCancel" || current.status === "Queued";
 
   // "Running" alone used to be the only thing on screen while an install,
   // upgrade or uninstall waits for a `brew update` a refresh left running

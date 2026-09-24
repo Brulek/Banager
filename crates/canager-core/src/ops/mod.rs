@@ -203,9 +203,9 @@ pub struct OpSummary {
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
     pub argv_preview: Vec<String>, // program followed by args
-    /// The plan's `cancel_policy`. The front end reads it to offer no
-    /// Cancel button for a `NoCancel` op (`OperationBar.tsx`), the same
-    /// op `cancel` below would refuse.
+    /// The plan's `cancel_policy`. The front end reads it with `status` to
+    /// offer no Cancel button for a Running `NoCancel` op
+    /// (`OperationBar.tsx`), the one op `cancel` below refuses by policy.
     pub cancel_policy: CancelPolicy,
 }
 
@@ -214,16 +214,19 @@ pub struct OpSummary {
 /// the front end and keeps `NotPending` silent, as a lost race always was.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CancelRefused {
-    /// The op's plan says `CancelPolicy::NoCancel`: the user cannot cancel
-    /// it, at any status. Its command ends on its own or at the plan's
-    /// `timeout_secs`, which the runner enforces on a deadline of its own
+    /// The op's plan says `CancelPolicy::NoCancel` and it is `Running`, so
+    /// its command may be under way: the user cannot stop it. The command
+    /// ends on its own or at the plan's `timeout_secs`, which the runner
+    /// enforces on a deadline of its own counted from spawn
     /// (`RealRunner::run`, runner/real.rs), never through the token this
-    /// refusal leaves unfired -- so a NoCancel op still stops at its
-    /// timeout, and `run_operation` reconciles it then like any other
-    /// stopped run.
+    /// refusal leaves unfired; `run_operation` then reconciles the stopped
+    /// run like any other. A NoCancel op still `Queued` is not refused:
+    /// nothing has been spawned and no timeout is counting, so `cancel`
+    /// fires its token as for any plan and its command never starts.
     NoCancel,
     /// No op has this id, or it is past `Running` (`Verifying`/`Done`), or
-    /// a cancel is already in flight (`CancelRequested`/`Cancelling`).
+    /// a cancel is already in flight (`CancelRequested`/`Cancelling`) --
+    /// whatever the plan's policy.
     NotPending,
 }
 
@@ -306,13 +309,6 @@ impl OperationManager {
         let Some(r) = records.get_mut(&op_id) else {
             return Err(CancelRefused::NotPending);
         };
-        // The policy is checked before the status: a NoCancel op is never
-        // cancellable, so the answer is the same at every status -- the
-        // same answer the front end reads off `OpSummary::cancel_policy`
-        // to offer no Cancel button at any status.
-        if r.plan.cancel_policy == CancelPolicy::NoCancel {
-            return Err(CancelRefused::NoCancel);
-        }
         // Only a still-pending op can be cancelled. Once it has moved
         // past Running (Verifying/Done) — or is already
         // CancelRequested/Cancelling — cancelling again must be a
@@ -321,6 +317,19 @@ impl OperationManager {
         // Done) hang forever.
         if !matches!(r.status, OpStatus::Queued | OpStatus::Running) {
             return Err(CancelRefused::NotPending);
+        }
+        // The policy is read only for an op that is Running, whose command
+        // may be under way: that is what NoCancel protects. A Queued op has
+        // spawned nothing (`run_operation` sets Running before it calls
+        // `execute`), so it takes the token path below whatever its plan
+        // says and its command never starts: `run_operation` finishes it
+        // `Cancelled` before `execute`, or -- for a token fired in the
+        // instant before `set_status(Running)` -- `RealRunner::run` sees
+        // the fired token and spawns nothing. `OperationBar.tsx` reads the
+        // same two fields off `OpSummary` and offers no Cancel button for
+        // the one case this refuses by policy, a Running NoCancel op.
+        if r.plan.cancel_policy == CancelPolicy::NoCancel && r.status == OpStatus::Running {
+            return Err(CancelRefused::NoCancel);
         }
         r.status = OpStatus::CancelRequested;
         r.cancel.cancel();
@@ -639,10 +648,14 @@ impl OperationManager {
             None
         };
 
-        // A NoCancel plan gets the same live token as any other. Nothing
-        // fires it (`cancel` refuses first), so its `execute` ends when the
-        // command does or at `plan.timeout_secs`, which the runner keeps on
-        // a deadline of its own (see `CancelRefused::NoCancel`).
+        // A NoCancel plan gets the same live token as any other. Once the
+        // op is Running, `cancel` refuses to fire it, so its `execute` ends
+        // when the command does or at `plan.timeout_secs`, which the runner
+        // keeps on a deadline of its own from spawn (see
+        // `CancelRefused::NoCancel`). A token `cancel` fired while the op
+        // was still Queued reaches here only if it fired between acquiring
+        // the permit and `set_status(Running)` above; `RealRunner::run`
+        // then checks it before spawning and starts nothing.
         let exec_result = adapter
             .execute(&plan, self.sink.clone(), op_id, cancel.clone())
             .await;

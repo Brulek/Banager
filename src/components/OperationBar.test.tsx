@@ -141,10 +141,10 @@ describe("OperationBar", () => {
   });
 
   it("offers no Cancel button for a running operation whose plan says NoCancel", async () => {
-    // `OperationManager::cancel` (ops/mod.rs) refuses such an op, so a
-    // button here would promise something the backend will not do. No
-    // adapter produces `NoCancel` yet; this is the shape a standalone
-    // self-updating installer is expected to send.
+    // `OperationManager::cancel` (ops/mod.rs) refuses such an op once it
+    // is Running, so a button here would promise something the backend
+    // will not do. No adapter produces `NoCancel` yet; this is the shape a
+    // standalone self-updating installer is expected to send.
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "list_operations") {
         return Promise.resolve([
@@ -168,5 +168,41 @@ describe("OperationBar", () => {
 
     await findByText("Updating claude — running");
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  });
+
+  it("offers Cancel for a queued operation whose plan says NoCancel, and it reaches cancel_operation", async () => {
+    // A Queued op has started nothing, so `OperationManager::cancel`
+    // (ops/mod.rs) accepts its cancel whatever the plan says and the
+    // command never runs; NoCancel only bites once the op is Running.
+    // Without the button the user could not drop a NoCancel op stuck
+    // behind another op's lock, and nothing else bounds that wait.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 8,
+            kind: "Upgrade",
+            instance_id: "claude:/Users/me/.local/bin/claude",
+            artifact_kind: "Binary",
+            name: "claude",
+            status: "Queued",
+            outcome: null,
+            argv_preview: ["/Users/me/.local/bin/claude", "update"],
+            cancel_policy: "NoCancel",
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByRole, findByText } = renderWithProviders(<OperationBar />);
+
+    await findByText("Updating claude — queued");
+    const cancel = await findByRole("button", { name: "Cancel" });
+    expect(cancel).toBeEnabled();
+    fireEvent.click(cancel);
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 8 }),
+    );
   });
 });
