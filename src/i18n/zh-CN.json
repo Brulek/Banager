@@ -77,6 +77,7 @@
     "submitFailed": "没能开始更新：{{message}}",
     "noneCheckable": "已检查的来源里没有可更新的内容",
     "selfUpdatingHint": "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Canager 更新，也可以直接运行它。",
+    "selfUpdatingHintNotRunByName": "这份落后了（{{current}} → {{target}}）。可以现在用 Canager 更新。",
     "blocked": {
       "Pinned": {
         "badge": "已固定",

@@ -28,6 +28,7 @@ import { Dialog } from "../components/ui/Dialog";
 import type {
   ArtifactKey,
   InstalledArtifact,
+  InstanceNote,
   IssuedPlan,
   ManagerInstance,
   OpRequest,
@@ -136,6 +137,26 @@ function hasIssuedPlan(batch: Batch): boolean {
 function hasPlanError(item: BatchItem): item is BatchItem & { planError: string } {
   return item.planError !== null;
 }
+
+/**
+ * Whether each note says that typing the tool's name in Terminal may not
+ * run this instance's copy: no executable of that name on the PATH
+ * Canager sees (`NotOnPath`), a different one found there first
+ * (`ShadowedBy*`), or a launcher whose program files are gone
+ * (`LauncherOnly`). Read by `selfUpdatingHintKey`: "or just run it"
+ * updates this copy only where typing the name runs it. A `Record`, so a
+ * note added to `InstanceNote` without an answer here fails `tsc`.
+ */
+const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
+  // Homebrew's: about its list of software, not about which copy runs.
+  IndexMayBeStale: false,
+  IndexUpdating: false,
+  NotOnPath: true,
+  ShadowedByHomebrew: true,
+  ShadowedByNpm: true,
+  ShadowedByOther: true,
+  LauncherOnly: true,
+};
 
 export function UpdatesPage() {
   const { t } = useTranslation();
@@ -424,27 +445,40 @@ export function UpdatesPage() {
       .join(" ");
   };
 
-  // Whether this row's description is `updates.selfUpdatingHint`. A tool
-  // that updates itself in the background (`auto_updates`, set by the
-  // standalone adapter from its recipe): the row is real -- it compares
-  // the launcher's live version with the published one -- and keeps its
-  // button, but the honest sentence says the tool usually does this
-  // itself and offers Canager's button as the other way (spec D5). Only
-  // for the standalone adapters: a self-updating Homebrew cask listed by
-  // --greedy keeps its blurb, since Homebrew, not the app, is what the
-  // button drives. Only for an actionable row: a blocked or uncheckable
-  // one says why it has no button instead, and one whose source did not
-  // answer has no button for the sentence to offer. One test for both
-  // readers, `rowDescription` and the row's `wrapDescription`, so the
-  // sentence and its wrapping cannot disagree.
-  const showsSelfUpdatingHint = (candidate: UpdateCandidate): boolean => {
+  // The key of the sentence that stands in for this row's blurb because
+  // its tool updates itself -- `updates.selfUpdatingHint` or
+  // `updates.selfUpdatingHintNotRunByName` -- or null for a row that
+  // gets neither. A tool that updates itself in the background
+  // (`auto_updates`, set by the standalone adapter from its recipe): the
+  // row is real -- it compares the launcher's live version with the
+  // published one -- and keeps its button, but the honest sentence says
+  // the tool usually does this itself and offers two ways to update it:
+  // Canager's button now, or just running the tool (spec D5). The second
+  // is typing its name in Terminal, which updates this copy only if this
+  // copy is what runs. Under a note that says it may not be
+  // (`NAME_MAY_NOT_RUN_THIS_COPY`; the notice under the same heading
+  // says why), the row says only that this copy is behind and that
+  // Canager can update it. Only for the standalone adapters: a
+  // self-updating Homebrew cask listed by --greedy keeps its blurb, since
+  // Homebrew, not the app, is what the button drives. Only for an
+  // actionable row: a blocked or uncheckable one says why it has no
+  // button instead, and one whose source did not answer has no button
+  // for the sentence to offer. One function for both readers,
+  // `rowDescription` and the row's `wrapDescription`, so the sentence and
+  // its wrapping cannot disagree.
+  const selfUpdatingHintKey = (candidate: UpdateCandidate): string | null => {
     const owner = instancesById.get(candidate.key.instance_id);
-    return (
-      isActionable(candidate) &&
-      owner !== undefined &&
-      owner.adapter_id.startsWith("standalone-") &&
-      artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true
-    );
+    if (
+      !isActionable(candidate) ||
+      owner === undefined ||
+      !owner.adapter_id.startsWith("standalone-") ||
+      artifactsById.get(artifactKeyId(candidate.key))?.auto_updates !== true
+    ) {
+      return null;
+    }
+    return owner.status.notes.some((note) => NAME_MAY_NOT_RUN_THIS_COPY[note])
+      ? "updates.selfUpdatingHintNotRunByName"
+      : "updates.selfUpdatingHint";
   };
 
   /**
@@ -465,7 +499,9 @@ export function UpdatesPage() {
   // read to understand why there is no button. "Could not check" wins
   // when both are true, since without a check there is no update to block.
   // An actionable row of a standalone tool that updates itself says so in
-  // place of its blurb (`showsSelfUpdatingHint`).
+  // place of its blurb, or -- where typing its name may not run this copy
+  // -- only that this copy is behind and Canager can update it
+  // (`selfUpdatingHintKey`).
   const rowDescription = (candidate: UpdateCandidate): ReactNode => {
     if (!candidate.checkable) return cannotCheckText(candidate);
     if (candidate.blocked !== null) {
@@ -498,8 +534,9 @@ export function UpdatesPage() {
         copy.command(candidate.key, instance),
       );
     }
-    if (showsSelfUpdatingHint(candidate)) {
-      return t("updates.selfUpdatingHint", {
+    const hintKey = selfUpdatingHintKey(candidate);
+    if (hintKey !== null) {
+      return t(hintKey, {
         current: candidate.current,
         target: candidate.target,
         source: sourceLabelFor(candidate.key.instance_id),
@@ -759,12 +796,15 @@ export function UpdatesPage() {
         // been given. The reason a lookup failed can run to a few
         // hundred characters and the detail comes last, so one
         // clipped line would hide precisely the part such a row
-        // exists to say; the self-updating hint ends in the choice it
-        // offers (update now, or just run the tool). A package's own
-        // blurb keeps the single line: it is a nicety, not something
-        // the user is being asked to act on.
+        // exists to say; the self-updating hint ends in what the user
+        // can do (update now, or just run the tool, where typing its
+        // name runs this copy). A package's own blurb keeps the single
+        // line: it is a nicety, not something the user is being asked
+        // to act on.
         wrapDescription={
-          !candidate.checkable || candidate.blocked !== null || showsSelfUpdatingHint(candidate)
+          !candidate.checkable ||
+          candidate.blocked !== null ||
+          selfUpdatingHintKey(candidate) !== null
         }
         // Capability first when both apply: "Read-only" is the fact
         // that no button will ever appear on this row, whatever the

@@ -4,7 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
 import { useUiStore } from "../store/ui";
-import type { ArtifactKey, OpRequest, Settings, Snapshot, Warning } from "../lib/types";
+import zhCN from "../i18n/zh-CN.json";
+import type {
+  ArtifactKey,
+  InstanceNote,
+  OpRequest,
+  Settings,
+  Snapshot,
+  Warning,
+} from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -1764,5 +1772,50 @@ describe("UpdatesPage", () => {
     await findByText("claude");
     expect(queryByText(/usually updates itself/)).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+  });
+
+  // The four PATH notes (spec §七), each with the title of the notice it
+  // puts under the source's heading.
+  const pathNotes: [InstanceNote, string][] = [
+    ["NotOnPath", "Claude Code isn't in your PATH"],
+    ["ShadowedByHomebrew", "Another copy runs when you type claude"],
+    ["ShadowedByNpm", "Another copy runs when you type claude"],
+    ["ShadowedByOther", "Another copy runs when you type claude"],
+  ];
+
+  it.each(pathNotes)(
+    "tells a self-updating standalone copy under a %s notice that it is behind, not to just run it",
+    async (note, noticeTitle) => {
+      // Typing `claude` in Terminal probably finds nothing, or runs
+      // another copy found first on PATH -- the notice under this heading
+      // says which. This copy updates itself only when it runs (spec
+      // §4.4), so "or just run it" would leave it behind with its badge
+      // up. The row keeps its button and says only that this copy is
+      // behind and that Canager can update it.
+      instances = [
+        ...snapshot.instances,
+        { ...claudeInstance, status: { unavailable: null, notes: [note] } },
+      ];
+      updates = [claudeUpdate];
+      artifacts = [claudeArtifact];
+      const { findByText, getByText, queryByText, getAllByRole } = renderWithProviders(
+        <UpdatesPage />,
+      );
+
+      expect(await findByText(noticeTitle)).toBeInTheDocument();
+      expect(queryByText(/just run it/)).toBeNull();
+      expect(queryByText(/usually updates itself/)).toBeNull();
+      const hint = getByText(
+        "This copy is behind (2.1.281 → 2.1.290). You can update it now with Canager.",
+      );
+      expect(hint.className).not.toContain("truncate");
+      expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    },
+  );
+
+  it("has the behind-only sentence in Chinese too, with no 'just run it'", () => {
+    expect(zhCN.updates.selfUpdatingHintNotRunByName).toBe(
+      "这份落后了（{{current}} → {{target}}）。可以现在用 Canager 更新。",
+    );
   });
 });
