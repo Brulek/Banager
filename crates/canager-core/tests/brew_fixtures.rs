@@ -2,6 +2,7 @@ use canager_core::adapters::brew::parse::{
     parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version,
 };
 use canager_core::model::{ArtifactKind, UpdateBlocked};
+use std::path::Path;
 
 // Substitute this if `brew --version` on your machine differs from the one
 // recorded in Task 8.
@@ -17,6 +18,51 @@ fn test_parse_info_installed_snapshot() {
     let json = read_fixture("info-installed.json");
     let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
     insta::assert_json_snapshot!(result);
+}
+
+/// The recording's four casks each moved one `.app` into `/Applications`,
+/// and `codexbar` also linked `<prefix>/bin/codexbar` to a helper *inside*
+/// its app -- the shape that put a cask's command on the Unknown page
+/// while the cask sat under Homebrew on the Installed page. A cask's
+/// `path` is that `.app`, from the `target` beside its `app` stanza; a
+/// formula's stays `None` (its keg is under `Cellar`, which the scan
+/// already gives Homebrew).
+#[test]
+fn test_parse_info_installed_gives_each_recorded_cask_the_app_brew_moved_into_applications() {
+    let json = read_fixture("info-installed.json");
+    let result = parse_info_installed(&json, "brew:/opt/homebrew").expect("parse");
+    let casks: Vec<_> = result
+        .iter()
+        .filter(|a| a.key.kind == ArtifactKind::Cask)
+        .map(|a| {
+            (
+                a.key.name.as_str(),
+                a.path.as_deref().and_then(Path::to_str),
+            )
+        })
+        .collect();
+    assert_eq!(
+        casks,
+        vec![
+            ("codexbar", Some("/Applications/CodexBar.app")),
+            (
+                "gautham-v/tap/claudebar",
+                Some("/Applications/Claudebar.app")
+            ),
+            (
+                "mxcl/made/package-manager-manager",
+                Some("/Applications/Package Manager Manager.app")
+            ),
+            ("onyx", Some("/Applications/OnyX.app")),
+        ]
+    );
+    assert!(
+        result
+            .iter()
+            .filter(|a| a.key.kind == ArtifactKind::Formula)
+            .all(|a| a.path.is_none()),
+        "a formula reports no path"
+    );
 }
 
 #[test]

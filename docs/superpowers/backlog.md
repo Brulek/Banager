@@ -217,6 +217,8 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
   **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
 
+- **cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。
+
 ## 阶段 5（发现页）之前必须处理
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。

@@ -3,7 +3,9 @@ use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, SearchHit, UninstallBlocked,
     UpdateBlocked, UpdateCandidate, UpdateChannel,
 };
+use serde::de::IgnoredAny;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 // Both partitions are required, deliberately. `brew info --installed
 // --json=v2` and `brew outdated --json=v2` always emit both keys, the
@@ -79,6 +81,30 @@ struct CaskInfo {
     /// `FormulaInfo.pinned`.
     #[serde(default)]
     pinned: bool,
+    /// The cask's stanzas as brew lists them. Defaulted: a brew that omits
+    /// the key has said nothing about where the app went, and the cost is
+    /// the one this field exists to remove -- the cask's command listed on
+    /// the Unknown page.
+    #[serde(default)]
+    artifacts: Vec<CaskArtifact>,
+}
+
+/// One entry of a cask's `artifacts` in `brew info --json=v2`: one stanza,
+/// keyed by the stanza's name, plus the absolute `target` brew adds for a
+/// stanza that moves or links something (`artifacts_list`,
+/// `cask/cask.rb:709-732` in Homebrew 7.0.6). Only an `app` stanza's
+/// `target` is read. A `binary` stanza's `target` is the link in
+/// `<prefix>/bin` itself, which the unknown-source scan finds by reading
+/// that directory; no other stanza's entry is read.
+#[derive(Debug, Deserialize)]
+struct CaskArtifact {
+    /// Present exactly when this entry is an `app` stanza. What it holds
+    /// (the bundle's name in the download, an optional rename) decides
+    /// nothing here; the moved-to path is `target`.
+    #[serde(default)]
+    app: Option<IgnoredAny>,
+    #[serde(default)]
+    target: Option<String>,
 }
 
 /// Parses `brew info --installed --json=v2`. For each formula, picks the
@@ -95,6 +121,24 @@ struct CaskInfo {
 ///
 /// A pinned formula or cask gets `uninstall_blocked: Some(Pinned)`:
 /// `brew uninstall` without `--force` refuses it (`UninstallBlocked`).
+///
+/// A cask's `path` is the `.app` its `app` stanza was moved to: the
+/// absolute `target` brew writes beside that stanza's entry in
+/// `artifacts` (`cask/cask.rb:724-728` in Homebrew 7.0.6, for every
+/// stanza with a source and a target location; the recorded
+/// `7.0.3/info-installed.json` has one on all four casks), resolved
+/// against the configured `appdir`, so `--appdir` is honoured
+/// (`cask/artifact/relocated.rb:33-42,69-71`). Its reader is the
+/// unknown-source scan's rule 2 (`scan/mod.rs`, `Known`): a cask's
+/// `binary` link in `<prefix>/bin` -- `code`, `docker` -- resolves into
+/// that bundle, under none of the roots the scan gives Homebrew, and with
+/// `path: None` it was listed as a program no source installed while the
+/// cask sat under Homebrew on the Installed page. One `path` per
+/// artifact, so it is the first `app` stanza's; a cask with none (a
+/// `pkg`, a font), or whose entry carries no absolute `target`, keeps
+/// `None`, and a command such a cask puts outside `Caskroom` stays on the
+/// Unknown page. A formula's `path` stays `None`: its keg is under
+/// `Cellar`, which the scan gives Homebrew outright.
 ///
 /// `ArtifactKey.name` always uses the *fully qualified* name — a formula's
 /// `full_name` (e.g. a core formula's own `name` if it has no tap prefix) or
@@ -164,6 +208,13 @@ pub fn parse_info_installed(
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| c.token.clone());
         let display_name = c.name.into_iter().next().unwrap_or_else(|| c.token.clone());
+        let path = c
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.app.is_some())
+            .and_then(|artifact| artifact.target.as_deref())
+            .map(PathBuf::from)
+            .filter(|target| target.is_absolute());
         out.push(InstalledArtifact {
             key: ArtifactKey {
                 instance_id: instance_id.to_string(),
@@ -177,7 +228,7 @@ pub fn parse_info_installed(
             homepage: c.homepage,
             size_bytes: None,
             installed_at: None,
-            path: None,
+            path,
             auto_updates: c.auto_updates.unwrap_or(false),
             uninstall_blocked: c.pinned.then_some(UninstallBlocked::Pinned),
         });
@@ -643,5 +694,85 @@ mod tests {
 
         assert_eq!(result[0].reason, InstallReason::Requested);
         assert_eq!(result[1].reason, InstallReason::Dependency);
+    }
+
+    // `brew info --installed --json=v2` writes a cask's stanzas under
+    // `artifacts`, one object per stanza, and beside an `app` stanza the
+    // absolute path the bundle was moved to (`target`; the recorded
+    // `7.0.3/info-installed.json` has one on all four casks). That path is
+    // the cask's `InstalledArtifact.path`. Its reader is the unknown-source
+    // scan's rule 2 (`scan/mod.rs`, `Known`): a cask's `binary` link in
+    // `<prefix>/bin` resolves into the app, under none of the roots the
+    // scan gives Homebrew, and with `path: None` it was listed as a
+    // program no source installed.
+
+    #[test]
+    fn parse_info_installed_gives_a_cask_the_app_its_app_stanza_was_moved_to() {
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {
+                    "token": "visual-studio-code",
+                    "full_token": "visual-studio-code",
+                    "name": ["Microsoft Visual Studio Code", "VS Code"],
+                    "installed": "1.104.0",
+                    "artifacts": [
+                        { "uninstall": [{ "quit": "com.microsoft.VSCode" }] },
+                        { "app": ["Visual Studio Code.app"], "target": "/Applications/Visual Studio Code.app" },
+                        {
+                            "binary": ["/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", { "target": "code" }],
+                            "target": "/usr/local/bin/code"
+                        },
+                        { "zap": [{ "trash": ["~/.vscode"] }] }
+                    ]
+                }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/usr/local").expect("parse");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].key.kind, ArtifactKind::Cask);
+        assert_eq!(
+            result[0].path,
+            Some(PathBuf::from("/Applications/Visual Studio Code.app"))
+        );
+    }
+
+    #[test]
+    fn parse_info_installed_leaves_a_casks_path_none_without_an_absolute_app_target() {
+        // A `pkg` cask installs wherever its package says and has no `app`
+        // stanza. The other three are not shapes the recorded 7.0.3 output
+        // has; they must not become a relative path for the scan to
+        // `canonicalize` against the working directory.
+        let json = r#"{
+            "formulae": [],
+            "casks": [
+                {
+                    "token": "some-installer",
+                    "installed": "2.0",
+                    "artifacts": [
+                        { "pkg": ["SomeInstaller.pkg"] },
+                        { "uninstall": [{ "pkgutil": "com.example.some-installer" }] }
+                    ]
+                },
+                {
+                    "token": "no-target",
+                    "installed": "1.0",
+                    "artifacts": [{ "app": ["NoTarget.app"] }]
+                },
+                {
+                    "token": "relative-target",
+                    "installed": "1.0",
+                    "artifacts": [{ "app": ["Relative.app"], "target": "Relative.app" }]
+                },
+                { "token": "no-artifacts", "installed": "1.0" }
+            ]
+        }"#;
+
+        let result = parse_info_installed(json, "brew:/usr/local").expect("parse");
+
+        assert_eq!(result.len(), 4);
+        assert!(result.iter().all(|a| a.path.is_none()), "{result:?}");
     }
 }

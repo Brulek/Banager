@@ -1529,7 +1529,7 @@ expression: result
     "homepage": "https://codexbar.app/",
     "size_bytes": null,
     "installed_at": null,
-    "path": null,
+    "path": "/Applications/CodexBar.app",
     "auto_updates": false,
     "uninstall_blocked": null
   },
@@ -1546,7 +1546,7 @@ expression: result
     "homepage": "https://github.com/gautham-v/claudebar",
     "size_bytes": null,
     "installed_at": null,
-    "path": null,
+    "path": "/Applications/Claudebar.app",
     "auto_updates": false,
     "uninstall_blocked": null
   },
@@ -1563,7 +1563,7 @@ expression: result
     "homepage": "https://github.com/mxcl/package-manager-manager",
     "size_bytes": null,
     "installed_at": null,
-    "path": null,
+    "path": "/Applications/Package Manager Manager.app",
     "auto_updates": true,
     "uninstall_blocked": null
   },
@@ -1580,7 +1580,7 @@ expression: result
     "homepage": "https://www.titanium-software.fr/en/onyx.html",
     "size_bytes": null,
     "installed_at": null,
-    "path": null,
+    "path": "/Applications/OnyX.app",
     "auto_updates": false,
     "uninstall_blocked": null
   }

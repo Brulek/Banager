@@ -480,12 +480,21 @@ A program is *not* listed when a known source accounts for it
 same file one does (`~/.cargo/bin/cargo` and rustup's other proxies all
 resolve to `rustup`); it resolves under a path a source reported
 installing (a file or a directory: a uv or pipx tool's shim resolves into
-that tool's environment); or it resolves under a directory a source owns
+that tool's environment, and a Homebrew cask's command in `<prefix>/bin`
+— `code`, `docker` — resolves into the `.app` the cask moved into
+`/Applications`, which `brew info --installed --json=v2` names beside the
+cask's `app` stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
 `lib/node_modules` under its global prefix; Ollama's `~/.ollama`).
 Everything else is listed, with where a broken link pointed, the app a
 program runs inside, and whether an installer with administrator rights
 put it there.
+
+Canager reads one path per cask, the first `app` stanza's, so two cask
+shapes are still listed here although Homebrew installed them: a command
+that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
+put on the disk, or one inside a second `.app` of the same cask), and a
+cask whose `brew info` entry carries no absolute `target` for its `app`.
 
 ## Files Canager reads
 

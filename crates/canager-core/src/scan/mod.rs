@@ -261,6 +261,9 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 /// definition without a producer (spec §十).
 pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
     match inst.adapter_id.as_str() {
+        // Not `/Applications`: a cask claims its own `.app` through rule
+        // 2 (`InstalledArtifact.path`, brew/parse.rs), and the directory
+        // as a whole holds every other installer's apps too.
         "brew" => vec![
             inst.prefix.join("Cellar"),
             inst.prefix.join("Caskroom"),
@@ -308,9 +311,15 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
 ///    `InstalledArtifact.path` (equal, when that path is a file). uv is
 ///    the first real input: its `path` is the tool's venv directory
 ///    (uv.rs:65) and the shim resolves to `<venv>/bin/<tool>`, so equality
-///    would never match (§十三 #35). cargo fills `path` from step E, the
-///    standalone adapters from step B; for those, rules 1 and 2 compare
-///    the same file and rule 2 decides nothing new.
+///    would never match (§十三 #35). brew fills it for a cask with the
+///    `.app` the cask's `app` stanza was moved to (`brew/parse.rs`, from
+///    `brew info`'s `artifacts`): the cask's `binary` link in
+///    `<prefix>/bin` -- `code ->
+///    /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`
+///    -- resolves into that bundle and under none of the roots rule 3
+///    gives Homebrew, in a directory every scan reads. cargo fills `path`
+///    from step E, the standalone adapters from step B; for those, rules
+///    1 and 2 compare the same file and rule 2 decides nothing new.
 /// 3. The entry resolves to a path under a directory the instance's
 ///    adapter *owns* -- `owned_roots`, the longest matching root when
 ///    roots nest (`owned` below).

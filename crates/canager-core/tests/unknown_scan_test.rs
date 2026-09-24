@@ -11,6 +11,7 @@
 //! Every name here is invented. The research file with the real ones is
 //! deliberately not in the repository (phase 4 spec §十三 #30).
 
+use canager_core::adapters::brew::parse::parse_info_installed;
 use canager_core::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance,
 };
@@ -480,6 +481,61 @@ fn test_rule_2_claims_a_shim_that_resolves_under_an_artifacts_path() {
 
     assert!(scan.entries.is_empty(), "{:?}", scan.entries);
     assert_eq!(scan.attributed, 1);
+}
+
+#[test]
+fn test_rule_2_claims_a_cask_binary_link_into_the_app_the_cask_installed() {
+    // An Intel Mac, Homebrew at `/usr/local`: `brew install --cask
+    // visual-studio-code` moves the `.app` into `/Applications` and links
+    // `/usr/local/bin/code` to a file *inside* it -- under none of the
+    // roots rule 3 gives Homebrew (`Cellar`, `Caskroom`, `opt`), in a
+    // directory every scan reads. The cask's `path`, read by
+    // `parse_info_installed` from the `app` stanza's `target` in `brew
+    // info --installed --json=v2`, is what lets rule 2 claim the link, as
+    // it claims uv's shim through the venv directory. The third-party
+    // file beside it stays listed: the prefix's own `bin` is still
+    // nobody's.
+    let home = Home::new("rule-2-cask");
+    let prefix = home.dir("usr/local");
+    let prefix_bin = home.dir("usr/local/bin");
+    let app = home.path().join("Applications/Visual Studio Code.app");
+    let app_bin = home.dir("Applications/Visual Studio Code.app/Contents/Resources/app/bin");
+    let code = exe(&app_bin, "code", b"#!/bin/sh\n");
+    let code_link = link(&prefix_bin, "code", &code);
+    exe(&prefix_bin, "dropped-in", b"x");
+    let brew = ManagerInstance {
+        exe_path: prefix.join("bin/brew"),
+        prefix: prefix.clone(),
+        ..manager_instance("brew", &format!("brew:{}", prefix.display()))
+    };
+    let info = serde_json::json!({
+        "formulae": [],
+        "casks": [{
+            "token": "visual-studio-code",
+            "name": ["Visual Studio Code"],
+            "installed": "1.104.0",
+            "artifacts": [
+                { "app": ["Visual Studio Code.app"], "target": app.display().to_string() },
+                {
+                    "binary": [code.display().to_string(), { "target": "code" }],
+                    "target": code_link.display().to_string()
+                }
+            ]
+        }]
+    });
+    let artifacts = parse_info_installed(&info.to_string(), &brew.id).expect("parse");
+
+    let scan = scan_dirs(
+        &[prefix_bin],
+        &home.env(vec![]),
+        &[brew],
+        &artifacts,
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries[0].path, tilde("usr/local/bin/dropped-in"));
 }
 
 #[test]
