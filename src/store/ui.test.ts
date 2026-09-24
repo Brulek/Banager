@@ -58,15 +58,12 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().focusedOpId).toBe(5);
   });
 
-  it("appendLog appends in order and clearLogs removes only that op's lines", () => {
+  it("appendLog appends in order across ops", () => {
     useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "a" });
     useUiStore.getState().appendLog({ opId: 2, stream: "Stdout", line: "b" });
     useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "c" });
 
     expect(useUiStore.getState().logs.map(lineText)).toEqual(["a", "b", "c"]);
-
-    useUiStore.getState().clearLogs(1);
-    expect(useUiStore.getState().logs.map(lineText)).toEqual(["b"]);
   });
 
   it("appendLog keeps only the newest 2000 lines", () => {

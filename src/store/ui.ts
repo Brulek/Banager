@@ -28,7 +28,6 @@ export interface UiState {
   setFocusedOpId(id: number | null): void;
   logs: LogLine[];
   appendLog(l: LogEntry): void;
-  clearLogs(opId: number): void;
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;
   startupRefreshError: string | null;
@@ -71,7 +70,6 @@ export const useUiStore = create<UiState>((set) => ({
         logs: next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next,
       };
     }),
-  clearLogs: (opId) => set((s) => ({ logs: s.logs.filter((l) => l.opId !== opId) })),
   selectedUpdates: [],
   toggleUpdate: (key) =>
     set((s) => {
