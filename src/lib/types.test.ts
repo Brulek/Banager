@@ -16,8 +16,8 @@ import type {
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
 // only strips types, so a JSON-string fixture would pass no matter what
-// `types.ts` says; `pnpm build` runs `tsc` over the test files too (tsconfig
-// `include` is `["src"]`), so a typed literal fails the build the moment a
+// `types.ts` says; `pnpm build` runs `tsc` over the test files too (through
+// `tsconfig.test.json`), so a typed literal fails the build the moment a
 // field name or variant drifts away from the Rust side. The JSON round trip
 // keeps the runtime check that the wire shape (snake_case, externally tagged
 // enums) survives serialisation unchanged.

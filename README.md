@@ -75,8 +75,14 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 pnpm test
-pnpm exec tsc -p tsconfig.json
+pnpm typecheck
 ```
+
+`pnpm typecheck` runs two TypeScript programs. `tsconfig.json` checks the production code under `src/`
+with no ambient Node types, so `process`, `Buffer` or a `node:` import in code that will run inside the
+WebView is a type error; `tsconfig.test.json` checks the vitest files with `@types/node`, which
+`src/i18n/completeness.test.ts` and `src/i18n/no-literal-strings.test.ts` need to read the source tree
+through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
 
 `cargo test --workspace` has two `#[ignore]`d tests in `crates/canager-core/tests/brew_live.rs`,
 both skipped by a plain `cargo test`: one only reads the real Homebrew on the machine running it,

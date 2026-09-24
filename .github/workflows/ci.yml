@@ -61,6 +61,12 @@ jobs:
       - name: pnpm test
         run: pnpm test
 
+      # `pnpm build` below runs the same two tsc programs again before
+      # `vite build`; this step exists so a type error fails under its own
+      # gate's name rather than under "pnpm build".
+      - name: pnpm typecheck
+        run: pnpm typecheck
+
       - name: pnpm build
         run: pnpm build
 

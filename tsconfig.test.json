@@ -1,0 +1,12 @@
+{
+  /* The vitest files and their shared setup, type-checked with @types/node:
+     src/i18n/*.test.ts read the source tree through node:fs / node:path.
+     Production modules they import are checked here as well; tsconfig.json
+     is the program that checks them without Node types. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"],
+  "exclude": []
+}
