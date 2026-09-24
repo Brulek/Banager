@@ -48,8 +48,9 @@ timeout at 24 hours); on timeout or cancel the whole group gets `SIGTERM`,
 a grace period, and then `SIGKILL` for whatever is left.
 
 **Where the program comes from.** At launch (`run()` in
-`src-tauri/src/lib.rs`), at the start of every refresh, and when the Open
-Ollama button is pressed, `HostEnv::discover`
+`src-tauri/src/lib.rs`), at the start of every refresh, when the Open
+Ollama button is pressed, and at the start of every Unknown-page scan,
+`HostEnv::discover`
 (`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME` and `OLLAMA_HOST` from Canager's environment and the
 effective user id from the process. Every source

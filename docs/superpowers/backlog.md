@@ -36,6 +36,18 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
 启动时先渲染上次的结果）、历史页与操作日志落盘（§5/§6/§7）、「报告问题」（§6）、菜单栏与后台检查（§8，
 属阶段 6）。
 
+## 阶段 4 已知缺口（2026-09-25，分支 feat/phase-4-standalone）
+
+- **来源不明页认不出 `pip install --user` 装的命令。** 框架版 Python（Homebrew、python.org）的 `--user`
+  把脚本放进 `~/Library/Python/3.X/bin`；那个目录在 PATH 上时，里面的脚本会列在「说不清来源」页，而它们的包
+  列在已安装页的 pip 下。pip 的制品没有 `path`（`pip list --format=json` 不给脚本位置），pip 也没有「拥有的根」。
+  整体复审确认为真（important）；修复做到一半时额度耗尽，**没有收下**：它给所有适配器共用的 `ManagerInstance`
+  加了一个只有 pip 用的线格式字段 `user_scripts_dir`，并让 pip 的 detect 多跑一条 `python -c` 探测命令。未提交的
+  改动存在 `~/dev/Canager/.superpowers/phase4/abandoned-pip-user-scheme-fix/`（补丁 + 一份录制，含本机路径）。
+  已做的：页面导语不再断言「Canager 认识的来源都没有装过它们」，改成「没能对应到任何一个它认识的来源」
+  （`uvx` 同样认不出，阶段 4 步骤 F 的交付说明已写）。正确形状：spec §十一 的 `Adapter::owned_roots(&self, env)`
+  trait 方法——pip 的实现调用一次 `sysconfig.get_path("scripts", "osx_framework_user")`，结果只进扫描，不上线格式。
+
 ## 阶段 2（界面 / IPC）之前必须处理
 
 - `crates/canager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。
