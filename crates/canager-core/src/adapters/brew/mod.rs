@@ -2542,6 +2542,71 @@ mod plan_execute_tests {
         assert!(plan.needs_password);
     }
 
+    /// Homebrew's `--zap` removes everything a cask's zap stanza names --
+    /// for `claude-code` that is the *native* install's `~/.local/bin/claude`
+    /// and `~/.local/share/claude`, and the shared `~/.claude` -- and
+    /// `--force` and `--ignore-dependencies` override refusals Homebrew makes
+    /// on the user's behalf. None of the three has ever been passed here, but
+    /// until now that was an absence, not a promise: `docs/what-we-run.md`
+    /// says Canager never passes them, and this is what keeps that sentence
+    /// true when `plan` is next edited. Every plan brew builds, for both
+    /// artifact kinds, is exactly the verb, the kind flag and the name.
+    #[tokio::test]
+    async fn test_plan_never_passes_zap_force_or_ignore_dependencies() {
+        let runner = Arc::new(MockRunner::new());
+        // An Uninstall plan runs `brew uses --installed {name}` first; an
+        // empty answer keeps the plan free of dependents, which is not what
+        // this test is about.
+        for name in ["jq", "docker"] {
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+        }
+        let adapter = BrewAdapter::new(runner);
+        let inst = test_instance();
+        const FORBIDDEN: [&str; 3] = ["--zap", "--force", "--ignore-dependencies"];
+        for (artifact_kind, flag, name) in [
+            (ArtifactKind::Formula, "--formula", "jq"),
+            (ArtifactKind::Cask, "--cask", "docker"),
+        ] {
+            for (kind, verb) in [
+                (OpKind::Install, "install"),
+                (OpKind::Uninstall, "uninstall"),
+                (OpKind::Upgrade, "upgrade"),
+            ] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: inst.id.clone(),
+                    artifact_kind,
+                    name: name.to_string(),
+                };
+                let plan = adapter
+                    .plan(&inst, &req)
+                    .await
+                    .unwrap_or_else(|e| panic!("plan {verb} {flag} {name}: {e}"));
+                for forbidden in FORBIDDEN {
+                    assert!(
+                        !plan.args.iter().any(|arg| arg.as_str() == forbidden),
+                        "brew {verb} {flag} {name} must never carry {forbidden}, got {:?}",
+                        plan.args
+                    );
+                }
+                assert_eq!(
+                    plan.args,
+                    vec![verb, flag, name],
+                    "brew {verb} {flag} {name} is exactly the verb, the kind flag and the name"
+                );
+            }
+        }
+    }
+
     /// (F5 / M7) `execute` builds its `CommandSpec` and calls the runner
     /// directly rather than going through `run_brew`, so it needs its own
     /// euid gate rather than inheriting one that only lives in `run_brew`.
