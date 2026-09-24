@@ -216,6 +216,60 @@ export interface Snapshot {
   stale: boolean;
   errors: SourceError[];
 }
+/**
+ * Rust `EntryKind` (crates/canager-core/src/scan/mod.rs): what one entry
+ * of a scanned bin directory is. Bare-string unit variants. Read through
+ * `KIND_KEYS` in src/pages/UnknownPage.tsx, a `Record` over this union, so
+ * a variant added here without a badge fails `tsc`.
+ */
+export type EntryKind = "File" | "Symlink" | "BrokenSymlink";
+/**
+ * Rust `ScanStop`: why a scan stopped before it had looked at everything.
+ * Both variants carry data -- the limit the scan really enforced, so the
+ * banner prints that number and never a second copy typed into the
+ * locale files -- hence externally tagged single-key objects, like
+ * `Fault`'s data variants. The page branches on `"FileLimit" in stopped`
+ * with a `never` default (`stoppedText` in src/pages/UnknownPage.tsx).
+ */
+export type ScanStop = { FileLimit: { max_entries: number } } | { TimeLimit: { max_secs: number } };
+/**
+ * One directory a scan read and how many entries it examined there.
+ * `path` has the home folder abbreviated to `~` on the Rust side: data,
+ * not a sentence, and the front end has no `HOME` to strip.
+ */
+export interface ScannedDir {
+  path: string;
+  entries: number;
+}
+/** One program no registered source accounts for. Rust `UnknownEntry`. */
+export interface UnknownEntry {
+  /** `~`-abbreviated like `ScannedDir.path`; the row's name is its last component. */
+  path: string;
+  kind: EntryKind;
+  /** Canonical and absolute, every link hop followed; `null` for a broken link. The technical detail. */
+  resolved: string | null;
+  /** `readlink`'s text as the installer wrote it, links only. */
+  link_target: string | null;
+  /** The target's; `null` for a broken link, which has none. */
+  size_bytes: number | null;
+  /** Unix seconds, the target's; `null` for a broken link. */
+  modified_at: number | null;
+  /** `st_uid == euid` of the entry itself: who put it here. */
+  owned_by_me: boolean;
+  /** The `.app` any component of the path runs inside, without `.app`. */
+  app_bundle: string | null;
+}
+/**
+ * Rust `UnknownScan`: the result of one `scan_unknown`. Not part of the
+ * `Snapshot` and not written by `refresh`; held only by `useUnknownScan`.
+ */
+export interface UnknownScan {
+  scanned: ScannedDir[];
+  entries: UnknownEntry[];
+  /** Examined programs a known source accounted for, and so not listed. */
+  attributed: number;
+  stopped: ScanStop | null;
+}
 export type Language = "System" | "En" | "ZhCn";
 export interface Settings {
   language: Language;

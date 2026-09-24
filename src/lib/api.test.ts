@@ -10,8 +10,9 @@ import {
   getSettings,
   setSettings,
   subscribeEvents,
+  scanUnknown,
 } from "./api";
-import type { IssuedPlan, OpRequest, Settings, UiEvent } from "./types";
+import type { IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -121,5 +122,13 @@ describe("api", () => {
     channelArg.channel.onmessage({ SnapshotChanged: { generation: 3 } });
 
     expect(received).toEqual([{ SnapshotChanged: { generation: 3 } }]);
+  });
+
+  it("scanUnknown invokes scan_unknown with no args and returns the scan", async () => {
+    const scan: UnknownScan = { scanned: [], entries: [], attributed: 0, stopped: null };
+    mockInvoke.mockResolvedValueOnce(scan as never);
+    const result = await scanUnknown();
+    expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
+    expect(result).toEqual(scan);
   });
 });

@@ -9,9 +9,10 @@ import {
   usePlanOperation,
   useSubmitOperation,
   useOpenOllamaApp,
+  useUnknownScan,
 } from "./queries";
 import { refreshIntoCache } from "./events";
-import type { IssuedPlan, ManagerInstance, Snapshot } from "./types";
+import type { IssuedPlan, ManagerInstance, Snapshot, UnknownScan } from "./types";
 
 function ollamaInstance(running: boolean): ManagerInstance {
   return {
@@ -231,5 +232,31 @@ describe("queries", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["operations"] });
+  });
+
+  it("useUnknownScan runs nothing until asked, then fetches through scanUnknown", async () => {
+    // `enabled: false`: the scan is a directory walk of up to ten seconds,
+    // run when the Unknown page opens and when "Scan again" is pressed --
+    // never because a component happened to mount, and never as part of
+    // a refresh.
+    const scan: UnknownScan = {
+      scanned: [{ path: "~/.local/bin", entries: 1 }],
+      entries: [],
+      attributed: 1,
+      stopped: null,
+    };
+    mockInvoke.mockResolvedValue(scan as never);
+    const queryClient = newClient();
+    const { result } = renderHook(() => useUnknownScan(), { wrapper: wrapper(queryClient) });
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(result.current.data).toBeUndefined();
+
+    await result.current.refetch();
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
+    expect(result.current.data).toEqual(scan);
+    expect(queryClient.getQueryData(["unknown"])).toEqual(scan);
   });
 });

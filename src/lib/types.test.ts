@@ -12,6 +12,9 @@ import type {
   UninstallBlocked,
   UpdateBlocked,
   Warning,
+  EntryKind,
+  ScanStop,
+  UnknownScan,
 } from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
@@ -299,5 +302,43 @@ describe("types", () => {
     expect(roundTrip(opSummary).status).toBe("Running");
     expect(roundTrip(opSummary).outcome).toBeNull();
     expect(roundTrip(settings).language).toBe("ZhCn");
+  });
+
+  it("spells the unknown-source scan's shapes as Rust sends them", () => {
+    // Mirrors `crates/canager-core/src/scan/mod.rs`, whose
+    // `test_scan_wire_shapes_match_the_hand_written_ts_mirror` asserts
+    // these exact spellings from the Rust side: `EntryKind` bare strings,
+    // `ScanStop` externally tagged with the limit the scan enforced, and
+    // an explicit `null` for a complete scan.
+    const kinds: EntryKind[] = ["File", "Symlink", "BrokenSymlink"];
+    expect(JSON.stringify(kinds)).toBe('["File","Symlink","BrokenSymlink"]');
+    const fileLimit: ScanStop = { FileLimit: { max_entries: 2000 } };
+    const timeLimit: ScanStop = { TimeLimit: { max_secs: 10 } };
+    expect(JSON.stringify(fileLimit)).toBe('{"FileLimit":{"max_entries":2000}}');
+    expect(JSON.stringify(timeLimit)).toBe('{"TimeLimit":{"max_secs":10}}');
+
+    const scan: UnknownScan = {
+      scanned: [{ path: "~/.local/bin", entries: 5 }],
+      entries: [
+        {
+          path: "~/.local/bin/old-script",
+          kind: "BrokenSymlink",
+          resolved: null,
+          link_target: "/Applications/Removed.app/Contents/Resources/index.js",
+          size_bytes: null,
+          modified_at: null,
+          owned_by_me: true,
+          app_bundle: "Removed",
+        },
+      ],
+      attributed: 4,
+      stopped: null,
+    };
+    expect(JSON.stringify(scan)).toBe(
+      '{"scanned":[{"path":"~/.local/bin","entries":5}],"entries":[{"path":"~/.local/bin/old-script","kind":"BrokenSymlink","resolved":null,"link_target":"/Applications/Removed.app/Contents/Resources/index.js","size_bytes":null,"modified_at":null,"owned_by_me":true,"app_bundle":"Removed"}],"attributed":4,"stopped":null}',
+    );
+    expect(roundTrip(scan)).toEqual(scan);
+    const stopped: UnknownScan = { ...scan, stopped: timeLimit };
+    expect(roundTrip(stopped).stopped).toEqual({ TimeLimit: { max_secs: 10 } });
   });
 });

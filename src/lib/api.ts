@@ -1,5 +1,14 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
-import type { IssuedPlan, OpRequest, PlanId, Settings, Snapshot, OpSummary, UiEvent } from "./types";
+import type {
+  IssuedPlan,
+  OpRequest,
+  PlanId,
+  Settings,
+  Snapshot,
+  OpSummary,
+  UiEvent,
+  UnknownScan,
+} from "./types";
 
 /**
  * The single choke point for every IPC call. A `#[tauri::command]` that
@@ -72,4 +81,13 @@ export function subscribeEvents(onEvent: (e: UiEvent) => void): Promise<() => vo
 
 export function openOllamaApp(): Promise<void> {
   return call<void>("open_ollama_app");
+}
+
+/**
+ * The unknown-source scan over the current snapshot: a directory walk of
+ * the usual bin folders, up to ten seconds, on the Rust side. Nothing is
+ * cached here; `useUnknownScan` decides when it runs.
+ */
+export function scanUnknown(): Promise<UnknownScan> {
+  return call<UnknownScan>("scan_unknown");
 }

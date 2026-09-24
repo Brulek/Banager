@@ -14,11 +14,20 @@ import {
   getSettings,
   setSettings,
   openOllamaApp,
+  scanUnknown,
 } from "./api";
 import { isNewerSnapshot, refreshIntoCache } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
-import type { IssuedPlan, OpRequest, OpSummary, PlanId, Settings, Snapshot } from "./types";
+import type {
+  IssuedPlan,
+  OpRequest,
+  OpSummary,
+  PlanId,
+  Settings,
+  Snapshot,
+  UnknownScan,
+} from "./types";
 
 export { queryKeys };
 
@@ -47,6 +56,21 @@ export function useSettings(): UseQueryResult<Settings> {
 
 export function useOperations(): UseQueryResult<OpSummary[]> {
   return useQuery({ queryKey: queryKeys.operations, queryFn: listOperations });
+}
+
+/**
+ * The unknown-source scan. `enabled: false`: nothing runs until asked. The
+ * Unknown page asks through `refetch` -- once per snapshot generation
+ * while it is open, and on "Scan again" -- and it is the only reader. This
+ * is not the snapshot: `refresh` never writes it, and `SnapshotChanged`
+ * invalidates only the snapshot query (src/lib/events.ts), because it is
+ * not about the managed sources. Each scan judges against whatever
+ * snapshot is committed when it runs (spec §8.1, Q11), which is why the
+ * page re-asks when that snapshot's `generation` moves: a scan made before
+ * the startup refresh committed would otherwise stand until pressed.
+ */
+export function useUnknownScan(): UseQueryResult<UnknownScan> {
+  return useQuery({ queryKey: queryKeys.unknown, queryFn: scanUnknown, enabled: false });
 }
 
 export function useRefresh(): UseMutationResult<Snapshot, Error, void> {
