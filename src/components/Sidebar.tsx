@@ -6,7 +6,7 @@ interface SidebarProps {
   onSelectPage: (page: Page) => void;
 }
 
-const PAGES: Page[] = ["installed", "updates", "settings"];
+const PAGES: Page[] = ["installed", "updates", "unknown", "settings"];
 
 export function Sidebar({ page, onSelectPage }: SidebarProps) {
   const { t } = useTranslation();

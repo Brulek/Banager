@@ -186,7 +186,7 @@ function occursAsToken(
  */
 const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
   // src/components/Sidebar.tsx: `t(\`nav.${p}\`)` over `PAGES`.
-  nav: ["installed", "updates", "settings"],
+  nav: ["installed", "updates", "unknown", "settings"],
   // src/components/OperationBar.tsx: `t(\`operations.kind.${current.kind}\`)`
   // over `OpKind` (src/lib/types.ts).
   "operations.kind": ["Install", "Uninstall", "Upgrade"],

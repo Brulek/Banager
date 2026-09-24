@@ -6,6 +6,7 @@
     "label": "Sections",
     "installed": "Installed",
     "updates": "Updates",
+    "unknown": "Unknown",
     "settings": "Settings"
   },
   "common": {

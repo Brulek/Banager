@@ -26,6 +26,8 @@ describe("useUiStore", () => {
   it("setPage changes the active page", () => {
     useUiStore.getState().setPage("updates");
     expect(useUiStore.getState().page).toBe("updates");
+    useUiStore.getState().setPage("unknown");
+    expect(useUiStore.getState().page).toBe("unknown");
   });
 
   it("setQuery changes the filter text", () => {

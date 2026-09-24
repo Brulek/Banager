@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
-export type Page = "installed" | "updates" | "settings";
+export type Page = "installed" | "updates" | "unknown" | "settings";
 
 // One entry in an operation's log: either a line the tool wrote, shown
 // verbatim, or a note of Canager's own, which the drawer localises.

@@ -3,7 +3,7 @@ import { fireEvent } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
-import type { Settings, Snapshot } from "./lib/types";
+import type { Settings, Snapshot, UnknownScan } from "./lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -54,11 +54,19 @@ const defaultSettings: Settings = {
   include_self_updating: false,
 };
 
+const emptyScan: UnknownScan = {
+  scanned: [{ path: "~/.local/bin", entries: 0 }],
+  entries: [],
+  attributed: 0,
+  stopped: null,
+};
+
 function mockBackend(snap: Snapshot) {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_snapshot" || cmd === "refresh") return Promise.resolve(snap);
     if (cmd === "get_settings") return Promise.resolve(defaultSettings);
     if (cmd === "list_operations") return Promise.resolve([]);
+    if (cmd === "scan_unknown") return Promise.resolve(emptyScan);
     return Promise.resolve(undefined);
   });
 }
@@ -91,5 +99,24 @@ describe("App", () => {
     fireEvent.click(getByRole("button", { name: "Settings" }));
 
     expect(await findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("switches to the Unknown page, which lives outside the snapshot's empty states", async () => {
+    // A Mac with no source at all: SnapshotStatus shows "Nothing for
+    // Canager to manage yet" for the Installed and Updates pages. That is
+    // exactly where everything on the machine is unknown, so this page
+    // must not be behind that gate.
+    mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
+    const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
+    await findByText("Nothing for Canager to manage yet");
+
+    fireEvent.click(getByRole("button", { name: "Unknown" }));
+
+    expect(await findByRole("heading", { name: "Programs Canager can't place" })).toBeInTheDocument();
+    expect(
+      await findByText(
+        "Nothing unexplained: every command-line program Canager found came from a source it knows.",
+      ),
+    ).toBeInTheDocument();
   });
 });
