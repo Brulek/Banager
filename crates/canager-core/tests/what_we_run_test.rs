@@ -2,15 +2,18 @@
 //! who does not read Rust can see every command Canager runs and every
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
-//! the https allowlist, every environment variable brew and npm set, and
-//! the three Homebrew flags the file promises are never passed. A source,
-//! host or variable added without its line in the document fails here.
+//! the https allowlist, every environment variable brew and npm set, the
+//! three Homebrew flags the file promises are never passed, and the
+//! unknown-source scan's section with the two limits `ScanBudget::default()`
+//! enforces. A source, host, variable or limit added or changed without its
+//! line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::npm::NpmAdapter;
 use canager_core::adapters::AdapterMeta;
 use canager_core::events::VecSink;
 use canager_core::http::real::ALLOWED_HTTPS_HOSTS;
+use canager_core::scan::ScanBudget;
 use canager_core::session::Session;
 use std::path::Path;
 use std::sync::Arc;
@@ -23,17 +26,33 @@ fn read_doc() -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// A `## ` heading whose text is `name`, or `name` followed by a space or a
-/// colon -- so `## pip` is found by "pip" and not by "pipx", and
-/// `## pip (read-only)` still counts.
-fn has_section(doc: &str, name: &str) -> bool {
-    doc.lines().any(|line| {
-        line.strip_prefix("## ").is_some_and(|text| {
-            text == name
-                || text.starts_with(&format!("{name} "))
-                || text.starts_with(&format!("{name}:"))
-        })
+/// Whether `line` is a `## ` heading whose text is `name`, or `name`
+/// followed by a space or a colon -- so `## pip` is found by "pip" and not
+/// by "pipx", and `## pip (read-only)` still counts.
+fn is_heading_for(line: &str, name: &str) -> bool {
+    line.strip_prefix("## ").is_some_and(|text| {
+        text == name
+            || text.starts_with(&format!("{name} "))
+            || text.starts_with(&format!("{name}:"))
     })
+}
+
+fn has_section(doc: &str, name: &str) -> bool {
+    doc.lines().any(|line| is_heading_for(line, name))
+}
+
+/// The lines under the `## ` heading for `name`, up to the next `## `
+/// heading; `None` when there is no such heading. A phrase found here was
+/// stated in that section, not somewhere else in the file.
+fn section_body(doc: &str, name: &str) -> Option<String> {
+    let mut lines = doc.lines().skip_while(|line| !is_heading_for(line, name));
+    lines.next()?;
+    Some(
+        lines
+            .take_while(|line| !line.starts_with("## "))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 #[test]
@@ -106,4 +125,28 @@ fn test_what_we_run_promises_the_three_brew_flags_are_never_passed() {
         promised,
         "docs/what-we-run.md has no line promising Homebrew is never passed --zap, --force and --ignore-dependencies, which test_plan_never_passes_zap_force_or_ignore_dependencies keeps true"
     );
+}
+
+#[test]
+fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
+    let doc = read_doc();
+    // The scan is not a registered source (it is not an `Adapter`), so the
+    // per-source test above never asks for its section.
+    let body = section_body(&doc, "Unknown-source scan").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Unknown-source scan` section for scan::scan_unknown")
+    });
+    // The two numbers the page's banner prints come from
+    // `ScanBudget::default()`; the section has to state those same two,
+    // in its own text, so a change to the budget without its line here
+    // fails.
+    let budget = ScanBudget::default();
+    for limit in [
+        format!("{} entries", budget.max_entries),
+        format!("{} seconds", budget.max_duration.as_secs()),
+    ] {
+        assert!(
+            body.contains(&limit),
+            "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
+        );
+    }
 }

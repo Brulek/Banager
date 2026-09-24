@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 396 Rust tests (plus 2 more
-> that touch a real Homebrew and only run with `--ignored`) and 262 front-end tests, but there is
+> **Status: pre-release.** The core and the UI work and are covered by 503 Rust tests (plus 2 more
+> that touch a real Homebrew and only run with `--ignored`) and 322 front-end tests, but there is
 > no downloadable build yet — v0.1 is being prepared. Nothing here is ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
@@ -26,6 +26,13 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | pip | yes | **no** — Canager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes | yes |
+
+Programs that none of these sources installed — a tool's own installer dropped a binary into
+`~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
+listed, read-only, on the **Unknown** page. Canager never runs, moves or deletes anything there;
+`docs/what-we-run.md` says exactly what it reads. A program a source installed but reported no
+path for is listed there too (uv's own `uvx`, for one): the gap is the source's, and the page
+says what it sees.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -54,7 +61,9 @@ Being honest about this is part of the point:
   button is pressed for something that already needs one — a failed refresh, or a Homebrew index
   Canager couldn't update — and on its own when a Homebrew index update left running in the
   background finishes (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). None
-  of that is a standalone control you can press at any time.
+  of that is a standalone control you can press at any time. The Unknown page's *Scan again*
+  button is the one exception, and it is scoped to that page: it re-runs only that page's scan of
+  your bin folders, against the sources' last known state — it does not refresh the sources.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -160,8 +169,8 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 396 个 Rust 测试（另有 2 个要连着真实的
-Homebrew 才跑，平时是跳过的）和 262 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
+**目前处于发布前阶段**，核心与界面已经可用、有 503 个 Rust 测试（另有 2 个要连着真实的
+Homebrew 才跑，平时是跳过的）和 322 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
 不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -195,4 +204,6 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
 点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew
 索引更新自行结束时（`ipc::refresh_on_background_change`，`src-tauri/src/lib.rs:31-34`，不需要用户
-动手）这四种情况下发生，不是随时可按的独立刷新控件。
+动手）这四种情况下发生，不是随时可按的独立刷新控件。唯一的例外是“来源不明”页上的“重新扫描”，
+它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
+（来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。）

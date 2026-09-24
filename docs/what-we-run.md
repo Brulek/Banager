@@ -8,8 +8,9 @@ function it describes, so it can be checked against
 `crates/canager-core/src/adapters/` rather than believed.
 `crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
 can: a section per registered source, every host on the https allowlist,
-every environment variable Homebrew's and npm's commands are given, and
-the three Homebrew flags this file promises are never passed.
+every environment variable Homebrew's and npm's commands are given, the
+three Homebrew flags this file promises are never passed, and that the
+unknown-source scan's section states the two limits the code enforces.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -443,6 +444,39 @@ whether LaunchServices accepted the request. It is the one launch in the
 app that is not a package-manager command, and it never happens during a
 refresh.
 
+## Unknown-source scan (phase 4, step F): read-only, no command runs
+
+The *Unknown* page lists command-line programs that none of the sources
+above installed. Producing that list runs no command at all.
+`scan_unknown` (`crates/canager-core/src/scan/mod.rs`) reads directory
+entries and file metadata and nothing else:
+
+| It looks at | How |
+|---|---|
+| `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, plus every `PATH` entry under your home folder (`candidate_dirs`) | `read_dir`, one level deep — a subdirectory is never entered; a directory that does not exist, or that cannot be read, is skipped silently; two names for one directory are read once (`scan_dirs`) |
+| each entry | `lstat`, `readlink`, `realpath`, `stat` (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run |
+
+It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
+says so on the page, with the number it stopped at. It never runs, opens,
+moves or deletes anything it finds. It takes no lock and is not part of a
+refresh (`Session::scan_unknown` in
+`crates/canager-core/src/session/scan.rs`): it runs when the page opens,
+again when the sources' state changes while the page is open, and when
+you press *Scan again* — always against the sources' last known state —
+and its result is not stored.
+
+A program is *not* listed when a known source accounts for it
+(`Known::claimant`): it is a source's own executable, or resolves to the
+same file one does (`~/.cargo/bin/cargo` and rustup's other proxies all
+resolve to `rustup`); it resolves under a path a source reported
+installing (a file or a directory: a uv or pipx tool's shim resolves into
+that tool's environment); or it resolves under a directory a source owns
+(`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
+`lib/node_modules` under its global prefix; Ollama's `~/.ollama`).
+Everything else is listed, with where a broken link pointed, the app a
+program runs inside, and whether an installer with administrator rights
+put it there.
+
 ## Files Canager reads
 
 All read-only, none saved anywhere else, none uploaded:
@@ -458,6 +492,9 @@ All read-only, none saved anywhere else, none uploaded:
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
   for each pulled model.
+- The Unknown page's scan: the entries of the bin directories its section
+  lists, one level deep, and each entry's metadata and link target — never
+  a file's contents.
 - Canager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 
