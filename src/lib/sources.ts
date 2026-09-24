@@ -100,6 +100,18 @@ export interface SourceNoticeSpec {
 }
 
 /**
+ * The word the user types to run a standalone tool: the file name of its
+ * launcher (`~/.local/bin/claude` → `claude`). A standalone instance's
+ * `exe_path` is the launcher, not the resolved binary
+ * (`StandaloneAdapter::detect`). Falls back to the whole path for one
+ * with no file name, which no adapter produces.
+ */
+function commandNameOf(instance: ManagerInstance): string {
+  const name = instance.exe_path.split("/").pop();
+  return name !== undefined && name.length > 0 ? name : instance.exe_path;
+}
+
+/**
  * Every notice `instance` needs, in the order they should be rendered:
  * capability first (what Canager may do at all), then state (what it
  * managed to find out). `sourceLabel` is the source's name as the user
@@ -217,6 +229,62 @@ export function sourceNoticesFor(
         variant: "info",
         titleKey: "sourceNotice.indexUpdating.title",
         descriptionKey: "sourceNotice.indexUpdating.description",
+      });
+    } else if (note === "NotOnPath") {
+      // The four "which copy runs" notes of a standalone tool (spec §七).
+      // Info, not warning: the install works, the user just needs to know
+      // what typing its name does. `{{command}}` is the launcher's file
+      // name -- the word the user types -- not its path, which this
+      // app's audience would not recognise. Plain text: `SourceNotice`
+      // renders `t(key, values)`, never `withCommand`.
+      notices.push({
+        id: `${instance.id}:not-on-path`,
+        axis: "state",
+        variant: "info",
+        titleKey: "sourceNotice.notOnPath.title",
+        descriptionKey: "sourceNotice.notOnPath.description",
+        values: { source: sourceLabel, command: commandNameOf(instance) },
+      });
+    } else if (note === "ShadowedByHomebrew") {
+      notices.push({
+        id: `${instance.id}:shadowed-by-homebrew`,
+        axis: "state",
+        variant: "info",
+        titleKey: "sourceNotice.shadowedByHomebrew.title",
+        descriptionKey: "sourceNotice.shadowedByHomebrew.description",
+        values: { source: sourceLabel, command: commandNameOf(instance) },
+      });
+    } else if (note === "ShadowedByNpm") {
+      notices.push({
+        id: `${instance.id}:shadowed-by-npm`,
+        axis: "state",
+        variant: "info",
+        titleKey: "sourceNotice.shadowedByNpm.title",
+        descriptionKey: "sourceNotice.shadowedByNpm.description",
+        values: { source: sourceLabel, command: commandNameOf(instance) },
+      });
+    } else if (note === "ShadowedByOther") {
+      notices.push({
+        id: `${instance.id}:shadowed-by-other`,
+        axis: "state",
+        variant: "info",
+        titleKey: "sourceNotice.shadowedByOther.title",
+        descriptionKey: "sourceNotice.shadowedByOther.description",
+        values: { source: sourceLabel, command: commandNameOf(instance) },
+      });
+    } else if (note === "LauncherOnly") {
+      // The half-uninstalled state: typing the command now fails, so a
+      // warning. No button, and no promise of one: until step C the row's
+      // artifact carries NoSafeMethod, so the gate refuses an uninstall
+      // and the Installed page shows none. C's path-list uninstall is
+      // what finishes the job (spec §3.3, §6.1).
+      notices.push({
+        id: `${instance.id}:launcher-only`,
+        axis: "state",
+        variant: "warning",
+        titleKey: "sourceNotice.launcherOnly.title",
+        descriptionKey: "sourceNotice.launcherOnly.description",
+        values: { source: sourceLabel, command: commandNameOf(instance) },
       });
     } else {
       const unhandled: never = note;

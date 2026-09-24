@@ -118,8 +118,22 @@ export type ReadOnlyReason = "ByDesign" | "PrefixNotWritable";
  * compile time, it lands in whatever default branch reads it.
  */
 export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot";
-/** Mirrors `InstanceNote`; payload-free on purpose, so a bare string. */
-export type InstanceNote = "IndexMayBeStale" | "IndexUpdating";
+/**
+ * Mirrors `InstanceNote` in crates/canager-core/src/model.rs; payload-free
+ * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts
+ * ends its loop over these in a `never`, so a variant added here without
+ * a branch there fails `tsc`. The last five are a standalone tool's
+ * (phase 4): which copy runs when its name is typed, or that only its
+ * launcher is left.
+ */
+export type InstanceNote =
+  | "IndexMayBeStale"
+  | "IndexUpdating"
+  | "NotOnPath"
+  | "ShadowedByHomebrew"
+  | "ShadowedByNpm"
+  | "ShadowedByOther"
+  | "LauncherOnly";
 /**
  * Mirrors `InstanceStatus`, which derives `Default` on the Rust side: this
  * is always an object, never null, and `notes` is `[]` rather than absent

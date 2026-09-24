@@ -163,6 +163,17 @@ describe("types", () => {
       '{"unavailable":"NotResponding","notes":["IndexMayBeStale"]}',
     );
     expect(roundTrip(notResponding)).toEqual(notResponding);
+
+    // The five notes a standalone tool's detect can add (phase 4): which
+    // copy runs when its name is typed, or that only its launcher is left.
+    const standalone: InstanceStatus = {
+      unavailable: null,
+      notes: ["NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly"],
+    };
+    expect(JSON.stringify(standalone)).toBe(
+      '{"unavailable":null,"notes":["NotOnPath","ShadowedByHomebrew","ShadowedByNpm","ShadowedByOther","LauncherOnly"]}',
+    );
+    expect(roundTrip(standalone)).toEqual(standalone);
   });
 
   it("keeps Outcome's externally tagged variants intact on the wire", () => {

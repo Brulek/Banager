@@ -213,8 +213,112 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
       instance({ status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
       instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }),
+      instance({ status: { unavailable: null, notes: ["NotOnPath"] } }),
+      instance({ status: { unavailable: null, notes: ["ShadowedByHomebrew"] } }),
+      instance({ status: { unavailable: null, notes: ["ShadowedByNpm"] } }),
+      instance({ status: { unavailable: null, notes: ["ShadowedByOther"] } }),
+      instance({ status: { unavailable: null, notes: ["LauncherOnly"] } }),
     ]) {
       expect(hasSourceNotice(inst)).toBe(sourceNoticesFor(inst, "Homebrew").length > 0);
+    }
+  });
+
+  // A standalone tool's instance: the launcher is its `exe_path`, the tool
+  // root its `prefix`, and the command the user types is the launcher's
+  // file name.
+  const claude = instance({
+    id: "standalone-claude",
+    adapter_id: "standalone-claude",
+    exe_path: "/Users/someone/.local/bin/claude",
+    prefix: "/Users/someone/.local/share/claude",
+    version: "2.1.281",
+  });
+
+  it("tells a standalone tool's user which copy runs when they type its name", () => {
+    // Four payload-free notes, four actionable sentences (spec §七): the
+    // path of the winning copy is not in the notice -- the user this app
+    // is for would not recognise it -- but the command name is, so the
+    // sentence can say "when you type claude".
+    for (const [note, id, key] of [
+      ["NotOnPath", "not-on-path", "sourceNotice.notOnPath"],
+      ["ShadowedByHomebrew", "shadowed-by-homebrew", "sourceNotice.shadowedByHomebrew"],
+      ["ShadowedByNpm", "shadowed-by-npm", "sourceNotice.shadowedByNpm"],
+      ["ShadowedByOther", "shadowed-by-other", "sourceNotice.shadowedByOther"],
+    ] as const) {
+      const notices = sourceNoticesFor(
+        { ...claude, status: { unavailable: null, notes: [note] } },
+        "Claude Code",
+      );
+      expect(notices).toEqual([
+        {
+          id: `standalone-claude:${id}`,
+          axis: "state",
+          variant: "info",
+          titleKey: `${key}.title`,
+          descriptionKey: `${key}.description`,
+          values: { source: "Claude Code", command: "claude" },
+        },
+      ]);
+    }
+  });
+
+  it("warns, and names the link, when only a standalone tool's launcher is left", () => {
+    // The half-uninstalled state (program files gone, launcher dangling):
+    // a warning because this launcher is broken; another PATH copy may work. No
+    // button, and -- in this step -- no Uninstall on the row either (its
+    // artifact carries NoSafeMethod until step C), so the sentence must
+    // not promise one.
+    const notices = sourceNoticesFor(
+      { ...claude, status: { unavailable: null, notes: ["LauncherOnly"] } },
+      "Claude Code",
+    );
+    expect(notices).toEqual([
+      {
+        id: "standalone-claude:launcher-only",
+        axis: "state",
+        variant: "warning",
+        titleKey: "sourceNotice.launcherOnly.title",
+        descriptionKey: "sourceNotice.launcherOnly.description",
+        values: { source: "Claude Code", command: "claude" },
+      },
+    ]);
+  });
+
+  it("falls back to the whole exe_path as the command when it has no file name", () => {
+    const notices = sourceNoticesFor(
+      { ...claude, exe_path: "/", status: { unavailable: null, notes: ["NotOnPath"] } },
+      "Claude Code",
+    );
+    expect(notices[0].values).toEqual({ source: "Claude Code", command: "/" });
+  });
+
+  it("puts the command and the source into every standalone notice's copy, in both locales", () => {
+    for (const locale of [en, zhCN]) {
+      for (const key of [
+        "notOnPath",
+        "shadowedByHomebrew",
+        "shadowedByNpm",
+        "shadowedByOther",
+        "launcherOnly",
+      ] as const) {
+        expect(locale.sourceNotice[key].description).toContain("{{command}}");
+      }
+      // The three "another copy runs" notices share one title, and the
+      // three descriptions each name the other copy differently.
+      expect(locale.sourceNotice.shadowedByNpm.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
+      expect(locale.sourceNotice.shadowedByOther.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
+      expect(locale.sourceNotice.shadowedByHomebrew.description).toContain("Homebrew");
+      expect(locale.sourceNotice.shadowedByNpm.description).toContain("npm");
+      expect(locale.sourceNotice.launcherOnly.description).toContain("{{source}}");
+      // Until step C the LauncherOnly row's artifact carries NoSafeMethod,
+      // so the Installed page shows no Uninstall button on it: the notice
+      // must not tell the user to press one (spec §9.2's sentence returns
+      // with step C's uninstall).
+      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/Uninstall removes|卸载会把/);
+      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/typing .* in Terminal fails|输入 .* 会失败/);
+      for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
+        expect(locale.sourceNotice[key].description).not.toMatch(/both are listed on this page|两份在这一页上都能找到/);
+      }
     }
   });
 });

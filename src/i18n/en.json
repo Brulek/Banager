@@ -134,6 +134,26 @@
     "indexUpdating": {
       "title": "Homebrew is still downloading its latest list of software",
       "description": "Homebrew's list of available software is taking a while to download, so “up to date” may not be accurate yet. You don't need to do anything: Canager will check again by itself as soon as the download finishes."
+    },
+    "notOnPath": {
+      "title": "{{source}} isn't in your PATH",
+      "description": "It's installed, but typing {{command}} in Terminal probably won't find it: the folder it lives in isn't in your shell's search path (PATH). Opening a new Terminal window sometimes fixes this; otherwise follow the tool's own install guide for adding it to PATH."
+    },
+    "shadowedByHomebrew": {
+      "title": "Another copy runs when you type {{command}}",
+      "description": "Canager found this native copy of {{source}} and an executable in a Homebrew directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
+    },
+    "shadowedByNpm": {
+      "title": "Another copy runs when you type {{command}}",
+      "description": "Canager found this native copy of {{source}} and an executable in a npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
+    },
+    "shadowedByOther": {
+      "title": "Another copy runs when you type {{command}}",
+      "description": "Canager found another executable earlier in its PATH than this copy of {{source}}. Typing {{command}} in Terminal will likely run that other copy. The Unknown page may show where it is."
+    },
+    "launcherOnly": {
+      "title": "Only the {{command}} link is left",
+      "description": "The program files targeted by this {{command}} link are missing, so this launcher cannot run. Another installation may still work in Terminal. Canager can't remove the link yet. To get {{source}} back, reinstall it following the official instructions on its website; to finish removing it, follow the uninstall steps on the same page."
     }
   },
   "planRefused": {

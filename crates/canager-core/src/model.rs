@@ -105,6 +105,35 @@ pub enum InstanceNote {
     /// none. Nothing has failed. When the update ends the shell refreshes
     /// again (see `Session::background_change`), so this clears by itself.
     IndexUpdating,
+    /// Typing this tool's name in Terminal would not find it: the
+    /// directory its launcher lives in is not on the `PATH` Canager sees.
+    /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for
+    /// a tool installed by its own installer; read by `sourceNoticesFor`
+    /// in src/lib/sources.ts.
+    NotOnPath,
+    /// Typing the name runs a copy Homebrew installed instead of this one:
+    /// the first executable of that name on `PATH` resolves under a
+    /// `Cellar` or `Caskroom` directory. Same producer and reader as
+    /// `NotOnPath`.
+    ShadowedByHomebrew,
+    /// As `ShadowedByHomebrew`, for a copy npm installed (it resolves under
+    /// a `node_modules` directory).
+    ShadowedByNpm,
+    /// As `ShadowedByHomebrew`, for a copy Canager does not recognise; the
+    /// Unknown page may show where it is.
+    ShadowedByOther,
+    /// The launcher is still there but points at program files that are
+    /// gone: the program directory was removed by hand or by another
+    /// tool (from step C on, also by a Canager uninstall that stopped
+    /// after moving it and before moving the launcher -- C's removal
+    /// order makes that the only such state). The row stays, with no
+    /// version, so the state is visible. In this step its artifact still
+    /// carries `UninstallBlocked::NoSafeMethod`, so the gate refuses an
+    /// uninstall and the notice promises none; step C's path-list
+    /// uninstall is what lets one through to remove the link. Produced by
+    /// `StandaloneAdapter::detect` when `route::probe` answers
+    /// `LauncherOnly`.
+    LauncherOnly,
 }
 
 /// The state axis of a source: can Canager talk to it at all, and is there
@@ -887,5 +916,31 @@ mod tests {
             serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
             status
         );
+
+        // Phase 4's five standalone-installer notes are bare strings too,
+        // spelled exactly as `src/lib/types.ts` mirrors them: the front
+        // end's `sourceNoticesFor` matches these strings, and a spelling
+        // that drifted would fall through every branch and show nothing.
+        for (note, wire) in [
+            (InstanceNote::NotOnPath, "NotOnPath"),
+            (InstanceNote::ShadowedByHomebrew, "ShadowedByHomebrew"),
+            (InstanceNote::ShadowedByNpm, "ShadowedByNpm"),
+            (InstanceNote::ShadowedByOther, "ShadowedByOther"),
+            (InstanceNote::LauncherOnly, "LauncherOnly"),
+        ] {
+            let status = InstanceStatus {
+                unavailable: None,
+                notes: vec![note],
+            };
+            let json = serde_json::to_string(&status).expect("serialize");
+            assert_eq!(
+                json,
+                format!(r#"{{"unavailable":null,"notes":["{wire}"]}}"#)
+            );
+            assert_eq!(
+                serde_json::from_str::<InstanceStatus>(&json).expect("deserialize"),
+                status
+            );
+        }
     }
 }
