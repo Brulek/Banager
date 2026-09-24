@@ -211,10 +211,19 @@ describe("UninstallDialog", () => {
     // with the same id.
     let planCalls = 0;
     let submitAttempts = 0;
+    let releaseReplan: () => void = () => {};
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") {
         planCalls += 1;
-        return { ...issuedPlanFor(), id: String(planCalls) };
+        const fresh = { ...issuedPlanFor(), id: String(planCalls) };
+        if (planCalls === 1) return fresh;
+        // The re-plan is held open until the test releases it: the expired
+        // message is shown while the dialog re-checks and goes with the
+        // fresh preview, and a mocked re-plan that resolved in microtasks
+        // would land before React ever rendered it.
+        return new Promise<IssuedPlan>((resolve) => {
+          releaseReplan = () => resolve(fresh);
+        });
       }
       if (cmd === "submit_operation") {
         submitAttempts += 1;
@@ -245,6 +254,7 @@ describe("UninstallDialog", () => {
       "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
     );
     await waitFor(() => expect(planCalls).toBe(2));
+    releaseReplan();
     // Confirm re-enables only once the fresh plan has arrived; its preview is
     // on screen, but the fresh id has not been sent — the dead id is still
     // the only submit so far, and nothing was reported as started.
@@ -257,6 +267,158 @@ describe("UninstallDialog", () => {
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
+  });
+
+  it("submits once when Uninstall is clicked twice before the first click is acknowledged", async () => {
+    // Two clicks in one event-loop turn. `submitMutation.isPending`, which is
+    // what disables the button, reaches React only through TanStack's
+    // setTimeout(0) notify, so the second click still finds an enabled
+    // button. The backend's single-use plan id would reject a second submit
+    // with `unknown`, which this dialog answers with an error and a re-plan
+    // -- for a user who did nothing wrong. So the second click must not
+    // reach `mutate()` at all.
+    let submitAttempts = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") return issuedPlanFor();
+      if (cmd === "submit_operation") {
+        submitAttempts += 1;
+        if (submitAttempts > 1) throw '{"kind":"unknown"}';
+        return 7;
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+    const onSubmitted = vi.fn();
+
+    renderWithProviders(
+      <UninstallDialog
+        open
+        onOpenChange={() => {}}
+        request={request}
+        displayName="jq"
+        onSubmitted={onSubmitted}
+      />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
+    expect(onSubmitted).toHaveBeenCalledTimes(1);
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("drops the submit error once the fresh preview arrives, and says why the preview is new", async () => {
+    // The re-plan is held open so each state is caught in turn. While the
+    // dialog re-checks, the submit error says why; once the fresh preview
+    // is on screen that error would read as "still broken" next to an
+    // enabled Uninstall, so it goes, and a note beside the preview says the
+    // previous confirm started nothing. The note goes when the user acts on
+    // the fresh preview.
+    let planCalls = 0;
+    let releaseReplan: () => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") {
+        planCalls += 1;
+        const fresh = { ...issuedPlanFor(), id: String(planCalls) };
+        if (planCalls === 1) return fresh;
+        return new Promise<IssuedPlan>((resolve) => {
+          releaseReplan = () => resolve(fresh);
+        });
+      }
+      if (cmd === "submit_operation") throw '{"kind":"expired"}';
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't start the uninstall: This preview is more than 10 minutes old",
+    );
+    expect(screen.getByText("Checking what this would affect…")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await waitFor(() => expect(planCalls).toBe(2));
+
+    releaseReplan();
+
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview. Look it over, then confirm once more.",
+    );
+
+    // Acting on the fresh preview retires the note; the (again expired)
+    // submit's own error takes its place while the next re-check runs.
+    fireEvent.click(confirmButton);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't start the uninstall:");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
+  });
+
+  it("keeps only the plan error when the re-issued plan fails as well", async () => {
+    // Homebrew stopped answering between preview and confirm: submit is
+    // refused, the re-plan is refused for the same reason. The re-plan's
+    // error is the current truth and the one that explains the missing
+    // preview and the disabled button; the submit's is about a state that
+    // has passed, and a second red paragraph saying nearly the same thing
+    // is noise. No note either: there is no fresh preview to explain.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return {
+          generation: 2,
+          detect: "Found",
+          instances: [
+            {
+              id: "brew:/opt/homebrew",
+              adapter_id: "brew",
+              exe_path: "/opt/homebrew/bin/brew",
+              prefix: "/opt/homebrew",
+              scope: "User",
+              version: "7.0.3",
+              status: { unavailable: "NotResponding", notes: [] },
+              unverified_version: null,
+              read_only_reason: null,
+            },
+          ],
+          artifacts: [],
+          updates: [],
+          refreshed_at: 1,
+          stale: false,
+          errors: [],
+        };
+      }
+      if (cmd === "plan_operation") {
+        if (submitCalls().length === 0) return issuedPlanFor();
+        throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotResponding"}';
+      }
+      if (cmd === "submit_operation") {
+        throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotResponding"}';
+      }
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+
+    await screen.findByText(/Couldn't check what this would affect: Homebrew is installed but didn't answer/);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.queryByText(/Couldn't start the uninstall/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(confirmButton).toBeDisabled();
   });
 
   it("localises a stale-snapshot NotActionable refusal instead of showing the backend's JSON", async () => {
@@ -374,7 +536,12 @@ describe("UninstallDialog", () => {
     // was fine when it was drawn, and the source stopped answering while
     // they were reading it. `submit_operation_error` sends the same JSON
     // `plan_operation_error` does, and this dialog must decode it there
-    // too rather than printing braces at them.
+    // too rather than printing braces at them. The re-plan the refusal
+    // triggers is held open: the decoded refusal is on screen while the
+    // dialog re-checks and is reset when the re-plan settles, so a mocked
+    // re-plan that resolved in microtasks would take it down before React
+    // rendered it.
+    let planCalls = 0;
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
         return {
@@ -400,7 +567,11 @@ describe("UninstallDialog", () => {
           errors: [],
         };
       }
-      if (cmd === "plan_operation") return issuedPlanFor();
+      if (cmd === "plan_operation") {
+        planCalls += 1;
+        if (planCalls === 1) return issuedPlanFor();
+        return new Promise<IssuedPlan>(() => {});
+      }
       if (cmd === "submit_operation") {
         throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotResponding"}';
       }

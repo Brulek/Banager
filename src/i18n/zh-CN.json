@@ -190,6 +190,7 @@
     "checking": "正在检查会有什么影响…",
     "planError": "没能检查清楚会有什么影响：{{message}}",
     "submitError": "没能开始卸载：{{message}}",
+    "reissued": "刚才确认时没有开始任何操作，Canager 重新检查了一遍，这是新的预览。请再看一遍，然后再确认一次。",
     "warningsTitle": "继续之前请注意：",
     "affectedTitle": "删除后这些会受影响：",
     "confirm": "卸载",

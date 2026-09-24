@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
 import {
@@ -54,9 +54,24 @@ export function UninstallDialog({
   // and every callback that runs after an `await` compares the session it was
   // started in against this before writing anything back.
   const sessionRef = useRef(0);
+  // Set synchronously before `submitMutation.mutate()` and read by
+  // `handleConfirm` before it: `submitMutation.isPending`, which disables
+  // the button, reaches React only through TanStack's setTimeout(0)
+  // notify, so a second click in the same event-loop turn still finds an
+  // enabled button. Cleared when that submit settles, and in the effect
+  // below on every open, close and retarget, so a submit that was cut off
+  // by closing the dialog (whose callbacks then never fire, because
+  // `reset()` detaches the observer) cannot leave it stuck.
+  const submitLatch = useRef(false);
+  // A fresh preview was issued because the previous confirm did not start
+  // anything. Rendered as a note beside that preview; retired when the user
+  // confirms again, and in the effect below.
+  const [reissued, setReissued] = useState(false);
 
   useEffect(() => {
     sessionRef.current += 1;
+    submitLatch.current = false;
+    setReissued(false);
     if (open) {
       planMutation.mutate(request);
     } else {
@@ -100,7 +115,9 @@ export function UninstallDialog({
   }
 
   function handleConfirm() {
-    if (!issued) return;
+    if (!issued || submitLatch.current) return;
+    submitLatch.current = true;
+    setReissued(false);
     const session = sessionRef.current;
     submitMutation.mutate(issued.id, {
       onSuccess: (opId) => {
@@ -116,13 +133,27 @@ export function UninstallDialog({
         // A PlanId is single-use and expires after 10 minutes; whatever the
         // backend said, this one is spent. Re-plan so the dialog shows a
         // fresh id and preview instead of letting the user resubmit a dead
-        // one. The error itself stays visible (rendered below) until the
-        // dialog closes, because `submitMutation` is only reset on close.
+        // one. The error itself (rendered below) stays up while the re-plan
+        // runs, since it is what says why the dialog is checking again, and
+        // is reset the moment the re-plan settles: beside a fresh preview
+        // and an enabled Confirm it would only read as "still broken", and
+        // beside a failed re-plan's own error it would be a second red
+        // paragraph about a state that has passed. When the re-plan brings
+        // a preview, `reissued` puts a note beside it instead.
         // Guarded for the same reason as `onSuccess`: a retired session's
         // re-plan would overwrite the current session's preview with a plan
         // for the wrong artifact.
         if (sessionRef.current !== session) return;
-        planMutation.mutate(request);
+        planMutation.mutate(request, {
+          onSettled: (fresh) => {
+            if (sessionRef.current !== session) return;
+            submitMutation.reset();
+            if (fresh !== undefined) setReissued(true);
+          },
+        });
+      },
+      onSettled: () => {
+        submitLatch.current = false;
       },
     });
   }
@@ -168,6 +199,14 @@ export function UninstallDialog({
         {submitMutation.isError && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">
             {refusalText(submitMutation.error.message, "uninstall.submitError")}
+          </p>
+        )}
+
+        {reissued && plan && (
+          // `status`, not `alert`: nothing is wrong with the fresh preview,
+          // the user only needs to know the last confirm did not start it.
+          <p role="status" className="text-sm text-[var(--color-muted)]">
+            {t("uninstall.reissued")}
           </p>
         )}
 
