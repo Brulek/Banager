@@ -65,7 +65,6 @@ export function UninstallDialog({
     }
     // planMutation/submitMutation are stable across renders; only re-run
     // when the dialog opens/closes or targets a different artifact.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, request.instance_id, request.artifact_kind, request.name]);
 
   const issued = planMutation.data;
