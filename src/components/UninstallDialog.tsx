@@ -206,7 +206,9 @@ export function UninstallDialog({
           // `status`, not `alert`: nothing is wrong with the fresh preview,
           // the user only needs to know the last confirm did not start it.
           <p role="status" className="text-sm text-[var(--color-muted)]">
-            {t("uninstall.reissued")}
+            {/* No "confirm once more" when the fresh preview lists affected
+                packages: that disables Uninstall below, and the body says why. */}
+            {hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")}
           </p>
         )}
 

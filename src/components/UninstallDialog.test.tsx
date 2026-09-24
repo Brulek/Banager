@@ -364,6 +364,39 @@ describe("UninstallDialog", () => {
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
   });
 
+  it("does not ask for another confirm when the fresh preview blocks it", async () => {
+    // Between the first preview and the re-check another installed package
+    // came to depend on this one: the fresh preview disables Uninstall, so
+    // the note must not tell the user to confirm again.
+    let planCalls = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") {
+        planCalls += 1;
+        return planCalls === 1
+          ? issuedPlanFor()
+          : { ...issuedPlanFor({ affected: ["jq-cli-wrapper"] }), id: "2" };
+      }
+      if (cmd === "submit_operation") throw '{"kind":"expired"}';
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirmButton).not.toBeDisabled());
+    fireEvent.click(confirmButton);
+
+    expect(await screen.findByText("jq-cli-wrapper")).toBeInTheDocument();
+    expect(confirmButton).toBeDisabled();
+    const note = await screen.findByRole("status");
+    expect(note).toHaveTextContent(
+      "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview.",
+    );
+    expect(note).not.toHaveTextContent("confirm once more");
+  });
+
   it("keeps only the plan error when the re-issued plan fails as well", async () => {
     // Homebrew stopped answering between preview and confirm: submit is
     // refused, the re-plan is refused for the same reason. The re-plan's
