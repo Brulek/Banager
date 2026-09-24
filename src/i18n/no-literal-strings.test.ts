@@ -62,8 +62,15 @@ describe("no literal user-visible strings in JSX", () => {
     expect(real, `${file} has literal text: ${real.join(" | ")}`).toEqual([]);
   });
 
-  it("scans every non-test .tsx under src, not just components and pages", () => {
-    expect(files.some((f) => f.endsWith(`${path.sep}src${path.sep}App.tsx`))).toBe(true);
+  // App.tsx and main.tsx are the only non-test .tsx files at the src root,
+  // outside components/ and pages/. collectTsxFiles recurses into
+  // subfolders (components/ui is reached from components/), so a walk
+  // started at those two folders misses exactly these two root files;
+  // finding both proves the walk starts at the root.
+  it("scans the two non-test .tsx files at the src root, App.tsx and main.tsx", () => {
+    for (const name of ["App.tsx", "main.tsx"]) {
+      expect(files, `${name} missing from the scanned list`).toContain(path.join(SRC_ROOT, name));
+    }
   });
 
   it("catches a two-letter JSX literal like <p>OK</p>", () => {
