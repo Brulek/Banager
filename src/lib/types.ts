@@ -71,10 +71,10 @@ export type UninstallBlocked = "Pinned";
  * `ThirdPartyRegistry`, whose `host` interpolates it), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
- * carries, same as before this type existed. A new Rust variant this union
- * does not yet spell lands in `warningText`'s default branch rather than
- * failing at compile time; `types.test.ts` keeps a shape test over all of
- * them.
+ * carries, same as before this type existed. A variant added here without
+ * copy fails `tsc` in `warningKey`'s `never` default
+ * (src/lib/warnings.ts), the way a `Fault` does in `faultKey`;
+ * `types.test.ts` keeps a shape test over all of them.
  */
 export type Warning =
   | "DependentsUnknown"

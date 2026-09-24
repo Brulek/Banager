@@ -85,11 +85,10 @@ export function UninstallDialog({
   const issued = planMutation.data;
   const plan = issued?.plan;
   const hasAffected = (plan?.affected.length ?? 0) > 0;
-  // Rendered here, once, rather than as text per `<li>`: a warning this
-  // build's mirror does not recognise renders nothing (`warningText`
-  // returns null for it), and the heading above the list must agree --
-  // `plan.warnings.length > 0` alone would show "Before you continue:"
-  // over an empty list.
+  // Rendered here, once, rather than as text per `<li>`, so the heading
+  // above the list is decided by the same list it heads: `warningTexts`
+  // is the one rule for turning `plan.warnings` into sentences, and
+  // `plan.warnings.length > 0` would be a second one.
   const planWarnings = warningTexts(t, plan?.warnings ?? []);
 
   // The one refusal this dialog words itself rather than through

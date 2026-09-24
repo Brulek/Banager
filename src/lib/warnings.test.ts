@@ -24,11 +24,22 @@ describe("warningKey", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
 
-  it("has no key for a variant this build's mirror does not recognise", () => {
-    // A newer Rust build sent a variant `types.ts` has no case for yet
-    // (spec §3's note on that union not failing to compile when it
-    // drifts) -- `as Warning` stands in for that drift in a test.
-    expect(warningKey("SomeFutureVariant" as unknown as Warning)).toBeNull();
+  it("is null for Message and for nothing else", () => {
+    // The runtime half of what `tsc` checks at compile time: every
+    // variant of `Warning` is one of these six, and the only one without
+    // a `warnings.*` key is the raw-text catch-all. A variant this list
+    // does not name is a `never` in `warningKey`'s default branches and
+    // does not compile, so there is no "unrecognised variant" to test.
+    const all: Warning[] = [
+      "DependentsUnknown",
+      "CompilesLocally",
+      "NonRegistrySource",
+      { WouldBreak: { names: ["a"] } },
+      { ThirdPartyRegistry: { host: "modelscope.cn" } },
+      { Message: "boom" },
+    ];
+    const keyless = all.filter((warning) => warningKey(warning) === null);
+    expect(keyless).toEqual([{ Message: "boom" }]);
   });
 });
 
@@ -88,20 +99,20 @@ describe("warningText", () => {
   it("reads a Message's text directly, bypassing t()", () => {
     expect(warningText(fakeT, { Message: "boom" })).toBe("boom");
   });
-
-  it("is null for a variant this build's mirror does not recognise", () => {
-    expect(warningText(fakeT, "SomeFutureVariant" as unknown as Warning)).toBeNull();
-  });
 });
 
 describe("warningTexts", () => {
-  it("renders every warning in order and drops unrecognised ones", () => {
+  it("renders every warning in order, Message included", () => {
     const warnings: Warning[] = [
       "DependentsUnknown",
       { Message: "boom" },
-      "SomeFutureVariant" as unknown as Warning,
+      { WouldBreak: { names: ["a"] } },
     ];
-    expect(warningTexts(fakeT, warnings)).toEqual(["warnings.dependentsUnknown", "boom"]);
+    expect(warningTexts(fakeT, warnings)).toEqual([
+      "warnings.dependentsUnknown",
+      "boom",
+      'warnings.wouldBreak({"count":1,"names":"a"})',
+    ]);
   });
 
   it("is empty for an empty list", () => {

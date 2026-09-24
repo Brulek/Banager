@@ -196,9 +196,11 @@ describe("types", () => {
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {
     // Mirrors `Warning` in crates/canager-core/src/model.rs -- every
-    // spelling below has to match it exactly, since a typo here would
-    // silently land the uninstall confirmation screen's dependents warning
-    // in `warningText`'s default (dropped) branch.
+    // spelling below has to match it exactly. `warningKey` is exhaustive
+    // over this union, so a variant it lacks fails `tsc`; but a spelling
+    // here that differs from Rust's compiles fine and lands the real wire
+    // value in `warningKey`'s `never` default at runtime, where it is
+    // returned as a raw key. This test is what pins the spellings.
     const dependentsUnknown: Warning = "DependentsUnknown";
     const compilesLocally: Warning = "CompilesLocally";
     const nonRegistrySource: Warning = "NonRegistrySource";

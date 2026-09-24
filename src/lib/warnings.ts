@@ -8,13 +8,17 @@
 import type { Warning } from "./types";
 
 /**
- * The `warnings.*` key for a `Warning`'s copy, or `null` when there is no
- * key to look up: either this is the `Message` catch-all (its text is
- * read straight off the wire, see `warningMessage` below), or it is a
- * variant this build's hand-written mirror does not recognise yet -- a
- * newer Rust build sent something `types.ts` has no case for (spec §3's
- * note on that union not failing to compile when it drifts). Callers treat
- * both the same way: nothing to render.
+ * The `warnings.*` key for a `Warning`'s copy, or `null` for the `Message`
+ * catch-all, whose text is read straight off the wire (see
+ * `warningMessage` below).
+ *
+ * Exhaustive, the way `faultKey` in `src/lib/format.ts` is: every variant
+ * of `Warning` is named here, and the `never` defaults make `tsc` fail on
+ * one that is not. It used to `return null` for anything it did not
+ * recognise, and `warningTexts` drops a `null` without a word -- so a
+ * variant added to `types.ts` without a case here reached the uninstall
+ * dialog as a silently shorter list, which for a warning that names a
+ * file about to be removed is the worst possible failure.
  */
 export function warningKey(warning: Warning): string | null {
   if (typeof warning === "string") {
@@ -25,25 +29,37 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.compilesLocally";
       case "NonRegistrySource":
         return "warnings.nonRegistrySource";
-      default:
-        return null;
+      default: {
+        const unhandled: never = warning;
+        return unhandled;
+      }
     }
   }
   if ("WouldBreak" in warning) return "warnings.wouldBreak";
   if ("ThirdPartyRegistry" in warning) return "warnings.thirdPartyRegistry";
-  return null;
+  if ("Message" in warning) return null;
+  const unhandled: never = warning;
+  return unhandled;
 }
 
-/** Interpolation values for `t(warningKey(warning), warningArgs(warning))`. */
+/**
+ * Interpolation values for `t(warningKey(warning), warningArgs(warning))`.
+ * Exhaustive over the payload variants for the same reason `warningKey`
+ * is (`faultArgs` in `src/lib/format.ts` is the model): a payload variant
+ * with a key but no values here would render its sentence with a literal
+ * `{{path}}` in it. Bare-string variants carry nothing, so one `{}` covers
+ * them all.
+ */
 export function warningArgs(warning: Warning): Record<string, unknown> {
-  if (typeof warning !== "string" && "WouldBreak" in warning) {
+  if (typeof warning === "string") return {};
+  if ("WouldBreak" in warning) {
     const names = warning.WouldBreak.names;
     return { count: names.length, names: names.join(", ") };
   }
-  if (typeof warning !== "string" && "ThirdPartyRegistry" in warning) {
-    return { host: warning.ThirdPartyRegistry.host };
-  }
-  return {};
+  if ("ThirdPartyRegistry" in warning) return { host: warning.ThirdPartyRegistry.host };
+  if ("Message" in warning) return {};
+  const unhandled: never = warning;
+  return unhandled;
 }
 
 /**
@@ -66,17 +82,19 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /**
  * One `Warning`, rendered: `t(warningKey(warning), warningArgs(warning))`
- * for a fixed warning, `warningMessage(warning)` for a `Message`, `null`
- * for a variant this build does not recognise. The convenience wrapper
- * every call site actually wants; `warningKey`/`warningArgs`/
- * `warningMessage` stay exported and `t()`-free for testing.
+ * for a fixed warning, `warningMessage(warning)` for a `Message`. The
+ * convenience wrapper every call site actually wants; `warningKey`/
+ * `warningArgs`/`warningMessage` stay exported and `t()`-free for testing.
+ * The return type keeps `null` for `warningTexts`'s filter; with
+ * `warningKey` exhaustive, a fixed warning always has a key and a
+ * `Message` always has its text, so it is never actually `null`.
  */
 export function warningText(t: Translate, warning: Warning): string | null {
   const key = warningKey(warning);
   return key ? t(key, warningArgs(warning)) : warningMessage(warning);
 }
 
-/** `warnings`, rendered in order, with unrecognised variants dropped. */
+/** `warnings`, rendered in order. */
 export function warningTexts(t: Translate, warnings: Warning[]): string[] {
   return warnings
     .map((warning) => warningText(t, warning))

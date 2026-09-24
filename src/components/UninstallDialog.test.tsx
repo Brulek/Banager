@@ -137,7 +137,15 @@ describe("UninstallDialog", () => {
     expect(await screen.findByText("This will break 2 other things: a, b.")).toBeInTheDocument();
   });
 
-  it("shows nothing, not an empty heading, for a warning variant this build does not recognise", async () => {
+  it("renders a warning variant the mirror lacks as its raw key rather than dropping it", async () => {
+    // `warningKey` is exhaustive over `Warning`, so this value cannot be
+    // written without the cast: it stands for a Rust variant the
+    // TypeScript mirror has not caught up with (`types.test.ts` pins the
+    // spellings; this is what happens if that check is ever wrong). At
+    // runtime it reaches `warningKey`'s `never` default and comes back as
+    // the key itself, which i18next hands back unchanged. Showing that is
+    // the honest failure: a warning is about something the command is
+    // about to do, and a silently shorter list would hide it.
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({ warnings: ["SomeFutureVariant" as unknown as Plan["warnings"][number]] }),
     );
@@ -146,12 +154,8 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    await waitFor(() =>
-      expect(
-        screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq"),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.queryByText("Before you continue:")).not.toBeInTheDocument();
+    expect(await screen.findByText("Before you continue:")).toBeInTheDocument();
+    expect(screen.getByText("SomeFutureVariant")).toBeInTheDocument();
   });
 
   it("submits the plan id and reports the new op id when nothing would break", async () => {
