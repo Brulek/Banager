@@ -229,6 +229,31 @@
     "readOnly": "存放 Canager 设置的磁盘无法写入",
     "other": "系统给出的原因是：{{detail}}"
   },
+  "unknown": {
+    "title": "Canager 说不清来源的程序",
+    "intro": "这些命令行程序在你的 Mac 上，但 Canager 认识的来源都没有装过它们。Canager 只是列出来——这里什么都不会运行，也不会删除。",
+    "lookedIn": "查看了：",
+    "dirCount_other": "{{path}}（{{count}} 项）",
+    "attributed_other": "另有 {{count}} 个程序来自 Canager 认识的来源，已列在对应来源下。",
+    "stopped": {
+      "FileLimit": "Canager 查看 {{count}} 项后停下了，这个列表可能不完整。",
+      "TimeLimit": "Canager 查看 {{seconds}} 秒后停下了，这个列表可能不完整。"
+    },
+    "kind": {
+      "File": "程序",
+      "Symlink": "程序（链接）",
+      "BrokenSymlink": "失效的链接"
+    },
+    "brokenLink": "指向 {{target}}，但那里已经没有了",
+    "linksTo": "指向 {{path}}",
+    "partOfApp": "{{app}} 的一部分",
+    "adminOwned": "由一个用了管理员权限的安装器放在这里",
+    "sizeAndDate": "{{size}} · {{date}}",
+    "scanAgain": "重新扫描",
+    "scanning": "正在扫描…",
+    "scanFailed": "没能扫描：{{message}}",
+    "empty": "没有说不清的：Canager 找到的命令行程序都来自它认识的来源。"
+  },
   "emptyStates": {
     "loadFailed": {
       "title": "没能读取已安装的内容",
