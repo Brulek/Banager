@@ -4,7 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCAN_DIRS = ["../components", "../pages"].map((p) => path.resolve(__dirname, p));
+// The whole front end lives under `src`, so scanning from its root (rather
+// than a hard-coded list of subdirectories) means a newly added folder —
+// `src/lib`, `src/store`, or anything created later — is covered without
+// this file changing.
+const SRC_ROOT = path.resolve(__dirname, "..");
 
 function collectTsxFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -22,15 +26,30 @@ function collectTsxFiles(dir: string): string[] {
 // produces for long copy (`>\n  Nothing installed yet\n</p>`) — hence `\s*`,
 // not `[ \t]*`, at both ends. A child that is itself an expression
 // (`<p>{t("x")}</p>`) never matches, because the `>` is followed by `{`,
-// not a letter.
-const SUSPICIOUS_JSX_TEXT = />\s*[A-Za-z][A-Za-z0-9 ,.'!?:;()-]{3,}\s*</g;
+// not a letter. The minimum is two letters (`[A-Za-z]` plus `{1,}`), so a
+// short word like `OK` is still caught rather than slipping through under
+// a four-character floor.
+const SUSPICIOUS_JSX_TEXT = />\s*[A-Za-z][A-Za-z0-9 ,.'!?:;()-]{1,}\s*</g;
 
 // User-visible copy also hides in attribute strings; every one of these in
 // this codebase is written as `aria-label={t("…")}`, so a quoted literal is
 // a mistake.
 const SUSPICIOUS_ATTRIBUTE = /(aria-label|placeholder|title|alt)="[A-Za-z][^"]{2,}"/g;
 
-const files = SCAN_DIRS.flatMap((dir) => collectTsxFiles(dir));
+// Non-language tokens the two regexes above would legitimately flag:
+// symbols, code samples and product/brand names (e.g. a package manager
+// name) that must NOT be routed through i18n because they are not
+// language, they are literal identifiers that read the same in every
+// locale. Each entry is the exact matched substring (including the
+// surrounding `>`/`<` for JSX text, or the whole `attr="value"` for an
+// attribute) so the allowlist can't accidentally hide a real hit that
+// merely contains the same word. Empty for now: scanning the whole of
+// `src` at the two-letter floor found no untranslated user-visible text
+// and no non-language token either — add an entry here only when a
+// genuine non-language literal is found, never to silence a real hit.
+const ALLOWED_LITERALS = new Set<string>([]);
+
+const files = collectTsxFiles(SRC_ROOT);
 
 describe("no literal user-visible strings in JSX", () => {
   it.each(files)("has no literal JSX text in %s", (file) => {
@@ -39,7 +58,16 @@ describe("no literal user-visible strings in JSX", () => {
       (m) => m.slice(1, -1).trim().length > 0,
     );
     const attributes = source.match(SUSPICIOUS_ATTRIBUTE) ?? [];
-    const real = [...jsxText, ...attributes];
+    const real = [...jsxText, ...attributes].filter((m) => !ALLOWED_LITERALS.has(m));
     expect(real, `${file} has literal text: ${real.join(" | ")}`).toEqual([]);
+  });
+
+  it("scans every non-test .tsx under src, not just components and pages", () => {
+    expect(files.some((f) => f.endsWith(`${path.sep}src${path.sep}App.tsx`))).toBe(true);
+  });
+
+  it("catches a two-letter JSX literal like <p>OK</p>", () => {
+    const hits = "<p>OK</p>".match(SUSPICIOUS_JSX_TEXT) ?? [];
+    expect(hits).toContain(">OK<");
   });
 });
