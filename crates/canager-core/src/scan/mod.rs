@@ -233,6 +233,60 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
     None
 }
 
+/// The directories a source *owns*: whatever resolves to a path under one
+/// of them was put there by that source. Keyed by adapter id here,
+/// pending the `Adapter::owned_roots()` trait method the phase 4 spec's
+/// §十一 records as this table's eventual home.
+///
+/// Deliberately not `ManagerInstance.prefix`. For uv, pipx and pip the
+/// prefix is `exe_path.parent()` (uv.rs:138-141, pipx.rs:213-216,
+/// pip.rs:125-128): a pip instance detected through
+/// `~/.local/bin/python3.12` has prefix `~/.local/bin`, and treating that
+/// as owned would claim every unrelated program in the one directory
+/// this scan exists to look at. Homebrew's prefix is all of
+/// `/opt/homebrew` or `/usr/local`, which on an Intel Mac would swallow
+/// whatever a third-party installer dropped into `/usr/local/bin` --
+/// programs `brew info --installed` never lists. npm's prefix is the
+/// global prefix root `npm prefix -g` reports (npm.rs:157-158; the
+/// `exe_path.parent()` at npm.rs:194-197 is its `NotResponding` arm
+/// only), and what npm owns under it is `lib/node_modules`, not `bin`.
+///
+/// The standalone adapters (phase 4 step B) add their tool roots --
+/// `standalone-claude` → `~/.local/share/claude`, `standalone-agy` →
+/// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`, each the
+/// instance's `prefix`; `standalone-rustup` nothing, since everything of
+/// rustup's resolves to its launcher and rule 1 has it -- in the same
+/// change that first produces an instance with one of those ids. A row
+/// here with no adapter that can produce its instance would be a
+/// definition without a producer (spec §十).
+pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
+    match inst.adapter_id.as_str() {
+        "brew" => vec![
+            inst.prefix.join("Cellar"),
+            inst.prefix.join("Caskroom"),
+            inst.prefix.join("opt"),
+        ],
+        // `~/.ollama`: nothing in a bin directory resolves into it today;
+        // listed so the table says what Ollama owns, not by omission.
+        "ollama" => vec![inst.prefix.clone()],
+        // npm unpacks every global package under `<prefix>/lib/node_modules`
+        // (npm.rs:50, `real_prefix_is_writable`), and `<prefix>/bin/<tool>`
+        // is a link into it -- with a home prefix such as `~/.npm-global`
+        // that bin directory is on `PATH` and scanned. Not `<prefix>/bin`
+        // itself: on `/usr/local` it is where third-party installers drop
+        // things, exactly as for Homebrew above. A `NotResponding` npm has
+        // `prefix = exe_path.parent()`; the root derived from that does
+        // not exist and is simply absent from the index.
+        "npm" => vec![inst.prefix.join("lib").join("node_modules")],
+        // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
+        // scanned; rule 1 places the proxies and, from step E, rule 2
+        // places `cargo install`ed binaries. uv and (from Task 3b) pipx:
+        // rule 2, through the tool venv their artifacts carry. pip: a
+        // `parent()`-derived prefix, never a root.
+        _ => Vec::new(),
+    }
+}
+
 /// What the registered sources have said is theirs, indexed once per scan
 /// so the rules are lookups rather than a `canonicalize` per entry per
 /// instance. Built from a clone of the snapshot (`Session::scan_unknown`):
@@ -258,12 +312,16 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 ///    standalone adapters from step B; for those, rules 1 and 2 compare
 ///    the same file and rule 2 decides nothing new.
 /// 3. The entry resolves to a path under a directory the instance's
-///    adapter *owns* -- `owned_roots`, the longest matching root. Not
-///    indexed here yet: the change that adds `owned_roots` adds it.
+///    adapter *owns* -- `owned_roots`, the longest matching root when
+///    roots nest (`owned` below).
 struct Known {
     exe_raw: Vec<(PathBuf, InstanceId)>,
     exe_canonical: Vec<(PathBuf, InstanceId)>,
     artifact_roots: Vec<(PathBuf, InstanceId)>,
+    /// Rule 3: every `owned_roots` of every instance, canonical, with the
+    /// instance that owns it. A root that does not exist (Homebrew with
+    /// no casks has no `Caskroom`) is simply absent.
+    owned: Vec<(PathBuf, InstanceId)>,
 }
 
 impl Known {
@@ -284,10 +342,20 @@ impl Known {
                 Some((canonical, artifact.key.instance_id.clone()))
             })
             .collect();
+        let owned = instances
+            .iter()
+            .flat_map(|inst| {
+                owned_roots(inst).into_iter().filter_map(move |root| {
+                    let canonical = std::fs::canonicalize(root).ok()?;
+                    Some((canonical, inst.id.clone()))
+                })
+            })
+            .collect();
         Known {
             exe_raw,
             exe_canonical,
             artifact_roots,
+            owned,
         }
     }
 
@@ -308,7 +376,12 @@ impl Known {
         {
             return Some(id);
         }
-        None
+        // The longest matching root: the closest owner when roots nest.
+        self.owned
+            .iter()
+            .filter(|(root, _)| resolved.starts_with(root))
+            .max_by_key(|(root, _)| root.as_os_str().len())
+            .map(|(_, id)| id)
     }
 }
 
@@ -659,5 +732,98 @@ mod tests {
         // A broken link's own text, relative as the installer wrote it.
         let relative = app_bundle([Path::new("../../Removed.app/Contents/MacOS/x")]);
         assert_eq!(relative.as_deref(), Some("Removed"));
+    }
+
+    #[test]
+    fn test_owned_roots_table() {
+        let brew = ManagerInstance {
+            prefix: PathBuf::from("/opt/homebrew"),
+            ..crate::testing::manager_instance("brew", "brew:/opt/homebrew")
+        };
+        assert_eq!(
+            owned_roots(&brew),
+            vec![
+                PathBuf::from("/opt/homebrew/Cellar"),
+                PathBuf::from("/opt/homebrew/Caskroom"),
+                PathBuf::from("/opt/homebrew/opt"),
+            ]
+        );
+        let ollama = ManagerInstance {
+            prefix: PathBuf::from("/Users/someone/.ollama"),
+            ..crate::testing::manager_instance("ollama", "ollama:http://127.0.0.1:11434")
+        };
+        assert_eq!(
+            owned_roots(&ollama),
+            vec![PathBuf::from("/Users/someone/.ollama")]
+        );
+        // npm: where global packages unpack and every bin link points
+        // (npm.rs:50). Not `<prefix>/bin`, which on `/usr/local` is where
+        // third-party installers drop things.
+        let npm = ManagerInstance {
+            prefix: PathBuf::from("/usr/local"),
+            ..crate::testing::manager_instance("npm", "npm:/usr/local")
+        };
+        assert_eq!(
+            owned_roots(&npm),
+            vec![PathBuf::from("/usr/local/lib/node_modules")]
+        );
+        // A `parent()`-derived prefix, or `$CARGO_HOME`, is never a root.
+        for (adapter, id, prefix) in [
+            (
+                "cargo",
+                "cargo:/Users/someone/.cargo",
+                "/Users/someone/.cargo",
+            ),
+            ("uv", "uv", "/Users/someone/.local/bin"),
+            ("pipx", "pipx", "/Users/someone/.local/bin"),
+            ("pip", "pip:/usr/bin/python3", "/usr/bin"),
+        ] {
+            let inst = ManagerInstance {
+                prefix: PathBuf::from(prefix),
+                ..crate::testing::manager_instance(adapter, id)
+            };
+            assert_eq!(owned_roots(&inst), Vec::<PathBuf>::new(), "{adapter}");
+        }
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let raw = std::env::temp_dir().join(format!(
+            "canager-scan-unit-{}-{}-{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&raw).expect("create temp dir");
+        std::fs::canonicalize(&raw).expect("canonical temp dir")
+    }
+
+    #[test]
+    fn test_the_longest_owned_root_wins() {
+        // Two Ollama instances (two hosts) whose roots nest: the one whose
+        // root is the longer prefix of the entry is the closer owner.
+        let tmp = temp_dir("longest-root");
+        let outer = tmp.join("outer");
+        let inner = outer.join("inner");
+        let inner_bin = inner.join("bin");
+        std::fs::create_dir_all(&inner_bin).expect("create dirs");
+        let entry = inner_bin.join("x");
+        std::fs::write(&entry, b"x").expect("write");
+        let outer_inst = ManagerInstance {
+            prefix: outer.clone(),
+            ..crate::testing::manager_instance("ollama", "ollama:http://outer:11434")
+        };
+        let inner_inst = ManagerInstance {
+            prefix: inner.clone(),
+            ..crate::testing::manager_instance("ollama", "ollama:http://inner:11434")
+        };
+        let known = Known::index(&[outer_inst, inner_inst], &[]);
+        assert_eq!(
+            known.claimant(&entry, Some(&entry)).map(String::as_str),
+            Some("ollama:http://inner:11434")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

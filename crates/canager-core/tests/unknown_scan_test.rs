@@ -481,3 +481,131 @@ fn test_rule_2_claims_a_shim_that_resolves_under_an_artifacts_path() {
     assert!(scan.entries.is_empty(), "{:?}", scan.entries);
     assert_eq!(scan.attributed, 1);
 }
+
+#[test]
+fn test_rule_3_claims_a_link_into_homebrews_cellar_but_not_into_the_rest_of_its_prefix() {
+    // An Intel Mac: `/usr/local/bin` is both Homebrew's bin and where
+    // third-party installers drop things. A link into `Cellar` is
+    // Homebrew's; a program under the prefix's own `bin` is not thereby
+    // Homebrew's -- `brew info --installed` would never list it.
+    let home = Home::new("rule-3-brew");
+    let bin = home.dir(".local/bin");
+    let prefix = home.dir("opt/homebrew");
+    let keg = home.dir("opt/homebrew/Cellar/jq/1.8.1/bin");
+    let jq = exe(&keg, "jq", b"x");
+    link(&bin, "jq", &jq);
+    let prefix_bin = home.dir("opt/homebrew/bin");
+    let dropped = exe(&prefix_bin, "dropped-in", b"x");
+    link(&bin, "dropped-in", &dropped);
+    let brew = ManagerInstance {
+        exe_path: prefix.join("bin/brew"),
+        prefix: prefix.clone(),
+        ..manager_instance("brew", &format!("brew:{}", prefix.display()))
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[brew],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
+    assert_eq!(scan.entries[0].path, tilde(".local/bin/dropped-in"));
+}
+
+#[test]
+fn test_rule_3_claims_what_resolves_into_a_root_an_instance_owns_outright() {
+    // Ollama owns all of `~/.ollama`.
+    let home = Home::new("rule-3-ollama");
+    let bin = home.dir(".local/bin");
+    let ollama_bin = home.dir(".ollama/bin");
+    let real = exe(&ollama_bin, "model-tool", b"x");
+    link(&bin, "model-tool", &real);
+    let ollama = ManagerInstance {
+        exe_path: home.path().join("elsewhere/ollama"),
+        prefix: home.path().join(".ollama"),
+        ..manager_instance("ollama", "ollama:http://127.0.0.1:11434")
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[ollama],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert!(scan.entries.is_empty(), "{:?}", scan.entries);
+    assert_eq!(scan.attributed, 1);
+}
+
+#[test]
+fn test_rule_3_claims_an_npm_global_cli_under_a_home_prefix() {
+    // `npm config set prefix ~/.npm-global`, the setup npm's own docs
+    // recommend over `sudo`: every global package unpacks under
+    // `~/.npm-global/lib/node_modules`, and `~/.npm-global/bin/<tool>` is
+    // a relative link into it. That bin directory is on `PATH`, so it is
+    // scanned; without npm's root every global CLI on such a Mac would be
+    // a row here and a row under npm on the Installed page at once
+    // (ruling 10). The npm executable lives elsewhere so rules 0 and 1
+    // cannot be why the link is claimed.
+    let home = Home::new("rule-3-npm");
+    let prefix = home.path().join(".npm-global");
+    let package_bin = home.dir(".npm-global/lib/node_modules/some-tool/bin");
+    exe(&package_bin, "cli.js", b"#!/usr/bin/env node\n");
+    let bin = home.dir(".npm-global/bin");
+    link(
+        &bin,
+        "some-tool",
+        Path::new("../lib/node_modules/some-tool/bin/cli.js"),
+    );
+    let npm = ManagerInstance {
+        exe_path: home.path().join("elsewhere/npm"),
+        prefix: prefix.clone(),
+        ..manager_instance("npm", &format!("npm:{}", prefix.display()))
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[npm],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert!(scan.entries.is_empty(), "{:?}", scan.entries);
+    assert_eq!(scan.attributed, 1);
+}
+
+#[test]
+fn test_rule_3_never_treats_a_parent_derived_prefix_as_owned() {
+    // The counter-example spec §8.3 is built around: a pip instance whose
+    // prefix is `~/.local/bin` itself (pip.rs:125-128 takes
+    // `exe_path.parent()`). Its executable lives elsewhere here so rule 0
+    // cannot be why anything is or is not claimed; the prefix alone must
+    // claim nothing, or this page would lose every program in the one
+    // directory it exists to look at.
+    let home = Home::new("rule-3-parent-prefix");
+    let bin = home.dir(".local/bin");
+    exe(&bin, "agy", b"x");
+    exe(&bin, "standalone-tool", b"x");
+    let pip = ManagerInstance {
+        exe_path: home.path().join("elsewhere/python3"),
+        prefix: bin.clone(),
+        ..manager_instance("pip", "pip:elsewhere")
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[pip],
+        &[],
+        ScanBudget::default(),
+    );
+
+    assert_eq!(scan.attributed, 0);
+    assert_eq!(scan.entries.len(), 2, "{:?}", scan.entries);
+}
