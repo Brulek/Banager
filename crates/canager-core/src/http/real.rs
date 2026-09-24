@@ -33,7 +33,12 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 /// worst re-point a request within one of these hosts, never at another
 /// one. Plain `http` is exempt: the one http caller is the Ollama daemon at
 /// `HostEnv::ollama_host` (default `http://127.0.0.1:11434`), which may
-/// legitimately be any machine the user named.
+/// legitimately be any machine the user named. The exemption is by scheme,
+/// so an `https://` `OLLAMA_HOST` is refused here like any other host off
+/// the list -- a known gap (spec §十一: `with_extra_host`, to be passed in
+/// by `Session::new`), stated in `docs/what-we-run.md` and pinned by
+/// `tests/what_we_run_test.rs` so the document and this refusal change
+/// together.
 ///
 /// Adding a host here is a reviewed change with two other halves: the
 /// adapter that contacts it, and `docs/what-we-run.md`, which must name

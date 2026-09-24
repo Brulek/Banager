@@ -210,6 +210,13 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   修的代价：要给 `ManagerInstance`（或 `Snapshot`）加一条实例级 warnings 通道，连带 TypeScript 镜像、线格式表、界面渲染与测试——本身就是一个完整任务，不该塞进阶段 3 的任何一格。
   可接受的理由：后果是少说了一句提示，不是做错了动作；一旦真有可更新项，提醒照常显示。**不阻塞 v0.1**，但要在做 `Capabilities` 那条（同样需要实例级字段）时一起做掉——两者是同一个通道。
 
+## 阶段 4（独立安装工具）进行中的遗留（2026-09-25 立，分支 feat/phase-4-standalone）
+
+- **`OLLAMA_HOST` 为 `https://` 时被 https 名单挡住，界面上却只说「没有响应」**（spec §4.2、§十一）。步骤 A 的 `host_allowed`（`crates/canager-core/src/http/real.rs`）只豁免 `http`；`normalize_ollama_host`（`runner/path_env.rs`）原样保留 `https://` 值；`OllamaAdapter::detect`（`adapters/ollama/mod.rs`）把 `send` 的拒绝 `unwrap_or(false)` 成「没应答」，于是显示为 NotResponding（地址是本机且装了 Ollama.app 时是 NotRunning，带一个按了也没用的「打开 Ollama」按钮），没有一个字说是 Canager 自己拒绝的。用户于是去查自己的反向代理而不是 Canager。
+  **现状已写明**（2026-09-25）：`docs/what-we-run.md` 的 Ollama 与 Network 两节各有一段说 `https://` 的 `OLLAMA_HOST` 会被拒绝；`crates/canager-core/tests/what_we_run_test.rs` 的 `test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is` 把这两句话钉在 `host_allowed` 的实际行为上——修掉缝隙时测试与两句话要一起改。
+  **修法**（spec §十一 定的形状）：`RealHttpClient::with_extra_host(ollama_host)`，由 `Session::new` 传入；`src-tauri/src/lib.rs` 的 `run()` 启动时已 `HostEnv::discover()` 过一次，值可以从那里经 `AppState::new`（`src-tauri/src/state.rs`）带到 `Session::new`。要不要放行取决于有没有真实用户这样配（spec：「等有人报了再做」）。
+  **若暂不放行，至少让通知说实话**：`InstanceNote` 按设计不带载荷（`model.rs`，线格式是裸字符串），塞不进一条 `Message`，得加一个新的无载荷变体（例如 `DaemonHostRefused`），连带 TypeScript 镜像、两种语言的文案与 `src/lib/sources.ts` 的读取方——一次线格式变更，单独成一个任务。
+
 ## 阶段 5（发现页）之前必须处理
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。

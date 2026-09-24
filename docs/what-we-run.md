@@ -395,13 +395,23 @@ Verified against Ollama 0.34.1 (`adapters/meta/ollama.toml`).
 effect, and a background refresh must never launch an application. The
 daemon is asked over HTTP instead: `GET {host}/api/tags` (10 s), where
 `{host}` is `OLLAMA_HOST` from the environment, normalised to an absolute
-http(s) URL, or Ollama's default `http://127.0.0.1:11434`
-(`DEFAULT_HOST`). Canager also checks whether `/Applications/Ollama.app`
-or `~/Applications/Ollama.app` is a directory: a daemon on this Mac that
-does not answer while the app is there is reported as not running, with
-an Open Ollama button; anything else that does not answer is reported as
-not responding, with no button. No environment variables are added to any
-ollama command.
+http(s) URL (a bare `host:port` gets `http://` in front; a value that
+does not make an http(s) URL is ignored and the default used), or
+Ollama's default `http://127.0.0.1:11434` (`DEFAULT_HOST`). Canager also
+checks whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
+is a directory: a daemon on this Mac that does not answer while the app
+is there is reported as not running, with an Open Ollama button; anything
+else that does not answer is reported as not responding, with no button.
+No environment variables are added to any ollama command.
+
+One `OLLAMA_HOST` survives that normalisation and is then never asked:
+an `https://` `OLLAMA_HOST` is refused by the https allowlist in the
+Network section, which exempts `http` only, so Canager never sends the
+request, and the daemon is reported exactly as one that did not answer —
+not responding, or, when the address is this Mac and Ollama.app is there,
+not running with an Open Ollama button that cannot help, since the next
+request is refused the same way. Nothing on screen says that it was
+Canager that refused. Recorded in `docs/superpowers/backlog.md`.
 
 **Read-only reads:**
 
@@ -523,7 +533,11 @@ connection, any `https` request whose host is not on this list
 
 Plain `http` is exempt from the list for one caller: the Ollama daemon at
 `OLLAMA_HOST` or `http://127.0.0.1:11434` (`GET /api/tags`), which may be
-a machine the user named.
+a machine the user named. The exemption is by scheme, not by caller: an
+`https://` `OLLAMA_HOST` is refused like any other https host that is not
+in the table, before any connection, and that Ollama is shown as a daemon
+that did not answer (its section says exactly how). Recorded in
+`docs/superpowers/backlog.md`.
 
 Every request: TLS through rustls; the header `User-Agent:
 canager/<version>`; no other header of Canager's own, except `Accept` on

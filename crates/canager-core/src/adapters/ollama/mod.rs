@@ -270,6 +270,11 @@ impl OllamaAdapter {
             _ => None,
         };
         let host = host_for(env);
+        // The error is discarded, so a request `RealHttpClient::send`
+        // refused without sending -- an `https://` `OLLAMA_HOST`, which
+        // its allowlist exempts no more than any other https host -- is
+        // indistinguishable here from a daemon that did not answer, and
+        // is reported below as one (`docs/what-we-run.md`, Ollama).
         let answering = self
             .http
             .send(HttpRequest {

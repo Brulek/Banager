@@ -16,7 +16,10 @@ pub struct HostEnv {
     /// `normalize_ollama_host` into an absolute http(s) url with no trailing
     /// slash; `None` means Ollama's own default, `http://127.0.0.1:11434`,
     /// and is also what an unusable value becomes. Same reasoning as
-    /// `cargo_home`; consumed by Task 10.
+    /// `cargo_home`; consumed by Task 10. An `https` value is kept here
+    /// but never reaches a daemon: `RealHttpClient::send` exempts only
+    /// `http` from `ALLOWED_HTTPS_HOSTS` and refuses it (the Ollama
+    /// section of `docs/what-we-run.md` says so).
     pub ollama_host: Option<String>,
 }
 

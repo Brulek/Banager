@@ -5,14 +5,16 @@
 //! the https allowlist, every environment variable brew and npm set, the
 //! three Homebrew flags the file promises are never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
-//! enforces. A source, host, variable or limit added or changed without its
-//! line in the document fails here.
+//! enforces, and the one thing the allowlist refuses that a reader would
+//! not expect: an `https://` `OLLAMA_HOST`. A source, host, variable or
+//! limit added or changed without its line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::npm::NpmAdapter;
 use canager_core::adapters::AdapterMeta;
 use canager_core::events::VecSink;
-use canager_core::http::real::ALLOWED_HTTPS_HOSTS;
+use canager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
+use canager_core::http::HttpError;
 use canager_core::scan::ScanBudget;
 use canager_core::session::Session;
 use std::path::Path;
@@ -90,6 +92,34 @@ fn test_what_we_run_names_every_allowed_https_host() {
         assert!(
             doc.contains(host),
             "docs/what-we-run.md does not name {host:?}, which ALLOWED_HTTPS_HOSTS allows"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_an_https_ollama_host_is_refused_and_it_is() {
+    // `normalize_ollama_host` keeps an `https://` OLLAMA_HOST as it is
+    // (`runner/path_env.rs`), `OllamaAdapter::detect` then asks
+    // `{host}/api/tags`, and `host_allowed` exempts `http` only -- so the
+    // request is refused before it is sent, and `detect`, which discards
+    // the error, reports the daemon as one that did not answer. Both
+    // sections of the document that describe that host have to say so:
+    // a reader who is told https is accepted and the daemon host is exempt
+    // debugs their daemon instead of Canager.
+    let refused = host_allowed("https://ollama.home.lan/api/tags");
+    assert!(
+        matches!(&refused, Err(HttpError::Network(message)) if message.contains("host not allowed")),
+        "an https OLLAMA_HOST is refused by the allowlist today; if that has changed, the sentences this test looks for are now false and must go with it: {refused:?}"
+    );
+    let doc = read_doc();
+    for section in ["Ollama", "Network"] {
+        let body = section_body(&doc, section)
+            .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## {section}` section"));
+        // Hard-wrapped prose: compare with the line breaks folded away.
+        let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            folded.contains("an `https://` `OLLAMA_HOST` is refused"),
+            "the `## {section}` section of docs/what-we-run.md does not say that an `https://` `OLLAMA_HOST` is refused, which host_allowed does"
         );
     }
 }

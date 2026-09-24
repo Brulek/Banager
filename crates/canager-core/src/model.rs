@@ -70,7 +70,10 @@ pub enum Unavailable {
     /// The executable is on PATH but would not run, or its version could
     /// not be recognised, or a service did not answer and Canager has no
     /// way to start it (an Ollama installed as the command-line tool only,
-    /// or one whose `OLLAMA_HOST` names another machine).
+    /// or one whose `OLLAMA_HOST` names another machine) -- or was never
+    /// asked: an `https://` `OLLAMA_HOST` is refused by `RealHttpClient`'s
+    /// allowlist, and `OllamaAdapter::detect` cannot tell that refusal
+    /// from a daemon that did not answer (`docs/what-we-run.md`, Ollama).
     NotResponding,
     /// The tool is installed but refuses to do anything while Canager is
     /// running as root, so Canager never even asked it (Homebrew).
