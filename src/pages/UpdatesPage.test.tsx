@@ -1646,4 +1646,123 @@ describe("UpdatesPage", () => {
     expect(within(dialog).queryByText(/sha256:/)).toBeNull();
     expect(within(dialog).queryByText(/→/)).toBeNull();
   });
+
+  const claudeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+  const claudeInstance: Snapshot["instances"][number] = {
+    id: "standalone-claude",
+    adapter_id: "standalone-claude",
+    exe_path: "/Users/someone/.local/bin/claude",
+    prefix: "/Users/someone/.local/share/claude",
+    scope: "User",
+    version: "2.1.281",
+    status: { unavailable: null, notes: [] },
+    unverified_version: null,
+    read_only_reason: null,
+  };
+  const claudeArtifact: Snapshot["artifacts"][number] = {
+    key: claudeKey,
+    display_name: "Claude Code",
+    version: "2.1.281",
+    reason: "Requested",
+    description: null,
+    homepage: "https://code.claude.com/docs/en/setup",
+    size_bytes: null,
+    installed_at: null,
+    path: "/Users/someone/.local/share/claude/versions/2.1.281",
+    auto_updates: true,
+    uninstall_blocked: "NoSafeMethod",
+  };
+  const claudeUpdate: Snapshot["updates"][number] = {
+    key: claudeKey,
+    current: "2.1.281",
+    target: "2.1.290",
+    channel: "Registry",
+    checkable: true,
+    warnings: [],
+    blocked: null,
+  };
+
+  it("says a self-updating standalone tool will probably update itself, and still offers the button", async () => {
+    // Spec D5: the badge is real (read from the launcher's live version),
+    // so the row keeps its Update button; the honest sentence says the
+    // tool usually does this itself. `auto_updates`'s first reader beyond
+    // the pinned copy.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    const { findByText, getAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    const hint = await findByText(
+      "This copy is behind (2.1.281 → 2.1.290). Claude Code usually updates itself the next time you run it; you can update it now with Canager, or just run it.",
+    );
+    expect(hint).toBeInTheDocument();
+    // An explanation, not a blurb: its second half is what the user can
+    // do, so the row must not clip it to one line. jsdom applies no CSS,
+    // so the class is what says the real window shows all of it.
+    expect(hint.className).not.toContain("truncate");
+    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+  });
+
+  it("keeps a self-updating Homebrew cask's own blurb: the hint is for tools that update themselves, not for --greedy", async () => {
+    // A cask listed through `include_self_updating` carries
+    // `auto_updates: true` too, but Homebrew, not the app, is what the
+    // button drives; its row keeps its description.
+    settings = { ...settings, include_self_updating: true };
+    updates = [snapshot.updates[1]];
+    artifacts = [
+      {
+        key: onyxKey,
+        display_name: "OnyX",
+        version: "5.0.2",
+        reason: "Requested",
+        description: "Verify system files structure",
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: true,
+        uninstall_blocked: null,
+      },
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    expect(await findByText("Verify system files structure")).toBeInTheDocument();
+    expect(queryByText(/usually updates itself/)).toBeNull();
+  });
+
+  it("gives a standalone row that cannot be checked its reason, not the self-updating hint", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [
+      {
+        ...claudeUpdate,
+        target: "2.1.281",
+        checkable: false,
+        warnings: [{ Message: "downloads.claude.ai request failed: network error: offline" }],
+      },
+    ];
+    artifacts = [claudeArtifact];
+    const { findByText, queryByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    expect(await findByText("Canager couldn't check this one for updates just now.")).toBeInTheDocument();
+    expect(queryByText(/usually updates itself/)).toBeNull();
+    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+  });
+
+  it("gives no self-updating hint to a standalone row whose source did not answer: it has no button to offer", async () => {
+    // A candidate carried forward from a Claude Code that did not answer
+    // the last refresh has no Update button (`isUpdateActionable` needs
+    // `isAvailable`), so "you can update it now with Canager" would point
+    // at a button that is not there.
+    instances = [
+      ...snapshot.instances,
+      { ...claudeInstance, status: { unavailable: "NotResponding", notes: [] } },
+    ];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    const { findByText, queryByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("claude");
+    expect(queryByText(/usually updates itself/)).toBeNull();
+    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+  });
 });

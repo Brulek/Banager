@@ -82,6 +82,7 @@
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Could not start the update: {{message}}",
     "noneCheckable": "No updates in the sources Canager could check",
+    "selfUpdatingHint": "This copy is behind ({{current}} → {{target}}). {{source}} usually updates itself the next time you run it; you can update it now with Canager, or just run it.",
     "blocked": {
       "Pinned": {
         "badge": "Pinned",
@@ -104,6 +105,11 @@
     "compilesLocally": "This will compile locally and can take several minutes.",
     "nonRegistrySource": "This wasn't installed from crates.io, so Canager can't check it for updates.",
     "thirdPartyRegistry": "This model is downloaded from {{host}}, not from Ollama's own model library. Only continue if you trust {{host}}."
+  },
+  "standalone": {
+    "summary": {
+      "standalone-claude": "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm."
+    }
   },
   "sourceNotice": {
     "pipReadOnly": {
@@ -297,7 +303,7 @@
     },
     "noSources": {
       "title": "Nothing for Canager to manage yet",
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
     },
     "refreshFailed": {
       "title": "Some data might be out of date",
@@ -308,7 +314,7 @@
     },
     "nothingInstalled": {
       "title": "Nothing installed yet",
-      "description": "Anything you install with Homebrew, npm, pipx, uv, pip, Cargo or Ollama will show up here."
+      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code installed at its native installer's default location."
     }
   }
 }

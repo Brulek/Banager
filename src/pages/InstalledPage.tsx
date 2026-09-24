@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSnapshot, useSettings } from "../lib/queries";
@@ -11,6 +12,7 @@ import {
   canWrite,
   isAvailable,
   sourceNoticesFor,
+  standaloneSummaryKey,
   UNINSTALL_BLOCKED_KEYS,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
@@ -146,6 +148,40 @@ export function InstalledPage() {
     }
     if (ignoredIds.has(id)) return { text: t("installed.updateIgnored"), variant: "neutral" };
     return { text: t("installed.upToDate"), variant: "neutral" };
+  }
+
+  // The row's description. A standalone tool's artifact carries no blurb
+  // (a bare string cannot be localised), so its row reads one by adapter
+  // id (`standaloneSummaryKey`) and shows it beside any refusal: what the
+  // tool is still needs saying on a row that cannot be uninstalled here.
+  // Any other row the tool will not uninstall says why in place of its
+  // blurb, as a pinned row does on the Updates page: it is the one thing
+  // the user has to read to understand why there is no Uninstall button.
+  // A row of a source that did not answer promises Uninstall only once it
+  // answers (`descriptionSourceUnavailable`).
+  function installedDescription(
+    artifact: InstalledArtifact,
+    instance: ManagerInstance,
+    sourceLabel: string,
+  ): ReactNode {
+    const summaryKey = standaloneSummaryKey(instance.adapter_id);
+    const blurb = artifact.description ?? (summaryKey === null ? null : t(summaryKey));
+    if (artifact.uninstall_blocked !== null) {
+      const copy = UNINSTALL_BLOCKED_KEYS[artifact.uninstall_blocked];
+      const refusal = withCommand(
+        t(isAvailable(instance) ? copy.description : copy.descriptionSourceUnavailable, {
+          command: COMMAND_SLOT,
+          source: sourceLabel,
+        }),
+        copy.command(artifact.key, instance),
+      );
+      return summaryKey === null ? refusal : (
+        <>
+          <span>{blurb}</span>{" "}<span>{refusal}</span>
+        </>
+      );
+    }
+    return blurb ?? t("installed.noDescription");
   }
 
   const items = useMemo<ListItem[]>(() => {
@@ -319,29 +355,9 @@ export function InstalledPage() {
                           })
                         : item.artifact.display_name
                     }
-                    // A row the tool will not uninstall says why in place
-                    // of its blurb, as a pinned row does on the Updates
-                    // page: it is the one thing the user has to read to
-                    // understand why there is no Uninstall button. A row
-                    // of a source that did not answer promises Uninstall
-                    // only once it answers (`descriptionSourceUnavailable`).
-                    description={
-                      item.artifact.uninstall_blocked !== null
-                        ? withCommand(
-                            t(
-                              isAvailable(item.instance)
-                                ? UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].description
-                                : UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked]
-                                    .descriptionSourceUnavailable,
-                              { command: COMMAND_SLOT, source: item.sourceLabel },
-                            ),
-                            UNINSTALL_BLOCKED_KEYS[item.artifact.uninstall_blocked].command(
-                              item.artifact.key,
-                              item.instance,
-                            ),
-                          )
-                        : (item.artifact.description ?? t("installed.noDescription"))
-                    }
+                    // Standalone rows show what the tool is alongside
+                    // the refusal explaining why Uninstall is absent.
+                    description={installedDescription(item.artifact, item.instance, item.sourceLabel)}
                     wrapDescription={item.artifact.uninstall_blocked !== null}
                     badgeText={installedBadge(item.artifact, item.instance).text}
                     badgeVariant={installedBadge(item.artifact, item.instance).variant}

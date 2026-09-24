@@ -455,6 +455,64 @@ describe("InstalledPage", () => {
     expect(container.querySelector("code")).toBeNull();
   });
 
+  it("shows the standalone summary alongside its real uninstall refusal", async () => {
+    // A standalone artifact carries `description: null` (the sentence has
+    // to be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a
+    // Homebrew package with no blurb keeps "No description available".
+    const mixed: Snapshot = {
+      ...snapshot,
+      instances: [
+        snapshot.instances[0],
+        {
+          id: "standalone-claude",
+          adapter_id: "standalone-claude",
+          exe_path: "/Users/someone/.local/bin/claude",
+          prefix: "/Users/someone/.local/share/claude",
+          scope: "User",
+          version: "2.1.281",
+          status: { unavailable: null, notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [
+        { ...snapshot.artifacts[0], description: null },
+        {
+          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
+          display_name: "Claude Code",
+          version: "2.1.281",
+          reason: "Requested",
+          description: null,
+          homepage: "https://code.claude.com/docs/en/setup",
+          size_bytes: null,
+          installed_at: null,
+          path: "/Users/someone/.local/share/claude/versions/2.1.281",
+          auto_updates: true,
+          uninstall_blocked: "NoSafeMethod",
+        },
+      ],
+      updates: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(mixed);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
+
+    expect(
+      await findByText(
+        "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("No description available")).toBeInTheDocument();
+    expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.")).toBeInTheDocument();
+    // Only the Homebrew artifact may offer Uninstall; B's actual Claude
+    // artifact is NoSafeMethod and must still show both sentences.
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+  });
+
   describe("the Update available badge", () => {
     // One snapshot with one package per reason the Updates page may list
     // an update and not offer it, plus one it does offer. The badge used

@@ -12,6 +12,7 @@ import {
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  standaloneSummaryKey,
   UNINSTALL_BLOCKED_KEYS,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
@@ -765,5 +766,27 @@ describe("parseUninstallBlocked", () => {
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Held"}')).toBeNull();
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"toString"}')).toBeNull();
     expect(parseUninstallBlocked("not json")).toBeNull();
+  });
+});
+
+describe("STANDALONE_SUMMARY_KEYS", () => {
+  it("gives each standalone tool a sentence and every other source none", () => {
+    // A standalone artifact's `description` is `null` on the wire (a bare
+    // string could not be localised), so the Installed page finds the
+    // sentence's key here by adapter id, and every package manager keeps
+    // `installed.noDescription` for an unblocked package with no blurb.
+    expect(standaloneSummaryKey("standalone-claude")).toBe("standalone.summary.standalone-claude");
+    for (const id of ["brew", "npm", "pipx", "uv", "pip", "cargo", "ollama", "toString", ""]) {
+      expect(standaloneSummaryKey(id)).toBeNull();
+    }
+  });
+
+  it("has the sentence in both locales, naming the installer route", () => {
+    expect(en.standalone.summary["standalone-claude"]).toBe(
+      "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
+    );
+    expect(zhCN.standalone.summary["standalone-claude"]).toBe(
+      "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
+    );
   });
 });

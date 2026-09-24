@@ -76,6 +76,7 @@
     "planFailed": "没能准备这次更新：{{message}}",
     "submitFailed": "没能开始更新：{{message}}",
     "noneCheckable": "已检查的来源里没有可更新的内容",
+    "selfUpdatingHint": "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Canager 更新，也可以直接运行它。",
     "blocked": {
       "Pinned": {
         "badge": "已固定",
@@ -97,6 +98,11 @@
     "compilesLocally": "这将在本机编译，可能需要几分钟。",
     "nonRegistrySource": "这不是从 crates.io 安装的，Canager 无法检查它的更新。",
     "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。"
+  },
+  "standalone": {
+    "summary": {
+      "standalone-claude": "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。"
+    }
   },
   "sourceNotice": {
     "pipReadOnly": {
@@ -288,7 +294,7 @@
     },
     "noSources": {
       "title": "Canager 还没有可管理的内容",
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo 和 Ollama。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
     },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
@@ -298,7 +304,7 @@
     },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
-      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo 或 Ollama 装的东西，都会显示在这里。"
+      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用 Claude Code 原生安装器装在默认位置的 Claude Code，会出现在这里。"
     }
   }
 }

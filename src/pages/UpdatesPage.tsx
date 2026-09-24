@@ -424,6 +424,29 @@ export function UpdatesPage() {
       .join(" ");
   };
 
+  // Whether this row's description is `updates.selfUpdatingHint`. A tool
+  // that updates itself in the background (`auto_updates`, set by the
+  // standalone adapter from its recipe): the row is real -- it compares
+  // the launcher's live version with the published one -- and keeps its
+  // button, but the honest sentence says the tool usually does this
+  // itself and offers Canager's button as the other way (spec D5). Only
+  // for the standalone adapters: a self-updating Homebrew cask listed by
+  // --greedy keeps its blurb, since Homebrew, not the app, is what the
+  // button drives. Only for an actionable row: a blocked or uncheckable
+  // one says why it has no button instead, and one whose source did not
+  // answer has no button for the sentence to offer. One test for both
+  // readers, `rowDescription` and the row's `wrapDescription`, so the
+  // sentence and its wrapping cannot disagree.
+  const showsSelfUpdatingHint = (candidate: UpdateCandidate): boolean => {
+    const owner = instancesById.get(candidate.key.instance_id);
+    return (
+      isActionable(candidate) &&
+      owner !== undefined &&
+      owner.adapter_id.startsWith("standalone-") &&
+      artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true
+    );
+  };
+
   /**
    * The row's description: why Canager could not check this one, or --
    * when it could -- what the package is.
@@ -441,14 +464,18 @@ export function UpdatesPage() {
   // uncheckable one does: it is the one thing on the row the user has to
   // read to understand why there is no button. "Could not check" wins
   // when both are true, since without a check there is no update to block.
+  // An actionable row of a standalone tool that updates itself says so in
+  // place of its blurb (`showsSelfUpdatingHint`).
   const rowDescription = (candidate: UpdateCandidate): ReactNode => {
     if (!candidate.checkable) return cannotCheckText(candidate);
     if (candidate.blocked !== null) {
       const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
       const instance = snapshot?.instances.find((i) => i.id === candidate.key.instance_id);
-      // `auto_updates` is brew's own flag for a cask that updates itself
-      // (`parse_info_installed` in crates/canager-core/src/adapters/brew/
-      // parse.rs); a package missing from `artifacts` gets the plain copy.
+      // On a blocked row `auto_updates` is brew's own flag for a cask that
+      // updates itself (`parse_info_installed` in crates/canager-core/src/
+      // adapters/brew/parse.rs): its one other producer, the standalone
+      // adapter, blocks no update. A package missing from `artifacts` gets
+      // the plain copy.
       const selfUpdating = artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true;
       // A blocked candidate under a source that did not answer the last
       // refresh is carried forward and gets no Update button either way
@@ -470,6 +497,13 @@ export function UpdatesPage() {
         }),
         copy.command(candidate.key, instance),
       );
+    }
+    if (showsSelfUpdatingHint(candidate)) {
+      return t("updates.selfUpdatingHint", {
+        current: candidate.current,
+        target: candidate.target,
+        source: sourceLabelFor(candidate.key.instance_id),
+      });
     }
     return descriptionFor(candidate);
   };
@@ -725,10 +759,13 @@ export function UpdatesPage() {
         // been given. The reason a lookup failed can run to a few
         // hundred characters and the detail comes last, so one
         // clipped line would hide precisely the part such a row
-        // exists to say. A package's own blurb keeps the single
-        // line: it is a nicety, not something the user is being
-        // asked to act on.
-        wrapDescription={!candidate.checkable || candidate.blocked !== null}
+        // exists to say; the self-updating hint ends in the choice it
+        // offers (update now, or just run the tool). A package's own
+        // blurb keeps the single line: it is a nicety, not something
+        // the user is being asked to act on.
+        wrapDescription={
+          !candidate.checkable || candidate.blocked !== null || showsSelfUpdatingHint(candidate)
+        }
         // Capability first when both apply: "Read-only" is the fact
         // that no button will ever appear on this row, whatever the
         // next refresh finds. That a lookup also failed is on the

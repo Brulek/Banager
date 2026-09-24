@@ -28,6 +28,38 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   "standalone-claude": "adapters.standalone-claude",
 };
 
+/** The adapter ids of the tools with their own installer, one per recipe
+ *  in `recipes::RECIPES` (crates/canager-core/src/adapters/standalone/
+ *  recipes.rs). A union so `STANDALONE_SUMMARY_KEYS` is a `Record` over
+ *  it: a tool added here without a summary key there fails `tsc`. */
+export type StandaloneAdapterId = "standalone-claude";
+
+/**
+ * One sentence per standalone tool, for the Installed page's description
+ * slot: what the tool is and that its own installer put it there.
+ * `InstalledArtifact.description` is a bare string that cannot be
+ * localised, so the standalone adapter's inventory leaves it `null` and
+ * the sentence's i18n key is kept here by adapter id, with its text in
+ * both locale files.
+ */
+export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
+  "standalone-claude": "standalone.summary.standalone-claude",
+};
+
+/**
+ * The summary key for `adapterId`, or `null` for a source that is not a
+ * standalone tool (or one this build has no sentence for): such a row
+ * keeps its own blurb, `installed.noDescription` or its uninstall refusal
+ * (`installedDescription` in src/pages/InstalledPage.tsx).
+ * `hasOwnProperty`, not truthiness: an id like "toString" finds a
+ * function on the prototype, not a key.
+ */
+export function standaloneSummaryKey(adapterId: string): string | null {
+  return Object.prototype.hasOwnProperty.call(STANDALONE_SUMMARY_KEYS, adapterId)
+    ? STANDALONE_SUMMARY_KEYS[adapterId as StandaloneAdapterId]
+    : null;
+}
+
 /**
  * The `sourceNotice.*` key prefix whose `.title` and `.description` explain
  * each read-only reason.
