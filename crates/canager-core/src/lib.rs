@@ -7,7 +7,9 @@
 //! package manager's command line, the [`runner`] that spawns those
 //! commands and streams their output back line by line, and the [`ops`]
 //! engine that turns a user's request into a plan, executes it under locks
-//! and cancellation, and reports what actually happened.
+//! and cancellation, and reports what actually happened. [`scan`] is the
+//! one read-only path beside them: which programs in the usual bin
+//! directories none of those sources put there.
 //!
 //! It must never depend on `tauri` (see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3). The
@@ -49,6 +51,7 @@ pub mod http;
 pub mod model;
 pub mod ops;
 pub mod runner;
+pub mod scan;
 pub mod session;
 pub mod settings;
 /// Fixture constructors shared by this crate's tests, its `tests/`
