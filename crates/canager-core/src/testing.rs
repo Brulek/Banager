@@ -3,10 +3,10 @@
 //! Public, not `#[cfg(test)]`, for one reason: the integration tests in
 //! `crates/canager-core/tests/` and the Tauri shell's own tests are separate
 //! crates and cannot see a `#[cfg(test)]` item here. `ManagerInstance` is
-//! built in 45 places across this workspace, seven of which are production
-//! `detect()` implementations that stay struct literals on purpose -- the
+//! built in dozens of places across this workspace. Every adapter's
+//! production `detect()` stays a struct literal on purpose -- the
 //! compiler's exhaustiveness check is what makes every adapter answer a new
-//! field's question. The other ~38 are fixtures that only ever want "a
+//! field's question. Most of the rest are fixtures that only ever want "a
 //! plausible instance, with this one thing different", and each new field
 //! cost all of them an edit until this existed (spec §5's note).
 //!

@@ -251,7 +251,7 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 /// `exe_path.parent()` at npm.rs:194-197 is its `NotResponding` arm
 /// only), and what npm owns under it is `lib/node_modules`, not `bin`.
 ///
-/// The standalone adapters (phase 4 step B) add their tool roots --
+/// The standalone adapters add their tool roots as their recipes land --
 /// `standalone-claude` → `~/.local/share/claude`, `standalone-agy` →
 /// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`, each the
 /// instance's `prefix`; `standalone-rustup` nothing, since everything of
@@ -281,6 +281,16 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
         // `prefix = exe_path.parent()`; the root derived from that does
         // not exist and is simply absent from the index.
         "npm" => vec![inst.prefix.join("lib").join("node_modules")],
+        // A tool installed by its own installer owns its root
+        // (`~/.local/share/claude`, the `versions/<v>` store its launcher
+        // links into). The launcher itself is the instance's `exe_path`
+        // and rules 0/1 have it; this row is for anything else that
+        // resolves under the root. Added with the adapter that first
+        // produces the instance (phase 4 step B); `standalone-agy` and
+        // `standalone-grok` follow with their recipes in step D, and
+        // `standalone-rustup` never joins: everything of rustup's resolves
+        // to its launcher (rule 1).
+        "standalone-claude" => vec![inst.prefix.clone()],
         // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
         // scanned; rule 1 places the proxies and, from step E, rule 2
         // places `cargo install`ed binaries. uv and (from Task 3b) pipx:
@@ -776,6 +786,17 @@ mod tests {
             owned_roots(&npm),
             vec![PathBuf::from("/usr/local/lib/node_modules")]
         );
+        // A standalone tool owns its root: the launcher is the instance's
+        // `exe_path` (rules 0/1), the `versions/<v>` store under the root
+        // is this row's (phase 4 step B; agy and grok join with step D).
+        let claude = ManagerInstance {
+            prefix: PathBuf::from("/Users/someone/.local/share/claude"),
+            ..crate::testing::manager_instance("standalone-claude", "standalone-claude")
+        };
+        assert_eq!(
+            owned_roots(&claude),
+            vec![PathBuf::from("/Users/someone/.local/share/claude")]
+        );
         // A `parent()`-derived prefix, or `$CARGO_HOME`, is never a root.
         for (adapter, id, prefix) in [
             (
@@ -786,6 +807,14 @@ mod tests {
             ("uv", "uv", "/Users/someone/.local/bin"),
             ("pipx", "pipx", "/Users/someone/.local/bin"),
             ("pip", "pip:/usr/bin/python3", "/usr/bin"),
+            // No adapter with this id exists yet (rustup is step E); the
+            // default arm answers for it as for any unknown id, and
+            // everything of rustup's is rule 1's anyway.
+            (
+                "standalone-rustup",
+                "standalone-rustup",
+                "/Users/someone/.cargo",
+            ),
         ] {
             let inst = ManagerInstance {
                 prefix: PathBuf::from(prefix),

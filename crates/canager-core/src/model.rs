@@ -410,8 +410,8 @@ pub enum CancelPolicy {
     /// spawn. While the op is still Queued nothing has started and no
     /// timeout is counting, so Cancel is accepted as under
     /// `KillThenReconcile` and the command never starts. No adapter
-    /// produces this yet: a standalone self-updating installer (`claude
-    /// update`, `rustup self update`) is the expected first.
+    /// produces this yet: a standalone self-updating installer (`rustup
+    /// self update`) is the expected first.
     NoCancel,
 }
 

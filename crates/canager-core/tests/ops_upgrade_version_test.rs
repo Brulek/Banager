@@ -1,26 +1,39 @@
 //! An upgrade's outcome, end to end through a real adapter: its own `plan`,
 //! its own `execute`, and its own `reconcile` reading its own inventory
-//! command, with only the commands' output scripted.
+//! command, with only the commands' output scripted (and, in the Claude
+//! Code section, its install built in a temp home).
 //!
-//! The four "exited 0 and changed nothing" cases below are the ones the
-//! per-package actionability work found (docs/superpowers/backlog.md,
-//! "假「成功」"). Each tool skips the package and still exits 0, so the only
-//! thing that can tell them apart from a real upgrade is that the version
-//! its inventory reports is the same after as before. The inventories are
-//! the recorded fixtures under `adapters/fixtures/`, read unchanged before
-//! and after, which is what a skipped upgrade leaves. The tools' own
-//! messages are copied from their source (named on each) for a realistic
-//! log; the outcome depends only on the exit code and the inventories.
+//! The four "exited 0 and changed nothing" cases in the Homebrew, pipx and
+//! uv sections are the ones the per-package actionability work found
+//! (docs/superpowers/backlog.md, "假「成功」"). Each tool skips the package
+//! and still exits 0, so the only thing that can tell them apart from a
+//! real upgrade is that the version its inventory reports is the same
+//! after as before. The inventories are the recorded fixtures under
+//! `adapters/fixtures/`, read unchanged before and after, which is what a
+//! skipped upgrade leaves. The tools' own messages are copied from their
+//! source (named on each) for a realistic log; the outcome depends only on
+//! the exit code and the inventories.
 //!
 //! The "stopped partway" cases at the end of the Homebrew and pipx sections
 //! are the opposite: a command the user cancelled, or the timeout stopped,
 //! is `Unconfirmed` whatever its inventory reads, because these tools write
 //! the version it reports partway through an upgrade (the
 //! `Ok(Outcome::Unconfirmed)` arm of `run_operation` cites their lines).
+//!
+//! The Claude Code section reads no recorded inventory: its adapter's
+//! inventory probes a real launcher link and runs `--version`, so the
+//! install is real files in a temp home and only `update` and `--version`
+//! are scripted; one case's runner also removes the program file as
+//! `update` returns, leaving the launcher dangling. Its stopped case is
+//! `Unconfirmed` by the same arm, which does not depend on how the command
+//! writes; `claude update` is compiled and its steps were not read
+//! (claude.md §6, §8).
 
 use async_trait::async_trait;
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::pipx::PipxAdapter;
+use canager_core::adapters::standalone::recipes::CLAUDE;
+use canager_core::adapters::standalone::StandaloneAdapter;
 use canager_core::adapters::uv::UvAdapter;
 use canager_core::adapters::Adapter;
 use canager_core::events::VecSink;
@@ -511,6 +524,206 @@ async fn test_a_uv_upgrade_that_moved_its_version_succeeded() {
     let outcome = uv_upgrade(
         exited_0("", "Updated ruff v0.15.0 -> v0.15.1\n"),
         vec![before, after],
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+// --- Claude Code (standalone, phase 4 step B) ------------------------------
+
+/// A native Claude Code layout in a temp home: `~/.local/bin/claude`
+/// linking into `~/.local/share/claude/versions/<version>`. The adapter's
+/// inventory probes the disk (a real link resolving into a real root), so
+/// a scripted runner alone cannot stand in for the install; the runner
+/// scripts only the two commands.
+fn claude_home(version: &str) -> (PathBuf, ManagerInstance) {
+    // The Claude Code tests run in parallel in one process, and two of them
+    // can read the same time (macOS's realtime clock counts whole
+    // microseconds), so a sequence number keeps each call's home its own.
+    static NEXT_HOME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let home = std::env::temp_dir().join(format!(
+        "canager-ops-claude-{}-{}-{}",
+        std::process::id(),
+        NEXT_HOME.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let root = home.join(".local/share/claude");
+    let real = root.join("versions").join(version);
+    std::fs::create_dir_all(real.parent().unwrap()).expect("versions dir");
+    std::fs::write(&real, b"#!/bin/sh\n").expect("real binary");
+    let bin = home.join(".local/bin");
+    std::fs::create_dir_all(&bin).expect("bin dir");
+    let launcher = bin.join("claude");
+    std::os::unix::fs::symlink(&real, &launcher).expect("launcher link");
+    let inst = ManagerInstance {
+        exe_path: launcher,
+        prefix: root,
+        version: Some(version.to_string()),
+        ..canager_core::testing::manager_instance("standalone-claude", "standalone-claude")
+    };
+    (home, inst)
+}
+
+struct ClaudeMutationRunner {
+    inner: Arc<ScriptedRunner>,
+    remove_target_on_update: Option<PathBuf>,
+}
+
+#[async_trait]
+impl CommandRunner for ClaudeMutationRunner {
+    async fn run(
+        &self,
+        spec: CommandSpec,
+        on_line: Option<LineCallback>,
+        cancel: CancellationToken,
+    ) -> Result<CommandOutput, RunnerError> {
+        let is_update = spec.args == ["update"];
+        let output = self.inner.run(spec, on_line, cancel).await?;
+        if is_update {
+            if let Some(target) = &self.remove_target_on_update {
+                std::fs::remove_file(target).expect("update left launcher dangling");
+            }
+        }
+        Ok(output)
+    }
+}
+
+async fn claude_upgrade_outputs(
+    update_output: CommandOutput,
+    versions: Vec<CommandOutput>,
+    dangling_after_update: bool,
+) -> Outcome {
+    let (home, inst) = claude_home("2.1.281");
+    let launcher = inst.exe_path.to_string_lossy().to_string();
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[launcher.as_str(), "update"], vec![update_output]);
+    runner.script(&[launcher.as_str(), "--version"], versions);
+    let mutating = Arc::new(ClaudeMutationRunner {
+        inner: runner.clone(),
+        remove_target_on_update: dangling_after_update
+            .then(|| std::fs::canonicalize(&inst.exe_path).unwrap()),
+    });
+    let outcome = upgrade(
+        &runner,
+        Arc::new(StandaloneAdapter::new(
+            &CLAUDE,
+            mutating,
+            Arc::new(MockHttpClient::new()),
+        )),
+        inst.clone(),
+        ArtifactKind::Binary,
+        "claude",
+    )
+    .await;
+    if dangling_after_update {
+        use canager_core::adapters::standalone::recipe::RouteKind;
+        use canager_core::adapters::standalone::route::{probe, Probe};
+        assert_eq!(
+            probe(RouteKind::SymlinkIntoRoot, &inst.exe_path, &inst.prefix),
+            Probe::LauncherOnly
+        );
+        let adapter =
+            StandaloneAdapter::new(&CLAUDE, runner.clone(), Arc::new(MockHttpClient::new()));
+        let artifacts = adapter.inventory(&inst).await.unwrap();
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "step C can still discover the remaining launcher"
+        );
+        assert_eq!(artifacts[0].path, None);
+    }
+    let _ = std::fs::remove_dir_all(&home);
+    outcome
+}
+
+async fn claude_upgrade(update_output: CommandOutput, versions: Vec<&str>) -> Outcome {
+    claude_upgrade_outputs(
+        update_output,
+        versions
+            .iter()
+            .map(|v| exited_0(&format!("{v} (Claude Code)\n"), ""))
+            .collect(),
+        false,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_a_claude_update_exiting_zero_with_a_failed_version_read_is_unconfirmed() {
+    let failed = CommandOutput {
+        exit_code: Some(1),
+        stdout: String::new(),
+        stderr: "dyld: Library not loaded".to_string(),
+        timed_out: false,
+        cancelled: false,
+    };
+    for after in [failed, exited_0("", "")] {
+        assert_eq!(
+            claude_upgrade_outputs(
+                exited_0("updated", ""),
+                vec![exited_0("2.1.281 (Claude Code)\n", ""), after],
+                false,
+            )
+            .await,
+            Outcome::Unconfirmed
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_a_claude_update_exiting_zero_with_a_dangling_launcher_is_unconfirmed() {
+    assert_eq!(
+        claude_upgrade_outputs(
+            exited_0("updated", ""),
+            vec![exited_0("2.1.281 (Claude Code)\n", "")],
+            true,
+        )
+        .await,
+        Outcome::Unconfirmed
+    );
+}
+
+#[tokio::test]
+async fn test_a_stopped_claude_upgrade_stays_unconfirmed_even_if_the_version_moves() {
+    for stop in [Stop::Cancel, Stop::Timeout] {
+        assert_eq!(
+            claude_upgrade(stop.output(), vec!["2.1.281", "2.1.290"]).await,
+            Outcome::Unconfirmed
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_a_claude_update_that_reports_up_to_date_is_not_reported_as_updated() {
+    // `claude update` prints `Claude Code is up to date (X)` and exits 0
+    // when there is nothing to install (doc text, VERIFIED in
+    // .superpowers/phase4/claude.md §6) -- which is also what the race
+    // with its own background updater looks like from here. The version
+    // read before and after is the same `--version`, so the outcome is
+    // the honest one a skipped brew or pipx upgrade gets (spec §4.4 item
+    // 5, D5).
+    let outcome = claude_upgrade(
+        exited_0("Claude Code is up to date (2.1.281)\n", ""),
+        vec!["2.1.281", "2.1.281"],
+    )
+    .await;
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_claude_update_that_moved_the_version_succeeded() {
+    // `Successfully updated from <old> to version <new>` (doc text,
+    // VERIFIED, claude.md §6), and the launcher now answers the new
+    // version.
+    let outcome = claude_upgrade(
+        exited_0("Successfully updated from 2.1.281 to version 2.1.290\n", ""),
+        vec!["2.1.281", "2.1.290"],
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);

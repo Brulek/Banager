@@ -138,13 +138,16 @@ Three kinds of text are shown as-is:
   one case the wording used to name: with "Show technical details" turned on, whenever a package
   can't be checked for updates Canager's own explanation of why is shown as plain English rather
   than translated — with the switch off you see only a short generic sentence instead. There are
-  close to a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
+  more than a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
   "... did not finish", or the tool's own first line of stderr) from any lookup that runs a
-  command, and, from the three lookups Canager makes over HTTP instead of a command line, that
+  command; from the four lookups Canager makes over HTTP instead of a command line, that
   request's own wording — pipx's PyPI lookup ("PyPI request failed: ...", "PyPI returned status
-  503", "could not parse PyPI response: ..."), Cargo's equivalent for crates.io, and Ollama's
-  equivalent for its own registry. They should all become structured payloads like the refusals
-  above, and until they do, what a Chinese user sees there with the switch on is in English.
+  503", "could not parse PyPI response: ..."), Cargo's equivalent for crates.io, Ollama's for its
+  own registry, and Claude Code's for its release channel; and Claude Code's two about the
+  installed version ("cannot read the installed version now", "cannot compare the installed
+  version ... with the published ..."). They should all become structured payloads like the
+  refusals above, and until they do, what a Chinese user sees there with the switch on is in
+  English.
 
 ## Design notes
 
@@ -195,11 +198,12 @@ Canager 自己这边的原因没能执行（比如程序在检查之后、运行
 - **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
-  接近十来处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
-  finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源；另一类来自另外三个改用
-  HTTP 直接查询软件源的来源——pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源——各自请求
-  失败、返回状态异常、解析失败时的原文提示。这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，
-  中文用户在开关打开时看到的，就是英文。
+  有十几处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
+  finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源；另一类来自另外四个改用
+  HTTP 直接查询的来源——pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的
+  发布通道——各自请求失败、返回状态异常、解析失败时的原文提示；还有 Claude Code 读不到已安装版本、或
+  已安装版本与发布版本无法比较时的两句原文提示。这些都应该像上面的拒绝理由一样改成结构化数据，在那之
+  前，中文用户在开关打开时看到的，就是英文。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
 点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew

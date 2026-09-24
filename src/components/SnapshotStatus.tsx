@@ -95,8 +95,8 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
 
   if (snapshot.detect === "Missing") {
     // `detect` is Missing only when *every* adapter's detect() came back
-    // with no instances -- all seven sources, not Homebrew alone, which is
-    // what the old `noHomebrew` copy claimed.
+    // with no instances -- every source, not Homebrew alone, which is what
+    // the old `noHomebrew` copy claimed.
     return (
       <EmptyState
         title={t("emptyStates.noSources.title")}

@@ -105,7 +105,7 @@ export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
       // worth re-scanning for: `show_technical_details` and `language` are
       // rendered from the settings themselves, and `ignored_updates` is
       // filtered client-side, so refreshing on every save would put a full
-      // seven-source scan behind each Ignore click on the Updates page
+      // scan of every source behind each Ignore click on the Updates page
       // (which shares this mutation). A failed refresh is swallowed: the
       // save itself did succeed, and the snapshot's own stale/errors fields
       // are what report a bad refresh.
@@ -150,7 +150,7 @@ export function useCancelOperation(): UseMutationResult<void, Error, number> {
  * notice the button was pressed to clear. One look after a grace period
  * would usually do, but a cold start can outlast it -- so there is a second,
  * later one, and then it stops. Bounded on purpose: a poll that kept going
- * would scan all seven sources over and over behind a machine where Ollama
+ * would scan every source over and over behind a machine where Ollama
  * simply is not going to start. After two looks the notice stays put and the
  * button can be pressed again, which starts this over.
  */

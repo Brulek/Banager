@@ -34,6 +34,7 @@ use crate::adapters::npm::NpmAdapter;
 use crate::adapters::ollama::OllamaAdapter;
 use crate::adapters::pip::PipAdapter;
 use crate::adapters::pipx::PipxAdapter;
+use crate::adapters::standalone;
 use crate::adapters::uv::UvAdapter;
 use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId};
@@ -251,15 +252,15 @@ pub struct Session {
 }
 
 impl Session {
-    /// Registers all seven adapters over a shared `RealRunner` and
+    /// Registers all eight adapters over a shared `RealRunner` and
     /// `RealHttpClient` (network-touching adapters only: pipx, cargo,
-    /// ollama). `now_fn` exists so tests can pin `refreshed_at`; production
-    /// passes `None`.
+    /// ollama, and the standalone tools' update checks). `now_fn` exists
+    /// so tests can pin `refreshed_at`; production passes `None`.
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
         let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
         let http: Arc<dyn HttpClient> = Arc::new(RealHttpClient::new());
         let background_change = Arc::new(tokio::sync::Notify::new());
-        let adapters: Vec<Arc<dyn Adapter>> = vec![
+        let mut adapters: Vec<Arc<dyn Adapter>> = vec![
             Arc::new(
                 BrewAdapter::new(runner.clone()).with_background_change(background_change.clone()),
             ),
@@ -268,8 +269,14 @@ impl Session {
             Arc::new(UvAdapter::new(runner.clone())),
             Arc::new(PipAdapter::new(runner.clone())),
             Arc::new(CargoAdapter::new(runner.clone(), http.clone())),
-            Arc::new(OllamaAdapter::new(runner, http)),
+            Arc::new(OllamaAdapter::new(runner.clone(), http.clone())),
         ];
+        // The tools with their own installer: one adapter per recipe
+        // (`standalone-claude` in phase 4 step B), over the same runner and
+        // client. Listed after the seven package managers only as reading
+        // order; the refresh fans out alphabetically by id regardless
+        // (`refresh_round`).
+        adapters.extend(standalone::all(runner, http));
         Session::build(sink, adapters, now_fn, background_change)
     }
 
@@ -498,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_registers_all_seven_adapters() {
+    fn test_new_registers_all_eight_adapters() {
         let sink = Arc::new(VecSink::new());
         let session = Session::new(sink, None);
         assert_eq!(
@@ -510,6 +517,7 @@ mod tests {
                 "ollama".to_string(),
                 "pip".to_string(),
                 "pipx".to_string(),
+                "standalone-claude".to_string(),
                 "uv".to_string(),
             ]
         );

@@ -41,7 +41,7 @@ beforeEach(() => {
 
 describe("SnapshotStatus", () => {
   it("shows the no-sources empty state and hides children when detect is Missing", async () => {
-    // `Missing` now means all seven sources found nothing, not that Homebrew
+    // `Missing` now means every source found nothing, not that Homebrew
     // alone is absent.
     vi.mocked(invoke).mockResolvedValue(baseSnapshot({ detect: "Missing" }));
 

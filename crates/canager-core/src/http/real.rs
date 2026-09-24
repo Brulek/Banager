@@ -26,8 +26,10 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 ///
 /// Every https URL this crate builds names one of these: crates.io
 /// (`CargoAdapter::latest_stable_version`), pypi.org
-/// (`PipxAdapter::latest_pypi_version`) and registry.ollama.ai
-/// (`OllamaAdapter::compare_digests`). `send` refuses any other https host
+/// (`PipxAdapter::latest_pypi_version`), registry.ollama.ai
+/// (`OllamaAdapter::compare_digests`) and downloads.claude.ai
+/// (`StandaloneAdapter::check_updates`, Claude Code's channel pointer).
+/// `send` refuses any other https host
 /// before a connection is opened -- fail closed, so a URL built from data
 /// off disk or off the network (a crate name, a model reference) can at
 /// worst re-point a request within one of these hosts, never at another
@@ -43,7 +45,12 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 /// Adding a host here is a reviewed change with two other halves: the
 /// adapter that contacts it, and `docs/what-we-run.md`, which must name
 /// every host Canager connects to.
-pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai"];
+pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
+    "crates.io",
+    "pypi.org",
+    "registry.ollama.ai",
+    "downloads.claude.ai",
+];
 
 /// `Ok(())` when `url` is one `send` may fetch: any `http` URL, or an
 /// `https` URL whose host is in `ALLOWED_HTTPS_HOSTS` exactly (no
@@ -177,8 +184,8 @@ impl HttpClient for RealHttpClient {
             bytes.extend_from_slice(&chunk);
         }
         // Lossy for the same reason `text()` is: these endpoints all answer
-        // UTF-8 JSON, and a stray invalid byte should not turn a readable
-        // response into a hard error.
+        // UTF-8 -- JSON, or Claude Code's bare version number -- and a stray
+        // invalid byte should not turn a readable response into a hard error.
         let body = String::from_utf8_lossy(&bytes).into_owned();
         Ok(HttpResponse { status, body })
     }
@@ -582,5 +589,15 @@ mod tests {
             ),
             other => panic!("expected a host-not-allowed error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_host_allowed_accepts_claude_codes_channel_pointers() {
+        // The exact URLs `StandaloneAdapter::check_updates` builds for the
+        // `CLAUDE` recipe (adapters/standalone/recipes.rs), phase 4 step B.
+        host_allowed("https://downloads.claude.ai/claude-code-releases/latest")
+            .expect("downloads.claude.ai, latest");
+        host_allowed("https://downloads.claude.ai/claude-code-releases/stable")
+            .expect("downloads.claude.ai, stable");
     }
 }

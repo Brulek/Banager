@@ -163,7 +163,7 @@ impl Session {
         // "offer it, then refuse it" bug this phase exists to remove,
         // grown back inside its own fix.
         //
-        // It lives here rather than in seven `plan()` implementations
+        // It lives here rather than in eight `plan()` implementations
         // because this is the one point every operation in the workspace
         // passes through, and because five-adapter verbatim duplication is
         // exactly what the last review round flagged twice. npm's own

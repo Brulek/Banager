@@ -18,6 +18,7 @@ pub mod npm;
 pub mod ollama;
 pub mod pip;
 pub mod pipx;
+pub mod standalone;
 pub mod uv;
 
 /// Options a caller passes down to `check_updates`. Adapters ignore fields
@@ -64,7 +65,7 @@ pub struct CheckOutcome {
     pub notes: Vec<InstanceNote>,
 }
 
-/// Lets the six adapters with nothing to report about themselves write
+/// Lets the seven adapters with nothing to report about themselves write
 /// `Ok(out.into())` instead of naming a struct they never fill.
 ///
 /// This conversion is the reason `CheckOutcome` is not a third block of

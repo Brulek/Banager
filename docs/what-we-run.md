@@ -1,11 +1,11 @@
 # What Canager Runs
 
 Every command Canager runs, every file it reads or writes, every host it
-connects to and every environment variable it sets, for the seven sources
-it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo and
-Ollama. Each sentence describes what the code does now and names the
-function it describes, so it can be checked against
-`crates/canager-core/src/adapters/` rather than believed.
+connects to and every environment variable it sets, for the eight sources
+it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama,
+and Claude Code (a tool with its own installer). Each sentence describes
+what the code does now and names the function it describes, so it can be
+checked against `crates/canager-core/src/adapters/` rather than believed.
 `crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
 can: a section per registered source, every host on the https allowlist,
 every environment variable Homebrew's and npm's commands are given, the
@@ -53,11 +53,12 @@ Ollama button is pressed, and at the start of every Unknown-page scan,
 `HostEnv::discover`
 (`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME` and `OLLAMA_HOST` from Canager's environment and the
-effective user id from the process. Every source
+effective user id from the process. Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
-for at three fixed paths instead (its section). The path that was found
-is the one previewed and the one run.
+for at three fixed paths instead (its section), and so is a tool with its
+own installer: Claude Code at the one path its installer writes (its
+section). The path that was found is the one previewed and the one run.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
@@ -455,6 +456,99 @@ whether LaunchServices accepted the request. It is the one launch in the
 app that is not a package-manager command, and it never happens during a
 refresh.
 
+## Claude Code
+
+Adapter: `StandaloneAdapter` over the `CLAUDE` recipe in
+`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`mod.rs` the behaviour, `route.rs` the recognition). Verified against
+Claude Code 2.1.282 (the version in `adapters/meta/standalone-claude.toml`
+and the name of the recorded fixture directory). The first source that is
+not a package manager: the row is one tool, installed by its own installer
+(`curl -fsSL https://claude.ai/install.sh | bash`, run by the user —
+Canager never runs it), and the one item under it is the tool itself.
+
+**Detect.** Canager looks at the fixed path the installer writes,
+`~/.local/bin/claude` — never a `claude` found through `PATH`, which on a
+Mac with the Homebrew cask earlier on `PATH` would be that copy instead —
+and checks with `lstat`, `readlink` and `realpath` that it is a symbolic
+link resolving into `~/.local/share/claude` (the installer's
+`versions/<version>` store). A `claude` there that resolves into a
+`Cellar`, `Caskroom`, `node_modules` or `corepack` directory is a package
+manager's copy (Homebrew's, npm's or corepack's) and is not listed here; a
+plain file at that path is not this route and is not listed either. A dangling link whose own text points into `~/.local/share/claude`
+(the program files were removed by hand or by another tool) is listed with
+no version and a notice saying so; in this step Canager cannot remove the
+link either (see the write commands below). For a link that does resolve
+into the root, Canager then runs `<claude> --version` (30 s) with
+`DISABLE_AUTOUPDATER=1` in its environment: Anthropic documents that
+Claude Code checks for updates on startup, and the variable as stopping
+only that background check (so `claude update` is unaffected); whether
+`--version` alone triggers the check was not observed, and a refresh must
+never start a download, so the variable is set on every version read
+regardless. The version is the first token of the first non-empty line
+(`2.1.282 (Claude Code)`).
+
+Canager also asks where `claude` would run from if typed in Terminal (the
+first regular file named `claude` with executable bits in Canager's
+`PATH`) and, when that is not this copy, says so under the source: not on
+`PATH`, or shadowed by a Homebrew, npm or unknown copy. That is a notice,
+not a command.
+
+**Environment Canager adds to version reads** (`CLAUDE.version.env`;
+upgrade adds no override and inherits ambient variables):
+
+    DISABLE_AUTOUPDATER=1
+
+**Read-only commands and requests** (background checks; never need a
+password):
+
+| Purpose | Argv or request | Timeout |
+|---|---|---|
+| Detect, inventory, the fresh update check, and the reading before and after an update | `<claude> --version`, with `DISABLE_AUTOUPDATER=1` | 30 s |
+| Newest published version (`check_updates`) | `GET https://downloads.claude.ai/claude-code-releases/latest` — or `/stable`, when `~/.claude/settings.json` sets `"autoUpdatesChannel": "stable"` | 30 s |
+
+The pointer answers with one version number. An update is listed only when
+that number is greater than the installed one, comparing the dot-separated
+integers — the `stable` pointer is usually behind `latest`, so "different"
+would be wrong. A request that fails, answers anything but 200, or answers
+something that is not a version is listed as "could not check", never as
+an error for the source, and so is an installed version that cannot be
+read at that moment or cannot be compared with the published one (a
+version with a suffix such as `-beta`). Claude Code updates itself in the
+background when its own updater is on; the update listed is real either
+way, since it is compared with the version the launcher reports when the
+check runs.
+
+**Write commands** (only run after the user reviews and confirms a plan
+preview):
+
+| Purpose | Argv | Timeout | Needs a password |
+|---|---|---|---|
+| Upgrade | `<claude> update` | 1800 s | No |
+
+Canager adds no environment override to `claude update`; the runner
+inherits the app's ambient environment. `DISABLE_AUTOUPDATER=1` stops the
+background check, and manual updates still work with it set. Anthropic's
+install script stages its download under `~/.claude/downloads`, checks it
+against the release manifest's checksum, and only then runs the new
+binary's own `install`, which sets up the launcher (install.sh, read
+directly); `claude update` itself is a compiled program whose steps were
+not read, so Canager assumes nothing about what a run stopped partway
+leaves behind, and its preview promises nothing. Cancel: allowed
+(`KillThenReconcile`) — the runner stops the process group, Canager reads
+`<claude> --version` again, and the operation is reported as unconfirmed
+regardless of that reading (the same rule as every stopped upgrade). If
+it exits 0 but the launcher is dangling or its version cannot be read,
+verification fails and the outcome is also unconfirmed. If it exits 0 and
+the version did not move (Claude Code already updated itself, or reports
+"up to date"), the operation is reported as needing attention whenever a
+version before it could be read, as for every source. There is no install
+(the installer is Anthropic's, not Canager's) and, in this step, no
+uninstall: Claude Code has no uninstall command, and until Canager can
+move its files to the Trash itself (phase 4 step C) the row says it cannot
+be uninstalled here and offers no button — `Session::issue_plan` refuses
+it as well.
+
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
 The *Unknown* page lists command-line programs that none of the sources
@@ -486,7 +580,8 @@ that tool's environment, and a Homebrew cask's command in `<prefix>/bin`
 `/Applications`, which `brew info --installed --json=v2` names beside the
 cask's `app` stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
-`lib/node_modules` under its global prefix; Ollama's `~/.ollama`).
+`lib/node_modules` under its global prefix; Ollama's `~/.ollama`; Claude
+Code's `~/.local/share/claude`).
 Everything else is listed, with where a broken link pointed, the app a
 program runs inside, and whether an installer with administrator rights
 put it there.
@@ -512,6 +607,13 @@ All read-only, none saved anywhere else, none uploaded:
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
   for each pulled model.
+- Claude Code: whether `~/.local/bin/claude` exists and where it links to
+  (`lstat`, `readlink`, `realpath`, also for `~/.local/share/claude`); for
+  the notice under the source, each `PATH` directory's `claude` until the
+  first regular file with executable bits, and where that one resolves
+  (`stat`, `realpath`); `~/.claude/settings.json`, for the one key
+  `autoUpdatesChannel` (read and discarded; a missing file or key means
+  `latest`).
 - The Unknown page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents.
@@ -540,6 +642,7 @@ connection, any `https` request whose host is not on this list
 | `crates.io` | `GET /api/v1/crates/{name}` — the newest stable version of one crate | Cargo's `check_updates` |
 | `pypi.org` | `GET /pypi/{name}/json` — the newest version of one package | pipx's `check_updates`, on pipx < 1.16 only |
 | `registry.ollama.ai` | `GET /v2/{namespace}/{name}/manifests/{tag}` — one model's manifest | Ollama's `check_updates` |
+| `downloads.claude.ai` | `GET /claude-code-releases/latest` or `/stable` — the newest published Claude Code version on that channel, answered as one bare version number | Claude Code's `check_updates` (`StandaloneAdapter`) |
 
 Plain `http` is exempt from the list for one caller: the Ollama daemon at
 `OLLAMA_HOST` or `http://127.0.0.1:11434` (`GET /api/tags`), which may be
@@ -575,10 +678,10 @@ calls it yet, so no request to it is made; when app self-update ships,
 this paragraph changes.
 
 The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
-`pipx`, `uv`, `cargo`, `cargo-binstall` and `ollama pull` each reach
-whatever index or registry they are configured to use. Those are the
-tools' connections, under the tools' configuration; Canager neither
-chooses nor sees them.
+`pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull` and `claude update`
+each reach whatever index, registry or release server they are configured
+to use. Those are the tools' connections, under the tools' configuration;
+Canager neither chooses nor sees them.
 
 ## What Canager never does
 
