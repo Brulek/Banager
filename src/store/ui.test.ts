@@ -85,10 +85,4 @@ describe("useUiStore", () => {
     useUiStore.getState().toggleUpdate(key);
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
-
-  it("clearSelectedUpdates empties the selection", () => {
-    useUiStore.getState().toggleUpdate(key);
-    useUiStore.getState().clearSelectedUpdates();
-    expect(useUiStore.getState().selectedUpdates).toEqual([]);
-  });
 });

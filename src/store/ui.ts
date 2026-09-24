@@ -31,7 +31,6 @@ export interface UiState {
   clearLogs(opId: number): void;
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;
-  clearSelectedUpdates(): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
 }
@@ -83,7 +82,6 @@ export const useUiStore = create<UiState>((set) => ({
           : [...s.selectedUpdates, id],
       };
     }),
-  clearSelectedUpdates: () => set({ selectedUpdates: [] }),
   startupRefreshError: null,
   setStartupRefreshError: (message) => set({ startupRefreshError: message }),
 }));
