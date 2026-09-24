@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayToken, outcomeArgs, outcomeKey } from "./format";
+import { displayToken, formatBytes, outcomeArgs, outcomeKey } from "./format";
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -35,6 +35,26 @@ describe("displayToken", () => {
     expect(displayToken("gautham-v/tap/claudebar")).toBe("gautham-v/tap/claudebar");
     expect(displayToken("--formula")).toBe("--formula");
     expect(displayToken("python@3.13")).toBe("python@3.13");
+  });
+});
+
+describe("formatBytes", () => {
+  it("uses 1000-based units, the ones Finder shows", () => {
+    // The number on the row should match Get Info in Finder, which
+    // counts a kilobyte as 1000 bytes on macOS.
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(999)).toBe("999 B");
+    expect(formatBytes(1000)).toBe("1 KB");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(12_000_000)).toBe("12 MB");
+    expect(formatBytes(144_300_000)).toBe("144.3 MB");
+    expect(formatBytes(4_400_000_000)).toBe("4.4 GB");
+  });
+
+  it("does not print a thousand of the smaller unit", () => {
+    // 999,970 bytes is 999.97 KB, which one decimal rounds to 1000.0 KB;
+    // that is 1 MB.
+    expect(formatBytes(999_970)).toBe("1 MB");
   });
 });
 

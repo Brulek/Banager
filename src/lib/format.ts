@@ -103,3 +103,25 @@ function faultArgs(fault: Fault): Record<string, unknown> {
   const unhandled: never = fault;
   return unhandled;
 }
+
+/**
+ * A byte count as the user reads it in Finder: 1000-based units, at most
+ * one decimal, no trailing ".0". Units are symbols, not words, so they
+ * are the same in both locales and this needs no `t()`.
+ */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (unit < units.length - 1 && value >= 1000) {
+    value /= 1000;
+    unit += 1;
+  }
+  // 999.97 KB rounds to "1000.0 KB" at one decimal; that is 1 MB.
+  if (unit < units.length - 1 && Number(value.toFixed(1)) >= 1000) {
+    value /= 1000;
+    unit += 1;
+  }
+  const text = unit === 0 ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+  return `${text} ${units[unit]}`;
+}
