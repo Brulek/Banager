@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 503 Rust tests (plus 2 more
-> that touch a real Homebrew and only run with `--ignored`) and 322 front-end tests, but there is
+> **Status: pre-release.** The core and the UI work and are covered by 593 Rust tests (plus 2 more
+> that touch a real Homebrew and only run with `--ignored`) and 336 front-end tests, but there is
 > no downloadable build yet — v0.1 is being prepared. Nothing here is ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
@@ -26,6 +26,7 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | pip | yes | **no** — Canager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes | yes |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall not yet — the row says so and offers no button |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
@@ -172,8 +173,8 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 503 个 Rust 测试（另有 2 个要连着真实的
-Homebrew 才跑，平时是跳过的）和 322 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
+**目前处于发布前阶段**，核心与界面已经可用、有 593 个 Rust 测试（另有 2 个要连着真实的
+Homebrew 才跑，平时是跳过的）和 336 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
 不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
