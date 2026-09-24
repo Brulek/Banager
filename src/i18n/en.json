@@ -21,7 +21,8 @@
     "uv": "uv",
     "pip": "pip",
     "cargo": "Cargo",
-    "ollama": "Ollama"
+    "ollama": "Ollama",
+    "standalone-claude": "Claude Code"
   },
   "installed": {
     "filterLabel": "Filter installed items",
@@ -43,6 +44,11 @@
         "description": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run {{command}} in Terminal to release the pin; Canager will offer to uninstall it the next time it checks, which at the latest is the next time you start Canager.",
         "descriptionSourceUnavailable": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run {{command}} in Terminal to release the pin; after that, Canager will offer to uninstall it the next time it checks and {{source}} answers.",
         "refused": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager didn't uninstall it. Nothing has been changed. To uninstall it, first run {{command}} in Terminal to release the pin."
+      },
+      "NoSafeMethod": {
+        "badge": "Can't uninstall here",
+        "description": "{{source}} has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
+        "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
       }
     }
   },

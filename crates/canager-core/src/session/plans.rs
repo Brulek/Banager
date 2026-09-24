@@ -922,6 +922,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_issue_plan_refuses_an_uninstall_with_no_safe_method_but_plans_its_upgrade() {
+        // `UninstallBlocked::NoSafeMethod`: the tool has no uninstall
+        // command and Canager has no safe way yet to remove its files, so
+        // its inventory entry carries the refusal (phase 4 step B: Claude
+        // Code, whose two-path list is verified but which nothing can move
+        // to the Trash until step C). Per package, like `Pinned`: the same
+        // tool's upgrade still plans, since `blocked_uninstall` speaks only
+        // for `Uninstall`.
+        let adapter = FakeAdapter::new(vec![test_support::make_instance("fake", "fake:1")]);
+        adapter.set_artifacts(vec![installed_on(
+            "fake:1",
+            ArtifactKind::Binary,
+            "claude",
+            Some(UninstallBlocked::NoSafeMethod),
+        )]);
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+
+        match session
+            .issue_plan(&uninstall_on("fake:1", ArtifactKind::Binary, "claude"))
+            .await
+        {
+            Err(AdapterError::UninstallBlocked { reason }) => {
+                assert_eq!(reason, UninstallBlocked::NoSafeMethod);
+            }
+            other => panic!("expected UninstallBlocked(NoSafeMethod) for claude, got {other:?}"),
+        }
+        session
+            .issue_plan(&upgrade_on("fake:1", ArtifactKind::Binary, "claude"))
+            .await
+            .expect("no safe uninstall method does not refuse an upgrade");
+        assert!(
+            session.operations().is_empty(),
+            "a refused plan must never reach the OperationManager"
+        );
+    }
+
+    #[tokio::test]
     async fn test_submit_is_refused_once_the_package_became_uninstall_blocked() {
         // The re-check at submit time covers the inventory too: `jq` was
         // pinned between the preview and the click, and a refresh saw it.

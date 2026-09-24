@@ -716,11 +716,49 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
       expect(copy.split("{{command}}")).toHaveLength(2);
     }
   });
+
+  it("carries no command for a tool with no safe uninstall method: there is nothing to run first", () => {
+    // Unlike a pin, nothing the user runs can make Canager able to
+    // uninstall it; the sentence points at the tool's own instructions
+    // and has no `{{command}}` slot, so `withCommand` renders it as plain
+    // text and `InstalledPage` sets no `<code>`.
+    const claude = instance({
+      id: "standalone-claude",
+      adapter_id: "standalone-claude",
+      exe_path: "/Users/someone/.local/bin/claude",
+    });
+    const key: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+    expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, claude)).toBe("");
+    expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, undefined)).toBe("");
+    expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge).toBe("installed.blocked.NoSafeMethod.badge");
+    // Nothing about "when the button comes back" to say differently for a
+    // silent source, so one sentence serves both.
+    expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.descriptionSourceUnavailable).toBe(
+      UNINSTALL_BLOCKED_KEYS.NoSafeMethod.description,
+    );
+  });
+
+  it("names the source and never a command in the no-safe-method sentences, in both locales", () => {
+    for (const copy of [
+      en.installed.blocked.NoSafeMethod.description,
+      en.installed.blocked.NoSafeMethod.refused,
+      zhCN.installed.blocked.NoSafeMethod.description,
+      zhCN.installed.blocked.NoSafeMethod.refused,
+    ]) {
+      expect(copy).toContain("{{source}}");
+      expect(copy).not.toContain("{{command}}");
+    }
+    expect(en.adapters["standalone-claude"]).toBe("Claude Code");
+    expect(zhCN.adapters["standalone-claude"]).toBe("Claude Code");
+  });
 });
 
 describe("parseUninstallBlocked", () => {
   it("reads the reason out of the uninstall gate's payload and nothing else", () => {
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Pinned"}')).toBe("Pinned");
+    expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"NoSafeMethod"}')).toBe(
+      "NoSafeMethod",
+    );
     // The upgrade gate's payload is a different refusal with different copy.
     expect(parseUninstallBlocked('{"kind":"update_blocked","reason":"Pinned"}')).toBeNull();
     // A reason this build has no copy for is not guessed at.

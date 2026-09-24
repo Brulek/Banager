@@ -21,7 +21,8 @@
     "uv": "uv",
     "pip": "pip",
     "cargo": "Cargo",
-    "ollama": "Ollama"
+    "ollama": "Ollama",
+    "standalone-claude": "Claude Code"
   },
   "installed": {
     "filterLabel": "筛选已安装项目",
@@ -41,6 +42,11 @@
         "description": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，Canager 下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候。",
         "descriptionSourceUnavailable": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，之后 Canager 检查时只要 {{source}} 有应答，就会提供卸载。",
         "refused": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 没有卸载它，什么都没有改动。想卸载的话，先在「终端」里运行 {{command}} 解除固定。"
+      },
+      "NoSafeMethod": {
+        "badge": "无法在这里卸载",
+        "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。官方说明在它的网站上。",
+        "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
       }
     }
   },

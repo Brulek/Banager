@@ -396,6 +396,65 @@ describe("InstalledPage", () => {
     expect(queryByText(/next time you start Canager/)).toBeNull();
   });
 
+  it("offers no Uninstall on a tool with no safe uninstall method, and says so without a command", async () => {
+    // `UninstallBlocked::NoSafeMethod` (phase 4): the tool has no
+    // uninstall command and Canager has no safe way yet to remove its
+    // files, so the row explains itself in place of its blurb and hides
+    // the button -- and, unlike a pin, sets no command as code, because
+    // there is nothing to run first. `Session::issue_plan` refuses it in
+    // Rust too.
+    const claudeSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        {
+          id: "standalone-claude",
+          adapter_id: "standalone-claude",
+          exe_path: "/Users/someone/.local/bin/claude",
+          prefix: "/Users/someone/.local/share/claude",
+          scope: "User",
+          version: "2.1.281",
+          status: { unavailable: null, notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
+          display_name: "Claude Code",
+          version: "2.1.281",
+          reason: "Requested",
+          description: null,
+          homepage: "https://code.claude.com/docs/en/setup",
+          size_bytes: null,
+          installed_at: null,
+          path: "/Users/someone/.local/share/claude/versions/2.1.281",
+          auto_updates: true,
+          uninstall_blocked: "NoSafeMethod",
+        },
+      ],
+      updates: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(claudeSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getByText, queryAllByRole, container } = renderWithProviders(
+      <InstalledPage />,
+    );
+
+    await findByText("Can't uninstall here");
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(
+      getByText(
+        "Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
+      ),
+    ).toBeInTheDocument();
+    expect(container.querySelector("code")).toBeNull();
+  });
+
   describe("the Update available badge", () => {
     // One snapshot with one package per reason the Updates page may list
     // an update and not offer it, plus one it does offer. The badge used

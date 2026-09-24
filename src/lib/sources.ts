@@ -14,7 +14,9 @@ import type {
 } from "./types";
 import { displayToken } from "./format";
 
-/** i18n key holding each adapter's human name. */
+/** i18n key holding each adapter's human name. The `standalone-*` ids are
+ *  the tools with their own installer (`standalone::all` in
+ *  crates/canager-core/src/adapters/standalone/mod.rs), one per recipe. */
 export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   brew: "adapters.brew",
   npm: "adapters.npm",
@@ -23,6 +25,7 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   pip: "adapters.pip",
   cargo: "adapters.cargo",
   ollama: "adapters.ollama",
+  "standalone-claude": "adapters.standalone-claude",
 };
 
 /**
@@ -539,6 +542,18 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     // the owning instance's `exe_path`, `--cask` for a cask.
     command: unpinCommand,
     refused: "installed.blocked.Pinned.refused",
+  },
+  NoSafeMethod: {
+    badge: "installed.blocked.NoSafeMethod.badge",
+    // No command: unlike a pin there is nothing the user can run to make
+    // Canager able to uninstall it, so the sentence has no `{{command}}`
+    // slot and `withCommand` returns it as plain text. It promises
+    // nothing about when a button returns, so a silent source gets the
+    // same sentence rather than a second key with the same words.
+    description: "installed.blocked.NoSafeMethod.description",
+    descriptionSourceUnavailable: "installed.blocked.NoSafeMethod.description",
+    command: () => "",
+    refused: "installed.blocked.NoSafeMethod.refused",
   },
 };
 

@@ -57,12 +57,15 @@ export interface InstalledArtifact {
 /**
  * Why the tool itself will refuse to uninstall this one package. Mirrors
  * `UninstallBlocked` in crates/canager-core/src/model.rs: bare-string unit
- * variants. Only `Pinned` exists, produced by brew's `parse_info_installed`
- * (from `brew info --installed --json=v2`'s `pinned: true`). Read through
+ * variants. `Pinned` is produced by brew's `parse_info_installed` (from
+ * `brew info --installed --json=v2`'s `pinned: true`); `NoSafeMethod` by
+ * the standalone adapter's inventory for a tool with no uninstall command
+ * and no safe way yet to remove its files (Claude Code, phase 4 step B,
+ * until step C). Read through
  * `UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over this
  * union, so a variant added here without copy fails `tsc`.
  */
-export type UninstallBlocked = "Pinned";
+export type UninstallBlocked = "Pinned" | "NoSafeMethod";
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,

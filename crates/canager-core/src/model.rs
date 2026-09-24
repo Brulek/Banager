@@ -262,6 +262,20 @@ pub enum UninstallBlocked {
     /// `pinned` key `brew info --installed --json=v2` writes for every
     /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
     Pinned,
+    /// The tool has no uninstall command, and Canager has no safe way yet
+    /// to remove its files -- no verified list of them (a second-batch
+    /// tool before verification), or a verified list but not yet the
+    /// path-list uninstall that moves them to the Trash (Claude Code
+    /// until step C) -- so it does not offer to. Per artifact, not the
+    /// instance's `read_only_reason`: that would hide the upgrade too,
+    /// which works. Produced by `StandaloneAdapter::inventory`
+    /// (`adapters/standalone/mod.rs`) for a recipe without an uninstall
+    /// method -- Claude Code in phase 4 step B, until step C's path-list
+    /// uninstall replaces it; later Ollama.app. The gate refuses it
+    /// (`blocked_uninstall` in session/plans.rs), the Installed page hides
+    /// the button and says why (`UNINSTALL_BLOCKED_KEYS` in
+    /// src/lib/sources.ts).
+    NoSafeMethod,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -728,6 +742,24 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
             pinned
+        );
+
+        // Phase 4: a tool with no uninstall command and no safe way yet
+        // to remove its files (Claude Code until step C). Same wire
+        // shape, a second spelling for `UNINSTALL_BLOCKED_KEYS` in
+        // src/lib/sources.ts.
+        let no_safe_method = InstalledArtifact {
+            uninstall_blocked: Some(UninstallBlocked::NoSafeMethod),
+            ..pinned.clone()
+        };
+        let json = serde_json::to_string(&no_safe_method).expect("serialize");
+        assert!(
+            json.contains("\"uninstall_blocked\":\"NoSafeMethod\""),
+            "a reason is a bare string on the wire: {json}"
+        );
+        assert_eq!(
+            serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
+            no_safe_method
         );
     }
 
