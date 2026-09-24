@@ -125,6 +125,18 @@ function hasIssuedPlan(batch: Batch): boolean {
   return batch.items.some((item) => item.issued !== null);
 }
 
+/**
+ * Narrows a `BatchItem` to the branch where its plan failed. `issued` and
+ * `planError` are set as a pair in `openConfirm` -- a fulfilled `mutateAsync`
+ * sets `issued` and leaves `planError` null, a rejected one does the
+ * reverse -- so this is never false for an item already known to have no
+ * `issued` plan (see `pageErrors` below), but the compiler has no way to see
+ * that invariant across the two fields on its own.
+ */
+function hasPlanError(item: BatchItem): item is BatchItem & { planError: string } {
+  return item.planError !== null;
+}
+
 export function UpdatesPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
@@ -669,7 +681,9 @@ export function UpdatesPage() {
   // Every plan failed: there is nothing to confirm, so the reasons go on the
   // page rather than into an empty dialog. Cleared by the next batch.
   const pageErrors =
-    batch !== null && batch.phase === "done" && !hasIssuedPlan(batch) ? batch.items : [];
+    batch !== null && batch.phase === "done" && !hasIssuedPlan(batch)
+      ? batch.items.filter(hasPlanError)
+      : [];
 
   // The row's badge, one per `UpdateState`. A `switch` with no default, so
   // a state added to `UpdateState` without a badge here fails `tsc`.
@@ -775,7 +789,7 @@ export function UpdatesPage() {
           role="alert"
           className="px-4 pt-4 text-sm text-[var(--color-danger)]"
         >
-          {t("updates.planFailed", { message: item.planError ?? "" })}
+          {t("updates.planFailed", { message: item.planError })}
         </p>
       ))}
       {saveSettings.isError ? (
