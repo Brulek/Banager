@@ -8,6 +8,7 @@
 
 mod plans;
 mod refresh;
+mod scan;
 /// Re-exported for `crate::testing::expire_issued_plans` alone: how long
 /// an issued plan stays submittable, so that helper can age one past it
 /// without duplicating the number. Gated the same way that function is --
