@@ -24,9 +24,12 @@
 //! `impl Adapter` (phase 4 spec §8.1, Q12; its appendix C records the
 //! deviation).
 
+use crate::model::{InstalledArtifact, InstanceId, ManagerInstance};
+use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// How much of the file system one scan may look at before it stops and
 /// says so. Runtime values rather than constants, so the two numbers the
@@ -156,9 +159,337 @@ pub struct UnknownScan {
     pub stopped: Option<ScanStop>,
 }
 
+/// The directories one scan looks at: the design spec's §4.2 seven,
+/// `$CARGO_HOME/bin` when the host sets `CARGO_HOME` -- resolved the way
+/// `CargoAdapter` resolves it (cargo.rs:133-136) but *added alongside*
+/// `~/.cargo/bin` where cargo substitutes it; with it set the proxies
+/// live under the override and `~/.cargo/bin` is usually absent, and an
+/// absent directory costs nothing -- and every `PATH` entry under the
+/// home directory. Raw, in this order,
+/// duplicates included: `scan_dirs` drops the ones that do not exist and
+/// reads each distinct directory once, by canonical path, so a `PATH`
+/// that names `~/.local/bin` twice, or through a link, costs one read.
+///
+/// Only `PATH` entries under `home` are taken. The rest --
+/// `/opt/homebrew/bin`, `/usr/bin` -- are Homebrew's and macOS's, and
+/// not what this page is for. Which `PATH` that is depends on how Canager
+/// was launched (`fix_path_env` restores a login shell's for a Finder
+/// launch; a terminal launch inherits that terminal's, temporary agent
+/// directories and all); the research machine's `PATH` held 23 entries
+/// that did not exist a session later, which is why missing directories
+/// are silently skipped rather than reported.
+fn candidate_dirs(env: &HostEnv) -> Vec<PathBuf> {
+    let home = &env.home;
+    let mut dirs = vec![
+        home.join(".local/bin"),
+        home.join("bin"),
+        PathBuf::from("/usr/local/bin"),
+        home.join(".cargo/bin"),
+        home.join("go/bin"),
+        home.join(".bun/bin"),
+        home.join(".deno/bin"),
+    ];
+    if let Some(cargo_home) = &env.cargo_home {
+        dirs.push(cargo_home.join("bin"));
+    }
+    dirs.extend(
+        env.path_dirs
+            .iter()
+            .filter(|dir| dir.starts_with(home))
+            .cloned(),
+    );
+    dirs
+}
+
+/// `path` with the home directory replaced by `~`, for the two wire
+/// fields the page shows as they are (`ScannedDir::path`,
+/// `UnknownEntry::path`). `resolved` is never passed through this: it is
+/// the technical detail, and stays canonical and absolute. Attribution
+/// compares absolute paths; only the output is abbreviated.
+fn display_path(path: &Path, home: &Path) -> PathBuf {
+    match path.strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("~"),
+        Ok(rest) => Path::new("~").join(rest),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+/// The name of the `.app` bundle a path runs inside, if any component of
+/// any candidate ends in `.app`: `/Applications/Helper.app/Contents/x`
+/// gives `Helper`. Candidates are tried in order -- the real path first,
+/// then a broken link's own text (the only path a broken link has), then
+/// the entry's own path.
+fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<String> {
+    for path in candidates {
+        for component in path.components() {
+            if let Component::Normal(part) = component {
+                let part = part.to_string_lossy();
+                if let Some(name) = part.strip_suffix(".app") {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// What the registered sources have said is theirs, indexed once per scan
+/// so the rules are lookups rather than a `canonicalize` per entry per
+/// instance. Built from a clone of the snapshot (`Session::scan_unknown`):
+/// a refresh committing meanwhile does not move it.
+///
+/// The rules, in order; the first that matches wins (spec §8.3):
+///
+/// 0. The entry *is* an instance's `exe_path`, byte for byte, no
+///    `canonicalize`. This is what catches a launcher that is a dangling
+///    symlink (step B's `InstanceNote::LauncherOnly`, the state a
+///    stopped uninstall leaves): `canonicalize` fails on it, so rules
+///    1-3 cannot see it, and it would otherwise be listed as a broken
+///    link here while also being a source on the Installed page.
+/// 1. The entry resolves to the same file an instance's `exe_path`
+///    resolves to. rustup's thirteen proxies in `~/.cargo/bin` are
+///    relative links to `rustup`, and so is the cargo instance's own
+///    `cargo`; grok's `agent` and `grok` links resolve to one download.
+/// 2. The entry resolves to a path *under* an artifact's
+///    `InstalledArtifact.path` (equal, when that path is a file). uv is
+///    the first real input: its `path` is the tool's venv directory
+///    (uv.rs:65) and the shim resolves to `<venv>/bin/<tool>`, so equality
+///    would never match (§十三 #35). cargo fills `path` from step E, the
+///    standalone adapters from step B; for those, rules 1 and 2 compare
+///    the same file and rule 2 decides nothing new.
+/// 3. The entry resolves to a path under a directory the instance's
+///    adapter *owns* -- `owned_roots`, the longest matching root. Not
+///    indexed here yet: the change that adds `owned_roots` adds it.
+struct Known {
+    exe_raw: Vec<(PathBuf, InstanceId)>,
+    exe_canonical: Vec<(PathBuf, InstanceId)>,
+    artifact_roots: Vec<(PathBuf, InstanceId)>,
+}
+
+impl Known {
+    fn index(instances: &[ManagerInstance], artifacts: &[InstalledArtifact]) -> Known {
+        let mut exe_raw = Vec::with_capacity(instances.len());
+        let mut exe_canonical = Vec::with_capacity(instances.len());
+        for inst in instances {
+            exe_raw.push((inst.exe_path.clone(), inst.id.clone()));
+            if let Ok(canonical) = std::fs::canonicalize(&inst.exe_path) {
+                exe_canonical.push((canonical, inst.id.clone()));
+            }
+        }
+        let artifact_roots = artifacts
+            .iter()
+            .filter_map(|artifact| {
+                let path = artifact.path.as_ref()?;
+                let canonical = std::fs::canonicalize(path).ok()?;
+                Some((canonical, artifact.key.instance_id.clone()))
+            })
+            .collect();
+        Known {
+            exe_raw,
+            exe_canonical,
+            artifact_roots,
+        }
+    }
+
+    /// The source that put `raw` (real path `resolved`; `None` for a broken
+    /// link) there, by the first rule that matches -- or `None`: unknown.
+    fn claimant(&self, raw: &Path, resolved: Option<&Path>) -> Option<&InstanceId> {
+        if let Some((_, id)) = self.exe_raw.iter().find(|(exe, _)| exe == raw) {
+            return Some(id);
+        }
+        let resolved = resolved?;
+        if let Some((_, id)) = self.exe_canonical.iter().find(|(exe, _)| exe == resolved) {
+            return Some(id);
+        }
+        if let Some((_, id)) = self
+            .artifact_roots
+            .iter()
+            .find(|(root, _)| resolved.starts_with(root))
+        {
+            return Some(id);
+        }
+        None
+    }
+}
+
+/// One directory entry as the page will describe it, or `None` for the
+/// ones the scan does not list at all: a subdirectory (depth 1, never
+/// recursed -- `~/Library/pnpm` on the research machine held `bin/` and
+/// `store/`), a link to a directory, a file with no execute bit in any
+/// position (checked on the target; a theoretical boundary, the
+/// research machine had none), anything that is neither a file nor a
+/// link, and an entry whose `lstat` failed -- one failed `stat` costs that
+/// entry and nothing else. Every file-system read of the scan is here or
+/// in `scan_dirs`'s `read_dir`.
+fn examine(raw: &Path, home: &Path, euid: u32) -> Option<UnknownEntry> {
+    let lstat = std::fs::symlink_metadata(raw).ok()?;
+    let file_type = lstat.file_type();
+    let (kind, resolved, link_target) = if file_type.is_symlink() {
+        let link_target = std::fs::read_link(raw)
+            .ok()
+            .map(|target| target.to_string_lossy().into_owned());
+        match std::fs::canonicalize(raw) {
+            Ok(resolved) => (EntryKind::Symlink, Some(resolved), link_target),
+            Err(_) => (EntryKind::BrokenSymlink, None, link_target),
+        }
+    } else if file_type.is_file() {
+        (EntryKind::File, std::fs::canonicalize(raw).ok(), None)
+    } else {
+        return None;
+    };
+    // Size, date and the executable check are the target's: a link's own
+    // say only when the installer made the link.
+    let target = match kind {
+        EntryKind::BrokenSymlink => None,
+        EntryKind::File | EntryKind::Symlink => Some(std::fs::metadata(raw).ok()?),
+    };
+    if let Some(target) = &target {
+        if target.is_dir() || (target.mode() & 0o111) == 0 {
+            return None;
+        }
+    }
+    let (size_bytes, modified_at) = match &target {
+        Some(target) => (Some(target.len()), Some(target.mtime())),
+        None => (None, None),
+    };
+    let mut bundle_candidates: Vec<&Path> = Vec::new();
+    if let Some(resolved) = &resolved {
+        bundle_candidates.push(resolved);
+    }
+    if let Some(target) = &link_target {
+        bundle_candidates.push(Path::new(target));
+    }
+    bundle_candidates.push(raw);
+    let app_bundle = app_bundle(bundle_candidates);
+    Some(UnknownEntry {
+        path: display_path(raw, home),
+        kind,
+        resolved,
+        link_target,
+        size_bytes,
+        modified_at,
+        owned_by_me: lstat.uid() == euid,
+        app_bundle,
+    })
+}
+
+/// The scan over an explicit directory list. `scan_unknown` is what
+/// production calls; this is what the synthetic-tree tests call, so a
+/// test never reads the `/usr/local/bin` of the machine running it.
+///
+/// Directories that do not exist are skipped without a trace; each
+/// distinct directory (by canonical path) is read once; entries are taken
+/// in name order so a stop at the budget is reproducible. The time budget
+/// is checked before every `read_dir`, and both limits before every entry
+/// (`ScanBudget`); when one trips, what was examined so far is returned
+/// as it is, with `stopped` saying which limit -- a directory whose first
+/// entry tripped it is not reported as read.
+pub fn scan_dirs(
+    dirs: &[PathBuf],
+    env: &HostEnv,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    budget: ScanBudget,
+) -> UnknownScan {
+    let file_stop = ScanStop::FileLimit {
+        max_entries: u32::try_from(budget.max_entries).unwrap_or(u32::MAX),
+    };
+    let time_stop = ScanStop::TimeLimit {
+        max_secs: u32::try_from(budget.max_duration.as_secs()).unwrap_or(u32::MAX),
+    };
+    let known = Known::index(instances, artifacts);
+    // The clock starts here, after indexing: `ScanBudget::max_duration`
+    // bounds the walk, not the `canonicalize` per known path above.
+    let started = Instant::now();
+    let mut scanned = Vec::new();
+    let mut entries = Vec::new();
+    let mut attributed = 0u32;
+    let mut stopped = None;
+    let mut examined = 0usize;
+    let mut seen: Vec<PathBuf> = Vec::new();
+    'dirs: for dir in dirs {
+        let Ok(canonical) = std::fs::canonicalize(dir) else {
+            continue;
+        };
+        if seen.contains(&canonical) {
+            continue;
+        }
+        seen.push(canonical);
+        if started.elapsed() >= budget.max_duration {
+            stopped = Some(time_stop.clone());
+            break;
+        }
+        // Unreadable (permissions) is not "read": it is not reported either.
+        let Ok(read) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        let mut names: Vec<_> = read
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .collect();
+        names.sort();
+        let mut count = 0u32;
+        for name in names {
+            let over_budget = if examined >= budget.max_entries {
+                Some(file_stop.clone())
+            } else if started.elapsed() >= budget.max_duration {
+                Some(time_stop.clone())
+            } else {
+                None
+            };
+            if let Some(stop) = over_budget {
+                stopped = Some(stop);
+                if count > 0 {
+                    scanned.push(ScannedDir {
+                        path: display_path(dir, &env.home),
+                        entries: count,
+                    });
+                }
+                break 'dirs;
+            }
+            examined += 1;
+            count += 1;
+            let raw = dir.join(name);
+            let Some(entry) = examine(&raw, &env.home, env.euid) else {
+                continue;
+            };
+            match known.claimant(&raw, entry.resolved.as_deref()) {
+                Some(_) => attributed += 1,
+                None => entries.push(entry),
+            }
+        }
+        scanned.push(ScannedDir {
+            path: display_path(dir, &env.home),
+            entries: count,
+        });
+    }
+    UnknownScan {
+        scanned,
+        entries,
+        attributed,
+        stopped,
+    }
+}
+
+/// The unknown-source scan: `scan_dirs` over `candidate_dirs(env)`. Pure
+/// over its arguments and the file system; synchronous, and blocking for
+/// up to `budget.max_duration` -- the Tauri shell runs it on the blocking
+/// pool (`ipc::scan_unknown`). `instances` and `artifacts` are the
+/// snapshot's, cloned by `Session::scan_unknown`.
+pub fn scan_unknown(
+    env: &HostEnv,
+    instances: &[ManagerInstance],
+    artifacts: &[InstalledArtifact],
+    budget: ScanBudget,
+) -> UnknownScan {
+    scan_dirs(&candidate_dirs(env), env, instances, artifacts, budget)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::HostEnv;
+    use std::path::Path;
 
     #[test]
     fn test_scan_budget_default_is_the_spec_numbers() {
@@ -242,5 +573,91 @@ mod tests {
             serde_json::from_str::<UnknownScan>(&json).expect("deserialize"),
             stopped
         );
+    }
+
+    fn env(home: &str, path_dirs: &[&str], cargo_home: Option<&str>) -> HostEnv {
+        HostEnv {
+            path_dirs: path_dirs.iter().map(PathBuf::from).collect(),
+            home: PathBuf::from(home),
+            euid: 501,
+            cargo_home: cargo_home.map(PathBuf::from),
+            ollama_host: None,
+        }
+    }
+
+    #[test]
+    fn test_candidate_dirs_are_the_seven_fixed_ones_plus_path_entries_under_home() {
+        let dirs = candidate_dirs(&env(
+            "/Users/someone",
+            &[
+                "/Users/someone/.opencode/bin",
+                "/opt/homebrew/bin",
+                "/usr/bin",
+                "/Users/someone/.local/bin",
+            ],
+            None,
+        ));
+        let expected: Vec<PathBuf> = [
+            "/Users/someone/.local/bin",
+            "/Users/someone/bin",
+            "/usr/local/bin",
+            "/Users/someone/.cargo/bin",
+            "/Users/someone/go/bin",
+            "/Users/someone/.bun/bin",
+            "/Users/someone/.deno/bin",
+            "/Users/someone/.opencode/bin",
+            // Raw: the duplicate is `scan_dirs`'s to drop, by canonical path.
+            "/Users/someone/.local/bin",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        assert_eq!(dirs, expected);
+    }
+
+    #[test]
+    fn test_candidate_dirs_add_cargo_home_bin_when_the_host_sets_it() {
+        let dirs = candidate_dirs(&env("/Users/someone", &[], Some("/Volumes/Data/cargo")));
+        assert!(
+            dirs.contains(&PathBuf::from("/Volumes/Data/cargo/bin")),
+            "{dirs:?}"
+        );
+        assert!(
+            dirs.contains(&PathBuf::from("/Users/someone/.cargo/bin")),
+            "{dirs:?}"
+        );
+    }
+
+    #[test]
+    fn test_display_path_abbreviates_home_and_only_home() {
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            display_path(Path::new("/Users/someone/.local/bin/agy"), home),
+            PathBuf::from("~/.local/bin/agy")
+        );
+        assert_eq!(display_path(home, home), PathBuf::from("~"));
+        assert_eq!(
+            display_path(Path::new("/usr/local/bin/helper"), home),
+            PathBuf::from("/usr/local/bin/helper")
+        );
+        // A sibling that merely starts with the same characters is not under home.
+        assert_eq!(
+            display_path(Path::new("/Users/someone-else/bin/x"), home),
+            PathBuf::from("/Users/someone-else/bin/x")
+        );
+    }
+
+    #[test]
+    fn test_app_bundle_takes_the_first_candidate_with_a_dot_app_component() {
+        let none = app_bundle([Path::new("/Users/someone/.local/bin/agy")]);
+        assert_eq!(none, None);
+        let resolved = app_bundle([
+            Path::new("/Applications/Helper.app/Contents/Helpers/helper-cli"),
+            Path::new("/usr/local/bin/helper-cli"),
+        ]);
+        assert_eq!(resolved.as_deref(), Some("Helper"));
+        // A broken link's own text, relative as the installer wrote it.
+        let relative = app_bundle([Path::new("../../Removed.app/Contents/MacOS/x")]);
+        assert_eq!(relative.as_deref(), Some("Removed"));
     }
 }
