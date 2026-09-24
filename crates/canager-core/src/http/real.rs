@@ -3,8 +3,9 @@
 //! carries the `canager/{version}` User-Agent and a 30-second client-wide
 //! default timeout; `HttpRequest::timeout` overrides that default on a
 //! per-request basis. Redirects are not followed, a 3xx is an error rather
-//! than a response, and a response body is read to a cap instead of being
-//! swallowed whole.
+//! than a response, a response body is read to a cap instead of being
+//! swallowed whole, and an `https` request to a host outside
+//! `ALLOWED_HTTPS_HOSTS` is refused before any connection is opened.
 
 use super::{HttpClient, HttpError, HttpRequest, HttpResponse};
 use async_trait::async_trait;
@@ -20,6 +21,54 @@ use async_trait::async_trait;
 /// `adapters/fixtures/ollama/0.34.1/`), so 8 MiB is roughly 33x headroom
 /// over the real worst case while still bounding the damage.
 pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The only hosts `RealHttpClient` will open an `https` connection to.
+///
+/// Every https URL this crate builds names one of these: crates.io
+/// (`CargoAdapter::latest_stable_version`), pypi.org
+/// (`PipxAdapter::latest_pypi_version`) and registry.ollama.ai
+/// (`OllamaAdapter::compare_digests`). `send` refuses any other https host
+/// before a connection is opened -- fail closed, so a URL built from data
+/// off disk or off the network (a crate name, a model reference) can at
+/// worst re-point a request within one of these hosts, never at another
+/// one. Plain `http` is exempt: the one http caller is the Ollama daemon at
+/// `HostEnv::ollama_host` (default `http://127.0.0.1:11434`), which may
+/// legitimately be any machine the user named.
+///
+/// Adding a host here is a reviewed change with two other halves: the
+/// adapter that contacts it, and `docs/what-we-run.md`, which must name
+/// every host Canager connects to.
+pub const ALLOWED_HTTPS_HOSTS: &[&str] = &["crates.io", "pypi.org", "registry.ollama.ai"];
+
+/// `Ok(())` when `url` is one `send` may fetch: any `http` URL, or an
+/// `https` URL whose host is in `ALLOWED_HTTPS_HOSTS` exactly (no
+/// subdomains: `api.crates.io` is not `crates.io`). Anything else -- another
+/// https host, another scheme, a URL that does not parse -- is
+/// `HttpError::Network` naming the reason, the same error a refused
+/// redirect gets, since both mean "this client will not go there".
+///
+/// `Url` lowercases an ASCII host, so the comparison is case-insensitive
+/// without the list carrying uppercase spellings.
+pub fn host_allowed(url: &str) -> Result<(), HttpError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|e| HttpError::Network(format!("invalid url {url:?}: {e}")))?;
+    match parsed.scheme() {
+        "http" => Ok(()),
+        "https" => {
+            let host = parsed.host_str().unwrap_or("");
+            if ALLOWED_HTTPS_HOSTS.contains(&host) {
+                Ok(())
+            } else {
+                Err(HttpError::Network(format!(
+                    "host not allowed: {host:?} is not one of {ALLOWED_HTTPS_HOSTS:?} (from {url})"
+                )))
+            }
+        }
+        other => Err(HttpError::Network(format!(
+            "scheme not allowed: {other:?} in {url}"
+        ))),
+    }
+}
 
 pub struct RealHttpClient {
     client: reqwest::Client,
@@ -43,8 +92,8 @@ impl RealHttpClient {
             // redirects, to any host, with no https-only guard — so an
             // https request could be walked to plain http, or to a host
             // Canager never chose, carrying its headers with it. None of
-            // the four endpoints this client talks to (a local Ollama
-            // daemon, registry.ollama.ai, crates.io, PyPI) ever needs a
+            // the hosts this client talks to -- `ALLOWED_HTTPS_HOSTS` over
+            // https, and the Ollama daemon over http -- ever needs a
             // redirect, so the policy is `none` and `send` below turns a
             // 3xx into an error instead of handing it back as a response.
             .redirect(reqwest::redirect::Policy::none())
@@ -67,6 +116,9 @@ impl Default for RealHttpClient {
 #[async_trait]
 impl HttpClient for RealHttpClient {
     async fn send(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+        // Before the request is even built: a refused host must never
+        // resolve, connect, or carry a header anywhere.
+        host_allowed(&req.url)?;
         let method = reqwest::Method::from_bytes(req.method.as_bytes())
             .map_err(|e| HttpError::Network(format!("invalid method {:?}: {e}", req.method)))?;
         let mut builder = self
@@ -293,12 +345,12 @@ mod tests {
     #[tokio::test]
     async fn test_real_http_client_does_not_follow_a_redirect_and_reports_it_as_an_error() {
         // reqwest's default policy follows up to ten redirects, to any host,
-        // with no https-only guard. None of Canager's requests -- a local
-        // Ollama daemon, crates.io, PyPI, registry.ollama.ai -- ever needs
-        // one, so a 3xx means something has gone wrong and following it
-        // would carry the request (and its headers) somewhere Canager never
-        // chose. The destination here is a second, *watched* server: if it
-        // is ever contacted, the redirect was followed.
+        // with no https-only guard. None of Canager's requests -- the
+        // Ollama daemon over http, `ALLOWED_HTTPS_HOSTS` over https -- ever
+        // needs one, so a 3xx means something has gone wrong and following
+        // it would carry the request (and its headers) somewhere Canager
+        // never chose. The destination here is a second, *watched* server:
+        // if it is ever contacted, the redirect was followed.
         let followed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let destination = serve_one_response_watched(
             b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nfollowed",
@@ -436,6 +488,94 @@ mod tests {
         match result {
             Err(HttpError::BodyTooLarge { limit }) => assert_eq!(limit, 1024),
             other => panic!("expected BodyTooLarge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_host_allowed_accepts_the_three_https_urls_the_adapters_build() {
+        // The exact URL shapes `CargoAdapter::latest_stable_version`,
+        // `PipxAdapter::latest_pypi_version` and
+        // `OllamaAdapter::compare_digests` build.
+        host_allowed("https://crates.io/api/v1/crates/hexyl").expect("crates.io");
+        host_allowed("https://pypi.org/pypi/cowsay/json").expect("pypi.org");
+        host_allowed("https://registry.ollama.ai/v2/library/qwen3/manifests/8b")
+            .expect("registry.ollama.ai");
+    }
+
+    #[test]
+    fn test_host_allowed_exempts_plain_http_whatever_the_host() {
+        // The Ollama daemon: its default, a loopback with an ephemeral port
+        // (every loopback test in this module), and a machine the user
+        // named through `OLLAMA_HOST`.
+        host_allowed("http://127.0.0.1:11434/api/tags").expect("the default daemon");
+        host_allowed("http://127.0.0.1:49152/").expect("a loopback test server");
+        host_allowed("http://ollama.lan:11434/api/tags").expect("a machine the user named");
+    }
+
+    #[test]
+    fn test_host_allowed_refuses_an_https_host_off_the_list() {
+        for url in [
+            "https://example.com/",
+            // The list is exact, not a suffix match.
+            "https://api.crates.io/api/v1/crates/hexyl",
+            "https://crates.io.example.com/",
+            // Userinfo does not make evil.example into crates.io.
+            "https://crates.io@evil.example/",
+        ] {
+            match host_allowed(url) {
+                Err(HttpError::Network(message)) => assert!(
+                    message.contains("host not allowed"),
+                    "{url}: the error must say the host is not allowed, got {message:?}"
+                ),
+                other => panic!("{url}: expected a host-not-allowed error, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_host_allowed_compares_hosts_case_insensitively() {
+        // `Url` lowercases an ASCII domain, so the list needs no uppercase
+        // spellings and a request cannot dodge it with one.
+        host_allowed("https://CRATES.IO/api/v1/crates/hexyl").expect("uppercase spelling");
+    }
+
+    #[test]
+    fn test_host_allowed_refuses_other_schemes_and_unparseable_urls() {
+        match host_allowed("ftp://crates.io/") {
+            Err(HttpError::Network(message)) => {
+                assert!(message.contains("scheme not allowed"), "got {message:?}")
+            }
+            other => panic!("expected a scheme error, got {other:?}"),
+        }
+        match host_allowed("not a url") {
+            Err(HttpError::Network(message)) => {
+                assert!(message.contains("invalid url"), "got {message:?}")
+            }
+            other => panic!("expected an invalid-url error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_real_http_client_refuses_an_https_host_off_the_list_before_connecting() {
+        // `.invalid` is reserved never to resolve (RFC 2606): had this
+        // request reached reqwest, the error would be a DNS failure in
+        // reqwest's words. The allowlist's own words prove the check ran
+        // before any connection was attempted.
+        let client = RealHttpClient::new();
+        let result = client
+            .send(HttpRequest {
+                method: "GET",
+                url: "https://not-on-the-list.invalid/".to_string(),
+                headers: vec![],
+                timeout: std::time::Duration::from_secs(5),
+            })
+            .await;
+        match result {
+            Err(HttpError::Network(message)) => assert!(
+                message.contains("host not allowed"),
+                "expected the allowlist's refusal, got {message:?}"
+            ),
+            other => panic!("expected a host-not-allowed error, got {other:?}"),
         }
     }
 }
