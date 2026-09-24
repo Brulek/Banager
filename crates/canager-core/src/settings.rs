@@ -63,7 +63,7 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
     }
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let seq = SAVE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let seq = SAVE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut tmp_os = path.as_os_str().to_os_string();
     tmp_os.push(format!(".tmp.{seq}"));
     let tmp_path = std::path::PathBuf::from(tmp_os);
