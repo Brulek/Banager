@@ -239,7 +239,7 @@
   },
   "unknown": {
     "title": "Programs Canager can't place",
-    "intro": "These command-line programs are on your Mac, but none of the sources Canager knows installed them. Canager only lists them — it never runs or deletes anything here.",
+    "intro": "These command-line programs are on your Mac, but Canager couldn't match them to any source it knows, so it can't tell you how they got here. Canager only lists them — it never runs or deletes anything here.",
     "lookedIn": "Looked in:",
     "dirCount_one": "{{path}} ({{count}} item)",
     "dirCount_other": "{{path}} ({{count}} items)",

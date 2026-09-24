@@ -232,7 +232,7 @@
   },
   "unknown": {
     "title": "Canager 说不清来源的程序",
-    "intro": "这些命令行程序在你的 Mac 上，但 Canager 认识的来源都没有装过它们。Canager 只是列出来——这里什么都不会运行，也不会删除。",
+    "intro": "这些命令行程序在你的 Mac 上，但 Canager 没能把它们对应到任何一个它认识的来源，所以说不清它们是怎么装上的。Canager 只是列出来——这里什么都不会运行，也不会删除。",
     "lookedIn": "查看了：",
     "dirCount_other": "{{path}}（{{count}} 项）",
     "attributed_other": "另有 {{count}} 个程序来自 Canager 认识的来源，已列在对应来源下。",
