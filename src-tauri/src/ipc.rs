@@ -4,7 +4,8 @@ use canager_core::adapters::CheckOptions;
 use canager_core::model::OpRequest;
 use canager_core::ops::{CancelRefused, OpSummary};
 use canager_core::runner::HostEnv;
-use canager_core::session::{IssuedPlan, Snapshot};
+use canager_core::scan::UnknownScan;
+use canager_core::session::{IssuedPlan, Session, Snapshot};
 use canager_core::settings::Settings;
 use std::sync::atomic::Ordering;
 use tauri::ipc::Channel;
@@ -560,6 +561,34 @@ pub async fn open_ollama_app() -> Result<(), String> {
         .unwrap_or_else(|_| Err(open_ollama_failed_json("launch_failed")))
 }
 
+/// The unknown-source scan over the session's current snapshot
+/// (`Session::scan_unknown`), for the `HostEnv` the caller read. The
+/// command reads it fresh, as `refresh_impl` does, so the directory list
+/// follows the `PATH` this process was launched with; the test passes one
+/// that keeps the scan off the developer's own home.
+pub(crate) fn scan_unknown_impl(session: &Session, env: &HostEnv) -> UnknownScan {
+    session.scan_unknown(env)
+}
+
+#[tauri::command]
+pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, String> {
+    // On the blocking pool, as `open_ollama_app` is: the scan is
+    // synchronous file-system work bounded by `ScanBudget::default()` --
+    // up to ten seconds by design -- and running it inline would hold one
+    // of the async runtime's worker threads, the ones every other command
+    // and the refresh run on, for that long. `State` cannot move into the
+    // task; the `Arc<Session>` inside it can.
+    let session = state.session.clone();
+    let env = HostEnv::discover();
+    tauri::async_runtime::spawn_blocking(move || scan_unknown_impl(&session, &env))
+        .await
+        // Only a panic inside the scan reaches this arm. The text is the
+        // front end's to show verbatim, the way a failed load shows the
+        // backend's own words under `emptyStates.loadFailed`; it is the
+        // runtime's sentence, not one of Canager's to translate.
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -700,6 +729,43 @@ mod tests {
     fn state_with_fake_adapter() -> AppState {
         let (state, _execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         state
+    }
+
+    #[tokio::test]
+    async fn test_scan_unknown_impl_reads_the_session_and_never_refreshes_it() {
+        let state = state_with_fake_adapter();
+        refresh_impl(&state).await.expect("refresh");
+        let generation = state.session.snapshot().generation;
+        // No `PATH` entries and a home that does not exist: of the scan's
+        // candidate directories only `/usr/local/bin` can be read on the
+        // machine running this, and reading is all that happens to it.
+        // The command itself passes `HostEnv::discover()`.
+        let env = HostEnv {
+            path_dirs: Vec::new(),
+            home: std::env::temp_dir().join(format!("canager-ipc-scan-{}", std::process::id())),
+            euid: 0,
+            cargo_home: None,
+            ollama_host: None,
+        };
+
+        let scan = scan_unknown_impl(&state.session, &env);
+
+        // The fake instance's executable is `/bin/true`, which no scanned
+        // directory holds, so attribution is not the subject here --
+        // `session/scan.rs` proves that on a synthetic home. This proves
+        // the shell-level contract: a scan is a read of the session, never
+        // a refresh, and everything it lists or claims it also examined.
+        assert_eq!(state.session.snapshot().generation, generation);
+        let examined: u64 = scan.scanned.iter().map(|dir| u64::from(dir.entries)).sum();
+        assert!(
+            u64::from(scan.attributed) + scan.entries.len() as u64 <= examined,
+            "{scan:?}"
+        );
+        assert!(
+            scan.scanned.iter().all(|dir| !dir.path.starts_with("~")),
+            "nothing under the non-existent home was read: {:?}",
+            scan.scanned
+        );
     }
 
     /// Like `state_with_fake_adapter`, but also returns a counter of how
