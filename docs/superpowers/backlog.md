@@ -2,6 +2,40 @@
 
 终审结论：可合并，需先修 5 项（已在 feat/phase-0-1 上修复）。以下为终审与各任务评审中**推迟到后续计划**的事项，按归属计划分组。写新计划时先读这里。
 
+## 2026-09-24 逐条核对（分支 feat/pre-release-polish）
+
+下文很多条目写于数周前，之后被后续提交修掉，但条目本身没有更新。2026-09-24 按当时代码逐条核对，
+每条都给了能证明状态的 file:line。**下列条目已关闭，下一轮不要当新发现重报**（括号内是修掉它的提交）：
+
+- 已在早先分支修掉：`issued_plans` 泄漏、`records` 无上限（`93871e5`）；并发刷新重复广播
+  `SnapshotChanged`（`93871e5`、`67d86b6`）；runner 的四条打磨（`3ccf239`、`6158bba`、`ba80106`、`2ee9244`）；
+  `RunnerError::NotFound` / `Spawn` 无测试（`c39dd13`）；非 Unix `compile_error!`（`e337df2`）；
+  tokio `rt-multi-thread` 移入 dev-dependencies（`08fe468`；`macros` 留在正式依赖是对的，
+  runner 与 ops 的生产代码用 `tokio::select!`）；`session/mod.rs` 拆分（`af6057c`）；Codex M3 brew
+  根结构体 `serde(default)`（`34b8fea`）；Codex N1 detect 测试依赖本机（`8569473`）；`uses-jq.txt`
+  为空（`63aa31c` 录了有依赖者的 fixture）；更新确认框的版本跳变与 Ollama 摘要（`60188b4`、`71bbacb`）；
+  `[profile.release]` 不生效（`64da96b`）；`fix-path-env` 无 `rev`（`6b8a0af`）；动态 i18n 键无法静态校验
+  （`32e0505`、`51a3e18`）；更新列表虚拟化（`7a3ab59`）；`useRefresh` 绕过合并器（`93871e5`）；
+  日志抽屉焦点陷阱与 Esc（`dc8683d`）；设置页单选按钮（`f35623b`）；`showDependencies` 全局开关
+  （`5c2c653`）；更新页测试夹具（`7940893`、`a8f50b3`）；`greedy_casks` /「包含自更新的应用」
+  （`6d0e38c`、`5e387b9`、`ffcbffd`）；CI 的 `concurrency` 与 `timeout-minutes`（`6a4005b`）。
+- 本分支修掉：`SAVE_TMP_SEQ` 改 `Relaxed`（`989a495`）；`UninstallDialog` 无效的 eslint 抑制注释
+  （`b1c7818`）；`item.planError ?? ""` 死代码改为类型收窄（`338f704`）；卸载对话框两次快速点击与
+  残留的提交错误（`34e80fb`，连点实际比条目写的更糟：第二次 `mutate()` 让第一次的 `onSubmitted`
+  永远不触发）；`clearSelectedUpdates` / `clearLogs` 查实没有需要它们的 bug，删除（`8739b5a`、`b67f5f6`）；
+  字面量扫描扩到整个 `src`、两个字符的词也算（`1d27015`、`82e77ae`）；Codex M4
+  `cancel_policy` 从没人读：`NoCancel` 运行中拒绝取消、界面不给「取消」按钮，排队中仍可取消，
+  `SafeKill` 没有生产方也没有独立语义，删除（`17d8ef7`、`99a9d6f`）；生产代码不再带 Node 类型，
+  测试单独一套 `tsconfig.test.json`，门禁改为 `pnpm typecheck`（`a6fe7e7`）；核对阶段「取消」按钮
+  点了没反应（`201f760`）；重新签发的卸载预览在确认被禁用时仍叫用户「再确认一次」（`67ee5fc`）。
+
+**核对后仍开着的**（形状见下文各自条目）：npm `prefix -g` 失败时的合成实例 ID；pip 分不清「没带 pip」
+与「pip 坏了」；`SUDO_ASKPASS` 透传（作者拍板）；GitHub Actions 的 Node 20 运行时（`@v4`，等额度恢复能跑
+CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要看着界面改）；刷新按钮、`releaseDraft`、
+空机器首启（作者拍板或属于阶段 5）。另有规格写了、各阶段计划都没排进去的四块：本地快照缓存（spec §3/§5，
+启动时先渲染上次的结果）、历史页与操作日志落盘（§5/§6/§7）、「报告问题」（§6）、菜单栏与后台检查（§8，
+属阶段 6）。
+
 ## 阶段 2（界面 / IPC）之前必须处理
 
 - `crates/canager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。
