@@ -14,7 +14,7 @@ use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, Host
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -57,10 +57,24 @@ struct PipxMetadata {
     main_package: PipxMainPackage,
 }
 
+/// One entry of `main_package.app_paths`: pipx serialises a `Path` as
+/// `{"__Path__": "…", "__type__": "Path"}`, and an exposed app lives at
+/// `<venv>/bin/<app>`.
+#[derive(Debug, Deserialize)]
+struct PipxAppPath {
+    #[serde(rename = "__Path__")]
+    path: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct PipxMainPackage {
     package: String,
     package_version: String,
+    /// Every executable pipx exposed for this package, absolute. Empty for
+    /// a venv with no app; `default` for a `pipx list --json` too old to
+    /// write the key at all, which then simply gives rule 2 nothing.
+    #[serde(default)]
+    app_paths: Vec<PipxAppPath>,
 }
 
 /// Parses `pipx list --json`. The venv name (the JSON object's key under
@@ -74,24 +88,39 @@ fn parse_list(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, A
     let mut out: Vec<InstalledArtifact> = root
         .venvs
         .into_iter()
-        .map(|(tool_name, venv)| InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Tool,
-                name: tool_name,
-            },
-            display_name: venv.metadata.main_package.package,
-            version: venv.metadata.main_package.package_version,
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            // pipx pins, but `pipx uninstall` removes a pinned tool: pipx
-            // 1.17.3's `commands/uninstall.py` never reads `pinned`.
-            uninstall_blocked: None,
+        .map(|(tool_name, venv)| {
+            // The venv directory, two levels above any exposed app
+            // (`<venv>/bin/<app>`): what a `~/.local/bin` shim resolves
+            // under, so the unknown-source scan's rule 2 (scan/mod.rs)
+            // can claim the shim the way it claims a uv tool's -- uv.rs:65
+            // fills the same thing from `uv tool list --show-paths`. No
+            // app, no path.
+            let path = venv
+                .metadata
+                .main_package
+                .app_paths
+                .first()
+                .and_then(|app| Path::new(&app.path).parent()?.parent())
+                .map(Path::to_path_buf);
+            InstalledArtifact {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Tool,
+                    name: tool_name,
+                },
+                display_name: venv.metadata.main_package.package,
+                version: venv.metadata.main_package.package_version,
+                reason: InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path,
+                auto_updates: false,
+                // pipx pins, but `pipx uninstall` removes a pinned tool: pipx
+                // 1.17.3's `commands/uninstall.py` never reads `pinned`.
+                uninstall_blocked: None,
+            }
         })
         .collect();
     out.sort_by(|a, b| a.key.name.cmp(&b.key.name));
@@ -519,6 +548,41 @@ mod tests {
         assert_eq!(artifacts[0].key.name, "cowsay");
         assert_eq!(artifacts[0].version, "5.0");
         assert_eq!(artifacts[0].reason, InstallReason::Requested);
+        // The tool's venv directory, two levels above its exposed app:
+        // the path the unknown-source scan's rule 2 (scan/mod.rs) compares
+        // a `~/.local/bin` shim's target against, the way it does uv's.
+        // `ends_with` rather than the fixture's absolute path, so the test
+        // does not repeat the recording machine's home directory.
+        let venv = artifacts[0]
+            .path
+            .as_deref()
+            .expect("pipx fills path from app_paths");
+        assert!(venv.ends_with("pipx/venvs/cowsay"), "{venv:?}");
+    }
+
+    #[test]
+    fn test_parse_list_leaves_path_none_for_a_venv_that_exposes_no_app() {
+        // A venv pipx could expose nothing from (`include_apps` false, or
+        // a package with no console script): `app_paths` is empty and
+        // there is no directory to hand rule 2. Inline: the recorded
+        // fixture has no such venv, and this is a literal, not a fixture.
+        let json = r#"{
+            "pipx_spec_version": "0.1",
+            "venvs": {
+                "lib-only": {
+                    "metadata": {
+                        "main_package": {
+                            "app_paths": [],
+                            "package": "lib-only",
+                            "package_version": "0.1"
+                        }
+                    }
+                }
+            }
+        }"#;
+        let artifacts = parse_list(json, "pipx").expect("parse inline pipx list");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].path, None);
     }
 
     #[test]
