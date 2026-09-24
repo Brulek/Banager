@@ -98,7 +98,13 @@ export function OperationBar() {
         <button
           type="button"
           onClick={() => cancelMutation.mutate(current.id)}
-          disabled={current.status === "CancelRequested" || current.status === "Cancelling"}
+          // Verifying: the command has already ended and `cancel()` answers
+          // `NotPending`, which the IPC reports as a silent Ok.
+          disabled={
+            current.status === "CancelRequested" ||
+            current.status === "Cancelling" ||
+            current.status === "Verifying"
+          }
           className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
         >
           {t("operations.cancel")}

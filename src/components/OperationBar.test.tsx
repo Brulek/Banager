@@ -140,6 +140,33 @@ describe("OperationBar", () => {
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
+  it("disables Cancel while the finished command's result is being verified", async () => {
+    // `OperationManager::cancel` (ops/mod.rs) answers `NotPending` for a
+    // Verifying op and the IPC turns that into a silent Ok, so an enabled
+    // button here would do nothing when clicked.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 8,
+            kind: "Upgrade",
+            instance_id: "brew:/opt/homebrew",
+            artifact_kind: "Formula",
+            name: "jq",
+            status: "Verifying",
+            outcome: null,
+            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--formula", "jq"],
+            cancel_policy: "KillThenReconcile",
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { findByRole } = renderWithProviders(<OperationBar />);
+    expect(await findByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
   it("offers no Cancel button for a running operation whose plan says NoCancel", async () => {
     // `OperationManager::cancel` (ops/mod.rs) refuses such an op once it
     // is Running, so a button here would promise something the backend
