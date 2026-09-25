@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADAPTER_LABEL_KEYS,
   canWrite,
   failedSourceCount,
   hasSourceNotice,
@@ -15,6 +16,7 @@ import {
   sourceNoticesFor,
   standaloneSummaryKey,
   UNINSTALL_BLOCKED_KEYS,
+  uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
@@ -894,5 +896,51 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     expect(zhCN.standalone.summary["standalone-claude"]).toBe(
       "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
     );
+  });
+
+  it("gives rustup its sentence and its label, in both locales", () => {
+    expect(standaloneSummaryKey("standalone-rustup")).toBe("standalone.summary.standalone-rustup");
+    expect(ADAPTER_LABEL_KEYS["standalone-rustup"]).toBe("adapters.standalone-rustup");
+    expect(en.standalone.summary["standalone-rustup"]).toBe(
+      "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo.",
+    );
+    expect(zhCN.standalone.summary["standalone-rustup"]).toBe(
+      "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。",
+    );
+    expect(en.adapters["standalone-rustup"]).toBe("rustup");
+    expect(zhCN.adapters["standalone-rustup"]).toBe("rustup");
+  });
+});
+
+describe("uninstallBlockedCopy", () => {
+  it("gives rustup's row its own reason for NoSafeMethod, and every other row B's", () => {
+    // The rustup recipe's gate puts `NoSafeMethod` on the artifact when
+    // Rust is not in its standard folders (crates/canager-core/src/
+    // adapters/standalone/rustup.rs, `uninstall_blocked`); B's sentence
+    // for that variant says the tool has no uninstall command, which is
+    // false for rustup. The badge stays; the two sentences are rustup's.
+    const rustup = uninstallBlockedCopy("NoSafeMethod", "standalone-rustup");
+    expect(rustup.badge).toBe(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge);
+    expect(rustup.description).toBe("installed.blocked.NoSafeMethod.standalone-rustup.description");
+    expect(rustup.descriptionSourceUnavailable).toBe(
+      "installed.blocked.NoSafeMethod.standalone-rustup.description",
+    );
+    expect(rustup.refused).toBe("installed.blocked.NoSafeMethod.standalone-rustup.refused");
+    expect(
+      rustup.command({ instance_id: "standalone-rustup", kind: "Binary", name: "rustup" }, undefined),
+    ).toBe("");
+    expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
+      "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+    );
+    expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
+      "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+    );
+    // Everyone else: B's copy, whatever the adapter.
+    expect(uninstallBlockedCopy("NoSafeMethod", "standalone-claude")).toBe(
+      UNINSTALL_BLOCKED_KEYS.NoSafeMethod,
+    );
+    expect(uninstallBlockedCopy("NoSafeMethod", undefined)).toBe(UNINSTALL_BLOCKED_KEYS.NoSafeMethod);
+    expect(uninstallBlockedCopy("Pinned", "standalone-rustup")).toBe(UNINSTALL_BLOCKED_KEYS.Pinned);
+    expect(uninstallBlockedCopy("Pinned", "brew")).toBe(UNINSTALL_BLOCKED_KEYS.Pinned);
   });
 });

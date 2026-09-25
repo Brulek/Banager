@@ -54,7 +54,7 @@ describe("SnapshotStatus", () => {
     expect(await screen.findByText("Nothing for Canager to manage yet")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
+        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
@@ -239,7 +239,7 @@ describe("SnapshotStatus", () => {
     // global packages lands here too.
     expect(
       screen.getByText(
-        "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code installed at its native installer's default location.",
+        "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code and rustup installed at their own installers' default locations.",
       ),
     ).toBeInTheDocument();
   });

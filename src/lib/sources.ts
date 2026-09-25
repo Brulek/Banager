@@ -26,13 +26,14 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   cargo: "adapters.cargo",
   ollama: "adapters.ollama",
   "standalone-claude": "adapters.standalone-claude",
+  "standalone-rustup": "adapters.standalone-rustup",
 };
 
 /** The adapter ids of the tools with their own installer, one per recipe
  *  in `recipes::RECIPES` (crates/canager-core/src/adapters/standalone/
  *  recipes.rs). A union so `STANDALONE_SUMMARY_KEYS` is a `Record` over
  *  it: a tool added here without a summary key there fails `tsc`. */
-export type StandaloneAdapterId = "standalone-claude";
+export type StandaloneAdapterId = "standalone-claude" | "standalone-rustup";
 
 /**
  * One sentence per standalone tool, for the Installed page's description
@@ -44,6 +45,7 @@ export type StandaloneAdapterId = "standalone-claude";
  */
 export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-claude": "standalone.summary.standalone-claude",
+  "standalone-rustup": "standalone.summary.standalone-rustup",
 };
 
 /**
@@ -587,6 +589,47 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     refused: "installed.blocked.NoSafeMethod.refused",
   },
 };
+
+/**
+ * One source's own words for a reason, where B's sentence would be false
+ * of it. rustup's row carries `NoSafeMethod` when Rust is not in its
+ * standard folders (`rustup::uninstall_blocked` in
+ * crates/canager-core/src/adapters/standalone/rustup.rs) -- not because it
+ * has no uninstall command, which is what `UNINSTALL_BLOCKED_KEYS`'s
+ * sentence says. Keyed by adapter id, then reason; a missing entry means
+ * B's copy. Literal keys, so `completeness.test.ts` finds each one.
+ */
+const UNINSTALL_BLOCKED_OVERRIDES: Partial<
+  Record<StandaloneAdapterId, Partial<Record<UninstallBlocked, UninstallBlockedCopy>>>
+> = {
+  "standalone-rustup": {
+    NoSafeMethod: {
+      badge: "installed.blocked.NoSafeMethod.badge",
+      description: "installed.blocked.NoSafeMethod.standalone-rustup.description",
+      descriptionSourceUnavailable: "installed.blocked.NoSafeMethod.standalone-rustup.description",
+      command: () => "",
+      refused: "installed.blocked.NoSafeMethod.standalone-rustup.refused",
+    },
+  },
+};
+
+/**
+ * The copy for `reason` on a row of `adapterId`: the source's own words
+ * where it has them (`UNINSTALL_BLOCKED_OVERRIDES`), else
+ * `UNINSTALL_BLOCKED_KEYS`. `adapterId` is the instance's `adapter_id`
+ * (the Installed page has it; the uninstall dialog finds the instance in
+ * the snapshot, and passes `undefined` when it cannot).
+ */
+export function uninstallBlockedCopy(
+  reason: UninstallBlocked,
+  adapterId: string | undefined,
+): UninstallBlockedCopy {
+  const overrides =
+    adapterId !== undefined && Object.prototype.hasOwnProperty.call(UNINSTALL_BLOCKED_OVERRIDES, adapterId)
+      ? UNINSTALL_BLOCKED_OVERRIDES[adapterId as StandaloneAdapterId]
+      : undefined;
+  return overrides?.[reason] ?? UNINSTALL_BLOCKED_KEYS[reason];
+}
 
 /**
  * Reads the `{"kind": "uninstall_blocked", "reason": ...}` payload

@@ -22,7 +22,8 @@
     "pip": "pip",
     "cargo": "Cargo",
     "ollama": "Ollama",
-    "standalone-claude": "Claude Code"
+    "standalone-claude": "Claude Code",
+    "standalone-rustup": "rustup"
   },
   "installed": {
     "filterLabel": "Filter installed items",
@@ -48,7 +49,11 @@
       "NoSafeMethod": {
         "badge": "Can't uninstall here",
         "description": "{{source}} has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. {{source}}'s official documentation explains how to uninstall it.",
-        "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed."
+        "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed.",
+        "standalone-rustup": {
+          "description": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+          "refused": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else, so it didn't. Nothing has been changed."
+        }
       }
     }
   },
@@ -129,7 +134,8 @@
   },
   "standalone": {
     "summary": {
-      "standalone-claude": "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm."
+      "standalone-claude": "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
+      "standalone-rustup": "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo."
     }
   },
   "sourceNotice": {
@@ -339,7 +345,7 @@
     },
     "noSources": {
       "title": "Nothing for Canager to manage yet",
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo, Ollama, and Claude Code at its native installer's default location. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
     },
     "refreshFailed": {
       "title": "Some data might be out of date",
@@ -350,7 +356,7 @@
     },
     "nothingInstalled": {
       "title": "Nothing installed yet",
-      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code installed at its native installer's default location."
+      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code and rustup installed at their own installers' default locations."
     }
   }
 }

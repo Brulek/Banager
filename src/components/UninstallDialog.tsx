@@ -6,7 +6,7 @@ import {
   parseUninstallBlocked,
   parseUninstallUnsafe,
   planErrorMessage,
-  UNINSTALL_BLOCKED_KEYS,
+  uninstallBlockedCopy,
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
 import { warningTexts } from "../lib/warnings";
@@ -110,7 +110,7 @@ export function UninstallDialog({
     if (blocked === null) {
       return t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
     }
-    const copy = UNINSTALL_BLOCKED_KEYS[blocked];
+    const copy = uninstallBlockedCopy(blocked, instance?.adapter_id);
     return withCommand(
       t(copy.refused, { command: COMMAND_SLOT, source: sourceLabel }),
       copy.command(

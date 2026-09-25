@@ -22,7 +22,8 @@
     "pip": "pip",
     "cargo": "Cargo",
     "ollama": "Ollama",
-    "standalone-claude": "Claude Code"
+    "standalone-claude": "Claude Code",
+    "standalone-rustup": "rustup"
   },
   "installed": {
     "filterLabel": "筛选已安装项目",
@@ -46,7 +47,11 @@
       "NoSafeMethod": {
         "badge": "无法在这里卸载",
         "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。{{source}} 官方文档里说明了怎么卸载。",
-        "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
+        "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。",
+        "standalone-rustup": {
+          "description": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+          "refused": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处，所以没有卸载。什么都没有改动。"
+        }
       }
     }
   },
@@ -121,7 +126,8 @@
   },
   "standalone": {
     "summary": {
-      "standalone-claude": "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。"
+      "standalone-claude": "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
+      "standalone-rustup": "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。"
     }
   },
   "sourceNotice": {
@@ -328,7 +334,7 @@
     },
     "noSources": {
       "title": "Canager 还没有可管理的内容",
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用 Claude Code 原生安装器装在默认位置的 Claude Code。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
     },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
@@ -338,7 +344,7 @@
     },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
-      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用 Claude Code 原生安装器装在默认位置的 Claude Code，会出现在这里。"
+      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup，会出现在这里。"
     }
   }
 }

@@ -13,7 +13,7 @@ import {
   isAvailable,
   sourceNoticesFor,
   standaloneSummaryKey,
-  UNINSTALL_BLOCKED_KEYS,
+  uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import { notIgnored, updateStateOf } from "../lib/updateState";
@@ -144,7 +144,10 @@ export function InstalledPage() {
     // Pinned in Homebrew with no update listed: still pinned, which is
     // why the row has no Uninstall button (`uninstall_blocked`).
     if (artifact.uninstall_blocked !== null) {
-      return { text: t(UNINSTALL_BLOCKED_KEYS[artifact.uninstall_blocked].badge), variant: "neutral" };
+      return {
+        text: t(uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id).badge),
+        variant: "neutral",
+      };
     }
     if (ignoredIds.has(id)) return { text: t("installed.updateIgnored"), variant: "neutral" };
     return { text: t("installed.upToDate"), variant: "neutral" };
@@ -167,7 +170,7 @@ export function InstalledPage() {
     const summaryKey = standaloneSummaryKey(instance.adapter_id);
     const blurb = artifact.description ?? (summaryKey === null ? null : t(summaryKey));
     if (artifact.uninstall_blocked !== null) {
-      const copy = UNINSTALL_BLOCKED_KEYS[artifact.uninstall_blocked];
+      const copy = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id);
       const refusal = withCommand(
         t(isAvailable(instance) ? copy.description : copy.descriptionSourceUnavailable, {
           command: COMMAND_SLOT,
