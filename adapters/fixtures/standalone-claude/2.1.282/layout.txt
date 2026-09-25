@@ -1,10 +1,10 @@
-lrwxr-xr-x@ 1 brulek  staff  50 Sep 25 06:00 /Users/brulek/.local/bin/claude -> /Users/brulek/.local/share/claude/versions/2.1.282
+lrwxr-xr-x@ 1 user  staff  50 Sep 25 06:00 ~/.local/bin/claude -> ~/.local/share/claude/versions/2.1.282
 
-/Users/brulek/.local/share/claude/versions:
+~/.local/share/claude/versions:
 total 1715912
-drwxr-xr-x@ 6 brulek  staff        192 Sep 25 06:00 .
-drwxr-xr-x@ 3 brulek  staff         96 Jul 11 17:27 ..
--rwxr-xr-x@ 1 brulek  staff  217662576 Sep 19 06:35 2.1.277
--rwxr-xr-x@ 1 brulek  staff  217695408 Sep 19 22:19 2.1.278
--rwxr-xr-x@ 1 brulek  staff  220931760 Sep 24 06:05 2.1.281
--rwxr-xr-x@ 1 brulek  staff  222245312 Sep 25 06:00 2.1.282
+drwxr-xr-x@ 6 user  staff        192 Sep 25 06:00 .
+drwxr-xr-x@ 3 user  staff         96 Jul 11 17:27 ..
+-rwxr-xr-x@ 1 user  staff  217662576 Sep 19 06:35 2.1.277
+-rwxr-xr-x@ 1 user  staff  217695408 Sep 19 22:19 2.1.278
+-rwxr-xr-x@ 1 user  staff  220931760 Sep 24 06:05 2.1.281
+-rwxr-xr-x@ 1 user  staff  222245312 Sep 25 06:00 2.1.282

@@ -2454,6 +2454,49 @@ mod tests {
         );
     }
 
+    /// `layout.txt` is evidence, not parser input, and it is the one
+    /// recorded file in its directory whose text was edited after
+    /// recording: its README says the home directory's absolute path
+    /// became `~` and the owner column's account name became `user`, so
+    /// that the directory names no account and no machine. This checks
+    /// that no absolute home directory and no `.local` host name survives
+    /// in that file or in the README beside it, and that the edited
+    /// launcher line still names the verified version.
+    #[test]
+    fn test_the_recorded_layout_and_its_readme_name_no_home_directory_or_host() {
+        let verified = adapter(Arc::new(MockRunner::new())).meta.verified_versions[0].clone();
+        let layout = fixture("layout.txt");
+        let readme = fixture("README.md");
+        for (name, text) in [("layout.txt", &layout), ("README.md", &readme)] {
+            for prefix in ["/Users/", "/home/"] {
+                assert!(
+                    !text.contains(prefix),
+                    "{name} names an absolute home directory under {prefix}"
+                );
+            }
+            // `X.local` is a Mac's Bonjour host name when `X` ends in a
+            // letter, digit or hyphen; `~/.local/...` is preceded by `/`
+            // and is not one.
+            let names_a_host = text.match_indices(".local").any(|(at, _)| {
+                text[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '-')
+            });
+            assert!(!names_a_host, "{name} names a .local host");
+        }
+        assert!(
+            layout.contains(&format!(
+                "~/.local/bin/claude -> ~/.local/share/claude/versions/{verified}"
+            )),
+            "layout.txt's launcher line names the verified version under ~"
+        );
+        assert!(
+            layout.contains("~/.local/share/claude/versions:"),
+            "layout.txt's versions listing is headed by the directory under ~"
+        );
+    }
+
     #[test]
     fn test_the_recorded_channel_pointers_are_bare_versions() {
         let latest_pointer = latest::parse_channel_body(&fixture("latest.txt")).expect("latest");
