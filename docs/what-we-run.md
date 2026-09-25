@@ -199,8 +199,9 @@ no reading before: `inventory` refuses at once with `IndexUpdating`, no
 `brew info` runs, and there is nothing to compare the reading after with
 — so an upgrade that then exits 0 is reported as a success whenever the
 package is still installed afterwards, whether or not its version moved
-(the `Unknown` arm of `run_operation`). This is the one way an exit-0
-upgrade whose version did not move is not reported as needing attention.
+(the `Unknown` arm of `run_operation`). This is one way an exit-0
+upgrade whose version did not move is not reported as needing attention;
+Claude Code's section names another.
 
 **Files this adapter reads.** Besides checking that the three candidate
 paths exist, the uninstall preview looks at Homebrew's own update lock,
@@ -540,11 +541,15 @@ leaves behind, and its preview promises nothing. Cancel: allowed
 (`KillThenReconcile`) — the runner stops the process group, Canager reads
 `<claude> --version` again, and the operation is reported as unconfirmed
 regardless of that reading (the same rule as every stopped upgrade). If
-it exits 0 but the launcher is dangling or its version cannot be read,
-verification fails and the outcome is also unconfirmed. If it exits 0 and
-the version did not move (Claude Code already updated itself, or reports
-"up to date"), the operation is reported as needing attention whenever a
-version before it could be read, as for every source. There is no install
+it exits 0 but afterwards the launcher is dangling or its version cannot
+be read, verification fails and the outcome is also unconfirmed. If it
+exits 0 and the version did not move (Claude Code already updated itself,
+or reports "up to date"), the operation is reported as needing attention
+whenever a version before it could be read, as for every source. When
+none could (`--version` did not answer just before the update), there is
+nothing to compare, and an update that exits 0 is reported as a success
+if a version can be read afterwards — even when `claude update` found
+nothing to install. There is no install
 (the installer is Anthropic's, not Canager's) and, in this step, no
 uninstall: Claude Code has no uninstall command, and until Canager can
 move its files to the Trash itself (phase 4 step C) the row says it cannot

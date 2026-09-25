@@ -433,11 +433,18 @@ impl StandaloneAdapter {
     }
 
     /// Step B only executes upgrades: an owned launcher without a readable
-    /// version is not sufficient evidence that an upgrade succeeded.
-    /// Inventory still preserves `LauncherOnly` presence for display and
-    /// step C's removal. Step C must use that presence for uninstall
-    /// verification while keeping this stricter upgrade check (phase 4
-    /// step B plan, deviation 15).
+    /// version is not sufficient evidence that an upgrade succeeded, so
+    /// after `claude update` exits 0 this `Err` makes `run_operation`
+    /// report `Unconfirmed`. `run_operation` takes this reading before an
+    /// upgrade too, and there the same `Err` only leaves nothing to
+    /// compare: an update that exits 0 is then judged by the reading after
+    /// alone, as for every adapter (`VersionChange::Unknown`), and is
+    /// `Succeeded` when that reading has a version, even if `claude update`
+    /// found nothing to install (both cases are in
+    /// tests/ops_upgrade_version_test.rs). Inventory still preserves
+    /// `LauncherOnly` presence for display and step C's removal. Step C
+    /// must use that presence for uninstall verification while keeping this
+    /// stricter upgrade check (phase 4 step B plan, deviation 15).
     pub async fn reconcile(
         &self,
         inst: &ManagerInstance,

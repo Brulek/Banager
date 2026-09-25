@@ -687,6 +687,35 @@ async fn test_a_claude_update_exiting_zero_with_a_dangling_launcher_is_unconfirm
 }
 
 #[tokio::test]
+async fn test_a_claude_update_exiting_zero_with_no_version_before_it_falls_back_to_the_reading_after(
+) {
+    // `run_operation` reads `--version` before an upgrade as well as after
+    // it. A failed reading after is `Unconfirmed`
+    // (`test_a_claude_update_exiting_zero_with_a_failed_version_read_is_unconfirmed`);
+    // a failed reading before only leaves nothing to compare, so an update
+    // that exits 0 is judged by the reading after alone, as for every
+    // source (`VersionChange::Unknown` in ops/mod.rs, and
+    // `test_succeeded_upgrade_with_no_before_reading_falls_back_to_presence`
+    // in tests/ops_outcome_test.rs). With a version after, that is
+    // `Succeeded` -- even here, where `claude update` found nothing to
+    // install and the version after is the one installed before.
+    let timed_out = CommandOutput {
+        exit_code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        timed_out: true,
+        cancelled: false,
+    };
+    let outcome = claude_upgrade_outputs(
+        exited_0("Claude Code is up to date (2.1.281)\n", ""),
+        vec![timed_out, exited_0("2.1.281 (Claude Code)\n", "")],
+        false,
+    )
+    .await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
 async fn test_a_stopped_claude_upgrade_stays_unconfirmed_even_if_the_version_moves() {
     for stop in [Stop::Cancel, Stop::Timeout] {
         assert_eq!(
