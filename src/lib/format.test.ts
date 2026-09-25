@@ -82,6 +82,32 @@ describe("outcomeKey", () => {
     );
   });
 
+  it("says an uninstall seemed to succeed, naming no command, since a path-list uninstall runs none", () => {
+    // `run_operation` (crates/canager-core/src/ops/mod.rs) sends this
+    // whenever `execute` answered Succeeded and the reading after still
+    // finds the item installed: after an uninstall command that exited 0,
+    // and after a path-list uninstall (`execute_removal` in
+    // crates/canager-core/src/adapters/standalone/removal.rs) that moved
+    // every listed path to the Trash and ran no command at all. The
+    // Chinese used to say "卸载命令显示成功" -- the uninstall *command*
+    // showed success -- which is false on the second route.
+    const still: Outcome = { NeedsAttention: "StillInstalledAfterUninstall" };
+    expect(outcomeKey(still)).toBe("NeedsAttention.StillInstalledAfterUninstall");
+    expect(outcomeArgs(still)).toEqual({});
+    expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe(
+      "Needs attention: the uninstall seemed to succeed, but it's still installed",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe(
+      "需要留意：卸载看似成功，但实际仍未移除",
+    );
+    expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).not.toMatch(
+      /command/i,
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).not.toContain(
+      "命令",
+    );
+  });
+
   it("says an update that changed nothing changed nothing, and points to the log", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after

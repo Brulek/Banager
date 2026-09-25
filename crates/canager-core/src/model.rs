@@ -728,7 +728,9 @@ pub enum Fault {
 pub enum Attention {
     /// An install exited 0 and the item is not installed.
     NotInstalledAfterInstall,
-    /// An uninstall exited 0 and the item is still installed.
+    /// An uninstall ended as if it had succeeded -- its command exited 0,
+    /// or a path-list uninstall moved every listed path to the Trash -- and
+    /// the item is still installed.
     StillInstalledAfterUninstall,
     /// An upgrade exited 0 and the item is no longer installed at all.
     GoneAfterUpgrade,
