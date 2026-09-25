@@ -525,6 +525,21 @@ pub enum UpdateBlocked {
     ///   nothing but exits 0 (`commands/upgrade.py:408-409` and `:74-81`).
     ///   Read by `parse_outdated` in `adapters/pipx.rs`.
     Pinned,
+    /// The tool installs its updates itself and has no update command
+    /// Canager may run for it, so a newer version is listed with no
+    /// button. One producer: `StandaloneAdapter::check_updates`
+    /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
+    /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
+    /// no options and has never been run (agy.md §4; spec §4.4). Not "no
+    /// candidate": the Installed row would then say "up to date", which is
+    /// false while 1.2.11 exists; not `checkable: false`: Canager did
+    /// check. Read by the gate (`blocked_upgrade` in session/plans.rs,
+    /// generic over this enum), by `updateStateOf` in
+    /// src/lib/updateState.ts (no button, no checkbox) and by
+    /// `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts, whose
+    /// sentence tells the user to open the tool once and that it checks at
+    /// most every 15 minutes.
+    SelfUpdatesOnly,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1009,6 +1024,16 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<UpdateCandidate>(&json).expect("deserialize"),
             pinned
+        );
+
+        // Phase 4 step D: the second reason, a tool that installs its updates
+        // itself and offers no command Canager may run
+        // (`StandaloneAdapter::check_updates` for a recipe with no `upgrade`).
+        // `UPDATE_BLOCKED_KEYS.SelfUpdatesOnly` in src/lib/sources.ts indexes
+        // this spelling.
+        assert_eq!(
+            serde_json::to_string(&UpdateBlocked::SelfUpdatesOnly).unwrap(),
+            r#""SelfUpdatesOnly""#
         );
     }
 

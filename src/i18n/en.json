@@ -97,6 +97,12 @@
         "descriptionSelfUpdating": "This has been pinned, so neither Homebrew nor Canager will update it. The app updates itself, though, and may still do so despite the pin. To let Homebrew update it, run {{command}} in Terminal; Canager will offer the update the next time it checks, which at the latest is the next time you start Canager.",
         "descriptionSelfUpdatingSourceUnavailable": "This has been pinned, so neither Homebrew nor Canager will update it. The app updates itself, though, and may still do so despite the pin. To let Homebrew update it, run {{command}} in Terminal; after that, Canager will offer the update the next time it checks and Homebrew answers.",
         "refused": "This package has been pinned in {{source}}, so Canager didn't update it. Nothing has been changed."
+      },
+      "SelfUpdatesOnly": {
+        "badge": "Updates itself",
+        "description": "A newer version of {{source}} is out ({{current}} → {{target}}), and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+        "descriptionSourceUnavailable": "A newer version of {{source}} was seen the last time it answered, and {{source}} installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run {{command}} in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+        "refused": "{{source}} updates itself, so Canager didn't try to update it. Nothing has been changed."
       }
     }
   },

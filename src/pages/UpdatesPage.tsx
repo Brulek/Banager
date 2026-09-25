@@ -536,9 +536,11 @@ export function UpdatesPage() {
       const instance = snapshot?.instances.find((i) => i.id === candidate.key.instance_id);
       // On a blocked row `auto_updates` is brew's own flag for a cask that
       // updates itself (`parse_info_installed` in crates/canager-core/src/
-      // adapters/brew/parse.rs): its one other producer, the standalone
-      // adapter, blocks no update. A package missing from `artifacts` gets
-      // the plain copy.
+      // adapters/brew/parse.rs), or the standalone adapter's
+      // `Recipe.self_updates` for a tool that does. A reason with no
+      // separate sentence for such a package (`SelfUpdatesOnly`, whose
+      // reason is that very fact) falls back to its plain copy, as does a
+      // package missing from `artifacts`.
       const selfUpdating = artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true;
       // A blocked candidate under a source that did not answer the last
       // refresh is carried forward and gets no Update button either way
@@ -557,6 +559,10 @@ export function UpdatesPage() {
         t(description, {
           command: COMMAND_SLOT,
           source: sourceLabelFor(candidate.key.instance_id),
+          // `SelfUpdatesOnly`'s sentence names the versions the row
+          // compared (spec §9.2); `Pinned`'s do not use them.
+          current: candidate.current,
+          target: candidate.target,
         }),
         copy.command(candidate.key, instance),
       );

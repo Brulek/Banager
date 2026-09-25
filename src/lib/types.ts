@@ -122,14 +122,17 @@ export type Warning =
 /**
  * Why the tool itself will refuse to update this one package, although its
  * source is writable and answering. Mirrors `UpdateBlocked` in
- * crates/canager-core/src/model.rs: bare-string unit variants. Only
- * `Pinned` exists, produced by brew's `parse_outdated` (from `brew
- * outdated`'s `pinned: true`) and pipx's (from `pipx list --outdated`'s
- * `name [pinned]:`). Read through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts,
- * a `Record` over this union, so a variant added here without copy fails
- * `tsc` rather than rendering nothing.
+ * crates/canager-core/src/model.rs: bare-string unit variants. `Pinned` is
+ * produced by brew's `parse_outdated` (from `brew outdated`'s
+ * `pinned: true`) and pipx's (from `pipx list --outdated`'s
+ * `name [pinned]:`); `SelfUpdatesOnly` by the standalone adapter's
+ * `check_updates` for a tool that installs its updates itself and has no
+ * update command Canager may run (Antigravity CLI, phase 4 step D). Read
+ * through `UPDATE_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over
+ * this union, so a variant added here without copy fails `tsc` rather
+ * than rendering nothing.
  */
-export type UpdateBlocked = "Pinned";
+export type UpdateBlocked = "Pinned" | "SelfUpdatesOnly";
 export interface UpdateCandidate {
   key: ArtifactKey;
   current: string;

@@ -400,6 +400,20 @@ export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undef
   return [program, ...args].map(displayToken).join(" ");
 }
 
+/**
+ * The command a `SelfUpdatesOnly` row's sentence tells the user to run
+ * once: the tool itself -- its launcher, which is the standalone
+ * instance's `exe_path` (`StandaloneAdapter::detect`) -- with no
+ * arguments. Opening it is what makes it check for updates (spec §4.4);
+ * `<launcher> --version` would not (agy 1.2.10 never reaches its updater
+ * from `--version`, spec §3.4). Quoted by `displayToken` when the path has
+ * a space, like the unpin commands. The bare name when the snapshot lacks
+ * the instance, which `refresh` never produces.
+ */
+function launcherCommand(key: ArtifactKey, instance: ManagerInstance | undefined): string {
+  return displayToken(instance?.exe_path ?? key.name);
+}
+
 /** What `UPDATE_BLOCKED_KEYS` holds for one reason. */
 interface UpdateBlockedCopy {
   /** The row's badge on the Updates page, in place of "Update". */
@@ -503,6 +517,24 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
       "updates.blocked.Pinned.descriptionSelfUpdatingSourceUnavailable",
     command: unpinCommand,
     refused: "updates.blocked.Pinned.refused",
+  },
+  SelfUpdatesOnly: {
+    badge: "updates.blocked.SelfUpdatesOnly.badge",
+    // The tool installs its updates itself (agy: a 15-minute debounce on
+    // its background check, agy.md §4) and offers no command Canager may
+    // run, so the sentence says what does work: open it once, then quit.
+    // The available sentence names the versions the row compared; the
+    // unavailable one cannot promise a current target and says only that
+    // a newer version was seen.
+    description: "updates.blocked.SelfUpdatesOnly.description",
+    descriptionSourceUnavailable: "updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable",
+    // The reason *is* "it updates itself": no separate sentence exists for
+    // a self-updating package, and `rowDescription` falls back to
+    // `description` (`copy.selfUpdatingDescription ?? copy.description`).
+    selfUpdatingDescription: null,
+    selfUpdatingDescriptionSourceUnavailable: null,
+    command: launcherCommand,
+    refused: "updates.blocked.SelfUpdatesOnly.refused",
   },
 };
 

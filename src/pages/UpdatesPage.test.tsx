@@ -1800,6 +1800,39 @@ describe("UpdatesPage", () => {
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 
+  it("offers no Update button for a tool that updates itself, and says to open it once", async () => {
+    // Spec §4.4, D5 item 4: the newer version is real (read from the
+    // launcher's live version), so the row stays and is counted with what
+    // Canager cannot update; the tool has no update command Canager could
+    // run, so there is no button and no checkbox, and the sentence says
+    // what does work -- opening the tool, which checks at most every 15
+    // minutes -- with the launcher set apart as code. The claude fixtures
+    // stand in for agy here: the copy record is per reason, not per tool.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }, snapshot.updates[1]];
+    artifacts = [...snapshot.artifacts, claudeArtifact];
+    const { findByText, getAllByRole, getByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("claude");
+    // Only onyx's.
+    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("checkbox")).toHaveLength(1);
+    expect(getAllByRole("checkbox")[0]).toHaveAccessibleName("Select onyx for update");
+    expect(getByText("Updates itself")).toBeInTheDocument();
+    expect(
+      getByText(
+        wholeSentence(
+          "A newer version of Claude Code is out (2.1.281 → 2.1.290), and Claude Code installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run /Users/someone/.local/bin/claude in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("/Users/someone/.local/bin/claude").tagName).toBe("CODE");
+    // Not the actionable row's hint: this row has no button to point at.
+    expect(queryByText(/usually updates itself/)).toBeNull();
+    await findByText("1 update available");
+    await findByText("1 more can't be updated here");
+  });
+
   // The four PATH notes (spec §七), each with the title of the notice it
   // puts under the source's heading.
   const pathNotes: [InstanceNote, string][] = [

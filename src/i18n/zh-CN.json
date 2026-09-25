@@ -91,6 +91,12 @@
         "descriptionSelfUpdating": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次启动 Canager 的时候。",
         "descriptionSelfUpdatingSourceUnavailable": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，之后 Canager 检查时只要 Homebrew 有应答，就会提供更新。",
         "refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Canager 没有更新它。什么都没有改动。"
+      },
+      "SelfUpdatesOnly": {
+        "badge": "自己更新",
+        "description": "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
+        "descriptionSourceUnavailable": "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：它启动时会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
+        "refused": "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
       }
     }
   },

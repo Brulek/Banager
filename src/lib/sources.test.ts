@@ -758,6 +758,61 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       expect(copy).toMatch(/被固定/);
     }
   });
+
+  it("names the tool's own launcher, quoted when its path has a space, as what a self-updating tool is opened with", () => {
+    // Spec §4.4 / §十三 #31: the sentence says to open the tool once (not
+    // `<launcher> --version`, which on agy 1.2.10 never reaches its
+    // updater), so the command is the launcher itself, bare. A missing
+    // instance gives the bare name, which `refresh` never produces.
+    const agy = instance({
+      id: "standalone-agy",
+      adapter_id: "standalone-agy",
+      exe_path: "/Users/Alice Smith/.local/bin/agy",
+      prefix: "/Users/Alice Smith/.gemini/antigravity-cli",
+    });
+    const key = { instance_id: "standalone-agy", kind: "Binary", name: "agy" } satisfies ArtifactKey;
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.command(key, agy)).toBe(
+      "'/Users/Alice Smith/.local/bin/agy'",
+    );
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.command(key, undefined)).toBe("agy");
+    // The reason itself is "it updates itself": no separate sentence for a
+    // self-updating package.
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.selfUpdatingDescription).toBeNull();
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.selfUpdatingDescriptionSourceUnavailable).toBeNull();
+  });
+
+  it("tells a self-updating tool's user to open it once, that it checks at most every 15 minutes, and names the versions", () => {
+    // agy.md §4 (VERIFIED): a 15-minute debounce on its background check --
+    // without that number, "I opened it and nothing happened" is certain.
+    for (const copy of [
+      en.updates.blocked.SelfUpdatesOnly.description,
+      en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
+    ]) {
+      expect(copy).toContain("{{source}}");
+      expect(copy).toContain("{{command}}");
+      expect(copy).toMatch(/Open it once/);
+      expect(copy).toMatch(/15 minutes/);
+    }
+    for (const copy of [
+      zhCN.updates.blocked.SelfUpdatesOnly.description,
+      zhCN.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
+    ]) {
+      expect(copy).toContain("{{source}}");
+      expect(copy).toContain("{{command}}");
+      expect(copy).toMatch(/打开它一次/);
+      expect(copy).toMatch(/15 分钟/);
+    }
+    // The available-source sentence names the two versions (spec §9.2);
+    // the unavailable one cannot promise a current target and does not.
+    expect(en.updates.blocked.SelfUpdatesOnly.description).toContain("{{current}} → {{target}}");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.description).toContain("{{current}} → {{target}}");
+    expect(en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable).not.toContain("{{target}}");
+    // `refused` gets only the source's label.
+    expect(en.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Updates itself");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("自己更新");
+  });
 });
 
 describe("UNINSTALL_BLOCKED_KEYS", () => {
