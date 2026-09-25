@@ -675,7 +675,14 @@ impl OperationManager {
         }
         self.set_status(op_id, OpStatus::Verifying);
 
-        let reconciled = adapter.reconcile(&instance, &key).await;
+        // After an uninstall only presence decides anything below, and an
+        // adapter may answer that when it cannot answer what version is
+        // installed (`Adapter::reconcile_after_uninstall`); everything
+        // else keeps the full reading.
+        let reconciled = match plan.request.kind {
+            OpKind::Uninstall => adapter.reconcile_after_uninstall(&instance, &key).await,
+            OpKind::Install | OpKind::Upgrade => adapter.reconcile(&instance, &key).await,
+        };
 
         let final_outcome = match exec_result {
             // A command that reported success is not proof of success on

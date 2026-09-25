@@ -453,6 +453,31 @@ pub trait Adapter: Send + Sync {
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError>;
+    /// The reading `run_operation` (ops/mod.rs) takes after an uninstall,
+    /// which asks one question only: is the artifact still there
+    /// (`Reconciled::present`)? Every other operation is verified with
+    /// `reconcile`. Defaults to `reconcile`, which is what every source's
+    /// uninstall was verified with before this existed.
+    ///
+    /// `StandaloneAdapter` (adapters/standalone/mod.rs) is what this is
+    /// for, and its path-list uninstall (phase 4 step C) brings the one
+    /// production override: its `reconcile` refuses a launcher it cannot
+    /// read a version from -- after an upgrade that exits 0, such a
+    /// launcher is no evidence of success -- while after an uninstall that
+    /// launcher, the dangling link such an uninstall leaves when it stops
+    /// partway, is exactly the evidence that the tool is still there.
+    ///
+    /// An adapter that cannot tell -- a permission error where the
+    /// launcher should be, say -- answers `Err`, never `present: false`:
+    /// `run_operation` turns an `Err` into `Unconfirmed`, so "could not
+    /// tell" is never reported as a finished uninstall.
+    async fn reconcile_after_uninstall(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        self.reconcile(inst, key).await
+    }
 }
 
 /// Runs a plan through the runner, streaming each line to the sink, and maps
