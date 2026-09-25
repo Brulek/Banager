@@ -172,12 +172,14 @@ impl Session {
         // mode, which begins by deleting the updater the operation is
         // about to run. So: the held set is read once here; every adapter
         // with a previous-round instance whose id is a held lock keeps
-        // last round's instances unchanged (no notice, no `stale`: nothing
-        // failed), and the per-instance loop below carries the held
-        // instances' rows forward instead of waiting on their lock -- a
-        // refresh used to wait out a `brew install` for minutes. Instances
-        // of a skipped adapter that are not themselves held are still
-        // inventoried under their own lock. The operation's own reading
+        // last round's instances unchanged (no notice, and the skip itself
+        // adds nothing to `stale`: nothing failed), and the per-instance
+        // loop below carries the held instances' rows forward instead of
+        // waiting on their lock -- a refresh used to wait out a `brew
+        // install` for minutes -- together with any error last round
+        // recorded against them, which this round has not retried.
+        // Instances of a skipped adapter that are not themselves held are
+        // still inventoried under their own lock. The operation's own reading
         // afterwards (`run_operation`'s reconcile, under its locks) and the
         // refresh the front end runs when it finishes replace these rows.
         // Read once, so an operation submitted after this line may start
@@ -290,9 +292,11 @@ impl Session {
         };
 
         // Seeded before the fan-out because a skipped instance contributes
-        // its carried-forward rows from inside the loop below.
+        // its carried-forward rows -- and, when an operation holds it, last
+        // round's errors against it -- from inside the loop below.
         let mut artifacts = Vec::new();
         let mut updates = Vec::new();
+        let mut errors = detect_errors;
         let mut handles = Vec::with_capacity(instances.len());
         for inst in instances.clone() {
             // Task 11: a source that already told us it is not answering is
@@ -307,7 +311,16 @@ impl Session {
             // offering an Uninstall button that could not possibly work.
             // And an instance an operation is holding (`under_operation`,
             // above): its rows are last round's, and this round does not
-            // wait for the operation's lock to take them again.
+            // wait for the operation's lock to take them again. Its errors
+            // are last round's too. This round re-read nothing about it,
+            // so whatever failed for it then has not been retried -- and
+            // dropping that record, as this used to, let a Retry pressed
+            // during the operation clear the "may be out of date" banner
+            // over data exactly as old as before. The skip adds no error
+            // of its own: nothing failed. An unavailable instance that no
+            // operation holds carries none: its state is on screen in its
+            // own notice, which `Snapshot::stale` deliberately does not
+            // duplicate.
             if inst.status.unavailable.is_some() || under_operation.contains(&inst.id) {
                 artifacts.extend(
                     previous
@@ -323,6 +336,15 @@ impl Session {
                         .filter(|u| u.key.instance_id == inst.id)
                         .cloned(),
                 );
+                if under_operation.contains(&inst.id) {
+                    errors.extend(
+                        previous
+                            .errors
+                            .iter()
+                            .filter(|e| e.instance_id == inst.id)
+                            .cloned(),
+                    );
+                }
                 continue;
             }
             let Some(adapter) = self.adapters.get(&inst.adapter_id).cloned() else {
@@ -495,11 +517,11 @@ impl Session {
             ));
         }
 
-        let mut errors = detect_errors;
-        // Exactly "a refresh attempt failed", which is all any reader does
-        // with it: `SnapshotStatus` turns it into the one page-wide "some
-        // of this may be out of date, try again" banner, over a count of
-        // `errors`.
+        // Exactly "a refresh attempt failed" -- this round's, or, for an
+        // instance an operation holds, the last one that reached it (the
+        // carry-forward above) -- which is all any reader does with it:
+        // `SnapshotStatus` turns it into the one page-wide "some of this
+        // may be out of date, try again" banner, over a count of `errors`.
         //
         // It briefly also meant "or some source is unavailable". Nothing
         // could observe that half -- the banner's own condition ruled it
@@ -1567,6 +1589,126 @@ mod tests {
         let s = state.lock().unwrap();
         assert_eq!(s.detect_calls, 2);
         assert!(s.inventory_calls.contains(&"fake:1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_during_an_operation_carries_the_held_instances_previous_errors_forward()
+    {
+        // Step E's whole-step review: the held instance's rows come forward
+        // from last round (the test above), and so must the error that
+        // round recorded against it -- this round re-read nothing about
+        // the instance, so nothing has been retried. Without this, a Retry
+        // pressed during the operation cleared the "may be out of date"
+        // banner over data exactly as old as before.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.artifacts
+                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(first.errors.is_empty(), "{:?}", first.errors);
+
+        // Last round: fake:1's inventory failed, and the snapshot says so.
+        state.lock().unwrap().failing.push("fake:1".to_string());
+        let failed = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(failed.stale, "precondition: the read failed");
+        assert_eq!(failed.errors.len(), 1);
+        assert_eq!(failed.errors[0].instance_id, "fake:1");
+        state.lock().unwrap().inventory_calls.clear();
+
+        // An operation now holds fake:1's lock. `failing` is one-shot and
+        // was consumed above, so had this round read fake:1 at all it
+        // would have read clean: an error in the snapshot below can only
+        // have been carried forward.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let during = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&non_root_env(), &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation on one instance");
+        {
+            let s = state.lock().unwrap();
+            assert!(
+                !s.inventory_calls.contains(&"fake:1".to_string()),
+                "fake:1 is not read while its operation holds its lock"
+            );
+            assert!(
+                s.inventory_calls.contains(&"fake:2".to_string()),
+                "fake:2 is read as ever"
+            );
+        }
+        assert!(during.artifacts.iter().any(|a| a.key.name == "jq"));
+        assert_eq!(
+            during.errors, failed.errors,
+            "the error recorded against the held instance comes forward with its rows"
+        );
+        assert!(
+            during.stale,
+            "nothing about fake:1 was re-read, so the banner stays"
+        );
+        assert_eq!(
+            during.generation, failed.generation,
+            "the same rows and the same error: nothing changed, nothing bumps"
+        );
+
+        // Once the operation is over, the next refresh reads fake:1 again
+        // and, succeeding this time, is what clears the carried error.
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        state.lock().unwrap().inventory_calls.clear();
+        let after = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(state
+            .lock()
+            .unwrap()
+            .inventory_calls
+            .contains(&"fake:1".to_string()));
+        assert!(after.errors.is_empty(), "{:?}", after.errors);
+        assert!(!after.stale);
     }
 
     #[tokio::test]

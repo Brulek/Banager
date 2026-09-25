@@ -93,7 +93,10 @@ pub struct Snapshot {
     pub refreshed_at: Option<i64>,
     /// True when part of the newest refresh attempt failed, so this data
     /// is older than it looks (spec §3: keep old data, mark it possibly
-    /// stale). Exactly `!errors.is_empty()`: `errors` says which sources
+    /// stale). For an instance an operation is holding, "newest" means
+    /// the last attempt that reached it: a refresh that skips it carries
+    /// its errors forward with its rows (`refresh.rs`), having retried
+    /// nothing. Exactly `!errors.is_empty()`: `errors` says which sources
     /// and why, this says whether to say anything at all, and
     /// `SnapshotStatus` renders the one banner over both.
     ///
