@@ -9,9 +9,10 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 596 Rust tests (plus 2 more
-> that touch a real Homebrew and only run with `--ignored`) and 350 front-end tests, but there is
-> no downloadable build yet — v0.1 is being prepared. Nothing here is ready to rely on.
+> **Status: pre-release.** The core and the UI work and are covered by 596 Rust tests (plus 3 more
+> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 350 front-end
+> tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
+> rely on.
 
 <!-- A screenshot belongs here before the first release. -->
 
@@ -108,13 +109,17 @@ WebView is a type error; `tsconfig.test.json` checks the vitest files with `@typ
 `src/i18n/completeness.test.ts` and `src/i18n/no-literal-strings.test.ts` need to read the source tree
 through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
 
-`cargo test --workspace` has two `#[ignore]`d tests in `crates/canager-core/tests/brew_live.rs`,
-both skipped by a plain `cargo test`: one only reads the real Homebrew on the machine running it,
-the other installs and removes the `hello` formula and refuses to touch anything without
-`CANAGER_LIVE=1`. CI runs both; run them yourself with:
+`cargo test --workspace` has three `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
+in `crates/canager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
+running it, the other installs and removes the `hello` formula. The third, in
+`crates/canager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
+(named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
+The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI runs all
+three; run them yourself with:
 
 ```bash
 CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
+CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored
 ```
 
 ## Language
@@ -187,9 +192,9 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 596 个 Rust 测试（另有 2 个要连着真实的
-Homebrew 才跑，平时是跳过的）和 350 个前端测试，但还没有可下载的版本，v0.1 正在准备。现在还
-不适合依赖它。
+**目前处于发布前阶段**，核心与界面已经可用、有 596 个 Rust 测试（另有 3 个要连着真实的
+Homebrew 或真实的废纸篓才跑，平时是跳过的）和 350 个前端测试，但还没有可下载的版本，v0.1 正在
+准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
 中文用户读不懂的句子算 bug。

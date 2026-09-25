@@ -779,6 +779,13 @@ target is gone — which is what every Claude Code uninstall moves last:
 the launcher, after the program files it points to — other macOS
 versions, and Intel Macs.
 
+`crates/canager-core/tests/standalone_uninstall_test.rs` has an
+`#[ignore]`d test that makes five throwaway items — a file, a folder, a
+link to each, and a link to nothing — moves them with the real call, and
+checks that each lands in `~/.Trash` as itself; CI runs it. It runs from
+a terminal or a CI runner, not from a Finder-launched app without Full
+Disk Access, so it checks the move, not Put Back.
+
 ## Network: Canager only connects to these hosts
 
 Every request goes through `RealHttpClient`
