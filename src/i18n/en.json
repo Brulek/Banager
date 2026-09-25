@@ -51,8 +51,8 @@
         "description": "{{source}} has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. {{source}}'s official documentation explains how to uninstall it.",
         "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed.",
         "standalone-rustup": {
-          "description": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
-          "refused": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else, so it didn't. Nothing has been changed."
+          "description": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of those folders, or something directly inside one, is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+          "refused": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else, so it didn't. Nothing has been changed."
         }
       }
     }

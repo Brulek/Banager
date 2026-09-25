@@ -930,10 +930,10 @@ describe("uninstallBlockedCopy", () => {
       rustup.command({ instance_id: "standalone-rustup", kind: "Binary", name: "rustup" }, undefined),
     ).toBe("");
     expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps them somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of the folders is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+      "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of those folders, or something directly inside one, is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
     );
     expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+      "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者这两个文件夹之一、或它们里面第一层的某一项是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
     );
     // Everyone else: B's copy, whatever the adapter.
     expect(uninstallBlockedCopy("NoSafeMethod", "standalone-claude")).toBe(

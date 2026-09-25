@@ -760,16 +760,23 @@ own confirmation prompt, which would otherwise read end-of-file from the
 `/dev/null` standard input and stop). **Canager offers it only when Rust
 lives in its standard folders**: `CARGO_HOME` and `RUSTUP_HOME` (from the
 environment Canager was started with, read as rustup reads them) resolve to
-`~/.cargo` and `~/.rustup`, `~/.cargo` is a real folder and not a link, and
-`~/.rustup` is a real folder, not a link, or not there yet. Any other
-layout — a custom folder, a relative variable, a linked folder — gets no
-Uninstall button and a badge saying it cannot be uninstalled here: rustup's
-uninstall deletes both folders whole, wherever they point, and Canager will
-not ask it to delete a folder the preview did not name. The same question
-is asked of the disk again right before the command is started
-(`StandaloneAdapter::execute`): a folder that has since become a link, or
-been replaced, stops the run before anything is spawned, and the operation
-log names that folder. Read from rustup 1.29.1's source (`uninstall()` in
+`~/.cargo` and `~/.rustup`, `~/.cargo` is a real folder and not a link,
+`~/.rustup` is a real folder, not a link, or not there yet, and nothing
+directly inside either folder is a link. Any other layout — a custom
+folder, a relative variable, a linked folder, a link at the top of one —
+gets no Uninstall button and a badge saying it cannot be uninstalled here:
+rustup's uninstall deletes both folders whole, wherever they point, and it
+reaches `~/.rustup/toolchains/<name>`, `~/.rustup/update-hashes/<name>` and
+`~/.cargo/bin/<name>` through their parent folder, so a link at one of
+those three names would have it delete the contents of wherever the link
+leads; every other link at the top of either folder it unlinks without
+following, and Canager refuses at any of them rather than keep a list of
+the names rustup follows. Canager will not ask it to delete a place the
+preview did not name. The same question is asked of the disk again right
+before the command is started (`StandaloneAdapter::execute`): a folder
+that has since become a link, or been replaced, or a link that has since
+appeared at the top of one, stops the run before anything is spawned, and
+the operation log names it. Read from rustup 1.29.1's source (`uninstall()` in
 `src/cli/self_update.rs`, lines 924–1032 at tag `1.29.1`), it removes,
 **permanently — nothing goes to the Trash**: every installed toolchain;
 `~/.rustup` entirely; the line it added to your shell startup files
@@ -918,8 +925,10 @@ All read-only, none saved anywhere else, none uploaded:
   and nothing else — no version is read.
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
   (`lstat`, `realpath`); whether `~/.cargo` and `~/.rustup` are real folders
-  and not links (`lstat`, to decide whether the uninstall is offered — at
-  every inventory, at the uninstall preview, and again right before the
+  and not links, and whether anything directly inside either is a link
+  (`lstat`, and a listing of each folder's top level in which nothing is
+  opened — to decide whether the uninstall is offered — at every
+  inventory, at the uninstall preview, and again right before the
   uninstall command is started); during the uninstall preview only, the
   names in `~/.rustup/toolchains` and in `~/.cargo/bin` (directory
   listings — nothing in them is opened), `~/.cargo/.crates2.json`, whether

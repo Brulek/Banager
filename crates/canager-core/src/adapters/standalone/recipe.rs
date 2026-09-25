@@ -241,12 +241,13 @@ pub struct CommandUninstall {
 /// What a `Command` uninstall's gate (`CommandUninstall.blocked`) answers
 /// when it refuses. `reason` is what the artifact carries (`inventory`)
 /// and what `plan(Uninstall)` refuses with
-/// (`AdapterError::UninstallBlocked`). `path` is the folder the rule
-/// failed at, absolute, for `execute`: it asks the gate again right
-/// before the spawn, and when a gate the preview passed refuses now, the
-/// folder is no longer where, or what, the preview said, and the run
-/// stops with `Fault::PathChanged` naming it. Produced by
-/// `rustup::standard_roots`, through `rustup::uninstall_blocked`.
+/// (`AdapterError::UninstallBlocked`). `path` is the folder, or the link
+/// at the top of one, that the rule failed at, absolute, for `execute`:
+/// it asks the gate again right before the spawn, and when a gate the
+/// preview passed refuses now, that path is no longer where, or what, the
+/// preview said, and the run stops with `Fault::PathChanged` naming it.
+/// Produced by `rustup::standard_roots`, through
+/// `rustup::uninstall_blocked`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GateRefusal {
     pub reason: UninstallBlocked,

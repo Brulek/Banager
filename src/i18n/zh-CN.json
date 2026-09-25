@@ -49,8 +49,8 @@
         "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。{{source}} 官方文档里说明了怎么卸载。",
         "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。",
         "standalone-rustup": {
-          "description": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者其中一个文件夹是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
-          "refused": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它们放在了别处，所以没有卸载。什么都没有改动。"
+          "description": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者这两个文件夹之一、或它们里面第一层的某一项是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+          "refused": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处，所以没有卸载。什么都没有改动。"
         }
       }
     }

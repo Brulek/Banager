@@ -101,6 +101,28 @@ fn is_real_dir(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether anything at the top of `root` is a link: `Ok(())` when nothing
+/// is, else the path `standard_roots` refuses at -- the first link by
+/// name, or `root` itself when it cannot be listed, since a folder Canager
+/// cannot list may hold a link it cannot see. `read_dir` and each entry's
+/// own type (`DirEntry::file_type`, which does not follow); nothing is
+/// opened or followed. Read by `standard_roots`.
+fn no_link_at_the_top(root: &Path) -> Result<(), PathBuf> {
+    let unlistable = |_| root.to_path_buf();
+    let mut links = Vec::new();
+    for entry in std::fs::read_dir(root).map_err(unlistable)? {
+        let entry = entry.map_err(unlistable)?;
+        if entry.file_type().map_err(unlistable)?.is_symlink() {
+            links.push(entry.path());
+        }
+    }
+    links.sort();
+    match links.into_iter().next() {
+        Some(link) => Err(link),
+        None => Ok(()),
+    }
+}
+
 /// The gate (ruling 18): `Ok` only when the Rust this instance belongs
 /// to lives where a fresh `rustup-init` puts it. Both homes as rustup
 /// computes them (`home` 0.5.12 over `RUSTUP_HOME`/`CARGO_HOME`/`HOME`,
@@ -110,14 +132,35 @@ fn is_real_dir(path: &Path) -> bool {
 /// in the shell line (`cargo_home_str_with_home`, shell.rs:43-58), over
 /// the same `HOME`; the Cargo home a directory that is not a link; the
 /// rustup home a directory that is not a link, or not there yet (rustup
-/// creates it on its first run). Anything else -- a custom home, a link
-/// to somewhere else, a relative variable -- and `uninstall()` would
-/// `remove_dir` a place this preview did not name: not offered, and the
-/// `Err` is `NoSafeMethod` at the standard folder the rule failed at --
-/// `<home>/.cargo`, or `<home>/.rustup` once the Cargo home passes -- so
-/// `execute`, asking again right before the spawn, can say which folder
-/// is no longer what the preview showed. The disk is read every time:
-/// the answer is for now, not for when `detect` seated the homes.
+/// creates it on its first run); and nothing at the top of either a link
+/// (`no_link_at_the_top`; step E's whole-step review). That last rule is
+/// from how `uninstall()` walks the two folders. Three names it reaches
+/// *through* their parent, deciding with `is_directory` (raw.rs:29-31,
+/// `fs::metadata`) or `is_dir()`, both of which follow a link:
+/// `toolchains/<name>` (`list_toolchains`, config.rs:922-940, then
+/// `Toolchain::ensure_removed`, toolchain.rs:536-582, down to
+/// `raw::remove_dir`, whose `symlink_metadata` sees a real folder at the
+/// *end* of that path), `update-hashes/<name>` (`installed_paths`,
+/// config.rs:464-476, one file per official toolchain) and `bin/<name>`
+/// (self_update.rs:1003-1022). A link at one of those three would have it
+/// delete the contents of wherever the link leads -- outside the two
+/// folders the preview names; for `toolchains`, every folder there whose
+/// name parses as a toolchain name, which most names do (names.rs:343-356).
+/// Every other link at the top of a root it unlinks without following:
+/// `raw::remove_dir` (raw.rs:277-311) `remove_file`s a path that is itself
+/// a link, and the `remove_dir_all` 1.0.0 it hands a real folder to opens
+/// each entry with `follow(false)` and `unlink_at`s a link
+/// (`src/_impl.rs:133-213`). Canager keeps no list of which names rustup
+/// follows: any link at the top refuses. Anything else -- a custom home, a
+/// link to somewhere else, a relative variable, a link at the top of a
+/// root -- and `uninstall()` would delete a place this preview did not
+/// name: not offered, and the `Err` is `NoSafeMethod` at the path the
+/// rule failed at -- `<home>/.cargo`, or `<home>/.rustup` once the Cargo
+/// home passes, the link at the top of one (the first by name), or a root
+/// that could not be listed -- so `execute`, asking again right before the
+/// spawn, can say which is no longer what the preview showed. The disk is
+/// read every time: the answer is for now, not for when `detect` seated
+/// the homes.
 pub fn standard_roots(d: &Detected) -> Result<StandardRoots, GateRefusal> {
     let refused = |path: PathBuf| GateRefusal {
         reason: UninstallBlocked::NoSafeMethod,
@@ -133,12 +176,15 @@ pub fn standard_roots(d: &Detected) -> Result<StandardRoots, GateRefusal> {
         }
         _ => return Err(refused(standard_cargo)),
     };
+    no_link_at_the_top(cargo_home).map_err(refused)?;
     let rustup_home = match d.rustup_home.as_deref() {
         Some(rustup_home) if rustup_home == standard_rustup => rustup_home,
         _ => return Err(refused(standard_rustup)),
     };
     match std::fs::symlink_metadata(rustup_home) {
-        Ok(meta) if meta.file_type().is_dir() => {}
+        Ok(meta) if meta.file_type().is_dir() => {
+            no_link_at_the_top(rustup_home).map_err(refused)?
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         _ => return Err(refused(standard_rustup)),
     }
@@ -549,7 +595,7 @@ pub fn extra_locks(d: &Detected) -> Vec<ResourceLock> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testing::{detected, rustup_layout, TempHome};
+    use super::super::testing::{detected, rustup_layout, TempHome, Unreadable};
     use super::*;
     use crate::model::UninstallBlocked;
     use std::path::PathBuf;
@@ -572,12 +618,13 @@ mod tests {
         // Ruling 18: both roots as rustup computes them (`home` 0.5.12),
         // both exactly `<home>/.cargo` and `<home>/.rustup`, the Cargo
         // home a real directory, the rustup home a real directory or not
-        // there yet. Anything else is a layout Canager will not offer to
+        // there yet (and nothing at the top of either a link: the next
+        // two tests). Anything else is a layout Canager will not offer to
         // delete: rustup's `uninstall()` removes `$RUSTUP_HOME` and
         // `$CARGO_HOME` whole (self_update.rs:960-966, :1029), wherever
-        // they point. Each refusal names the standard folder the rule
-        // failed at: the Cargo home first, the rustup home once the Cargo
-        // home passes.
+        // they point. Each refusal here names the standard folder the
+        // rule failed at: the Cargo home first, the rustup home once the
+        // Cargo home passes.
         let home = TempHome::new("roots-default");
         let cargo_home = home.dir(".cargo");
         let rustup_home = home.dir(".rustup");
@@ -645,6 +692,111 @@ mod tests {
             refused_at(&detected(home.path(), &home.path().join(".cargo"))),
             home.path().join(".cargo")
         );
+    }
+
+    #[test]
+    fn test_standard_roots_refuses_a_link_at_the_top_of_either_root() {
+        // Step E's whole-step review. rustup 1.29.1 reaches
+        // `toolchains/<name>` (`list_toolchains`, config.rs:922-940, then
+        // `Toolchain::ensure_removed`, toolchain.rs:536-582),
+        // `update-hashes/<name>` (`installed_paths`, config.rs:464-476) and
+        // `bin/<name>` (self_update.rs:1003-1022) *through* their parent,
+        // deciding with `is_directory`/`is_dir()`, which follow a link: a
+        // link at one of those three names sends it deleting inside
+        // wherever the link leads -- outside the two folders the preview
+        // names. Every other link at the top of a root it unlinks without
+        // following (`raw::remove_dir`, raw.rs:277-311; `remove_dir_all`
+        // 1.0.0, `src/_impl.rs:133-213`, `.follow(false)`). Canager keeps
+        // no list of which names rustup follows: any link at the top of
+        // either root refuses, at that link -- the first by name when
+        // there are several -- so `execute` can name it.
+        let home = TempHome::new("roots-linked-bin");
+        let cargo_home = home.dir(".cargo");
+        home.dir(".rustup");
+        let shared = home.dir("Volumes/Data/bin");
+        home.link(".cargo/bin", &shared);
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            cargo_home.join("bin")
+        );
+
+        let home = TempHome::new("roots-linked-toolchains");
+        let cargo_home = home.dir(".cargo");
+        home.dir(".rustup");
+        let elsewhere = home.dir("Volumes/Data/toolchains");
+        home.link(".rustup/toolchains", &elsewhere);
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            home.path().join(".rustup/toolchains")
+        );
+
+        // A link rustup would only unlink -- dangling, or to a file --
+        // refuses too.
+        let home = TempHome::new("roots-linked-registry");
+        let cargo_home = home.dir(".cargo");
+        home.link(".cargo/registry", Path::new("/Volumes/Gone/registry"));
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            cargo_home.join("registry")
+        );
+        let home = TempHome::new("roots-linked-settings");
+        let cargo_home = home.dir(".cargo");
+        home.dir(".rustup");
+        let settings = home.file("elsewhere/settings.toml");
+        home.link(".rustup/settings.toml", &settings);
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            home.path().join(".rustup/settings.toml")
+        );
+
+        // Several links: the first by name, so the refusal is the same
+        // every time; and the Cargo home is asked before the rustup home.
+        let home = TempHome::new("roots-several-links");
+        let cargo_home = home.dir(".cargo");
+        home.dir(".rustup");
+        home.link(".cargo/registry", Path::new("/Volumes/Gone/registry"));
+        home.link(".cargo/bin", Path::new("/Volumes/Gone/bin"));
+        home.link(".rustup/toolchains", Path::new("/Volumes/Gone/toolchains"));
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            cargo_home.join("bin")
+        );
+
+        // Links deeper down are the standard layout itself: rustup's
+        // thirteen proxies are links in `bin/`, and a linked toolchain
+        // (`rustup toolchain link`) is a link in `toolchains/`; rustup
+        // unlinks each without following, and the gate passes.
+        let home = TempHome::new("roots-deeper-links");
+        let cargo_home = home.dir(".cargo");
+        rustup_layout(&cargo_home);
+        let linked = home.dir("src/my-toolchain");
+        home.link(".rustup/toolchains/custom", &linked);
+        assert!(standard_roots(&detected(home.path(), &cargo_home)).is_ok());
+    }
+
+    #[test]
+    fn test_standard_roots_refuses_a_root_it_cannot_list() {
+        // A root whose entries cannot be listed may hold a link the gate
+        // cannot see: refused, at the root, rather than passed on a guess
+        // -- "could not tell" is not "nothing there". Each root in turn;
+        // with the permissions back, the layout passes. Skipped as root,
+        // whom permissions do not stop (`Unreadable`).
+        let home = TempHome::new("roots-unlistable");
+        let cargo_home = home.dir(".cargo");
+        let rustup_home = home.dir(".rustup");
+        {
+            let Some(_locked) = Unreadable::new(&cargo_home) else {
+                return;
+            };
+            assert_eq!(refused_at(&detected(home.path(), &cargo_home)), cargo_home);
+        }
+        {
+            let Some(_locked) = Unreadable::new(&rustup_home) else {
+                return;
+            };
+            assert_eq!(refused_at(&detected(home.path(), &cargo_home)), rustup_home);
+        }
+        assert!(standard_roots(&detected(home.path(), &cargo_home)).is_ok());
     }
 
     #[test]
