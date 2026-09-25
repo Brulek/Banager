@@ -28,8 +28,10 @@ export type Fault =
   | { HomebrewStillUpdating: { minutes: number } }
   | { PathChanged: { path: string } }
   | "Internal";
-// `Failed.summary` is only ever the tool's own stderr; Canager's own
-// failures are `CanagerFailed`.
+// `Failed.summary` is another program's own words, never Canager's: the
+// last lines of a tool's stderr, or macOS's own reason for refusing to move
+// a path to the Trash (`exit_code` is then `null`: no command ran).
+// Canager's own failures are `CanagerFailed`.
 export type Outcome =
   | "Succeeded"
   | "Cancelled"

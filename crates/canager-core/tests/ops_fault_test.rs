@@ -1,7 +1,9 @@
 //! Contract tests for how an `Err` out of `Adapter::execute` reaches the
 //! front end: always as `Outcome::CanagerFailed` (a reason of Canager's
 //! own, worded by the front end in the user's language), never as
-//! `Outcome::Failed`, whose `summary` is only ever a tool's own words.
+//! `Outcome::Failed`, whose `summary` is only ever another program's own
+//! words (a tool's stderr, or macOS's reason for refusing a move to the
+//! Trash).
 //!
 //! Before this split, `run_operation` put English sentences of its own
 //! ("unknown instance ...", "runner: program not found: ...") into

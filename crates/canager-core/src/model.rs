@@ -633,12 +633,22 @@ pub enum Outcome {
     /// which disagreement, never a sentence: the front end words it in the
     /// user's language (the drawer and the operation bar both show it).
     NeedsAttention(Attention),
-    /// The tool ran and failed. `summary` is the last lines of the tool's
-    /// own stderr and nothing else: the front end shows it as-is, quoted
-    /// inside a translated sentence, because it is another program's words.
-    /// A failure of Canager's own is `CanagerFailed`, never this. A tool a
-    /// signal ended before it could exit reported no failure, and is
-    /// `Unconfirmed`, never this (`run_plan` in `adapters/mod.rs`).
+    /// Another program failed the operation, and `summary` is that
+    /// program's own words and nothing of Canager's: the front end shows it
+    /// as-is but for surrounding whitespace, quoted inside a translated
+    /// sentence, or says the program gave no reason when it is blank
+    /// (`outcomeKey` and `outcomeArgs` in `src/lib/format.ts`).
+    /// Two places build it. A command that ran and exited non-zero:
+    /// `exit_code` is the command's, and `summary` the last five lines of
+    /// its stderr (`run_plan` in `adapters/mod.rs`). A path-list uninstall
+    /// the system refused: no command ran, so `exit_code` is `None`, and
+    /// `summary` is macOS's own description of the refusal -- the
+    /// `NSError`'s localized description, `TrashError::Refused`
+    /// (`removal::execute_removal`, which also writes it to the log as a
+    /// `LogNote::TrashFailed`). A failure of Canager's own is
+    /// `CanagerFailed`, never this. A tool a signal ended before it could
+    /// exit reported no failure, and is `Unconfirmed`, never this
+    /// (`run_plan` in `adapters/mod.rs`).
     Failed {
         exit_code: Option<i32>,
         summary: String,
