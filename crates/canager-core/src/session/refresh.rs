@@ -14,7 +14,8 @@ use std::sync::atomic::Ordering;
 use tokio_util::task::AbortOnDropHandle;
 
 /// One adapter's part in a round's detection: spawned, or skipped with
-/// last round's instances because an operation holds one of them
+/// last round's instances because an operation holds one of them -- the
+/// held ones unchanged, the others without last round's check notes
 /// (`refresh_round`).
 enum Detection {
     Spawned(AbortOnDropHandle<Vec<ManagerInstance>>),
@@ -172,19 +173,28 @@ impl Session {
         // mode, which begins by deleting the updater the operation is
         // about to run. So: the held set is read once here; every adapter
         // with a previous-round instance whose id is a held lock keeps
-        // last round's instances unchanged (no notice, and the skip itself
-        // adds nothing to `stale`: nothing failed), and the per-instance
-        // loop below carries the held instances' rows forward instead of
-        // waiting on their lock -- a refresh used to wait out a `brew
-        // install` for minutes -- together with any error last round
-        // recorded against them, which this round has not retried.
-        // Instances of a skipped adapter that are not themselves held are
-        // still inventoried under their own lock. The operation's own reading
-        // afterwards (`run_operation`'s reconcile, under its locks) and the
-        // refresh the front end runs when it finishes replace these rows.
-        // Read once, so an operation submitted after this line may start
-        // while a detect it would have skipped is running its one
-        // `--version`: that window is the command's duration.
+        // last round's instances (no notice, and the skip itself adds
+        // nothing to `stale`: nothing failed) -- the held ones unchanged,
+        // and the per-instance loop below carries the held instances' rows
+        // forward instead of waiting on their lock -- a refresh used to
+        // wait out a `brew install` for minutes -- together with any error
+        // last round recorded against them, which this round has not
+        // retried. Instances of a skipped adapter that are not themselves
+        // held are still inventoried and checked under their own lock, so
+        // they are carried with the notes last round's *check* left on
+        // them stripped (`InstanceNote::is_from_update_check`): this round's
+        // check answers for them again, and `merge_instance_notes` appends
+        // its notes to whatever the instance already carries, which for a
+        // freshly detected instance is detect's notes alone. Carried whole,
+        // such a sibling gained one more copy of the same note per refresh
+        // for as long as the operation ran, and kept a note the check had
+        // stopped reporting. Its detect-time notes stay: detect did not run
+        // to write them again. The operation's own reading afterwards
+        // (`run_operation`'s reconcile, under its locks) and the refresh
+        // the front end runs when it finishes replace these rows. Read
+        // once, so an operation submitted after this line may start while
+        // a detect it would have skipped is running its one `--version`:
+        // that window is the command's duration.
         let held = self.ops.locks_held();
         let mut under_operation: HashSet<InstanceId> = HashSet::new();
         let mut adapters: Vec<_> = self.adapters.values().collect();
@@ -204,6 +214,15 @@ impl Session {
                 .map(|i| i.id.clone())
                 .collect();
             if !held_here.is_empty() {
+                let carried = carried
+                    .into_iter()
+                    .map(|mut inst| {
+                        if !held_here.contains(&inst.id) {
+                            inst.status.notes.retain(|n| !n.is_from_update_check());
+                        }
+                        inst
+                    })
+                    .collect();
                 under_operation.extend(held_here);
                 detections.push((adapter_id, Detection::Skipped(carried)));
                 continue;
@@ -664,6 +683,11 @@ fn dedupe_instance_ids(
 
 /// Merge notes a fan-out task produced back onto the instance it belongs
 /// to, matched by id.
+///
+/// Appends, so what the instance carries at this point has to be detect's
+/// notes alone: that is what a fresh detect delivers, and what
+/// `refresh_round`'s skip leaves on a carried sibling by stripping last
+/// round's check notes first.
 ///
 /// `refresh` clones `instances` before spawning, so every per-instance task
 /// holds its own copy and anything it learns about the source has to travel
@@ -1709,6 +1733,157 @@ mod tests {
             .contains(&"fake:1".to_string()));
         assert!(after.errors.is_empty(), "{:?}", after.errors);
         assert!(!after.stale);
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_during_an_operation_does_not_pile_check_notes_onto_the_held_instances_sibling(
+    ) {
+        // Step E's whole-step review: while an operation holds `fake:1`,
+        // the adapter's detect is skipped and *both* of its instances are
+        // carried from last round -- `fake:2` included, though nothing
+        // holds it and this round checks it as usual. Carried with the
+        // note last round's check left on it, `fake:2` then had this
+        // round's identical note appended: one more copy per refresh for
+        // as long as the operation ran, and a note the check had stopped
+        // reporting stayed on. The sibling has to enter the fan-out with
+        // last round's check notes stripped, the way a fresh detect would
+        // deliver it -- and only those: a note detect wrote stays, since
+        // detect did not run to write it again.
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            let mut placed = make_instance("fake", "fake:2");
+            placed.status.notes.push(InstanceNote::NotOnPath);
+            s.instances = vec![make_instance("fake", "fake:1"), placed];
+            s.artifacts
+                .insert("fake:1".to_string(), vec![make_artifact("fake:1", "jq")]);
+            s.artifacts
+                .insert("fake:2".to_string(), vec![make_artifact("fake:2", "wget")]);
+            s.notes
+                .insert("fake:1".to_string(), vec![InstanceNote::IndexMayBeStale]);
+            s.notes
+                .insert("fake:2".to_string(), vec![InstanceNote::IndexMayBeStale]);
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let notes_of = |snapshot: &Snapshot, id: &str| -> Vec<InstanceNote> {
+            snapshot
+                .instances
+                .iter()
+                .find(|i| i.id == id)
+                .unwrap_or_else(|| panic!("{id} is in the snapshot"))
+                .status
+                .notes
+                .clone()
+        };
+        let first = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(
+            notes_of(&first, "fake:1"),
+            vec![InstanceNote::IndexMayBeStale]
+        );
+        assert_eq!(
+            notes_of(&first, "fake:2"),
+            vec![InstanceNote::NotOnPath, InstanceNote::IndexMayBeStale],
+            "precondition: detect's note, then the check's"
+        );
+
+        // An operation now holds fake:1's lock.
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Two refreshes in a row while it runs: the check answers the same
+        // both times, so the sibling's notes read the same both times.
+        let during = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&non_root_env(), &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation on one instance");
+        let again = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&non_root_env(), &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation on one instance");
+        for (which, snapshot) in [("first", &during), ("second", &again)] {
+            assert_eq!(
+                notes_of(snapshot, "fake:2"),
+                vec![InstanceNote::NotOnPath, InstanceNote::IndexMayBeStale],
+                "{which} refresh during the operation: the sibling's notes are detect's, \
+                 then this round's check -- not one more copy per refresh"
+            );
+            assert_eq!(
+                notes_of(snapshot, "fake:1"),
+                vec![InstanceNote::IndexMayBeStale],
+                "{which} refresh during the operation: the held instance keeps last \
+                 round's note, since nothing about it was re-read"
+            );
+        }
+        assert_eq!(
+            during.generation, first.generation,
+            "the same rows and the same notes: nothing changed, nothing bumps"
+        );
+        assert_eq!(again.generation, during.generation);
+
+        // The check stops reporting the note. The sibling's clears -- it
+        // was checked again -- while the held instance's stays, exactly
+        // like its rows and its errors.
+        state.lock().unwrap().notes.clear();
+        let cleared = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&non_root_env(), &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation on one instance");
+        assert_eq!(
+            notes_of(&cleared, "fake:2"),
+            vec![InstanceNote::NotOnPath],
+            "a note the check no longer reports does not stay on the sibling"
+        );
+        assert_eq!(
+            notes_of(&cleared, "fake:1"),
+            vec![InstanceNote::IndexMayBeStale],
+            "the held instance's notes are last round's, whatever the check says now"
+        );
+
+        // Once the operation is over, the next refresh detects and checks
+        // fake:1 again, and its note clears too.
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let after = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(notes_of(&after, "fake:1").is_empty());
+        assert_eq!(notes_of(&after, "fake:2"), vec![InstanceNote::NotOnPath]);
     }
 
     #[tokio::test]

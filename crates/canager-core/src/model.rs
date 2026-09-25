@@ -140,6 +140,30 @@ pub enum InstanceNote {
     LauncherOnly,
 }
 
+impl InstanceNote {
+    /// Whether this note is the round's update check speaking about the
+    /// source -- `CheckOutcome::notes` (brew's `IndexMayBeStale`) or the
+    /// `IndexUpdating` that `Session::refresh_round` adds when a read
+    /// declined -- rather than `detect` (`StandaloneAdapter::detect`'s five
+    /// placement notes). Read by `refresh_round` when it skips an adapter's
+    /// detect because an operation holds one of its instances: the
+    /// instances it carries from last round that are not themselves held
+    /// are still checked this round, so last round's check notes come off
+    /// them first, and detect's stay, since detect did not run to write
+    /// them again. An exhaustive match, so a new variant has to say which
+    /// channel it comes from.
+    pub(crate) fn is_from_update_check(self) -> bool {
+        match self {
+            InstanceNote::IndexMayBeStale | InstanceNote::IndexUpdating => true,
+            InstanceNote::NotOnPath
+            | InstanceNote::ShadowedByHomebrew
+            | InstanceNote::ShadowedByNpm
+            | InstanceNote::ShadowedByOther
+            | InstanceNote::LauncherOnly => false,
+        }
+    }
+}
+
 /// The state axis of a source: can Canager talk to it at all, and is there
 /// anything about this answer the user has to know to read it correctly.
 ///
