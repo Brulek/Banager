@@ -127,6 +127,24 @@ describe("LogDrawer", () => {
     );
   });
 
+  it("says which item a path-list uninstall stopped before when its time ran out", async () => {
+    // The stop nobody asked for: without this line the log would end at
+    // the last move and the outcome would say only "Result unconfirmed".
+    // The number of seconds is the plan's, carried in the note.
+    const { findByText } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({
+        opId: 1,
+        note: { OutOfTime: { path: "~/.local/bin/claude", seconds: 120 } },
+      });
+    });
+
+    await findByText(
+      "The 120 seconds Canager allows this uninstall ran out, so it stopped before moving ~/.local/bin/claude. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest.",
+    );
+  });
+
   it("only shows log lines for the focused operation", async () => {
     const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
 

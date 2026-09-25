@@ -572,8 +572,10 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
 /// and the row comes back as launcher-only); `CanagerFailed(Internal)`
 /// when Canager could not ask the system at all (`TrashError::Unsupported`,
 /// at the first item); `Unconfirmed` when cancelled or out of time between
-/// items, or when a turn panicked -- `run_operation` then reads the disk
-/// and reports what it finds. Never an `Err` for a state of the Mac: the
+/// items (the budget's stop, the one the user did not ask for, first
+/// writes `LogNote::OutOfTime` naming the item it stopped before), or when
+/// a turn panicked -- `run_operation` then reads the disk and reports what
+/// it finds. Never an `Err` for a state of the Mac: the
 /// `Err` arm is a bug's (a home folder that cannot be resolved, an empty
 /// list, a plan that lost what its preview saw). Read by
 /// `StandaloneAdapter::execute`.
@@ -624,7 +626,23 @@ pub async fn execute_removal(
         if index > 0 && pause(pacing.settle.min(left()), &cancel).await {
             return Ok(Outcome::Unconfirmed);
         }
-        if cancel.is_cancelled() || left().is_zero() {
+        // Cancel first: a run the user stopped needs no line of Canager's
+        // (`run_operation` reports it as `Cancelled` once it finds the
+        // launcher, last, still there). A spent budget is the stop nobody
+        // asked for, so it says which item it stopped before and how much
+        // time there was -- otherwise the log ends at the last move and the
+        // outcome says only "unconfirmed".
+        if cancel.is_cancelled() {
+            return Ok(Outcome::Unconfirmed);
+        }
+        if left().is_zero() {
+            sink.emit(OperationEvent::Note {
+                op_id,
+                note: LogNote::OutOfTime {
+                    path: shown(home, path),
+                    seconds: pacing.budget.as_secs(),
+                },
+            });
             return Ok(Outcome::Unconfirmed);
         }
         let turn = {
@@ -1828,7 +1846,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_removal_stops_before_an_item_when_the_budget_is_spent() {
+    async fn test_execute_removal_stops_before_an_item_when_the_budget_is_spent_and_says_so() {
+        // The one stop the user did not ask for gets a line of Canager's
+        // own -- the item it stopped before and the budget it ran out of --
+        // so the log does not simply end before a "Result unconfirmed".
         let home = TempHome::new("removal-exec-budget");
         let _layout = claude_layout(&home, "2.1.281");
         let d = detected(home.path());
@@ -1845,7 +1866,13 @@ mod tests {
 
         assert_eq!(outcome, Outcome::Unconfirmed);
         assert!(mock.calls().is_empty());
-        assert!(notes.is_empty());
+        assert_eq!(
+            notes,
+            vec![LogNote::OutOfTime {
+                path: "~/.local/share/claude".to_string(),
+                seconds: 0,
+            }]
+        );
     }
 
     #[tokio::test]
@@ -1866,7 +1893,7 @@ mod tests {
         };
         let started = Instant::now();
 
-        let (outcome, _) = run(&job, &preview, &trasher, tight, CancellationToken::new()).await;
+        let (outcome, notes) = run(&job, &preview, &trasher, tight, CancellationToken::new()).await;
 
         assert_eq!(outcome, Outcome::Unconfirmed);
         assert_eq!(mock.calls().len(), 1);
@@ -1874,6 +1901,21 @@ mod tests {
             started.elapsed() < Duration::from_secs(3),
             "{:?}",
             started.elapsed()
+        );
+        // The log: the one move, then why nothing followed it -- the item
+        // the run stopped before (the launcher, second of two here) and
+        // the budget that ended it.
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        assert!(
+            matches!(notes[0], LogNote::MovedToTrash { .. }),
+            "{notes:?}"
+        );
+        assert_eq!(
+            notes[1],
+            LogNote::OutOfTime {
+                path: "~/.local/bin/claude".to_string(),
+                seconds: 1,
+            }
         );
     }
 

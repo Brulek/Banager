@@ -209,7 +209,8 @@
       "readFailedStdout": "Canager couldn't read any more of this command's output ({{error}}), so its output ends here.",
       "readFailedStderr": "Canager couldn't read any more of this command's error messages ({{error}}), so they end here.",
       "movedToTrash": "Moved {{path}} to the Trash (now at {{trashedTo}}).",
-      "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped here. Your Mac gave this reason: {{error}}"
+      "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped here. Your Mac gave this reason: {{error}}",
+      "outOfTime": "The {{seconds}} seconds Canager allows this uninstall ran out, so it stopped before moving {{path}}. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest."
     },
     "kind": {
       "Install": "Installing",

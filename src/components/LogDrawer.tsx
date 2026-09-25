@@ -41,6 +41,10 @@ function noteText(t: TFunction, note: LogNote): string {
     const { path, error } = note.TrashFailed;
     return t("operations.logNote.trashFailed", { path, error });
   }
+  if ("OutOfTime" in note) {
+    const { path, seconds } = note.OutOfTime;
+    return t("operations.logNote.outOfTime", { path, seconds });
+  }
   const unhandled: never = note;
   return unhandled;
 }

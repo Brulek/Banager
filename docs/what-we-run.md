@@ -768,8 +768,10 @@ one gap remains: Canager checks each item immediately before moving it;
 a program running as you that swaps the item in that instant could still
 race it. Each move is written to the operation log with where the item
 now is (`LogNote::MovedToTrash`); an item macOS refuses stops the
-uninstall there, with macOS's own reason (`LogNote::TrashFailed`).
-After each move Canager waits 3 seconds
+uninstall there, with macOS's own reason (`LogNote::TrashFailed`); and
+when the time budget runs out between items, the log names the item the
+uninstall stopped before and the budget it ran out of
+(`LogNote::OutOfTime`). After each move Canager waits 3 seconds
 (`removal::PUT_BACK_SETTLE`) — before the next one, and before it
 reports the uninstall finished; Cancel ends the wait, and no wait
 outlasts the uninstall's time budget — and the second finding below says

@@ -308,6 +308,14 @@ describe("types", () => {
     expect(JSON.stringify(trashFailed)).toBe(
       '{"Note":{"op_id":7,"note":{"TrashFailed":{"path":"~/.local/bin/claude","error":"Operation not permitted"}}}}',
     );
+    // The third line of that uninstall's: the item it stopped before when
+    // its budget ran out, and the budget in seconds (`Plan.timeout_secs`).
+    const outOfTime: OperationEvent = {
+      Note: { op_id: 7, note: { OutOfTime: { path: "~/.local/bin/claude", seconds: 120 } } },
+    };
+    expect(JSON.stringify(outOfTime)).toBe(
+      '{"Note":{"op_id":7,"note":{"OutOfTime":{"path":"~/.local/bin/claude","seconds":120}}}}',
+    );
     const parsedUiEvent = roundTrip(uiEvent);
     expect("Operation" in parsedUiEvent && parsedUiEvent.Operation).toEqual({
       Status: { op_id: 1, status: "Running" },

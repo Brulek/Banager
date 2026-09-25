@@ -202,7 +202,8 @@
       "readFailedStdout": "Canager 无法继续读取该命令的输出（{{error}}），输出到此为止。",
       "readFailedStderr": "Canager 无法继续读取该命令的错误信息（{{error}}），错误信息到此为止。",
       "movedToTrash": "已把 {{path}} 移到废纸篓（现在在 {{trashedTo}}）。",
-      "trashFailed": "没能把 {{path}} 移到废纸篓，卸载在这里停下了。系统给出的原因是：{{error}}"
+      "trashFailed": "没能把 {{path}} 移到废纸篓，卸载在这里停下了。系统给出的原因是：{{error}}",
+      "outOfTime": "这次卸载可用的 {{seconds}} 秒已经用完，Canager 在移动 {{path}} 之前停下了。之前已经移走的都在废纸篓里，其余的没有动过。可以再卸载一次，把剩下的移走。"
     },
     "kind": {
       "Install": "正在安装",

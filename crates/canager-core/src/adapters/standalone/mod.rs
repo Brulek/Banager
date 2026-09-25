@@ -2869,21 +2869,30 @@ mod tests {
     #[tokio::test]
     async fn test_execute_runs_out_its_budget_between_items_not_a_process() {
         // `Plan.timeout_secs` is the removal's own clock: a spent budget
-        // stops the run before the next item, as `Unconfirmed`.
+        // stops the run before the next item, as `Unconfirmed`, and the
+        // log line that says so carries that same number of seconds.
         let trasher = Arc::new(MockTrasher::new());
         let (_home, _layout, adapter, inst) = full_install("execute-budget", trasher.clone()).await;
         let plan = Plan {
             timeout_secs: 0,
             ..adapter.plan(&inst, &uninstall()).await.expect("plan")
         };
+        let sink = Arc::new(VecSink::new());
 
         let outcome = adapter
-            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .execute(&plan, sink.clone(), 9, CancellationToken::new())
             .await
             .expect("execute");
 
         assert_eq!(outcome, Outcome::Unconfirmed);
         assert!(trasher.calls().is_empty());
+        assert_eq!(
+            notes_of(&sink),
+            vec![LogNote::OutOfTime {
+                path: "~/.local/share/claude".to_string(),
+                seconds: plan.timeout_secs,
+            }]
+        );
     }
 
     #[tokio::test]

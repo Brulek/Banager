@@ -51,6 +51,20 @@ pub enum LogNote {
     /// and `Outcome::Failed` carries the same words as its summary. From
     /// `removal::execute_removal`; worded by `LogDrawer.tsx`.
     TrashFailed { path: String, error: String },
+    /// A path-list uninstall spent its time budget between items and
+    /// stopped before moving `path` (home folder abbreviated to `~`), the
+    /// first listed path it had not reached: that one and every path after
+    /// it are untouched, and every path moved before it has its own
+    /// `MovedToTrash` line. A Cancel stops the run at the same place without
+    /// this line -- the user asked for that stop, and `run_operation`
+    /// reports it as `Cancelled` when it finds the launcher still there --
+    /// so this is written only when the clock, not the user, ended the run.
+    /// `seconds` is the budget, `Plan.timeout_secs` (`removal::TIMEOUT_SECS`
+    /// outside tests), carried here rather than hard-coded into
+    /// `operations.logNote.outOfTime` so the two can never disagree. From
+    /// `removal::execute_removal`, which then returns `Outcome::Unconfirmed`;
+    /// worded by `LogDrawer.tsx`.
+    OutOfTime { path: String, seconds: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +187,21 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&refused).unwrap(),
             r#"{"Note":{"op_id":7,"note":{"TrashFailed":{"path":"~/.local/bin/claude","error":"Operation not permitted"}}}}"#
+        );
+        // The third line a path-list uninstall can write: the item it
+        // stopped before when its budget ran out, and that budget in
+        // seconds (`Plan.timeout_secs`, threaded through like `minutes`
+        // above).
+        let out_of_time = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::OutOfTime {
+                path: "~/.local/bin/claude".to_string(),
+                seconds: 120,
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&out_of_time).unwrap(),
+            r#"{"Note":{"op_id":7,"note":{"OutOfTime":{"path":"~/.local/bin/claude","seconds":120}}}}"#
         );
     }
 

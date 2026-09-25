@@ -328,15 +328,17 @@ export interface Settings {
 export type Stream = "Stdout" | "Stderr";
 // A line of Canager's own in an operation's log (Rust `LogNote`): a key the
 // front end localises, never text. `Log` lines are the tool's verbatim words.
-// Both variants carry data now (serde's external tagging of a struct
-// variant, a one-key object): `minutes` is `BrewAdapter::OP_UPDATE_WAIT`,
-// threaded through rather than hard-coded into
-// `operations.logNote.waitingForBrewUpdate` so the two can never disagree.
+// Every variant carries data (serde's external tagging of a struct variant,
+// a one-key object). Two numbers are threaded through rather than
+// hard-coded into the copy, so the two can never disagree: `minutes` is
+// `BrewAdapter::OP_UPDATE_WAIT` (`operations.logNote.waitingForBrewUpdate`)
+// and `seconds` is `Plan.timeout_secs` (`operations.logNote.outOfTime`).
 export type LogNote =
   | { WaitingForBrewUpdate: { minutes: number } }
   | { ReadFailed: { stream: Stream; error: string } }
   | { MovedToTrash: { path: string; trashed_to: string } }
-  | { TrashFailed: { path: string; error: string } };
+  | { TrashFailed: { path: string; error: string } }
+  | { OutOfTime: { path: string; seconds: number } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }
