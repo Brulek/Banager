@@ -2,7 +2,7 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
     PlanAction, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UninstallBlocked,
-    UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
+    UninstallUnsafeReason, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
 use async_trait::async_trait;
@@ -171,6 +171,22 @@ pub enum AdapterError {
     /// `{"kind": "uninstall_blocked"}` with the reason.
     #[error("the tool will refuse to uninstall this package ({reason:?})")]
     UninstallBlocked { reason: UninstallBlocked },
+    /// A path-list uninstall's `plan()` (`StandaloneAdapter`, through
+    /// `removal::plan_removal`) refused one of the paths the recipe names:
+    /// `reason` is which check failed, `path` the path with the home folder
+    /// abbreviated to `~` (for `OverlapsKept`, the kept path it concerns).
+    /// Nothing was moved. Sent to the front end by
+    /// `plan_operation_error` (src-tauri/src/ipc.rs) as
+    /// `{"kind":"uninstall_unsafe","path":…,"reason":<snake_case>}`, which
+    /// `parseUninstallUnsafe` in src/lib/sources.ts words as one of six
+    /// sentences -- never as this `Display`, which is for logs. No
+    /// `execute` returns it: the same checks failing at run time are
+    /// `Fault::PathChanged` (`removal::execute_removal`).
+    #[error("unsafe to remove {path}: {reason:?}")]
+    UninstallUnsafe {
+        path: String,
+        reason: UninstallUnsafeReason,
+    },
     /// `Session::issue_plan` was asked to plan against an instance that is
     /// not in the snapshot at all -- the source was removed between the
     /// refresh that drew the row and the click. The `issue_plan` twin of

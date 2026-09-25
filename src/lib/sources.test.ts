@@ -9,6 +9,7 @@ import {
   parseNotActionable,
   parseOpenOllamaFailure,
   parseUninstallBlocked,
+  parseUninstallUnsafe,
   planErrorMessage,
   settingsSaveErrorMessage,
   sourceNoticesFor,
@@ -454,6 +455,34 @@ describe("planErrorMessage", () => {
     ).toBe('planRefused.spawnFailed({"source":"npm","detail":"Permission denied (os error 13)"})');
   });
 
+  it("words each reason a path-list uninstall preview was refused, naming the path", () => {
+    // `plan_operation_error` (src-tauri/src/ipc.rs) spells the reason in
+    // snake_case by hand; these six are the whole set, and each has its
+    // own sentence. The path arrives with `$HOME` already abbreviated.
+    for (const [reason, key] of [
+      ["outside_home", "planRefused.uninstallUnsafe.outsideHome"],
+      ["shared_folder", "planRefused.uninstallUnsafe.sharedFolder"],
+      ["missing", "planRefused.uninstallUnsafe.missing"],
+      ["not_owned_by_you", "planRefused.uninstallUnsafe.notOwnedByYou"],
+      ["not_what_instructions_expect", "planRefused.uninstallUnsafe.notWhatInstructionsExpect"],
+      ["overlaps_kept", "planRefused.uninstallUnsafe.overlapsKept"],
+    ]) {
+      expect(
+        planErrorMessage(
+          fakeT,
+          JSON.stringify({ kind: "uninstall_unsafe", path: "~/.local/bin/claude", reason }),
+          "Claude Code",
+        ),
+      ).toBe(`${key}({"path":"~/.local/bin/claude"})`);
+    }
+    // A reason this build has no copy for, or a payload without its path,
+    // is shown verbatim rather than guessed at.
+    const unknown = '{"kind":"uninstall_unsafe","path":"~/x","reason":"cursed"}';
+    expect(planErrorMessage(fakeT, unknown, "Claude Code")).toBe(unknown);
+    const pathless = '{"kind":"uninstall_unsafe","reason":"missing"}';
+    expect(planErrorMessage(fakeT, pathless, "Claude Code")).toBe(pathless);
+  });
+
   it("localises the submit-time refusal for a source that stopped answering", () => {
     // `submit_operation_error` sends the same payload `plan_operation`
     // does, because `Session::submit` now re-runs the actionability gate
@@ -801,6 +830,23 @@ describe("parseUninstallBlocked", () => {
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Held"}')).toBeNull();
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"toString"}')).toBeNull();
     expect(parseUninstallBlocked("not json")).toBeNull();
+  });
+});
+
+describe("parseUninstallUnsafe", () => {
+  it("reads the path and the reason out of the preview's refusal and nothing else", () => {
+    expect(
+      parseUninstallUnsafe(
+        '{"kind":"uninstall_unsafe","path":"~/.claude/downloads","reason":"not_owned_by_you"}',
+      ),
+    ).toEqual({ path: "~/.claude/downloads", reason: "not_owned_by_you" });
+    // The gate's own refusal is a different payload with different copy.
+    expect(parseUninstallUnsafe('{"kind":"uninstall_blocked","reason":"Pinned"}')).toBeNull();
+    // A reason this build has no copy for is not guessed at; nor is a
+    // prototype property, nor a path that is not a string.
+    expect(parseUninstallUnsafe('{"kind":"uninstall_unsafe","path":"~/x","reason":"toString"}')).toBeNull();
+    expect(parseUninstallUnsafe('{"kind":"uninstall_unsafe","path":7,"reason":"missing"}')).toBeNull();
+    expect(parseUninstallUnsafe("not json")).toBeNull();
   });
 });
 

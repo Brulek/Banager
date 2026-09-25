@@ -610,6 +610,51 @@ export function parseUninstallBlocked(message: string): UninstallBlocked | null 
     : null;
 }
 
+/**
+ * The reasons a path-list uninstall preview can be refused by one of its
+ * checks (`removal::plan_removal` in
+ * crates/canager-core/src/adapters/standalone/removal.rs), as
+ * `plan_operation_error` in src-tauri/src/ipc.rs spells them -- by hand,
+ * in snake_case, one `match` arm each. Mirrored here as a union so the
+ * copy table below is a `Record` over it: a reason without a sentence
+ * fails `tsc`.
+ */
+export type UninstallUnsafeReason =
+  | "outside_home"
+  | "shared_folder"
+  | "missing"
+  | "not_owned_by_you"
+  | "not_what_instructions_expect"
+  | "overlaps_kept";
+
+/** The `planRefused.uninstallUnsafe.*` sentence for each reason; each
+ *  interpolates `{{path}}` (home folder abbreviated on the Rust side). */
+export const UNINSTALL_UNSAFE_KEYS: Record<UninstallUnsafeReason, string> = {
+  outside_home: "planRefused.uninstallUnsafe.outsideHome",
+  shared_folder: "planRefused.uninstallUnsafe.sharedFolder",
+  missing: "planRefused.uninstallUnsafe.missing",
+  not_owned_by_you: "planRefused.uninstallUnsafe.notOwnedByYou",
+  not_what_instructions_expect: "planRefused.uninstallUnsafe.notWhatInstructionsExpect",
+  overlaps_kept: "planRefused.uninstallUnsafe.overlapsKept",
+};
+
+/**
+ * Reads the `{"kind":"uninstall_unsafe","path":…,"reason":…}` payload
+ * `plan_operation_error` sends when a path-list uninstall preview refused
+ * one of its checks. `null` for anything else, including a reason this
+ * build has no copy for or a payload without its path, which
+ * `planErrorMessage` then shows verbatim rather than guessing at.
+ */
+export function parseUninstallUnsafe(
+  message: string,
+): { path: string; reason: UninstallUnsafeReason } | null {
+  const p = parseErrorPayload(message);
+  if (!p || p.kind !== "uninstall_unsafe") return null;
+  if (typeof p.path !== "string" || typeof p.reason !== "string") return null;
+  if (!Object.prototype.hasOwnProperty.call(UNINSTALL_UNSAFE_KEYS, p.reason)) return null;
+  return { path: p.path, reason: p.reason as UninstallUnsafeReason };
+}
+
 /** What `Session::issue_plan`'s actionability gate (spec §2.5) refused, as
  *  `plan_operation_error` in src-tauri/src/ipc.rs put it on the wire. */
 export interface NotActionableReason {
@@ -736,6 +781,8 @@ const PLAN_FAILURE_KEYS: Record<string, string> = {
  * it could not start the tool. That is not Canager's text, so it cannot be
  * translated -- but the sentence around it is. `invalid_name` and
  * `program_missing` carry data (the name, the path), not prose.
+ * `uninstall_unsafe` carries the path a path-list uninstall preview
+ * refused and which check refused it (`parseUninstallUnsafe`).
  */
 function planFailureMessage(t: Translate, raw: string, sourceLabel: string): string | null {
   const p = parseErrorPayload(raw);
@@ -752,6 +799,10 @@ function planFailureMessage(t: Translate, raw: string, sourceLabel: string): str
       return t("planRefused.programMissing", { program: text(p.program) });
     case "spawn_failed":
       return t("planRefused.spawnFailed", { source: sourceLabel, detail: text(p.detail) });
+    case "uninstall_unsafe": {
+      const refused = parseUninstallUnsafe(raw);
+      return refused ? t(UNINSTALL_UNSAFE_KEYS[refused.reason], { path: refused.path }) : null;
+    }
     default:
       return null;
   }

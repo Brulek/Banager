@@ -653,6 +653,64 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
+  it("words a refused path-list preview with the path and the reason, never the payload", async () => {
+    // One of the checks a path-list uninstall runs at preview time refused
+    // a path (`removal::plan_removal` in
+    // crates/canager-core/src/adapters/standalone/removal.rs);
+    // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
+    // the reason as data, and the dialog words them. Canager did check,
+    // so the sentence is shown on its own, not inside "Couldn't check
+    // what this would affect" -- the same reason the pin above skips it.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return {
+          generation: 1,
+          detect: "Found",
+          instances: [
+            {
+              id: "standalone-claude",
+              adapter_id: "standalone-claude",
+              exe_path: "/Users/someone/.local/bin/claude",
+              prefix: "/Users/someone/.local/share/claude",
+              scope: "User",
+              version: "2.1.281",
+              status: { unavailable: null, notes: [] },
+              unverified_version: null,
+              read_only_reason: null,
+            },
+          ],
+          artifacts: [],
+          updates: [],
+          refreshed_at: 1,
+          stale: false,
+          errors: [],
+        };
+      }
+      if (cmd === "plan_operation") {
+        throw '{"kind":"uninstall_unsafe","path":"~/.local/bin/claude","reason":"not_what_instructions_expect"}';
+      }
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog
+        open
+        onOpenChange={() => {}}
+        request={{ ...request, instance_id: "standalone-claude", artifact_kind: "Binary", name: "claude" }}
+        displayName="Claude Code"
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "Canager won't remove ~/.local/bin/claude: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+      ),
+    );
+    expect(alert.textContent).not.toMatch(/uninstall_unsafe|not_what_instructions_expect|Couldn't check/);
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  });
+
   it("localises the same refusal when it comes back from submit, not from plan", async () => {
     // `Session::submit` re-runs the actionability gate against the
     // snapshot that is current when Confirm is clicked, which is the only

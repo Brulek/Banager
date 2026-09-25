@@ -152,7 +152,9 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 /// - **Canager's own words** go out with no prose at all, only data the
 ///   front end can interpolate into its own sentence: `source_gone`,
 ///   `invalid_name` (the name), `program_missing` (the path),
-///   `output_too_large`, `index_updating` (brew's uninstall preview
+///   `output_too_large`, `uninstall_unsafe` (the path a path-list
+///   uninstall preview refused, and which check refused it),
+///   `index_updating` (brew's uninstall preview
 ///   would not read Homebrew's catalogue while `brew update` rewrites
 ///   it, and the user should try again shortly), and `refused` for
 ///   everything that is a bug in
@@ -191,6 +193,23 @@ fn plan_operation_error(e: canager_core::adapters::AdapterError) -> String {
         } => not_actionable_json(read_only, unavailable),
         AdapterError::UpdateBlocked { reason } => update_blocked_json(reason),
         AdapterError::UninstallBlocked { reason } => uninstall_blocked_json(reason),
+        // A path-list uninstall's preview refused one of its checks (phase
+        // 4 step C): the path, home folder abbreviated, and the reason
+        // spelled by hand -- the one producer of these strings, which
+        // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes by.
+        AdapterError::UninstallUnsafe { path, reason } => {
+            use canager_core::model::UninstallUnsafeReason;
+            let reason = match reason {
+                UninstallUnsafeReason::OutsideHome => "outside_home",
+                UninstallUnsafeReason::SharedFolder => "shared_folder",
+                UninstallUnsafeReason::Missing => "missing",
+                UninstallUnsafeReason::NotOwnedByYou => "not_owned_by_you",
+                UninstallUnsafeReason::NotWhatInstructionsExpect => "not_what_instructions_expect",
+                UninstallUnsafeReason::OverlapsKept => "overlaps_kept",
+            };
+            serde_json::json!({ "kind": "uninstall_unsafe", "path": path, "reason": reason })
+                .to_string()
+        }
         // The same bare kind `submit_operation_error` sends for
         // `SubmitError::SourceGone`: one situation, one sentence.
         AdapterError::SourceGone { .. } => serde_json::json!({ "kind": "source_gone" }).to_string(),
@@ -1422,6 +1441,21 @@ mod tests {
             v,
             serde_json::json!({ "kind": "uninstall_blocked", "reason": "Pinned" })
         );
+        // A path-list uninstall's preview refused one of its checks (phase
+        // 4 step C): the path (home folder abbreviated) and the reason, as
+        // snake_case data for `parseUninstallUnsafe` in src/lib/sources.ts.
+        let v = parse(AdapterError::UninstallUnsafe {
+            path: "~/.local/bin/claude".to_string(),
+            reason: canager_core::model::UninstallUnsafeReason::NotWhatInstructionsExpect,
+        });
+        assert_eq!(
+            v,
+            serde_json::json!({
+                "kind": "uninstall_unsafe",
+                "path": "~/.local/bin/claude",
+                "reason": "not_what_instructions_expect"
+            })
+        );
 
         // Errors no `plan()` returns: a broken adapter contract, so
         // Canager's own bug, and none of their text reaches the wire.
@@ -1445,6 +1479,36 @@ mod tests {
             v["detail"].as_str().is_some_and(|d| !d.is_empty()),
             "spawn_failed must carry the OS's reason, got {v}"
         );
+    }
+
+    #[test]
+    fn test_plan_operation_error_spells_each_uninstall_unsafe_reason_in_snake_case() {
+        use canager_core::model::UninstallUnsafeReason;
+        // Written out by hand in `plan_operation_error`, not derived:
+        // `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes its copy by
+        // these exact strings, and the `match` is exhaustive, so a reason
+        // added in Rust fails to compile there until it has a spelling --
+        // and the TS `Record` fails `tsc` until it has copy.
+        for (reason, spelling) in [
+            (UninstallUnsafeReason::OutsideHome, "outside_home"),
+            (UninstallUnsafeReason::SharedFolder, "shared_folder"),
+            (UninstallUnsafeReason::Missing, "missing"),
+            (UninstallUnsafeReason::NotOwnedByYou, "not_owned_by_you"),
+            (
+                UninstallUnsafeReason::NotWhatInstructionsExpect,
+                "not_what_instructions_expect",
+            ),
+            (UninstallUnsafeReason::OverlapsKept, "overlaps_kept"),
+        ] {
+            let raw = plan_operation_error(AdapterError::UninstallUnsafe {
+                path: "~/.claude/downloads".to_string(),
+                reason,
+            });
+            let v: serde_json::Value = serde_json::from_str(&raw).expect("JSON");
+            assert_eq!(v["kind"], "uninstall_unsafe");
+            assert_eq!(v["path"], "~/.claude/downloads");
+            assert_eq!(v["reason"], spelling, "{reason:?}");
+        }
     }
 
     #[test]

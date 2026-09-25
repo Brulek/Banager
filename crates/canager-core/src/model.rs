@@ -283,6 +283,52 @@ pub enum UninstallBlocked {
     NoSafeMethod,
 }
 
+/// Why a path-list uninstall's preview refused one of the paths its
+/// recipe names: which of the checks in `removal::plan_removal`
+/// (`adapters/standalone/removal.rs`; phase 4 spec §6.3) failed. Payload
+/// of `AdapterError::UninstallUnsafe`, beside the path (home folder
+/// abbreviated). Not serialised by serde: `plan_operation_error` in
+/// src-tauri/src/ipc.rs spells each reason by hand, in snake_case, and
+/// `UNINSTALL_UNSAFE_KEYS` in src/lib/sources.ts indexes the copy by that
+/// spelling -- one producer of the wire form, and an exhaustive `match`
+/// there, so a reason added here without a spelling fails to compile. The
+/// user sees one of six sentences (`planRefused.uninstallUnsafe.*`);
+/// nothing was moved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UninstallUnsafeReason {
+    /// Check 1: the path's parent directory, fully resolved, is not inside
+    /// the home folder (a `~/.local/bin` that is a link to another volume).
+    OutsideHome,
+    /// Check 1's never-list: the path's parent directory, fully resolved,
+    /// is the home folder itself or one of the folders directly inside it
+    /// that many tools share (`recipe::SHARED_FOLDERS`: `~/.local`,
+    /// `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`) -- moving a path
+    /// there, `~/.local/bin` say, could take other tools' files with it. A
+    /// recipe cannot list such a path (`recipes::tests`); the resolved
+    /// check also catches a folder that leads into one through a link.
+    SharedFolder,
+    /// Check 2: the path is not there, and the list needs it -- it is not
+    /// optional, and it is not the already-gone program directory of a
+    /// launcher-only install.
+    Missing,
+    /// Check 3: the path belongs to another user.
+    NotOwnedByYou,
+    /// Check 4: the path is not the kind of thing the tool's own uninstall
+    /// instructions describe -- a launcher that is not one link into the
+    /// tool's root, a program directory that is a link, a file where a
+    /// directory is expected -- or a folder on its way from the home folder
+    /// is a link (the ancestry rule, ruling 24 of the step C plan), or it
+    /// could not be examined at all.
+    NotWhatInstructionsExpect,
+    /// With every link resolved, moving the listed paths might take a path
+    /// the preview says is kept: a listed path is a kept path, holds one or
+    /// what one leads to, or lies inside one other than where the recipe
+    /// lists it (`~/.claude -> ~/.local/share/claude`) -- or a kept path
+    /// that is there could not be placed. `path` is the kept path (ruling
+    /// 25 of the step C plan).
+    OverlapsKept,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateChannel {
     Native,

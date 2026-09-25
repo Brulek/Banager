@@ -189,7 +189,15 @@
     "spawnFailed": "Canager couldn't start {{source}}, so nothing was changed. Your Mac gave this reason: {{detail}}",
     "outputTooLarge": "{{source}} replied with far more than Canager will read, so it stopped before changing anything.",
     "indexUpdating": "Homebrew is busy right now, updating or downloading something, and until it finishes the list of what depends on this could be incomplete. Nothing has been changed. Close this and try again in a minute or two.",
-    "refused": "Canager stopped before changing anything, because something on its side didn't add up. This is a problem in Canager, not on your Mac."
+    "refused": "Canager stopped before changing anything, because something on its side didn't add up. This is a problem in Canager, not on your Mac.",
+    "uninstallUnsafe": {
+      "outsideHome": "Canager won't remove {{path}}: the folder it is in leads outside your home folder. Nothing was changed.",
+      "sharedFolder": "Canager won't remove {{path}}: it sits directly in your home folder or in a folder other apps share, so moving it could take their files with it. Nothing was changed.",
+      "missing": "{{path}} isn't there any more, so Canager stopped. Nothing was changed.",
+      "notOwnedByYou": "Canager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed.",
+      "notWhatInstructionsExpect": "Canager won't remove {{path}}: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+      "overlapsKept": "Canager won't uninstall this: it couldn't confirm that moving the listed paths leaves {{path}}, which it keeps, where it is — through a link, one of them may be the same thing, hold it, or lie inside it. Nothing was changed."
+    }
   },
   "operations": {
     "idle": "No operation running",

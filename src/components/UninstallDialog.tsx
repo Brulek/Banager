@@ -4,6 +4,7 @@ import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/querie
 import {
   ADAPTER_LABEL_KEYS,
   parseUninstallBlocked,
+  parseUninstallUnsafe,
   planErrorMessage,
   UNINSTALL_BLOCKED_KEYS,
 } from "../lib/sources";
@@ -91,14 +92,20 @@ export function UninstallDialog({
   // `plan.warnings.length > 0` would be a second one.
   const planWarnings = warningTexts(t, plan?.warnings ?? []);
 
-  // The one refusal this dialog words itself rather than through
-  // `planErrorMessage`: the tool will not uninstall this package (a pinned
+  // Two refusals are shown as sentences of their own rather than inside
+  // `uninstall.planError`'s "Couldn't check what this would affect", because
+  // Canager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
   // crates/canager-core/src/session/plans.rs), which only a stale Installed
-  // page can reach. Its sentence is not "couldn't check what this would
-  // affect" -- Canager did check -- and it carries the unpin command, set
-  // apart as code as on the Installed page's row.
+  // page can reach and whose sentence carries the unpin command, set apart
+  // as code as on the Installed page's row; and a path-list uninstall whose
+  // preview refused one of its paths (`uninstall_unsafe`,
+  // `removal::plan_removal`), whose sentence names the path and already
+  // says nothing was changed.
   function refusalText(raw: string, frame: "uninstall.planError" | "uninstall.submitError") {
+    if (parseUninstallUnsafe(raw) !== null) {
+      return planErrorMessage(t, raw, sourceLabel);
+    }
     const blocked = parseUninstallBlocked(raw);
     if (blocked === null) {
       return t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
