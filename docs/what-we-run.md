@@ -638,7 +638,12 @@ right before each path is moved — after the pause that follows the move
 before it — every check runs again on that path, and it is compared once
 more with what the preview recorded; if anything differs the uninstall
 stops before moving it (`Fault::PathChanged`, naming the path), and the
-operation log lists every path already moved. Canager checks each item
+operation log lists every path already moved. Before the launcher, the
+last, is moved, Canager also looks for every other listed path once
+more: one that is there again — the program files recreated during a
+pause by a Claude Code still running, say — stops the uninstall before
+the launcher (`Fault::PathChanged`, naming that path), so the row stays
+and a fresh preview lists what came back. Canager checks each item
 immediately before moving it; a program running as you that swaps the
 item in that instant could still race it. The launcher is last, so a
 stop partway — macOS refusing an item (its own words are shown), Cancel,

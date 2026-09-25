@@ -5,9 +5,11 @@
 //! below; `execute_removal` runs the same checks again at the confirmation,
 //! compares every identity with the one the preview recorded, and then
 //! moves each path to the Trash in order -- the launcher last -- running
-//! every check on that item once more immediately before its move. Nothing
-//! here knows the `Adapter` contract (`mod.rs` does) or how an item is
-//! moved (`crate::trash` does).
+//! every check on that item once more immediately before its move and,
+//! before the launcher's move, looking once more for every other listed
+//! path, which must be gone by then (`listed_path_back`). Nothing here
+//! knows the `Adapter` contract (`mod.rs` does) or how an item is moved
+//! (`crate::trash` does).
 //!
 //! What the checks guard against is change by accident: the tool's own
 //! updater, the user, another app doing its ordinary work between the
@@ -465,8 +467,9 @@ enum Turn {
     /// Moved; where the system put it.
     Moved(PathBuf),
     /// Not what the preview saw: a check failed at `.0` (the item, or the
-    /// kept path it would disturb) or the item's identity differs. Not
-    /// moved.
+    /// kept path it would disturb), the item's identity differs, or -- at
+    /// the launcher's turn -- another listed path, `.0`, is there again
+    /// (`listed_path_back`). Not moved.
     Changed(PathBuf),
     /// The system refused; its own words. Not moved.
     Refused(String),
@@ -474,16 +477,49 @@ enum Turn {
     CannotAsk,
 }
 
+/// The listed path, other than the launcher, that is there when the
+/// launcher's turn comes, if any. The launcher is last (`recipes::tests`)
+/// because it is what keeps the row, and the row is the one place that
+/// shows what else the list left behind: a program folder that came back
+/// during a pause -- a Claude Code still running installs an update into
+/// it -- would be invisible once the launcher is gone, and `route::probe`
+/// alone cannot tell (`Present` if the launcher's target is among the new
+/// files, `LauncherOnly` if not; the folder is there either way). So
+/// before the launcher moves, every other path the recipe lists must be
+/// gone from the disk: each was moved earlier in this run, was already
+/// gone at the preview (`Warning::AlreadyGone`), or was never there (an
+/// optional path). One whose `lstat` answers anything but "no such file"
+/// -- it is there again, or cannot be looked at -- is returned, and the
+/// run stops before the launcher (`Turn::Changed`): the launcher stays,
+/// the row with it, and a fresh preview lists what came back. Read by
+/// `take_turn`.
+fn listed_path_back(look: &Look<'_>) -> Option<PathBuf> {
+    let home = look.job.detected.home.as_path();
+    look.job
+        .remove
+        .iter()
+        .map(|spec| route::expand(home, spec.path))
+        .filter(|path| *path != look.launcher)
+        .find(|path| {
+            !matches!(
+                std::fs::symlink_metadata(path),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound
+            )
+        })
+}
+
 /// One item's turn, on tokio's blocking pool: every check again, from a
 /// fresh look (the home folder, the kept paths, the item's folders, the
 /// item itself), its identity compared with what the preview saw, and then
-/// -- with nothing in between -- the move. `check_item`'s last step is the
-/// `lstat` that produced `seen`, and `Trasher::trash` is handed that
-/// answer's kind rather than looking again: Canager checks each item
-/// immediately before moving it; a program running as you that swaps the
-/// item in that instant could still race it (docs/what-we-run.md, "Moving
-/// files to the Trash"). That is the documented edge of the design: the
-/// system's call takes a path, and what it finds there is what it moves.
+/// -- with nothing in between -- the move. At the launcher's turn, before
+/// its own checks, every other listed path must be gone
+/// (`listed_path_back`). `check_item`'s last step is the `lstat` that
+/// produced `seen`, and `Trasher::trash` is handed that answer's kind
+/// rather than looking again: Canager checks each item immediately before
+/// moving it; a program running as you that swaps the item in that instant
+/// could still race it (docs/what-we-run.md, "Moving files to the Trash").
+/// That is the documented edge of the design: the system's call takes a
+/// path, and what it finds there is what it moves.
 fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Trasher) -> Turn {
     let home = job.detected.home.as_path();
     let Some(spec) = job
@@ -496,6 +532,11 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
     let Ok(look) = Look::new(job) else {
         return Turn::Changed(path.to_path_buf());
     };
+    if path == look.launcher {
+        if let Some(back) = listed_path_back(&look) {
+            return Turn::Changed(back);
+        }
+    }
     let seen = match kept_places(&look).and_then(|kept| check_item(&look, &kept, spec, path)) {
         Ok(seen) => seen,
         Err(refusal) => return Turn::Changed(refusal.path),
@@ -519,8 +560,9 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
 /// re-points the launcher) sends the user back to a fresh preview. Then
 /// each path in order: after the first, the pause (Cancel ends it, and it
 /// never outlasts the budget); Cancel and the budget checked; one turn on
-/// the blocking pool (`take_turn`: every check again, the identity against
-/// the preview's, the move), awaited to its end even if Cancel arrives
+/// the blocking pool (`take_turn`: at the launcher's, that every other
+/// listed path is gone; every check again, the identity against the
+/// preview's, the move), awaited to its end even if Cancel arrives
 /// meanwhile -- a move handed to the system finishes and is reported; one
 /// log note. After the last move the same pause once more, before
 /// `Succeeded` (a Cancel there only cuts it short: everything is moved).
@@ -1527,6 +1569,136 @@ mod tests {
             .unwrap()
             .file_type()
             .is_symlink());
+    }
+
+    /// A trasher that, right after its `after`-th call (0-based) has moved
+    /// its item, writes the file `recreate` (folders made as needed): a
+    /// listed path back before the next item's turn -- in production,
+    /// during the pause that follows -- as when a Claude Code still running
+    /// installs an update into a program folder that was just moved.
+    struct RecreatingTrasher {
+        inner: MockTrasher,
+        after: usize,
+        recreate: PathBuf,
+        calls: StdMutex<usize>,
+    }
+
+    impl Trasher for RecreatingTrasher {
+        fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError> {
+            let result = self.inner.trash(path, kind);
+            let nth = {
+                let mut calls = self.calls.lock().unwrap();
+                *calls += 1;
+                *calls - 1
+            };
+            if nth == self.after {
+                std::fs::create_dir_all(self.recreate.parent().unwrap()).unwrap();
+                std::fs::write(&self.recreate, b"#!/bin/sh\n").unwrap();
+            }
+            result
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_stops_before_the_launcher_when_a_listed_path_is_back() {
+        // The launcher is last so that a stopped run leaves a row; once it
+        // is gone, nothing shows what the list left behind. A program
+        // folder that came back during a pause -- a Claude Code still
+        // running installed an update -- would be invisible after the
+        // launcher's move, so the launcher's turn looks for every other
+        // listed path once more and stops when one is there: `PathChanged`
+        // naming it, the launcher in place, the row still there, and a
+        // fresh preview lists what came back. The program folder twice --
+        // holding the launcher's own target (`probe` would say `Present`)
+        // and a newer version only (`probe` would say `LauncherOnly`, yet
+        // the folder is there) -- and then the cache.
+        for version in ["2.1.281", "2.1.282"] {
+            let home = TempHome::new("removal-exec-root-back");
+            let layout = claude_layout(&home, "2.1.281");
+            home.dir(".claude/downloads");
+            let d = detected(home.path());
+            let job = claude_job(&d);
+            let preview = plan_removal(&job).unwrap();
+            let recreated = layout.root.join("versions").join(version);
+            let recreating = Arc::new(RecreatingTrasher {
+                inner: MockTrasher::new(),
+                after: 0,
+                recreate: recreated.clone(),
+                calls: StdMutex::new(0),
+            });
+            let trasher: Arc<dyn Trasher> = recreating.clone();
+
+            let (outcome, notes) =
+                run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+            assert_eq!(outcome, path_changed("~/.local/share/claude"), "{version}");
+            assert_eq!(
+                recreating.inner.calls(),
+                preview.paths[..2].to_vec(),
+                "{version}: the cache, second, is checked as itself and moved; the launcher is never handed over"
+            );
+            assert_eq!(notes.len(), 2, "{version}");
+            assert!(
+                std::fs::symlink_metadata(&layout.launcher)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "{version}: the launcher stays"
+            );
+            assert_ne!(
+                route::probe(CLAUDE.route.kind, &layout.launcher, &layout.root),
+                Probe::Absent,
+                "{version}: the row stays"
+            );
+            assert!(
+                recreated.is_file(),
+                "{version}: what came back is left as it is"
+            );
+            let again = plan_removal(&job).expect("a fresh preview");
+            assert_eq!(
+                again.paths,
+                vec![layout.root.clone(), layout.launcher.clone()],
+                "{version}: the fresh preview lists what came back"
+            );
+        }
+
+        // The cache, back after its own move (the program folder stays gone):
+        // the same stop, naming the cache; the fresh preview lists the
+        // program folder as already gone and the cache to move.
+        let home = TempHome::new("removal-exec-cache-back");
+        let layout = claude_layout(&home, "2.1.281");
+        let downloads = home.dir(".claude/downloads");
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let recreating = Arc::new(RecreatingTrasher {
+            inner: MockTrasher::new(),
+            after: 1,
+            recreate: downloads.join("claude-2.1.282.tgz"),
+            calls: StdMutex::new(0),
+        });
+        let trasher: Arc<dyn Trasher> = recreating.clone();
+
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, path_changed("~/.claude/downloads"));
+        assert_eq!(recreating.inner.calls(), preview.paths[..2].to_vec());
+        assert!(std::fs::symlink_metadata(&layout.launcher)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(std::fs::symlink_metadata(&layout.root).is_err(), "moved");
+        let again = plan_removal(&job).expect("a fresh preview");
+        assert_eq!(
+            again.paths,
+            vec![downloads.clone(), layout.launcher.clone()]
+        );
+        assert_eq!(
+            again.warnings[0],
+            Warning::AlreadyGone {
+                path: "~/.local/share/claude".to_string()
+            }
+        );
     }
 
     #[tokio::test]

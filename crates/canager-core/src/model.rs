@@ -697,9 +697,13 @@ pub enum Fault {
     /// listed is gone), or it is no longer the file the preview recorded
     /// (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool that
     /// updates itself re-points its launcher -- or replaced by another of
-    /// the same name. Canager stopped without moving that path; whatever it
-    /// moved before is in the Trash, one `LogNote::MovedToTrash` each in
-    /// the log. For a standalone tool's upgrade, the launcher the plan
+    /// the same name; or, when the launcher's turn came (the last), another
+    /// listed path was there again -- the program folder recreated during a
+    /// pause by a copy still running, say -- and `path` is that one, the
+    /// launcher left in place so the row stays. Canager stopped without
+    /// moving the item whose turn it was; whatever it moved before is in
+    /// the Trash, one `LogNote::MovedToTrash` each in the log. For a
+    /// standalone tool's upgrade, the launcher the plan
     /// would run: looked at again right before the spawn, it is no longer
     /// the native install's -- gone, dangling, a plain file, or a link
     /// resolving outside the tool's own root (at Homebrew's or npm's copy,
