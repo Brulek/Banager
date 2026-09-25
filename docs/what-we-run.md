@@ -500,6 +500,15 @@ never start a download, so the variable is set on every version read
 regardless. The version is the first token of the first non-empty line
 (`2.1.282 (Claude Code)`).
 
+One refresh looks at the launcher twice, once to detect it and once to
+list what is installed, and the disk can change in between. If the
+launcher or its program files go away between those two looks, that
+refresh reports Claude Code as a source it could not finish (the banner
+over both pages) and keeps the previous refresh's rows rather than
+listing an install that no longer matches its own row; the next refresh
+lists what is there. The update check that follows in the same refresh
+runs nothing itself: it compares the version the second look read.
+
 Canager also asks where `claude` would run from if typed in Terminal (the
 first regular file named `claude` with executable bits in Canager's
 `PATH`) and, when that is not this copy, says so under the source:
@@ -518,7 +527,7 @@ password):
 
 | Purpose | Argv or request | Timeout |
 |---|---|---|
-| Detect, inventory, the fresh update check, and the reading before and after an update | `<claude> --version`, with `DISABLE_AUTOUPDATER=1` | 30 s |
+| Detect, inventory (whose reading the update check compares), and the reading before and after an update | `<claude> --version`, with `DISABLE_AUTOUPDATER=1` | 30 s |
 | Newest published version (`check_updates`) | `GET https://downloads.claude.ai/claude-code-releases/latest` — or `/stable`, when `~/.claude/settings.json` sets `"autoUpdatesChannel": "stable"` | 30 s |
 
 The pointer answers with one version number. An update is listed only when
@@ -529,9 +538,10 @@ something that is not a version is listed as "could not check", never as
 an error for the source, and so is an installed version that cannot be
 read at that moment or cannot be compared with the published one (a
 version with a suffix such as `-beta`). Claude Code updates itself in the
-background when its own updater is on; the update listed is real either
-way, since it is compared with the version the launcher reports when the
-check runs.
+background when its own updater is on; the update listed is compared with
+the version the launcher reported to the same refresh's inventory, so the
+Installed and Updates pages show one reading, and a self-update that
+lands between the inventory and the check is listed by the next refresh.
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):

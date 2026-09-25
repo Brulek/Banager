@@ -38,7 +38,9 @@ use canager_core::adapters::uv::UvAdapter;
 use canager_core::adapters::Adapter;
 use canager_core::events::VecSink;
 use canager_core::http::MockHttpClient;
-use canager_core::model::{ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome};
+use canager_core::model::{
+    ArtifactKind, Attention, InstanceNote, ManagerInstance, OpKind, OpRequest, Outcome,
+};
 use canager_core::ops::OperationManager;
 use canager_core::runner::{
     CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, RunnerError,
@@ -647,18 +649,33 @@ async fn claude_upgrade_outputs(
             probe(RouteKind::SymlinkIntoRoot, &inst.exe_path, &inst.prefix),
             Probe::LauncherOnly
         );
+        // The next refresh: detect lists the launcher alone, and the
+        // inventory of that row is the one an Uninstall finishes. (The
+        // inventory of `inst`, detected whole, refuses instead: the install
+        // is no longer what that detect listed -- B's Astra finding B-2.)
         let adapter = StandaloneAdapter::new(
             &CLAUDE,
             runner.clone(),
             Arc::new(MockHttpClient::new()),
             Arc::new(MockTrasher::new()),
         );
-        let artifacts = adapter.inventory(&inst).await.unwrap();
+        let listed = adapter
+            .detect(&HostEnv {
+                path_dirs: vec![],
+                home: home.clone(),
+                euid: 501,
+                cargo_home: None,
+                ollama_host: None,
+            })
+            .await;
         assert_eq!(
-            artifacts.len(),
+            listed.len(),
             1,
             "step C can still discover the remaining launcher"
         );
+        assert_eq!(listed[0].status.notes, vec![InstanceNote::LauncherOnly]);
+        let artifacts = adapter.inventory(&listed[0]).await.unwrap();
+        assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].path, None);
     }
     let _ = std::fs::remove_dir_all(&home);

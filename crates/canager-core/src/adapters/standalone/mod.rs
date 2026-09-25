@@ -65,6 +65,43 @@ pub struct Detected {
     pub euid: u32,
 }
 
+/// What `inventory` read at the launcher, kept for the `check_updates`
+/// that follows it -- so the Installed page's row and the Updates page's
+/// candidate come from one reading of the disk, and Claude Code updating
+/// itself between the two cannot put one version on each page (B's Astra
+/// finding B-2). `Session::refresh` calls `inventory` and then
+/// `check_updates` for each instance, in that order, under the instance's
+/// lock (`refresh_round` in session/refresh.rs), and nothing else calls
+/// `check_updates`. `check_updates` takes the reading out, so one
+/// inventory feeds one check, and a check with nothing to take is
+/// refused. `reconcile` reads the disk too but not through `inventory`,
+/// and leaves this alone.
+#[derive(Clone, Debug)]
+enum Reading {
+    /// Not the install detect listed any more (`inventory` says which
+    /// way): `inventory` refused with this reason, and `check_updates`
+    /// refuses with the same, so `refresh` keeps the previous round's rows
+    /// on both pages and marks them stale.
+    Changed(String),
+    /// The dangling launcher detect listed, still: no version to compare.
+    LauncherOnly,
+    /// This route's launcher, and what `--version` said (`None`: it did
+    /// not answer).
+    Present { version: Option<String> },
+}
+
+/// One look at the launcher, from the disk now -- never detect's answer
+/// cached: `refresh` reads under the instance lock and `run_operation`'s
+/// reconcile after an operation must see what is there now (spec §3.6).
+/// The probe, and, for this route's launcher, its answer to `--version`.
+/// Read by `inventory` and `reconcile`, through `look`.
+struct Look {
+    probe: Probe,
+    /// `None` when the launcher is not this route's (there is no program
+    /// to ask) or did not answer.
+    version: Option<String>,
+}
+
 /// One tool installed by its own installer, as the `Adapter` contract
 /// sees it. Built once per `Recipe` by `all()`; the instance it detects
 /// *is* the native install (spec D2).
@@ -84,6 +121,8 @@ pub struct StandaloneAdapter {
     /// Read by `execute`.
     trash_gap: Duration,
     detected: Mutex<Option<Detected>>,
+    /// Written by `inventory`, taken by `check_updates` (`Reading`).
+    inventoried: Mutex<Option<Reading>>,
 }
 
 impl StandaloneAdapter {
@@ -116,6 +155,7 @@ impl StandaloneAdapter {
             trasher,
             trash_gap: removal::PUT_BACK_SETTLE,
             detected: Mutex::new(None),
+            inventoried: Mutex::new(None),
         }
     }
 
@@ -224,25 +264,78 @@ impl StandaloneAdapter {
         }
     }
 
-    /// The tool itself, read from the disk again -- not detect's answer
-    /// cached: `refresh` calls this under the instance lock and
-    /// `run_operation`'s reconcile after an operation must see what is
-    /// there now (spec §3.6). The launcher and root are the instance's own
-    /// `exe_path` and `prefix`, which detect expanded.
+    /// `Look`: the probe at the instance's own `exe_path` and `prefix`,
+    /// which detect expanded, then `--version` when the launcher is this
+    /// route's.
+    async fn look(&self, inst: &ManagerInstance) -> Look {
+        let probe = route::probe(self.recipe.route.kind, &inst.exe_path, &inst.prefix);
+        let version = match probe {
+            Probe::Present { .. } => self.read_version(&inst.exe_path).await,
+            Probe::Absent | Probe::LauncherOnly => None,
+        };
+        Look { probe, version }
+    }
+
+    /// The tool itself, read from the disk again (`look`), not detect's
+    /// answer cached. What is there has to be the install detect listed:
+    /// the launcher whole, or the launcher alone (the instance then carries
+    /// `InstanceNote::LauncherOnly`, which only `detect` writes). Anything
+    /// else -- the launcher gone; the program files gone behind a launcher
+    /// detect saw whole; the program files back behind one detect saw
+    /// dangling -- is refused, because no artifact list could say it: the
+    /// instance row is detect's, and would stay healthy beside no row, or
+    /// beside an empty-version row, with the Updates page saying
+    /// everything is up to date (B's Astra finding B-2). `refresh` turns
+    /// the refusal into "this refresh did not finish for this source": the
+    /// previous round's rows are kept and marked stale, and the next
+    /// refresh detects what is there now. Whatever the answer, the reading
+    /// is left for `check_updates` (`Reading`).
     pub async fn inventory(
         &self,
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
-        let (version, path) =
-            match route::probe(self.recipe.route.kind, &inst.exe_path, &inst.prefix) {
-                Probe::Absent => return Ok(Vec::new()),
-                Probe::LauncherOnly => (String::new(), None),
-                Probe::Present { real } => (
-                    self.read_version(&inst.exe_path).await.unwrap_or_default(),
-                    Some(real),
-                ),
-            };
-        Ok(vec![InstalledArtifact {
+        let look = self.look(inst).await;
+        let listed_launcher_only = inst.status.notes.contains(&InstanceNote::LauncherOnly);
+        let reading = match (&look.probe, listed_launcher_only) {
+            (Probe::Absent, _) => Reading::Changed(format!(
+                "{}'s launcher {} is gone since it was detected",
+                self.meta.name,
+                inst.exe_path.display()
+            )),
+            (Probe::LauncherOnly, false) => Reading::Changed(format!(
+                "{}'s program files are gone since it was detected; only the launcher {} is left",
+                self.meta.name,
+                inst.exe_path.display()
+            )),
+            (Probe::Present { .. }, true) => Reading::Changed(format!(
+                "{}'s program files are back since it was detected with the launcher {} alone",
+                self.meta.name,
+                inst.exe_path.display()
+            )),
+            (Probe::LauncherOnly, true) => Reading::LauncherOnly,
+            (Probe::Present { .. }, false) => Reading::Present {
+                version: look.version.clone(),
+            },
+        };
+        *self.inventoried.lock().unwrap() = Some(reading.clone());
+        match reading {
+            Reading::Changed(reason) => Err(AdapterError::Refused(reason)),
+            Reading::LauncherOnly | Reading::Present { .. } => Ok(self.rows(inst, look)),
+        }
+    }
+
+    /// The artifact list for what `look` found: nothing for `Absent`; for
+    /// the launcher alone, the row with no version and no path that an
+    /// Uninstall finishes (spec §3.6); for this route's launcher, the tool
+    /// with the version it answered (empty when it did not) and the real
+    /// binary. Read by `inventory` and `reconcile`.
+    fn rows(&self, inst: &ManagerInstance, look: Look) -> Vec<InstalledArtifact> {
+        let (version, path) = match look.probe {
+            Probe::Absent => return Vec::new(),
+            Probe::LauncherOnly => (String::new(), None),
+            Probe::Present { real } => (look.version.unwrap_or_default(), Some(real)),
+        };
+        vec![InstalledArtifact {
             key: self.artifact_key(inst),
             // From the meta TOML, not a second copy in the recipe.
             display_name: self.meta.name.clone(),
@@ -273,7 +366,7 @@ impl StandaloneAdapter {
                 .uninstall
                 .is_none()
                 .then_some(UninstallBlocked::NoSafeMethod),
-        }])
+        }]
     }
 
     /// Discovery is phase 5; a standalone tool has nothing to search anyway.
@@ -288,16 +381,23 @@ impl StandaloneAdapter {
         )))
     }
 
-    /// Spec §4.1/§4.3/D4/D5: a fresh installed version reading against
-    /// the published one; a candidate only when the
-    /// published one is greater, comparing dotted integers -- Claude
-    /// Code's `stable` pointer sits behind its `latest`, so "different"
-    /// would be a downgrade badge. When `probe` no longer finds this
-    /// route's program behind the launcher (`Absent`, or `LauncherOnly`:
-    /// only the dangling link is left), there is no installed version to
-    /// compare: no request and no row. Anything else that stops the
-    /// comparison (the version read failing, no network, a non-200, a body
-    /// that is not a version, an incomparable pair) is one "could not
+    /// Spec §4.1/§4.3/D4/D5: the installed version `inventory` read just
+    /// before this (`Reading`) against the published one; a candidate only
+    /// when the published one is greater, comparing dotted integers --
+    /// Claude Code's `stable` pointer sits behind its `latest`, so
+    /// "different" would be a downgrade badge. Never detect's
+    /// `inst.version`, which predates the inventory, and never a read of
+    /// its own, which could postdate it: Claude Code updating itself
+    /// between the two would then put one version on the Installed page
+    /// and another on the Updates page (B's Astra finding B-2); a
+    /// self-update that lands between the inventory and this is listed by
+    /// the next refresh, on both pages. A launcher-only row has no
+    /// installed version to compare: no request and no row. An inventory
+    /// that refused because the install is not what detect listed is
+    /// refused here with the same reason, so `refresh` keeps the previous
+    /// candidates beside the previous rows. Anything else that stops the
+    /// comparison (the version read having failed, no network, a non-200, a
+    /// body that is not a version, an incomparable pair) is one "could not
     /// check" row, never an `Err`: a failed lookup is not knowing, and an
     /// `Err` would hold the whole source stale.
     ///
@@ -312,15 +412,22 @@ impl StandaloneAdapter {
         inst: &ManagerInstance,
         _opts: &CheckOptions,
     ) -> Result<CheckOutcome, AdapterError> {
-        // Detect's version predates refresh's inventory; an auto-update
-        // can happen between them. Re-probe and read now, with the same
-        // version command environment as detect/inventory/reconcile.
-        match route::probe(self.recipe.route.kind, &inst.exe_path, &inst.prefix) {
-            Probe::Absent | Probe::LauncherOnly => return Ok(CheckOutcome::default()),
-            Probe::Present { .. } => {}
-        }
+        let reading = self.inventoried.lock().unwrap().take();
+        let version = match reading {
+            // Unreachable through `Session`, which inventories before it
+            // checks (`refresh_round`), so no sentence of its own.
+            None => {
+                return Err(AdapterError::Refused(format!(
+                    "{} has not been inventoried since its last update check",
+                    self.meta.name
+                )))
+            }
+            Some(Reading::Changed(reason)) => return Err(AdapterError::Refused(reason)),
+            Some(Reading::LauncherOnly) => return Ok(CheckOutcome::default()),
+            Some(Reading::Present { version }) => version,
+        };
         let key = self.artifact_key(inst);
-        let Some(current) = self.read_version(&inst.exe_path).await else {
+        let Some(current) = version else {
             return Ok(vec![uncheckable_candidate(
                 key,
                 inst.version.clone().unwrap_or_default(),
@@ -599,19 +706,23 @@ impl StandaloneAdapter {
     }
 
     /// The reading before and after an upgrade (and after an install,
-    /// which this adapter never plans): an owned launcher without a
-    /// readable version is no evidence that an upgrade succeeded, so it is
-    /// refused (`Parse`) and `run_operation` reports `Unconfirmed` (B's
-    /// Astra finding 1). After an uninstall `run_operation` reads
-    /// `reconcile_after_uninstall` instead, which counts that launcher as
-    /// still there.
+    /// which this adapter never plans), from the disk now (`look`, then
+    /// `rows`) -- not through `inventory`, which refuses an install that
+    /// is no longer what detect listed: a launcher gone after an upgrade
+    /// must read as absent here (`GoneAfterUpgrade`), not as a refusal
+    /// (`Unconfirmed`). An owned launcher without a readable version --
+    /// one that did not answer, or the dangling link alone -- is no
+    /// evidence that an upgrade succeeded, so it is refused (`Parse`) and
+    /// `run_operation` reports `Unconfirmed` (B's Astra finding 1). After
+    /// an uninstall `run_operation` reads `reconcile_after_uninstall`
+    /// instead, which counts that launcher as still there.
     pub async fn reconcile(
         &self,
         inst: &ManagerInstance,
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
-        let artifacts = self.inventory(inst).await?;
-        let reconciled = reconcile_from(artifacts, key);
+        let look = self.look(inst).await;
+        let reconciled = reconcile_from(self.rows(inst, look), key);
         if reconciled.present && reconciled.version.as_deref().is_none_or(str::is_empty) {
             return Err(AdapterError::Parse(
                 "cannot verify the standalone launcher's installed version".to_string(),
@@ -1311,37 +1422,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_inventory_reads_the_disk_again_rather_than_detects_answer() {
-        // `refresh` calls inventory under the instance lock and
-        // `run_operation`'s reconcile must see the disk as it is now (spec
-        // §3.6): a launcher removed since detect means an empty inventory.
-        let home = TempHome::new("inventory-fresh");
+    async fn test_inventory_refuses_an_install_that_is_not_what_detect_listed() {
+        // `refresh` calls inventory under the instance lock, after detect,
+        // and reads the disk as it is now, never detect's answer (spec
+        // §3.6). What it finds has to fit the instance detect listed, or
+        // the snapshot would say two things at once -- a healthy row with
+        // no artifact, or with an empty-version one, beside "Everything is
+        // up to date" (B's Astra finding B-2). So a launcher that is gone,
+        // program files gone behind a launcher detect saw whole, or
+        // program files back behind a launcher detect saw dangling are each
+        // a refusal, which `refresh` turns into "this refresh did not
+        // finish for this source" with the previous rows kept; the next
+        // refresh lists what is there.
+        let home = TempHome::new("inventory-changed");
         let layout = claude_layout(&home, "2.1.281");
-        let inst = instance_for(&layout, Some("2.1.281"));
-        std::fs::remove_file(&layout.launcher).expect("remove launcher");
-        let artifacts = adapter(Arc::new(MockRunner::new()))
-            .inventory(&inst)
-            .await
-            .expect("inventory");
-        assert!(artifacts.is_empty());
+        let adapter = adapter(Arc::new(MockRunner::new()));
+        let whole = instance_for(&layout, Some("2.1.281"));
+        let dangling = ManagerInstance {
+            status: InstanceStatus {
+                unavailable: None,
+                notes: vec![InstanceNote::LauncherOnly],
+            },
+            ..instance_for(&layout, None)
+        };
+
+        // The program files are back behind a launcher detect saw dangling.
+        let Err(AdapterError::Refused(reason)) = adapter.inventory(&dangling).await else {
+            panic!("program files back behind a launcher detect saw dangling is a refusal");
+        };
+        assert!(reason.contains("program files"), "{reason}");
+
+        // The program files are gone behind a launcher detect saw whole.
+        std::fs::remove_dir_all(layout.root.join("versions")).expect("remove the program files");
+        let Err(AdapterError::Refused(reason)) = adapter.inventory(&whole).await else {
+            panic!("program files gone behind a launcher detect saw whole is a refusal");
+        };
+        assert!(reason.contains("program files"), "{reason}");
+
+        // The launcher is gone, whatever detect listed.
+        std::fs::remove_file(&layout.launcher).expect("remove the launcher");
+        for inst in [&whole, &dangling] {
+            let Err(AdapterError::Refused(reason)) = adapter.inventory(inst).await else {
+                panic!("a launcher that is gone is a refusal");
+            };
+            assert!(reason.contains("gone"), "{reason}");
+        }
     }
 
     #[tokio::test]
     async fn test_inventory_of_a_launcher_only_install_has_no_version_and_no_path() {
+        // The row detect listed as the launcher alone (its
+        // `InstanceNote::LauncherOnly` is what tells inventory so).
         let home = TempHome::new("inventory-launcher-only");
         let root = home.path().join(".local/share/claude");
-        let launcher = home.link(".local/bin/claude", &root.join("versions/2.1.281"));
-        let inst = ManagerInstance {
-            exe_path: launcher,
-            prefix: root,
-            version: None,
-            ..crate::testing::manager_instance("standalone-claude", "standalone-claude")
-        };
+        home.link(".local/bin/claude", &root.join("versions/2.1.281"));
         let runner = Arc::new(MockRunner::new());
-        let artifacts = adapter(runner.clone())
-            .inventory(&inst)
-            .await
-            .expect("inventory");
+        let adapter = adapter(runner.clone());
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        assert_eq!(inst.status.notes, vec![InstanceNote::LauncherOnly]);
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
         assert_eq!(
             artifacts.len(),
             1,
@@ -1389,6 +1528,8 @@ mod tests {
                 .present
         );
 
+        // Gone is absent here -- `GoneAfterUpgrade` -- where `inventory`
+        // would refuse (`test_inventory_refuses_an_install_that_is_not_what_detect_listed`).
         std::fs::remove_file(&layout.launcher).expect("remove launcher");
         let absent = adapter.reconcile(&inst, &key).await.expect("reconcile");
         assert!(!absent.present);
@@ -1406,11 +1547,10 @@ mod tests {
             adapter.reconcile(&inst, &key).await,
             Err(AdapterError::Parse(_))
         ));
+        // The dangling link alone is present with nothing to verify: the
+        // same refusal, read from the disk and not through `inventory`
+        // (which refuses this instance outright, detected whole).
         std::fs::remove_file(&layout.real).unwrap();
-        let artifacts = adapter.inventory(&inst).await.unwrap();
-        assert_eq!(artifacts.len(), 1, "presence survives for step C");
-        assert_eq!(artifacts[0].path, None);
-        assert_eq!(artifacts[0].version, "");
         assert!(matches!(
             adapter.reconcile(&inst, &key).await,
             Err(AdapterError::Parse(_))
@@ -1439,8 +1579,10 @@ mod tests {
     }
 
     /// An adapter that has detected the layout in `home` (so `Detected`
-    /// holds that home), over `http`.
-    async fn detected_adapter(
+    /// holds that home) and read its inventory (so `Reading` holds the
+    /// launcher's version), over `http`: what `refresh` has done before it
+    /// checks for updates.
+    async fn refreshed_adapter(
         home: &TempHome,
         layout: &super::testing::ClaudeLayout,
         http: Arc<MockHttpClient>,
@@ -1455,37 +1597,46 @@ mod tests {
             .detect(&home.env(vec![home.path().join(".local/bin")]))
             .await
             .remove(0);
+        adapter.inventory(&inst).await.expect("inventory");
         (adapter, inst)
     }
 
     #[tokio::test]
-    async fn test_check_updates_uses_the_version_after_inventory_not_detects_version() {
-        let home = TempHome::new("check-fresh");
+    async fn test_check_updates_compares_the_version_inventory_read_not_detects_nor_a_read_of_its_own(
+    ) {
+        // Detect read 2.1.281, the inventory 2.1.290, and by the time of
+        // the check the launcher answers 2.1.299 (Claude Code updated
+        // itself again): the candidate is built from the inventory's
+        // 2.1.290, so the Updates page names the version the Installed
+        // page's row shows, and the check runs nothing.
+        let home = TempHome::new("check-inventoried");
         let layout = claude_layout(&home, "2.1.281");
         let runner = Arc::new(MockRunner::new());
         let argv = vec![layout.launcher.to_str().unwrap(), "--version"];
         runner.respond(argv.clone(), exited_0("2.1.281 (Claude Code)\n"));
         let http = Arc::new(MockHttpClient::new());
-        http.respond(LATEST_URL, answer("2.1.290"));
+        http.respond(LATEST_URL, answer("2.1.295"));
         let adapter =
             StandaloneAdapter::new(&CLAUDE, runner.clone(), http, Arc::new(MockTrasher::new()));
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
-        runner.respond(argv, exited_0("2.1.290 (Claude Code)\n"));
+        assert_eq!(inst.version.as_deref(), Some("2.1.281"));
+        runner.respond(argv.clone(), exited_0("2.1.290 (Claude Code)\n"));
         assert_eq!(
             adapter.inventory(&inst).await.unwrap()[0].version,
             "2.1.290"
         );
-        assert_eq!(inst.version.as_deref(), Some("2.1.281"));
-        assert!(adapter
+        runner.respond(argv, exited_0("2.1.299 (Claude Code)\n"));
+        let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
-            .unwrap()
-            .candidates
-            .is_empty());
+            .unwrap();
+        assert_eq!(out.candidates.len(), 1);
+        assert_eq!(out.candidates[0].current, "2.1.290");
+        assert_eq!(out.candidates[0].target, "2.1.295");
         assert_eq!(
             runner.calls().len(),
-            3,
-            "detect, inventory, then a fresh check read"
+            2,
+            "detect and inventory; the check reads nothing"
         );
     }
 
@@ -1547,6 +1698,10 @@ mod tests {
         );
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
         runner.respond(argv, exited_0(""));
+        // The inventory's read did not answer: its row has no version, and
+        // the check, comparing that same reading, cannot check -- detect's
+        // 2.1.281 is only what its row displays.
+        assert_eq!(adapter.inventory(&inst).await.unwrap()[0].version, "");
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1563,7 +1718,7 @@ mod tests {
         let layout = claude_layout(&home, "2.1.281");
         let http = Arc::new(MockHttpClient::new());
         http.respond(LATEST_URL, answer("2.1.290\n"));
-        let (adapter, inst) = detected_adapter(&home, &layout, http.clone()).await;
+        let (adapter, inst) = refreshed_adapter(&home, &layout, http.clone()).await;
 
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
@@ -1607,7 +1762,7 @@ mod tests {
             let layout = claude_layout(&home, "2.1.281");
             let http = Arc::new(MockHttpClient::new());
             http.respond(LATEST_URL, answer(body));
-            let (adapter, inst) = detected_adapter(&home, &layout, http).await;
+            let (adapter, inst) = refreshed_adapter(&home, &layout, http).await;
             let out = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -1630,7 +1785,7 @@ mod tests {
         .expect("write settings");
         let http = Arc::new(MockHttpClient::new());
         http.respond(STABLE_URL, answer("2.1.273"));
-        let (adapter, inst) = detected_adapter(&home, &layout, http.clone()).await;
+        let (adapter, inst) = refreshed_adapter(&home, &layout, http.clone()).await;
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1641,7 +1796,7 @@ mod tests {
         std::fs::write(home.path().join(".claude/settings.json"), "{ not json").expect("write");
         let http = Arc::new(MockHttpClient::new());
         http.respond(LATEST_URL, answer("2.1.281"));
-        let (adapter, inst) = detected_adapter(&home, &layout, http.clone()).await;
+        let (adapter, inst) = refreshed_adapter(&home, &layout, http.clone()).await;
         adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1658,7 +1813,7 @@ mod tests {
         let layout = claude_layout(&home, "2.1.281");
         let http = Arc::new(MockHttpClient::new());
         http.fail(LATEST_URL, "connection refused");
-        let (adapter, inst) = detected_adapter(&home, &layout, http).await;
+        let (adapter, inst) = refreshed_adapter(&home, &layout, http).await;
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1686,7 +1841,7 @@ mod tests {
                 body: "<html>busy</html>".to_string(),
             },
         );
-        let (adapter, inst) = detected_adapter(&home, &layout, http).await;
+        let (adapter, inst) = refreshed_adapter(&home, &layout, http).await;
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1711,7 +1866,7 @@ mod tests {
             let layout = claude_layout(&home, "2.1.281");
             let http = Arc::new(MockHttpClient::new());
             http.respond(LATEST_URL, answer(body));
-            let (adapter, inst) = detected_adapter(&home, &layout, http).await;
+            let (adapter, inst) = refreshed_adapter(&home, &layout, http).await;
             let out = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -1736,7 +1891,7 @@ mod tests {
             let layout = claude_layout(&home, "2.1.281");
             let http = Arc::new(MockHttpClient::new());
             http.respond(LATEST_URL, answer("2.1.290"));
-            let (adapter, inst) = detected_adapter(&home, &layout, http).await;
+            let (adapter, inst) = refreshed_adapter(&home, &layout, http).await;
             let out = adapter
                 .check_updates(
                     &inst,
@@ -1771,12 +1926,59 @@ mod tests {
         );
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
         assert_eq!(inst.exe_path, launcher);
+        adapter.inventory(&inst).await.expect("inventory");
         let out = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
             .expect("check_updates");
         assert!(out.candidates.is_empty());
         assert!(http.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_refuses_as_inventory_did_and_needs_an_inventory_first() {
+        // The reading `inventory` leaves for `check_updates` (`Reading`):
+        // a check with no inventory before it has nothing to compare and
+        // is refused (unreachable through `Session`); after an inventory
+        // that refused because the launcher is gone, the check refuses
+        // with the same reason and asks the endpoint nothing, so `refresh`
+        // keeps the previous candidates beside the previous rows; and one
+        // inventory feeds one check.
+        let home = TempHome::new("check-changed");
+        let layout = claude_layout(&home, "2.1.281");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(LATEST_URL, answer("2.1.290"));
+        let adapter =
+            StandaloneAdapter::new(&CLAUDE, runner, http.clone(), Arc::new(MockTrasher::new()));
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        let Err(AdapterError::Refused(reason)) =
+            adapter.check_updates(&inst, &CheckOptions::default()).await
+        else {
+            panic!("a check with no inventory before it is refused");
+        };
+        assert!(reason.contains("inventoried"), "{reason}");
+
+        std::fs::remove_file(&layout.launcher).expect("remove the launcher");
+        let Err(AdapterError::Refused(refused)) = adapter.inventory(&inst).await else {
+            panic!("a launcher that is gone is a refusal");
+        };
+        let Err(AdapterError::Refused(reason)) =
+            adapter.check_updates(&inst, &CheckOptions::default()).await
+        else {
+            panic!("the check refuses as the inventory did");
+        };
+        assert_eq!(reason, refused);
+        assert!(http.calls().is_empty());
+        // That reading has been taken: another check needs another inventory.
+        assert!(matches!(
+            adapter.check_updates(&inst, &CheckOptions::default()).await,
+            Err(AdapterError::Refused(_))
+        ));
     }
 
     fn request(kind: OpKind, artifact_kind: ArtifactKind, name: &str) -> OpRequest {
@@ -2296,6 +2498,7 @@ mod tests {
             let adapter =
                 StandaloneAdapter::new(&CLAUDE, runner, http, Arc::new(MockTrasher::new()));
             let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+            adapter.inventory(&inst).await.expect("inventory");
             let out = adapter
                 .check_updates(&inst, &CheckOptions::default())
                 .await
@@ -2499,9 +2702,14 @@ mod tests {
                 },
             ]
         );
-        // Afterwards the tool is gone for `detect` and `inventory` alike.
+        // Afterwards the tool is gone for `detect`; and the inventory of
+        // the row that detect listed refuses, the launcher being gone since
+        // then (the refresh after an operation detects again first).
         assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
-        assert!(adapter.inventory(&inst).await.unwrap().is_empty());
+        assert!(matches!(
+            adapter.inventory(&inst).await,
+            Err(AdapterError::Refused(_))
+        ));
     }
 
     #[tokio::test]
