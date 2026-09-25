@@ -242,6 +242,7 @@ mod tests {
                         crate::adapters::standalone::latest::CHANNEL_STABLE
                     ),
                 ],
+                Latest::HttpTomlVersion { url } => vec![url.to_string()],
             };
             for url in urls {
                 host_allowed(&url).unwrap_or_else(|e| panic!("{}: {url}: {e}", recipe.id));

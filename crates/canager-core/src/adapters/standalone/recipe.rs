@@ -4,11 +4,12 @@
 //!
 //! Only the shapes something produces exist here. Step C added the
 //! path-list uninstall (`uninstall: Option<Uninstall>`, `Uninstall::Paths`);
-//! step D adds `backup_globs`, a `FlatFile` route, `Expect::File`, a
-//! `SecondToken` version parse, the other `Latest` sources and an optional
-//! `upgrade` (agy updates itself only); step E `$CARGO_HOME` paths and
-//! `Uninstall::Command`. A variant or field defined before anything
-//! produces it is this project's most common defect (spec §十三 #41).
+//! step D adds `backup_globs`, a `FlatFile` route, `Expect::File`, the
+//! other `Latest` sources and an optional `upgrade` (agy updates itself
+//! only); step E a `SecondToken` version parse, the `HttpTomlVersion`
+//! source, `$CARGO_HOME` paths and `Uninstall::Command`. A variant or
+//! field defined before anything produces it is this project's most
+//! common defect (spec §十三 #41).
 
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 
@@ -103,6 +104,14 @@ pub enum VersionParse {
     /// The first whitespace-separated token of the first non-empty line:
     /// `2.1.281 (Claude Code)` → `2.1.281`.
     FirstToken,
+    /// The second token: `rustup 1.29.1 (d95a37b6a 2026-08-13)` → `1.29.1`
+    /// (rustup; grok's `grok 1.0.41 (4220f3b224a6)` in step D). The two
+    /// `info:` lines rustup prints after that go to stderr, which the
+    /// version read never looks at (Task 10 of the phase 4 step E plan
+    /// records them as `adapters/fixtures/standalone-rustup/<v>/
+    /// version-stderr.txt`). Its producer is the `RUSTUP` recipe (Task 6
+    /// of that plan).
+    SecondToken,
 }
 
 /// Where the newest published version is read from. Only VERIFIED
@@ -122,6 +131,14 @@ pub enum Latest {
     /// purpose: one tool needs it, and a generic "read a JSON key" source
     /// would be a mechanism with one user.
     ClaudeChannel { base: &'static str },
+    /// `GET url`, whose body is TOML with a top-level `version = '…'`:
+    /// rustup's `release-stable.toml`, the file `rustup self update`
+    /// itself reads (`DEFAULT_UPDATE_ROOT` in rustup 1.29.1's
+    /// `src/cli/self_update.rs`; rustup.md §6, VERIFIED). Parsed by
+    /// `latest::parse_release_stable_toml`, read by
+    /// `StandaloneAdapter::latest_version`. Its producer is the `RUSTUP`
+    /// recipe (Task 6 of the phase 4 step E plan).
+    HttpTomlVersion { url: &'static str },
 }
 
 /// The tool's own update command, run against the launcher through

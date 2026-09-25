@@ -31,8 +31,10 @@ pub fn is_dotted_version(s: &str) -> bool {
 /// silently truncate or reinterpret a version it cannot compare.
 pub fn parse_version(stdout: &str, parse: VersionParse) -> Option<String> {
     let line = stdout.lines().find(|line| !line.trim().is_empty())?;
+    let mut tokens = line.split_whitespace();
     let token = match parse {
-        VersionParse::FirstToken => line.split_whitespace().next()?,
+        VersionParse::FirstToken => tokens.next()?,
+        VersionParse::SecondToken => tokens.nth(1)?,
     };
     Some(token.to_string())
 }
@@ -100,6 +102,36 @@ pub fn parse_channel_body(body: &str) -> Result<String, String> {
     Err(format!(
         "the channel endpoint did not answer with a version (got {shown:?})"
     ))
+}
+
+/// The `version` of a release file such as rustup's `release-stable.toml`
+/// (`schema-version = '1'` / `version = '1.29.1'`), trimmed; `Err` with a
+/// short reason for a body that is not TOML, has no top-level `version`
+/// string, or whose version is not a dotted version. The reason becomes
+/// an uncheckable row's description, so it quotes at most a few
+/// characters of the body, never a page of HTML. Read by
+/// `StandaloneAdapter::latest_version` for `Latest::HttpTomlVersion`.
+pub fn parse_release_stable_toml(body: &str) -> Result<String, String> {
+    let shown = || -> String { body.trim().chars().take(40).collect() };
+    let table: toml::Value = toml::from_str(body)
+        .map_err(|_| format!("the release file is not TOML (got {:?})", shown()))?;
+    let version = table
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "the release file has no `version` string (got {:?})",
+                shown()
+            )
+        })?;
+    let version = version.trim();
+    if is_dotted_version(version) {
+        Ok(version.to_string())
+    } else {
+        Err(format!(
+            "the release file's version is not a version (got {version:?})"
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -307,6 +339,70 @@ mod tests {
             let err = parse_channel_body(body).expect_err(body);
             assert!(err.contains("did not answer with a version"), "{err}");
             assert!(err.len() < 120, "the reason stays short: {err}");
+        }
+    }
+
+    #[test]
+    fn test_parse_version_reads_the_second_token_of_rustups_recorded_line() {
+        // `rustup --version` stdout on this Mac, 2026-09-25 (rustup.md §3;
+        // Task 10 of the phase 4 step E plan records it as version.txt):
+        // `rustup 1.29.1 (d95a37b6a 2026-08-13)`.
+        assert_eq!(
+            parse_version(
+                "rustup 1.29.1 (d95a37b6a 2026-08-13)\n",
+                VersionParse::SecondToken
+            ),
+            Some("1.29.1".to_string())
+        );
+        // The two `info:` lines rustup writes go to stderr, which
+        // `read_version` never hands to this function. Had it been handed
+        // one, the second token "This" would come back as the version --
+        // this function keeps whatever token is there and leaves
+        // comparability to `compare_dotted`
+        // (`test_version_extraction_preserves_the_complete_token`) -- which
+        // is why the read passes stdout alone.
+        assert_eq!(
+            parse_version(
+                "info: This is the version for the rustup toolchain manager, not the rustc compiler.\n",
+                VersionParse::SecondToken
+            ),
+            Some("This".to_string())
+        );
+        // A line with one token has no second.
+        assert_eq!(parse_version("1.29.1\n", VersionParse::SecondToken), None);
+    }
+
+    #[test]
+    fn test_parse_release_stable_toml_reads_the_version_string() {
+        // The release file byte for byte (rustup.md §6, VERIFIED by curl;
+        // Task 10 of the phase 4 step E plan records it as
+        // release-stable.toml), and TOML's other string quote.
+        assert_eq!(
+            parse_release_stable_toml("schema-version = '1'\nversion = '1.29.1'\n"),
+            Ok("1.29.1".to_string())
+        );
+        assert_eq!(
+            parse_release_stable_toml("version = \"1.30.0\"\nschema-version = \"1\"\n"),
+            Ok("1.30.0".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_release_stable_toml_refuses_anything_that_is_not_a_versioned_release_file() {
+        // HTML answered with status 200 (a captive portal), a file with
+        // no version, a version that is not one, a version of the wrong
+        // type: an uncheckable row with a short reason, never a candidate.
+        for body in [
+            "<html><body>Sign in to the network</body></html>",
+            "",
+            "schema-version = '1'\n",
+            "version = 'latest'\n",
+            "version = 1\n",
+            "version = ['1.29.1']\n",
+        ] {
+            let err = parse_release_stable_toml(body).expect_err(body);
+            assert!(err.contains("release file"), "{body:?}: {err}");
+            assert!(err.len() < 140, "the reason stays short: {err}");
         }
     }
 }

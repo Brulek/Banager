@@ -511,6 +511,22 @@ impl StandaloneAdapter {
                 }
                 latest::parse_channel_body(&resp.body)
             }
+            Latest::HttpTomlVersion { url } => {
+                let resp = self
+                    .http
+                    .send(HttpRequest {
+                        method: "GET",
+                        url: url.to_string(),
+                        headers: Vec::new(),
+                        timeout: Duration::from_secs(30),
+                    })
+                    .await
+                    .map_err(|e| format!("request to {url} failed: {e}"))?;
+                if resp.status != 200 {
+                    return Err(format!("{url} returned status {}", resp.status));
+                }
+                latest::parse_release_stable_toml(&resp.body)
+            }
         }
     }
 
