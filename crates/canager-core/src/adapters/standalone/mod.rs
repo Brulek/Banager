@@ -21,6 +21,7 @@ pub mod recipe;
 pub mod recipes;
 pub mod removal;
 pub mod route;
+pub mod rustup;
 
 use self::recipe::{Latest, Recipe, Uninstall};
 use self::route::Probe;
@@ -1090,24 +1091,6 @@ pub(super) mod testing {
         pub launcher: PathBuf,
     }
 
-    /// Here until Task 5 of the phase 4 step E plan moves it to
-    /// `rustup.rs`, where the uninstall preview reads it in production.
-    pub const RUSTUP_PROXIES: [&str; 13] = [
-        "cargo",
-        "cargo-clippy",
-        "cargo-fmt",
-        "cargo-miri",
-        "clippy-driver",
-        "rls",
-        "rust-analyzer",
-        "rust-gdb",
-        "rust-gdbgui",
-        "rust-lldb",
-        "rustc",
-        "rustdoc",
-        "rustfmt",
-    ];
-
     pub fn rustup_layout(cargo_home: &Path) -> RustupLayout {
         use std::os::unix::fs::PermissionsExt;
         let bin = cargo_home.join("bin");
@@ -1121,7 +1104,7 @@ pub(super) mod testing {
         // `NotOnPath` note.
         std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
             .expect("executable rustup");
-        for proxy in RUSTUP_PROXIES {
+        for proxy in super::rustup::RUSTUP_PROXIES {
             std::os::unix::fs::symlink("rustup", bin.join(proxy)).expect("proxy link");
         }
         RustupLayout {
