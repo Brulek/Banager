@@ -109,7 +109,15 @@
       "Settings": "保留：{{path}}（你的设置）",
       "SettingsAndHistory": "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）"
     },
-    "alreadyGone": "已经不在了：{{path}}（没有东西要移）"
+    "alreadyGone": "已经不在了：{{path}}（没有东西要移）",
+    "removesToolchains": "这会把 {{path}} 永久删除（不是移到废纸篓），里面的所有工具链（{{names}}）以及 rustup 下载的全部内容一起消失。需要 Rust 的项目要等重新安装后才能再编译。其它用这个文件夹的 rustup 也会失去它们的工具链。",
+    "removesToolchainsUnlisted": "这会把 {{path}} 永久删除（不是移到废纸篓），里面的所有工具链以及 rustup 下载的全部内容一起消失。需要 Rust 的项目要等重新安装后才能再编译。其它用这个文件夹的 rustup 也会失去它们的工具链。",
+    "deletesCargoHome": "这会把 {{path}} 永久删除（不是移到废纸篓）：Cargo 下载的包、cargo install 的安装记录、Cargo 自己的设置和保存的登录信息（config.toml、credentials.toml），以及放在里面的其它所有东西。",
+    "removesCargoInstalled_other": "Cargo 文件夹的 bin 文件夹里的 {{count}} 个程序也会被删掉：{{names}}。其中用 cargo install 装的，重新安装 Rust 之后可以再用 cargo install 装回来。",
+    "homebrewRustupLosesToolchains": "这台 Mac 上还装了 Homebrew 的 rustup（brew install rustup）。它用的是同一组文件夹，所以它的工具链也会一起没了。",
+    "editsShellConfig": "rustup 会修改你的 shell 设置文件，删掉它当初加的那一行。",
+    "leavesShellConfigLine": "卸载后 {{path}} 里还有一行会去加载 Cargo 的 env 文件，而那个文件已经被删掉了，所以每开一个终端窗口都会报一句错，直到你自己把那一行删掉。",
+    "leavesShellConfigLineMaybe": "卸载后 {{path}} 里还有一行提到 Cargo 的 env 文件，rustup 不会删它。如果那一行会去加载这个文件，每开一个终端窗口都会报一句错，直到你自己改掉它。"
   },
   "standalone": {
     "summary": {

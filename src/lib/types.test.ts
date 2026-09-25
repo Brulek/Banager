@@ -264,6 +264,33 @@ describe("types", () => {
     const kept: KeptWhat[] = ["Settings", "SettingsAndHistory"];
     expect(JSON.stringify(removed)).toBe('["Launcher","Program","Cache"]');
     expect(JSON.stringify(kept)).toBe('["Settings","SettingsAndHistory"]');
+
+    // Phase 4 step E: what rustup's own uninstall does. Pinned against
+    // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
+    // crates/canager-core/src/model.rs.
+    const removesToolchains: Warning = {
+      RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] },
+    };
+    const deletesCargoHome: Warning = { DeletesCargoHome: { path: "~/.cargo" } };
+    const removesCargoInstalled: Warning = { RemovesCargoInstalled: { names: ["hexyl", "rg"] } };
+    const homebrew: Warning = "HomebrewRustupLosesToolchains";
+    const editsShellConfig: Warning = "EditsShellConfig";
+    const leavesShellConfigLine: Warning = {
+      LeavesShellConfigLine: { path: "~/.zshrc", certain: true },
+    };
+    expect(JSON.stringify(removesToolchains)).toBe(
+      '{"RemovesToolchains":{"path":"~/.rustup","names":["stable-aarch64-apple-darwin"]}}',
+    );
+    expect(JSON.stringify(deletesCargoHome)).toBe('{"DeletesCargoHome":{"path":"~/.cargo"}}');
+    expect(JSON.stringify(removesCargoInstalled)).toBe(
+      '{"RemovesCargoInstalled":{"names":["hexyl","rg"]}}',
+    );
+    expect(roundTrip(homebrew)).toBe("HomebrewRustupLosesToolchains");
+    expect(roundTrip(editsShellConfig)).toBe("EditsShellConfig");
+    expect(JSON.stringify(leavesShellConfigLine)).toBe(
+      '{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}',
+    );
+    expect(roundTrip(leavesShellConfigLine)).toEqual(leavesShellConfigLine);
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

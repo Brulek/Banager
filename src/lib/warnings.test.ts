@@ -40,16 +40,42 @@ describe("warningKey", () => {
     );
   });
 
+  it("gives each of rustup's uninstall warnings its key, and two of them a second key by payload", () => {
+    // No toolchain names (the toolchains directory is missing or empty):
+    // the sentence must not read "every toolchain ()" -- it drops the
+    // parenthesis instead (spec §6.5). A startup-file line rustup will
+    // not remove is "will print an error" only when it is one of the
+    // sourcing forms rustup itself writes; any other mention is "may".
+    expect(
+      warningKey({ RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } }),
+    ).toBe("warnings.removesToolchains");
+    expect(warningKey({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(
+      "warnings.removesToolchainsUnlisted",
+    );
+    expect(warningKey({ DeletesCargoHome: { path: "~/.cargo" } })).toBe("warnings.deletesCargoHome");
+    expect(warningKey({ RemovesCargoInstalled: { names: ["hexyl"] } })).toBe(
+      "warnings.removesCargoInstalled",
+    );
+    expect(warningKey("HomebrewRustupLosesToolchains")).toBe("warnings.homebrewRustupLosesToolchains");
+    expect(warningKey("EditsShellConfig")).toBe("warnings.editsShellConfig");
+    expect(warningKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: true } })).toBe(
+      "warnings.leavesShellConfigLine",
+    );
+    expect(warningKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toBe(
+      "warnings.leavesShellConfigLineMaybe",
+    );
+  });
+
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these nine, and the only one without
-    // a `warnings.*` key is the raw-text catch-all. A variant this list
-    // does not name is a `never` in `warningKey`'s default branches and
-    // does not compile, so there is no "unrecognised variant" to test.
+    // variant of `Warning` is one of these fifteen, and the only one
+    // without a `warnings.*` key is the raw-text catch-all. A variant this
+    // list does not name is a `never` in `warningKey`'s default branches
+    // and does not compile, so there is no "unrecognised variant" to test.
     const all: Warning[] = [
       "DependentsUnknown",
       "CompilesLocally",
@@ -59,6 +85,12 @@ describe("warningKey", () => {
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
       { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
       { AlreadyGone: { path: "~/.local/share/claude" } },
+      { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
+      { DeletesCargoHome: { path: "~/.cargo" } },
+      { RemovesCargoInstalled: { names: ["hexyl"] } },
+      "HomebrewRustupLosesToolchains",
+      "EditsShellConfig",
+      { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       { Message: "boom" },
     ];
     const keyless = all.filter((warning) => warningKey(warning) === null);
@@ -85,6 +117,35 @@ describe("warningArgs", () => {
     expect(warningArgs({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toEqual({
       host: "modelscope.cn",
     });
+  });
+
+  it("interpolates rustup's two folders, the toolchain names, the cargo-installed programs with a count, and the startup file", () => {
+    expect(
+      warningArgs({
+        RemovesToolchains: {
+          path: "~/.rustup",
+          names: ["stable-aarch64-apple-darwin", "nightly-aarch64-apple-darwin"],
+        },
+      }),
+    ).toEqual({ path: "~/.rustup", names: "stable-aarch64-apple-darwin, nightly-aarch64-apple-darwin" });
+    // No names: the unlisted key has no names slot, only the path.
+    expect(warningArgs({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toEqual({
+      path: "~/.rustup",
+    });
+    expect(warningArgs({ DeletesCargoHome: { path: "~/.cargo" } })).toEqual({ path: "~/.cargo" });
+    expect(warningArgs({ RemovesCargoInstalled: { names: ["hexyl"] } })).toEqual({
+      count: 1,
+      names: "hexyl",
+    });
+    expect(warningArgs({ RemovesCargoInstalled: { names: ["hexyl", "rg"] } })).toEqual({
+      count: 2,
+      names: "hexyl, rg",
+    });
+    expect(warningArgs({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toEqual({
+      path: "~/.zshrc",
+    });
+    expect(warningArgs("HomebrewRustupLosesToolchains")).toEqual({});
+    expect(warningArgs("EditsShellConfig")).toEqual({});
   });
 
   it("interpolates the path a trash, keep or already-gone item names", () => {

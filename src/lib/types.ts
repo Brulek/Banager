@@ -90,7 +90,12 @@ export type KeptWhat = "Settings" | "SettingsAndHistory";
  * and pluralise the copy in `src/lib/warnings.ts`, and
  * `ThirdPartyRegistry`, whose `host` interpolates it, and a path-list
  * uninstall's `WillTrash`, `WillKeep` and `AlreadyGone`, whose `path`
- * interpolates it and whose `what` picks the key), and a `Message`
+ * interpolates it and whose `what` picks the key, and rustup's own
+ * uninstall's `RemovesToolchains`, `DeletesCargoHome`,
+ * `RemovesCargoInstalled` and `LeavesShellConfigLine`, whose `path` and
+ * `names` interpolate it and whose empty `names` or `certain` pick the
+ * key -- with `HomebrewRustupLosesToolchains` and `EditsShellConfig` as
+ * that uninstall's two bare-string ones), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
  * carries, same as before this type existed. A variant added here without
@@ -107,6 +112,12 @@ export type Warning =
   | { WillTrash: { path: string; what: RemovedWhat } }
   | { WillKeep: { path: string; what: KeptWhat } }
   | { AlreadyGone: { path: string } }
+  | { RemovesToolchains: { path: string; names: string[] } }
+  | { DeletesCargoHome: { path: string } }
+  | { RemovesCargoInstalled: { names: string[] } }
+  | "HomebrewRustupLosesToolchains"
+  | "EditsShellConfig"
+  | { LeavesShellConfigLine: { path: string; certain: boolean } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

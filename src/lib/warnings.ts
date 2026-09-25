@@ -43,6 +43,10 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.compilesLocally";
       case "NonRegistrySource":
         return "warnings.nonRegistrySource";
+      case "HomebrewRustupLosesToolchains":
+        return "warnings.homebrewRustupLosesToolchains";
+      case "EditsShellConfig":
+        return "warnings.editsShellConfig";
       default: {
         const unhandled: never = warning;
         return unhandled;
@@ -54,6 +58,21 @@ export function warningKey(warning: Warning): string | null {
   if ("WillTrash" in warning) return REMOVED_WHAT_KEYS[warning.WillTrash.what];
   if ("WillKeep" in warning) return KEPT_WHAT_KEYS[warning.WillKeep.what];
   if ("AlreadyGone" in warning) return "warnings.alreadyGone";
+  if ("RemovesToolchains" in warning) {
+    // Without names the sentence has no parenthesis to fill.
+    return warning.RemovesToolchains.names.length > 0
+      ? "warnings.removesToolchains"
+      : "warnings.removesToolchainsUnlisted";
+  }
+  if ("DeletesCargoHome" in warning) return "warnings.deletesCargoHome";
+  if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalled";
+  if ("LeavesShellConfigLine" in warning) {
+    // "will print an error" only for a line rustup's own sourcing form
+    // spells; anything else that mentions the env file "may".
+    return warning.LeavesShellConfigLine.certain
+      ? "warnings.leavesShellConfigLine"
+      : "warnings.leavesShellConfigLineMaybe";
+  }
   if ("Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
@@ -77,6 +96,16 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
   if ("WillTrash" in warning) return { path: warning.WillTrash.path };
   if ("WillKeep" in warning) return { path: warning.WillKeep.path };
   if ("AlreadyGone" in warning) return { path: warning.AlreadyGone.path };
+  if ("RemovesToolchains" in warning) {
+    const { path, names } = warning.RemovesToolchains;
+    return names.length > 0 ? { path, names: names.join(", ") } : { path };
+  }
+  if ("DeletesCargoHome" in warning) return { path: warning.DeletesCargoHome.path };
+  if ("RemovesCargoInstalled" in warning) {
+    const names = warning.RemovesCargoInstalled.names;
+    return { count: names.length, names: names.join(", ") };
+  }
+  if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
   if ("Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;

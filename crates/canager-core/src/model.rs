@@ -422,6 +422,55 @@ pub enum Warning {
     /// launcher-only state) -- so there is nothing to move there. Said, so
     /// the list adds up. Same producer and reader as `WillTrash`.
     AlreadyGone { path: String },
+    /// rustup's `self uninstall` deletes `path` (`$RUSTUP_HOME`, spelled
+    /// `~/.rustup`; the standard layout is the only one Canager offers
+    /// the uninstall for, `rustup::standard_roots`) permanently -- not
+    /// to the Trash -- with every toolchain in it: `names` are the entry
+    /// names of its `toolchains/` directory when the preview was built,
+    /// empty when that directory is missing, empty or unreadable (the
+    /// front end then says "every toolchain" without naming them).
+    /// Produced by the rustup recipe's uninstall warnings
+    /// (`adapters/standalone/rustup.rs`).
+    RemovesToolchains { path: String, names: Vec<String> },
+    /// rustup 1.29.1's `self uninstall` deletes the whole Cargo home,
+    /// `path` (`$CARGO_HOME`, spelled `~/.cargo`), permanently -- not to
+    /// the Trash: the registry and git caches, `.crates2.json` (its
+    /// record of what `cargo install` installed), Cargo's own
+    /// `config.toml` and `credentials.toml` (the crates.io login), `env`,
+    /// and anything else kept there (self_update.rs:977-993, :1029;
+    /// unix.rs:50-53). Always produced.
+    DeletesCargoHome { path: String },
+    /// rustup 1.29.1's `self uninstall` deletes everything in the Cargo
+    /// home's `bin/` whose name is not `rustup` or one of its thirteen
+    /// proxies -- by name, so a program copied there by hand goes too:
+    /// `names` are the binaries `.crates2.json` lists (`rg`, not
+    /// `ripgrep`) united with a read-only listing of `bin/` minus those
+    /// fourteen names (`rustup::bin_programs_rustup_removes`) -- the
+    /// programs named where known. Only produced when there are any.
+    /// (The research read a newer rustup that keeps them; the tag this
+    /// recipe is verified against does not -- see the recipe's doc.)
+    RemovesCargoInstalled { names: Vec<String> },
+    /// Homebrew's `rustup` formula is installed too (`Cellar/rustup`
+    /// under one of Homebrew's default prefixes,
+    /// `rustup::homebrew_rustup_present`), and rustup's homes depend
+    /// only on `RUSTUP_HOME`/`CARGO_HOME`/`HOME`, never on where the
+    /// binary sits (`home` 0.5.12), so it shares the folders this
+    /// uninstall deletes and loses its toolchains with them. Produced
+    /// only when the Cellar directory is there.
+    HomebrewRustupLosesToolchains,
+    /// rustup's `self uninstall` edits the shell startup files it added
+    /// its `. "$HOME/.cargo/env"` line to. Canager itself never edits one.
+    EditsShellConfig,
+    /// After rustup's own cleanup, `path` (`$HOME` spelled `~`) will still
+    /// hold a line about Cargo's env file, which is then gone. `certain`
+    /// is true when that line is one of the sourcing forms rustup itself
+    /// writes and its target is this Cargo home, so it *will* print an
+    /// error in every new terminal until the user removes it (a file
+    /// rustup does not edit, such as `~/.zshrc`, or a second copy of the
+    /// line); false for any other mention rustup will not remove (a
+    /// guarded `[ -f … ] && . …`, an `echo`, another spelling), which
+    /// *may*. One per file (`rustup::shell_config_leftovers`).
+    LeavesShellConfigLine { path: String, certain: bool },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -1079,6 +1128,48 @@ mod tests {
                 format!("\"{what:?}\"")
             );
         }
+
+        // Phase 4 step E: what rustup's own uninstall does (adapters/
+        // standalone/rustup.rs). Two payload-free, four with a payload;
+        // the same two spellings as above.
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesToolchains {
+                path: "~/.rustup".to_string(),
+                names: vec!["stable-aarch64-apple-darwin".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesToolchains":{"path":"~/.rustup","names":["stable-aarch64-apple-darwin"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::DeletesCargoHome {
+                path: "~/.cargo".to_string()
+            })
+            .unwrap(),
+            r#"{"DeletesCargoHome":{"path":"~/.cargo"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::RemovesCargoInstalled {
+                names: vec!["hexyl".to_string(), "rg".to_string()]
+            })
+            .unwrap(),
+            r#"{"RemovesCargoInstalled":{"names":["hexyl","rg"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewRustupLosesToolchains).unwrap(),
+            r#""HomebrewRustupLosesToolchains""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::EditsShellConfig).unwrap(),
+            r#""EditsShellConfig""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::LeavesShellConfigLine {
+                path: "~/.zshrc".to_string(),
+                certain: true
+            })
+            .unwrap(),
+            r#"{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}"#
+        );
     }
 
     #[test]
