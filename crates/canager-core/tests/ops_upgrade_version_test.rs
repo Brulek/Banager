@@ -32,11 +32,19 @@
 //! `Unconfirmed` by the same arm, which does not depend on how the command
 //! writes; `claude update` is compiled and its steps were not read
 //! (claude.md §6, §8).
+//!
+//! The rustup section is the Claude Code section's shape over a flat-file
+//! launcher, `~/.cargo/bin/rustup`, in a temp home: the install is real
+//! files, and only `self update` and `--version` are scripted. `rustup
+//! self update` was never run to record what it prints (phase 4 step E's
+//! recording rules forbid it), so its scripted log lines are illustrative;
+//! the outcome depends only on the exit code and the two `--version`
+//! readings, never on the text.
 
 use async_trait::async_trait;
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::pipx::PipxAdapter;
-use canager_core::adapters::standalone::recipes::CLAUDE;
+use canager_core::adapters::standalone::recipes::{CLAUDE, RUSTUP};
 use canager_core::adapters::standalone::StandaloneAdapter;
 use canager_core::adapters::uv::UvAdapter;
 use canager_core::adapters::Adapter;
@@ -886,4 +894,136 @@ async fn test_a_claude_update_that_moved_the_version_succeeded() {
     )
     .await;
     assert_eq!(outcome, Outcome::Succeeded);
+}
+
+// --- rustup (standalone, phase 4 step E) -----------------------------------
+
+/// A native rustup layout in a temp home: `~/.cargo/bin/rustup`, an
+/// executable regular file, and its `cargo` proxy link. The adapter's
+/// inventory probes the disk, so the file has to be real; the runner
+/// scripts only the two commands. `detect` is run rather than an instance
+/// built by hand because rustup's upgrade plan reads what detect seated
+/// (the Cargo home, for the cargo lock) and checks it describes the
+/// instance. The scripted `--version` answers are consumed in order:
+/// detect's read first, then the reading before the upgrade, then the one
+/// after (the last one repeats).
+async fn rustup_home_and_instance(
+    runner: &Arc<ScriptedRunner>,
+    versions: &[&str],
+) -> (PathBuf, Arc<StandaloneAdapter>, ManagerInstance) {
+    use std::os::unix::fs::PermissionsExt;
+    // A sequence number beside the time, as `claude_home` has: these tests
+    // run in parallel in one process and two can read the same time.
+    static NEXT_HOME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let home = std::env::temp_dir().join(format!(
+        "canager-ops-rustup-{}-{}-{}",
+        std::process::id(),
+        NEXT_HOME.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bin = home.join(".cargo/bin");
+    std::fs::create_dir_all(&bin).expect("cargo bin");
+    let launcher = bin.join("rustup");
+    std::fs::write(&launcher, b"#!/bin/sh\n").expect("rustup binary");
+    // Executable, as the installer leaves it and as the unit tests'
+    // `rustup_layout` builds it (a 0644 file would only add a harmless
+    // `NotOnPath` note here, but the two synthetic layouts agree).
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
+        .expect("executable rustup");
+    std::os::unix::fs::symlink("rustup", bin.join("cargo")).expect("cargo proxy");
+    let launcher_str = launcher.to_string_lossy().to_string();
+    runner.script(
+        &[launcher_str.as_str(), "--version"],
+        versions
+            .iter()
+            .map(|v| exited_0(&format!("rustup {v} (d95a37b6a 2026-08-13)\n"), ""))
+            .collect(),
+    );
+    let adapter = Arc::new(StandaloneAdapter::new(
+        &RUSTUP,
+        runner.clone(),
+        Arc::new(MockHttpClient::new()),
+        // Nothing here goes to the Trash: rustup's uninstall is a command,
+        // and this section runs only its upgrade.
+        Arc::new(MockTrasher::new()),
+    ));
+    let env = HostEnv {
+        path_dirs: vec![bin],
+        home: home.clone(),
+        euid: 501,
+        cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
+        ollama_host: None,
+    };
+    let inst = adapter.detect(&env).await.remove(0);
+    (home, adapter, inst)
+}
+
+#[tokio::test]
+async fn test_a_rustup_self_update_that_changed_nothing_is_not_reported_as_updated() {
+    // `rustup self update` was never run to record this (the recording
+    // rules forbid it), so the log text below is illustrative; as this
+    // file's doc says, the outcome depends only on the exit code and the
+    // two `--version` readings, which here are the same. The first
+    // scripted reading is detect's, then the reading before, then the
+    // one after (the last repeats).
+    let runner = Arc::new(ScriptedRunner::default());
+    let (home, adapter, inst) = rustup_home_and_instance(&runner, &["1.29.1"]).await;
+    let launcher = inst.exe_path.to_string_lossy().to_string();
+    runner.script(
+        &[launcher.as_str(), "self", "update"],
+        vec![exited_0(
+            "  rustup unchanged - 1.29.1\n",
+            "info: checking for self-update\n",
+        )],
+    );
+    let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        outcome,
+        Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade)
+    );
+}
+
+#[tokio::test]
+async fn test_a_rustup_self_update_that_moved_the_version_succeeded() {
+    let runner = Arc::new(ScriptedRunner::default());
+    let (home, adapter, inst) =
+        rustup_home_and_instance(&runner, &["1.29.1", "1.29.1", "1.30.0"]).await;
+    let launcher = inst.exe_path.to_string_lossy().to_string();
+    runner.script(
+        &[launcher.as_str(), "self", "update"],
+        vec![exited_0("  rustup updated - 1.30.0 (from 1.29.1)\n", "")],
+    );
+    let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_rustup_self_update_stopped_by_the_timeout_is_unconfirmed_whatever_the_readings_say()
+{
+    // `rustup self update` is NoCancel, so the timeout is its only stop,
+    // and a stopped upgrade is `Unconfirmed` unconditionally (the
+    // `Ok(Outcome::Unconfirmed)` arm of `run_operation`, ops/mod.rs): an
+    // unlinked-then-copied binary may read either version partway.
+    for versions in [
+        &["1.29.1", "1.29.1", "1.29.1"][..],
+        &["1.29.1", "1.29.1", "1.30.0"][..],
+    ] {
+        let runner = Arc::new(ScriptedRunner::default());
+        let (home, adapter, inst) = rustup_home_and_instance(&runner, versions).await;
+        let launcher = inst.exe_path.to_string_lossy().to_string();
+        runner.script(
+            &[launcher.as_str(), "self", "update"],
+            vec![Stop::Timeout.output()],
+        );
+        let outcome = upgrade(&runner, adapter, inst, ArtifactKind::Binary, "rustup").await;
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(outcome, Outcome::Unconfirmed, "{versions:?}");
+    }
 }
