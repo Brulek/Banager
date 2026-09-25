@@ -41,6 +41,7 @@ use canager_core::http::MockHttpClient;
 use canager_core::model::{ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome};
 use canager_core::ops::OperationManager;
 use canager_core::runner::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
+use canager_core::trash::MockTrasher;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -612,6 +613,7 @@ async fn claude_upgrade_outputs(
             &CLAUDE,
             mutating,
             Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
         )),
         inst.clone(),
         ArtifactKind::Binary,
@@ -625,8 +627,12 @@ async fn claude_upgrade_outputs(
             probe(RouteKind::SymlinkIntoRoot, &inst.exe_path, &inst.prefix),
             Probe::LauncherOnly
         );
-        let adapter =
-            StandaloneAdapter::new(&CLAUDE, runner.clone(), Arc::new(MockHttpClient::new()));
+        let adapter = StandaloneAdapter::new(
+            &CLAUDE,
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        );
         let artifacts = adapter.inventory(&inst).await.unwrap();
         assert_eq!(
             artifacts.len(),

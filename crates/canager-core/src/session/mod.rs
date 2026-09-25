@@ -45,6 +45,7 @@ use crate::model::{
 };
 use crate::ops::{CancelRefused, OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
+use crate::trash::RealTrasher;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
@@ -254,7 +255,9 @@ pub struct Session {
 impl Session {
     /// Registers all eight adapters over a shared `RealRunner` and
     /// `RealHttpClient` (network-touching adapters only: pipx, cargo,
-    /// ollama, and the standalone tools' update checks). `now_fn` exists
+    /// ollama, and the standalone tools' update checks), and gives the
+    /// standalone tools the real Trash (`RealTrasher`) for their path-list
+    /// uninstalls. `now_fn` exists
     /// so tests can pin `refreshed_at`; production passes `None`.
     pub fn new(sink: Arc<dyn EventSink>, now_fn: Option<fn() -> i64>) -> Arc<Session> {
         let runner: Arc<dyn CommandRunner> = Arc::new(RealRunner::new());
@@ -276,7 +279,10 @@ impl Session {
         // client. Listed after the seven package managers only as reading
         // order; the refresh fans out alphabetically by id regardless
         // (`refresh_round`).
-        adapters.extend(standalone::all(runner, http));
+        // The one thing in this crate that moves a file itself: macOS's own
+        // "move to Trash", for a confirmed path-list uninstall
+        // (`removal::execute_removal`; docs/what-we-run.md).
+        adapters.extend(standalone::all(runner, http, Arc::new(RealTrasher::new())));
         Session::build(sink, adapters, now_fn, background_change)
     }
 

@@ -266,10 +266,9 @@ describe("sourceNoticesFor", () => {
 
   it("warns, and names the link, when only a standalone tool's launcher is left", () => {
     // The half-uninstalled state (program files gone, launcher dangling):
-    // a warning because this launcher is broken; another PATH copy may work. No
-    // button, and -- in this step -- no Uninstall on the row either (its
-    // artifact carries NoSafeMethod until step C), so the sentence must
-    // not promise one.
+    // a warning because this launcher is broken; another PATH copy may
+    // work. No button on the notice: the row's own Uninstall moves the
+    // link, which the sentence says.
     const notices = sourceNoticesFor(
       { ...claude, status: { unavailable: null, notes: ["LauncherOnly"] } },
       "Claude Code",
@@ -312,12 +311,20 @@ describe("sourceNoticesFor", () => {
       expect(locale.sourceNotice.shadowedByHomebrew.description).toContain("Homebrew");
       expect(locale.sourceNotice.shadowedByNpm.description).toContain("npm");
       expect(locale.sourceNotice.launcherOnly.description).toContain("{{source}}");
-      // Until step C the LauncherOnly row's artifact carries NoSafeMethod,
-      // so the Installed page shows no Uninstall button on it: the notice
-      // must not tell the user to press one (spec §9.2's sentence returns
-      // with step C's uninstall).
-      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/Uninstall removes|卸载会把/);
-      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/typing .* in Terminal fails|输入 .* 会失败/);
+      // The LauncherOnly row offers Uninstall (its artifact carries no
+      // `uninstall_blocked` since step C), so spec §9.2's promises are
+      // back: the link goes to the Trash too, and a folder an earlier
+      // stopped uninstall moved may be in the Trash -- "may", as spec §9.2
+      // says: the Trash can have been emptied since. It still does not claim
+      // typing the command fails -- another copy on PATH may run (B's
+      // review finding 9).
+      expect(locale.sourceNotice.launcherOnly.description).toMatch(
+        /Uninstall moves the link to the Trash|卸载会把这个链接也移到废纸篓/,
+      );
+      expect(locale.sourceNotice.launcherOnly.description).toMatch(/may be in the Trash|可能在废纸篓里/);
+      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(
+        /typing .* in Terminal fails|输入 .* 会失败/,
+      );
       for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
         expect(locale.sourceNotice[key].description).not.toMatch(/both are listed on this page|两份在这一页上都能找到/);
       }
@@ -336,8 +343,8 @@ describe("sourceNoticesFor", () => {
   });
 
   it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", () => {
-    // The same rule as the no-safe-method sentence on this instance's own
-    // row (its artifact carries NoSafeMethod until step C): Canager shows
+    // The same rule as the no-safe-method sentence (the row of a recipe
+    // without an uninstall method; this row's own before step C): Canager shows
     // no homepage and opens no link, so "its website" and "the same page"
     // named nothing the user could find from here.
     expect(en.sourceNotice.launcherOnly.description).toContain("{{source}}'s official documentation");

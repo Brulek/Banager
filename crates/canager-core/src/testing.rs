@@ -93,7 +93,7 @@ pub fn unavailable_instance(
 fn command_parts(plan: &Plan) -> (&Path, &[String], &[(String, String)]) {
     match &plan.action {
         PlanAction::Command { program, args, env } => (program, args, env),
-        PlanAction::TrashPaths { paths } => panic!(
+        PlanAction::TrashPaths { paths, .. } => panic!(
             "this plan runs no command: it moves {} path(s) to the Trash",
             paths.len()
         ),

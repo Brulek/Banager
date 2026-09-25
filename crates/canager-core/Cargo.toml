@@ -42,14 +42,36 @@ toml = "1"
 # the build graph.
 getrandom = "0.4"
 
+# `RealTrasher` (src/trash/real.rs) is one call: `NSFileManager
+# trashItemAtURL:resultingItemURL:error:`, the call Finder makes to move an
+# item to the Trash, which needs no Full Disk Access (docs/what-we-run.md,
+# "Moving files to the Trash", says what was observed, Finder's "Put Back"
+# included). Both crates are already in Cargo.lock at these versions as
+# dependencies of tauri, so no new crate enters the build -- only the
+# features named here are switched on. macOS only: there is no Trash to
+# call on another target, and `RealTrasher::trash` answers `Unsupported`
+# there.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSError",
+    "NSFileManager",
+    "NSString",
+    "NSURL",
+] }
+
 [features]
-# Gates `testing::expire_issued_plans`, the one item in `testing` that
-# mutates live `Session` state rather than building a disconnected fixture.
-# Left off by default so a release build of this library never contains it;
-# `src-tauri`'s own tests enable it via a `[dev-dependencies]` entry on this
-# same crate with this feature turned on, which resolver v2 keeps scoped to
-# test targets and out of the release binary's dependency graph. See
-# `testing.rs` for the item this gates and why.
+# Gates the test code that touches real state rather than building a
+# disconnected fixture: `testing::expire_issued_plans`, which mutates a live
+# `Session`, and `trash::MockTrasher`, which creates a directory, renames
+# into it and deletes it when dropped. Left off by default so a release
+# build of this library contains neither; `src-tauri`'s own tests enable it
+# via a `[dev-dependencies]` entry on this crate with this feature turned
+# on, and this crate's own integration tests via its `[dev-dependencies]`
+# entry on itself -- resolver v2 keeps both scoped to test targets and out
+# of the release binary's dependency graph. See `testing.rs` and
+# `trash/mod.rs` for the items this gates and why.
 test-support = []
 
 [dev-dependencies]
@@ -57,3 +79,8 @@ insta = { version = "1", features = ["json"] }
 # Tests and the `brew_smoke` example run on a multi-thread runtime; the
 # library does not. See the note on the tokio dependency above.
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# The crate itself with `test-support` on, so its own integration tests
+# (`tests/`) can use `trash::MockTrasher`, which that feature keeps out of
+# every release build (see `[features]`). Resolver v2 scopes the feature to
+# test targets.
+canager-core = { path = ".", features = ["test-support"] }

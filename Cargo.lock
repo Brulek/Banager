@@ -437,9 +437,12 @@ name = "canager-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "canager-core",
  "getrandom 0.4.3",
  "insta",
  "libc",
+ "objc2",
+ "objc2-foundation",
  "percent-encoding",
  "reqwest",
  "serde",

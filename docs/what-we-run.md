@@ -1,16 +1,20 @@
 # What Canager Runs
 
-Every command Canager runs, every file it reads or writes, every host it
-connects to and every environment variable it sets, for the eight sources
-it manages today: Homebrew, npm, pipx, uv, pip (read-only), Cargo, Ollama,
-and Claude Code (a tool with its own installer). Each sentence describes
-what the code does now and names the function it describes, so it can be
-checked against `crates/canager-core/src/adapters/` rather than believed.
+Every command Canager runs, every file it reads, writes or moves to the
+Trash, every host it connects to and every environment variable it sets,
+for the eight sources it manages today: Homebrew, npm, pipx, uv, pip
+(read-only), Cargo, Ollama, and Claude Code (a tool with its own
+installer). Each sentence describes what the code does now and names the
+function it describes, so it can be checked against
+`crates/canager-core/src/adapters/` rather than believed.
 `crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
 can: a section per registered source, every host on the https allowlist,
 every environment variable Homebrew's and npm's commands are given, the
-three Homebrew flags this file promises are never passed, and that the
-unknown-source scan's section states the two limits the code enforces.
+three Homebrew flags this file promises are never passed, that the
+unknown-source scan's section states the two limits the code enforces,
+that Claude Code's section names every path its uninstall moves or keeps
+and that uninstall's time budget, and that the Trash section names the
+call and states the pause after each move.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -96,21 +100,24 @@ refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,
 under that instance's lock, its inventory is read and then its update
 check runs. Everything a refresh runs is in the read-only tables below:
-no refresh runs a write command, launches an application or asks for a
-password.
+no refresh runs a write command, moves a file, launches an application or
+asks for a password.
 
-**An operation** is previewed first: `plan` builds the exact argv and the
-front end shows it (`plan_operation` in `src-tauri/src/ipc.rs`; the front
-end never builds an argv and sends back only the id of a plan Rust
-issued). The plan can be confirmed for ten minutes (`PLAN_LIFETIME` in
+**An operation** is previewed first: `plan` builds the exact argv — or,
+for an uninstall that runs no command, the exact list of paths it will
+move to the Trash (Claude Code's section) — and the front end shows it
+(`plan_operation` in `src-tauri/src/ipc.rs`; the front end never builds
+an argv and sends back only the id of a plan Rust issued). The plan can
+be confirmed for ten minutes (`PLAN_LIFETIME` in
 `crates/canager-core/src/session/plans.rs`), after which it has to be
 previewed again. Before a plan is built, `Session::issue_plan` refuses an
 operation on a source that is read-only or not answering, and an upgrade
 or uninstall the tool itself reports it will refuse (a pinned package) —
 the buttons the pages hide are backed by that refusal, not only by the
 page. On confirmation `run_operation` (`crates/canager-core/src/ops/mod.rs`)
-takes the plan's locks, runs the command, and then re-reads the inventory
-to check what actually happened; an upgrade is also preceded by a reading,
+takes the plan's locks, runs the command (or moves the listed paths to the
+Trash), and then re-reads the inventory to check what actually happened;
+an upgrade is also preceded by a reading,
 so the version before can be compared with the version after. An install
 after which the package is not present, an uninstall after which it still
 is, and an upgrade that exits 0 with the version unchanged are all
@@ -472,14 +479,18 @@ Canager never runs it), and the one item under it is the tool itself.
 `~/.local/bin/claude` — never a `claude` found through `PATH`, which on a
 Mac with the Homebrew cask earlier on `PATH` would be that copy instead —
 and checks with `lstat`, `readlink` and `realpath` that it is a symbolic
-link resolving into `~/.local/share/claude` (the installer's
-`versions/<version>` store). A `claude` there that resolves into a
-`Cellar`, `Caskroom`, `node_modules` or `corepack` directory is a package
-manager's copy (Homebrew's, npm's or corepack's) and is not listed here; a
-plain file at that path is not this route and is not listed either. A dangling link whose own text points into `~/.local/share/claude`
-(the program files were removed by hand or by another tool) is listed with
-no version and a notice saying so; in this step Canager cannot remove the
-link either (see the write commands below). For a link that does resolve
+link whose own text points into `~/.local/share/claude` (the installer's
+`versions/<version>` store) and that resolves there; a `claude` that
+reaches that folder only through another link outside it is not the
+installer's layout and is not listed (the Unknown page shows it). A
+`claude` there that resolves into a `Cellar`, `Caskroom`, `node_modules`
+or `corepack` directory is a package manager's copy (Homebrew's, npm's or
+corepack's) and is not listed here; a plain file at that path is not this
+route and is not listed either. A dangling link whose own text points
+into `~/.local/share/claude` (the program files were removed by hand or
+by another tool, or by an uninstall that stopped partway) is listed with
+no version and a notice saying so, and its Uninstall moves the link to
+the Trash (below). For a link that does resolve
 into the root, Canager then runs `<claude> --version` (30 s) with
 `DISABLE_AUTOUPDATER=1` in its environment: Anthropic documents that
 Claude Code checks for updates on startup, and the variable as stopping
@@ -528,6 +539,7 @@ preview):
 | Purpose | Argv | Timeout | Needs a password |
 |---|---|---|---|
 | Upgrade | `<claude> update` | 1800 s | No |
+| Uninstall | none: Canager moves up to three paths to the Trash itself (below) | 120 s; Canager stops between items once it is spent | No |
 
 Canager adds no environment override to `claude update`; the runner
 inherits the app's ambient environment. `DISABLE_AUTOUPDATER=1` stops the
@@ -549,12 +561,67 @@ whenever a version before it could be read, as for every source. When
 none could (`--version` did not answer just before the update), there is
 nothing to compare, and an update that exits 0 is reported as a success
 if a version can be read afterwards — even when `claude update` found
-nothing to install. There is no install
-(the installer is Anthropic's, not Canager's) and, in this step, no
-uninstall: Claude Code has no uninstall command, and until Canager can
-move its files to the Trash itself (phase 4 step C) the row says it cannot
-be uninstalled here and offers no button — `Session::issue_plan` refuses
-it as well.
+nothing to install. There is no install: the installer is Anthropic's,
+not Canager's.
+
+**Uninstall.** Claude Code has no uninstall command. Anthropic's own
+instructions ("Uninstall Claude Code → Native" on
+code.claude.com/docs/en/setup) are two `rm` commands; Canager runs
+neither and instead moves the same paths, plus the installer's download
+cache, to the Trash itself (`CLAUDE.uninstall` in `recipes.rs`; how, in
+"Moving files to the Trash" below), in this order:
+
+| Path | What it is | If it is not there |
+|---|---|---|
+| `~/.local/share/claude` | the program files, every downloaded version | refused — unless the launcher is still there and points into it, the state an uninstall that stopped partway leaves: then the preview says it is already gone |
+| `~/.claude/downloads` | the installer's download cache (install.sh's `DOWNLOAD_DIR`) | skipped |
+| `~/.local/bin/claude` | the launcher, the link that runs when `claude` is typed — last, so a stop partway always leaves it | refused |
+
+It keeps `~/.claude` — settings, login, history and projects, which
+Claude Code's VS Code extension, JetBrains plugin and desktop app use
+too; of that folder only `downloads`, above, is moved — and
+`~/.claude.json` (settings), and the preview names each of the two that
+exists. Before the preview is shown every listed path is checked
+(`removal::plan_removal`): the folder it is in, with every link
+resolved, must be inside the home folder and be neither the home folder
+itself nor one of the folders directly in it that many tools share
+(`~/.local`, `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`); every
+folder between the home folder and the path must be a real folder, not
+a link — so a `~/.local/bin` kept as a link to a dotfiles folder
+refuses the uninstall, and so does a `~/.claude` that is a link when
+the download cache is inside it; the path must belong to the user
+Canager runs as; it must be what the instructions describe — the
+program files and the download cache real folders, the launcher one
+symbolic link straight into `~/.local/share/claude`; and, with every
+link resolved, moving it must not take `~/.claude` or `~/.claude.json`
+along (of `~/.claude`, only `downloads` lies inside it, as listed). If
+any check fails, the whole uninstall is refused, in the user's language,
+and nothing is moved. The preview also records what each path is — its
+device, inode and kind, from `lstat` — and Canager keeps that with the
+plan it issued, never sending it to the window. When the preview is
+confirmed the list is built again from the disk
+(`removal::execute_removal`): if a check now fails, if the list is not
+the one the preview showed, or if any path is no longer the one the
+preview recorded, nothing is moved — so if Claude Code updated itself
+between the preview and the click (its updater re-points the launcher),
+the uninstall stops and asks for a fresh look at the preview. Then,
+right before each path is moved — after the pause that follows the move
+before it — every check runs again on that path, and it is compared once
+more with what the preview recorded; if anything differs the uninstall
+stops before moving it (`Fault::PathChanged`, naming the path), and the
+operation log lists every path already moved. Canager checks each item
+immediately before moving it; a program running as you that swaps the
+item in that instant could still race it. The launcher is last, so a
+stop partway — macOS refusing an item (its own words are shown), Cancel,
+or Canager stopping between items once the 120 s budget is spent (a move
+already under way is always finished first) — always leaves it: a stop
+before the first move changes nothing, and the row stays as it was; once
+the program files are in the Trash, the next refresh shows the
+launcher-only row, and its Uninstall lists them as already gone and
+moves the rest. Afterwards Canager looks for the launcher again
+(`reconcile_after_uninstall`): the uninstall is reported as succeeded
+only when it is gone, and as unconfirmed when Canager cannot tell (a
+folder it may not read, say).
 
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
@@ -615,12 +682,20 @@ All read-only, none saved anywhere else, none uploaded:
   is a directory; `~/.ollama/models/manifests/registry.ollama.ai/{namespace}/{name}/{tag}`
   for each pulled model.
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
-  (`lstat`, `readlink`, `realpath`, also for `~/.local/share/claude`); for
-  the notice under the source, each `PATH` directory's `claude` until the
-  first regular file with executable bits, and where that one resolves
-  (`stat`, `realpath`); `~/.claude/settings.json`, for the one key
-  `autoUpdatesChannel` (read and discarded; a missing file or key means
-  `latest`).
+  (`lstat`, `readlink`, `realpath`, also for the folder the link is in
+  and for `~/.local/share/claude`); for the notice under the source, each
+  `PATH` directory's `claude` until the first regular file with
+  executable bits, and where that one resolves (`stat`, `realpath`);
+  `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
+  and discarded; a missing file or key means `latest`).
+  For an uninstall preview, when it is confirmed, and again right before
+  each path is moved: `lstat` and the resolved path of each path on the
+  uninstall list and of the folder it is in, the resolved home folder and
+  the shared folders in it, the launcher's link text, and whether
+  `~/.claude` and `~/.claude.json` exist and where they lead (Claude
+  Code's section). After an uninstall: the same look at the launcher
+  that detection makes (`lstat`, `readlink`, `realpath`, the same paths),
+  and nothing else — no version is read.
 - The Unknown page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents.
@@ -633,9 +708,76 @@ One: `settings.json` in Canager's application data directory
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
 directory is created if it is missing). Nothing else on the Mac is
-written, moved or deleted by Canager itself: every change to what is
-installed is made by the tool named in the preview, running the command
-shown there.
+written or deleted by Canager itself. It moves files in one case: a
+confirmed uninstall of a tool that has no uninstall command (Claude Code,
+today) moves the paths its preview listed to the Trash (next section).
+Every other change to what is installed is made by the tool named in the
+preview, running the command shown there.
+
+## Moving files to the Trash
+
+`RealTrasher` (`crates/canager-core/src/trash/real.rs`) is the only code
+in Canager that changes a file on the Mac other than its own settings.
+It makes one call per path, `NSFileManager
+trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
+to Trash — through the `objc2-foundation` crate, and it is called only by
+a confirmed path-list uninstall (`removal::execute_removal`, Claude
+Code's section), for each path right after that path's last check. It
+never deletes anything, never empties the Trash and never renames a file
+itself, and a symbolic link is moved as the link, never its target: the
+item's kind comes from the `lstat` that ends its last check, so a link is
+never handed to the system as a folder, and nothing else looks at the
+path between that check and the call. The call itself takes a path, so
+one gap remains: Canager checks each item immediately before moving it;
+a program running as you that swaps the item in that instant could still
+race it. Each move is written to the operation log with where the item
+now is (`LogNote::MovedToTrash`); an item macOS refuses stops the
+uninstall there, with macOS's own reason (`LogNote::TrashFailed`).
+After each move Canager waits 3 seconds
+(`removal::PUT_BACK_SETTLE`) — before the next one, and before it
+reports the uninstall finished; Cancel ends the wait, and no wait
+outlasts the uninstall's time budget — and the second finding below says
+why. A debug build of Canager, never a release one, also tries to list
+the Trash after each move and prints whether it may; that is how the
+pre-merge check learns the build it ran had no Full Disk Access.
+
+How this was verified, on 2026-09-25, with a small test app on macOS
+27.0 (build 26A428), Apple silicon — ad-hoc signed, launched the way
+Finder launches an app (through LaunchServices), and without Full Disk
+Access, which that same process confirmed in every run by being refused
+a listing of `~/.Trash`:
+
+- It moved a file, a folder and a symbolic link to the Trash with this
+  call in 20 runs out of 20: no dialog, no error, the link moved as a
+  link with its target left in place, and a name already in the Trash
+  given the system's own time-of-day suffix — so Claude Code's two paths
+  named `claude` both arrive.
+- Finder keeps Put Back as a record per item in `~/.Trash/.DS_Store`.
+  Every item got one when the calls were at least 2 seconds apart (4 runs
+  out of 4); when they came 1.5 seconds apart or less, only the first
+  item of the burst did (15 runs out of 15). Hence the 3-second pause: it
+  makes Put Back likely for every item, not certain, and an item without
+  the record can still be dragged back out of the Trash by hand. The
+  runs that recorded every item also kept running for 3 seconds after the
+  last call, and the record is written after the call returns — with Full
+  Disk Access, a process that quit at once lost the later records — so
+  Canager waits after the last move too, and quitting Canager while an
+  uninstall is still running may leave the item it moved last without
+  Put Back. Why macOS behaves this way is not known: the pause is a
+  measurement on one Mac, not a documented guarantee.
+- A plain `rename` into `~/.Trash` from the same process succeeded too
+  (24 runs out of 24), where the design had expected it to be refused:
+  the Trash's protection covers listing it, not adding to it, so a `mv`
+  could have reached it. Canager does not use one anyway: a renamed item
+  gets no Put Back record, and one `mv` of Claude Code's two paths named
+  `claude` collides on the name — `mv -n` skips the second and still
+  reports success.
+
+Not verified by that app: a click on Put Back itself (the records were
+checked, not used), a build of Canager itself, a symbolic link whose
+target is gone — which is what every Claude Code uninstall moves last:
+the launcher, after the program files it points to — other macOS
+versions, and Intel Macs.
 
 ## Network: Canager only connects to these hosts
 
@@ -704,8 +846,18 @@ Canager neither chooses nor sees them.
   only when the button is pressed.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
-- Never writes, moves or deletes a file on the Mac itself, other than its
-  own `settings.json`; never edits a shell startup file.
+- Never deletes a file and never empties the Trash. Never writes a file
+  on the Mac itself other than its own `settings.json`, and moves files
+  only to the Trash, only for an uninstall the user confirmed, and only
+  the paths its preview listed; never edits a shell startup file.
+- Never moves anything outside the home folder, anything directly in the
+  home folder or in a folder many tools share there (`~/.local`,
+  `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`), anything reached
+  through a folder that is a link, anything that does not belong to the
+  user, or anything that is not what the tool's uninstall instructions
+  describe; never moves the settings, login and history Claude Code keeps
+  in `~/.claude` (of that folder only its download cache,
+  `~/.claude/downloads`) or `~/.claude.json`, nor anything they lead to.
 - Never connects to an `https` host that is not on the list above, and
   never follows a redirect.
 - Never reports an operation as succeeded on the tool's exit code alone:

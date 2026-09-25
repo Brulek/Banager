@@ -206,7 +206,10 @@ fn candidate_dirs(env: &HostEnv) -> Vec<PathBuf> {
 /// `UnknownEntry::path`). `resolved` is never passed through this: it is
 /// the technical detail, and stays canonical and absolute. Attribution
 /// compares absolute paths; only the output is abbreviated.
-fn display_path(path: &Path, home: &Path) -> PathBuf {
+/// Also the one `~` rule for the sentences a path-list uninstall sends
+/// (`adapters::standalone::removal`): data the user reads, never a path
+/// anything acts on.
+pub(crate) fn display_path(path: &Path, home: &Path) -> PathBuf {
     match path.strip_prefix(home) {
         Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("~"),
         Ok(rest) => Path::new("~").join(rest),

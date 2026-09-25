@@ -26,7 +26,7 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | pip | yes | **no** — Canager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes | yes |
-| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall not yet — the row says so and offers no button |
+| Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
@@ -47,10 +47,24 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall shows its real argv
-  and whether it needs your password. An uninstall also says what it will affect — an update
+  and whether it needs your password — or, for the one uninstall that runs no command, the exact
+  paths it will move to the Trash. An uninstall also says what it will affect — an update
   never touches anything else, so it has nothing to report there.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language.
+- **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
+  its removal as a list of paths. Canager moves those paths, plus its installer's download cache,
+  to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
+  back — and Finder's Put Back will likely work too; the preview lists each path it will move and
+  each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). It is the
+  only change Canager makes to a file itself besides saving its own settings, and
+  `docs/what-we-run.md` says how.
+- **Only the paths you were shown are moved.** Each path must be inside your home folder — never
+  directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and never
+  through a folder that is a link — yours, what the instructions describe, and clear of what it
+  keeps. Canager remembers what each path was when you saw the preview; when you confirm, and
+  again right before each path moves, it checks everything once more, and if anything differs it
+  stops before moving that path, and the operation log lists anything it had already moved.
 
 ## What it deliberately does not do yet
 

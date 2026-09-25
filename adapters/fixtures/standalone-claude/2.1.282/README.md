@@ -25,3 +25,18 @@ npm list -g --depth=0 @anthropic-ai/claude-code: exit=1; stdout='/opt/homebrew/l
 These command-scoped observations do not rule out other prefixes. Shared-exclusion and PATH cases use synthetic unit tests.
 autoUpdatesChannel key: absent; settings contents are not recorded. Channel tests use inline JSON in a temporary home.
 The dotted comparison decides whether either pointer is newer; no channel ordering is assumed by this recording.
+
+## Uninstall list (phase 4 step C)
+
+Nothing here was recorded for the uninstall: Canager runs no command for
+it. The list in `crates/canager-core/src/adapters/standalone/recipes.rs`
+(`CLAUDE.uninstall`) comes from Anthropic's "Uninstall Claude Code →
+Native" instructions at <https://code.claude.com/docs/en/setup>, read on
+2026-09-24: `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`
+— moved to the Trash by Canager instead, the launcher last — plus
+`~/.claude/downloads`, the download staging directory install.sh names
+as `DOWNLOAD_DIR` (read from the script), listed as optional. The same
+page's separate, optional step removes `~/.claude` and `~/.claude.json`;
+Canager keeps both — of `~/.claude` it moves only `downloads`, the cache
+above — and says so in the preview. No `claude uninstall`
+subcommand exists (`claude --help`, 2026-09-24).

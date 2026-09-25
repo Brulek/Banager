@@ -516,9 +516,65 @@ describe("InstalledPage", () => {
     ).toBeInTheDocument();
     expect(getByText("No description available")).toBeInTheDocument();
     expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.")).toBeInTheDocument();
-    // Only the Homebrew artifact may offer Uninstall; B's actual Claude
-    // artifact is NoSafeMethod and must still show both sentences.
+    // Only the Homebrew artifact may offer Uninstall: this Claude artifact
+    // is marked NoSafeMethod, as a recipe without an uninstall method's
+    // is, and must still show both sentences.
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+  });
+
+  it("offers Uninstall on Claude Code, beside its summary, now that it has a path list", async () => {
+    // Phase 4 step C: the standalone artifact carries no `uninstall_blocked`
+    // once its recipe lists the paths to move, so the row shows its
+    // summary and an Uninstall button like any other package's, and
+    // `Session::issue_plan` lets the plan through (`blocked_uninstall` in
+    // session/plans.rs refuses only an artifact that carries one).
+    const claudeSnapshot: Snapshot = {
+      ...snapshot,
+      instances: [
+        {
+          id: "standalone-claude",
+          adapter_id: "standalone-claude",
+          exe_path: "/Users/someone/.local/bin/claude",
+          prefix: "/Users/someone/.local/share/claude",
+          scope: "User",
+          version: "2.1.281",
+          status: { unavailable: null, notes: [] },
+          unverified_version: null,
+          read_only_reason: null,
+        },
+      ],
+      artifacts: [
+        {
+          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
+          display_name: "Claude Code",
+          version: "2.1.281",
+          reason: "Requested",
+          description: null,
+          homepage: "https://code.claude.com/docs/en/setup",
+          size_bytes: null,
+          installed_at: null,
+          path: "/Users/someone/.local/share/claude/versions/2.1.281",
+          auto_updates: true,
+          uninstall_blocked: null,
+        },
+      ],
+      updates: [],
+    };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(claudeSnapshot);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      return Promise.resolve(undefined);
+    });
+
+    const { findByText, getAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
+
+    expect(
+      await findByText(
+        "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
+      ),
+    ).toBeInTheDocument();
+    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(queryByText("Can't uninstall here")).toBeNull();
   });
 
   describe("the Update available badge", () => {

@@ -39,12 +39,14 @@ pub enum Probe {
     /// resolves to (the artifact's `path`).
     Present { real: PathBuf },
     /// A dangling launcher whose own text points into the root: the
-    /// program files are gone (removed by hand or by another tool, or --
-    /// from step C -- by an uninstall that stopped partway), the link is
-    /// left. Listed with no version and `InstanceNote::LauncherOnly` so the
-    /// state is visible; in this step the artifact still carries
-    /// `NoSafeMethod`, and step C's path-list uninstall is what removes the
-    /// link.
+    /// program files are gone (removed by hand or by another tool, or by
+    /// an uninstall that stopped partway), the link is left. Listed with no
+    /// version and `InstanceNote::LauncherOnly` so the state is visible;
+    /// the path-list uninstall (`removal::plan_removal` asks this same
+    /// question) lists the program directory as already gone and moves the
+    /// link. Because a launcher must be one link straight into its root
+    /// (`probe_strict`), a stopped uninstall leaves this state, never an
+    /// `Absent` that would read as finished.
     LauncherOnly,
 }
 
@@ -96,68 +98,104 @@ fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// Whether `launcher` is this route's install of the tool whose root is
-/// `root`, and if so which binary it runs (spec §3.3 steps 1-3).
+/// `root`, and if so which binary it runs (spec §3.3 steps 1-3). Whatever
+/// `probe_strict` cannot tell -- a symlink loop, a permission error, a
+/// dangling link along the way -- reads as `Absent` here: "not installed",
+/// never "not responding", for detection and every refresh.
 pub fn probe(kind: RouteKind, launcher: &Path, root: &Path) -> Probe {
+    probe_strict(kind, launcher, root).unwrap_or(Probe::Absent)
+}
+
+/// `probe`, keeping what it could not tell: `Ok(Absent)` only when the
+/// disk says so -- no launcher at all (its `lstat` answers "no such
+/// file"), or one that is not this route's -- and `Err` for any other
+/// error on the way. Read by `probe`, and by
+/// `StandaloneAdapter::reconcile_after_uninstall`, which must not call an
+/// uninstall finished because a permission error hid the launcher.
+///
+/// The launcher is one link, from the installer's fixed path straight
+/// into the root: its own text (`one_hop`) must name a place inside the
+/// root, and so must where it finally resolves. A launcher that reaches
+/// the root through another link outside it (`claude ->
+/// ~/.local/bin/claude-current -> ~/.local/share/claude/versions/<v>`) is
+/// not the installer's layout and is `Absent` -- the Unknown page lists it
+/// -- because once the root has gone to the Trash that other link would
+/// dangle and the launcher's own text would no longer say whose it is: a
+/// stopped uninstall would read as a finished one. A link the tool keeps
+/// inside its root (a `current`) moves with the root and is its business.
+pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::Result<Probe> {
     // Step 1: `lstat`, not `stat` -- a dangling link is still a launcher.
-    let Ok(meta) = std::fs::symlink_metadata(launcher) else {
-        return Probe::Absent;
+    let meta = match std::fs::symlink_metadata(launcher) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Probe::Absent),
+        Err(error) => return Err(error),
     };
     match std::fs::canonicalize(launcher) {
         Ok(real) => {
             // Step 2: shared exclusion.
             if has_component(&real, &PACKAGE_MANAGER_MARKERS) {
-                return Probe::Absent;
+                return Ok(Probe::Absent);
             }
             // Step 3: the fingerprint.
             match kind {
                 RouteKind::SymlinkIntoRoot => {
                     if !meta.file_type().is_symlink() {
-                        return Probe::Absent;
+                        return Ok(Probe::Absent);
                     }
-                    let Ok(canonical_root) = std::fs::canonicalize(root) else {
-                        return Probe::Absent;
+                    let canonical_root = match std::fs::canonicalize(root) {
+                        Ok(canonical_root) => canonical_root,
+                        // The launcher runs something, and there is no
+                        // root it could be in.
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            return Ok(Probe::Absent)
+                        }
+                        Err(error) => return Err(error),
                     };
-                    if real.starts_with(&canonical_root) {
-                        Probe::Present { real }
+                    if one_hop(launcher)?.starts_with(&canonical_root)
+                        && real.starts_with(&canonical_root)
+                    {
+                        Ok(Probe::Present { real })
                     } else {
-                        Probe::Absent
+                        Ok(Probe::Absent)
                     }
                 }
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             if !meta.file_type().is_symlink() {
-                return Probe::Absent;
+                return Ok(Probe::Absent);
             }
-            let Ok(target) = std::fs::read_link(launcher) else {
-                return Probe::Absent;
-            };
-            let Some(parent) = launcher.parent() else {
-                return Probe::Absent;
-            };
-            // Resolve the launcher directory before any relative `..`.
-            let Ok(parent) = std::fs::canonicalize(parent) else {
-                return Probe::Absent;
-            };
-            let joined = if target.is_absolute() {
-                target
+            let hop = one_hop(launcher)?;
+            let root = canonicalize_existing_prefix(root)?;
+            if !has_component(&hop, &PACKAGE_MANAGER_MARKERS) && hop.starts_with(&root) {
+                Ok(Probe::LauncherOnly)
             } else {
-                parent.join(target)
-            };
-            let (Ok(target), Ok(root)) = (
-                canonicalize_existing_prefix(&joined),
-                canonicalize_existing_prefix(root),
-            ) else {
-                return Probe::Absent;
-            };
-            if !has_component(&target, &PACKAGE_MANAGER_MARKERS) && target.starts_with(&root) {
-                Probe::LauncherOnly
-            } else {
-                Probe::Absent
+                Ok(Probe::Absent)
             }
         }
-        // A loop or permission error is not a dangling native install.
-        Err(_) => Probe::Absent,
+        // A loop or a permission error: not a dangling native install --
+        // and no proof that there is none.
+        Err(error) => Err(error),
+    }
+}
+
+/// Where `launcher`'s own text points, as a place on the disk: the text
+/// (`readlink`) taken from the launcher's resolved directory -- so a
+/// relative `../` means what it means under a `~/.local/bin` that is
+/// itself a link -- with the destination's own directory resolved as far
+/// as it exists and the destination itself not followed: it may be gone
+/// (the launcher-only state) or a link the tool keeps inside its root.
+/// Read by `probe_strict`, in both of its launcher arms.
+fn one_hop(launcher: &Path) -> std::io::Result<PathBuf> {
+    let text = std::fs::read_link(launcher)?;
+    let dir = std::fs::canonicalize(launcher.parent().unwrap_or(Path::new("/")))?;
+    // `join` with an absolute text is that text.
+    let joined = dir.join(text);
+    match (joined.parent(), joined.file_name()) {
+        (Some(parent), Some(name)) => Ok(canonicalize_existing_prefix(parent)?.join(name)),
+        // A text ending in `..`, or naming `/`: a directory, resolved like
+        // any other -- never a program the route could run.
+        _ => canonicalize_existing_prefix(&joined),
     }
 }
 
@@ -282,7 +320,7 @@ mod tests {
     }
 
     use super::super::recipe::RouteKind;
-    use super::super::testing::{claude_layout, TempHome};
+    use super::super::testing::{claude_layout, TempHome, Unreadable};
     use crate::model::InstanceNote;
 
     #[test]
@@ -299,6 +337,7 @@ mod tests {
     fn test_probe_follows_a_two_hop_link_into_the_root() {
         // `realpath`, not one `readlink`: a launcher that links to a
         // `current` link inside the root still resolves into it.
+        // Its first hop lands inside the root, as the one-hop rule requires.
         let home = TempHome::new("probe-two-hop");
         let real = home.file(".local/share/claude/versions/2.1.281");
         let current = home.link(".local/share/claude/current", &real);
@@ -310,6 +349,80 @@ mod tests {
                 &home.path().join(".local/share/claude")
             ),
             Probe::Present { real }
+        );
+    }
+
+    #[test]
+    fn test_probe_refuses_a_launcher_that_reaches_the_root_through_a_link_outside_it() {
+        // Phase 4 step C: the launcher is one link straight into the root.
+        // Through `~/.local/bin/claude-current` it resolves into the root
+        // all the same, but once the root is in the Trash that second link
+        // dangles, and the launcher's own text -- `claude-current`, outside
+        // the root -- no longer says whose it is: a stopped uninstall would
+        // read as a finished one. Not the installer's layout, so not this
+        // route's instance (the Unknown page lists it), before and after.
+        let home = TempHome::new("probe-hop-outside");
+        let real = home.executable(".local/share/claude/versions/2.1.281");
+        let current = home.link(".local/bin/claude-current", &real);
+        let launcher = home.link(".local/bin/claude", &current);
+        let root = home.path().join(".local/share/claude");
+        assert_eq!(
+            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            Probe::Absent
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            Probe::Absent
+        );
+    }
+
+    #[test]
+    fn test_probe_counts_a_launcher_dangling_through_the_roots_own_link_as_launcher_only() {
+        // The other side of the one-hop rule: a link the tool keeps inside
+        // its root is its own business. With the version it points at gone
+        // and the root's `current` link left dangling, the launcher's own
+        // text still names a place inside the root: launcher-only, the row
+        // an Uninstall finishes -- not `Absent`, which would have hidden a
+        // root that still holds files.
+        let home = TempHome::new("probe-dangling-through-current");
+        let real = home.executable(".local/share/claude/versions/2.1.281");
+        let current = home.link(".local/share/claude/current", &real);
+        let launcher = home.link(".local/bin/claude", &current);
+        let root = home.path().join(".local/share/claude");
+        std::fs::remove_dir_all(root.join("versions")).unwrap();
+        assert_eq!(
+            probe(RouteKind::SymlinkIntoRoot, &launcher, &root),
+            Probe::LauncherOnly
+        );
+    }
+
+    #[test]
+    fn test_probe_strict_says_it_cannot_tell_where_probe_says_absent() {
+        // A launcher whose folder cannot be read: `probe` answers `Absent`
+        // (detection's "not installed"), `probe_strict` an error -- the
+        // reading after an uninstall must not take a permission error for
+        // "the launcher is gone". A launcher that really is gone is
+        // `Ok(Absent)` for both.
+        let home = TempHome::new("probe-strict-unreadable");
+        let layout = claude_layout(&home, "2.1.281");
+        let bin = home.path().join(".local/bin");
+        {
+            let Some(_locked) = Unreadable::new(&bin) else {
+                return;
+            };
+            assert_eq!(
+                probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+                Probe::Absent
+            );
+            let error = probe_strict(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root)
+                .expect_err("a permission error is not an answer");
+            assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        }
+        std::fs::remove_file(&layout.launcher).unwrap();
+        assert_eq!(
+            probe_strict(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root).unwrap(),
+            Probe::Absent
         );
     }
 

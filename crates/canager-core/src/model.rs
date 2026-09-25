@@ -128,16 +128,15 @@ pub enum InstanceNote {
     /// Unknown page may show where it is.
     ShadowedByOther,
     /// The launcher is still there but points at program files that are
-    /// gone: the program directory was removed by hand or by another
-    /// tool (from step C on, also by a Canager uninstall that stopped
-    /// after moving it and before moving the launcher -- C's removal
-    /// order makes that the only such state). The row stays, with no
-    /// version, so the state is visible. In this step its artifact still
-    /// carries `UninstallBlocked::NoSafeMethod`, so the gate refuses an
-    /// uninstall and the notice promises none; step C's path-list
-    /// uninstall is what lets one through to remove the link. Produced by
-    /// `StandaloneAdapter::detect` when `route::probe` answers
-    /// `LauncherOnly`.
+    /// gone: the program directory was removed by hand or by another tool,
+    /// or by a Canager uninstall that stopped after moving it and before
+    /// moving the launcher -- the removal order (`removal::execute_removal`,
+    /// launcher last) makes that the only state a stopped run leaves. The
+    /// row stays, with no version, so the state is visible, and its
+    /// artifact carries no `uninstall_blocked`: the row's Uninstall lists
+    /// the program directory as already gone and moves the link (spec
+    /// Q17). Produced by `StandaloneAdapter::detect` when `route::probe`
+    /// answers `LauncherOnly`.
     LauncherOnly,
 }
 
@@ -267,19 +266,18 @@ pub enum UninstallBlocked {
     /// `pinned` key `brew info --installed --json=v2` writes for every
     /// formula (`formula.rb:3140`) and cask (`cask/cask.rb:574`).
     Pinned,
-    /// The tool has no uninstall command, and Canager has no safe way yet
-    /// to remove its files -- no verified list of them (a second-batch
-    /// tool before verification), or a verified list but not yet the
-    /// path-list uninstall that moves them to the Trash (Claude Code
-    /// until step C) -- so it does not offer to. Per artifact, not the
+    /// The tool has no uninstall command and Canager has no safe way to
+    /// remove its files -- no verified list of them, or no way yet to move
+    /// them to the Trash -- so it does not offer to. Per artifact, not the
     /// instance's `read_only_reason`: that would hide the upgrade too,
     /// which works. Produced by `StandaloneAdapter::inventory`
-    /// (`adapters/standalone/mod.rs`) for a recipe without an uninstall
-    /// method -- Claude Code in phase 4 step B, until step C's path-list
-    /// uninstall replaces it; later Ollama.app. The gate refuses it
-    /// (`blocked_uninstall` in session/plans.rs), the Installed page hides
-    /// the button and says why (`UNINSTALL_BLOCKED_KEYS` in
-    /// src/lib/sources.ts).
+    /// (`adapters/standalone/mod.rs`) for a recipe whose `uninstall` is
+    /// `None`. No first-batch recipe has one since phase 4 step C gave
+    /// Claude Code its path list; the second batch's Ollama.app will (spec
+    /// §十), and `NO_UNINSTALL` in that module's tests keeps the path
+    /// exercised. The gate refuses it (`blocked_uninstall` in
+    /// session/plans.rs), the Installed page hides the button and says why
+    /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
     NoSafeMethod,
 }
 
@@ -504,6 +502,10 @@ pub enum CancelPolicy {
     /// by the runner and `run_operation` reconciles what is installed
     /// afterwards; one not yet started never starts. Every `Plan` an
     /// adapter builds today says this (pip's `plan()` builds none).
+    /// A path-list uninstall (`PlanAction::TrashPaths`) has no process to
+    /// stop: `removal::execute_removal` watches the token between items and
+    /// stops there -- a move already handed to the system is waited for --
+    /// and `run_operation` reads the disk the same way.
     KillThenReconcile,
     /// Cancel is refused once the op is Running, and its command then ends
     /// on its own or at `Plan::timeout_secs`, which the runner counts from
@@ -555,7 +557,54 @@ pub enum PlanAction {
     /// are the plan's `Warning::WillTrash` items, which is what the dialog
     /// lists. Built only by `StandaloneAdapter::plan` for a recipe whose
     /// `uninstall` is `Uninstall::Paths`.
-    TrashPaths { paths: Vec<PathBuf> },
+    TrashPaths {
+        paths: Vec<PathBuf>,
+        /// What the preview saw at each of `paths`, in the same order
+        /// (`removal::plan_removal`): `removal::execute_removal` refuses
+        /// with `Fault::PathChanged` when any path is no longer that file,
+        /// before anything moves and again right before each move (spec
+        /// §6.3). Skipped by serde: the `IssuedPlan` the window receives
+        /// carries the paths alone, the TypeScript mirror has no such
+        /// field, and a plan read back from JSON has none -- which
+        /// `execute_removal` refuses rather than moving what nobody looked
+        /// at. It rides in the plan `Session` keeps (`StoredPlan`) and
+        /// hands to `OperationManager::submit`, so `Adapter::execute`
+        /// reads it with no parameter of its own.
+        #[serde(skip)]
+        previewed: Vec<ItemIdentity>,
+    },
+}
+
+/// What kind of file `lstat` found at a path -- a symbolic link is itself,
+/// never what it points at. Produced by the path-list uninstall's checks
+/// (`removal::identity_of`, adapters/standalone/removal.rs) from the item's
+/// last `lstat`; part of an `ItemIdentity`, and what `Trasher::trash` is
+/// told about the item it moves, so `RealTrasher` builds its URL from the
+/// check made immediately before the call instead of looking again
+/// (trash/real.rs). No serde: it never crosses IPC.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemKind {
+    File,
+    Dir,
+    Symlink,
+    /// A socket, a pipe, a device: nothing a recipe lists.
+    Other,
+}
+
+/// Which file a path named at one moment: `(st_dev, st_ino)` and the kind,
+/// from `lstat` -- a link's own, never its target's. A link re-pointed (as
+/// `ln -sf` and Claude Code's updater re-point one) or a folder replaced by
+/// another of the same name is a new identity. Recorded by
+/// `removal::plan_removal` for every path it lists; the preview's travel
+/// with the plan (`PlanAction::TrashPaths.previewed`, stage 6e), and
+/// `removal::execute_removal` compares them with what is there at the
+/// confirmation and again immediately before each move. Server-side only:
+/// no serde, and the field that carries it is skipped on the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemIdentity {
+    pub dev: u64,
+    pub ino: u64,
+    pub kind: ItemKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1123,6 +1172,7 @@ mod tests {
                     PathBuf::from("/Users/someone/.local/share/claude"),
                     PathBuf::from("/Users/someone/.local/bin/claude"),
                 ],
+                previewed: Vec::new(),
             },
             needs_password: false,
             locks: vec![ResourceLock("standalone-claude".to_string())],
@@ -1150,12 +1200,39 @@ mod tests {
             .unwrap(),
             r#"{"Command":{"program":"/opt/homebrew/bin/brew","args":["install"],"env":[["A","1"]]}}"#
         );
+        // What the preview saw rides in the plan on this side only
+        // (`previewed`, stage 6e of the step C plan): the wire, and so the
+        // TypeScript mirror, carries the paths alone; a plan read back has
+        // none; and a payload that names the field is not read.
+        let trash = PlanAction::TrashPaths {
+            paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            previewed: vec![ItemIdentity {
+                dev: 1,
+                ino: 2,
+                kind: ItemKind::Symlink,
+            }],
+        };
+        let json = serde_json::to_string(&trash).unwrap();
         assert_eq!(
-            serde_json::to_string(&PlanAction::TrashPaths {
-                paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
-            })
-            .unwrap(),
+            json,
             r#"{"TrashPaths":{"paths":["/Users/someone/.local/bin/claude"]}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<PlanAction>(&json).unwrap(),
+            PlanAction::TrashPaths {
+                paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+                previewed: Vec::new(),
+            }
+        );
+        assert_eq!(
+            serde_json::from_str::<PlanAction>(
+                r#"{"TrashPaths":{"paths":[],"previewed":[{"dev":1,"ino":2}]}}"#
+            )
+            .unwrap(),
+            PlanAction::TrashPaths {
+                paths: Vec::new(),
+                previewed: Vec::new(),
+            }
         );
     }
 

@@ -308,11 +308,10 @@ export function sourceNoticesFor(
         values: { source: sourceLabel, command: commandNameOf(instance) },
       });
     } else if (note === "LauncherOnly") {
-      // The half-uninstalled state: typing the command now fails, so a
-      // warning. No button, and no promise of one: until step C the row's
-      // artifact carries NoSafeMethod, so the gate refuses an uninstall
-      // and the Installed page shows none. C's path-list uninstall is
-      // what finishes the job (spec §3.3, §6.1).
+      // The half-uninstalled state: this launcher cannot run, so a
+      // warning. No button on the notice: the row's own Uninstall finishes
+      // the job -- its preview lists the program directory as already gone
+      // and moves the link (spec §3.3, §6.2).
       notices.push({
         id: `${instance.id}:launcher-only`,
         axis: "state",

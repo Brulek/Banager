@@ -19,9 +19,10 @@
 pub mod latest;
 pub mod recipe;
 pub mod recipes;
+pub mod removal;
 pub mod route;
 
-use self::recipe::{Latest, Recipe};
+use self::recipe::{Latest, Recipe, Uninstall};
 use self::route::Probe;
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, validate_package_name,
@@ -30,11 +31,12 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceNote, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
+    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceNote,
+    InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, OutputUse};
+use crate::trash::Trasher;
 use async_trait::async_trait;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -50,11 +52,17 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// What `detect` learned that the `Adapter` methods without a `HostEnv`
 /// need later -- the same seat `CargoAdapter.binstall` is (detect writes,
 /// later calls read; `Session` always detects before it asks anything
-/// else of an instance). In this step: `home`, which `check_updates` needs
-/// to find `~/.claude/settings.json`. Step C adds `euid` (the removal's
-/// ownership check), step E `cargo_home` (rustup's cargo lock).
+/// else of an instance). `home`, which `check_updates` needs to find
+/// `~/.claude/settings.json` and the removal needs to expand its paths;
+/// `euid`, which the removal's check 3 compares each path's owner with
+/// (`removal::plan_removal`). Step E adds `cargo_home` (rustup's cargo
+/// lock). `Clone`, so `plan` and `execute` take a copy out of the mutex
+/// before they await anything, and the removal owns one for the blocking
+/// pool (`removal::Job`).
+#[derive(Clone, Debug)]
 pub struct Detected {
     pub home: PathBuf,
+    pub euid: u32,
 }
 
 /// One tool installed by its own installer, as the `Adapter` contract
@@ -66,6 +74,15 @@ pub struct StandaloneAdapter {
     runner: Arc<dyn CommandRunner>,
     /// The channel pointer request in `check_updates`.
     http: Arc<dyn HttpClient>,
+    /// The system's "move to Trash", for a path-list uninstall
+    /// (`removal::execute_removal`, from `execute`): `RealTrasher` in
+    /// production (`Session::new`), `MockTrasher` in tests -- injected
+    /// like the runner and the client.
+    trasher: Arc<dyn Trasher>,
+    /// The pause after each item of a path-list uninstall
+    /// (`removal::PUT_BACK_SETTLE`); zero in tests (`with_trash_gap`).
+    /// Read by `execute`.
+    trash_gap: Duration,
     detected: Mutex<Option<Detected>>,
 }
 
@@ -78,6 +95,7 @@ impl StandaloneAdapter {
         recipe: &'static Recipe,
         runner: Arc<dyn CommandRunner>,
         http: Arc<dyn HttpClient>,
+        trasher: Arc<dyn Trasher>,
     ) -> StandaloneAdapter {
         let meta = AdapterMeta::from_toml(recipe.meta_toml).unwrap_or_else(|e| {
             panic!(
@@ -95,8 +113,18 @@ impl StandaloneAdapter {
             meta,
             runner,
             http,
+            trasher,
+            trash_gap: removal::PUT_BACK_SETTLE,
             detected: Mutex::new(None),
         }
+    }
+
+    /// Test seam, like `BrewAdapter::with_background_change`: the pause
+    /// after each item of a path-list uninstall -- zero in tests, so no
+    /// test waits seconds per item. Public so `tests/` can use it too.
+    pub fn with_trash_gap(mut self, gap: Duration) -> StandaloneAdapter {
+        self.trash_gap = gap;
+        self
     }
 
     /// Spec §3.3, steps 1-6: the launcher at the installer's fixed path
@@ -127,6 +155,7 @@ impl StandaloneAdapter {
             };
         *self.detected.lock().unwrap() = Some(Detected {
             home: env.home.clone(),
+            euid: env.euid,
         });
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
@@ -235,10 +264,15 @@ impl StandaloneAdapter {
             // For the Updates page's `selfUpdatingHint` sentence, which
             // arrives with Task 10 of the phase 4 step B plan.
             auto_updates: self.recipe.self_updates,
-            // No uninstall method in this step (spec §6.1 "Neither"): the
-            // gate refuses, the page hides the button and says why. Step
-            // C's path-list uninstall replaces this with `None`.
-            uninstall_blocked: Some(UninstallBlocked::NoSafeMethod),
+            // A recipe with no uninstall method (spec §6.1 "Neither"; none
+            // in the first batch, the second batch's Ollama.app): the gate
+            // refuses, the page hides the button and says why. With a path
+            // list, nothing blocks it.
+            uninstall_blocked: self
+                .recipe
+                .uninstall
+                .is_none()
+                .then_some(UninstallBlocked::NoSafeMethod),
         }])
     }
 
@@ -376,11 +410,14 @@ impl StandaloneAdapter {
     /// Spec §五: the tool's own documented update command, run against the
     /// launcher through `run_plan` unchanged. `Install` is `Unsupported`
     /// (the installer is Anthropic's and Canager never runs it; installing
-    /// tools is phase 5). `Uninstall` is refused with the artifact's own
-    /// reason -- the gate (`blocked_uninstall`) refuses it first; this is
-    /// its late twin for a stale snapshot. The one artifact is
-    /// `Binary`/`<recipe.id>`, so any other name or kind is a request this
-    /// adapter cannot mean.
+    /// tools is phase 5). `Uninstall` is the recipe's path list as a
+    /// `TrashPaths` plan under the removal's checks (spec §6.2-§6.3), with
+    /// what the preview saw at each path riding along on this side only
+    /// (`previewed`, skipped by serde; Ruling 10), or `NoSafeMethod` for a
+    /// recipe without one -- the gate (`blocked_uninstall`) refuses that
+    /// first; this is its late twin for a stale snapshot. The one artifact
+    /// is `Binary`/`<recipe.id>`, so any other name or kind is a request
+    /// this adapter cannot mean.
     pub async fn plan(
         &self,
         inst: &ManagerInstance,
@@ -396,20 +433,57 @@ impl StandaloneAdapter {
                 "{} is installed by its own installer, which Canager never runs",
                 self.meta.name
             ))),
-            OpKind::Uninstall => Err(AdapterError::UninstallBlocked {
-                reason: UninstallBlocked::NoSafeMethod,
-            }),
+            OpKind::Uninstall => {
+                let Some(uninstall) = &self.recipe.uninstall else {
+                    return Err(AdapterError::UninstallBlocked {
+                        reason: UninstallBlocked::NoSafeMethod,
+                    });
+                };
+                match *uninstall {
+                    Uninstall::Paths { remove, keep } => {
+                        let removal = removal::plan_removal(&removal::Job {
+                            recipe: self.recipe,
+                            detected: self.detected_or_refuse()?,
+                            remove,
+                            keep,
+                        })?;
+                        Ok(Plan {
+                            request: req.clone(),
+                            // No command: `execute` moves these itself. What
+                            // the preview saw at each stays with the plan on
+                            // this side (`previewed`, skipped on the wire).
+                            action: PlanAction::TrashPaths {
+                                paths: removal.paths,
+                                previewed: removal.identities,
+                            },
+                            // Everything lives under $HOME (spec §6.2).
+                            needs_password: false,
+                            locks: vec![ResourceLock(inst.id.clone())],
+                            // Between items the token is watched; there is
+                            // no process to stop (spec §6.2).
+                            cancel_policy: CancelPolicy::KillThenReconcile,
+                            warnings: removal.warnings,
+                            // "Would break": nothing depends on a tool's
+                            // own files this way, and a non-empty list
+                            // disables the confirm button.
+                            affected: Vec::new(),
+                            timeout_secs: removal::TIMEOUT_SECS,
+                        })
+                    }
+                }
+            }
             OpKind::Upgrade => {
                 let upgrade = &self.recipe.upgrade;
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
-                        // The launcher, exactly as previewed: never a program
-                        // the recipe could name (spec 附录 B).
+                        // The launcher, exactly as previewed: never a
+                        // program the recipe could name (spec 附录 B).
                         program: inst.exe_path.clone(),
                         args: upgrade.args.iter().map(|a| a.to_string()).collect(),
-                        // Not the version read's environment: `claude update`
-                        // must not be told to stop updating (spec §3.4).
+                        // Not the version read's environment: `claude
+                        // update` must not be told to stop updating (spec
+                        // §3.4).
                         env: Vec::new(),
                     },
                     // Everything lives under $HOME (spec §五).
@@ -424,6 +498,24 @@ impl StandaloneAdapter {
         }
     }
 
+    /// What `detect` wrote, or a plain `Refused` when nothing has been
+    /// detected -- unreachable through `Session`, which detects before it
+    /// plans (spec §3.2), so no sentence of its own.
+    fn detected_or_refuse(&self) -> Result<Detected, AdapterError> {
+        self.detected.lock().unwrap().clone().ok_or_else(|| {
+            AdapterError::Refused(format!(
+                "{} has not been detected in this session",
+                self.meta.name
+            ))
+        })
+    }
+
+    /// A `Command` plan runs through `run_plan` like every source's; a
+    /// `TrashPaths` plan is carried out here, item by item
+    /// (`removal::execute_removal`), against the list re-read from the
+    /// recipe and the disk and compared with what the preview saw
+    /// (`previewed`) -- the plan's paths are what the user confirmed, not
+    /// the source of truth.
     pub async fn execute(
         &self,
         plan: &Plan,
@@ -431,22 +523,44 @@ impl StandaloneAdapter {
         op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
-        run_plan(&self.runner, plan, sink, op_id, cancel).await
+        match &plan.action {
+            PlanAction::Command { .. } => run_plan(&self.runner, plan, sink, op_id, cancel).await,
+            PlanAction::TrashPaths { paths, previewed } => {
+                let Some(Uninstall::Paths { remove, keep }) = self.recipe.uninstall else {
+                    return Err(AdapterError::Refused(format!(
+                        "{} has no path list to carry out",
+                        self.meta.name
+                    )));
+                };
+                removal::execute_removal(
+                    &removal::Job {
+                        recipe: self.recipe,
+                        detected: self.detected_or_refuse()?,
+                        remove,
+                        keep,
+                    },
+                    removal::Confirmed { paths, previewed },
+                    &self.trasher,
+                    removal::Pacing {
+                        settle: self.trash_gap,
+                        budget: Duration::from_secs(plan.timeout_secs),
+                    },
+                    sink,
+                    op_id,
+                    cancel,
+                )
+                .await
+            }
+        }
     }
 
-    /// Step B only executes upgrades: an owned launcher without a readable
-    /// version is not sufficient evidence that an upgrade succeeded, so
-    /// after `claude update` exits 0 this `Err` makes `run_operation`
-    /// report `Unconfirmed`. `run_operation` takes this reading before an
-    /// upgrade too, and there the same `Err` only leaves nothing to
-    /// compare: an update that exits 0 is then judged by the reading after
-    /// alone, as for every adapter (`VersionChange::Unknown`), and is
-    /// `Succeeded` when that reading has a version, even if `claude update`
-    /// found nothing to install (both cases are in
-    /// tests/ops_upgrade_version_test.rs). Inventory still preserves
-    /// `LauncherOnly` presence for display and step C's removal. Step C
-    /// must use that presence for uninstall verification while keeping this
-    /// stricter upgrade check (phase 4 step B plan, deviation 15).
+    /// The reading before and after an upgrade (and after an install,
+    /// which this adapter never plans): an owned launcher without a
+    /// readable version is no evidence that an upgrade succeeded, so it is
+    /// refused (`Parse`) and `run_operation` reports `Unconfirmed` (B's
+    /// Astra finding 1). After an uninstall `run_operation` reads
+    /// `reconcile_after_uninstall` instead, which counts that launcher as
+    /// still there.
     pub async fn reconcile(
         &self,
         inst: &ManagerInstance,
@@ -461,16 +575,61 @@ impl StandaloneAdapter {
         }
         Ok(reconciled)
     }
+
+    /// The reading after an uninstall (`Adapter::reconcile_after_uninstall`):
+    /// presence alone, from the disk now, through `route::probe_strict`. A
+    /// launcher-only launcher -- the dangling link a stopped path-list
+    /// uninstall leaves -- is present, so `run_operation` reports the stop
+    /// truthfully (`Cancelled` after the user's Cancel,
+    /// `StillInstalledAfterUninstall` after a run that claimed success) and
+    /// the next refresh shows the row a second Uninstall finishes; a
+    /// launcher that is gone is absent (spec §3.6); and a launcher Canager
+    /// cannot look at -- a permission error, a loop -- is neither: an
+    /// error, which `run_operation` reports as `Unconfirmed`, never as a
+    /// finished uninstall (Ruling 27). No version is read: presence is the
+    /// whole question, and a stopped uninstall's launcher has none.
+    pub async fn reconcile_after_uninstall(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        let present =
+            match route::probe_strict(self.recipe.route.kind, &inst.exe_path, &inst.prefix) {
+                Ok(Probe::Absent) => false,
+                Ok(Probe::Present { .. } | Probe::LauncherOnly) => true,
+                Err(error) => {
+                    return Err(AdapterError::Parse(format!(
+                        "cannot tell whether {} is still there: {error}",
+                        inst.exe_path.display()
+                    )))
+                }
+            };
+        // The one artifact, matched as `reconcile_from` matches -- kind and
+        // name, never the instance id (adapters/mod.rs says why).
+        let this_tool = key.kind == ArtifactKind::Binary && key.name == self.recipe.id;
+        Ok(Reconciled {
+            present: present && this_tool,
+            version: None,
+        })
+    }
 }
 
-/// One adapter per recipe in `recipes::RECIPES`, over the shared runner
-/// and http client, for `Session::new`'s registration list.
-pub fn all(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> Vec<Arc<dyn Adapter>> {
+/// One adapter per recipe in `recipes::RECIPES`, over the shared runner,
+/// http client and trasher, for `Session::new`'s registration list.
+pub fn all(
+    runner: Arc<dyn CommandRunner>,
+    http: Arc<dyn HttpClient>,
+    trasher: Arc<dyn Trasher>,
+) -> Vec<Arc<dyn Adapter>> {
     recipes::RECIPES
         .iter()
         .map(|&recipe| {
-            Arc::new(StandaloneAdapter::new(recipe, runner.clone(), http.clone()))
-                as Arc<dyn Adapter>
+            Arc::new(StandaloneAdapter::new(
+                recipe,
+                runner.clone(),
+                http.clone(),
+                trasher.clone(),
+            )) as Arc<dyn Adapter>
         })
         .collect()
 }
@@ -528,6 +687,14 @@ impl Adapter for StandaloneAdapter {
         key: &ArtifactKey,
     ) -> Result<Reconciled, AdapterError> {
         StandaloneAdapter::reconcile(self, inst, key).await
+    }
+
+    async fn reconcile_after_uninstall(
+        &self,
+        inst: &ManagerInstance,
+        key: &ArtifactKey,
+    ) -> Result<Reconciled, AdapterError> {
+        StandaloneAdapter::reconcile_after_uninstall(self, inst, key).await
     }
 }
 
@@ -634,22 +801,53 @@ pub(super) mod testing {
             real,
         }
     }
+
+    /// Takes every permission off the folder `path` until dropped, so an
+    /// `lstat` of anything inside it fails with a permission error -- the
+    /// "could not tell" a probe must never read as "gone" -- and gives
+    /// `0o755` back on drop, so `TempHome` can remove the tree. `None` when
+    /// the tests run as root, whom permissions do not stop: the caller
+    /// then skips its check and says so.
+    pub struct Unreadable(PathBuf);
+
+    impl Unreadable {
+        pub fn new(path: &Path) -> Option<Unreadable> {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            if std::fs::metadata(path).expect("the folder exists").uid() == 0 {
+                eprintln!("running as root: permissions stop nothing, check skipped");
+                return None;
+            }
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000))
+                .expect("take the folder's permissions away");
+            Some(Unreadable(path.to_path_buf()))
+        }
+    }
+
+    impl Drop for Unreadable {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::recipe::{Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
     use super::recipes::CLAUDE;
     use super::testing::{claude_layout, TempHome};
     use super::*;
     use crate::adapters::{Adapter, CheckOptions};
-    use crate::events::VecSink;
+    use crate::events::{LogNote, OperationEvent, VecSink};
     use crate::http::{HttpResponse, MockHttpClient};
     use crate::model::{
-        ArtifactKind, CancelPolicy, InstallReason, InstanceNote, OpKind, OpRequest, Outcome,
-        ResourceLock, Unavailable, UninstallBlocked, UpdateChannel, Warning,
+        ArtifactKind, CancelPolicy, Fault, InstallReason, InstanceNote, ItemKind, KeptWhat, OpKind,
+        OpRequest, Outcome, PlanAction, RemovedWhat, ResourceLock, Unavailable, UninstallBlocked,
+        UninstallUnsafeReason, UpdateChannel, Warning,
     };
     use crate::runner::{CommandOutput, MockRunner, RunnerError};
     use crate::testing::{command_args, command_env, command_program};
+    use crate::trash::MockTrasher;
     // For `RecordingRunner` below. Named here as well as through
     // `super::*` (the parent imports it for `impl Adapter`), so this impl
     // does not lean on the imports above; an explicit import beside a glob
@@ -668,7 +866,69 @@ mod tests {
     }
 
     fn adapter(runner: Arc<dyn CommandRunner>) -> StandaloneAdapter {
-        StandaloneAdapter::new(&CLAUDE, runner, Arc::new(MockHttpClient::new()))
+        adapter_with(runner, Arc::new(MockTrasher::new()))
+    }
+
+    /// An adapter over a trasher the test holds on to (to read its calls
+    /// and its bin), with no pause after each item (ruling 12).
+    fn adapter_with(
+        runner: Arc<dyn CommandRunner>,
+        trasher: Arc<MockTrasher>,
+    ) -> StandaloneAdapter {
+        StandaloneAdapter::new(&CLAUDE, runner, Arc::new(MockHttpClient::new()), trasher)
+            .with_trash_gap(Duration::ZERO)
+    }
+
+    /// `TempHome::env` with the euid of the user who made the temp home
+    /// (the files in it are theirs), for a `detect` whose `Detected.euid`
+    /// the removal's check 3 will compare against. (`TempHome::env` says
+    /// 501; nothing before this step read it.)
+    fn env_as_owner(home: &TempHome) -> HostEnv {
+        use std::os::unix::fs::MetadataExt;
+        HostEnv {
+            euid: std::fs::metadata(home.path()).expect("home metadata").uid(),
+            ..home.env(vec![])
+        }
+    }
+
+    /// The claude layout plus the cache and settings the dialog lists,
+    /// detected (so `Detected` is filled) with `--version` answered.
+    async fn full_install(
+        tag: &str,
+        trasher: Arc<MockTrasher>,
+    ) -> (
+        TempHome,
+        super::testing::ClaudeLayout,
+        StandaloneAdapter,
+        ManagerInstance,
+    ) {
+        let home = TempHome::new(tag);
+        let layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        home.file(".claude/projects/p/session.jsonl");
+        home.file(".claude.json");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let adapter = adapter_with(runner, trasher);
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        (home, layout, adapter, inst)
+    }
+
+    fn uninstall() -> OpRequest {
+        request(OpKind::Uninstall, ArtifactKind::Binary, "claude")
+    }
+
+    fn notes_of(sink: &VecSink) -> Vec<LogNote> {
+        sink.snapshot()
+            .into_iter()
+            .filter_map(|event| match event {
+                OperationEvent::Note { note, .. } => Some(note),
+                _ => None,
+            })
+            .collect()
     }
 
     /// `MockRunner` keys and records argv only. This one records every
@@ -962,7 +1222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_inventory_is_the_tool_itself_with_no_safe_uninstall_method() {
+    async fn test_inventory_is_the_tool_itself_and_offers_the_path_list_uninstall() {
         let home = TempHome::new("inventory-present");
         let layout = claude_layout(&home, "2.1.281");
         let runner = Arc::new(MockRunner::new());
@@ -999,7 +1259,9 @@ mod tests {
         // The real binary, for the Unknown page's rule 2.
         assert_eq!(a.path, Some(layout.real.clone()));
         assert!(a.auto_updates, "claude updates itself in the background");
-        assert_eq!(a.uninstall_blocked, Some(UninstallBlocked::NoSafeMethod));
+        // The recipe has a path list, so nothing blocks the uninstall: the
+        // gate lets it through to `plan`, and the page shows the button.
+        assert_eq!(a.uninstall_blocked, None);
         assert_eq!(a.size_bytes, None);
         assert_eq!(a.installed_at, None);
     }
@@ -1043,10 +1305,9 @@ mod tests {
         );
         assert_eq!(artifacts[0].version, "");
         assert_eq!(artifacts[0].path, None);
-        assert_eq!(
-            artifacts[0].uninstall_blocked,
-            Some(UninstallBlocked::NoSafeMethod)
-        );
+        // The uninstall that finishes this state is allowed on this row
+        // (spec Q17).
+        assert_eq!(artifacts[0].uninstall_blocked, None);
         assert!(runner.calls().is_empty());
     }
 
@@ -1145,7 +1406,7 @@ mod tests {
             vec![layout.launcher.to_str().unwrap(), "--version"],
             exited_0("2.1.281 (Claude Code)\n"),
         );
-        let adapter = StandaloneAdapter::new(&CLAUDE, runner, http);
+        let adapter = StandaloneAdapter::new(&CLAUDE, runner, http, Arc::new(MockTrasher::new()));
         let inst = adapter
             .detect(&home.env(vec![home.path().join(".local/bin")]))
             .await
@@ -1162,7 +1423,8 @@ mod tests {
         runner.respond(argv.clone(), exited_0("2.1.281 (Claude Code)\n"));
         let http = Arc::new(MockHttpClient::new());
         http.respond(LATEST_URL, answer("2.1.290"));
-        let adapter = StandaloneAdapter::new(&CLAUDE, runner.clone(), http);
+        let adapter =
+            StandaloneAdapter::new(&CLAUDE, runner.clone(), http, Arc::new(MockTrasher::new()));
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
         runner.respond(argv, exited_0("2.1.290 (Claude Code)\n"));
         assert_eq!(
@@ -1199,7 +1461,8 @@ mod tests {
             );
             let http = Arc::new(MockHttpClient::new());
             http.respond(LATEST_URL, answer(remote));
-            let adapter = StandaloneAdapter::new(&CLAUDE, runner, http);
+            let adapter =
+                StandaloneAdapter::new(&CLAUDE, runner, http, Arc::new(MockTrasher::new()));
             let inst = adapter.detect(&home.env(vec![])).await.remove(0);
             assert_eq!(inst.status.unavailable, None);
             assert_eq!(inst.version.as_deref(), Some(local));
@@ -1232,7 +1495,12 @@ mod tests {
         runner.respond(argv.clone(), exited_0("2.1.281 (Claude Code)\n"));
         let http = Arc::new(MockHttpClient::new());
         http.respond(LATEST_URL, answer("2.1.290"));
-        let adapter = StandaloneAdapter::new(&CLAUDE, runner.clone(), http.clone());
+        let adapter = StandaloneAdapter::new(
+            &CLAUDE,
+            runner.clone(),
+            http.clone(),
+            Arc::new(MockTrasher::new()),
+        );
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
         runner.respond(argv, exited_0(""));
         let out = adapter
@@ -1451,7 +1719,12 @@ mod tests {
         let root = home.path().join(".local/share/claude");
         let launcher = home.link(".local/bin/claude", &root.join("versions/2.1.281"));
         let http = Arc::new(MockHttpClient::new());
-        let adapter = StandaloneAdapter::new(&CLAUDE, Arc::new(MockRunner::new()), http.clone());
+        let adapter = StandaloneAdapter::new(
+            &CLAUDE,
+            Arc::new(MockRunner::new()),
+            http.clone(),
+            Arc::new(MockTrasher::new()),
+        );
         let inst = adapter.detect(&home.env(vec![])).await.remove(0);
         assert_eq!(inst.exe_path, launcher);
         let out = adapter
@@ -1561,14 +1834,40 @@ mod tests {
         ));
     }
 
+    /// Claude Code's recipe with no uninstall method: what the second
+    /// batch's Ollama.app will be (spec §6.1 "Neither"). Every other field
+    /// is `CLAUDE`'s.
+    static NO_UNINSTALL: Recipe = Recipe {
+        id: "claude",
+        meta_toml: include_str!("../../../../../adapters/meta/standalone-claude.toml"),
+        route: Route {
+            kind: RouteKind::SymlinkIntoRoot,
+            launcher: "~/.local/bin/claude",
+            root: "~/.local/share/claude",
+        },
+        version: VersionCmd {
+            args: &["--version"],
+            env: &[("DISABLE_AUTOUPDATER", "1")],
+            parse: VersionParse::FirstToken,
+        },
+        latest: Latest::ClaudeChannel {
+            base: "https://downloads.claude.ai/claude-code-releases",
+        },
+        self_updates: true,
+        upgrade: UpgradeCmd {
+            args: &["update"],
+            timeout_secs: 1800,
+            cancel: CancelPolicy::KillThenReconcile,
+        },
+        uninstall: None,
+    };
+
     #[tokio::test]
-    async fn test_plan_refuses_install_as_unsupported_and_uninstall_as_no_safe_method() {
-        // An uninstall is refused by the gate first (`blocked_uninstall`
-        // reads the artifact's `NoSafeMethod`), so this refusal is its late
-        // twin for a stale snapshot. The gate has no install-specific rule:
-        // an install against an installed, answering tool reaches this
-        // `plan`, and `Unsupported` is the answer it gets.
-        let home = TempHome::new("plan-refusals");
+    async fn test_plan_refuses_install_as_unsupported() {
+        // The gate has no install-specific rule: an install against an
+        // installed, answering tool reaches this `plan`, and `Unsupported`
+        // is the answer it gets (B's corrected comment, kept).
+        let home = TempHome::new("plan-install");
         let layout = claude_layout(&home, "2.1.281");
         let adapter = adapter(Arc::new(MockRunner::new()));
         let inst = instance_for(&layout, Some("2.1.281"));
@@ -1581,13 +1880,34 @@ mod tests {
                 .await,
             Err(AdapterError::Unsupported(_))
         ));
-        match adapter
-            .plan(
-                &inst,
-                &request(OpKind::Uninstall, ArtifactKind::Binary, "claude"),
-            )
-            .await
-        {
+    }
+
+    #[tokio::test]
+    async fn test_a_recipe_without_an_uninstall_method_says_so_and_refuses_to_plan_one() {
+        // Spec §6.1 "Neither": the artifact carries `NoSafeMethod` (the
+        // gate and the page read it), and `plan(Uninstall)` refuses with
+        // the same reason for a stale snapshot. The one production path of
+        // that variant after this step.
+        let home = TempHome::new("plan-no-uninstall");
+        let layout = claude_layout(&home, "2.1.281");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let adapter = StandaloneAdapter::new(
+            &NO_UNINSTALL,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        );
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
+        assert_eq!(
+            artifacts[0].uninstall_blocked,
+            Some(UninstallBlocked::NoSafeMethod)
+        );
+        match adapter.plan(&inst, &uninstall()).await {
             Err(AdapterError::UninstallBlocked { reason }) => {
                 assert_eq!(reason, UninstallBlocked::NoSafeMethod)
             }
@@ -1624,7 +1944,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_builds_one_adapter_per_recipe_under_its_standalone_id() {
-        let adapters = all(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        let adapters = all(
+            Arc::new(MockRunner::new()),
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        );
         let ids: Vec<String> = adapters.iter().map(|a| a.meta().id.clone()).collect();
         assert_eq!(ids, vec!["standalone-claude".to_string()]);
         assert_eq!(adapters.len(), super::recipes::RECIPES.len());
@@ -1644,6 +1968,7 @@ mod tests {
             &CLAUDE,
             runner,
             Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
         ));
         let instances = adapter.detect(&home.env(vec![])).await;
         assert_eq!(instances.len(), 1);
@@ -1719,7 +2044,8 @@ mod tests {
                 vec![layout.launcher.to_str().unwrap(), "--version"],
                 exited_0(&format!("{installed} (Claude Code)\n")),
             );
-            let adapter = StandaloneAdapter::new(&CLAUDE, runner, http);
+            let adapter =
+                StandaloneAdapter::new(&CLAUDE, runner, http, Arc::new(MockTrasher::new()));
             let inst = adapter.detect(&home.env(vec![])).await.remove(0);
             let out = adapter
                 .check_updates(&inst, &CheckOptions::default())
@@ -1740,5 +2066,382 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_is_a_trash_paths_plan_carrying_the_dialogs_list() {
+        // Spec §6.2, §6.6: no command; the paths in execution order, the
+        // launcher last, with what the preview saw at each (Ruling 10) --
+        // which never reaches the window: the action's JSON is the paths
+        // alone; the warnings the dialog lists, in that order; the
+        // instance's lock; no password; the removal's own time budget.
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, layout, adapter, inst) = full_install("plan-uninstall", trasher).await;
+
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+
+        let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+            panic!("a path list, not a command: {:?}", plan.action);
+        };
+        let listed = vec![
+            home.path().join(".local/share/claude"),
+            home.path().join(".claude/downloads"),
+            layout.launcher.clone(),
+        ];
+        assert_eq!(paths, &listed);
+        assert_eq!(
+            previewed.iter().map(|seen| seen.kind).collect::<Vec<_>>(),
+            vec![ItemKind::Dir, ItemKind::Dir, ItemKind::Symlink]
+        );
+        assert_eq!(
+            serde_json::to_value(&plan.action).unwrap(),
+            serde_json::json!({ "TrashPaths": { "paths": listed } })
+        );
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::WillTrash {
+                    path: "~/.local/share/claude".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.claude/downloads".to_string(),
+                    what: RemovedWhat::Cache
+                },
+                Warning::WillTrash {
+                    path: "~/.local/bin/claude".to_string(),
+                    what: RemovedWhat::Launcher
+                },
+                Warning::WillKeep {
+                    path: "~/.claude".to_string(),
+                    what: KeptWhat::SettingsAndHistory
+                },
+                Warning::WillKeep {
+                    path: "~/.claude.json".to_string(),
+                    what: KeptWhat::Settings
+                },
+            ]
+        );
+        assert!(!plan.needs_password);
+        assert_eq!(
+            plan.locks,
+            vec![ResourceLock("standalone-claude".to_string())]
+        );
+        assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+        assert!(
+            plan.affected.is_empty(),
+            "a non-empty list would disable Uninstall"
+        );
+        assert_eq!(plan.timeout_secs, removal::TIMEOUT_SECS);
+        assert_eq!(plan.request, uninstall());
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_refuses_before_anything_was_detected() {
+        // Unreachable through `Session` (it detects before it plans); the
+        // adapter's own answer, a plain `Refused`, for a caller that skips
+        // that (spec §3.2).
+        let home = TempHome::new("plan-undetected");
+        let layout = claude_layout(&home, "2.1.281");
+        let adapter = adapter(Arc::new(MockRunner::new()));
+        let inst = instance_for(&layout, Some("2.1.281"));
+        assert!(matches!(
+            adapter.plan(&inst, &uninstall()).await,
+            Err(AdapterError::Refused(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_refuses_a_path_that_fails_a_check_with_the_reason() {
+        // One of the checks failing reaches the dialog as `UninstallUnsafe`
+        // (Task 5's kind), with the path abbreviated.
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, layout, adapter, inst) = full_install("plan-unsafe", trasher).await;
+        let elsewhere = home.executable("elsewhere/claude");
+        std::fs::remove_file(&layout.launcher).unwrap();
+        std::os::unix::fs::symlink(elsewhere, &layout.launcher).unwrap();
+
+        match adapter.plan(&inst, &uninstall()).await {
+            Err(AdapterError::UninstallUnsafe { path, reason }) => {
+                assert_eq!(path, "~/.local/bin/claude");
+                assert_eq!(reason, UninstallUnsafeReason::NotWhatInstructionsExpect);
+            }
+            other => panic!("expected UninstallUnsafe, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_on_a_launcher_only_row_lists_the_program_dir_as_already_gone() {
+        let home = TempHome::new("plan-launcher-only");
+        let layout = claude_layout(&home, "2.1.281");
+        std::fs::remove_dir_all(&layout.root).unwrap();
+        let adapter = adapter(Arc::new(MockRunner::new()));
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        assert_eq!(inst.status.notes, vec![InstanceNote::LauncherOnly]);
+
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+
+        let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+            panic!("a path list, not a command: {:?}", plan.action);
+        };
+        assert_eq!(paths, &vec![layout.launcher.clone()]);
+        assert_eq!(previewed.len(), 1, "what the preview saw at the launcher");
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::AlreadyGone {
+                    path: "~/.local/share/claude".to_string()
+                },
+                Warning::WillTrash {
+                    path: "~/.local/bin/claude".to_string(),
+                    what: RemovedWhat::Launcher
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_moves_every_listed_path_in_order_and_logs_each() {
+        // Review Focus 1: two paths named `claude`, both moved, both in the
+        // Trash.
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, layout, adapter, inst) =
+            full_install("execute-uninstall", trasher.clone()).await;
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+        let sink = Arc::new(VecSink::new());
+
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(trasher.calls(), *paths);
+        assert!(trasher.bin().join("claude/versions/2.1.281").is_file());
+        assert!(trasher.bin().join("downloads").is_dir());
+        let link = trasher.bin().join("claude 2");
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(std::fs::symlink_metadata(&layout.launcher).is_err());
+        assert!(home.path().join(".claude.json").is_file(), "settings stay");
+        assert!(home
+            .path()
+            .join(".claude/projects/p/session.jsonl")
+            .is_file());
+        assert_eq!(
+            notes_of(&sink),
+            vec![
+                LogNote::MovedToTrash {
+                    path: "~/.local/share/claude".to_string(),
+                    trashed_to: trasher.bin().join("claude").display().to_string(),
+                },
+                LogNote::MovedToTrash {
+                    path: "~/.claude/downloads".to_string(),
+                    trashed_to: trasher.bin().join("downloads").display().to_string(),
+                },
+                LogNote::MovedToTrash {
+                    path: "~/.local/bin/claude".to_string(),
+                    trashed_to: link.display().to_string(),
+                },
+            ]
+        );
+        // Afterwards the tool is gone for `detect` and `inventory` alike.
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+        assert!(adapter.inventory(&inst).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_execute_refuses_when_a_path_changed_since_the_preview() {
+        // Review Focus 2: the launcher re-pointed between the preview and
+        // the click. Nothing moved; the fault names the path.
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, layout, adapter, inst) = full_install("execute-changed", trasher.clone()).await;
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+        let elsewhere = home.executable("elsewhere/claude");
+        std::fs::remove_file(&layout.launcher).unwrap();
+        std::os::unix::fs::symlink(elsewhere, &layout.launcher).unwrap();
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(
+            outcome,
+            Outcome::CanagerFailed(Fault::PathChanged {
+                path: "~/.local/bin/claude".to_string()
+            })
+        );
+        assert!(trasher.calls().is_empty());
+        assert!(layout.root.join("versions/2.1.281").is_file());
+    }
+
+    #[tokio::test]
+    async fn test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview() {
+        // Ruling 10 through the adapter: what the preview saw rides in the
+        // plan it issued (`PlanAction::TrashPaths.previewed`). Claude Code
+        // updating itself between the preview and the click re-points the
+        // launcher at a new version inside the root -- every check still
+        // passes and the path is the same string -- but it is not the link
+        // the user was shown: nothing moves, and the user previews again.
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, layout, adapter, inst) =
+            full_install("execute-self-updated", trasher.clone()).await;
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+        let newer = home.executable(".local/share/claude/versions/2.1.282");
+        std::fs::remove_file(&layout.launcher).unwrap();
+        std::os::unix::fs::symlink(newer, &layout.launcher).unwrap();
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(
+            outcome,
+            Outcome::CanagerFailed(Fault::PathChanged {
+                path: "~/.local/bin/claude".to_string()
+            })
+        );
+        assert!(trasher.calls().is_empty());
+        assert!(layout.root.join("versions/2.1.281").is_file());
+    }
+
+    #[tokio::test]
+    async fn test_execute_stops_at_a_refused_item_and_leaves_the_launcher() {
+        // Review Focus 4, first half: macOS refused the cache directory.
+        let trasher = Arc::new(MockTrasher::new());
+        trasher.refuse_call(1, "Operation not permitted");
+        let (_home, layout, adapter, inst) = full_install("execute-refused", trasher.clone()).await;
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+        let sink = Arc::new(VecSink::new());
+
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                exit_code: None,
+                summary: "Operation not permitted".to_string()
+            }
+        );
+        assert_eq!(trasher.calls().len(), 2);
+        assert!(std::fs::symlink_metadata(&layout.launcher)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(matches!(
+            notes_of(&sink)[..],
+            [LogNote::MovedToTrash { .. }, LogNote::TrashFailed { .. }]
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_stops_between_items_when_cancelled() {
+        // Review Focus 4, second half: Cancel after the first item.
+        let token = CancellationToken::new();
+        let trasher = Arc::new(MockTrasher::new());
+        trasher.cancel_after_call(0, token.clone());
+        let (_home, layout, adapter, inst) = full_install("execute-cancel", trasher.clone()).await;
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, token)
+            .await
+            .expect("execute");
+
+        assert_eq!(outcome, Outcome::Unconfirmed);
+        assert_eq!(trasher.calls().len(), 1);
+        assert!(std::fs::symlink_metadata(&layout.launcher)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[tokio::test]
+    async fn test_execute_runs_out_its_budget_between_items_not_a_process() {
+        // `Plan.timeout_secs` is the removal's own clock: a spent budget
+        // stops the run before the next item, as `Unconfirmed`.
+        let trasher = Arc::new(MockTrasher::new());
+        let (_home, _layout, adapter, inst) = full_install("execute-budget", trasher.clone()).await;
+        let plan = Plan {
+            timeout_secs: 0,
+            ..adapter.plan(&inst, &uninstall()).await.expect("plan")
+        };
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(outcome, Outcome::Unconfirmed);
+        assert!(trasher.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_after_uninstall_tells_there_gone_and_cannot_tell_apart() {
+        // B's deviation 15, the hand-off, and Ruling 27: after an uninstall
+        // only presence is asked. The launcher-only state a stopped run
+        // leaves is present -- so `run_operation` reports the stop
+        // truthfully (`Cancelled` after a Cancel,
+        // `StillInstalledAfterUninstall` after an exit that claimed
+        // success) -- while `reconcile` keeps B's strict rule for upgrades;
+        // a launcher that is gone is absent; and one Canager cannot look at
+        // (its folder unreadable) is neither: an error, which
+        // `run_operation` reports as `Unconfirmed`, never as a finished
+        // uninstall.
+        let trasher = Arc::new(MockTrasher::new());
+        let (_home, layout, adapter, inst) = full_install("reconcile-after", trasher).await;
+        let key = adapter.artifact_key(&inst);
+        std::fs::remove_dir_all(&layout.root).unwrap();
+
+        let still_there = adapter
+            .reconcile_after_uninstall(&inst, &key)
+            .await
+            .expect("a reading");
+        assert!(still_there.present);
+        assert!(matches!(
+            adapter.reconcile(&inst, &key).await,
+            Err(AdapterError::Parse(_))
+        ));
+
+        let bin = layout.launcher.parent().unwrap().to_path_buf();
+        if let Some(_locked) = super::testing::Unreadable::new(&bin) {
+            assert!(matches!(
+                adapter.reconcile_after_uninstall(&inst, &key).await,
+                Err(AdapterError::Parse(_))
+            ));
+        }
+
+        std::fs::remove_file(&layout.launcher).unwrap();
+        let gone = adapter
+            .reconcile_after_uninstall(&inst, &key)
+            .await
+            .expect("a reading");
+        assert!(!gone.present);
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_nothing_for_a_launcher_that_reaches_the_root_through_another_link() {
+        // Ruling 27, at the adapter: B listed this layout (its `realpath`
+        // lands in the root); step C does not, because an uninstall that
+        // stopped after moving the root would leave the middle link
+        // dangling and the launcher reading as not installed. No instance,
+        // so no Uninstall to offer; the Unknown page lists the two links.
+        let home = TempHome::new("detect-hop-outside");
+        let real = home.executable(".local/share/claude/versions/2.1.281");
+        let current = home.link(".local/bin/claude-current", &real);
+        home.link(".local/bin/claude", &current);
+        let adapter = adapter(Arc::new(MockRunner::new()));
+
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
     }
 }

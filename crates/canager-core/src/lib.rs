@@ -10,7 +10,9 @@
 //! engine that turns a user's request into a plan, executes it under locks
 //! and cancellation, and reports what actually happened. [`scan`] is the
 //! one read-only path beside them: which programs in the usual bin
-//! directories none of those sources put there.
+//! directories none of those sources put there. [`trash`] is the one place
+//! it changes a file itself: macOS's own move-to-Trash, for a confirmed
+//! uninstall of a tool that has no uninstall command.
 //!
 //! It must never depend on `tauri` (see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3). The
@@ -59,6 +61,10 @@ pub mod settings;
 /// integration tests and the Tauri shell's tests. See the module doc for
 /// why it is public rather than `#[cfg(test)]`.
 pub mod testing;
+/// Moving an item to the Trash -- the one change Canager makes to a file
+/// in its own process besides its settings, behind a seam like `runner`
+/// and `http`.
+pub mod trash;
 
 pub use events::*;
 pub use model::*;

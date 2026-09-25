@@ -177,7 +177,7 @@
     },
     "launcherOnly": {
       "title": "Only the {{command}} link is left",
-      "description": "The program files targeted by this {{command}} link are missing, so this launcher cannot run. Another installation may still work in Terminal. Canager can't remove the link yet. To get {{source}} back, reinstall it by following the install steps in {{source}}'s official documentation; to finish removing it, follow the uninstall steps there."
+      "description": "The program files this {{command}} link points to are gone, so this link can't run (another installation may still work in Terminal). If an earlier uninstall stopped partway, they may be in the Trash. Uninstall moves the link to the Trash too. If you didn't mean to remove {{source}}, put its folder back from the Trash and refresh, or reinstall it by following the install steps in {{source}}'s official documentation."
     }
   },
   "planRefused": {

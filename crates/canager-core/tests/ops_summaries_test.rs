@@ -354,6 +354,7 @@ async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview(
         },
         action: PlanAction::TrashPaths {
             paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            previewed: Vec::new(),
         },
         needs_password: false,
         locks: vec![ResourceLock("fake:1".to_string())],

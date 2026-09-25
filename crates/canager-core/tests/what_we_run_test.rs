@@ -5,12 +5,18 @@
 //! the https allowlist, every environment variable brew and npm set, the
 //! three Homebrew flags the file promises are never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
-//! enforces, and the one thing the allowlist refuses that a reader would
-//! not expect: an `https://` `OLLAMA_HOST`. A source, host, variable or
-//! limit added or changed without its line in the document fails here.
+//! enforces, the one thing the allowlist refuses that a reader would not
+//! expect (an `https://` `OLLAMA_HOST`), every path Claude Code's uninstall
+//! moves or keeps with that uninstall's time budget, and the call Canager
+//! makes to move a file to the Trash with the pause after each such move.
+//! A source, host, variable, limit, path or pause added or changed without
+//! its line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::npm::NpmAdapter;
+use canager_core::adapters::standalone::recipe::Uninstall;
+use canager_core::adapters::standalone::recipes::CLAUDE;
+use canager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
 use canager_core::adapters::AdapterMeta;
 use canager_core::events::VecSink;
 use canager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
@@ -179,4 +185,52 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
             "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
         );
     }
+}
+
+#[test]
+fn test_what_we_run_names_every_path_claude_codes_uninstall_moves_or_keeps() {
+    // The list is the recipe's, and a reader deciding whether to press
+    // Uninstall reads it here: a path added to or dropped from
+    // `CLAUDE.uninstall` without this section changing is a trust file
+    // that no longer says what Canager moves.
+    let doc = read_doc();
+    let body = section_body(&doc, "Claude Code")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## Claude Code` section"));
+    let Some(Uninstall::Paths { remove, keep }) = &CLAUDE.uninstall else {
+        panic!("CLAUDE carries a path-list uninstall since phase 4 step C");
+    };
+    let listed = remove
+        .iter()
+        .map(|spec| spec.path)
+        .chain(keep.iter().map(|spec| spec.path));
+    for path in listed {
+        assert!(
+            body.contains(&format!("`{path}`")),
+            "the `## Claude Code` section of docs/what-we-run.md does not name `{path}`, which CLAUDE.uninstall lists"
+        );
+    }
+    let budget = format!("{TIMEOUT_SECS} s");
+    assert!(
+        body.contains(&budget),
+        "the `## Claude Code` section of docs/what-we-run.md does not state the uninstall's budget, {budget:?} (removal::TIMEOUT_SECS)"
+    );
+}
+
+#[test]
+fn test_what_we_run_states_the_trash_call_and_the_pause_after_each_move() {
+    let doc = read_doc();
+    let body = section_body(&doc, "Moving files to the Trash").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Moving files to the Trash` section for trash::RealTrasher")
+    });
+    // Hard-wrapped prose: compare with the line breaks folded away.
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        folded.contains("trashItemAtURL:"),
+        "the `## Moving files to the Trash` section of docs/what-we-run.md does not name the call RealTrasher makes"
+    );
+    let pause = format!("{} seconds", PUT_BACK_SETTLE.as_secs());
+    assert!(
+        folded.contains(&pause),
+        "the `## Moving files to the Trash` section of docs/what-we-run.md does not state the pause {pause:?} (removal::PUT_BACK_SETTLE)"
+    );
 }

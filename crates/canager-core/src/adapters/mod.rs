@@ -896,6 +896,7 @@ mod tests {
             },
             action: PlanAction::TrashPaths {
                 paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+                previewed: Vec::new(),
             },
             needs_password: false,
             locks: vec![ResourceLock("standalone-claude".to_string())],

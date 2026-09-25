@@ -5,8 +5,11 @@
 //! (`adapters/fixtures/standalone-<id>/`), and the tests below hold every
 //! constant to the invariants the code relies on.
 
-use super::recipe::{Latest, Recipe, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
-use crate::model::CancelPolicy;
+use super::recipe::{
+    Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route, RouteKind, Uninstall, UpgradeCmd,
+    VersionCmd, VersionParse,
+};
+use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 
 /// Claude Code, the native install (`curl -fsSL https://claude.ai/install.sh
 /// | bash`, run by the user; Canager never runs it).
@@ -45,9 +48,19 @@ use crate::model::CancelPolicy;
 ///   readable version gates success. 1800 s is spec §4.1's upgrade
 ///   budget; the binary is about 220 MB.
 ///
-/// There is no `claude uninstall` subcommand (§2a, `claude --help`); the
-/// documented uninstall is two paths, which step C's path-list removal
-/// carries. Until then the artifact says `NoSafeMethod`.
+/// There is no `claude uninstall` subcommand (§2a, `claude --help`). The
+/// removal list is Anthropic's own "Uninstall Claude Code → Native"
+/// instructions at code.claude.com/docs/en/setup (§7, VERIFIED: exactly
+/// `rm -f ~/.local/bin/claude` and `rm -rf ~/.local/share/claude`), plus
+/// `~/.claude/downloads`, the staging directory install.sh names as
+/// `DOWNLOAD_DIR` for the native route's downloads (§2a, VERIFIED from
+/// install.sh; optional -- it may not be there). The kept paths are the
+/// same page's separate, explicitly optional step ("Removing configuration
+/// files will delete all your settings…"; the VS Code extension, the
+/// JetBrains plugin and the desktop app write to `~/.claude/` too, §7):
+/// `~/.claude` and `~/.claude.json`, which Canager keeps (spec Q4) -- of
+/// `~/.claude` it moves only `downloads`, the cache above. Order: program
+/// files, cache, the launcher last (spec §6.2).
 pub static CLAUDE: Recipe = Recipe {
     id: "claude",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-claude.toml"),
@@ -70,6 +83,38 @@ pub static CLAUDE: Recipe = Recipe {
         timeout_secs: 1800,
         cancel: CancelPolicy::KillThenReconcile,
     },
+    uninstall: Some(Uninstall::Paths {
+        remove: &[
+            RemoveSpec {
+                path: "~/.local/share/claude",
+                expect: Expect::Dir,
+                what: RemovedWhat::Program,
+                optional: false,
+            },
+            RemoveSpec {
+                path: "~/.claude/downloads",
+                expect: Expect::Dir,
+                what: RemovedWhat::Cache,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.local/bin/claude",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: false,
+            },
+        ],
+        keep: &[
+            KeepSpec {
+                path: "~/.claude",
+                what: KeptWhat::SettingsAndHistory,
+            },
+            KeepSpec {
+                path: "~/.claude.json",
+                what: KeptWhat::Settings,
+            },
+        ],
+    }),
 };
 
 /// Every tool this adapter type registers, in registration order. The
@@ -79,9 +124,11 @@ pub static RECIPES: &[&Recipe] = &[&CLAUDE];
 
 #[cfg(test)]
 mod tests {
+    use super::super::recipe::{Expect, Uninstall, SHARED_FOLDERS};
     use super::*;
     use crate::adapters::AdapterMeta;
     use crate::model::CancelPolicy;
+    use crate::model::{KeptWhat, RemovedWhat};
     use std::path::Path;
 
     #[test]
@@ -200,5 +247,145 @@ mod tests {
                 host_allowed(&url).unwrap_or_else(|e| panic!("{}: {url}: {e}", recipe.id));
             }
         }
+    }
+
+    /// The remove and keep paths of a recipe with a path list; empty for
+    /// one without (or with another kind of uninstall, step E on).
+    fn path_lists(recipe: &Recipe) -> (Vec<&'static str>, Vec<&'static str>) {
+        if let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall {
+            (
+                remove.iter().map(|spec| spec.path).collect(),
+                keep.iter().map(|spec| spec.path).collect(),
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        }
+    }
+
+    #[test]
+    fn test_every_uninstall_path_is_under_home_and_not_in_a_shared_folder() {
+        // `route::expand` panics on a path that does not start with `~/`,
+        // and the removal's check 1 refuses a path whose folder is the home
+        // folder or one of `SHARED_FOLDERS` (ruling 5) -- a recipe listing
+        // one would refuse every uninstall, and the never-list exists so no
+        // recipe can quietly move `~/.local/bin` whole. Held here, on the
+        // data as spelled, so the first test run says so rather than a
+        // user's dialog.
+        for recipe in RECIPES {
+            let (remove, keep) = path_lists(recipe);
+            for path in remove.iter().chain(keep.iter()) {
+                let rest = path
+                    .strip_prefix("~/")
+                    .unwrap_or_else(|| panic!("{}: {path:?} must start with ~/", recipe.id));
+                assert!(
+                    !rest.is_empty()
+                        && !rest.ends_with('/')
+                        && !rest.contains("..")
+                        && !rest.contains("/./"),
+                    "{}: {path:?} must name one plain path",
+                    recipe.id
+                );
+            }
+            for path in &remove {
+                let folder = Path::new(path.strip_prefix("~/").unwrap())
+                    .parent()
+                    .unwrap_or(Path::new(""));
+                assert!(
+                    folder != Path::new("")
+                        && !SHARED_FOLDERS.iter().any(|shared| folder == Path::new(shared)),
+                    "{}: {path:?} sits directly in the home folder or in a shared folder; check 1 would refuse it",
+                    recipe.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_every_paths_recipe_moves_its_launcher_last_and_lists_no_path_inside_another() {
+        // Spec §6.2: the launcher last, so a run that stops partway leaves
+        // exactly the launcher-only state a second run finishes. Spec
+        // §6.3's former check 7: no removed path is inside another removed
+        // path (moving `a` and then `a/b` would fail on the second), and no
+        // kept path is inside a removed one (it would go with it) -- both
+        // properties of the constant, not of the Mac.
+        for recipe in RECIPES {
+            let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
+                continue;
+            };
+            let last = remove
+                .last()
+                .unwrap_or_else(|| panic!("{}: an empty remove list", recipe.id));
+            // The launcher itself. (Grok's list ends with `~/.grok/bin`, the
+            // folder that holds its launcher: step D widens this with that
+            // recipe, not before.)
+            assert_eq!(
+                last.path, recipe.route.launcher,
+                "{}: the last path must be the launcher",
+                recipe.id
+            );
+            assert_eq!(last.what, RemovedWhat::Launcher, "{}", recipe.id);
+            assert!(
+                !last.optional,
+                "{}: the launcher is never optional",
+                recipe.id
+            );
+            let removed: Vec<&str> = remove.iter().map(|spec| spec.path).collect();
+            for a in &removed {
+                for b in &removed {
+                    assert!(
+                        a == b || !b.starts_with(&format!("{a}/")),
+                        "{}: {b:?} is inside {a:?}",
+                        recipe.id
+                    );
+                }
+                for kept in keep.iter().map(|spec| spec.path) {
+                    assert!(
+                        kept != *a && !kept.starts_with(&format!("{a}/")),
+                        "{}: kept {kept:?} is inside removed {a:?}",
+                        recipe.id
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_claude_codes_uninstall_is_anthropics_two_paths_plus_the_download_cache() {
+        // The list, exactly, in execution order: what the dialog shows
+        // (spec §6.3's claude row, §6.6). The provenance is the constant's
+        // doc comment and the fixture README.
+        let Some(Uninstall::Paths { remove, keep }) = &CLAUDE.uninstall else {
+            panic!("claude has a path list");
+        };
+        let remove: Vec<(&str, Expect, RemovedWhat, bool)> = remove
+            .iter()
+            .map(|spec| (spec.path, spec.expect, spec.what, spec.optional))
+            .collect();
+        assert_eq!(
+            remove,
+            vec![
+                (
+                    "~/.local/share/claude",
+                    Expect::Dir,
+                    RemovedWhat::Program,
+                    false
+                ),
+                ("~/.claude/downloads", Expect::Dir, RemovedWhat::Cache, true),
+                (
+                    "~/.local/bin/claude",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    false
+                ),
+            ]
+        );
+        let keep: Vec<(&str, KeptWhat)> = keep.iter().map(|spec| (spec.path, spec.what)).collect();
+        assert_eq!(
+            keep,
+            vec![
+                ("~/.claude", KeptWhat::SettingsAndHistory),
+                ("~/.claude.json", KeptWhat::Settings),
+            ]
+        );
     }
 }

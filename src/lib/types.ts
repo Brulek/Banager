@@ -61,8 +61,9 @@ export interface InstalledArtifact {
  * variants. `Pinned` is produced by brew's `parse_info_installed` (from
  * `brew info --installed --json=v2`'s `pinned: true`); `NoSafeMethod` by
  * the standalone adapter's inventory for a tool with no uninstall command
- * and no safe way yet to remove its files (Claude Code, phase 4 step B,
- * until step C). Read through
+ * and no safe way yet to remove its files (a recipe with no uninstall
+ * method: none in the first batch since phase 4 step C gave Claude Code
+ * its path list; the second batch's Ollama.app). Read through
  * `UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over this
  * union, so a variant added here without copy fails `tsc`.
  */

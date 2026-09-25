@@ -2,14 +2,15 @@
 //! table to read. Every field's doc names the reader that consumes it; a
 //! field without a reader is not added (phase 4 spec §3.1, §十).
 //!
-//! Only the shapes this step produces exist here. Step C adds the
-//! uninstall method (`uninstall: Option<Uninstall>`), step D `backup_globs`,
-//! a `FlatFile` route, a `SecondToken` version parse, the other `Latest`
-//! sources and an optional `upgrade` (agy updates itself only), step E
-//! `$CARGO_HOME` paths. A variant or field defined before anything
+//! Only the shapes something produces exist here. Step C added the
+//! path-list uninstall (`uninstall: Option<Uninstall>`, `Uninstall::Paths`);
+//! step D adds `backup_globs`, a `FlatFile` route, `Expect::File`, a
+//! `SecondToken` version parse, the other `Latest` sources and an optional
+//! `upgrade` (agy updates itself only); step E `$CARGO_HOME` paths and
+//! `Uninstall::Command`. A variant or field defined before anything
 //! produces it is this project's most common defect (spec §十三 #41).
 
-use crate::model::CancelPolicy;
+use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 
 /// A tool installed by its own installer, as data.
 #[derive(Debug)]
@@ -44,6 +45,12 @@ pub struct Recipe {
     pub self_updates: bool,
     /// The tool's own documented update command. Read by `plan(Upgrade)`.
     pub upgrade: UpgradeCmd,
+    /// How the tool is removed, or `None` when there is no safe way: the
+    /// artifact then carries `UninstallBlocked::NoSafeMethod`, the gate
+    /// refuses and the page says so (spec §6.1 "Neither"; no first-batch
+    /// recipe since step C, the second batch's Ollama.app). Read by
+    /// `inventory` (`uninstall_blocked`), `plan(Uninstall)` and `execute`.
+    pub uninstall: Option<Uninstall>,
 }
 
 /// The installer's fixed paths. Every path starts with `~/` and is expanded
@@ -124,4 +131,77 @@ pub struct UpgradeCmd {
     pub args: &'static [&'static str],
     pub timeout_secs: u64,
     pub cancel: CancelPolicy,
+}
+
+/// How a tool is removed (phase 4 spec §6.1). Only the arm this step
+/// produces exists: `Command` (rustup's own `self uninstall`, with a
+/// probe, warnings and extra locks) arrives with step E.
+#[derive(Debug)]
+pub enum Uninstall {
+    /// No command exists; the vendor's own instructions are a list of
+    /// paths. `removal::execute_removal` moves each of `remove` to the
+    /// Trash in this order -- the launcher last, so a run that stops
+    /// partway leaves the one state a second run finishes (spec §6.2) --
+    /// and `keep` is listed in the preview so the user sees what stays.
+    /// Where the list comes from is the recipe constant's doc comment and
+    /// the fixture README, not a field: nothing in production would read
+    /// it (spec §十三 #8/#36). Read by `removal::plan_removal`,
+    /// `removal::execute_removal` and the invariants tests in
+    /// `recipes.rs`.
+    Paths {
+        remove: &'static [RemoveSpec],
+        keep: &'static [KeepSpec],
+    },
+}
+
+/// One path a path-list uninstall moves to the Trash.
+#[derive(Debug)]
+pub struct RemoveSpec {
+    /// `~/…`, expanded by `route::expand` against the detected home.
+    /// Never directly in the home folder or in one of `SHARED_FOLDERS`
+    /// (check 1; `recipes::tests`), and, on the disk, reached only through
+    /// real folders (`removal::check_item`).
+    pub path: &'static str,
+    /// What must be there for the move to be safe (check 4).
+    pub expect: Expect,
+    /// What it is, for the preview's sentence (`Warning::WillTrash`).
+    pub what: RemovedWhat,
+    /// Whether its absence is fine (a cache the tool may not have made):
+    /// skipped silently when missing. Never the launcher
+    /// (`recipes::tests` hold every recipe to that).
+    pub optional: bool,
+}
+
+/// The folders a `RemoveSpec.path` must never sit directly in, besides the
+/// home folder itself: the ones directly under it that many tools share
+/// (spec §6.3 check 1's never-list). Moving `~/.local/bin` or
+/// `~/.config/fish` whole would take other tools' files with it. Read by
+/// `removal::plan_removal` (check 1, against the resolved folder) and by
+/// `recipes::tests` (against the recipe's spelling).
+pub const SHARED_FOLDERS: [&str; 5] = [".local", ".config", ".cache", "Library", ".cargo"];
+
+/// What check 4 requires at a `RemoveSpec.path` (spec §6.3) -- at the
+/// path itself: every folder above it must be a real folder whatever it
+/// expects (the ancestry rule, `removal::check_item`). Only the kinds
+/// Claude Code's list has exist in this step; `File` (Antigravity's
+/// launcher, a plain executable) arrives with step D.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Expect {
+    /// A symbolic link -- the one kind of listed path that may be a link --
+    /// whose own text points into the recipe's root and which resolves
+    /// there, or, dangling, whose own text points into it (the
+    /// launcher-only state): exactly as `route::probe` decides for the
+    /// launcher.
+    SymlinkIntoRoot,
+    /// A real directory, not a link.
+    Dir,
+}
+
+/// One path a path-list uninstall leaves alone, named in the preview so
+/// the user knows their settings stay (`Warning::WillKeep`); listed only
+/// when it exists.
+#[derive(Debug)]
+pub struct KeepSpec {
+    pub path: &'static str,
+    pub what: KeptWhat,
 }
