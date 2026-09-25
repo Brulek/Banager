@@ -27,8 +27,9 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 /// Every https URL this crate builds names one of these: crates.io
 /// (`CargoAdapter::latest_stable_version`), pypi.org
 /// (`PipxAdapter::latest_pypi_version`), registry.ollama.ai
-/// (`OllamaAdapter::compare_digests`) and downloads.claude.ai
-/// (`StandaloneAdapter::check_updates`, Claude Code's channel pointer).
+/// (`OllamaAdapter::compare_digests`), downloads.claude.ai
+/// (`StandaloneAdapter::check_updates`, Claude Code's channel pointer) and
+/// static.rust-lang.org (the same, rustup's release file).
 /// `send` refuses any other https host
 /// before a connection is opened -- fail closed, so a URL built from data
 /// off disk or off the network (a crate name, a model reference) can at
@@ -50,6 +51,7 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
     "pypi.org",
     "registry.ollama.ai",
     "downloads.claude.ai",
+    "static.rust-lang.org",
 ];
 
 /// `Ok(())` when `url` is one `send` may fetch: any `http` URL, or an
@@ -599,5 +601,13 @@ mod tests {
             .expect("downloads.claude.ai, latest");
         host_allowed("https://downloads.claude.ai/claude-code-releases/stable")
             .expect("downloads.claude.ai, stable");
+    }
+
+    #[test]
+    fn test_host_allowed_accepts_rustups_release_file() {
+        // The exact URL `StandaloneAdapter::check_updates` builds for the
+        // `RUSTUP` recipe (adapters/standalone/recipes.rs), phase 4 step E.
+        host_allowed("https://static.rust-lang.org/rustup/release-stable.toml")
+            .expect("static.rust-lang.org");
     }
 }

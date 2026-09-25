@@ -145,10 +145,10 @@ fn parse_crates2(
 /// the real cargo it resolves the active toolchain and, with none active
 /// and this switch off, installs one -- a download and a write, which a
 /// refresh must never cause. So every version read of that binary
-/// carries it: `CargoAdapter::detect`'s `cargo --version` here, and, once
-/// the rustup recipe lands (`recipes::RUSTUP`, this step's Task 6), that
-/// recipe's own `--version` through its `version.env`. A cargo that is
-/// not rustup's ignores the variable.
+/// carries it: `CargoAdapter::detect`'s `cargo --version` here, and the
+/// rustup recipe's own `--version` through its `version.env`
+/// (`adapters/standalone/recipes.rs`, `RUSTUP`). A cargo that is not
+/// rustup's ignores the variable.
 pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL", "0");
 
 /// Where cargo's home is, by the `home` crate's rule (`path_env::tool_home`

@@ -1,0 +1,7 @@
+schema_version = 1
+id = "standalone-rustup"
+name = "rustup"
+kind = "standalone"
+platforms = ["macos"]
+homepage = "https://rust-lang.github.io/rustup/"
+verified_versions = ["1.29.1"]

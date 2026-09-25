@@ -12,7 +12,7 @@
 //! produces it is this project's most common defect (spec §十三 #41).
 
 use super::Detected;
-use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock};
+use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock, UninstallBlocked, Warning};
 
 /// A tool installed by its own installer, as data.
 #[derive(Debug)]
@@ -183,11 +183,11 @@ pub struct UpgradeCmd {
     pub cancel: CancelPolicy,
 }
 
-/// How a tool is removed (phase 4 spec §6.1). Only the arm something
-/// produces exists: `Command` (rustup's own `self uninstall`, gated to the
-/// standard layout and with a read-only preview of what it deletes; its
-/// second lock is `Recipe.extra_locks`) arrives with Task 6 of the phase 4
-/// step E plan.
+/// How a tool is removed (phase 4 spec §6.1). Only the arms something
+/// produces exist: `Paths` (Claude Code's list, step C) and `Command`
+/// (rustup's own `self uninstall`, gated to the standard layout and with a
+/// read-only preview of what it deletes; its second lock is
+/// `Recipe.extra_locks`, on the recipe because the upgrade holds it too).
 #[derive(Debug)]
 pub enum Uninstall {
     /// No command exists; the vendor's own instructions are a list of
@@ -204,6 +204,34 @@ pub enum Uninstall {
         remove: &'static [RemoveSpec],
         keep: &'static [KeepSpec],
     },
+    /// The tool's own official uninstall command (rustup: `self uninstall
+    /// -y`), run against the launcher through `run_plan` unchanged; when
+    /// it may be offered is said by `blocked`, and what it removes by
+    /// `warnings`, since the argv alone cannot (spec §6.4). Read by
+    /// `plan(Uninstall)` (`StandaloneAdapter::command_uninstall_plan`)
+    /// and `inventory` (`rows`); produced by `recipes::RUSTUP`.
+    Command(CommandUninstall),
+}
+
+/// `Uninstall::Command`'s data. `cancel` is `NoCancel` for rustup: its
+/// uninstall removes directories one after another and a kill partway
+/// leaves a broken Rust. The preview runs no command: everything it says
+/// comes from what `detect` seated and the disk.
+#[derive(Debug)]
+pub struct CommandUninstall {
+    pub args: &'static [&'static str],
+    pub timeout_secs: u64,
+    pub cancel: CancelPolicy,
+    /// Whether this install may be offered the command at all, from the
+    /// seat: `Some(reason)` puts `uninstall_blocked` on the artifact
+    /// (`inventory`), which the gate refuses and the page hides the
+    /// button for, and makes `plan(Uninstall)` refuse with the same
+    /// reason. rustup's is `rustup::uninstall_blocked`: `NoSafeMethod`
+    /// unless Rust lives in its standard folders (plan ruling 18).
+    pub blocked: fn(&Detected) -> Option<UninstallBlocked>,
+    /// The preview's warnings, from what `detect` seated and the disk.
+    /// Read by `plan(Uninstall)`; rustup's is `rustup::uninstall_warnings`.
+    pub warnings: fn(&Detected) -> Vec<Warning>,
 }
 
 /// One path a path-list uninstall moves to the Trash.

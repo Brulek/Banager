@@ -23,7 +23,7 @@ pub mod removal;
 pub mod route;
 pub mod rustup;
 
-use self::recipe::{Latest, Recipe, Uninstall};
+use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall};
 use self::route::Probe;
 use crate::adapters::{
     ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, validate_package_name,
@@ -68,14 +68,13 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// rustup recipe's gate compares with `~/.rustup` and its warnings list
 /// `toolchains/` under. `zdotdir`: `ZDOTDIR` raw, which the rustup
 /// recipe's startup-file model visits `.zshenv`/`.zprofile` under, as
-/// rustup's own cleanup does. Declared deferral: the rustup recipe's
-/// readers of the last three are `rustup::{extra_locks,
-/// uninstall_blocked, uninstall_warnings}` (Task 5 of the phase 4 step E
-/// plan), called from `plan` and `inventory` once Task 6 puts them in the
-/// `RUSTUP` recipe. The seat is bound to an instance by
-/// `seated_detected_for`. `Clone`, so `plan` and `execute` take a copy out
-/// of the mutex before they await anything, and the removal owns one for
-/// the blocking pool (`removal::Job`).
+/// rustup's own cleanup does. The rustup recipe's readers of the last
+/// three are `rustup::{extra_locks, uninstall_blocked,
+/// uninstall_warnings}`, which the `RUSTUP` recipe (`recipes.rs`) names
+/// and `plan` and `inventory` call through it. The seat is bound to an
+/// instance by `seated_detected_for`. `Clone`, so `plan` and `execute`
+/// take a copy out of the mutex before they await anything, and the
+/// removal owns one for the blocking pool (`removal::Job`).
 #[derive(Clone, Debug)]
 pub struct Detected {
     pub home: PathBuf,
@@ -310,9 +309,8 @@ impl StandaloneAdapter {
     /// instance's own `exe_path` and `prefix`; anything else is
     /// `Refused`, and so is a plan asked before any detect, which
     /// `Session` never does (spec §3.2). A copy, so no mutex guard is
-    /// held across anything `plan` awaits. Read by both of `plan`'s arms;
-    /// `inventory`'s gate joins them with the `RUSTUP` recipe (Task 6 of
-    /// the phase 4 step E plan).
+    /// held across anything `plan` awaits. Read by both of `plan`'s arms
+    /// and, for a `Command` uninstall, by `inventory`'s gate (`rows`).
     fn seated_detected_for(&self, inst: &ManagerInstance) -> Result<Detected, AdapterError> {
         let seat = self.detected.lock().unwrap().clone().ok_or_else(|| {
             AdapterError::Refused(format!(
@@ -341,6 +339,40 @@ impl StandaloneAdapter {
         let mut locks = vec![ResourceLock(inst.id.clone())];
         locks.extend((self.recipe.extra_locks)(detected));
         locks
+    }
+
+    /// `Uninstall::Command` (spec §6.4): the tool's own uninstall argv
+    /// against the launcher, refused with the recipe's reason when its
+    /// gate says this layout is not offered, otherwise with the warnings
+    /// the recipe builds from the seat and the disk. Nothing is run here
+    /// (the preview must not run rustup: plan ruling 4). Through
+    /// `run_plan` like every command; `affected` stays empty because a
+    /// non-empty list disables Confirm and nothing here breaks another
+    /// package.
+    fn command_uninstall_plan(
+        &self,
+        inst: &ManagerInstance,
+        req: &OpRequest,
+        detected: &Detected,
+        cmd: &CommandUninstall,
+    ) -> Result<Plan, AdapterError> {
+        if let Some(reason) = (cmd.blocked)(detected) {
+            return Err(AdapterError::UninstallBlocked { reason });
+        }
+        Ok(Plan {
+            request: req.clone(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: cmd.args.iter().map(|a| a.to_string()).collect(),
+                env: Vec::new(),
+            },
+            needs_password: false,
+            locks: self.locks(inst, detected),
+            cancel_policy: cmd.cancel,
+            warnings: (cmd.warnings)(detected),
+            affected: Vec::new(),
+            timeout_secs: cmd.timeout_secs,
+        })
     }
 
     /// `Look`: the probe at the instance's own `exe_path` and `prefix`,
@@ -436,15 +468,23 @@ impl StandaloneAdapter {
             // For the Updates page's `selfUpdatingHint` sentence, which
             // arrives with Task 10 of the phase 4 step B plan.
             auto_updates: self.recipe.self_updates,
-            // A recipe with no uninstall method (spec §6.1 "Neither"; none
-            // in the first batch, the second batch's Ollama.app): the gate
-            // refuses, the page hides the button and says why. With a path
-            // list, nothing blocks it.
-            uninstall_blocked: self
-                .recipe
-                .uninstall
-                .is_none()
-                .then_some(UninstallBlocked::NoSafeMethod),
+            // No uninstall method at all (spec §6.1 "Neither"; none in
+            // the first batch, the second batch's Ollama.app):
+            // `NoSafeMethod` -- the gate refuses, the page hides the button
+            // and says why. A path list: offered. A command: the recipe's
+            // gate decides from the seat -- rustup offers its own uninstall
+            // only for the standard layout (plan ruling 18) -- and a seat
+            // that is missing or describes another home reads as blocked,
+            // never as offered.
+            uninstall_blocked: match &self.recipe.uninstall {
+                None => Some(UninstallBlocked::NoSafeMethod),
+                Some(Uninstall::Paths { .. }) => None,
+                Some(Uninstall::Command(cmd)) => self
+                    .seated_detected_for(inst)
+                    .map_or(Some(UninstallBlocked::NoSafeMethod), |seat| {
+                        (cmd.blocked)(&seat)
+                    }),
+            },
         }]
     }
 
@@ -611,15 +651,18 @@ impl StandaloneAdapter {
 
     /// Spec §五: the tool's own documented update command, run against the
     /// launcher through `run_plan` unchanged. `Install` is `Unsupported`
-    /// (the installer is Anthropic's and Canager never runs it; installing
-    /// tools is phase 5). `Uninstall` is the recipe's path list as a
-    /// `TrashPaths` plan under the removal's checks (spec §6.2-§6.3), with
-    /// what the preview saw at each path riding along on this side only
-    /// (`previewed`, skipped by serde; Ruling 10), or `NoSafeMethod` for a
-    /// recipe without one -- the gate (`blocked_uninstall`) refuses that
-    /// first; this is its late twin for a stale snapshot. The one artifact
-    /// is `Binary`/`<recipe.id>`, so any other name or kind is a request
-    /// this adapter cannot mean.
+    /// (the installer is the tool's own and Canager never runs it;
+    /// installing tools is phase 5). `Uninstall` is the recipe's path list
+    /// as a `TrashPaths` plan under the removal's checks (spec §6.2-§6.3),
+    /// with what the preview saw at each path riding along on this side
+    /// only (`previewed`, skipped by serde; Ruling 10); or the tool's own
+    /// uninstall command as a `Command` plan (`command_uninstall_plan`,
+    /// spec §6.4), refused with the recipe's reason when its gate says
+    /// this layout is not offered; or `NoSafeMethod` for a recipe with
+    /// neither -- the gate (`blocked_uninstall`) refuses that first; this
+    /// is its late twin for a stale snapshot. The one artifact is
+    /// `Binary`/`<recipe.id>`, so any other name or kind is a request this
+    /// adapter cannot mean.
     pub async fn plan(
         &self,
         inst: &ManagerInstance,
@@ -674,6 +717,10 @@ impl StandaloneAdapter {
                             timeout_secs: removal::TIMEOUT_SECS,
                         })
                     }
+                    Uninstall::Command(ref cmd) => {
+                        let detected = self.seated_detected_for(inst)?;
+                        self.command_uninstall_plan(inst, req, &detected, cmd)
+                    }
                 }
             }
             OpKind::Upgrade => {
@@ -721,13 +768,14 @@ impl StandaloneAdapter {
         })
     }
 
-    /// A `Command` plan -- the upgrade, `<launcher> update` -- runs through
-    /// `run_plan` like every source's, after one more look at the launcher
-    /// immediately before the spawn (below). A `TrashPaths` plan is carried
-    /// out here, item by item (`removal::execute_removal`), against the
-    /// list re-read from the recipe and the disk and compared with what the
-    /// preview saw (`previewed`) -- the plan's paths are what the user
-    /// confirmed, not the source of truth.
+    /// A `Command` plan -- the upgrade, `<launcher> update`, or a
+    /// `Command` uninstall, rustup's `<launcher> self uninstall -y` -- runs
+    /// through `run_plan` like every source's, after one more look at the
+    /// launcher immediately before the spawn (below). A `TrashPaths` plan
+    /// is carried out here, item by item (`removal::execute_removal`),
+    /// against the list re-read from the recipe and the disk and compared
+    /// with what the preview saw (`previewed`) -- the plan's paths are
+    /// what the user confirmed, not the source of truth.
     pub async fn execute(
         &self,
         plan: &Plan,
@@ -799,6 +847,10 @@ impl StandaloneAdapter {
                 run_plan(&self.runner, plan, sink, op_id, cancel).await
             }
             PlanAction::TrashPaths { paths, previewed } => {
+                // A recipe with no uninstall, or with a `Command` one, has
+                // no list to move: `plan` built no `TrashPaths` plan for
+                // it, so this one is a bug's, refused before anything is
+                // touched.
                 let Some(Uninstall::Paths { remove, keep }) = self.recipe.uninstall else {
                     return Err(AdapterError::Refused(format!(
                         "{} has no path list to carry out",
@@ -1158,9 +1210,10 @@ pub(super) mod testing {
 #[cfg(test)]
 mod tests {
     use super::recipe::{no_extra_locks, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
-    use super::recipes::CLAUDE;
-    use super::testing::{claude_layout, TempHome};
+    use super::recipes::{CLAUDE, RUSTUP};
+    use super::testing::{claude_layout, rustup_layout, TempHome};
     use super::*;
+    use crate::adapters::cargo::CargoAdapter;
     use crate::adapters::{Adapter, CheckOptions};
     use crate::events::{LogNote, OperationEvent, VecSink};
     use crate::http::{HttpResponse, MockHttpClient};
@@ -2437,8 +2490,9 @@ mod tests {
     async fn test_a_recipe_without_an_uninstall_method_says_so_and_refuses_to_plan_one() {
         // Spec §6.1 "Neither": the artifact carries `NoSafeMethod` (the
         // gate and the page read it), and `plan(Uninstall)` refuses with
-        // the same reason for a stale snapshot. The one production path of
-        // that variant after this step.
+        // the same reason for a stale snapshot. One of the variant's two
+        // production paths; the other is a `Command` uninstall's gate
+        // (`rustup::uninstall_blocked`, through `rows`).
         let home = TempHome::new("plan-no-uninstall");
         let layout = claude_layout(&home, "2.1.281");
         let runner = Arc::new(MockRunner::new());
@@ -3259,5 +3313,637 @@ mod tests {
         let adapter = adapter(Arc::new(MockRunner::new()));
 
         assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+    }
+
+    const RELEASE_URL: &str = "https://static.rust-lang.org/rustup/release-stable.toml";
+    const RUSTUP_VERSION_LINE: &str = "rustup 1.29.1 (d95a37b6a 2026-08-13)\n";
+
+    /// `StandaloneAdapter::new` with C's fourth argument: nothing of
+    /// rustup's goes through the Trash (its uninstall is a command), so a
+    /// fresh `MockTrasher` stands in and is never called.
+    fn rustup_adapter(
+        runner: Arc<dyn CommandRunner>,
+        http: Arc<MockHttpClient>,
+    ) -> StandaloneAdapter {
+        StandaloneAdapter::new(&RUSTUP, runner, http, Arc::new(MockTrasher::new()))
+    }
+
+    /// A rustup install under `cargo_home`, whose runner answers
+    /// `--version`, detected under `env`.
+    async fn detected_rustup(
+        env: &HostEnv,
+        cargo_home: &Path,
+        http: Arc<MockHttpClient>,
+    ) -> (StandaloneAdapter, ManagerInstance, Arc<MockRunner>) {
+        let layout = rustup_layout(cargo_home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(RUSTUP_VERSION_LINE),
+        );
+        let adapter = rustup_adapter(runner.clone(), http);
+        let inst = adapter.detect(env).await.remove(0);
+        (adapter, inst, runner)
+    }
+
+    /// The preview's Homebrew line depends on the Mac running the tests
+    /// (`rustup::HOMEBREW_PREFIXES` are real paths): filtered out where a
+    /// test asserts the whole list. `rustup::tests` proves the line
+    /// itself over a temp prefix.
+    fn without_homebrew_line(warnings: Vec<Warning>) -> Vec<Warning> {
+        warnings
+            .into_iter()
+            .filter(|w| !matches!(w, Warning::HomebrewRustupLosesToolchains))
+            .collect()
+    }
+
+    /// B's `request` is fixed to `standalone-claude`; rustup's requests
+    /// name its own instance.
+    fn request_for(instance_id: &str, kind: OpKind, name: &str) -> OpRequest {
+        OpRequest {
+            kind,
+            instance_id: instance_id.to_string(),
+            artifact_kind: ArtifactKind::Binary,
+            name: name.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_rustup_under_the_cargo_home_with_the_second_token_version() {
+        let home = TempHome::new("rustup-detect");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, _runner) = detected_rustup(
+            &home.env(vec![cargo_home.join("bin")]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        assert_eq!(inst.id, "standalone-rustup");
+        assert_eq!(inst.adapter_id, "standalone-rustup");
+        // The launcher is the file itself; the root is the Cargo home.
+        assert_eq!(inst.exe_path, cargo_home.join("bin/rustup"));
+        assert_eq!(inst.prefix, cargo_home);
+        assert_eq!(inst.version, Some("1.29.1".to_string()));
+        assert_eq!(
+            inst.unverified_version, None,
+            "1.29.1 is the verified version"
+        );
+        assert_eq!(inst.status.unavailable, None);
+        assert!(inst.status.notes.is_empty(), "PATH finds this very file");
+        assert_eq!(
+            adapter
+                .seated_detected_for(&inst)
+                .expect("seated")
+                .cargo_home,
+            Some(cargo_home.clone())
+        );
+
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].display_name, "rustup");
+        assert_eq!(artifacts[0].version, "1.29.1");
+        assert_eq!(artifacts[0].path, Some(cargo_home.join("bin/rustup")));
+        assert!(!artifacts[0].auto_updates);
+        // The standard layout (`~/.cargo`, no `~/.rustup` yet): the
+        // official uninstall is offered (Q5) -- `Uninstall::Command`'s
+        // `blocked` answered `None` through the seat.
+        assert_eq!(artifacts[0].uninstall_blocked, None);
+    }
+
+    #[tokio::test]
+    async fn test_detect_reads_rustups_version_with_auto_install_off_and_a_thirty_second_timeout() {
+        // Ruling 20, end to end: the `CommandSpec` the version read hands
+        // the runner carries `RUSTUP_AUTO_INSTALL=0` and nothing else,
+        // the 30 s every adapter gives `--version`, and no cwd.
+        let home = TempHome::new("rustup-detect-env");
+        let layout = rustup_layout(&home.path().join(".cargo"));
+        let runner = Arc::new(RecordingRunner {
+            specs: StdMutex::new(Vec::new()),
+            output: exited_0(RUSTUP_VERSION_LINE),
+        });
+        let adapter = rustup_adapter(runner.clone(), Arc::new(MockHttpClient::new()));
+        adapter.detect(&home.env(vec![])).await;
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].program, layout.launcher);
+        assert_eq!(specs[0].args, vec!["--version".to_string()]);
+        assert_eq!(
+            specs[0].env,
+            vec![("RUSTUP_AUTO_INSTALL".to_string(), "0".to_string())]
+        );
+        assert_eq!(specs[0].timeout, Duration::from_secs(30));
+        assert_eq!(specs[0].output_use, OutputUse::Parsed);
+        assert_eq!(specs[0].cwd, None);
+    }
+
+    #[tokio::test]
+    async fn test_detect_reads_the_version_of_a_rustup_with_no_active_toolchain_without_running_anything_else(
+    ) {
+        // With `RUSTUP_AUTO_INSTALL=0` and no toolchain active, 1.29.1's
+        // `display_version` (rustup_mode.rs:1819-1837) takes the
+        // `active_toolchain()` path, prints its version line on stdout as
+        // ever, says `info: no rustc is currently active` on stderr and
+        // exits 0 -- quoted from the source, not recorded: recording it
+        // would need a Mac with no toolchain, and installing or removing
+        // one is out of bounds. Mocked, so nothing real runs: the version
+        // is read, the row is not "not responding", and no second command
+        // was spawned.
+        let home = TempHome::new("rustup-detect-no-toolchain");
+        let layout = rustup_layout(&home.path().join(".cargo"));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: RUSTUP_VERSION_LINE.to_string(),
+                stderr: "info: This is the version for the rustup toolchain manager, not the rustc compiler.\ninfo: no `rustc` is currently active\n".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let adapter = rustup_adapter(runner.clone(), Arc::new(MockHttpClient::new()));
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        assert_eq!(inst.version, Some("1.29.1".to_string()));
+        assert_eq!(inst.status.unavailable, None);
+        assert_eq!(runner.calls().len(), 1, "one command, the version read");
+    }
+
+    #[tokio::test]
+    async fn test_detect_follows_cargo_home_for_rustup() {
+        // `CARGO_HOME=/elsewhere/cargo`: the launcher is looked for there,
+        // never under ~/.cargo.
+        let home = TempHome::new("rustup-detect-custom");
+        let custom = home.path().join("elsewhere/cargo");
+        let env = HostEnv {
+            cargo_home: Some(custom.clone()),
+            ..home.env(vec![custom.join("bin")])
+        };
+        let (_adapter, inst, _runner) =
+            detected_rustup(&env, &custom, Arc::new(MockHttpClient::new())).await;
+        assert_eq!(inst.exe_path, custom.join("bin/rustup"));
+        assert_eq!(inst.prefix, custom);
+        // With rustup under ~/.cargo but CARGO_HOME pointing elsewhere: no
+        // instance -- that rustup is not where rustup itself would look.
+        let home = TempHome::new("rustup-detect-mismatch");
+        rustup_layout(&home.path().join(".cargo"));
+        let env = HostEnv {
+            cargo_home: Some(home.path().join("elsewhere/cargo")),
+            ..home.env(vec![])
+        };
+        assert!(
+            rustup_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+                .detect(&env)
+                .await
+                .is_empty()
+        );
+        // An empty CARGO_HOME is the default (the `home` crate's rule);
+        // a relative one is unsupported and finds nothing, running
+        // nothing.
+        let home = TempHome::new("rustup-detect-empty-and-relative");
+        let layout = rustup_layout(&home.path().join(".cargo"));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(RUSTUP_VERSION_LINE),
+        );
+        let adapter = rustup_adapter(runner.clone(), Arc::new(MockHttpClient::new()));
+        let env = HostEnv {
+            cargo_home: Some(PathBuf::from("")),
+            ..home.env(vec![])
+        };
+        assert_eq!(adapter.detect(&env).await.len(), 1);
+        let env = HostEnv {
+            cargo_home: Some(PathBuf::from(".cargo")),
+            ..home.env(vec![])
+        };
+        let before = runner.calls().len();
+        assert!(adapter.detect(&env).await.is_empty());
+        assert_eq!(
+            runner.calls().len(),
+            before,
+            "nothing run for a home Canager cannot name"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_reads_the_release_file_and_lists_only_a_newer_rustup() {
+        for (body, expected) in [
+            ("schema-version = '1'\nversion = '1.30.0'\n", 1),
+            ("schema-version = '1'\nversion = '1.29.1'\n", 0),
+            ("schema-version = '1'\nversion = '1.28.2'\n", 0),
+        ] {
+            let home = TempHome::new("rustup-check");
+            let cargo_home = home.path().join(".cargo");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(RELEASE_URL, answer(body));
+            let (adapter, inst, _runner) =
+                detected_rustup(&home.env(vec![]), &cargo_home, http.clone()).await;
+            // `check_updates` compares the version `inventory` read, and
+            // refuses without one (B's follow-up fix, `Reading`): the
+            // order `refresh_round` keeps.
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            assert_eq!(out.candidates.len(), expected, "{body:?}");
+            assert_eq!(http.calls(), vec![RELEASE_URL.to_string()]);
+            if expected == 1 {
+                let c = &out.candidates[0];
+                assert_eq!(c.key.name, "rustup");
+                assert_eq!(c.current, "1.29.1");
+                assert_eq!(c.target, "1.30.0");
+                assert_eq!(c.channel, UpdateChannel::Registry);
+                assert!(c.checkable);
+                assert!(c.warnings.is_empty());
+                assert_eq!(c.blocked, None);
+                let request = &http.requests()[0];
+                assert_eq!(request.method, "GET");
+                assert!(request.headers.is_empty());
+                assert_eq!(request.timeout, Duration::from_secs(30));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_marks_a_bad_release_file_uncheckable() {
+        // A failed request, a non-200, HTML with status 200, a file with
+        // no version: one could-not-check row each, never an `Err`.
+        let cases: Vec<(Option<HttpResponse>, &str)> = vec![
+            (None, "request to"),
+            (
+                Some(HttpResponse {
+                    status: 503,
+                    body: String::new(),
+                }),
+                "returned status 503",
+            ),
+            (Some(answer("<html>Sign in</html>")), "release file"),
+            (Some(answer("schema-version = '1'\n")), "release file"),
+        ];
+        for (response, reason) in cases {
+            let home = TempHome::new("rustup-check-bad");
+            let cargo_home = home.path().join(".cargo");
+            let http = Arc::new(MockHttpClient::new());
+            match response {
+                Some(r) => http.respond(RELEASE_URL, r),
+                None => http.fail(RELEASE_URL, "connection refused"),
+            }
+            let (adapter, inst, _runner) =
+                detected_rustup(&home.env(vec![]), &cargo_home, http).await;
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("a failed lookup is not a source failure");
+            assert_eq!(out.candidates.len(), 1, "{reason}");
+            let c = &out.candidates[0];
+            assert!(!c.checkable);
+            assert_eq!(c.current, "1.29.1");
+            assert_eq!(c.target, "1.29.1");
+            assert!(
+                matches!(&c.warnings[..], [Warning::Message(m)] if m.contains(reason) && m.len() < 200),
+                "{reason}: {:?}",
+                c.warnings
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_for_rustup_is_self_update_no_cancel_with_the_cargo_lock() {
+        let home = TempHome::new("rustup-plan-upgrade");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, _runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        let plan = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Upgrade, "rustup"),
+            )
+            .await
+            .expect("plan");
+        assert_eq!(
+            plan.action,
+            PlanAction::Command {
+                program: cargo_home.join("bin/rustup"),
+                args: vec!["self".to_string(), "update".to_string()],
+                env: Vec::new(),
+            }
+        );
+        assert!(!plan.needs_password);
+        assert_eq!(
+            plan.locks,
+            vec![
+                ResourceLock("standalone-rustup".to_string()),
+                ResourceLock(crate::adapters::cargo::instance_id_for(&cargo_home)),
+            ]
+        );
+        assert_eq!(plan.cancel_policy, CancelPolicy::NoCancel);
+        assert!(plan.warnings.is_empty());
+        assert!(plan.affected.is_empty());
+        assert_eq!(plan.timeout_secs, 600);
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_rustup_runs_nothing_and_lists_the_warnings() {
+        // This Mac's layout (spec §6.6): one toolchain, hexyl installed
+        // with cargo, rustup's line in ~/.zshenv and ~/.profile, the same
+        // line by hand in ~/.zshrc. The preview reads the disk and runs
+        // no command (ruling 4).
+        let home = TempHome::new("rustup-plan-uninstall");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        std::fs::write(cargo_home.join("bin/hexyl"), b"x").expect("write hexyl");
+        std::fs::copy(
+            "../../adapters/fixtures/cargo/1.98.1/crates2.json",
+            cargo_home.join(".crates2.json"),
+        )
+        .expect("copy the recorded record");
+        home.dir(".rustup/toolchains/stable-aarch64-apple-darwin");
+        for rc in [".zshenv", ".profile", ".zshrc"] {
+            std::fs::write(home.path().join(rc), ". \"$HOME/.cargo/env\"\n").expect("write rc");
+        }
+        let calls_before = runner.calls().len();
+
+        let plan = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Uninstall, "rustup"),
+            )
+            .await
+            .expect("plan");
+
+        assert_eq!(
+            plan.action,
+            PlanAction::Command {
+                program: cargo_home.join("bin/rustup"),
+                args: vec![
+                    "self".to_string(),
+                    "uninstall".to_string(),
+                    "-y".to_string()
+                ],
+                env: Vec::new(),
+            }
+        );
+        assert_eq!(plan.cancel_policy, CancelPolicy::NoCancel);
+        assert_eq!(plan.timeout_secs, 600);
+        assert!(!plan.needs_password);
+        assert!(
+            plan.affected.is_empty(),
+            "a non-empty list disables Confirm; hexyl does not break"
+        );
+        assert_eq!(
+            plan.locks,
+            vec![
+                ResourceLock("standalone-rustup".to_string()),
+                ResourceLock(crate::adapters::cargo::instance_id_for(&cargo_home)),
+            ]
+        );
+        assert_eq!(
+            without_homebrew_line(plan.warnings),
+            vec![
+                Warning::RemovesToolchains {
+                    path: "~/.rustup".to_string(),
+                    names: vec!["stable-aarch64-apple-darwin".to_string()]
+                },
+                Warning::DeletesCargoHome {
+                    path: "~/.cargo".to_string()
+                },
+                Warning::RemovesCargoInstalled {
+                    names: vec!["hexyl".to_string()]
+                },
+                Warning::EditsShellConfig,
+                Warning::LeavesShellConfigLine {
+                    path: "~/.zshrc".to_string(),
+                    certain: true
+                },
+            ]
+        );
+        assert_eq!(
+            runner.calls().len(),
+            calls_before,
+            "the preview ran no command"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_rustup_survives_an_empty_cargo_home_and_no_toolchains() {
+        // No `.crates2.json`, no `~/.rustup`, no startup files: the plan
+        // still builds, with the toolchain sentence unnamed and nothing
+        // invented.
+        let home = TempHome::new("rustup-plan-uninstall-bare");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, _runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        let plan = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Uninstall, "rustup"),
+            )
+            .await
+            .expect("plan");
+        assert_eq!(
+            without_homebrew_line(plan.warnings),
+            vec![
+                Warning::RemovesToolchains {
+                    path: "~/.rustup".to_string(),
+                    names: Vec::new()
+                },
+                Warning::DeletesCargoHome {
+                    path: "~/.cargo".to_string()
+                },
+                Warning::EditsShellConfig,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inventory_and_plan_refuse_the_uninstall_for_a_non_standard_layout() {
+        // Ruling 18, through the adapter: a custom CARGO_HOME, a custom
+        // RUSTUP_HOME, and a linked root each make the artifact carry
+        // `NoSafeMethod` (so the gate in session/plans.rs refuses and the
+        // page hides the button) and make `plan(Uninstall)` refuse with
+        // the same reason; the upgrade is not gated, and its cargo lock
+        // names the custom home.
+        let home = TempHome::new("rustup-gate-custom-cargo");
+        let custom = home.path().join("elsewhere/cargo");
+        let env = HostEnv {
+            cargo_home: Some(custom.clone()),
+            ..home.env(vec![])
+        };
+        let (adapter, inst, _runner) =
+            detected_rustup(&env, &custom, Arc::new(MockHttpClient::new())).await;
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
+        assert_eq!(
+            artifacts[0].uninstall_blocked,
+            Some(UninstallBlocked::NoSafeMethod)
+        );
+        assert!(matches!(
+            adapter
+                .plan(
+                    &inst,
+                    &request_for("standalone-rustup", OpKind::Uninstall, "rustup")
+                )
+                .await,
+            Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::NoSafeMethod
+            })
+        ));
+        let upgrade = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Upgrade, "rustup"),
+            )
+            .await
+            .expect("the upgrade is not gated");
+        assert!(upgrade
+            .locks
+            .contains(&ResourceLock(crate::adapters::cargo::instance_id_for(
+                &custom
+            ))));
+
+        let home = TempHome::new("rustup-gate-custom-rustup");
+        let cargo_home = home.path().join(".cargo");
+        let env = HostEnv {
+            rustup_home: Some(home.path().join("elsewhere/rustup")),
+            ..home.env(vec![])
+        };
+        let (adapter, inst, _runner) =
+            detected_rustup(&env, &cargo_home, Arc::new(MockHttpClient::new())).await;
+        assert_eq!(
+            adapter.inventory(&inst).await.expect("inventory")[0].uninstall_blocked,
+            Some(UninstallBlocked::NoSafeMethod)
+        );
+
+        let home = TempHome::new("rustup-gate-linked-rustup");
+        let cargo_home = home.path().join(".cargo");
+        let elsewhere = home.dir("Volumes/Data/rustup");
+        home.link(".rustup", &elsewhere);
+        let (adapter, inst, _runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        assert_eq!(
+            adapter.inventory(&inst).await.expect("inventory")[0].uninstall_blocked,
+            Some(UninstallBlocked::NoSafeMethod)
+        );
+        assert!(matches!(
+            adapter
+                .plan(
+                    &inst,
+                    &request_for("standalone-rustup", OpKind::Uninstall, "rustup")
+                )
+                .await,
+            Err(AdapterError::UninstallBlocked { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_rustup_locks_name_the_cargo_instance_detect_produces_with_and_without_cargo_home()
+    {
+        // Spec §2.4, §十三 #42: `acquire_resource_lock` compares names byte
+        // for byte and reports nothing for two that merely look alike, so
+        // the lock rustup's plans hold must equal the id `CargoAdapter::
+        // detect` gives its instance on the same host -- with CARGO_HOME
+        // unset and set. Both go through `cargo::instance_id_for` and
+        // `cargo::cargo_home_of`; this proves it end to end. With it set,
+        // only the upgrade has a plan (the uninstall is gated).
+        for custom in [false, true] {
+            let home = TempHome::new("rustup-cross-lock");
+            let cargo_home = if custom {
+                home.path().join("elsewhere/cargo")
+            } else {
+                home.path().join(".cargo")
+            };
+            let env = HostEnv {
+                cargo_home: custom.then(|| cargo_home.clone()),
+                ..home.env(vec![cargo_home.join("bin")])
+            };
+            let (rustup, rustup_inst, runner) =
+                detected_rustup(&env, &cargo_home, Arc::new(MockHttpClient::new())).await;
+            // The cargo instance, from the real cargo adapter over the same
+            // env: its `cargo` is the proxy link `rustup_layout` wrote.
+            runner.respond(
+                vec![cargo_home.join("bin/cargo").to_str().unwrap(), "--version"],
+                exited_0("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
+            );
+            let cargo = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+            let cargo_inst = cargo.detect(&env).await.remove(0);
+            assert_eq!(cargo_inst.prefix, cargo_home, "custom={custom}");
+
+            let kinds: &[OpKind] = if custom {
+                &[OpKind::Upgrade]
+            } else {
+                &[OpKind::Upgrade, OpKind::Uninstall]
+            };
+            for kind in kinds {
+                let plan = rustup
+                    .plan(
+                        &rustup_inst,
+                        &request_for("standalone-rustup", *kind, "rustup"),
+                    )
+                    .await
+                    .expect("plan");
+                assert!(
+                    plan.locks.contains(&ResourceLock(cargo_inst.id.clone())),
+                    "custom={custom} {kind:?}: {:?} lacks {}",
+                    plan.locks,
+                    cargo_inst.id
+                );
+                assert_eq!(plan.locks.len(), 2, "custom={custom} {kind:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_runs_rustups_uninstall_through_run_plan() {
+        let home = TempHome::new("rustup-execute");
+        let cargo_home = home.path().join(".cargo");
+        let (adapter, inst, runner) = detected_rustup(
+            &home.env(vec![]),
+            &cargo_home,
+            Arc::new(MockHttpClient::new()),
+        )
+        .await;
+        runner.respond(
+            vec![
+                cargo_home.join("bin/rustup").to_str().unwrap(),
+                "self",
+                "uninstall",
+                "-y",
+            ],
+            exited_0("info: removing toolchains\ninfo: rustup is uninstalled\n"),
+        );
+        let plan = adapter
+            .plan(
+                &inst,
+                &request_for("standalone-rustup", OpKind::Uninstall, "rustup"),
+            )
+            .await
+            .expect("plan");
+        let sink = Arc::new(VecSink::new());
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+        // `execute` reports the command's own exit; whether rustup is
+        // gone is `run_operation`'s reading afterwards (Task 8).
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(sink.snapshot().len(), 2, "two log lines, streamed");
     }
 }

@@ -708,7 +708,8 @@ mod tests {
     fn claude_lists() -> (&'static [RemoveSpec], &'static [KeepSpec]) {
         match &CLAUDE.uninstall {
             Some(Uninstall::Paths { remove, keep }) => (remove, keep),
-            None => panic!("claude has a path list"),
+            // A `Command` uninstall (rustup's) has no list either.
+            None | Some(Uninstall::Command(_)) => panic!("claude has a path list"),
         }
     }
 

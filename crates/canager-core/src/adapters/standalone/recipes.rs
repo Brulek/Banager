@@ -6,9 +6,11 @@
 //! constant to the invariants the code relies on.
 
 use super::recipe::{
-    no_extra_locks, Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route, RouteKind, Uninstall,
-    UpgradeCmd, VersionCmd, VersionParse,
+    no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route,
+    RouteKind, Uninstall, UpgradeCmd, VersionCmd, VersionParse,
 };
+use super::rustup;
+use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 
 /// Claude Code, the native install (`curl -fsSL https://claude.ai/install.sh
@@ -116,6 +118,114 @@ pub static CLAUDE: Recipe = Recipe {
         ],
     }),
     extra_locks: no_extra_locks,
+};
+
+/// rustup, the Rust toolchain installer, installed by its own script
+/// (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`,
+/// run by the user; Canager never runs it).
+///
+/// Every value here is from `.superpowers/phase4/rustup.md` (VERIFIED on
+/// this Mac or in rustup's own source at tag 1.29.1, 2026-09-24/25,
+/// unless noted); the meta TOML's `verified_versions` is what
+/// `RUSTUP_AUTO_INSTALL=0 rustup --version` printed on this Mac on
+/// 2026-09-26, and Task 10 of the phase 4 step E plan records that line,
+/// the release file and the layout into
+/// `adapters/fixtures/standalone-rustup/<version>/`:
+/// - the launcher `$CARGO_HOME/bin/rustup` is a regular Mach-O file (11 MB
+///   on this Mac); the thirteen proxies beside it (`cargo`, `rustc`,
+///   `rustfmt`, …) are relative symlinks to it (§2; unknown-scan.md §2),
+///   which the Unknown page's rule 1 attributes. The root is the Cargo
+///   home: Canager reads nothing under `RUSTUP_HOME` except, during the
+///   uninstall preview, the names in its `toolchains/` (spec §2.2, §3.2);
+/// - `rustup --version` prints `rustup <version> (<hash> <date>)` on
+///   stdout, and two `info:` lines on stderr that are never read (§3;
+///   Task 10 records them as `version-stderr.txt`). It runs with
+///   `RUSTUP_AUTO_INSTALL=0`: 1.29.1's `display_version`
+///   (rustup_mode.rs:1819-1837) resolves the active toolchain and, with
+///   none active and auto-install on (the default, config.rs:435-441),
+///   installs one -- a download during a refresh. With the switch it
+///   says `info: no rustc is currently active` and exits 0. Two side
+///   effects of any rustup invocation remain and the trust file says so:
+///   `Cfg::from_env` creates `$RUSTUP_HOME` when it is missing
+///   (config.rs:321-323), and `cleanup_self_updater` deletes a leftover
+///   `$CARGO_HOME/bin/rustup-init` (self_update.rs:1314-1323) -- which is
+///   why a refresh must never run this read while rustup's own update
+///   holds its locks (`Session::refresh_round`, plan ruling 19, Task 7 of
+///   the phase 4 step E plan);
+/// - the newest published version is `version = '…'` in
+///   `static.rust-lang.org/rustup/release-stable.toml`, the file `rustup
+///   self update` itself reads (`DEFAULT_UPDATE_ROOT`, §6);
+/// - it does not update itself on its own (spec §3.5): rustup updates
+///   itself only as part of `rustup update` and `rustup toolchain
+///   install` (`SelfUpdateMode::update`, rustup_mode.rs:1042-1090), which
+///   Canager never runs;
+/// - `rustup self update` (never `rustup update`, which updates the
+///   toolchains and, interrupted, leaves them half installed:
+///   rust-lang/rustup#4724, §7) is `NoCancel` with the cargo instance's
+///   lock: `install_bins` (1.29.1 `src/cli/self_update.rs:771-785`)
+///   unlinks the running `rustup` and then copies the new one in, and in
+///   between all thirteen proxies -- the cargo instance's `cargo` among
+///   them -- are dangling. 600 s: one 11 MB download;
+/// - `rustup self uninstall -y` is the official uninstall (§8; `-y` skips
+///   the confirmation an EOF on stdin would otherwise decline), `NoCancel`
+///   for the same reason, with the same lock (it deletes the
+///   `.crates2.json` cargo's inventory reads). It is offered only when
+///   `CARGO_HOME` and `RUSTUP_HOME` resolve to `~/.cargo` and `~/.rustup`
+///   and both are real directories (`rustup::uninstall_blocked`, plan
+///   ruling 18): 1.29.1's `uninstall()` removes both homes whole,
+///   wherever they point, and never to the Trash. The preview runs no
+///   command; its warnings (`rustup::uninstall_warnings`) come from the
+///   `toolchains/` listing, a listing of `$CARGO_HOME/bin`,
+///   `.crates2.json`, Homebrew's Cellar and eight startup files -- read
+///   from 1.29.1's source, which removes the whole Cargo home, every
+///   program in its `bin/` included (`rustup.rs`'s module doc has the
+///   lines). `--no-modify-path` is not passed (spec Q6): rustup removing
+///   its own startup line beats leaving one that errors on every new
+///   terminal;
+/// - both commands run with Canager's own environment: `fix_path_env`
+///   restores only `PATH` from the login shell, and the runner passes the
+///   rest as inherited. A `RUSTUP_HOME` or `CARGO_HOME` exported only in
+///   a shell startup file is not seen by Canager or by the rustup it
+///   runs -- the two agree, which is what the gate relies on -- so the
+///   preview and the uninstall act on the default folders, and a Rust
+///   kept only where the shell says is left alone, not deleted (plan
+///   ruling 17).
+///
+/// Not yet in `RECIPES`: Task 10 of the phase 4 step E plan registers it
+/// together with the recording and the trust-file section that
+/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
+/// source. Until then its readers are the tests in this module and in
+/// `mod.rs`.
+pub static RUSTUP: Recipe = Recipe {
+    id: "rustup",
+    meta_toml: include_str!("../../../../../adapters/meta/standalone-rustup.toml"),
+    route: Route {
+        kind: RouteKind::FlatFile,
+        launcher: "$CARGO_HOME/bin/rustup",
+        root: "$CARGO_HOME",
+    },
+    version: VersionCmd {
+        args: &["--version"],
+        env: &[RUSTUP_AUTO_INSTALL_OFF],
+        parse: VersionParse::SecondToken,
+    },
+    latest: Latest::HttpTomlVersion {
+        url: "https://static.rust-lang.org/rustup/release-stable.toml",
+    },
+    self_updates: false,
+    upgrade: UpgradeCmd {
+        args: &["self", "update"],
+        timeout_secs: 600,
+        cancel: CancelPolicy::NoCancel,
+    },
+    uninstall: Some(Uninstall::Command(CommandUninstall {
+        args: &["self", "uninstall", "-y"],
+        timeout_secs: 600,
+        cancel: CancelPolicy::NoCancel,
+        blocked: rustup::uninstall_blocked,
+        warnings: rustup::uninstall_warnings,
+    })),
+    extra_locks: rustup::extra_locks,
 };
 
 /// Every tool this adapter type registers, in registration order. The
@@ -430,5 +540,88 @@ mod tests {
                 ("~/.claude.json", KeptWhat::Settings),
             ]
         );
+    }
+
+    #[test]
+    fn test_rustup_is_the_flat_file_route_under_cargo_home_read_as_the_second_token_with_auto_install_off(
+    ) {
+        assert_eq!(RUSTUP.id, "rustup");
+        assert_eq!(RUSTUP.route.kind, RouteKind::FlatFile);
+        assert_eq!(RUSTUP.route.launcher, "$CARGO_HOME/bin/rustup");
+        assert_eq!(RUSTUP.route.root, "$CARGO_HOME");
+        assert_eq!(RUSTUP.version.args, &["--version"]);
+        // Ruling 20: `rustup --version` resolves the active toolchain and,
+        // with none active and auto-install on (the default), installs
+        // one -- a download during a refresh. The switch that stops it
+        // is the same constant cargo's detect uses for the proxy.
+        assert_eq!(RUSTUP.version.env, &[("RUSTUP_AUTO_INSTALL", "0")]);
+        assert_eq!(
+            RUSTUP.version.env,
+            &[crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF]
+        );
+        assert_eq!(RUSTUP.version.parse, VersionParse::SecondToken);
+        assert!(!RUSTUP.self_updates);
+        assert_eq!(
+            RUSTUP.latest,
+            Latest::HttpTomlVersion {
+                url: "https://static.rust-lang.org/rustup/release-stable.toml"
+            }
+        );
+    }
+
+    #[test]
+    fn test_rustup_updates_and_uninstalls_itself_with_no_cancel_the_gate_and_the_cargo_lock() {
+        // `self update`, never `update` (spec §五, D6): the latter touches
+        // the toolchains and an interruption leaves them half installed.
+        assert_eq!(RUSTUP.upgrade.args, &["self", "update"]);
+        assert_eq!(RUSTUP.upgrade.timeout_secs, 600);
+        assert_eq!(RUSTUP.upgrade.cancel, CancelPolicy::NoCancel);
+        let Some(Uninstall::Command(cmd)) = &RUSTUP.uninstall else {
+            panic!("rustup uninstalls with its own command");
+        };
+        assert_eq!(cmd.args, &["self", "uninstall", "-y"]);
+        assert_eq!(cmd.timeout_secs, 600);
+        assert_eq!(cmd.cancel, CancelPolicy::NoCancel);
+        assert!(
+            !cmd.args.contains(&"--no-modify-path"),
+            "spec Q6: rustup removes its own startup line"
+        );
+        // The functions, by identity: the recipe is data, and these three
+        // are the data's only behaviour.
+        assert!(std::ptr::fn_addr_eq(
+            cmd.blocked,
+            super::super::rustup::uninstall_blocked
+                as fn(
+                    &crate::adapters::standalone::Detected,
+                ) -> Option<crate::model::UninstallBlocked>
+        ));
+        assert!(std::ptr::fn_addr_eq(
+            cmd.warnings,
+            super::super::rustup::uninstall_warnings
+                as fn(&crate::adapters::standalone::Detected) -> Vec<crate::model::Warning>
+        ));
+        assert!(std::ptr::fn_addr_eq(
+            RUSTUP.extra_locks,
+            super::super::rustup::extra_locks
+                as fn(&crate::adapters::standalone::Detected) -> Vec<crate::model::ResourceLock>
+        ));
+    }
+
+    #[test]
+    fn test_the_rustup_recipe_never_builds_rustup_update() {
+        // Belt and braces over the assertion above, for every argv the
+        // RUSTUP recipe holds -- upgrade, version read, uninstall:
+        // `rustup update` is the one subcommand this recipe must never
+        // build (spec D6, 附录 B). Scoped to rustup on purpose: `update`
+        // is dangerous only as *rustup's* first argument, and it is
+        // claude's documented upgrade (`claude update`, spec §五; B's
+        // `CLAUDE.upgrade.args`), so a ban over every recipe would fail
+        // on the one recipe that is right to use it.
+        let Some(Uninstall::Command(cmd)) = &RUSTUP.uninstall else {
+            panic!("rustup uninstalls with its own command");
+        };
+        for argv in [RUSTUP.upgrade.args, RUSTUP.version.args, cmd.args] {
+            assert_ne!(argv.first(), Some(&"update"), "rustup: {argv:?}");
+        }
     }
 }
