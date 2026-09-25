@@ -685,20 +685,28 @@ pub enum Fault {
     /// can never disagree: see `BrewAdapter::execute`, the only production
     /// call site that builds this variant.
     HomebrewStillUpdating { minutes: u64 },
-    /// A path a path-list uninstall was about to move is not what the
-    /// preview showed: at the confirmation, or when its turn came after the
-    /// moves before it, it fails one of the preview's checks (a folder on
-    /// its way became a link, say, or a kept path now leads into it), the
-    /// list itself changed (a path that was absent is there now, or one the
-    /// preview listed is gone), or it is no longer the file the preview
-    /// recorded (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool
-    /// that updates itself re-points its launcher -- or replaced by another
-    /// of the same name. Canager stopped without moving that path; whatever
-    /// it moved before is in the Trash, one `LogNote::MovedToTrash` each in
-    /// the log. `path` has the home folder abbreviated to `~`; it is the
-    /// kept path when a kept path is what changed. Built only by
-    /// `removal::execute_removal` (`adapters/standalone/removal.rs`); read
-    /// by `faultKey`/`faultArgs` in src/lib/format.ts.
+    /// A path is not what the preview showed, so Canager stopped and left
+    /// it as it is. For a path-list uninstall, a path it was about to move:
+    /// at the confirmation, or when its turn came after the moves before
+    /// it, it fails one of the preview's checks (a folder on its way became
+    /// a link, say, or a kept path now leads into it), the list itself
+    /// changed (a path that was absent is there now, or one the preview
+    /// listed is gone), or it is no longer the file the preview recorded
+    /// (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool that
+    /// updates itself re-points its launcher -- or replaced by another of
+    /// the same name. Canager stopped without moving that path; whatever it
+    /// moved before is in the Trash, one `LogNote::MovedToTrash` each in
+    /// the log. For a standalone tool's upgrade, the launcher the plan
+    /// would run: looked at again right before the spawn, it is no longer
+    /// the native install's -- gone, dangling, a plain file, or a link
+    /// resolving outside the tool's own root (at Homebrew's or npm's copy,
+    /// say) -- so the command was not started; a launcher re-pointed at a
+    /// newer version inside that root is still the native install's, and
+    /// the command runs. `path` has the home folder abbreviated to `~`; it
+    /// is the kept path when a kept path is what changed. Built by
+    /// `removal::execute_removal` (`adapters/standalone/removal.rs`) and
+    /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
+    /// `faultKey`/`faultArgs` in src/lib/format.ts.
     PathChanged { path: String },
     /// Something on Canager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no

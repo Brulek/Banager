@@ -31,7 +31,7 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceNote,
+    ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstallReason, InstalledArtifact, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
     ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
 };
@@ -510,12 +510,13 @@ impl StandaloneAdapter {
         })
     }
 
-    /// A `Command` plan runs through `run_plan` like every source's; a
-    /// `TrashPaths` plan is carried out here, item by item
-    /// (`removal::execute_removal`), against the list re-read from the
-    /// recipe and the disk and compared with what the preview saw
-    /// (`previewed`) -- the plan's paths are what the user confirmed, not
-    /// the source of truth.
+    /// A `Command` plan -- the upgrade, `<launcher> update` -- runs through
+    /// `run_plan` like every source's, after one more look at the launcher
+    /// immediately before the spawn (below). A `TrashPaths` plan is carried
+    /// out here, item by item (`removal::execute_removal`), against the
+    /// list re-read from the recipe and the disk and compared with what the
+    /// preview saw (`previewed`) -- the plan's paths are what the user
+    /// confirmed, not the source of truth.
     pub async fn execute(
         &self,
         plan: &Plan,
@@ -524,7 +525,50 @@ impl StandaloneAdapter {
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         match &plan.action {
-            PlanAction::Command { .. } => run_plan(&self.runner, plan, sink, op_id, cancel).await,
+            // The launcher is a link that the user, another installer or
+            // the tool's own updater can re-point between the preview and
+            // the click: at Homebrew's or npm's copy, at some other file,
+            // or at nothing (B's Astra finding B-1). The plan names that
+            // path, so spawning it would run whatever is behind it now --
+            // another copy's updater. So the launcher is looked at again
+            // here, right before the spawn, with the same `probe` detect
+            // used: it must still be this route's (`Present`: one link
+            // straight into the root, resolving there, not a package
+            // manager's). Anything else -- gone, dangling, a plain file,
+            // resolving outside the root, or a launcher `probe` cannot look
+            // at -- is `Fault::PathChanged` naming the launcher, nothing
+            // started: what a path-list uninstall reports for a path that
+            // changed. A link re-pointed at a newer version *inside* the
+            // root (the updater's own work) is still this route's, and
+            // runs. What remains is the instant between this look and the
+            // spawn, the same edge the removal documents (`take_turn`).
+            PlanAction::Command { program, .. } => {
+                let detected = self.detected_or_refuse()?;
+                let launcher = route::expand(&detected.home, self.recipe.route.launcher);
+                // `plan` names the launcher and nothing else (spec 附录 B):
+                // a plan naming any other program was not built by it, and
+                // is a bug's, refused before anything is looked at or run.
+                if *program != launcher {
+                    return Err(AdapterError::Refused(format!(
+                        "{}: the plan runs {} rather than the launcher {}",
+                        self.meta.name,
+                        program.display(),
+                        launcher.display()
+                    )));
+                }
+                let root = route::expand(&detected.home, self.recipe.route.root);
+                if !matches!(
+                    route::probe(self.recipe.route.kind, &launcher, &root),
+                    Probe::Present { .. }
+                ) {
+                    return Ok(Outcome::CanagerFailed(Fault::PathChanged {
+                        path: crate::scan::display_path(&launcher, &detected.home)
+                            .display()
+                            .to_string(),
+                    }));
+                }
+                run_plan(&self.runner, plan, sink, op_id, cancel).await
+            }
             PlanAction::TrashPaths { paths, previewed } => {
                 let Some(Uninstall::Paths { remove, keep }) = self.recipe.uninstall else {
                     return Err(AdapterError::Refused(format!(
@@ -1915,31 +1959,236 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_execute_runs_the_plan_and_streams_its_output() {
-        let home = TempHome::new("execute");
+    /// The claude layout, detected -- so `Detected` holds the home
+    /// `execute` finds the launcher under when it looks at it again before
+    /// an upgrade -- over a runner the test keeps (to read its calls) that
+    /// answers `--version` and `update` at the launcher.
+    struct UpgradeSetup {
+        home: TempHome,
+        layout: super::testing::ClaudeLayout,
+        runner: Arc<MockRunner>,
+        adapter: StandaloneAdapter,
+        inst: ManagerInstance,
+    }
+
+    async fn detected_for_upgrade(tag: &str) -> UpgradeSetup {
+        let home = TempHome::new(tag);
         let layout = claude_layout(&home, "2.1.281");
         let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
         runner.respond(
             vec![layout.launcher.to_str().unwrap(), "update"],
             exited_0("Successfully updated from 2.1.281 to version 2.1.290\n"),
         );
-        let adapter = adapter(runner);
-        let inst = instance_for(&layout, Some("2.1.281"));
-        let plan = adapter
+        let adapter = adapter(runner.clone());
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        UpgradeSetup {
+            home,
+            layout,
+            runner,
+            adapter,
+            inst,
+        }
+    }
+
+    async fn upgrade_plan(adapter: &StandaloneAdapter, inst: &ManagerInstance) -> Plan {
+        adapter
             .plan(
-                &inst,
+                inst,
                 &request(OpKind::Upgrade, ArtifactKind::Binary, "claude"),
             )
             .await
-            .expect("plan");
+            .expect("plan")
+    }
+
+    /// The `update` calls the runner saw: what `execute` spawned, apart
+    /// from detect's version read.
+    fn update_calls(runner: &MockRunner, layout: &super::testing::ClaudeLayout) -> usize {
+        let update = vec![
+            layout.launcher.to_str().unwrap().to_string(),
+            "update".to_string(),
+        ];
+        runner
+            .calls()
+            .iter()
+            .filter(|call| **call == update)
+            .count()
+    }
+
+    #[tokio::test]
+    async fn test_execute_runs_the_plan_and_streams_its_output() {
+        // `_home` is bound, not left to `..`: the temp home lives as long as
+        // it does, and the launcher `execute` looks at again is in it.
+        let UpgradeSetup {
+            home: _home,
+            layout,
+            runner,
+            adapter,
+            inst,
+        } = detected_for_upgrade("execute").await;
+        let plan = upgrade_plan(&adapter, &inst).await;
         let sink = Arc::new(VecSink::new());
         let outcome = adapter
             .execute(&plan, sink.clone(), 1, CancellationToken::new())
             .await
             .expect("execute");
         assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(update_calls(&runner, &layout), 1);
         assert_eq!(sink.snapshot().len(), 1, "one log line, streamed");
+    }
+
+    #[tokio::test]
+    async fn test_execute_refuses_an_upgrade_when_the_launcher_is_no_longer_the_native_installs() {
+        // B's Astra finding B-1: between the preview and the click,
+        // `~/.local/bin/claude` can be re-pointed at Homebrew's or npm's
+        // copy (the user reinstalling another way), at some other file,
+        // replaced by a plain file, left dangling, or removed. The plan
+        // names that path, and spawning it would run whatever is behind it
+        // now -- another copy's updater. `execute` looks at the launcher
+        // again immediately before spawning, as detect does: not this
+        // route's, and nothing is started; the fault names the launcher,
+        // as a path-list uninstall's names a path that changed.
+        /// What happens to the launcher after the preview, in one case.
+        type Retarget = fn(&TempHome, &super::testing::ClaudeLayout);
+        let cases: [(&str, Retarget); 6] = [
+            ("re-pointed at Homebrew's copy", |home, layout| {
+                let cask = home.executable("opt/homebrew/Caskroom/claude-code/2.1.267/claude");
+                std::fs::remove_file(&layout.launcher).unwrap();
+                std::os::unix::fs::symlink(cask, &layout.launcher).unwrap();
+            }),
+            ("re-pointed at npm's copy", |home, layout| {
+                let cli = home
+                    .executable("opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js");
+                std::fs::remove_file(&layout.launcher).unwrap();
+                std::os::unix::fs::symlink(cli, &layout.launcher).unwrap();
+            }),
+            ("re-pointed outside the root", |home, layout| {
+                let elsewhere = home.executable("elsewhere/claude");
+                std::fs::remove_file(&layout.launcher).unwrap();
+                std::os::unix::fs::symlink(elsewhere, &layout.launcher).unwrap();
+            }),
+            ("replaced by a plain file", |home, layout| {
+                std::fs::remove_file(&layout.launcher).unwrap();
+                home.executable(".local/bin/claude");
+            }),
+            ("dangling: the program files gone", |_home, layout| {
+                std::fs::remove_dir_all(&layout.root).unwrap();
+            }),
+            ("removed", |_home, layout| {
+                std::fs::remove_file(&layout.launcher).unwrap();
+            }),
+        ];
+        for (case, retarget) in cases {
+            let UpgradeSetup {
+                home,
+                layout,
+                runner,
+                adapter,
+                inst,
+            } = detected_for_upgrade("execute-upgrade-retargeted").await;
+            let plan = upgrade_plan(&adapter, &inst).await;
+            retarget(&home, &layout);
+            let sink = Arc::new(VecSink::new());
+
+            let outcome = adapter
+                .execute(&plan, sink.clone(), 1, CancellationToken::new())
+                .await
+                .expect("execute");
+
+            assert_eq!(
+                outcome,
+                Outcome::CanagerFailed(Fault::PathChanged {
+                    path: "~/.local/bin/claude".to_string()
+                }),
+                "{case}"
+            );
+            assert_eq!(update_calls(&runner, &layout), 0, "{case}: nothing spawned");
+            assert!(sink.snapshot().is_empty(), "{case}: no log line");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_runs_an_upgrade_after_the_launcher_moved_to_a_newer_version_inside_the_root(
+    ) {
+        // Claude Code updating itself between the preview and the click
+        // re-points the launcher at a new file inside its own root. That is
+        // still the native install, and `<launcher> update` is still the
+        // command the user confirmed: it runs. (A path-list uninstall
+        // refuses the same change, because there the link itself is what
+        // moves: `test_execute_refuses_a_launcher_the_updater_re_pointed_after_the_preview`.)
+        let UpgradeSetup {
+            home,
+            layout,
+            runner,
+            adapter,
+            inst,
+        } = detected_for_upgrade("execute-upgrade-self-updated").await;
+        let plan = upgrade_plan(&adapter, &inst).await;
+        let newer = home.executable(".local/share/claude/versions/2.1.282");
+        std::fs::remove_file(&layout.launcher).unwrap();
+        std::os::unix::fs::symlink(newer, &layout.launcher).unwrap();
+        let sink = Arc::new(VecSink::new());
+
+        let outcome = adapter
+            .execute(&plan, sink.clone(), 1, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(update_calls(&runner, &layout), 1);
+        assert_eq!(sink.snapshot().len(), 1, "one log line, streamed");
+    }
+
+    #[tokio::test]
+    async fn test_execute_refuses_an_upgrade_plan_that_names_another_program_as_canagers_own_bug() {
+        // `plan` names the launcher and nothing else (spec 附录 B). A plan
+        // whose program is any other file was not built by `plan`, and so
+        // is one with no detect before it (no home to find the launcher
+        // under -- unreachable through `Session`, which detects first):
+        // both are refused as Canager's own bug (`Refused`, which
+        // `run_operation` reports as `Fault::Internal`), nothing spawned --
+        // never run on the plan's word.
+        let UpgradeSetup {
+            home,
+            layout,
+            runner,
+            adapter: detected,
+            inst,
+        } = detected_for_upgrade("execute-upgrade-other-program").await;
+        let other = home.executable("elsewhere/claude");
+        runner.respond(
+            vec![other.to_str().unwrap(), "update"],
+            exited_0("Successfully updated from 2.1.281 to version 2.1.290\n"),
+        );
+        let plan = Plan {
+            action: PlanAction::Command {
+                program: other,
+                args: vec!["update".to_string()],
+                env: Vec::new(),
+            },
+            ..upgrade_plan(&detected, &inst).await
+        };
+        assert!(matches!(
+            detected
+                .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                .await,
+            Err(AdapterError::Refused(_))
+        ));
+        assert_eq!(runner.calls().len(), 1, "only detect's version read");
+
+        let fresh = Arc::new(MockRunner::new());
+        let undetected = adapter(fresh.clone());
+        let plan = upgrade_plan(&undetected, &instance_for(&layout, Some("2.1.281"))).await;
+        assert!(matches!(
+            undetected
+                .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())
+                .await,
+            Err(AdapterError::Refused(_))
+        ));
+        assert!(fresh.calls().is_empty(), "nothing spawned");
     }
 
     #[tokio::test]

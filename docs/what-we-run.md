@@ -543,7 +543,16 @@ preview):
 
 Canager adds no environment override to `claude update`; the runner
 inherits the app's ambient environment. `DISABLE_AUTOUPDATER=1` stops the
-background check, and manual updates still work with it set. Anthropic's
+background check, and manual updates still work with it set. Immediately
+before starting it, Canager looks at `~/.local/bin/claude` once more, the
+way Detect does (`lstat`, `readlink`, `realpath`; no command runs): it
+must still be one link straight into `~/.local/share/claude` that
+resolves there. If it has gone, dangles, is a plain file, or now points
+elsewhere — at a Homebrew or npm copy, say, after a reinstall another way
+since the preview — the update is not started, and the operation reports
+the launcher as changed since the preview. A link Claude Code's own
+updater has re-pointed at a newer version inside that folder is still
+the native install, and the update runs. Anthropic's
 install script stages its download under `~/.claude/downloads`, checks it
 against the release manifest's checksum, and only then runs the new
 binary's own `install`, which sets up the launcher (install.sh, read

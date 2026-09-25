@@ -40,7 +40,9 @@ use canager_core::events::VecSink;
 use canager_core::http::MockHttpClient;
 use canager_core::model::{ArtifactKind, Attention, ManagerInstance, OpKind, OpRequest, Outcome};
 use canager_core::ops::OperationManager;
-use canager_core::runner::{CommandOutput, CommandRunner, CommandSpec, LineCallback, RunnerError};
+use canager_core::runner::{
+    CommandOutput, CommandRunner, CommandSpec, HostEnv, LineCallback, RunnerError,
+};
 use canager_core::trash::MockTrasher;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -600,21 +602,39 @@ async fn claude_upgrade_outputs(
     let (home, inst) = claude_home("2.1.281");
     let launcher = inst.exe_path.to_string_lossy().to_string();
     let runner = Arc::new(ScriptedRunner::default());
-    runner.script(&[launcher.as_str(), "update"], vec![update_output]);
-    runner.script(&[launcher.as_str(), "--version"], versions);
     let mutating = Arc::new(ClaudeMutationRunner {
         inner: runner.clone(),
         remove_target_on_update: dangling_after_update
             .then(|| std::fs::canonicalize(&inst.exe_path).unwrap()),
     });
+    let adapter = Arc::new(StandaloneAdapter::new(
+        &CLAUDE,
+        mutating,
+        Arc::new(MockHttpClient::new()),
+        Arc::new(MockTrasher::new()),
+    ));
+    // Detect first, as `Session` does before it plans anything: right
+    // before it runs `update`, the adapter's `execute` looks at the
+    // launcher again under the home detect recorded (B's Astra finding
+    // B-1). Detect's own `--version` read comes before that command is
+    // scripted, so the runner refuses it (`NoMock`), which the adapter
+    // reads as no version: none of the before/after answers below is
+    // consumed. The instance the op runs against is `inst`, built above.
+    let detected = adapter
+        .detect(&HostEnv {
+            path_dirs: vec![],
+            home: home.clone(),
+            euid: 501,
+            cargo_home: None,
+            ollama_host: None,
+        })
+        .await;
+    assert_eq!(detected.len(), 1, "detect sees the native layout");
+    runner.script(&[launcher.as_str(), "update"], vec![update_output]);
+    runner.script(&[launcher.as_str(), "--version"], versions);
     let outcome = upgrade(
         &runner,
-        Arc::new(StandaloneAdapter::new(
-            &CLAUDE,
-            mutating,
-            Arc::new(MockHttpClient::new()),
-            Arc::new(MockTrasher::new()),
-        )),
+        adapter,
         inst.clone(),
         ArtifactKind::Binary,
         "claude",

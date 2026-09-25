@@ -235,7 +235,7 @@
         "ProgramMissing": "失败：Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
         "SpawnFailed": "失败：Canager 没能启动这个程序，什么都没有改动。系统给出的原因是：{{detail}}",
         "HomebrewStillUpdating": "失败：Canager 等了 {{minutes}} 分钟，Homebrew 还在下载最新的软件目录，所以没有开始。什么都没有改动。可能是网络太慢或者断了，过一会儿再试一次。",
-        "PathChanged": "失败：{{path}} 在预览之后有了变化（会自己更新的工具就可能这样），所以 Canager 停下了，没有移动它。在此之前是否移动过什么，操作日志里能看到。请重新查看预览。",
+        "PathChanged": "失败：{{path}} 在预览之后有了变化（会自己更新的工具就可能这样），所以 Canager 停下了，没有动它。在此之前如果有什么已经移到了废纸篓，操作日志里都列着。请重新查看预览。",
         "Internal": "失败：Canager 发现自己这边有些地方对不上，所以没有开始，什么都没有改动。这是 Canager 的问题，不是你的 Mac 的问题。"
       }
     }
