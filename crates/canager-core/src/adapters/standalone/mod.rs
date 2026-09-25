@@ -2512,6 +2512,7 @@ mod tests {
         },
         uninstall: None,
         extra_locks: no_extra_locks,
+        backup_globs: &[],
     };
 
     #[tokio::test]
@@ -3856,6 +3857,7 @@ mod tests {
             preview: rustup::uninstall_preview,
         })),
         extra_locks: rustup::extra_locks,
+        backup_globs: &[],
     };
 
     /// rustup's own gate and, when it passes, the layout change: the

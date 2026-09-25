@@ -6,13 +6,14 @@
 //! path-list uninstall (`uninstall: Option<Uninstall>`, `Uninstall::Paths`);
 //! step E adds, for rustup, the `SecondToken` version parse, the
 //! `HttpTomlVersion` source, the `FlatFile` route, `$CARGO_HOME` paths,
-//! `extra_locks` and `Uninstall::Command`; step D adds `backup_globs`,
-//! `Expect::File`, the other `Latest` sources and an optional `upgrade`
+//! `extra_locks` and `Uninstall::Command`; step D added `backup_globs` and
+//! adds `Expect::File`, the other `Latest` sources and an optional `upgrade`
 //! (agy updates itself only). A variant or field defined before anything
 //! produces it is this project's most common defect (spec §十三 #41).
 
 use super::Detected;
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock, UninstallBlocked, Warning};
+use crate::scan::Glob;
 use std::path::PathBuf;
 
 /// A tool installed by its own installer, as data.
@@ -65,6 +66,15 @@ pub struct Recipe {
     /// `no_extra_locks`. Read by `StandaloneAdapter::locks`, for every
     /// plan.
     pub extra_locks: fn(&Detected) -> Vec<ResourceLock>,
+    /// The file-name patterns of the backup copies the tool's own updater
+    /// leaves beside its launcher (`~/.local/bin/agy.<time>.old`; spec
+    /// §3.5), empty for a tool whose updater leaves none. Read by the
+    /// path-list uninstall (`removal::listed_items`, check 5: each match
+    /// is moved before the launcher and listed in the preview) and by the
+    /// Unknown page's rule 4 (`recipes::backup_globs` →
+    /// `Session::scan_unknown`), so a fresh backup is the tool's and not a
+    /// stranger while the tool is installed.
+    pub backup_globs: &'static [Glob],
 }
 
 /// `Recipe.extra_locks` for a tool that touches nothing another source

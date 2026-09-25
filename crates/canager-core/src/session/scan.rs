@@ -21,13 +21,22 @@ impl Session {
     /// entries and their metadata -- and nothing is written back: the
     /// result is the caller's, not session state, and does not enter the
     /// `Snapshot` (it is not about the managed sources, and would either
-    /// bump `same_content` on every scan or be ignored by it).
+    /// bump `same_content` on every scan or be ignored by it). The
+    /// backup-file patterns of every standalone recipe
+    /// (`recipes::backup_globs`) are handed in for rule 4; only the ones
+    /// with an instance in the snapshot claim anything.
     pub fn scan_unknown(&self, env: &HostEnv) -> UnknownScan {
         let (instances, artifacts) = {
             let snapshot = self.snapshot.lock().unwrap();
             (snapshot.instances.clone(), snapshot.artifacts.clone())
         };
-        scan::scan_unknown(env, &instances, &artifacts, ScanBudget::default())
+        scan::scan_unknown(
+            env,
+            &instances,
+            &artifacts,
+            &crate::adapters::standalone::recipes::backup_globs(),
+            ScanBudget::default(),
+        )
     }
 }
 

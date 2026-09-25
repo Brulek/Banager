@@ -13,10 +13,10 @@
 
 use canager_core::adapters::brew::parse::parse_info_installed;
 use canager_core::model::{
-    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance,
+    ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, ManagerInstance, RemovedWhat,
 };
 use canager_core::runner::HostEnv;
-use canager_core::scan::{scan_dirs, EntryKind, ScanBudget, ScanStop, ScannedDir};
+use canager_core::scan::{scan_dirs, EntryKind, Glob, ScanBudget, ScanStop, ScannedDir};
 use canager_core::testing::manager_instance;
 use std::fs;
 use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
@@ -129,7 +129,14 @@ fn test_lists_an_executable_nobody_claims_with_kind_size_date_and_home_abbreviat
     let bin = home.dir(".local/bin");
     let tool = exe(&bin, "standalone-tool", b"#!/bin/sh\necho hi\n");
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
 
     assert_eq!(
         scan.scanned,
@@ -159,7 +166,14 @@ fn test_a_broken_symlink_is_listed_with_its_link_text_no_size_and_the_app_it_nam
     let target = Path::new("/Applications/Removed.app/Contents/Resources/scripts/index.js");
     link(&bin, "old-script", target);
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
 
     assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
     let entry = &scan.entries[0];
@@ -187,7 +201,14 @@ fn test_a_two_hop_symlink_resolves_to_its_final_target() {
     let hop = versions.join("3.12/bin/python3");
     link(&bin, "python3", &hop);
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
 
     assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
     let entry = &scan.entries[0];
@@ -205,7 +226,14 @@ fn test_skips_subdirectories_files_without_an_execute_bit_and_links_to_directori
     plain(&bin, "notes.txt");
     link(&bin, "data", Path::new("store"));
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
 
     assert!(
         scan.entries.is_empty(),
@@ -228,6 +256,7 @@ fn test_a_directory_that_does_not_exist_is_skipped_and_not_reported() {
     let scan = scan_dirs(
         &[missing, bin],
         &home.env(vec![]),
+        &[],
         &[],
         &[],
         ScanBudget::default(),
@@ -255,6 +284,7 @@ fn test_two_paths_to_the_same_directory_are_read_once() {
         &home.env(vec![]),
         &[],
         &[],
+        &[],
         ScanBudget::default(),
     );
 
@@ -276,6 +306,7 @@ fn test_stops_at_the_file_limit_and_says_which_limit() {
         &home.env(vec![]),
         &[],
         &[],
+        &[],
         ScanBudget::default(),
     );
     assert_eq!(full.stopped, None, "exactly the budget is not over it");
@@ -283,7 +314,14 @@ fn test_stops_at_the_file_limit_and_says_which_limit() {
     assert_eq!(full.entries.len(), 2000);
 
     exe(&bin, "t2000", b"x");
-    let over = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let over = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
     assert_eq!(
         over.stopped,
         Some(ScanStop::FileLimit { max_entries: 2000 })
@@ -309,7 +347,7 @@ fn test_stops_at_a_zero_time_budget_before_reading_anything() {
         max_duration: Duration::ZERO,
     };
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], budget);
+    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], &[], budget);
 
     assert_eq!(scan.stopped, Some(ScanStop::TimeLimit { max_secs: 0 }));
     assert!(scan.scanned.is_empty(), "{:?}", scan.scanned);
@@ -325,7 +363,14 @@ fn test_a_path_component_ending_in_dot_app_names_the_bundle() {
     let real = exe(&helpers, "helper-cli", b"x");
     link(&bin, "helper-cli", &real);
 
-    let scan = scan_dirs(&[bin], &home.env(vec![]), &[], &[], ScanBudget::default());
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
 
     assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
     assert_eq!(scan.entries[0].kind, EntryKind::Symlink);
@@ -355,6 +400,7 @@ fn test_rule_0_claims_an_instances_launcher_by_its_raw_path_even_when_dangling()
         &[bin],
         &home.env(vec![]),
         &[instance],
+        &[],
         &[],
         ScanBudget::default(),
     );
@@ -393,6 +439,7 @@ fn test_rule_0_claims_an_instances_launcher_and_nothing_else_in_its_directory() 
         &[bin],
         &home.env(vec![]),
         &[pip],
+        &[],
         &[],
         ScanBudget::default(),
     );
@@ -446,6 +493,7 @@ fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
         &home.env(vec![]),
         &[cargo],
         &[],
+        &[],
         ScanBudget::default(),
     );
 
@@ -488,6 +536,7 @@ fn test_rule_2_claims_a_cargo_installed_program_through_its_artifacts_path() {
         &home.env(vec![]),
         &[cargo],
         &[hexyl_artifact],
+        &[],
         ScanBudget::default(),
     );
 
@@ -519,6 +568,7 @@ fn test_rule_2_claims_a_shim_that_resolves_under_an_artifacts_path() {
         &home.env(vec![]),
         &[uv],
         &[ruff],
+        &[],
         ScanBudget::default(),
     );
 
@@ -573,6 +623,7 @@ fn test_rule_2_claims_a_cask_binary_link_into_the_app_the_cask_installed() {
         &home.env(vec![]),
         &[brew],
         &artifacts,
+        &[],
         ScanBudget::default(),
     );
 
@@ -607,6 +658,7 @@ fn test_rule_3_claims_a_link_into_homebrews_cellar_but_not_into_the_rest_of_its_
         &home.env(vec![]),
         &[brew],
         &[],
+        &[],
         ScanBudget::default(),
     );
 
@@ -633,6 +685,7 @@ fn test_rule_3_claims_what_resolves_into_a_root_an_instance_owns_outright() {
         &[bin],
         &home.env(vec![]),
         &[ollama],
+        &[],
         &[],
         ScanBudget::default(),
     );
@@ -672,6 +725,7 @@ fn test_rule_3_claims_an_npm_global_cli_under_a_home_prefix() {
         &home.env(vec![]),
         &[npm],
         &[],
+        &[],
         ScanBudget::default(),
     );
 
@@ -702,9 +756,79 @@ fn test_rule_3_never_treats_a_parent_derived_prefix_as_owned() {
         &home.env(vec![]),
         &[pip],
         &[],
+        &[],
         ScanBudget::default(),
     );
 
     assert_eq!(scan.attributed, 0);
     assert_eq!(scan.entries.len(), 2, "{:?}", scan.entries);
+}
+
+/// agy's pattern, as its recipe declares it (spec §3.5): a `'static` slice
+/// because the scan reads recipes' own constants.
+static AGY_GLOBS: [Glob; 1] = [Glob {
+    dir: "~/.local/bin",
+    prefix: "agy.",
+    suffix: ".old",
+    what: RemovedWhat::Backups,
+}];
+
+#[test]
+fn test_rule_4_claims_a_backup_the_updaters_pattern_names_only_while_the_tool_is_installed() {
+    // Spec §8.3 rule 4: `agy.<time>.old` beside an installed agy is the
+    // updater's leftover, not a stranger -- by name, in that directory, for
+    // a regular file. A link with such a name is not (the pattern describes
+    // the updater's copies, which are files) -- pointed at a file no rule
+    // claims, so that it is rule 4's `File` guard and not rule 1 (a link
+    // resolving to agy's own exe_path) that decides; a name without the
+    // middle is not; and once agy is gone the pattern is gone with its
+    // instance, so a leftover `.old` is listed, which is the truth.
+    let home = Home::new("rule-4");
+    let bin = home.dir(".local/bin");
+    let agy = exe(&bin, "agy", b"x");
+    exe(&bin, "agy.1727000000.old", b"x");
+    exe(&bin, "agy.old", b"x");
+    let elsewhere = home.dir("elsewhere");
+    let other = exe(&elsewhere, "other-tool", b"y");
+    link(&bin, "agy.2.old", &other);
+    let instance = ManagerInstance {
+        exe_path: agy.clone(),
+        prefix: home.path().join(".gemini/antigravity-cli"),
+        ..manager_instance("standalone-agy", "standalone-agy")
+    };
+    let globs = vec![("standalone-agy".to_string(), &AGY_GLOBS[..])];
+
+    let scan = scan_dirs(
+        std::slice::from_ref(&bin),
+        &home.env(vec![]),
+        std::slice::from_ref(&instance),
+        &[],
+        &globs,
+        ScanBudget::default(),
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        listed,
+        vec![tilde(".local/bin/agy.2.old"), tilde(".local/bin/agy.old")],
+        "{:?}",
+        scan.entries
+    );
+    assert_eq!(scan.attributed, 2, "agy (rule 0) and its backup (rule 4)");
+
+    // agy uninstalled: no instance, no pattern; the backup is a stranger.
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[],
+        &[],
+        &globs,
+        ScanBudget::default(),
+    );
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert!(
+        listed.contains(&tilde(".local/bin/agy.1727000000.old")),
+        "{listed:?}"
+    );
+    assert_eq!(scan.attributed, 0);
 }

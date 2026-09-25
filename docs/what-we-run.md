@@ -881,6 +881,11 @@ cask's `app` stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
 `lib/node_modules` under its global prefix; Ollama's `~/.ollama`; Claude
 Code's `~/.local/share/claude`).
+A regular file in a tool's own bin directory whose name is one of the
+backup patterns that tool's recipe declares — `agy.<time>.old` in
+`~/.local/bin`, the copies Antigravity's updater leaves — is that tool's
+while the tool is installed (`Recipe.backup_globs`, rule 4); once the tool
+is gone the pattern goes with it and such a file is listed.
 Everything else is listed, with where a broken link pointed, the app a
 program runs inside, and whether an installer with administrator rights
 put it there.

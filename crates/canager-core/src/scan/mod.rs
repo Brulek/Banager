@@ -24,7 +24,7 @@
 //! `impl Adapter` (phase 4 spec §8.1, Q12; its appendix C records the
 //! deviation).
 
-use crate::model::{InstalledArtifact, InstanceId, ManagerInstance};
+use crate::model::{InstalledArtifact, InstanceId, ManagerInstance, RemovedWhat};
 use crate::runner::HostEnv;
 use serde::{Deserialize, Serialize};
 use std::os::unix::fs::MetadataExt;
@@ -85,6 +85,51 @@ pub struct ScannedDir {
     /// `HOME` to strip, and this is data, not a sentence.
     pub path: PathBuf,
     pub entries: u32,
+}
+
+/// A file-name pattern for the backup copies a tool's own updater leaves
+/// beside its launcher -- `~/.local/bin/agy.<time>.old` (agy.md §4, spec
+/// §3.5) -- as `prefix` + something + `suffix` on a regular file directly
+/// in `dir`; no glob crate. Defined here rather than beside the recipes
+/// because this scan reads it (rule 4) and `adapters` depends on `scan`,
+/// never the reverse (spec §3.1). Read by `Known::index`/`claimant` (rule 4,
+/// through `Recipe.backup_globs` via `Session::scan_unknown`) and by
+/// `adapters::standalone::removal::listed_items` (check 5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Glob {
+    /// `~/…`: the one directory the pattern applies to, never recursed.
+    pub dir: &'static str,
+    pub prefix: &'static str,
+    pub suffix: &'static str,
+    /// What a match is, for the uninstall preview's sentence
+    /// (`Warning::WillTrash`).
+    pub what: RemovedWhat,
+}
+
+impl Glob {
+    /// `dir` under `home`, joined the way a recipe path is
+    /// (`adapters::standalone::route::expand`): the same spelling rule, so
+    /// an instance's raw `exe_path` and a pattern's directory come from
+    /// one home. A `dir` not starting with `~/` is a programming error in a
+    /// recipe constant, which
+    /// `recipes::tests::test_every_backup_glob_is_under_home_and_names_a_pattern`
+    /// catches before this can.
+    pub fn dir_under(&self, home: &Path) -> PathBuf {
+        let rest = self
+            .dir
+            .strip_prefix("~/")
+            .unwrap_or_else(|| panic!("glob dir {:?} must start with ~/", self.dir));
+        home.join(rest)
+    }
+
+    /// Whether a file named `name` is one of this pattern's: `prefix`
+    /// first, `suffix` last, and at least one character between -- so a
+    /// name that is exactly `prefix + suffix` (`agy..old`) is not.
+    pub fn matches_name(&self, name: &str) -> bool {
+        name.len() > self.prefix.len() + self.suffix.len()
+            && name.starts_with(self.prefix)
+            && name.ends_with(self.suffix)
+    }
 }
 
 /// What one listed entry is. Read by the page's kind badge
@@ -339,6 +384,10 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
 /// 3. The entry resolves to a path under a directory the instance's
 ///    adapter *owns* -- `owned_roots`, the longest matching root when
 ///    roots nest (`owned` below).
+/// 4. The entry is a regular file in a directory an *installed* tool's
+///    `backup_globs` name, and its name matches one of them (`agy.<time>.old`
+///    in `~/.local/bin`): the tool's own updater left it. Read from
+///    `Recipe.backup_globs` (phase 4 step D); without the instance, listed.
 struct Known {
     exe_raw: Vec<(PathBuf, InstanceId)>,
     exe_canonical: Vec<(PathBuf, InstanceId)>,
@@ -347,10 +396,22 @@ struct Known {
     /// instance that owns it. A root that does not exist (Homebrew with
     /// no casks has no `Caskroom`) is simply absent.
     owned: Vec<(PathBuf, InstanceId)>,
+    /// Rule 4: for every instance whose adapter declares backup-file
+    /// patterns (`Recipe.backup_globs`, handed in by `Session::scan_unknown`
+    /// keyed by adapter id), each pattern's directory, canonical, with the
+    /// pattern and the instance. A directory that does not exist is simply
+    /// absent; a tool with no instance contributes nothing, so its leftover
+    /// backup is listed.
+    backups: Vec<(PathBuf, Glob, InstanceId)>,
 }
 
 impl Known {
-    fn index(instances: &[ManagerInstance], artifacts: &[InstalledArtifact]) -> Known {
+    fn index(
+        instances: &[ManagerInstance],
+        artifacts: &[InstalledArtifact],
+        globs: &[(String, &'static [Glob])],
+        home: &Path,
+    ) -> Known {
         let mut exe_raw = Vec::with_capacity(instances.len());
         let mut exe_canonical = Vec::with_capacity(instances.len());
         for inst in instances {
@@ -376,37 +437,78 @@ impl Known {
                 })
             })
             .collect();
+        let backups = instances
+            .iter()
+            .flat_map(|inst| {
+                globs
+                    .iter()
+                    .filter(move |(adapter_id, _)| *adapter_id == inst.adapter_id)
+                    .flat_map(move |(_, patterns)| {
+                        patterns.iter().filter_map(move |glob| {
+                            let dir = std::fs::canonicalize(glob.dir_under(home)).ok()?;
+                            Some((dir, *glob, inst.id.clone()))
+                        })
+                    })
+            })
+            .collect();
         Known {
             exe_raw,
             exe_canonical,
             artifact_roots,
             owned,
+            backups,
         }
     }
 
-    /// The source that put `raw` (real path `resolved`; `None` for a broken
-    /// link) there, by the first rule that matches -- or `None`: unknown.
-    fn claimant(&self, raw: &Path, resolved: Option<&Path>) -> Option<&InstanceId> {
+    /// The source that put `raw` (in the canonical directory `dir`; real
+    /// path `resolved`, `None` for a broken link; `kind` what it is) there,
+    /// by the first rule that matches -- or `None`: unknown.
+    fn claimant(
+        &self,
+        raw: &Path,
+        dir: &Path,
+        resolved: Option<&Path>,
+        kind: EntryKind,
+    ) -> Option<&InstanceId> {
         if let Some((_, id)) = self.exe_raw.iter().find(|(exe, _)| exe == raw) {
             return Some(id);
         }
-        let resolved = resolved?;
-        if let Some((_, id)) = self.exe_canonical.iter().find(|(exe, _)| exe == resolved) {
-            return Some(id);
+        if let Some(resolved) = resolved {
+            if let Some((_, id)) = self.exe_canonical.iter().find(|(exe, _)| exe == resolved) {
+                return Some(id);
+            }
+            if let Some((_, id)) = self
+                .artifact_roots
+                .iter()
+                .find(|(root, _)| resolved.starts_with(root))
+            {
+                return Some(id);
+            }
+            // The longest matching root: the closest owner when roots nest.
+            if let Some((_, id)) = self
+                .owned
+                .iter()
+                .filter(|(root, _)| resolved.starts_with(root))
+                .max_by_key(|(root, _)| root.as_os_str().len())
+            {
+                return Some(id);
+            }
         }
-        if let Some((_, id)) = self
-            .artifact_roots
-            .iter()
-            .find(|(root, _)| resolved.starts_with(root))
-        {
-            return Some(id);
+        // Rule 4: a backup the tool's own updater left, by name, in the
+        // pattern's directory, a regular file -- a link of that name is
+        // somebody's link, not the updater's copy.
+        if kind == EntryKind::File {
+            if let Some(name) = raw.file_name().and_then(|name| name.to_str()) {
+                if let Some((_, _, id)) = self
+                    .backups
+                    .iter()
+                    .find(|(glob_dir, glob, _)| glob_dir == dir && glob.matches_name(name))
+                {
+                    return Some(id);
+                }
+            }
         }
-        // The longest matching root: the closest owner when roots nest.
-        self.owned
-            .iter()
-            .filter(|(root, _)| resolved.starts_with(root))
-            .max_by_key(|(root, _)| root.as_os_str().len())
-            .map(|(_, id)| id)
+        None
     }
 }
 
@@ -481,12 +583,14 @@ fn examine(raw: &Path, home: &Path, euid: u32) -> Option<UnknownEntry> {
 /// is checked before every `read_dir`, and both limits before every entry
 /// (`ScanBudget`); when one trips, what was examined so far is returned
 /// as it is, with `stopped` saying which limit -- a directory whose first
-/// entry tripped it is not reported as read.
+/// entry tripped it is not reported as read. `globs` are the installed
+/// tools' backup-file patterns by adapter id (rule 4).
 pub fn scan_dirs(
     dirs: &[PathBuf],
     env: &HostEnv,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
+    globs: &[(String, &'static [Glob])],
     budget: ScanBudget,
 ) -> UnknownScan {
     let file_stop = ScanStop::FileLimit {
@@ -495,7 +599,7 @@ pub fn scan_dirs(
     let time_stop = ScanStop::TimeLimit {
         max_secs: u32::try_from(budget.max_duration.as_secs()).unwrap_or(u32::MAX),
     };
-    let known = Known::index(instances, artifacts);
+    let known = Known::index(instances, artifacts, globs, &env.home);
     // The clock starts here, after indexing: `ScanBudget::max_duration`
     // bounds the walk, not the `canonicalize` per known path above.
     let started = Instant::now();
@@ -512,7 +616,7 @@ pub fn scan_dirs(
         if seen.contains(&canonical) {
             continue;
         }
-        seen.push(canonical);
+        seen.push(canonical.clone());
         if started.elapsed() >= budget.max_duration {
             stopped = Some(time_stop.clone());
             break;
@@ -551,7 +655,7 @@ pub fn scan_dirs(
             let Some(entry) = examine(&raw, &env.home, env.euid) else {
                 continue;
             };
-            match known.claimant(&raw, entry.resolved.as_deref()) {
+            match known.claimant(&raw, &canonical, entry.resolved.as_deref(), entry.kind) {
                 Some(_) => attributed += 1,
                 None => entries.push(entry),
             }
@@ -573,14 +677,23 @@ pub fn scan_dirs(
 /// over its arguments and the file system; synchronous, and blocking for
 /// up to `budget.max_duration` -- the Tauri shell runs it on the blocking
 /// pool (`ipc::scan_unknown`). `instances` and `artifacts` are the
-/// snapshot's, cloned by `Session::scan_unknown`.
+/// snapshot's, cloned by `Session::scan_unknown`. `globs` are the
+/// installed tools' backup-file patterns by adapter id (rule 4).
 pub fn scan_unknown(
     env: &HostEnv,
     instances: &[ManagerInstance],
     artifacts: &[InstalledArtifact],
+    globs: &[(String, &'static [Glob])],
     budget: ScanBudget,
 ) -> UnknownScan {
-    scan_dirs(&candidate_dirs(env), env, instances, artifacts, budget)
+    scan_dirs(
+        &candidate_dirs(env),
+        env,
+        instances,
+        artifacts,
+        globs,
+        budget,
+    )
 }
 
 #[cfg(test)]
@@ -762,6 +875,58 @@ mod tests {
     }
 
     #[test]
+    fn test_glob_matches_a_prefix_something_and_a_suffix_on_the_name_alone() {
+        // agy's updater leaves `agy.<time>.old` beside the launcher
+        // (spec §3.5). Something has to sit between prefix and suffix, so
+        // `agy..old` and `agy.old` are not matches; the name is all that is
+        // looked at here -- the kind of file is the caller's (`claimant`,
+        // `removal::listed_items`).
+        let glob = Glob {
+            dir: "~/.local/bin",
+            prefix: "agy.",
+            suffix: ".old",
+            what: RemovedWhat::Backups,
+        };
+        for name in [
+            "agy.1727000000.old",
+            "agy.2026-09-25T12-25-00.old",
+            "agy.x.old",
+        ] {
+            assert!(glob.matches_name(name), "{name}");
+        }
+        for name in [
+            "agy",
+            "agy.old",
+            "agy..old",
+            "agy.1727000000.old.bak",
+            "xagy.1.old",
+            "agy.1.OLD",
+        ] {
+            assert!(!glob.matches_name(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn test_glob_dir_under_joins_like_a_recipe_path() {
+        // The scan compares raw spellings (F's rule 0, `route::expand`'s
+        // doc), so the pattern's directory is spelled off the same home.
+        let glob = Glob {
+            dir: "~/.local/bin",
+            prefix: "agy.",
+            suffix: ".old",
+            what: RemovedWhat::Backups,
+        };
+        assert_eq!(
+            glob.dir_under(Path::new("/Users/someone")),
+            PathBuf::from("/Users/someone/.local/bin")
+        );
+        assert_eq!(
+            glob.dir_under(Path::new("/Volumes/Data/homes/someone")),
+            PathBuf::from("/Volumes/Data/homes/someone/.local/bin")
+        );
+    }
+
+    #[test]
     fn test_owned_roots_table() {
         let brew = ManagerInstance {
             prefix: PathBuf::from("/opt/homebrew"),
@@ -867,9 +1032,11 @@ mod tests {
             prefix: inner.clone(),
             ..crate::testing::manager_instance("ollama", "ollama:http://inner:11434")
         };
-        let known = Known::index(&[outer_inst, inner_inst], &[]);
+        let known = Known::index(&[outer_inst, inner_inst], &[], &[], &tmp);
         assert_eq!(
-            known.claimant(&entry, Some(&entry)).map(String::as_str),
+            known
+                .claimant(&entry, &inner_bin, Some(&entry), EntryKind::File)
+                .map(String::as_str),
             Some("ollama:http://inner:11434")
         );
         let _ = std::fs::remove_dir_all(&tmp);

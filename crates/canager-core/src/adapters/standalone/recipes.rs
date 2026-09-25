@@ -12,6 +12,7 @@ use super::recipe::{
 use super::rustup;
 use crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF;
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
+use crate::scan::Glob;
 
 /// Claude Code, the native install (`curl -fsSL https://claude.ai/install.sh
 /// | bash`, run by the user; Canager never runs it).
@@ -118,6 +119,7 @@ pub static CLAUDE: Recipe = Recipe {
         ],
     }),
     extra_locks: no_extra_locks,
+    backup_globs: &[],
 };
 
 /// rustup, the Rust toolchain installer, installed by its own script
@@ -226,12 +228,24 @@ pub static RUSTUP: Recipe = Recipe {
         preview: rustup::uninstall_preview,
     })),
     extra_locks: rustup::extra_locks,
+    backup_globs: &[],
 };
 
 /// Every tool this adapter type registers, in registration order. The
 /// refresh fans out alphabetically by adapter id regardless
 /// (`refresh_round`), so this order is only the reading order.
 pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
+
+/// Every registered tool's backup-file patterns, keyed by its adapter id
+/// (`standalone-<id>`), for the Unknown page's rule 4
+/// (`Session::scan_unknown` → `scan::scan_unknown`). A tool with none
+/// contributes an empty slice, which claims nothing.
+pub fn backup_globs() -> Vec<(String, &'static [Glob])> {
+    RECIPES
+        .iter()
+        .map(|recipe| (format!("standalone-{}", recipe.id), recipe.backup_globs))
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -631,6 +645,55 @@ mod tests {
         };
         for argv in [RUSTUP.upgrade.args, RUSTUP.version.args, cmd.args] {
             assert_ne!(argv.first(), Some(&"update"), "rustup: {argv:?}");
+        }
+    }
+
+    #[test]
+    fn test_every_backup_glob_is_under_home_and_names_a_pattern() {
+        // `Glob::dir_under` joins `~/` and nothing else, and check 1 refuses
+        // a match whose folder is a shared one, so a pattern's folder must
+        // be under home and deeper than the never-list; a pattern with an
+        // empty prefix or suffix would match every file in the folder.
+        for recipe in RECIPES {
+            for glob in recipe.backup_globs {
+                let rest = glob.dir.strip_prefix("~/").unwrap_or_else(|| {
+                    panic!("{}: glob dir {:?} must start with ~/", recipe.id, glob.dir)
+                });
+                assert!(
+                    !rest.is_empty() && !rest.ends_with('/') && !rest.contains(".."),
+                    "{}: glob dir {:?} must name one plain folder",
+                    recipe.id,
+                    glob.dir
+                );
+                assert!(
+                    !SHARED_FOLDERS.contains(&rest),
+                    "{}: glob dir {:?} is a shared folder; check 1 would refuse every match",
+                    recipe.id,
+                    glob.dir
+                );
+                assert!(
+                    !glob.prefix.is_empty(),
+                    "{}: an empty prefix matches everything",
+                    recipe.id
+                );
+                assert!(
+                    !glob.suffix.is_empty(),
+                    "{}: an empty suffix matches everything",
+                    recipe.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_backup_globs_lists_every_recipe_under_its_adapter_id() {
+        // `Session::scan_unknown` hands this to the scan's rule 4, keyed the
+        // way the scan keys instances: by adapter id.
+        let listed = backup_globs();
+        assert_eq!(listed.len(), RECIPES.len());
+        for (recipe, (id, globs)) in RECIPES.iter().zip(&listed) {
+            assert_eq!(id, &format!("standalone-{}", recipe.id));
+            assert!(std::ptr::eq(*globs, recipe.backup_globs));
         }
     }
 }
