@@ -823,7 +823,7 @@ describe("UpdatesPage", () => {
     const advice = await findByText(
       /Install Python command-line tools with pipx or uv instead/,
     );
-    const reason = await findByText(/Canager couldn't check this one for updates just now/);
+    const reason = await findByText(/Canager couldn't check this one for updates/);
     // Two separate elements: the advice is the source's banner, the reason
     // is the row's description.
     expect(advice).not.toBe(reason);
@@ -863,7 +863,7 @@ describe("UpdatesPage", () => {
     // What a person who does not write code is told instead: each row
     // that it could not be checked, in one short sentence...
     expect(
-      queryAllByText("Canager couldn't check this one for updates just now."),
+      queryAllByText("Canager couldn't check this one for updates."),
     ).toHaveLength(3);
     // ...and, once for the page, what that might mean and where to go if
     // they want the rest.
@@ -940,7 +940,7 @@ describe("UpdatesPage", () => {
 
     await findByText("urllib3");
     const reason = await findByText(/Could not fetch URL https:\/\/pypi\.org\/simple\//);
-    expect(reason.textContent).toMatch(/^Canager couldn't check this one for updates just now\./);
+    expect(reason.textContent).toMatch(/^Canager couldn't check this one for updates\./);
     expect(reason.className).not.toContain("truncate");
     // The row already carries the tool's words, so the page's summary --
     // which exists to point at this switch -- has nothing to add.
@@ -1769,7 +1769,7 @@ describe("UpdatesPage", () => {
     artifacts = [claudeArtifact];
     const { findByText, queryByText, queryAllByRole } = renderWithProviders(<UpdatesPage />);
 
-    expect(await findByText("Canager couldn't check this one for updates just now.")).toBeInTheDocument();
+    expect(await findByText("Canager couldn't check this one for updates.")).toBeInTheDocument();
     expect(queryByText(/usually updates itself/)).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
