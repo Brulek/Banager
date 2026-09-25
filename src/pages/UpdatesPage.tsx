@@ -159,6 +159,30 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   LauncherOnly: true,
 };
 
+/**
+ * Whether each note means Canager could not fully check this source for
+ * updates this time, so finding none there is not news that there are
+ * none: Homebrew's list of software could not be downloaded
+ * (`IndexMayBeStale`), so its updates were checked against a copy of that
+ * list that may be out of date; it is still downloading (`IndexUpdating`),
+ * so they were not checked this time at all; or only the launcher is left
+ * (`LauncherOnly`), so there is no installed version to check. The four
+ * PATH notes are about which copy runs when the tool's name is typed in
+ * Terminal, not about the check. Read by `everySourceChecked`, which
+ * chooses the sentence the page shows when there are no updates at all.
+ * A `Record`, so a note added to `InstanceNote` without an answer here
+ * fails `tsc`.
+ */
+const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
+  IndexMayBeStale: true,
+  IndexUpdating: true,
+  NotOnPath: false,
+  ShadowedByHomebrew: false,
+  ShadowedByNpm: false,
+  ShadowedByOther: false,
+  LauncherOnly: true,
+};
+
 export function UpdatesPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
@@ -238,10 +262,12 @@ export function UpdatesPage() {
 
   // What the two early returns below show above their one sentence. Both
   // run with no visible rows, so every group is empty there and this list
-  // is state-only -- which is what decides between "Everything is up to
-  // date" and "No updates in the sources Canager could check". A read-only
-  // source is one Canager *can* check. With no rows there is nothing for a
-  // notice to be mistaken as describing, so they can stand together.
+  // is state-only. It does not decide between "Everything is up to date"
+  // and "No updates in the sources Canager could check" (`everySourceChecked`
+  // does): a state notice can be information only -- which copy runs when
+  // you type a tool's name -- about a source Canager did check. With no
+  // rows there is nothing for a notice to be mistaken as describing, so
+  // they can stand together.
   const instanceNotices = groups.flatMap((group) => group.notices);
 
   // The list proper: each source's heading, then its rows. A source with
@@ -726,15 +752,25 @@ export function UpdatesPage() {
   // up to date" over a stopped Ollama or a Homebrew whose catalogue could
   // not be downloaded is precisely the lie this page used to tell: no
   // candidates is exactly what an unreachable source produces, and the
-  // page read that silence as good news. When a source has something to
-  // say, the headline drops to what Canager can honestly claim -- nothing
-  // to update *in the sources it managed to check*.
+  // page read that silence as good news. When a source did not answer, or
+  // carries a note that means its updates were not fully checked
+  // (`NOTE_LEAVES_UPDATES_UNCHECKED`), the headline drops to what Canager
+  // can honestly claim -- nothing to update *in the sources it managed to
+  // check*. Not for every notice: one that is information only -- which
+  // copy runs when you type a tool's name -- still goes above the
+  // sentence, and leaves the sentence alone. A read-only source is one
+  // Canager *can* check.
   if (snapshot.updates.length === 0) {
+    const everySourceChecked = snapshot.instances.every(
+      (instance) =>
+        isAvailable(instance) &&
+        !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]),
+    );
     return (
       <div className="p-4">
         <SourceNotices notices={instanceNotices} />
         <p className="text-sm text-[var(--color-muted)]">
-          {instanceNotices.length === 0 ? t("updates.upToDate") : t("updates.noneCheckable")}
+          {everySourceChecked ? t("updates.upToDate") : t("updates.noneCheckable")}
         </p>
       </div>
     );

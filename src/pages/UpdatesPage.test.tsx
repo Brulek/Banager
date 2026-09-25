@@ -1412,6 +1412,24 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
+  it("does not say everything is up to date while Homebrew is still downloading its list of software", async () => {
+    // Nothing has failed, so the notice is information rather than a
+    // warning -- but this refresh did not check Homebrew for updates: its
+    // candidates are the previous refresh's (`InstanceNote::IndexUpdating`
+    // in crates/canager-core/src/model.rs), so none from it is not news
+    // that there are none.
+    updates = [];
+    instances = [
+      { ...snapshot.instances[0], status: { unavailable: null, notes: ["IndexUpdating"] } },
+      ...snapshot.instances.slice(1),
+    ];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("Homebrew is still downloading its latest list of software");
+    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
   it("shows a silent source's notice under its own heading when there are updates as well", async () => {
     instances = [...snapshot.instances, stoppedOllama];
     const { findByText, getByText } = renderWithProviders(<UpdatesPage />);
@@ -1813,6 +1831,44 @@ describe("UpdatesPage", () => {
       expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     },
   );
+
+  it.each(pathNotes)(
+    "says everything is up to date under a %s notice: which copy runs is not whether Canager could check it",
+    async (note, noticeTitle) => {
+      // One source, Claude Code, which answered: with no updates listed,
+      // Canager read this copy's version and the published one, and the
+      // published one is not newer. The note is only about what typing
+      // `claude` in Terminal runs, so its notice goes above the sentence
+      // and leaves the sentence alone. "No updates in the sources Canager
+      // could check" would say that some source could not be checked, and
+      // none here went unchecked.
+      instances = [{ ...claudeInstance, status: { unavailable: null, notes: [note] } }];
+      updates = [];
+      artifacts = [claudeArtifact];
+      const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+      expect(await findByText(noticeTitle)).toBeInTheDocument();
+      expect(await findByText("Everything is up to date")).toBeInTheDocument();
+      expect(queryByText("No updates in the sources Canager could check")).toBeNull();
+    },
+  );
+
+  it("does not say everything is up to date when only Claude Code's launcher is left: there was no installed version to check", async () => {
+    // Its program files are gone, so `StandaloneAdapter::check_updates`
+    // returns before reading either version: there is no installed one to
+    // compare with the published one. No updates from it means it was not
+    // checked.
+    instances = [
+      { ...claudeInstance, version: null, status: { unavailable: null, notes: ["LauncherOnly"] } },
+    ];
+    updates = [];
+    artifacts = [{ ...claudeArtifact, version: "", path: null }];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
+    expect(await findByText("Only the claude link is left")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).toBeNull();
+  });
 
   it("has the behind-only sentence in Chinese too, with no 'just run it'", () => {
     expect(zhCN.updates.selfUpdatingHintNotRunByName).toBe(

@@ -28,9 +28,8 @@ const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
  * running" notice with a button to start it. Both pages render these
  * under the source's own heading, directly above that source's rows and
  * no one else's; the Updates page also renders them above its "nothing to
- * update" sentence, where there are no rows at all and the page would
- * otherwise announce that everything is up to date. `SourceNotices` maps
- * `sourceNoticesFor`'s specs onto this.
+ * update" sentence, where there are no rows at all and that sentence names
+ * no source. `SourceNotices` maps `sourceNoticesFor`'s specs onto this.
  *
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.
