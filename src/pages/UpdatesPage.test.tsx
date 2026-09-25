@@ -176,9 +176,13 @@ function issuedPlanFor(request: OpRequest, id: number) {
     id: String(id),
     plan: {
       request,
-      program: "/opt/homebrew/bin/brew",
-      args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
-      env: [],
+      action: {
+        Command: {
+          program: "/opt/homebrew/bin/brew",
+          args: ["upgrade", request.artifact_kind === "Cask" ? "--cask" : "--formula", request.name],
+          env: [],
+        },
+      },
       needs_password: needsPassword.has(request.name),
       locks: ["brew:/opt/homebrew"],
       cancel_policy: "KillThenReconcile",

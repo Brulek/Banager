@@ -91,6 +91,7 @@
   },
   "commandPreview": {
     "label": "将执行：",
+    "trashLabel": "将执行：",
     "needsPassword": "这一步会要求你输入 Mac 密码。"
   },
   "warnings": {
@@ -230,7 +231,8 @@
     "affectedTitle": "删除后这些会受影响：",
     "confirm": "卸载",
     "cancel": "取消",
-    "affectedBlocksConfirm": "上面这些还需要 {{name}}，Canager 不会把它卸载掉。如果想把它们一起删掉，请先到“已安装”列表里把这些卸载；不想的话，让 {{name}} 留着就行。"
+    "affectedBlocksConfirm": "上面这些还需要 {{name}}，Canager 不会把它卸载掉。如果想把它们一起删掉，请先到“已安装”列表里把这些卸载；不想的话，让 {{name}} 留着就行。",
+    "trashPreview_other": "Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。"
   },
   "settings": {
     "title": "设置",

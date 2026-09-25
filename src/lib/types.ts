@@ -175,11 +175,22 @@ export interface ManagerInstance {
  * adapter produces `NoCancel` yet.
  */
 export type CancelPolicy = "KillThenReconcile" | "NoCancel";
+/**
+ * Mirrors `PlanAction` in crates/canager-core/src/model.rs: what a plan
+ * does when it runs. Externally tagged single-key objects. `Command` is
+ * one program and one argv, spawned by `run_plan`; `TrashPaths` is a
+ * path-list uninstall of a tool installed by its own installer, which
+ * Canager carries out itself by moving each path to the Trash (phase 4
+ * step C) -- no argv exists, so `CommandPreview` shows a sentence for it.
+ * `CommandPreview` branches on `"Command" in action` with a `never`
+ * default, so a third arm fails `tsc` until it has a preview.
+ */
+export type PlanAction =
+  | { Command: { program: string; args: string[]; env: [string, string][] } }
+  | { TrashPaths: { paths: string[] } };
 export interface Plan {
   request: OpRequest;
-  program: string;
-  args: string[];
-  env: [string, string][];
+  action: PlanAction;
   needs_password: boolean;
   locks: string[];
   cancel_policy: CancelPolicy;

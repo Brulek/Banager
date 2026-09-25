@@ -598,7 +598,7 @@ mod tests {
     use canager_core::events::{EventSink, OpId, OperationEvent};
     use canager_core::model::{
         ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        OpStatus, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+        OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -676,9 +676,11 @@ mod tests {
         ) -> Result<Plan, AdapterError> {
             Ok(Plan {
                 request: req.clone(),
-                program: inst.exe_path.clone(),
-                args: vec!["do".to_string(), req.name.clone()],
-                env: vec![],
+                action: PlanAction::Command {
+                    program: inst.exe_path.clone(),
+                    args: vec!["do".to_string(), req.name.clone()],
+                    env: vec![],
+                },
                 needs_password: false,
                 locks: vec![ResourceLock(inst.id.clone())],
                 cancel_policy: self.cancel_policy,
@@ -1339,7 +1341,10 @@ mod tests {
         let issued = plan_operation_impl(&state, req)
             .await
             .expect("plan_operation_impl");
-        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+        assert_eq!(
+            canager_core::testing::command_args(&issued.plan),
+            vec!["do".to_string(), "jq".to_string()]
+        );
     }
 
     #[tokio::test]

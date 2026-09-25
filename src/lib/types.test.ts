@@ -5,6 +5,7 @@ import type {
   OperationEvent,
   UiEvent,
   Plan,
+  PlanAction,
   OpSummary,
   ReadOnlyReason,
   InstanceStatus,
@@ -280,9 +281,9 @@ describe("types", () => {
         artifact_kind: "Formula",
         name: "jq",
       },
-      program: "/opt/homebrew/bin/brew",
-      args: ["install", "--formula", "jq"],
-      env: [],
+      action: {
+        Command: { program: "/opt/homebrew/bin/brew", args: ["install", "--formula", "jq"], env: [] },
+      },
       needs_password: false,
       locks: ["brew:/opt/homebrew"],
       cancel_policy: "KillThenReconcile",
@@ -313,6 +314,22 @@ describe("types", () => {
     expect(roundTrip(opSummary).status).toBe("Running");
     expect(roundTrip(opSummary).outcome).toBeNull();
     expect(roundTrip(settings).language).toBe("ZhCn");
+  });
+
+  it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {
+    // `test_plan_action_is_externally_tagged_on_the_wire` in
+    // crates/canager-core/src/model.rs asserts these exact strings from the
+    // Rust side. `CommandPreview.tsx` branches on `"Command" in action`.
+    const command: PlanAction = {
+      Command: { program: "/opt/homebrew/bin/brew", args: ["install"], env: [["A", "1"]] },
+    };
+    const trash: PlanAction = { TrashPaths: { paths: ["/Users/someone/.local/bin/claude"] } };
+    expect(JSON.stringify(command)).toBe(
+      '{"Command":{"program":"/opt/homebrew/bin/brew","args":["install"],"env":[["A","1"]]}}',
+    );
+    expect(JSON.stringify(trash)).toBe('{"TrashPaths":{"paths":["/Users/someone/.local/bin/claude"]}}');
+    expect(roundTrip(command)).toEqual(command);
+    expect(roundTrip(trash)).toEqual(trash);
   });
 
   it("spells the unknown-source scan's shapes as Rust sends them", () => {

@@ -1083,7 +1083,7 @@ export function UpdatesPage() {
                   </p>
                 ) : null}
                 {item.issued !== null ? (
-                  <CommandPreview program={item.issued.plan.program} args={item.issued.plan.args} />
+                  <CommandPreview action={item.issued.plan.action} />
                 ) : null}
                 {itemWarnings.length > 0 ? (
                   <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">

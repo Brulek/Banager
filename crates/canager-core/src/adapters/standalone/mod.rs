@@ -31,8 +31,8 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, InstallReason, InstalledArtifact, InstanceNote, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -403,13 +403,15 @@ impl StandaloneAdapter {
                 let upgrade = &self.recipe.upgrade;
                 Ok(Plan {
                     request: req.clone(),
-                    // The launcher, exactly as previewed: never a program
-                    // the recipe could name (spec 附录 B).
-                    program: inst.exe_path.clone(),
-                    args: upgrade.args.iter().map(|a| a.to_string()).collect(),
-                    // Not the version read's environment: `claude update`
-                    // must not be told to stop updating (spec §3.4).
-                    env: Vec::new(),
+                    action: PlanAction::Command {
+                        // The launcher, exactly as previewed: never a program
+                        // the recipe could name (spec 附录 B).
+                        program: inst.exe_path.clone(),
+                        args: upgrade.args.iter().map(|a| a.to_string()).collect(),
+                        // Not the version read's environment: `claude update`
+                        // must not be told to stop updating (spec §3.4).
+                        env: Vec::new(),
+                    },
                     // Everything lives under $HOME (spec §五).
                     needs_password: false,
                     locks: vec![ResourceLock(inst.id.clone())],
@@ -647,6 +649,7 @@ mod tests {
         ResourceLock, Unavailable, UninstallBlocked, UpdateChannel, Warning,
     };
     use crate::runner::{CommandOutput, MockRunner, RunnerError};
+    use crate::testing::{command_args, command_env, command_program};
     // For `RecordingRunner` below. Named here as well as through
     // `super::*` (the parent imports it for `impl Adapter`), so this impl
     // does not lean on the imports above; an explicit import beside a glob
@@ -1487,9 +1490,12 @@ mod tests {
             .await
             .expect("plan");
 
-        assert_eq!(plan.program, layout.launcher);
-        assert_eq!(plan.args, vec!["update".to_string()]);
-        assert!(plan.env.is_empty(), "upgrade adds no environment override");
+        assert_eq!(command_program(&plan), layout.launcher);
+        assert_eq!(command_args(&plan), vec!["update".to_string()]);
+        assert!(
+            command_env(&plan).is_empty(),
+            "upgrade adds no environment override"
+        );
         assert!(!plan.needs_password);
         assert_eq!(
             plan.locks,

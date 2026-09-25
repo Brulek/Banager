@@ -6,8 +6,8 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, ReadOnlyReason, Reconciled, ResourceLock,
-    Scope, SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled,
+    ResourceLock, Scope, SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -381,9 +381,11 @@ impl NpmAdapter {
         };
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args,
-            env: self.env_vec(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args,
+                env: self.env_vec(),
+            },
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -585,6 +587,7 @@ fn parse_search(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::command_args;
 
     #[test]
     fn parse_ls_global_matches_the_recorded_fixture() {
@@ -1135,7 +1138,7 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["install", "-g", "jq"]);
+        assert_eq!(command_args(&plan), vec!["install", "-g", "jq"]);
         assert!(!plan.needs_password);
         assert_eq!(plan.locks, vec![ResourceLock(inst.id.clone())]);
         assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
@@ -1153,7 +1156,7 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["uninstall", "-g", "jq"]);
+        assert_eq!(command_args(&plan), vec!["uninstall", "-g", "jq"]);
     }
 
     #[tokio::test]
@@ -1168,7 +1171,7 @@ mod tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["install", "-g", "jq@latest"]);
+        assert_eq!(command_args(&plan), vec!["install", "-g", "jq@latest"]);
     }
 
     #[tokio::test]

@@ -6,8 +6,8 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -265,9 +265,11 @@ impl UvAdapter {
         };
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args,
-            env: Vec::new(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args,
+                env: Vec::new(),
+            },
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -357,6 +359,7 @@ impl Adapter for UvAdapter {
 mod tests {
     use super::*;
     use crate::model::Warning;
+    use crate::testing::command_args;
 
     #[test]
     fn test_second_token_reads_uvs_recorded_version_line() {
@@ -529,7 +532,7 @@ mod tests {
                 name: "ruff".to_string(),
             };
             let plan = UvAdapter::plan(&adapter, &inst, &req).await.expect("plan");
-            assert_eq!(plan.args, expected);
+            assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
         }
     }

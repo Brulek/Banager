@@ -7,8 +7,8 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateBlocked, UpdateCandidate, UpdateChannel,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UpdateBlocked, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -421,9 +421,11 @@ impl PipxAdapter {
         };
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args,
-            env: Vec::new(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args,
+                env: Vec::new(),
+            },
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -513,6 +515,7 @@ impl Adapter for PipxAdapter {
 mod tests {
     use super::*;
     use crate::model::Warning;
+    use crate::testing::command_args;
 
     #[test]
     fn test_parse_version_reads_the_bare_version_string() {
@@ -908,7 +911,7 @@ mod tests {
             let plan = PipxAdapter::plan(&adapter, &inst, &req)
                 .await
                 .expect("plan");
-            assert_eq!(plan.args, expected);
+            assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
         }
     }
@@ -1111,6 +1114,6 @@ mod tests {
             .issue_plan(&upgrade_cowsay())
             .await
             .expect("an unpinned tool plans");
-        assert_eq!(issued.plan.args, vec!["upgrade", "cowsay"]);
+        assert_eq!(command_args(&issued.plan), vec!["upgrade", "cowsay"]);
     }
 }

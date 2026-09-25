@@ -109,7 +109,7 @@ async fn live_install_inventory_uninstall_hello() {
         .await
         .expect("install plan");
     assert_eq!(
-        install_plan.args,
+        canager_core::testing::command_args(&install_plan),
         vec![
             "install".to_string(),
             "--formula".to_string(),
@@ -162,7 +162,7 @@ async fn live_install_inventory_uninstall_hello() {
         "nothing installed depends on hello"
     );
     assert_eq!(
-        uninstall_plan.args,
+        canager_core::testing::command_args(&uninstall_plan),
         vec![
             "uninstall".to_string(),
             "--formula".to_string(),

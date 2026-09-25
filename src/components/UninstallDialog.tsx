@@ -249,7 +249,7 @@ export function UninstallDialog({
               </div>
             )}
 
-            <CommandPreview program={plan.program} args={plan.args} />
+            <CommandPreview action={plan.action} />
 
             {plan.needs_password && (
               // Every Cask uninstall sets `needs_password`, so removing a GUI

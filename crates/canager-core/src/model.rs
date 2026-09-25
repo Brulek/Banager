@@ -423,12 +423,50 @@ pub enum CancelPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResourceLock(pub String); // "brew:/opt/homebrew"
 
+/// What a `Plan` does when it runs. Every plan an adapter built before
+/// phase 4 was one program and one argv (`Command`), and `run_plan` is
+/// still the only thing that spawns one. The path-list uninstall of a
+/// tool installed by its own installer (`StandaloneAdapter`, phase 4
+/// step C) runs no command at all: `execute` hands each path to the
+/// system's "move to Trash" (`Trasher::trash`) in order -- `TrashPaths`.
+/// Two arms rather than an invented argv, because a preview that names a
+/// command that will not run is a lie about what is about to happen (spec
+/// Q16), and because one `mv` cannot express two paths with the same
+/// basename (`~/.local/bin/claude` and `~/.local/share/claude`: `mv -n`
+/// skips the second and exits 0), and an item a rename puts in the Trash
+/// gets no Finder "Put Back" record (spec §6.2; the Trash spike, which also
+/// found that a rename does reach `~/.Trash` without Full Disk Access).
+///
+/// Readers, each matching both arms: `run_plan` (`adapters/mod.rs`;
+/// `Command` only, it refuses the other), `OperationManager::summaries`'s
+/// `argv_preview` (`ops/mod.rs`; empty for `TrashPaths`),
+/// `CommandPreview.tsx` (one sentence for `TrashPaths`) and the
+/// hand-written mirror in `src/lib/types.ts`. Externally tagged on the
+/// wire like every other enum here: `{"Command":{"program":…,"args":[…],
+/// "env":[…]}}` and `{"TrashPaths":{"paths":[…]}}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanAction {
+    /// One program, one argv, one environment: what `run_plan` spawns.
+    /// `args` is the argv without the program; the preview is `program`
+    /// followed by `args`.
+    Command {
+        program: PathBuf,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+    },
+    /// No command. `execute` moves each path to the Trash, in this order
+    /// (the tool's launcher last, spec §6.2), after re-checking it. The
+    /// paths are absolute; the same paths, `$HOME` abbreviated to `~`,
+    /// are the plan's `Warning::WillTrash` items, which is what the dialog
+    /// lists. Built only by `StandaloneAdapter::plan` for a recipe whose
+    /// `uninstall` is `Uninstall::Paths`.
+    TrashPaths { paths: Vec<PathBuf> },
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub request: OpRequest,
-    pub program: PathBuf,
-    pub args: Vec<String>, // argv without program; preview = program + args
-    pub env: Vec<(String, String)>,
+    pub action: PlanAction,
     pub needs_password: bool,
     pub locks: Vec<ResourceLock>,
     pub cancel_policy: CancelPolicy,
@@ -890,13 +928,15 @@ mod tests {
                 artifact_kind: ArtifactKind::Formula,
                 name: "jq".to_string(),
             },
-            program: PathBuf::from("/opt/homebrew/bin/brew"),
-            args: vec![
-                "install".to_string(),
-                "--formula".to_string(),
-                "jq".to_string(),
-            ],
-            env: vec![("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())],
+            action: PlanAction::Command {
+                program: PathBuf::from("/opt/homebrew/bin/brew"),
+                args: vec![
+                    "install".to_string(),
+                    "--formula".to_string(),
+                    "jq".to_string(),
+                ],
+                env: vec![("HOMEBREW_NO_AUTO_UPDATE".to_string(), "1".to_string())],
+            },
             needs_password: false,
             locks: vec![ResourceLock("brew:/opt/homebrew".to_string())],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -907,6 +947,53 @@ mod tests {
         let json = serde_json::to_string(&plan).expect("serialize");
         let back: Plan = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(plan, back);
+
+        let trash = Plan {
+            request: OpRequest {
+                kind: OpKind::Uninstall,
+                instance_id: "standalone-claude".to_string(),
+                artifact_kind: ArtifactKind::Binary,
+                name: "claude".to_string(),
+            },
+            action: PlanAction::TrashPaths {
+                paths: vec![
+                    PathBuf::from("/Users/someone/.local/share/claude"),
+                    PathBuf::from("/Users/someone/.local/bin/claude"),
+                ],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock("standalone-claude".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: vec![],
+            affected: vec![],
+            timeout_secs: 120,
+        };
+        let json = serde_json::to_string(&trash).expect("serialize");
+        let back: Plan = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(trash, back);
+    }
+
+    #[test]
+    fn test_plan_action_is_externally_tagged_on_the_wire() {
+        // `src/lib/types.ts` mirrors `PlanAction` as a union of two
+        // single-key objects, and `CommandPreview.tsx` branches on
+        // `"Command" in action`; the spellings below are the contract.
+        assert_eq!(
+            serde_json::to_string(&PlanAction::Command {
+                program: PathBuf::from("/opt/homebrew/bin/brew"),
+                args: vec!["install".to_string()],
+                env: vec![("A".to_string(), "1".to_string())],
+            })
+            .unwrap(),
+            r#"{"Command":{"program":"/opt/homebrew/bin/brew","args":["install"],"env":[["A","1"]]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PlanAction::TrashPaths {
+                paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            })
+            .unwrap(),
+            r#"{"TrashPaths":{"paths":["/Users/someone/.local/bin/claude"]}}"#
+        );
     }
 
     #[test]

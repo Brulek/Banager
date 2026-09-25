@@ -1,8 +1,8 @@
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, OpRequest, Outcome, Plan,
-    ReadOnlyReason, Reconciled, SearchHit, Unavailable, UninstallBlocked, UpdateBlocked,
-    UpdateCandidate, UpdateChannel, Warning,
+    PlanAction, ReadOnlyReason, Reconciled, SearchHit, Unavailable, UninstallBlocked,
+    UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, LineCallback, OutputUse, RunLine};
 use async_trait::async_trait;
@@ -485,10 +485,19 @@ pub async fn run_plan(
             RunLine::Note(note) => crate::events::OperationEvent::Note { op_id, note },
         });
     });
+    // The one thing this function spawns is a `Command`. A `TrashPaths`
+    // plan is carried out by `StandaloneAdapter::execute` itself, item by
+    // item (adapters/standalone/removal.rs); reaching here with one is a
+    // bug in an adapter, refused before anything is started.
+    let PlanAction::Command { program, args, env } = &plan.action else {
+        return Err(AdapterError::Refused(
+            "run_plan was handed a plan that runs no command (TrashPaths)".to_string(),
+        ));
+    };
     let spec = CommandSpec {
-        program: plan.program.clone(),
-        args: plan.args.clone(),
-        env: plan.env.clone(),
+        program: program.clone(),
+        args: args.clone(),
+        env: env.clone(),
         cwd: None,
         timeout: Duration::from_secs(plan.timeout_secs),
         // A build log on its way to the log drawer. Nothing reads this
@@ -675,9 +684,11 @@ mod tests {
                     artifact_kind: ArtifactKind::Package,
                     name: "jq".to_string(),
                 },
-                program: PathBuf::from("/bin/fake"),
-                args: args.into_iter().map(|a| a.to_string()).collect(),
-                env: Vec::new(),
+                action: PlanAction::Command {
+                    program: PathBuf::from("/bin/fake"),
+                    args: args.into_iter().map(|a| a.to_string()).collect(),
+                    env: Vec::new(),
+                },
                 needs_password: false,
                 locks: vec![ResourceLock("fake:1".to_string())],
                 cancel_policy: CancelPolicy::KillThenReconcile,
@@ -786,9 +797,11 @@ mod tests {
                 artifact_kind: ArtifactKind::Package,
                 name: "jq".to_string(),
             },
-            program: std::path::PathBuf::from("/bin/fake"),
-            args: Vec::new(),
-            env: Vec::new(),
+            action: PlanAction::Command {
+                program: std::path::PathBuf::from("/bin/fake"),
+                args: Vec::new(),
+                env: Vec::new(),
+            },
             needs_password: false,
             locks: vec![ResourceLock("fake:1".to_string())],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -819,6 +832,52 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_plan_refuses_a_plan_that_runs_no_command() {
+        // A `TrashPaths` plan is carried out by `StandaloneAdapter::execute`
+        // itself (adapters/standalone/removal.rs), never by a runner. Handing
+        // one to `run_plan` is a bug in an adapter, refused before anything
+        // could be spawned.
+        use crate::events::VecSink;
+        use crate::model::{CancelPolicy, OpKind, OpRequest, PlanAction, ResourceLock};
+        use crate::runner::MockRunner;
+        use std::path::PathBuf;
+        use tokio_util::sync::CancellationToken;
+
+        let plan = Plan {
+            request: OpRequest {
+                kind: OpKind::Uninstall,
+                instance_id: "standalone-claude".to_string(),
+                artifact_kind: ArtifactKind::Binary,
+                name: "claude".to_string(),
+            },
+            action: PlanAction::TrashPaths {
+                paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+            },
+            needs_password: false,
+            locks: vec![ResourceLock("standalone-claude".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: Vec::new(),
+            affected: Vec::new(),
+            timeout_secs: 120,
+        };
+        let runner_raw = Arc::new(MockRunner::new());
+        let runner: Arc<dyn CommandRunner> = runner_raw.clone();
+        let result = run_plan(
+            &runner,
+            &plan,
+            Arc::new(VecSink::new()),
+            3,
+            CancellationToken::new(),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(AdapterError::Refused(_))),
+            "{result:?}"
+        );
+        assert!(runner_raw.calls().is_empty(), "nothing was spawned");
     }
 
     use crate::model::ArtifactKind;

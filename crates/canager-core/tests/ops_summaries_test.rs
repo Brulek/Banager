@@ -3,10 +3,11 @@ use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, C
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind, OpRequest,
-    OpStatus, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+    OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -77,9 +78,11 @@ impl Adapter for FakeAdapter {
     async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args: vec!["install".to_string(), req.name.clone()],
-            env: vec![],
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec!["install".to_string(), req.name.clone()],
+                env: vec![],
+            },
             needs_password: false,
             locks: vec![ResourceLock(inst.id.clone())],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -327,4 +330,43 @@ async fn test_multiple_waiters_all_wake_once_the_op_finishes() {
             Some(Outcome::Succeeded)
         );
     }
+}
+
+#[tokio::test]
+async fn test_summaries_gives_a_plan_that_runs_no_command_an_empty_argv_preview() {
+    // A path-list uninstall (`PlanAction::TrashPaths`) spawns nothing, so
+    // there is no argv to preview: an empty list, never an invented one.
+    // (`src/` renders no `argv_preview` today; the uninstall dialog shows
+    // the paths through the plan's `WillTrash` warnings instead.)
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(FakeAdapter::new());
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:1");
+    manager.register_instance(inst.clone());
+
+    let plan = Plan {
+        request: OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "claude".to_string(),
+        },
+        action: PlanAction::TrashPaths {
+            paths: vec![PathBuf::from("/Users/someone/.local/bin/claude")],
+        },
+        needs_password: false,
+        locks: vec![ResourceLock("fake:1".to_string())],
+        cancel_policy: CancelPolicy::KillThenReconcile,
+        warnings: vec![],
+        affected: vec![],
+        timeout_secs: 120,
+    };
+    let op_id = manager.submit(plan);
+    manager.wait(op_id).await;
+
+    let summary = manager.summaries().remove(0);
+    assert_eq!(summary.id, op_id);
+    assert_eq!(summary.kind, OpKind::Uninstall);
+    assert!(summary.argv_preview.is_empty());
 }

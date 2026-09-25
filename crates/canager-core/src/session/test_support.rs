@@ -10,8 +10,8 @@
 
 use crate::adapters::AdapterMeta;
 use crate::model::{
-    CancelPolicy, ManagerInstance, OpRequest, Plan, ReadOnlyReason, Reconciled, ResourceLock,
-    Unavailable,
+    CancelPolicy, ManagerInstance, OpRequest, Plan, PlanAction, ReadOnlyReason, Reconciled,
+    ResourceLock, Unavailable,
 };
 use crate::runner::HostEnv;
 use std::path::PathBuf;
@@ -87,9 +87,11 @@ pub(super) fn fake_adapter_meta(id: &str) -> AdapterMeta {
 pub(super) fn fake_plan(inst: &ManagerInstance, req: &OpRequest) -> Plan {
     Plan {
         request: req.clone(),
-        program: inst.exe_path.clone(),
-        args: vec!["do".to_string(), req.name.clone()],
-        env: vec![],
+        action: PlanAction::Command {
+            program: inst.exe_path.clone(),
+            args: vec!["do".to_string(), req.name.clone()],
+            env: vec![],
+        },
         needs_password: false,
         locks: vec![ResourceLock(inst.id.clone())],
         cancel_policy: CancelPolicy::KillThenReconcile,

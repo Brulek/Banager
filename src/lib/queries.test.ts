@@ -146,9 +146,13 @@ describe("queries", () => {
       id: "a1b2c3",
       plan: {
         request: { kind: "Uninstall", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "jq" },
-        program: "/opt/homebrew/bin/brew",
-        args: ["uninstall", "--formula", "jq"],
-        env: [],
+        action: {
+          Command: {
+            program: "/opt/homebrew/bin/brew",
+            args: ["uninstall", "--formula", "jq"],
+            env: [],
+          },
+        },
         needs_password: false,
         locks: ["brew:/opt/homebrew"],
         cancel_policy: "KillThenReconcile",

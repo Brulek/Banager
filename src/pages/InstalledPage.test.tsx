@@ -219,9 +219,13 @@ describe("InstalledPage", () => {
           id: 1,
           plan: {
             request: (args as { request: OpRequest }).request,
-            program: "/opt/homebrew/bin/brew",
-            args: ["uninstall", "--formula", "jq"],
-            env: [],
+            action: {
+              Command: {
+                program: "/opt/homebrew/bin/brew",
+                args: ["uninstall", "--formula", "jq"],
+                env: [],
+              },
+            },
             needs_password: false,
             locks: ["brew:/opt/homebrew"],
             cancel_policy: "KillThenReconcile",
@@ -261,9 +265,13 @@ describe("InstalledPage", () => {
           id: 1,
           plan: {
             request: (args as { request: OpRequest }).request,
-            program: "/opt/homebrew/bin/brew",
-            args: ["uninstall", "--formula", "jq"],
-            env: [],
+            action: {
+              Command: {
+                program: "/opt/homebrew/bin/brew",
+                args: ["uninstall", "--formula", "jq"],
+                env: [],
+              },
+            },
             needs_password: false,
             locks: ["brew:/opt/homebrew"],
             cancel_policy: "KillThenReconcile",

@@ -22,8 +22,10 @@
 //! one) so that it cannot end up in a release build. See its own doc
 //! comment and this crate's `Cargo.toml` `[features]` section.
 
-use crate::model::{InstanceStatus, ManagerInstance, ReadOnlyReason, Scope, Unavailable};
-use std::path::PathBuf;
+use crate::model::{
+    InstanceStatus, ManagerInstance, Plan, PlanAction, ReadOnlyReason, Scope, Unavailable,
+};
+use std::path::{Path, PathBuf};
 
 /// A plausible, available, writable instance of `adapter_id` under `id`.
 ///
@@ -78,6 +80,39 @@ pub fn unavailable_instance(
         },
         ..manager_instance(adapter_id, id)
     }
+}
+
+/// The parts of a plan that runs a command, for a test that asserts what
+/// argv an adapter built -- three accessors rather than a destructuring at
+/// each of the ~40 assertions that read `plan.program`/`args`/`env` before
+/// `PlanAction` existed. Each panics on a `TrashPaths` plan, saying so: a
+/// test that expected a command and got a path list has found a bug, and
+/// the message names it. Test-only by nature: a production reader matches
+/// both arms (`run_plan`, `OperationManager::summaries`) and never calls
+/// these.
+fn command_parts(plan: &Plan) -> (&Path, &[String], &[(String, String)]) {
+    match &plan.action {
+        PlanAction::Command { program, args, env } => (program, args, env),
+        PlanAction::TrashPaths { paths } => panic!(
+            "this plan runs no command: it moves {} path(s) to the Trash",
+            paths.len()
+        ),
+    }
+}
+
+/// The program a `Command` plan runs. See `command_parts`.
+pub fn command_program(plan: &Plan) -> &Path {
+    command_parts(plan).0
+}
+
+/// The argv (without the program) a `Command` plan runs. See `command_parts`.
+pub fn command_args(plan: &Plan) -> &[String] {
+    command_parts(plan).1
+}
+
+/// The environment a `Command` plan adds. See `command_parts`.
+pub fn command_env(plan: &Plan) -> &[(String, String)] {
+    command_parts(plan).2
 }
 
 /// Ages every plan `session` is currently holding past its lifetime, so

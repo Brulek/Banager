@@ -7,8 +7,8 @@ use crate::adapters::{
 use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, InstanceId, InstanceNote,
-    InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock,
-    Scope, SearchHit, Unavailable, Warning,
+    InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
+    ResourceLock, Scope, SearchHit, Unavailable, Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -1207,9 +1207,11 @@ impl BrewAdapter {
                 }
                 Ok(Plan {
                     request: req.clone(),
-                    program: inst.exe_path.clone(),
-                    args: vec!["install".to_string(), flag.to_string(), req.name.clone()],
-                    env,
+                    action: PlanAction::Command {
+                        program: inst.exe_path.clone(),
+                        args: vec!["install".to_string(), flag.to_string(), req.name.clone()],
+                        env,
+                    },
                     needs_password,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
@@ -1273,9 +1275,11 @@ impl BrewAdapter {
                 }
                 Ok(Plan {
                     request: req.clone(),
-                    program: inst.exe_path.clone(),
-                    args: vec!["uninstall".to_string(), flag.to_string(), req.name.clone()],
-                    env: self.env_vec(),
+                    action: PlanAction::Command {
+                        program: inst.exe_path.clone(),
+                        args: vec!["uninstall".to_string(), flag.to_string(), req.name.clone()],
+                        env: self.env_vec(),
+                    },
                     needs_password: matches!(req.artifact_kind, ArtifactKind::Cask),
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
@@ -1296,9 +1300,11 @@ impl BrewAdapter {
                 }
                 Ok(Plan {
                     request: req.clone(),
-                    program: inst.exe_path.clone(),
-                    args: vec!["upgrade".to_string(), flag.to_string(), req.name.clone()],
-                    env,
+                    action: PlanAction::Command {
+                        program: inst.exe_path.clone(),
+                        args: vec!["upgrade".to_string(), flag.to_string(), req.name.clone()],
+                        env,
+                    },
                     needs_password,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
@@ -2241,6 +2247,7 @@ mod plan_execute_tests {
     use super::*;
     use crate::events::VecSink;
     use crate::runner::MockRunner;
+    use crate::testing::{command_args, command_env};
 
     fn test_instance() -> ManagerInstance {
         ManagerInstance {
@@ -2297,7 +2304,7 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["install", "--formula", "jq"]);
+        assert_eq!(command_args(&plan), vec!["install", "--formula", "jq"]);
         assert!(!plan.needs_password);
         assert_eq!(
             plan.locks,
@@ -2318,7 +2325,7 @@ mod plan_execute_tests {
             name: "claudebar".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["install", "--cask", "claudebar"]);
+        assert_eq!(command_args(&plan), vec!["install", "--cask", "claudebar"]);
         assert!(plan.needs_password);
     }
 
@@ -2344,7 +2351,7 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["uninstall", "--formula", "jq"]);
+        assert_eq!(command_args(&plan), vec!["uninstall", "--formula", "jq"]);
         assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
         assert_eq!(
             plan.warnings,
@@ -2413,7 +2420,7 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["uninstall", "--formula", "jq"]);
+        assert_eq!(command_args(&plan), vec!["uninstall", "--formula", "jq"]);
         assert!(plan.affected.is_empty());
         assert!(plan.warnings.is_empty());
     }
@@ -2505,7 +2512,7 @@ mod plan_execute_tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         // `docker` exists as both a formula and a cask; without `--cask`
         // here `brew uninstall docker` would act on the wrong one.
-        assert_eq!(plan.args, vec!["uninstall", "--cask", "docker"]);
+        assert_eq!(command_args(&plan), vec!["uninstall", "--cask", "docker"]);
     }
 
     #[tokio::test]
@@ -2520,7 +2527,7 @@ mod plan_execute_tests {
             name: "jq".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert_eq!(plan.args, vec!["upgrade", "--formula", "jq"]);
+        assert_eq!(command_args(&plan), vec!["upgrade", "--formula", "jq"]);
         assert!(!plan.needs_password);
     }
 
@@ -2538,7 +2545,7 @@ mod plan_execute_tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         // Same ambiguous-name hazard as uninstall: `docker` is both a
         // formula and a cask.
-        assert_eq!(plan.args, vec!["upgrade", "--cask", "docker"]);
+        assert_eq!(command_args(&plan), vec!["upgrade", "--cask", "docker"]);
         assert!(plan.needs_password);
     }
 
@@ -2593,13 +2600,15 @@ mod plan_execute_tests {
                     .unwrap_or_else(|e| panic!("plan {verb} {flag} {name}: {e}"));
                 for forbidden in FORBIDDEN {
                     assert!(
-                        !plan.args.iter().any(|arg| arg.as_str() == forbidden),
+                        !command_args(&plan)
+                            .iter()
+                            .any(|arg| arg.as_str() == forbidden),
                         "brew {verb} {flag} {name} must never carry {forbidden}, got {:?}",
-                        plan.args
+                        command_args(&plan)
                     );
                 }
                 assert_eq!(
-                    plan.args,
+                    command_args(&plan),
                     vec![verb, flag, name],
                     "brew {verb} {flag} {name} is exactly the verb, the kind flag and the name"
                 );
@@ -2907,7 +2916,7 @@ mod plan_execute_tests {
             name: "claudebar".to_string(),
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
-        assert!(plan.env.contains(&(
+        assert!(command_env(&plan).contains(&(
             "SUDO_ASKPASS".to_string(),
             "/tmp/fake-askpass.sh".to_string()
         )));
@@ -2932,9 +2941,9 @@ mod plan_execute_tests {
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert!(
-            !plan.env.iter().any(|(k, _)| k == "SUDO_ASKPASS"),
+            !command_env(&plan).iter().any(|(k, _)| k == "SUDO_ASKPASS"),
             "plan env must not carry an askpass that is not set: {:?}",
-            plan.env
+            command_env(&plan)
         );
     }
 

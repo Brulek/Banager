@@ -464,7 +464,7 @@ mod tests {
         assert!(wheel.checkable);
     }
 
-    use crate::model::{OpKind, Warning};
+    use crate::model::{OpKind, PlanAction, Warning};
     use crate::runner::{CommandOutput, MockRunner};
 
     fn test_instance() -> ManagerInstance {
@@ -796,9 +796,11 @@ mod tests {
                 artifact_kind: ArtifactKind::Package,
                 name: "wheel".to_string(),
             },
-            program: inst.exe_path.clone(),
-            args: vec!["-m".to_string(), "pip".to_string()],
-            env: Vec::new(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec!["-m".to_string(), "pip".to_string()],
+                env: Vec::new(),
+            },
             needs_password: false,
             locks: Vec::new(),
             cancel_policy: crate::model::CancelPolicy::KillThenReconcile,

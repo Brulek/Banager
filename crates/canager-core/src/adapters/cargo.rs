@@ -7,8 +7,8 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
-    ManagerInstance, OpKind, OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit,
-    Unavailable, UpdateCandidate, UpdateChannel, Warning,
+    ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
+    SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -330,9 +330,11 @@ impl CargoAdapter {
                 args.push(req.name.clone());
                 Ok(Plan {
                     request: req.clone(),
-                    program,
-                    args,
-                    env: Vec::new(),
+                    action: PlanAction::Command {
+                        program,
+                        args,
+                        env: Vec::new(),
+                    },
                     needs_password: false,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
@@ -343,9 +345,11 @@ impl CargoAdapter {
             }
             OpKind::Uninstall => Ok(Plan {
                 request: req.clone(),
-                program: inst.exe_path.clone(),
-                args: vec!["uninstall".to_string(), req.name.clone()],
-                env: Vec::new(),
+                action: PlanAction::Command {
+                    program: inst.exe_path.clone(),
+                    args: vec!["uninstall".to_string(), req.name.clone()],
+                    env: Vec::new(),
+                },
                 needs_password: false,
                 locks: vec![lock],
                 cancel_policy: CancelPolicy::KillThenReconcile,
@@ -435,6 +439,7 @@ impl Adapter for CargoAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::{command_args, command_program};
 
     #[test]
     fn test_second_token_reads_cargos_recorded_version_line() {
@@ -694,10 +699,10 @@ mod tests {
             .await
             .expect("plan");
         assert_eq!(
-            plan.program,
+            command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
-        assert_eq!(plan.args, vec!["install", "hexyl"]);
+        assert_eq!(command_args(&plan), vec!["install", "hexyl"]);
         assert_eq!(plan.warnings, vec![Warning::CompilesLocally]);
     }
 
@@ -719,10 +724,10 @@ mod tests {
             .await
             .expect("plan");
         assert_eq!(
-            plan.program,
+            command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")
         );
-        assert_eq!(plan.args, vec!["-y", "--force", "hexyl"]);
+        assert_eq!(command_args(&plan), vec!["-y", "--force", "hexyl"]);
         assert!(plan.warnings.is_empty());
     }
 
@@ -744,10 +749,10 @@ mod tests {
             .await
             .expect("plan");
         assert_eq!(
-            plan.program,
+            command_program(&plan),
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
-        assert_eq!(plan.args, vec!["uninstall", "hexyl"]);
+        assert_eq!(command_args(&plan), vec!["uninstall", "hexyl"]);
     }
 
     #[tokio::test]
@@ -894,7 +899,7 @@ mod tests {
         let plan = CargoAdapter::plan(&adapter, &instances[0], &req)
             .await
             .expect("plan");
-        assert_eq!(plan.program, binstall_path);
+        assert_eq!(command_program(&plan), binstall_path);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

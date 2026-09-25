@@ -97,6 +97,7 @@
   },
   "commandPreview": {
     "label": "This will run:",
+    "trashLabel": "What Canager will do:",
     "needsPassword": "This will ask for your Mac password."
   },
   "warnings": {
@@ -237,7 +238,9 @@
     "affectedTitle": "These will stop working if you remove it:",
     "confirm": "Uninstall",
     "cancel": "Cancel",
-    "affectedBlocksConfirm": "Canager won't remove {{name}} while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave {{name}} where it is."
+    "affectedBlocksConfirm": "Canager won't remove {{name}} while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave {{name}} where it is.",
+    "trashPreview_one": "Canager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
+    "trashPreview_other": "Canager moves the {{count}} items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too."
   },
   "settings": {
     "title": "Settings",

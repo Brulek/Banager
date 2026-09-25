@@ -11,7 +11,7 @@ use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, C
 use canager_core::events::{EventSink, OpId, VecSink};
 use canager_core::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, ManagerInstance, OpKind,
-    OpRequest, Outcome, Plan, Reconciled, ResourceLock, SearchHit,
+    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
 };
 use canager_core::ops::OperationManager;
 use canager_core::runner::HostEnv;
@@ -91,9 +91,11 @@ impl Adapter for FakeAdapter {
     async fn plan(&self, inst: &ManagerInstance, req: &OpRequest) -> Result<Plan, AdapterError> {
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args: vec![],
-            env: vec![],
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args: vec![],
+                env: vec![],
+            },
             needs_password: false,
             locks: vec![ResourceLock(inst.id.clone())],
             cancel_policy: CancelPolicy::KillThenReconcile,

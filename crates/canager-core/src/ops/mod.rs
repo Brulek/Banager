@@ -2,7 +2,7 @@ use crate::adapters::{Adapter, AdapterError};
 use crate::events::{EventSink, OpId, OperationEvent};
 use crate::model::{
     AdapterId, ArtifactKey, ArtifactKind, Attention, CancelPolicy, Fault, InstanceId,
-    ManagerInstance, OpKind, OpStatus, Outcome, Plan, Reconciled, ResourceLock,
+    ManagerInstance, OpKind, OpStatus, Outcome, Plan, PlanAction, Reconciled, ResourceLock,
 };
 use crate::runner::RunnerError;
 use serde::{Deserialize, Serialize};
@@ -202,7 +202,7 @@ pub struct OpSummary {
     pub name: String,
     pub status: OpStatus,
     pub outcome: Option<Outcome>,
-    pub argv_preview: Vec<String>, // program followed by args
+    pub argv_preview: Vec<String>, // program followed by args; empty for a plan that runs no command
     /// The plan's `cancel_policy`. The front end reads it with `status` to
     /// offer no Cancel button for a Running `NoCancel` op
     /// (`OperationBar.tsx`), the one op `cancel` below refuses by policy.
@@ -281,8 +281,18 @@ impl OperationManager {
         let mut summaries: Vec<OpSummary> = records
             .values()
             .map(|r| {
-                let mut argv_preview = vec![r.plan.program.to_string_lossy().to_string()];
-                argv_preview.extend(r.plan.args.iter().cloned());
+                let argv_preview = match &r.plan.action {
+                    PlanAction::Command { program, args, .. } => {
+                        let mut argv = vec![program.to_string_lossy().to_string()];
+                        argv.extend(args.iter().cloned());
+                        argv
+                    }
+                    // No command runs, so there is no argv to preview: an
+                    // empty list, never an invented one. (`src/` renders
+                    // no argv_preview today; the dialog shows the paths
+                    // through the plan's `WillTrash` warnings.)
+                    PlanAction::TrashPaths { .. } => Vec::new(),
+                };
                 OpSummary {
                     id: r.id,
                     kind: r.plan.request.kind,

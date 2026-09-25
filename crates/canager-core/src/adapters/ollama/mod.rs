@@ -8,7 +8,7 @@ use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, CancelPolicy, InstalledArtifact, InstanceStatus, ManagerInstance, OpKind,
-    OpRequest, Outcome, Plan, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
+    OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
     UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
@@ -535,9 +535,11 @@ impl OllamaAdapter {
         };
         Ok(Plan {
             request: req.clone(),
-            program: inst.exe_path.clone(),
-            args,
-            env: Vec::new(),
+            action: PlanAction::Command {
+                program: inst.exe_path.clone(),
+                args,
+                env: Vec::new(),
+            },
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -630,6 +632,7 @@ mod tests {
     use crate::http::{HttpResponse, MockHttpClient};
     use crate::model::ArtifactKind;
     use crate::runner::{CommandOutput, MockRunner};
+    use crate::testing::command_args;
     use std::path::PathBuf;
 
     /// These tests assert on the *text* of a dynamic, not-yet-localised
@@ -989,7 +992,7 @@ mod tests {
             let plan = OllamaAdapter::plan(&adapter, &inst, &req)
                 .await
                 .expect("plan");
-            assert_eq!(plan.args, expected);
+            assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
         }
     }
@@ -1718,7 +1721,10 @@ mod tests {
             }],
         );
         // Named, not blocked: the operation still runs as requested.
-        assert_eq!(plan.args, vec!["pull", "evil.example.com/ns/model:tag"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["pull", "evil.example.com/ns/model:tag"]
+        );
     }
 
     #[tokio::test]
@@ -1735,7 +1741,10 @@ mod tests {
             "the uninstall confirmation must carry no registry warning, got {:?}",
             plan.warnings
         );
-        assert_eq!(plan.args, vec!["rm", "modelscope.cn/Qwen/Qwen3-8B"]);
+        assert_eq!(
+            command_args(&plan),
+            vec!["rm", "modelscope.cn/Qwen/Qwen3-8B"]
+        );
 
         // Upgrading re-pulls, so it does warn.
         let upgrade = plan_for_kind("modelscope.cn/Qwen/Qwen3-8B", OpKind::Upgrade).await;

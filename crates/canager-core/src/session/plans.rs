@@ -495,7 +495,10 @@ mod tests {
             "a PlanId is hex-encoded: {}",
             issued.id
         );
-        assert_eq!(issued.plan.args, vec!["do".to_string(), "jq".to_string()]);
+        assert_eq!(
+            crate::testing::command_args(&issued.plan),
+            vec!["do".to_string(), "jq".to_string()]
+        );
     }
 
     #[tokio::test]
