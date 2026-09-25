@@ -2,9 +2,9 @@
 
 Every command Canager runs, every file it reads, writes or moves to the
 Trash, every host it connects to and every environment variable it sets,
-for the eight sources it manages today: Homebrew, npm, pipx, uv, pip
-(read-only), Cargo, Ollama, and Claude Code (a tool with its own
-installer). Each sentence describes what the code does now and names the
+for the nine sources it manages today: Homebrew, npm, pipx, uv, pip
+(read-only), Cargo, Ollama, and two tools with their own installer, Claude
+Code and rustup. Each sentence describes what the code does now and names the
 function it describes, so it can be checked against
 `crates/canager-core/src/adapters/` rather than believed.
 `crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
@@ -61,8 +61,9 @@ environment and the effective user id from the process. Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
-own installer: Claude Code at the one path its installer writes (its
-section). The path that was found is the one previewed and the one run.
+own installer: Claude Code at the one path its installer writes, rustup at
+`$CARGO_HOME/bin/rustup` (their sections). The path that was found is the
+one previewed and the one run.
 
 **What a user-chosen value may look like.** A package name reaches an
 argv only after `validate_package_name`
@@ -669,6 +670,174 @@ moves the rest. Afterwards Canager looks for the launcher again
 only when it is gone, and as unconfirmed when Canager cannot tell (a
 folder it may not read, say).
 
+## rustup
+
+Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
+`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`rustup.rs` what its uninstall does, when Canager may offer it, and what to
+say about it). Verified against rustup 1.29.1 (the version in
+`adapters/meta/standalone-rustup.toml` and the name of the recorded fixture
+directory). The Rust toolchain installer, installed by its own script
+(`curl … https://sh.rustup.rs | sh`, run by the user — Canager never runs
+it); the one item under it is rustup itself. The toolchains it manages, and
+the programs `cargo install` installs, are not rows of this source: the
+first are outside phase 4, the second are Cargo's.
+
+**Detect.** Canager looks at the fixed path the installer writes,
+`$CARGO_HOME/bin/rustup` — `CARGO_HOME` from the environment Canager was
+started with (see "Which Rust" below), read the way rustup and cargo read
+it: an empty value means the default `~/.cargo`, a relative value names a
+folder relative to the tool's own working directory, which Canager cannot
+know, so it then lists no rustup rather than guess — never a `rustup`
+found through `PATH` — and checks with `lstat` and `realpath` that it is a
+regular file, not a link: the installer's copy is an executable of its own,
+and the thirteen commands beside it (`cargo`, `rustc`, `rustfmt`, …) are
+links *to* it. A link at that path (Homebrew's keg-only `rustup` formula
+linked there by hand) is not this route and is not listed. Then
+`<rustup> --version` (30 s) with `RUSTUP_AUTO_INSTALL=0` in its
+environment: rustup's `--version` looks up the active toolchain, and with
+none active it would otherwise *install* one — a download during a
+refresh. With the switch it prints `info: no rustc is currently active` and
+exits 0. The version is the second token of the first line of standard
+output (`rustup 1.29.1 (d95a37b6a 2026-08-13)`); the two `info:` lines
+rustup prints on standard error are not read. Two things rustup itself
+does on *any* invocation, this read included: it creates `~/.rustup` if it
+is missing, and it deletes a leftover `~/.cargo/bin/rustup-init` from an
+earlier self update, if there is one. Canager also asks where `rustup`
+would run from if typed in Terminal and says so under the source when it
+is not this copy (as for Claude Code); that is a notice, not a command.
+
+**Read-only commands and requests** (background checks; never need a
+password):
+
+| Purpose | Argv or request | Timeout |
+|---|---|---|
+| Detect, inventory, and the reading before and after an update | `<rustup> --version`, with `RUSTUP_AUTO_INSTALL=0` | 30 s |
+| Newest published version (`check_updates`) | `GET https://static.rust-lang.org/rustup/release-stable.toml` — the two-line TOML file `rustup self update` itself reads | 30 s |
+
+The uninstall preview runs no command at all (below). An update is listed
+only when the published `version` is greater than the installed one,
+comparing the dot-separated integers; a request that fails, answers
+anything but 200, or answers something that is not a versioned TOML file is
+listed as "could not check", never as an error for the source. rustup does
+not update itself on its own: it updates itself only as part of `rustup
+update` and `rustup toolchain install`, which Canager never runs.
+
+**While rustup is being updated or uninstalled, Canager does not run it.**
+Both write commands hold rustup's own lock and the Cargo source's (the
+`cargo` command is rustup's binary under another name), and a refresh that
+arrives while an operation holds a source's lock skips that source
+entirely — neither `rustup --version` nor `cargo --version` runs — and
+keeps the rows it has until the operation ends (`Session::refresh_round`).
+The check is made once, at the start of a refresh; an operation that
+starts in the seconds after it may overlap one version read that was
+already under way.
+
+**Write commands** (only run after the user reviews and confirms a plan
+preview):
+
+| Purpose | Argv | Timeout | Needs a password |
+|---|---|---|---|
+| Upgrade | `<rustup> self update` | 600 s | No |
+| Uninstall | `<rustup> self uninstall -y` | 600 s | No |
+
+**Never `rustup update`**: that updates the toolchains, and an interrupted
+run leaves a toolchain half installed (rust-lang/rustup#4724). `self update`
+replaces only rustup's own binary — by unlinking the running one and copying
+the new one in (rustup 1.29.1's `install_bins`, `src/cli/self_update.rs`),
+during which the thirteen linked commands, `cargo` among them, point at
+nothing. So the plan is **not cancellable once it is running** (the preview
+says so; the operation bar offers no Cancel; while it is still queued it
+can be cancelled, since nothing has started), and it holds the Cargo
+source's lock as well as its own. If it exits 0 and the version did not
+move, the operation is reported as needing attention, as for every source.
+A run stopped by the timeout is reported as unconfirmed, whatever the
+version reads before and after say: an upgrade stopped partway is never
+called done on the strength of a version number.
+
+`rustup self uninstall -y` is rustup's official uninstall (`-y` skips its
+own confirmation prompt, which would otherwise read end-of-file from the
+`/dev/null` standard input and stop). **Canager offers it only when Rust
+lives in its standard folders**: `CARGO_HOME` and `RUSTUP_HOME` (from the
+environment Canager was started with, read as rustup reads them) resolve to
+`~/.cargo` and `~/.rustup`, `~/.cargo` is a real folder and not a link, and
+`~/.rustup` is a real folder, not a link, or not there yet. Any other
+layout — a custom folder, a relative variable, a linked folder — gets no
+Uninstall button and a badge saying it cannot be uninstalled here: rustup's
+uninstall deletes both folders whole, wherever they point, and Canager will
+not ask it to delete a folder the preview did not name. The same question
+is asked of the disk again right before the command is started
+(`StandaloneAdapter::execute`): a folder that has since become a link, or
+been replaced, stops the run before anything is spawned, and the operation
+log names that folder. Read from rustup 1.29.1's source (`uninstall()` in
+`src/cli/self_update.rs`, lines 924–1032 at tag `1.29.1`), it removes,
+**permanently — nothing goes to the Trash**: every installed toolchain;
+`~/.rustup` entirely; the line it added to your shell startup files
+(below); everything in `~/.cargo` except `bin/` — the registry and git
+caches, `.crates2.json`, and also Cargo's own `config.toml` and
+`credentials.toml` (the crates.io login) and `env`; everything in `bin/`
+whose name is not rustup's or one of its thirteen links' — that is,
+**every program `cargo install` installed, and anything copied there by
+hand**; and then the `~/.cargo` folder itself. (Newer rustup keeps the
+`cargo install`ed programs; the version this source is verified against
+does not, and the preview says what this version does.) The preview lists,
+before the button, and without running anything: `~/.rustup` by path, with
+every toolchain in it by name (the entries of `~/.rustup/toolchains`) and
+the fact that any other rustup using that folder — Homebrew's, when its
+`Cellar/rustup` folder is there — loses its toolchains too; `~/.cargo` by
+path, with its downloads, its record of what `cargo install` installed,
+Cargo's own settings and saved login, and anything else kept there; the
+programs in its `bin/` by name where known (a listing of `~/.cargo/bin`
+minus rustup and its thirteen links, together with the binaries
+`~/.cargo/.crates2.json` records — the same file the Cargo source reads);
+that rustup will edit your shell startup files; and each startup file that
+will still speak of Cargo's env file afterwards. It is not cancellable once
+running, for the same reason as the update, and holds the same two locks
+(it deletes the record the Cargo source's inventory reads). Afterwards
+Canager looks for `~/.cargo/bin/rustup` again and reads no version: an
+exit 0 with it gone is reported as succeeded, an exit 0 with it still there
+as needing attention, and a run stopped by the timeout is judged by the
+same look — gone is succeeded, still there is unconfirmed.
+`--no-modify-path` is not passed: rustup removing its own line beats
+leaving one that prints an error in every new terminal.
+
+**Which Rust.** rustup runs with the environment Canager itself was
+started with: at launch Canager restores only `PATH` from your login shell,
+and every command it runs inherits the rest. Canager reads `CARGO_HOME`,
+`RUSTUP_HOME` and `ZDOTDIR` from that same environment — the one the
+rustup it runs will see, so the two always agree about which folders are
+meant. A `RUSTUP_HOME` or `CARGO_HOME` exported only in a shell startup
+file is therefore not seen by either: the preview and the uninstall act on
+the default folders, and a Rust kept only where the shell says is left
+alone, not deleted; a `CARGO_HOME` exported only there also means Canager
+looks for rustup under `~/.cargo` and does not list one installed elsewhere.
+
+**Shell startup files.** Canager never edits one. rustup's uninstall removes
+exactly the line it wrote, `. "$HOME/.cargo/env"` (the absolute path when
+the Cargo home is not `~/.cargo`), from `~/.profile`, `~/.bash_profile`,
+`~/.bash_login`, `~/.bashrc`, `$ZDOTDIR/.zshenv` and `~/.zshenv`, in that
+order, and then the two lines rustup wrote before version 1.23 from
+`~/.bash_profile`, `~/.profile`, `$ZDOTDIR/.zprofile` and `~/.zprofile`
+(`shell.rs` and `unix.rs` under `src/cli/self_update/`, tag `1.29.1`). Each
+visit removes the first line that matches byte for byte, newline included;
+when `ZDOTDIR` is your home folder the same file is visited twice and two
+copies go. It never edits `~/.zshrc` or fish's `config.fish`. So before the
+uninstall Canager reads those eight files — `~/.zshenv`, `~/.zprofile`,
+`~/.zshrc`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.profile`,
+`~/.config/fish/config.fish` — replays rustup's removals on copies in
+memory, and names each file that still speaks of Cargo's env file: "will
+print an error" when what is left is a line in the exact form rustup itself
+writes (a file rustup does not edit, such as `~/.zshrc`; a second copy of
+its line; its line last in the file with no newline after it), "may" for
+any other mention rustup will not remove (a guarded line such as
+`[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`, an `echo`, another
+spelling such as `source ~/.cargo/env`, a `$CARGO_HOME/env`); a comment
+counts for nothing. rustup learns `ZDOTDIR` by asking `zsh` when your
+login shell is not zsh; Canager runs nothing and reads only the variable
+it was started with, so a `ZDOTDIR` set only inside a zsh startup file is
+not modelled, and a zsh whose files live under such a `ZDOTDIR` is not
+read.
+
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
 The *Unknown* page lists command-line programs that none of the sources
@@ -744,6 +913,19 @@ All read-only, none saved anywhere else, none uploaded:
   Code's section). After an uninstall: the same look at the launcher
   that detection makes (`lstat`, `readlink`, `realpath`, the same paths),
   and nothing else — no version is read.
+- rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
+  (`lstat`, `realpath`); whether `~/.cargo` and `~/.rustup` are real folders
+  and not links (`lstat`, to decide whether the uninstall is offered — at
+  every inventory, at the uninstall preview, and again right before the
+  uninstall command is started); during the uninstall preview only, the
+  names in `~/.rustup/toolchains` and in `~/.cargo/bin` (directory
+  listings — nothing in them is opened), `~/.cargo/.crates2.json`, whether
+  `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
+  the eight shell startup files named in its section, each read whole and
+  only searched for a line about Cargo's env file; nothing else under
+  `RUSTUP_HOME` is ever read. After an uninstall: whether
+  `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
+  nothing else — no version is read.
 - The Unknown page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
   a file's contents.
@@ -895,6 +1077,14 @@ Canager neither chooses nor sees them.
 - Never runs a shell for any command, and never pipes a download into one
   (`curl … | sh`). The one shell run is the `PATH` read at launch, above.
 - Never runs an installer script, and never reruns one to update a tool.
+- Never runs `rustup update`: rustup's own update of its toolchains, which
+  an interruption leaves half installed. Only `rustup self update`, which
+  replaces rustup alone. Never runs `rustup` at all while an update or
+  uninstall of it is under way, and never lets a version read of rustup or
+  cargo install a toolchain (`RUSTUP_AUTO_INSTALL=0`).
+- Never asks rustup to uninstall from anywhere but its standard folders,
+  `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
+  Canager offers that only when the preview can name exactly those two.
 - Never passes `--zap`, `--force` or `--ignore-dependencies` to Homebrew
   (the brew plan test), and never runs a bare `brew upgrade`.
 - Never runs a `brew` command as root.
@@ -907,7 +1097,9 @@ Canager neither chooses nor sees them.
 - Never deletes a file and never empties the Trash. Never writes a file
   on the Mac itself other than its own `settings.json`, and moves files
   only to the Trash, only for an uninstall the user confirmed, and only
-  the paths its preview listed; never edits a shell startup file.
+  the paths its preview listed; never edits a shell startup file — rustup's
+  own uninstall edits its startup line and deletes its two folders
+  permanently, and the preview says so.
 - Never moves anything outside the home folder, anything directly in the
   home folder or in a folder many tools share there (`~/.local`,
   `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`), anything reached

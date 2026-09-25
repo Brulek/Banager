@@ -3,7 +3,7 @@
 //! Canager is a desktop app for people who do not write code, for looking
 //! after the things they installed from a terminal — Homebrew, npm, pipx,
 //! uv, pip, cargo, Ollama, and tools that come with their own installer
-//! (Claude Code). This crate is the part that does the work: the
+//! (Claude Code, rustup). This crate is the part that does the work: the
 //! [`model`] every source is described in, the [`adapters`] that speak each
 //! source's command line, the [`runner`] that spawns those
 //! commands and streams their output back line by line, and the [`ops`]

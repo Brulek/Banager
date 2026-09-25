@@ -253,7 +253,7 @@ pub struct Session {
 }
 
 impl Session {
-    /// Registers all eight adapters over a shared `RealRunner` and
+    /// Registers all nine adapters over a shared `RealRunner` and
     /// `RealHttpClient` (network-touching adapters only: pipx, cargo,
     /// ollama, and the standalone tools' update checks), and gives the
     /// standalone tools the real Trash (`RealTrasher`) for their path-list
@@ -511,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_registers_all_eight_adapters() {
+    fn test_new_registers_all_nine_adapters() {
         let sink = Arc::new(VecSink::new());
         let session = Session::new(sink, None);
         assert_eq!(
@@ -524,6 +524,7 @@ mod tests {
                 "pip".to_string(),
                 "pipx".to_string(),
                 "standalone-claude".to_string(),
+                "standalone-rustup".to_string(),
                 "uv".to_string(),
             ]
         );

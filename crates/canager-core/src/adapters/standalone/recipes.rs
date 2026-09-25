@@ -128,9 +128,9 @@ pub static CLAUDE: Recipe = Recipe {
 /// this Mac or in rustup's own source at tag 1.29.1, 2026-09-24/25,
 /// unless noted); the meta TOML's `verified_versions` is what
 /// `RUSTUP_AUTO_INSTALL=0 rustup --version` printed on this Mac on
-/// 2026-09-26, and Task 10 of the phase 4 step E plan records that line,
-/// the release file and the layout into
-/// `adapters/fixtures/standalone-rustup/<version>/`:
+/// 2026-09-26, and the recording in
+/// `adapters/fixtures/standalone-rustup/<version>/` holds that line, its
+/// stderr, the release file, the toolchain names and the layout:
 /// - the launcher `$CARGO_HOME/bin/rustup` is a regular Mach-O file (11 MB
 ///   on this Mac); the thirteen proxies beside it (`cargo`, `rustc`,
 ///   `rustfmt`, …) are relative symlinks to it (§2; unknown-scan.md §2),
@@ -139,7 +139,7 @@ pub static CLAUDE: Recipe = Recipe {
 ///   uninstall preview, the names in its `toolchains/` (spec §2.2, §3.2);
 /// - `rustup --version` prints `rustup <version> (<hash> <date>)` on
 ///   stdout, and two `info:` lines on stderr that are never read (§3;
-///   Task 10 records them as `version-stderr.txt`). It runs with
+///   recorded as `version-stderr.txt`). It runs with
 ///   `RUSTUP_AUTO_INSTALL=0`: 1.29.1's `display_version`
 ///   (rustup_mode.rs:1819-1837) resolves the active toolchain and, with
 ///   none active and auto-install on (the default, config.rs:435-441),
@@ -191,11 +191,10 @@ pub static CLAUDE: Recipe = Recipe {
 ///   kept only where the shell says is left alone, not deleted (plan
 ///   ruling 17).
 ///
-/// Not yet in `RECIPES`: Task 10 of the phase 4 step E plan registers it
-/// together with the recording and the trust-file section that
-/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
-/// source. Until then its readers are the tests in this module and in
-/// `mod.rs`.
+/// Registered in `RECIPES` together with what `fixtures_layout_test` and
+/// `what_we_run_test` demand of a registered source: the recording in
+/// `adapters/fixtures/standalone-rustup/<version>/` and the `## rustup`
+/// section of `docs/what-we-run.md`.
 pub static RUSTUP: Recipe = Recipe {
     id: "rustup",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-rustup.toml"),
@@ -231,7 +230,7 @@ pub static RUSTUP: Recipe = Recipe {
 /// Every tool this adapter type registers, in registration order. The
 /// refresh fans out alphabetically by adapter id regardless
 /// (`refresh_round`), so this order is only the reading order.
-pub static RECIPES: &[&Recipe] = &[&CLAUDE];
+pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
 
 #[cfg(test)]
 mod tests {
@@ -370,9 +369,13 @@ mod tests {
     }
 
     #[test]
-    fn test_recipes_lists_claude_once() {
-        assert_eq!(RECIPES.len(), 1);
+    fn test_recipes_lists_each_registered_tool_once_in_reading_order() {
+        assert_eq!(RECIPES.len(), 2);
         assert!(std::ptr::eq(RECIPES[0], &CLAUDE));
+        assert!(std::ptr::eq(RECIPES[1], &RUSTUP));
+        let mut ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
+        ids.dedup();
+        assert_eq!(ids.len(), RECIPES.len(), "one recipe per tool");
     }
 
     #[test]

@@ -257,11 +257,12 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 /// The standalone adapters add their tool roots as their recipes land --
 /// `standalone-claude` → `~/.local/share/claude`, `standalone-agy` →
 /// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`, each the
-/// instance's `prefix`; `standalone-rustup` nothing, since everything of
-/// rustup's resolves to its launcher and rule 1 has it -- in the same
-/// change that first produces an instance with one of those ids. A row
-/// here with no adapter that can produce its instance would be a
-/// definition without a producer (spec §十).
+/// instance's `prefix`; `standalone-rustup` nothing (its root is the
+/// Cargo home, whose `bin/` is scanned; rule 1 has the launcher and its
+/// proxies, rule 2 the `cargo install`ed programs) -- in the same change
+/// that first produces an instance with one of those ids. A row here
+/// with no adapter that can produce its instance would be a definition
+/// without a producer (spec §十).
 pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
     match inst.adapter_id.as_str() {
         // Not `/Applications`: a cask claims its own `.app` through rule
@@ -814,9 +815,11 @@ mod tests {
             ("uv", "uv", "/Users/someone/.local/bin"),
             ("pipx", "pipx", "/Users/someone/.local/bin"),
             ("pip", "pip:/usr/bin/python3", "/usr/bin"),
-            // No adapter with this id exists yet (rustup is step E); the
-            // default arm answers for it as for any unknown id, and
-            // everything of rustup's is rule 1's anyway.
+            // rustup's root is the Cargo home, whose `bin/` is the very
+            // directory being scanned: nothing of rustup's is placed by
+            // its prefix. rustup itself and its thirteen proxies resolve
+            // to the launcher (rule 1); `cargo install`ed programs carry
+            // their path on cargo's artifacts (rule 2).
             (
                 "standalone-rustup",
                 "standalone-rustup",

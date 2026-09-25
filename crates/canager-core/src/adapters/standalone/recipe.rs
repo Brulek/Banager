@@ -141,10 +141,9 @@ pub enum VersionParse {
     /// The second token: `rustup 1.29.1 (d95a37b6a 2026-08-13)` → `1.29.1`
     /// (rustup; grok's `grok 1.0.41 (4220f3b224a6)` in step D). The two
     /// `info:` lines rustup prints after that go to stderr, which the
-    /// version read never looks at (Task 10 of the phase 4 step E plan
-    /// records them as `adapters/fixtures/standalone-rustup/<v>/
-    /// version-stderr.txt`). Its producer is the `RUSTUP` recipe (Task 6
-    /// of that plan).
+    /// version read never looks at (recorded as
+    /// `adapters/fixtures/standalone-rustup/<v>/version-stderr.txt`). Its
+    /// producer is the `RUSTUP` recipe.
     SecondToken,
 }
 

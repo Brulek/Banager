@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn test_parse_version_reads_the_second_token_of_rustups_recorded_line() {
         // `rustup --version` stdout on this Mac, 2026-09-25 (rustup.md §3;
-        // Task 10 of the phase 4 step E plan records it as version.txt):
+        // recorded as `adapters/fixtures/standalone-rustup/<v>/version.txt`):
         // `rustup 1.29.1 (d95a37b6a 2026-08-13)`.
         assert_eq!(
             parse_version(
@@ -375,8 +375,8 @@ mod tests {
     #[test]
     fn test_parse_release_stable_toml_reads_the_version_string() {
         // The release file byte for byte (rustup.md §6, VERIFIED by curl;
-        // Task 10 of the phase 4 step E plan records it as
-        // release-stable.toml), and TOML's other string quote.
+        // recorded as `adapters/fixtures/standalone-rustup/<v>/
+        // release-stable.toml`), and TOML's other string quote.
         assert_eq!(
             parse_release_stable_toml("schema-version = '1'\nversion = '1.29.1'\n"),
             Ok("1.29.1".to_string())

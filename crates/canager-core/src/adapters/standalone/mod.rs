@@ -2804,7 +2804,14 @@ mod tests {
             Arc::new(MockTrasher::new()),
         );
         let ids: Vec<String> = adapters.iter().map(|a| a.meta().id.clone()).collect();
-        assert_eq!(ids, vec!["standalone-claude".to_string()]);
+        // `RECIPES`' reading order, one adapter each.
+        assert_eq!(
+            ids,
+            vec![
+                "standalone-claude".to_string(),
+                "standalone-rustup".to_string()
+            ]
+        );
         assert_eq!(adapters.len(), super::recipes::RECIPES.len());
     }
 
@@ -4066,6 +4073,181 @@ mod tests {
                 _ => "bin/rustup",
             };
             assert!(elsewhere.join(kept).exists(), "{linked}: left as it is");
+        }
+    }
+
+    /// The recorded fixture directory for the version the rustup meta
+    /// file verifies: `adapters/fixtures/standalone-rustup/<verified>/`.
+    fn rustup_fixture(name: &str) -> String {
+        let adapter = rustup_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        let version = adapter
+            .meta
+            .verified_versions
+            .first()
+            .expect("meta lists the recorded version")
+            .clone();
+        let path = format!("../../adapters/fixtures/standalone-rustup/{version}/{name}");
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+    }
+
+    #[test]
+    fn test_the_recorded_rustup_version_line_parses_and_its_stderr_holds_no_version() {
+        let verified = rustup_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+            .meta
+            .verified_versions[0]
+            .clone();
+        assert_eq!(
+            latest::parse_version(&rustup_fixture("version.txt"), RUSTUP.version.parse),
+            Some(verified.clone())
+        );
+        // The two `info:` lines. `parse_version` keeps whatever token it
+        // finds (only an absent one is `None`), so fed these by mistake
+        // it would answer a word -- never the installed version, and not
+        // a dotted version at all -- which is why the version read takes
+        // stdout only.
+        let stderr = rustup_fixture("version-stderr.txt");
+        assert!(stderr.starts_with("info:"), "{stderr:?}");
+        let misread = latest::parse_version(&stderr, RUSTUP.version.parse);
+        assert_ne!(misread, Some(verified));
+        assert!(
+            misread
+                .as_deref()
+                .is_none_or(|token| !latest::is_dotted_version(token)),
+            "{misread:?}"
+        );
+    }
+
+    /// `layout.txt` is corroboration, not parser input, and the one
+    /// recorded file in its directory whose text was edited after
+    /// recording: its README says the owner column's account name became
+    /// `user`. `ls -la` of a directory prints names relative to it and
+    /// the proxies' link text is relative (`cargo -> rustup`), so no
+    /// absolute home directory was there to substitute; this checks that
+    /// none is in that file or in the README beside it, that neither
+    /// names a `.local` host, and that the layout still shows what the
+    /// route relies on: `rustup` a regular file, and every one of
+    /// `RUSTUP_PROXIES` a link to it.
+    #[test]
+    fn test_the_recorded_rustup_layout_and_its_readme_name_no_home_directory_or_host() {
+        let layout = rustup_fixture("layout.txt");
+        let readme = rustup_fixture("README.md");
+        for (name, text) in [("layout.txt", &layout), ("README.md", &readme)] {
+            for prefix in ["/Users/", "/home/"] {
+                assert!(
+                    !text.contains(prefix),
+                    "{name} names an absolute home directory under {prefix}"
+                );
+            }
+            // `X.local` is a Mac's Bonjour host name when `X` ends in a
+            // letter, digit or hyphen; `~/.local/...` is preceded by `/`
+            // and is not one.
+            let names_a_host = text.match_indices(".local").any(|(at, _)| {
+                text[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '-')
+            });
+            assert!(!names_a_host, "{name} names a .local host");
+        }
+        let links_to_rustup: Vec<&str> = layout
+            .lines()
+            .filter(|line| line.starts_with('l') && line.ends_with(" -> rustup"))
+            .collect();
+        assert_eq!(
+            links_to_rustup.len(),
+            rustup::RUSTUP_PROXIES.len(),
+            "the proxies, and nothing else, link to rustup: {links_to_rustup:?}"
+        );
+        for proxy in rustup::RUSTUP_PROXIES {
+            assert!(
+                links_to_rustup
+                    .iter()
+                    .any(|line| line.ends_with(&format!(" {proxy} -> rustup"))),
+                "{proxy} is a relative link to rustup"
+            );
+        }
+        assert!(
+            layout
+                .lines()
+                .any(|line| line.starts_with("-rwx") && line.ends_with(" rustup")),
+            "rustup is an executable regular file"
+        );
+    }
+
+    #[test]
+    fn test_the_recorded_toolchain_names_list_as_the_preview_lists_them() {
+        // The recording is `ls -1 ~/.rustup/toolchains`; the preview
+        // reads the same directory (`rustup::toolchain_names`). A temp
+        // `toolchains/` with the recorded names lists them back sorted.
+        let recorded: Vec<String> = rustup_fixture("toolchains.txt")
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect();
+        assert!(!recorded.is_empty());
+        assert!(
+            recorded.iter().all(|n| n.contains("apple-darwin")),
+            "recorded on a Mac: {recorded:?}"
+        );
+        let home = TempHome::new("rustup-toolchains-recorded");
+        for name in &recorded {
+            home.dir(&format!(".rustup/toolchains/{name}"));
+        }
+        let mut expected = recorded.clone();
+        expected.sort();
+        assert_eq!(
+            rustup::toolchain_names(&home.path().join(".rustup")),
+            expected
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_over_the_recorded_release_file_lists_only_a_real_update() {
+        // The runner answers `--version` with the recorded line and the
+        // endpoint with the recorded release file: a candidate exactly
+        // when the published version is greater than the installed one,
+        // both derived from the recording, so a re-recording on a later
+        // day stays honest.
+        let verified = rustup_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+            .meta
+            .verified_versions[0]
+            .clone();
+        let version_line = rustup_fixture("version.txt");
+        let installed =
+            latest::parse_version(&version_line, RUSTUP.version.parse).expect("version line");
+        assert_eq!(installed, verified, "the meta names the recorded version");
+        let body = rustup_fixture("release-stable.toml");
+        let published = latest::parse_release_stable_toml(&body).expect("release file");
+        let home = TempHome::new("rustup-check-recorded");
+        let cargo_home = home.path().join(".cargo");
+        let layout = rustup_layout(&cargo_home);
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(RELEASE_URL, answer(&body));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(&version_line),
+        );
+        let adapter = rustup_adapter(runner, http.clone());
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        // `check_updates` compares the version `inventory` read, and
+        // refuses without one: the order `refresh_round` keeps.
+        adapter.inventory(&inst).await.expect("inventory");
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert_eq!(http.calls(), vec![RELEASE_URL.to_string()]);
+        match latest::compare_dotted(&installed, &published) {
+            Some(Ordering::Less) => {
+                assert_eq!(out.candidates.len(), 1, "{installed} < {published}");
+                assert_eq!(out.candidates[0].target, published);
+                assert!(out.candidates[0].checkable);
+            }
+            Some(Ordering::Equal | Ordering::Greater) => {
+                assert!(out.candidates.is_empty(), "{installed} >= {published}");
+            }
+            None => panic!("both are dotted versions: {installed} vs {published}"),
         }
     }
 }
