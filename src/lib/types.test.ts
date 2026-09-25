@@ -209,6 +209,12 @@ describe("types", () => {
       '{"CanagerFailed":{"SpawnFailed":{"detail":"Permission denied (os error 13)"}}}',
     );
     expect(roundTrip(missing)).toEqual(missing);
+    // Phase 4 step C: a path changed between the preview and the run.
+    const changed: Outcome = { CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } };
+    expect(JSON.stringify(changed)).toBe(
+      '{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}',
+    );
+    expect(roundTrip(changed)).toEqual(changed);
   });
 
   it("spells Warning's bare-string variants as bare strings and WouldBreak/Message as externally tagged", () => {
@@ -284,6 +290,23 @@ describe("types", () => {
     };
     expect(JSON.stringify(readFailed)).toBe(
       '{"Note":{"op_id":7,"note":{"ReadFailed":{"stream":"Stderr","error":"Input/output error (os error 5)"}}}}',
+    );
+    // Phase 4 step C: what `events.rs`'s shape test asserts for the two
+    // notes a path-list uninstall writes.
+    const moved: OperationEvent = {
+      Note: {
+        op_id: 7,
+        note: { MovedToTrash: { path: "~/.local/share/claude", trashed_to: "~/.Trash/claude" } },
+      },
+    };
+    expect(JSON.stringify(moved)).toBe(
+      '{"Note":{"op_id":7,"note":{"MovedToTrash":{"path":"~/.local/share/claude","trashed_to":"~/.Trash/claude"}}}}',
+    );
+    const trashFailed: OperationEvent = {
+      Note: { op_id: 7, note: { TrashFailed: { path: "~/.local/bin/claude", error: "Operation not permitted" } } },
+    };
+    expect(JSON.stringify(trashFailed)).toBe(
+      '{"Note":{"op_id":7,"note":{"TrashFailed":{"path":"~/.local/bin/claude","error":"Operation not permitted"}}}}',
     );
     const parsedUiEvent = roundTrip(uiEvent);
     expect("Operation" in parsedUiEvent && parsedUiEvent.Operation).toEqual({

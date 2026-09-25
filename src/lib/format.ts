@@ -89,6 +89,7 @@ function faultKey(fault: Fault): string {
   if ("ProgramMissing" in fault) return "ProgramMissing";
   if ("SpawnFailed" in fault) return "SpawnFailed";
   if ("HomebrewStillUpdating" in fault) return "HomebrewStillUpdating";
+  if ("PathChanged" in fault) return "PathChanged";
   const unhandled: never = fault;
   return unhandled;
 }
@@ -100,6 +101,7 @@ function faultArgs(fault: Fault): Record<string, unknown> {
   if ("ProgramMissing" in fault) return { program: fault.ProgramMissing.program };
   if ("SpawnFailed" in fault) return { detail: fault.SpawnFailed.detail };
   if ("HomebrewStillUpdating" in fault) return { minutes: fault.HomebrewStillUpdating.minutes };
+  if ("PathChanged" in fault) return { path: fault.PathChanged.path };
   const unhandled: never = fault;
   return unhandled;
 }

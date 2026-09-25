@@ -213,6 +213,7 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
     "CanagerFailed.ProgramMissing",
     "CanagerFailed.SpawnFailed",
     "CanagerFailed.HomebrewStillUpdating",
+    "CanagerFailed.PathChanged",
     "CanagerFailed.Internal",
   ],
 };

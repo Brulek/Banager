@@ -33,6 +33,14 @@ function noteText(t: TFunction, note: LogNote): string {
       ? t("operations.logNote.readFailedStderr", { error })
       : t("operations.logNote.readFailedStdout", { error });
   }
+  if ("MovedToTrash" in note) {
+    const { path, trashed_to } = note.MovedToTrash;
+    return t("operations.logNote.movedToTrash", { path, trashedTo: trashed_to });
+  }
+  if ("TrashFailed" in note) {
+    const { path, error } = note.TrashFailed;
+    return t("operations.logNote.trashFailed", { path, error });
+  }
   const unhandled: never = note;
   return unhandled;
 }

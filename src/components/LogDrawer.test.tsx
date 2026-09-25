@@ -105,6 +105,28 @@ describe("LogDrawer", () => {
     );
   });
 
+  it("words each path a path-list uninstall moved, and the one macOS refused", async () => {
+    // Canager's own two lines in an uninstall that runs no command: where
+    // each path went, and the system's words for one it would not move.
+    const { findByText } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({
+        opId: 1,
+        note: { MovedToTrash: { path: "~/.local/share/claude", trashed_to: "~/.Trash/claude" } },
+      });
+      useUiStore.getState().appendLog({
+        opId: 1,
+        note: { TrashFailed: { path: "~/.local/bin/claude", error: "Operation not permitted" } },
+      });
+    });
+
+    await findByText("Moved ~/.local/share/claude to the Trash (now at ~/.Trash/claude).");
+    await findByText(
+      "Couldn't move ~/.local/bin/claude to the Trash, so the uninstall stopped here. Your Mac gave this reason: Operation not permitted",
+    );
+  });
+
   it("only shows log lines for the focused operation", async () => {
     const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
 

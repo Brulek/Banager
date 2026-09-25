@@ -590,6 +590,21 @@ pub enum Fault {
     /// can never disagree: see `BrewAdapter::execute`, the only production
     /// call site that builds this variant.
     HomebrewStillUpdating { minutes: u64 },
+    /// A path a path-list uninstall was about to move is not what the
+    /// preview showed: at the confirmation, or when its turn came after the
+    /// moves before it, it fails one of the preview's checks (a folder on
+    /// its way became a link, say, or a kept path now leads into it), the
+    /// list itself changed (a path that was absent is there now, or one the
+    /// preview listed is gone), or it is no longer the file the preview
+    /// recorded (`st_dev`, `st_ino` and the kind): re-pointed -- as a tool
+    /// that updates itself re-points its launcher -- or replaced by another
+    /// of the same name. Canager stopped without moving that path; whatever
+    /// it moved before is in the Trash, one `LogNote::MovedToTrash` each in
+    /// the log. `path` has the home folder abbreviated to `~`; it is the
+    /// kept path when a kept path is what changed. Built only by
+    /// `removal::execute_removal` (`adapters/standalone/removal.rs`); read
+    /// by `faultKey`/`faultArgs` in src/lib/format.ts.
+    PathChanged { path: String },
     /// Something on Canager's side did not add up (an unregistered
     /// adapter or instance, a queue that closed, an error `execute` has no
     /// business returning). A bug in Canager, not a state of the Mac.
@@ -984,6 +999,15 @@ mod tests {
             }))
             .unwrap(),
             r#"{"CanagerFailed":{"HomebrewStillUpdating":{"minutes":10}}}"#
+        );
+        // Phase 4 step C: a path-list uninstall found a path changed
+        // between the preview and the run. `path` has `$HOME` abbreviated.
+        assert_eq!(
+            serde_json::to_string(&Outcome::CanagerFailed(Fault::PathChanged {
+                path: "~/.local/bin/claude".to_string()
+            }))
+            .unwrap(),
+            r#"{"CanagerFailed":{"PathChanged":{"path":"~/.local/bin/claude"}}}"#
         );
         for fault in [
             Fault::Panicked,

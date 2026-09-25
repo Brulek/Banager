@@ -26,6 +26,7 @@ export type Fault =
   | { ProgramMissing: { program: string } }
   | { SpawnFailed: { detail: string } }
   | { HomebrewStillUpdating: { minutes: number } }
+  | { PathChanged: { path: string } }
   | "Internal";
 // `Failed.summary` is only ever the tool's own stderr; Canager's own
 // failures are `CanagerFailed`.
@@ -332,7 +333,9 @@ export type Stream = "Stdout" | "Stderr";
 // `operations.logNote.waitingForBrewUpdate` so the two can never disagree.
 export type LogNote =
   | { WaitingForBrewUpdate: { minutes: number } }
-  | { ReadFailed: { stream: Stream; error: string } };
+  | { ReadFailed: { stream: Stream; error: string } }
+  | { MovedToTrash: { path: string; trashed_to: string } }
+  | { TrashFailed: { path: string; error: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

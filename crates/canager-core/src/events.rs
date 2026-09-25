@@ -39,6 +39,18 @@ pub enum LogNote {
     /// description of the failure, shown as-is like any other text Canager
     /// did not write.
     ReadFailed { stream: Stream, error: String },
+    /// A path-list uninstall moved `path` (home folder abbreviated to `~`)
+    /// to the Trash; `trashed_to` is where the system put it, as
+    /// `trashItemAtURL:` reported it and abbreviated the same way (a
+    /// colliding name gets a suffix), so someone who wants it back knows
+    /// what to look for. One per item, from `removal::execute_removal`;
+    /// worded by `LogDrawer.tsx`.
+    MovedToTrash { path: String, trashed_to: String },
+    /// The system refused to move `path` to the Trash; `error` is its own
+    /// description, shown as-is like a tool's stderr. The run stops there,
+    /// and `Outcome::Failed` carries the same words as its summary. From
+    /// `removal::execute_removal`; worded by `LogDrawer.tsx`.
+    TrashFailed { path: String, error: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +147,32 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&failed).unwrap(),
             r#"{"Note":{"op_id":7,"note":{"ReadFailed":{"stream":"Stderr","error":"Input/output error (os error 5)"}}}}"#
+        );
+        // Phase 4 step C: the two lines a path-list uninstall writes, one
+        // per path moved and one for a path macOS refused. Data only (a
+        // path with `$HOME` abbreviated, the Trash location, the system's
+        // own words); `LogDrawer.tsx` words them.
+        let moved = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::MovedToTrash {
+                path: "~/.local/share/claude".to_string(),
+                trashed_to: "~/.Trash/claude".to_string(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&moved).unwrap(),
+            r#"{"Note":{"op_id":7,"note":{"MovedToTrash":{"path":"~/.local/share/claude","trashed_to":"~/.Trash/claude"}}}}"#
+        );
+        let refused = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::TrashFailed {
+                path: "~/.local/bin/claude".to_string(),
+                error: "Operation not permitted".to_string(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&refused).unwrap(),
+            r#"{"Note":{"op_id":7,"note":{"TrashFailed":{"path":"~/.local/bin/claude","error":"Operation not permitted"}}}}"#
         );
     }
 

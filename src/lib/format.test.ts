@@ -107,6 +107,7 @@ describe("outcomeKey for Canager's own failures", () => {
     { ProgramMissing: { program: "/opt/homebrew/bin/brew" } },
     { SpawnFailed: { detail: "Permission denied (os error 13)" } },
     { HomebrewStillUpdating: { minutes: 10 } },
+    { PathChanged: { path: "~/.local/bin/claude" } },
     "Internal",
   ];
 
@@ -159,6 +160,20 @@ describe("outcomeKey for Canager's own failures", () => {
     // second, independently-typed copy of the number.
     expect(en.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
     expect(zhCN.operations.outcome.CanagerFailed.HomebrewStillUpdating).toContain("{{minutes}}");
+    // Phase 4 step C: the path a path-list uninstall stopped at, and the
+    // two lines it writes in the log.
+    expect(outcomeKey({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toBe(
+      "CanagerFailed.PathChanged",
+    );
+    expect(outcomeArgs({ CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } })).toEqual({
+      path: "~/.local/bin/claude",
+    });
+    expect(en.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
+    expect(zhCN.operations.outcome.CanagerFailed.PathChanged).toContain("{{path}}");
+    expect(en.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
+    expect(zhCN.operations.logNote.movedToTrash).toContain("{{trashedTo}}");
+    expect(en.operations.logNote.trashFailed).toContain("{{error}}");
+    expect(zhCN.operations.logNote.trashFailed).toContain("{{error}}");
     expect(en.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");
     expect(zhCN.operations.logNote.waitingForBrewUpdate).toContain("{{minutes}}");
   });

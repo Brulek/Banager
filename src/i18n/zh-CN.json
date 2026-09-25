@@ -192,7 +192,9 @@
     "logNote": {
       "waitingForBrewUpdate": "Homebrew 还在下载最新的软件目录，Canager 要等它下载完再开始。通常要几分钟，最多等 {{minutes}} 分钟。不想等的话可以点“取消”，现在还什么都没有改动。",
       "readFailedStdout": "Canager 无法继续读取该命令的输出（{{error}}），输出到此为止。",
-      "readFailedStderr": "Canager 无法继续读取该命令的错误信息（{{error}}），错误信息到此为止。"
+      "readFailedStderr": "Canager 无法继续读取该命令的错误信息（{{error}}），错误信息到此为止。",
+      "movedToTrash": "已把 {{path}} 移到废纸篓（现在在 {{trashedTo}}）。",
+      "trashFailed": "没能把 {{path}} 移到废纸篓，卸载在这里停下了。系统给出的原因是：{{error}}"
     },
     "kind": {
       "Install": "正在安装",
@@ -225,6 +227,7 @@
         "ProgramMissing": "失败：Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
         "SpawnFailed": "失败：Canager 没能启动这个程序，什么都没有改动。系统给出的原因是：{{detail}}",
         "HomebrewStillUpdating": "失败：Canager 等了 {{minutes}} 分钟，Homebrew 还在下载最新的软件目录，所以没有开始。什么都没有改动。可能是网络太慢或者断了，过一会儿再试一次。",
+        "PathChanged": "失败：{{path}} 在预览之后有了变化（会自己更新的工具就可能这样），所以 Canager 停下了，没有移动它。在此之前是否移动过什么，操作日志里能看到。请重新查看预览。",
         "Internal": "失败：Canager 发现自己这边有些地方对不上，所以没有开始，什么都没有改动。这是 Canager 的问题，不是你的 Mac 的问题。"
       }
     }
