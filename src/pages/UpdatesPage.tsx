@@ -1085,6 +1085,14 @@ export function UpdatesPage() {
                 {item.issued !== null ? (
                   <CommandPreview action={item.issued.plan.action} />
                 ) : null}
+                {item.issued?.plan.cancel_policy === "NoCancel" ? (
+                  // Per item, next to the command it is true of (a batch
+                  // can mix a rustup self update with Homebrew upgrades):
+                  // once Running, `OperationBar` offers no Cancel for it.
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">
+                    {t("operations.noCancelHint")}
+                  </p>
+                ) : null}
                 {itemWarnings.length > 0 ? (
                   <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
                     {itemWarnings.map((warning) => (

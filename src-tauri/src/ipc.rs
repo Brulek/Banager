@@ -645,9 +645,9 @@ mod tests {
         /// keeps it zero and `execute()` returns at once.
         execute_delay: std::time::Duration,
         /// What every plan this adapter builds says about Cancel. Only
-        /// `test_cancel_operation_impl_refuses_a_running_no_cancel_op` and
-        /// `test_cancel_operation_impl_cancels_a_queued_no_cancel_op` set
-        /// `NoCancel`; every other fixture keeps `KillThenReconcile`.
+        /// `test_cancel_operation_impl_refuses_a_running_no_cancel_op_such_as_rustup_self_update`
+        /// and `test_cancel_operation_impl_cancels_a_queued_no_cancel_op_such_as_rustup_self_update`
+        /// set `NoCancel`; every other fixture keeps `KillThenReconcile`.
         cancel_policy: CancelPolicy,
     }
 
@@ -1796,7 +1796,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cancel_operation_impl_refuses_a_running_no_cancel_op() {
+    async fn test_cancel_operation_impl_refuses_a_running_no_cancel_op_such_as_rustup_self_update()
+    {
         // The summary says `NoCancel`, which `OperationBar.tsx` reads with
         // the status to offer no Cancel button once the op is Running; and
         // if a cancel arrives anyway while it is Running, it is refused as
@@ -1841,7 +1842,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cancel_operation_impl_cancels_a_queued_no_cancel_op() {
+    async fn test_cancel_operation_impl_cancels_a_queued_no_cancel_op_such_as_rustup_self_update() {
         // A NoCancel op that is still Queued has spawned nothing, so its
         // cancel goes through like any other op's -- `Ok(())`, not
         // `{"kind":"no_cancel"}` -- and it ends `Cancelled` without its

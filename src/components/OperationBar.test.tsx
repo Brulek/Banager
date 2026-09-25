@@ -167,23 +167,26 @@ describe("OperationBar", () => {
     expect(await findByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("offers no Cancel button for a running operation whose plan says NoCancel", async () => {
+  it("offers no Cancel button for a running rustup self update, whose plan says NoCancel", async () => {
     // `OperationManager::cancel` (ops/mod.rs) refuses such an op once it
     // is Running, so a button here would promise something the backend
-    // will not do. No adapter produces `NoCancel` yet; this is the shape a
-    // standalone self-updating installer is expected to send.
+    // will not do. rustup's `self update` and `self uninstall` are the
+    // plans that say NoCancel (crates/canager-core/src/adapters/
+    // standalone/recipes.rs): the first unlinks and re-copies the binary
+    // every Rust proxy runs, the second removes Rust directory by
+    // directory.
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "list_operations") {
         return Promise.resolve([
           {
             id: 7,
             kind: "Upgrade",
-            instance_id: "claude:/Users/me/.local/bin/claude",
+            instance_id: "standalone-rustup",
             artifact_kind: "Binary",
-            name: "claude",
+            name: "rustup",
             status: "Running",
             outcome: null,
-            argv_preview: ["/Users/me/.local/bin/claude", "update"],
+            argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
             cancel_policy: "NoCancel",
           },
         ]);
@@ -193,28 +196,29 @@ describe("OperationBar", () => {
 
     const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Updating claude — running");
+    await findByText("Updating rustup — running");
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
-  it("offers Cancel for a queued operation whose plan says NoCancel, and it reaches cancel_operation", async () => {
+  it("offers Cancel for a queued rustup self update, whose plan says NoCancel, and it reaches cancel_operation", async () => {
     // A Queued op has started nothing, so `OperationManager::cancel`
     // (ops/mod.rs) accepts its cancel whatever the plan says and the
     // command never runs; NoCancel only bites once the op is Running.
     // Without the button the user could not drop a NoCancel op stuck
-    // behind another op's lock, and nothing else bounds that wait.
+    // behind another op's lock -- rustup's plans also hold the cargo
+    // instance's lock, so one queued behind a cargo install is real.
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "list_operations") {
         return Promise.resolve([
           {
             id: 8,
             kind: "Upgrade",
-            instance_id: "claude:/Users/me/.local/bin/claude",
+            instance_id: "standalone-rustup",
             artifact_kind: "Binary",
-            name: "claude",
+            name: "rustup",
             status: "Queued",
             outcome: null,
-            argv_preview: ["/Users/me/.local/bin/claude", "update"],
+            argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
             cancel_policy: "NoCancel",
           },
         ]);
@@ -224,7 +228,7 @@ describe("OperationBar", () => {
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
 
-    await findByText("Updating claude — queued");
+    await findByText("Updating rustup — queued");
     const cancel = await findByRole("button", { name: "Cancel" });
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);

@@ -258,6 +258,17 @@ export function UninstallDialog({
 
             <CommandPreview action={plan.action} />
 
+            {plan.cancel_policy === "NoCancel" && (
+              // The one policy the operation bar will offer no Cancel for
+              // once the command is Running (`OperationManager::cancel`,
+              // crates/canager-core/src/ops/mod.rs): rustup's own uninstall,
+              // which removes Rust directory by directory. Said here, before
+              // the click, as the preview's password notice is.
+              <p className="text-sm font-medium text-[var(--color-foreground)]">
+                {t("operations.noCancelHint")}
+              </p>
+            )}
+
             {plan.needs_password && (
               // Every Cask uninstall sets `needs_password`, so removing a GUI
               // app pops a system password dialog. Spec §6 requires that to be

@@ -204,6 +204,7 @@
     "idle": "当前没有正在进行的操作",
     "current": "{{kind}} {{name}}({{status}})",
     "cancel": "取消",
+    "noCancelHint": "运行期间请不要关闭 Canager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。",
     "logDrawerTitle": "操作日志",
     "logNote": {
       "waitingForBrewUpdate": "Homebrew 还在下载最新的软件目录，Canager 要等它下载完再开始。通常要几分钟，最多等 {{minutes}} 分钟。不想等的话可以点“取消”，现在还什么都没有改动。",

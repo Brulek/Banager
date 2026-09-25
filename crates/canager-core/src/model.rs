@@ -560,9 +560,13 @@ pub enum CancelPolicy {
     /// on its own or at `Plan::timeout_secs`, which the runner counts from
     /// spawn. While the op is still Queued nothing has started and no
     /// timeout is counting, so Cancel is accepted as under
-    /// `KillThenReconcile` and the command never starts. No adapter
-    /// produces this yet: a standalone self-updating installer (`rustup
-    /// self update`) is the expected first.
+    /// `KillThenReconcile` and the command never starts. Produced by the
+    /// rustup recipe (`adapters/standalone/recipes.rs`) for `rustup self
+    /// update`, which unlinks `$CARGO_HOME/bin/rustup` -- the one binary
+    /// its thirteen proxies run -- and copies the new one in, not
+    /// atomically (rustup 1.29.1 `install_bins`), and for `rustup self
+    /// uninstall`, which removes Rust directory by directory; a kill
+    /// partway leaves no working Rust.
     NoCancel,
 }
 

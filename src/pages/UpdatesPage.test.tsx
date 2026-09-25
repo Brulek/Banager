@@ -162,6 +162,9 @@ let holdSaves: boolean;
 // Names whose plan comes back with `needs_password: true`, mirroring the
 // brew adapter, which sets it for every Cask upgrade.
 let needsPassword: Set<string>;
+// Names whose plan comes back `NoCancel`, mirroring the rustup recipe's
+// `self update` (crates/canager-core/src/adapters/standalone/recipes.rs).
+let noCancel: Set<string>;
 let planWarnings: Record<string, Warning[]>;
 let releasePlan: Record<string, () => void>;
 let releaseSubmit: Record<string, () => void>;
@@ -185,7 +188,7 @@ function issuedPlanFor(request: OpRequest, id: number) {
       },
       needs_password: needsPassword.has(request.name),
       locks: ["brew:/opt/homebrew"],
-      cancel_policy: "KillThenReconcile",
+      cancel_policy: noCancel.has(request.name) ? "NoCancel" : "KillThenReconcile",
       warnings: planWarnings[request.name] ?? [],
       affected: [],
       timeout_secs: 1800,
@@ -253,6 +256,7 @@ beforeEach(() => {
   holdSubmits = new Set();
   holdSaves = false;
   needsPassword = new Set();
+  noCancel = new Set();
   planWarnings = {};
   releasePlan = {};
   releaseSubmit = {};
@@ -1878,5 +1882,30 @@ describe("UpdatesPage", () => {
     expect(zhCN.updates.selfUpdatingHintNotRunByName).toBe(
       "这份落后了（{{current}} → {{target}}）。可以现在用 Canager 更新。",
     );
+  });
+
+  it("says per item, under its command, that a NoCancel update cannot be stopped once it starts", async () => {
+    // A batch can mix a rustup self update (NoCancel) with a Homebrew
+    // upgrade (cancellable); the sentence belongs next to the command it
+    // is true of. This page is one of the two readers spec §五 gives
+    // operations.noCancelHint; UninstallDialog is the other.
+    noCancel.add("onyx");
+    const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    const checkboxes = await findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+
+    const hints = within(dialog).getAllByText(
+      "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+    );
+    expect(hints).toHaveLength(1);
+    expect(hints[0].closest("div")?.textContent).toContain("onyx");
+    expect(hints[0].closest("div")?.textContent).not.toContain("glib");
   });
 });

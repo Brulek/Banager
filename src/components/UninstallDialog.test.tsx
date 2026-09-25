@@ -847,4 +847,33 @@ describe("UninstallDialog", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula yq")).toBeInTheDocument();
   });
+
+  it("says a NoCancel plan cannot be stopped once it starts, and says nothing of the kind for a cancellable one", async () => {
+    // rustup's `self uninstall` (crates/canager-core/src/adapters/
+    // standalone/recipes.rs): `OperationBar` will offer no Cancel once it
+    // is Running, so the preview says so before the click (spec §五,
+    // §6.6's last line).
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ cancel_policy: "NoCancel" }));
+
+    const { unmount } = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="rustup" />,
+    );
+
+    expect(
+      await screen.findByText(
+        "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+      ),
+    ).toBeInTheDocument();
+
+    unmount();
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ cancel_policy: "KillThenReconcile" }));
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    // Wait for the plan to land, so absence means "not rendered", not "not yet".
+    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    expect(screen.queryByText(/can't be cancelled once it starts/)).not.toBeInTheDocument();
+  });
 });

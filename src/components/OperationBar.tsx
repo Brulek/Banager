@@ -34,7 +34,9 @@ export function OperationBar() {
   // backend will not do. While it is still Queued nothing has started and
   // the backend accepts the cancel, so the button stays: without it the
   // user could not drop a NoCancel op waiting behind another op's lock.
-  // No adapter produces `NoCancel` yet.
+  // rustup's `self update` and `self uninstall` produce `NoCancel`
+  // (crates/canager-core/src/adapters/standalone/recipes.rs); the preview
+  // said so under the command, before the click.
   const cancellable = current.cancel_policy !== "NoCancel" || current.status === "Queued";
 
   // "Running" alone used to be the only thing on screen while an install,

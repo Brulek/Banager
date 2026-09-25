@@ -204,8 +204,11 @@ export interface ManagerInstance {
  * `OperationBar.tsx` reads the copy `OpSummary` carries, with its
  * `status`, and offers no Cancel button for a Running `NoCancel` op,
  * which `OperationManager::cancel` would refuse; a Queued one keeps the
- * button, since nothing has started and the cancel is accepted. No
- * adapter produces `NoCancel` yet.
+ * button, since nothing has started and the cancel is accepted. rustup's
+ * `self update` and `self uninstall` produce `NoCancel` (the recipe in
+ * crates/canager-core/src/adapters/standalone/recipes.rs); the update
+ * confirmation and the uninstall dialog say so under the command
+ * (`operations.noCancelHint`) before the click.
  */
 export type CancelPolicy = "KillThenReconcile" | "NoCancel";
 /**

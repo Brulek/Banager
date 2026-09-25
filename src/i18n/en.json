@@ -212,6 +212,7 @@
     "idle": "No operation running",
     "current": "{{kind}} {{name}} — {{status}}",
     "cancel": "Cancel",
+    "noCancelHint": "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
     "logDrawerTitle": "Operation log",
     "logNote": {
       "waitingForBrewUpdate": "Homebrew is still downloading its latest list of software, so Canager is waiting for that to finish before it starts. This usually takes a few minutes; Canager waits up to {{minutes}}. If you'd rather not wait, press Cancel — nothing has been changed yet.",

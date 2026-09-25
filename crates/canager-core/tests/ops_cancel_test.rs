@@ -739,8 +739,9 @@ async fn test_cancel_during_an_upgrades_before_reading_never_calls_execute() {
 // `Plan::cancel_policy` decides what the user's Cancel does. Every test
 // above runs `KillThenReconcile`, which every `Plan` an adapter builds
 // today says: the cancel is accepted, the command is stopped and the op is
-// reconciled. A `NoCancel` plan -- none produced yet; a standalone
-// self-updating installer is the expected first -- refuses the Cancel once
+// reconciled. A `NoCancel` plan -- rustup's `self update` and `self
+// uninstall` (adapters/standalone/recipes.rs), which replace or remove
+// the one binary every Rust proxy runs -- refuses the Cancel once
 // the op is Running and runs to its end; while the op is still Queued,
 // nothing has started, so the cancel is accepted and it never runs.
 // `cancel` says which happened: `Ok(())`, or `Err(CancelRefused::NoCancel)`,
