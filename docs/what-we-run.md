@@ -516,11 +516,16 @@ runs nothing itself: it compares the version the second look read.
 
 Canager also asks where `claude` would run from if typed in Terminal (the
 first regular file named `claude` with executable bits in Canager's
-`PATH`) and, when that is not this copy, says so under the source:
-shadowed by a Homebrew, npm or unknown copy when this copy comes later on
-`PATH`, or not on `PATH` when no such file is this copy, whether typing
-`claude` then finds nothing or another copy. That is a notice, not a
-command.
+`PATH`, and where it resolves). When that is this copy there is no
+notice. When it is another file, Canager looks on down `PATH` the same
+way for a `claude` that resolves to this copy, stopping at the first
+that does or at the end of `PATH`, and says so under the source:
+shadowed by a Homebrew, npm or unknown copy (the first one, by where it
+resolves) when this copy comes later on `PATH`, or not on `PATH` when no
+such file is this copy — also the notice when `PATH` has no executable
+`claude` at all — whether typing `claude` then finds nothing or another
+copy. Both looks are reads (`stat`, `realpath`; listed under Files
+Canager reads); that is a notice, not a command.
 
 **Environment Canager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):
@@ -708,8 +713,10 @@ All read-only, none saved anywhere else, none uploaded:
 - Claude Code: whether `~/.local/bin/claude` exists and where it links to
   (`lstat`, `readlink`, `realpath`, also for the folder the link is in
   and for `~/.local/share/claude`); for the notice under the source, each
-  `PATH` directory's `claude` until the first regular file with
-  executable bits, and where that one resolves (`stat`, `realpath`);
+  `PATH` directory's `claude` in `PATH`'s order (`stat`; `realpath` for
+  each that is a regular file with executable bits) until the first such
+  file, and, when that one does not resolve to this copy, on down `PATH`
+  the same way until one does or `PATH` ends;
   `~/.claude/settings.json`, for the one key `autoUpdatesChannel` (read
   and discarded; a missing file or key means `latest`).
   For an uninstall preview, when it is confirmed, and again right before
