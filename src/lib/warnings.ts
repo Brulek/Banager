@@ -5,7 +5,21 @@
  * dialog and the updates page share one rule and it is testable without
  * rendering anything.
  */
-import type { Warning } from "./types";
+import type { KeptWhat, RemovedWhat, Warning } from "./types";
+
+/** The sentence for each kind of path a path-list uninstall moves; a
+ *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
+const REMOVED_WHAT_KEYS: Record<RemovedWhat, string> = {
+  Launcher: "warnings.willTrash.Launcher",
+  Program: "warnings.willTrash.Program",
+  Cache: "warnings.willTrash.Cache",
+};
+
+/** The sentence for each kind of path a path-list uninstall keeps. */
+const KEPT_WHAT_KEYS: Record<KeptWhat, string> = {
+  Settings: "warnings.willKeep.Settings",
+  SettingsAndHistory: "warnings.willKeep.SettingsAndHistory",
+};
 
 /**
  * The `warnings.*` key for a `Warning`'s copy, or `null` for the `Message`
@@ -37,6 +51,9 @@ export function warningKey(warning: Warning): string | null {
   }
   if ("WouldBreak" in warning) return "warnings.wouldBreak";
   if ("ThirdPartyRegistry" in warning) return "warnings.thirdPartyRegistry";
+  if ("WillTrash" in warning) return REMOVED_WHAT_KEYS[warning.WillTrash.what];
+  if ("WillKeep" in warning) return KEPT_WHAT_KEYS[warning.WillKeep.what];
+  if ("AlreadyGone" in warning) return "warnings.alreadyGone";
   if ("Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
@@ -57,6 +74,9 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
     return { count: names.length, names: names.join(", ") };
   }
   if ("ThirdPartyRegistry" in warning) return { host: warning.ThirdPartyRegistry.host };
+  if ("WillTrash" in warning) return { path: warning.WillTrash.path };
+  if ("WillKeep" in warning) return { path: warning.WillKeep.path };
+  if ("AlreadyGone" in warning) return { path: warning.AlreadyGone.path };
   if ("Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;

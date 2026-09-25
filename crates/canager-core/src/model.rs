@@ -290,6 +290,39 @@ pub enum UpdateChannel {
     Digest,
 }
 
+/// What one path a path-list uninstall moves to the Trash is, for the
+/// sentence that lists it. Payload of `Warning::WillTrash`; produced by
+/// `removal::plan_removal` from the recipe's `RemoveSpec.what`, read by
+/// `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over the
+/// mirror, so a variant added here without copy fails `tsc`. Only the
+/// kinds Claude Code's list produces exist in this step; `Backups`
+/// (Antigravity's `agy.<time>.old`) arrives with step D.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemovedWhat {
+    /// The launcher: the command itself (`~/.local/bin/claude`).
+    Launcher,
+    /// The program's files (`~/.local/share/claude`).
+    Program,
+    /// Downloaded files the tool re-creates (`~/.claude/downloads`).
+    Cache,
+}
+
+/// What one path a path-list uninstall leaves where it is, for the
+/// sentence that lists it. Payload of `Warning::WillKeep`; produced by
+/// `removal::plan_removal` from the recipe's `KeepSpec.what`, read by
+/// `KEPT_WHAT_KEYS` in src/lib/warnings.ts. `ToolState`,
+/// `ShellConfigLines`, `OutsideHome` and `NotOurs` arrive with the
+/// recipes that produce them (agy and grok, step D).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeptWhat {
+    /// A settings file (`~/.claude.json`).
+    Settings,
+    /// Settings, login, history and working files, shared with other
+    /// apps (`~/.claude`, which the tool's editor extensions and desktop
+    /// app use too).
+    SettingsAndHistory,
+}
+
 /// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
 /// render it in the user's language rather than the English sentence Rust
 /// would otherwise have to assemble -- the trap `UpdateCandidate.warnings`
@@ -329,6 +362,22 @@ pub enum Warning {
     /// twice before fetching it, and no reason at all to hesitate before
     /// deleting it.
     ThirdPartyRegistry { host: String },
+    /// A path-list uninstall will move this to the Trash: one per path, in
+    /// the order they will be moved (the launcher last). `path` has `$HOME`
+    /// abbreviated to `~` (`scan::display_path`): data for a sentence, not
+    /// a path to act on -- the plan's `PlanAction::TrashPaths.paths` keep
+    /// the absolute ones. Produced by `removal::plan_removal`
+    /// (`StandaloneAdapter::plan`); read by `warningKey`/`warningArgs` in
+    /// src/lib/warnings.ts for the uninstall dialog's list.
+    WillTrash { path: String, what: RemovedWhat },
+    /// A path-list uninstall will leave this where it is. Same producer and
+    /// reader as `WillTrash`; listed only when the path exists.
+    WillKeep { path: String, what: KeptWhat },
+    /// A path the list names is already gone -- an earlier uninstall
+    /// stopped after moving it and before moving the launcher (the
+    /// launcher-only state) -- so there is nothing to move there. Said, so
+    /// the list adds up. Same producer and reader as `WillTrash`.
+    AlreadyGone { path: String },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -849,6 +898,50 @@ mod tests {
                 names: vec!["a".to_string(), "b".to_string()]
             }
         );
+
+        // Phase 4 step C: what a path-list uninstall moves, keeps, and
+        // finds already gone. Struct variants carrying a unit enum,
+        // spelled as `REMOVED_WHAT_KEYS`/`KEPT_WHAT_KEYS` in
+        // src/lib/warnings.ts index them.
+        assert_eq!(
+            serde_json::to_string(&Warning::WillTrash {
+                path: "~/.local/bin/claude".to_string(),
+                what: RemovedWhat::Launcher,
+            })
+            .unwrap(),
+            r#"{"WillTrash":{"path":"~/.local/bin/claude","what":"Launcher"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::WillKeep {
+                path: "~/.claude".to_string(),
+                what: KeptWhat::SettingsAndHistory,
+            })
+            .unwrap(),
+            r#"{"WillKeep":{"path":"~/.claude","what":"SettingsAndHistory"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::AlreadyGone {
+                path: "~/.local/share/claude".to_string(),
+            })
+            .unwrap(),
+            r#"{"AlreadyGone":{"path":"~/.local/share/claude"}}"#
+        );
+        for what in [
+            RemovedWhat::Launcher,
+            RemovedWhat::Program,
+            RemovedWhat::Cache,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
+        for what in [KeptWhat::Settings, KeptWhat::SettingsAndHistory] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
     }
 
     #[test]

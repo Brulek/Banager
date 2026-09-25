@@ -99,7 +99,17 @@
     "wouldBreak_other": "卸载后会影响 {{count}} 项：{{names}}。",
     "compilesLocally": "这将在本机编译，可能需要几分钟。",
     "nonRegistrySource": "这不是从 crates.io 安装的，Canager 无法检查它的更新。",
-    "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。"
+    "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。",
+    "willTrash": {
+      "Launcher": "移到废纸篓：{{path}}（命令本身）",
+      "Program": "移到废纸篓：{{path}}（程序文件）",
+      "Cache": "移到废纸篓：{{path}}（可重新下载的缓存）"
+    },
+    "willKeep": {
+      "Settings": "保留：{{path}}（你的设置）",
+      "SettingsAndHistory": "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）"
+    },
+    "alreadyGone": "已经不在了：{{path}}（没有东西要移）"
   },
   "standalone": {
     "summary": {

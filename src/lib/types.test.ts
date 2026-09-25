@@ -13,6 +13,8 @@ import type {
   UninstallBlocked,
   UpdateBlocked,
   Warning,
+  RemovedWhat,
+  KeptWhat,
   EntryKind,
   ScanStop,
   UnknownScan,
@@ -236,6 +238,26 @@ describe("types", () => {
     });
     expect(JSON.stringify(message)).toBe('{"Message":"boom"}');
     expect(roundTrip(message)).toEqual({ Message: "boom" });
+
+    // Phase 4 step C: the three struct variants a path-list uninstall
+    // carries, and the two nested unit enums, spelled as
+    // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in
+    // crates/canager-core/src/model.rs asserts serde emits them.
+    const willTrash: Warning = { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } };
+    const willKeep: Warning = { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } };
+    const alreadyGone: Warning = { AlreadyGone: { path: "~/.local/share/claude" } };
+    expect(JSON.stringify(willTrash)).toBe(
+      '{"WillTrash":{"path":"~/.local/bin/claude","what":"Launcher"}}',
+    );
+    expect(JSON.stringify(willKeep)).toBe(
+      '{"WillKeep":{"path":"~/.claude","what":"SettingsAndHistory"}}',
+    );
+    expect(JSON.stringify(alreadyGone)).toBe('{"AlreadyGone":{"path":"~/.local/share/claude"}}');
+    expect(roundTrip(willTrash)).toEqual(willTrash);
+    const removed: RemovedWhat[] = ["Launcher", "Program", "Cache"];
+    const kept: KeptWhat[] = ["Settings", "SettingsAndHistory"];
+    expect(JSON.stringify(removed)).toBe('["Launcher","Program","Cache"]');
+    expect(JSON.stringify(kept)).toBe('["Settings","SettingsAndHistory"]');
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

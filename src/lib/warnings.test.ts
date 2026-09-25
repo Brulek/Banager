@@ -18,6 +18,26 @@ describe("warningKey", () => {
     expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
       "warnings.thirdPartyRegistry",
     );
+    // A path-list uninstall's items: the key is chosen by what the path
+    // is, so each kind can have its own parenthesis.
+    expect(warningKey({ WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } })).toBe(
+      "warnings.willTrash.Launcher",
+    );
+    expect(warningKey({ WillTrash: { path: "~/.local/share/claude", what: "Program" } })).toBe(
+      "warnings.willTrash.Program",
+    );
+    expect(warningKey({ WillTrash: { path: "~/.claude/downloads", what: "Cache" } })).toBe(
+      "warnings.willTrash.Cache",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.claude.json", what: "Settings" } })).toBe(
+      "warnings.willKeep.Settings",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } })).toBe(
+      "warnings.willKeep.SettingsAndHistory",
+    );
+    expect(warningKey({ AlreadyGone: { path: "~/.local/share/claude" } })).toBe(
+      "warnings.alreadyGone",
+    );
   });
 
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
@@ -26,7 +46,7 @@ describe("warningKey", () => {
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these six, and the only one without
+    // variant of `Warning` is one of these nine, and the only one without
     // a `warnings.*` key is the raw-text catch-all. A variant this list
     // does not name is a `never` in `warningKey`'s default branches and
     // does not compile, so there is no "unrecognised variant" to test.
@@ -36,6 +56,9 @@ describe("warningKey", () => {
       "NonRegistrySource",
       { WouldBreak: { names: ["a"] } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
+      { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+      { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
+      { AlreadyGone: { path: "~/.local/share/claude" } },
       { Message: "boom" },
     ];
     const keyless = all.filter((warning) => warningKey(warning) === null);
@@ -61,6 +84,21 @@ describe("warningArgs", () => {
     // pulling from modelscope.cn.
     expect(warningArgs({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toEqual({
       host: "modelscope.cn",
+    });
+  });
+
+  it("interpolates the path a trash, keep or already-gone item names", () => {
+    // The path arrives with `$HOME` already abbreviated to `~` on the Rust
+    // side (`scan::display_path`): data for the sentence, not a path to
+    // act on.
+    expect(warningArgs({ WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } })).toEqual({
+      path: "~/.local/bin/claude",
+    });
+    expect(warningArgs({ WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } })).toEqual({
+      path: "~/.claude",
+    });
+    expect(warningArgs({ AlreadyGone: { path: "~/.local/share/claude" } })).toEqual({
+      path: "~/.local/share/claude",
     });
   });
 

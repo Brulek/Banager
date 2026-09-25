@@ -141,6 +141,89 @@ describe("UninstallDialog", () => {
     expect(await screen.findByText("This will break 2 other things: a, b.")).toBeInTheDocument();
   });
 
+  it("lists what a path-list uninstall moves, keeps and finds gone, and says Canager does the moving", async () => {
+    // Spec §6.6, the Claude Code dialog: every item is a sentence in the
+    // user's language, in the order the paths will be moved, the kept
+    // paths after them; the preview below is one sentence with the
+    // count, since no command runs.
+    const claudeRequest: OpRequest = {
+      ...request,
+      instance_id: "standalone-claude",
+      artifact_kind: "Binary",
+      name: "claude",
+    };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: claudeRequest,
+        action: {
+          TrashPaths: {
+            paths: [
+              "/Users/someone/.local/share/claude",
+              "/Users/someone/.claude/downloads",
+              "/Users/someone/.local/bin/claude",
+            ],
+          },
+        },
+        warnings: [
+          { WillTrash: { path: "~/.local/share/claude", what: "Program" } },
+          { WillTrash: { path: "~/.claude/downloads", what: "Cache" } },
+          { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+          { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
+          { WillKeep: { path: "~/.claude.json", what: "Settings" } },
+        ],
+        locks: ["standalone-claude"],
+        timeout_secs: 120,
+      }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={claudeRequest} displayName="Claude Code" />,
+    );
+
+    expect(await screen.findByText("Before you continue:")).toBeInTheDocument();
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual([
+      "Moves to the Trash: ~/.local/share/claude (the program's files)",
+      "Moves to the Trash: ~/.claude/downloads (downloaded files it can re-create)",
+      "Moves to the Trash: ~/.local/bin/claude (the command itself)",
+      "Keeps: ~/.claude (your settings, login, history and working files — other apps may use it too)",
+      "Keeps: ~/.claude.json (your settings)",
+    ]);
+    expect(
+      screen.getByText(
+        "Canager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
+  it("says a program directory an earlier uninstall already moved is already gone", async () => {
+    // The launcher-only row's second uninstall (spec §6.3 check 2): the
+    // list adds up -- one item to move, one already in the Trash.
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        action: { TrashPaths: { paths: ["/Users/someone/.local/bin/claude"] } },
+        warnings: [
+          { AlreadyGone: { path: "~/.local/share/claude" } },
+          { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+        ],
+      }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="Claude Code" />,
+    );
+
+    expect(
+      await screen.findByText("Already gone: ~/.local/share/claude (nothing left to move)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Canager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders a warning variant the mirror lacks as its raw key rather than dropping it", async () => {
     // `warningKey` is exhaustive over `Warning`, so this value cannot be
     // written without the cast: it stands for a Rust variant the

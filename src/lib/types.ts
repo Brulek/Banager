@@ -67,11 +67,26 @@ export interface InstalledArtifact {
  */
 export type UninstallBlocked = "Pinned" | "NoSafeMethod";
 /**
+ * What one path a path-list uninstall moves to the Trash is. Mirrors
+ * `RemovedWhat` in crates/canager-core/src/model.rs: bare-string unit
+ * variants, the payload of `Warning.WillTrash`. Read through
+ * `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over this union,
+ * so a variant added here without copy fails `tsc`.
+ */
+export type RemovedWhat = "Launcher" | "Program" | "Cache";
+/**
+ * What one path a path-list uninstall leaves alone is. Mirrors `KeptWhat`;
+ * read through `KEPT_WHAT_KEYS` in src/lib/warnings.ts.
+ */
+export type KeptWhat = "Settings" | "SettingsAndHistory";
+/**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
  * and pluralise the copy in `src/lib/warnings.ts`, and
- * `ThirdPartyRegistry`, whose `host` interpolates it), and a `Message`
+ * `ThirdPartyRegistry`, whose `host` interpolates it, and a path-list
+ * uninstall's `WillTrash`, `WillKeep` and `AlreadyGone`, whose `path`
+ * interpolates it and whose `what` picks the key), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
  * carries, same as before this type existed. A variant added here without
@@ -85,6 +100,9 @@ export type Warning =
   | "CompilesLocally"
   | "NonRegistrySource"
   | { ThirdPartyRegistry: { host: string } }
+  | { WillTrash: { path: string; what: RemovedWhat } }
+  | { WillKeep: { path: string; what: KeptWhat } }
+  | { AlreadyGone: { path: string } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its
