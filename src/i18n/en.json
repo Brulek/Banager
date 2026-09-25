@@ -161,7 +161,7 @@
     },
     "notOnPath": {
       "title": "{{source}} isn't in your PATH",
-      "description": "It's installed, but typing {{command}} in Terminal probably won't find this copy: the folder it lives in isn't in your shell's search path (PATH), so Terminal either finds nothing or runs another copy. Opening a new Terminal window sometimes fixes this; otherwise follow the tool's own install guide for adding it to PATH."
+      "description": "It's installed, but typing {{command}} in Terminal probably won't find this copy: no executable {{command}} in your shell's search path (PATH) leads to it, so Terminal either finds nothing or runs another copy. Most likely the folder it lives in isn't in PATH; opening a new Terminal window sometimes fixes that, and otherwise the tool's own install guide says how to add it to PATH."
     },
     "shadowedByHomebrew": {
       "title": "Another copy runs when you type {{command}}",

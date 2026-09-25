@@ -740,6 +740,26 @@ mod tests {
     }
 
     #[test]
+    fn test_shadow_note_says_not_on_path_when_the_launcher_is_on_path_but_its_target_is_not_executable(
+    ) {
+        // Same PATH as the test above -- `~/.local/bin` is on it -- but the
+        // file the launcher links to has no executable bit, so the scan
+        // (regular file with an executable bit, through the link) keeps no
+        // entry that is this copy: typing the name cannot run it. The
+        // note is NotOnPath, as when the folder is missing from PATH,
+        // which is why `sourceNotice.notOnPath` gives the missing folder
+        // as the likely cause and not as the cause.
+        let home = TempHome::new("shadow-target-not-executable");
+        let layout = claude_layout(&home, "2.1.281");
+        std::fs::set_permissions(&layout.real, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let env = home.env(vec![home.path().join(".local/bin")]);
+        assert_eq!(
+            shadow_note("claude", &env, &layout.real),
+            Some(InstanceNote::NotOnPath)
+        );
+    }
+
+    #[test]
     fn test_shadow_note_is_silent_for_a_link_to_the_same_launcher() {
         // `~/bin/claude → ~/.local/bin/claude` earlier on PATH runs the
         // same file: canonical paths are compared, not the names PATH

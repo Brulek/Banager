@@ -342,6 +342,24 @@ describe("sourceNoticesFor", () => {
     expect(zhCN.sourceNotice.notOnPath.description).toContain("要么什么也找不到，要么运行的是另一份");
   });
 
+  it("has the not-on-PATH notice say no executable entry on PATH reaches this copy, and give the missing folder as the likely cause, in both locales", () => {
+    // route::shadow_note answers NotOnPath whenever no executable
+    // `command` on PATH resolves to this copy -- also when the launcher's
+    // folder is on PATH but the file it links to has no executable bit
+    // (route.rs, test_shadow_note_says_not_on_path_when_the_launcher_is_on_path_but_its_target_is_not_executable).
+    // So the sentence says what was checked, and gives the folder's absence
+    // as the likely cause rather than stating it as the cause (step-B
+    // review finding B-5).
+    expect(en.sourceNotice.notOnPath.description).toContain(
+      "no executable {{command}} in your shell's search path (PATH) leads to it",
+    );
+    expect(en.sourceNotice.notOnPath.description).toContain("Most likely the folder it lives in isn't in PATH");
+    expect(en.sourceNotice.notOnPath.description).not.toMatch(/this copy: the folder/);
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("没有一个可执行的 {{command}} 通向这一份");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("最可能的原因是它所在的文件夹不在 PATH 里");
+    expect(zhCN.sourceNotice.notOnPath.description).not.toMatch(/这一份：它所在的文件夹/);
+  });
+
   it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", () => {
     // The same rule as the no-safe-method sentence (the row of a recipe
     // without an uninstall method; this row's own before step C): Canager shows
