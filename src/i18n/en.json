@@ -121,11 +121,17 @@
     "willTrash": {
       "Launcher": "Moves to the Trash: {{path}} (the command itself)",
       "Program": "Moves to the Trash: {{path}} (the program's files)",
-      "Cache": "Moves to the Trash: {{path}} (downloaded files it can re-create)"
+      "Cache": "Moves to the Trash: {{path}} (downloaded files it can re-create)",
+      "Backups": "Moves to the Trash: {{path}} (an old copy the updater left behind)"
     },
     "willKeep": {
       "Settings": "Keeps: {{path}} (your settings)",
-      "SettingsAndHistory": "Keeps: {{path}} (your settings, login, history and working files — other apps may use it too)"
+      "SettingsAndHistory": "Keeps: {{path}} (your settings, login, history and working files — other apps may use it too)",
+      "ToolState": "Keeps: {{path}} (its conversations, history and working files; some of the program's own files are in there too)",
+      "ShellConfigLines": "Keeps: {{path}} (any lines its installer added there — harmless, and Canager never edits that file)",
+      "OutsideHome": "Keeps: {{path}} (outside your home folder, so Canager won't touch it; after uninstalling it's a dead link you can delete yourself)",
+      "NotOurs": "Keeps: {{path}} (Canager couldn't confirm it's part of this install — something else may have put it there — so it stays)",
+      "InstallerCache": "Keeps: {{path}} (the installer's download staging folder, usually empty — Canager moves nothing that sits directly in ~/.cache; you can delete it yourself)"
     },
     "alreadyGone": "Already gone: {{path}} (nothing left to move)",
     "removesToolchains": "This deletes {{path}} permanently — not to the Trash — with every toolchain in it ({{names}}) and everything rustup downloaded. Projects that need Rust will stop building until you install it again. Any other rustup that uses this folder loses its toolchains too.",

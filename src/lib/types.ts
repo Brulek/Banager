@@ -77,12 +77,19 @@ export type UninstallBlocked = "Pinned" | "NoSafeMethod";
  * `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over this union,
  * so a variant added here without copy fails `tsc`.
  */
-export type RemovedWhat = "Launcher" | "Program" | "Cache";
+export type RemovedWhat = "Launcher" | "Program" | "Cache" | "Backups";
 /**
  * What one path a path-list uninstall leaves alone is. Mirrors `KeptWhat`;
  * read through `KEPT_WHAT_KEYS` in src/lib/warnings.ts.
  */
-export type KeptWhat = "Settings" | "SettingsAndHistory";
+export type KeptWhat =
+  | "Settings"
+  | "SettingsAndHistory"
+  | "ToolState"
+  | "ShellConfigLines"
+  | "OutsideHome"
+  | "NotOurs"
+  | "InstallerCache";
 /**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,

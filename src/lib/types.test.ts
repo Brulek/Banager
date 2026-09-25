@@ -260,10 +260,20 @@ describe("types", () => {
     );
     expect(JSON.stringify(alreadyGone)).toBe('{"AlreadyGone":{"path":"~/.local/share/claude"}}');
     expect(roundTrip(willTrash)).toEqual(willTrash);
-    const removed: RemovedWhat[] = ["Launcher", "Program", "Cache"];
-    const kept: KeptWhat[] = ["Settings", "SettingsAndHistory"];
-    expect(JSON.stringify(removed)).toBe('["Launcher","Program","Cache"]');
-    expect(JSON.stringify(kept)).toBe('["Settings","SettingsAndHistory"]');
+    const removed: RemovedWhat[] = ["Launcher", "Program", "Cache", "Backups"];
+    const kept: KeptWhat[] = [
+      "Settings",
+      "SettingsAndHistory",
+      "ToolState",
+      "ShellConfigLines",
+      "OutsideHome",
+      "NotOurs",
+      "InstallerCache",
+    ];
+    expect(JSON.stringify(removed)).toBe('["Launcher","Program","Cache","Backups"]');
+    expect(JSON.stringify(kept)).toBe(
+      '["Settings","SettingsAndHistory","ToolState","ShellConfigLines","OutsideHome","NotOurs","InstallerCache"]',
+    );
 
     // Phase 4 step E: what rustup's own uninstall does. Pinned against
     // `test_warning_wire_shapes_match_the_hand_written_ts_mirror` in

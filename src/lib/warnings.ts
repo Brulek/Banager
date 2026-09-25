@@ -13,12 +13,18 @@ const REMOVED_WHAT_KEYS: Record<RemovedWhat, string> = {
   Launcher: "warnings.willTrash.Launcher",
   Program: "warnings.willTrash.Program",
   Cache: "warnings.willTrash.Cache",
+  Backups: "warnings.willTrash.Backups",
 };
 
 /** The sentence for each kind of path a path-list uninstall keeps. */
 const KEPT_WHAT_KEYS: Record<KeptWhat, string> = {
   Settings: "warnings.willKeep.Settings",
   SettingsAndHistory: "warnings.willKeep.SettingsAndHistory",
+  ToolState: "warnings.willKeep.ToolState",
+  ShellConfigLines: "warnings.willKeep.ShellConfigLines",
+  OutsideHome: "warnings.willKeep.OutsideHome",
+  NotOurs: "warnings.willKeep.NotOurs",
+  InstallerCache: "warnings.willKeep.InstallerCache",
 };
 
 /**

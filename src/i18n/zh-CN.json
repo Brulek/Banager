@@ -114,11 +114,17 @@
     "willTrash": {
       "Launcher": "移到废纸篓：{{path}}（命令本身）",
       "Program": "移到废纸篓：{{path}}（程序文件）",
-      "Cache": "移到废纸篓：{{path}}（可重新下载的缓存）"
+      "Cache": "移到废纸篓：{{path}}（可重新下载的缓存）",
+      "Backups": "移到废纸篓：{{path}}（更新程序留下的旧副本）"
     },
     "willKeep": {
       "Settings": "保留：{{path}}（你的设置）",
-      "SettingsAndHistory": "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）"
+      "SettingsAndHistory": "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）",
+      "ToolState": "保留：{{path}}（它的对话、历史和工作文件；程序自己的一些文件也在里面）",
+      "ShellConfigLines": "保留：{{path}}（安装程序加进去的那几行，如果有的话——无害；Canager 从不改这个文件）",
+      "OutsideHome": "保留：{{path}}（不在你的个人文件夹里，Canager 不会碰它；卸载后它是个失效的链接，你可以自己删）",
+      "NotOurs": "保留：{{path}}（Canager 无法确认它属于这次安装——可能是别的东西放在那里的——所以不动它）",
+      "InstallerCache": "保留：{{path}}（安装器的下载暂存文件夹，通常是空的——Canager 不会移动直接放在 ~/.cache 里的东西，你可以自己删）"
     },
     "alreadyGone": "已经不在了：{{path}}（没有东西要移）",
     "removesToolchains": "这会把 {{path}} 永久删除（不是移到废纸篓），里面的所有工具链（{{names}}）以及 rustup 下载的全部内容一起消失。需要 Rust 的项目要等重新安装后才能再编译。其它用这个文件夹的 rustup 也会失去它们的工具链。",

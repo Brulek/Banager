@@ -360,35 +360,70 @@ pub enum UpdateChannel {
 
 /// What one path a path-list uninstall moves to the Trash is, for the
 /// sentence that lists it. Payload of `Warning::WillTrash`; produced by
-/// `removal::plan_removal` from the recipe's `RemoveSpec.what`, read by
-/// `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over the
-/// mirror, so a variant added here without copy fails `tsc`. Only the
-/// kinds Claude Code's list produces exist in this step; `Backups`
-/// (Antigravity's `agy.<time>.old`) arrives with step D.
+/// `removal::plan_removal` from the recipe's `RemoveSpec.what`, or from a
+/// `Glob.what` for a backup file (`removal::listed_items`, check 5), read
+/// by `REMOVED_WHAT_KEYS` in src/lib/warnings.ts, a `Record` over the
+/// mirror, so a variant added here without copy fails `tsc`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RemovedWhat {
-    /// The launcher: the command itself (`~/.local/bin/claude`).
+    /// The launcher: the command itself (`~/.local/bin/claude`;
+    /// `~/.local/bin/agy`, which is the whole program; grok's
+    /// `~/.grok/bin/grok` and `~/.grok/bin/agent`, two links to one
+    /// download, and its optional fallback links in `~/.local/bin`).
     Launcher,
-    /// The program's files (`~/.local/share/claude`).
+    /// The program's files (`~/.local/share/claude`, `~/.grok/downloads`).
     Program,
     /// Downloaded files the tool re-creates (`~/.claude/downloads`).
     Cache,
+    /// A backup copy the tool's own updater left beside its launcher
+    /// (`~/.local/bin/agy.<time>.old`, agy.md/spec §3.5), found through the
+    /// recipe's `backup_globs`.
+    Backups,
 }
 
 /// What one path a path-list uninstall leaves where it is, for the
 /// sentence that lists it. Payload of `Warning::WillKeep`; produced by
-/// `removal::plan_removal` from the recipe's `KeepSpec.what`, read by
-/// `KEPT_WHAT_KEYS` in src/lib/warnings.ts. `ToolState`,
-/// `ShellConfigLines`, `OutsideHome` and `NotOurs` arrive with the
-/// recipes that produce them (agy and grok, step D).
+/// `removal::plan_removal` from the recipe's `KeepSpec.what` (through
+/// `kept_places` and, for `OutsideHome`, `outside_home_keeps`) and from its
+/// optional-path skip (`NotOurs`); read by `KEPT_WHAT_KEYS` in
+/// src/lib/warnings.ts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeptWhat {
     /// A settings file (`~/.claude.json`).
     Settings,
     /// Settings, login, history and working files, shared with other
     /// apps (`~/.claude`, which the tool's editor extensions and desktop
-    /// app use too).
+    /// app use too; `~/.grok`, with `config.toml`, `auth.json`, sessions
+    /// and memory).
     SettingsAndHistory,
+    /// The tool's own root, where its conversations, history and working
+    /// files sit beside some of the program's own files, with no vendor
+    /// list saying which could go alone (`~/.gemini/antigravity-cli`;
+    /// spec §十三 #24).
+    ToolState,
+    /// A shell startup file the installer added lines to (`~/.zshrc`,
+    /// `~/.zprofile`): Canager never edits one (spec §6.8), and does not
+    /// read it to find the lines, so the sentence says "any lines".
+    ShellConfigLines,
+    /// A link outside the home folder the installer may have made into the
+    /// tool's root (`/usr/local/bin/grok`): never touched, reported so the
+    /// user knows it becomes a dead link. Reported only when it is a link
+    /// into the root (`removal::points_into`): a `/usr/local/bin/grok` that
+    /// is Homebrew's, or an `agent` that is another CLI's, gets no sentence.
+    /// Report-only: `kept_places` does not protect it (a link into the
+    /// program folder would otherwise refuse the uninstall it exists for).
+    OutsideHome,
+    /// An optional listed path that is there but Canager could not confirm
+    /// is this install's -- the wrong shape, a link elsewhere, a folder on
+    /// the way that is a link, or a place Canager never moves from
+    /// (`~/.local/bin/agent` when another CLI owns it; spec §十三 #27) --
+    /// so it stays and the uninstall goes on.
+    NotOurs,
+    /// The installer's download staging folder, directly in `~/.cache`
+    /// (`~/.cache/antigravity`): Canager moves nothing that sits directly in
+    /// a shared folder (check 1's never-list), so it stays, usually empty,
+    /// and the user may delete it (phase 4 step D plan, ruling 1).
+    InstallerCache,
 }
 
 /// A specific warning `Plan` or `UpdateCandidate` carries, so the UI can
@@ -1173,17 +1208,29 @@ mod tests {
             .unwrap(),
             r#"{"AlreadyGone":{"path":"~/.local/share/claude"}}"#
         );
+        // Every kind, as `REMOVED_WHAT_KEYS`/`KEPT_WHAT_KEYS` in
+        // src/lib/warnings.ts spell them (step C's three and two, step D's
+        // `Backups` and five more).
         for what in [
             RemovedWhat::Launcher,
             RemovedWhat::Program,
             RemovedWhat::Cache,
+            RemovedWhat::Backups,
         ] {
             assert_eq!(
                 serde_json::to_string(&what).unwrap(),
                 format!("\"{what:?}\"")
             );
         }
-        for what in [KeptWhat::Settings, KeptWhat::SettingsAndHistory] {
+        for what in [
+            KeptWhat::Settings,
+            KeptWhat::SettingsAndHistory,
+            KeptWhat::ToolState,
+            KeptWhat::ShellConfigLines,
+            KeptWhat::OutsideHome,
+            KeptWhat::NotOurs,
+            KeptWhat::InstallerCache,
+        ] {
             assert_eq!(
                 serde_json::to_string(&what).unwrap(),
                 format!("\"{what:?}\"")

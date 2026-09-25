@@ -35,6 +35,26 @@ describe("warningKey", () => {
     expect(warningKey({ WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } })).toBe(
       "warnings.willKeep.SettingsAndHistory",
     );
+    // Step D's kinds: the backup a self-updater leaves, and the five things
+    // the Antigravity and Grok lists keep.
+    expect(warningKey({ WillTrash: { path: "~/.local/bin/agy.1727000000.old", what: "Backups" } })).toBe(
+      "warnings.willTrash.Backups",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.gemini/antigravity-cli", what: "ToolState" } })).toBe(
+      "warnings.willKeep.ToolState",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.zshrc", what: "ShellConfigLines" } })).toBe(
+      "warnings.willKeep.ShellConfigLines",
+    );
+    expect(warningKey({ WillKeep: { path: "/usr/local/bin/grok", what: "OutsideHome" } })).toBe(
+      "warnings.willKeep.OutsideHome",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.local/bin/agent", what: "NotOurs" } })).toBe(
+      "warnings.willKeep.NotOurs",
+    );
+    expect(warningKey({ WillKeep: { path: "~/.cache/antigravity", what: "InstallerCache" } })).toBe(
+      "warnings.willKeep.InstallerCache",
+    );
     expect(warningKey({ AlreadyGone: { path: "~/.local/share/claude" } })).toBe(
       "warnings.alreadyGone",
     );
