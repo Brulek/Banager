@@ -593,7 +593,7 @@ mod tests {
             super::super::rustup::uninstall_blocked
                 as fn(
                     &crate::adapters::standalone::Detected,
-                ) -> Option<crate::model::UninstallBlocked>
+                ) -> Option<crate::adapters::standalone::recipe::GateRefusal>
         ));
         assert!(std::ptr::fn_addr_eq(
             cmd.warnings,

@@ -13,6 +13,7 @@
 
 use super::Detected;
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock, UninstallBlocked, Warning};
+use std::path::PathBuf;
 
 /// A tool installed by its own installer, as data.
 #[derive(Debug)]
@@ -208,8 +209,9 @@ pub enum Uninstall {
     /// -y`), run against the launcher through `run_plan` unchanged; when
     /// it may be offered is said by `blocked`, and what it removes by
     /// `warnings`, since the argv alone cannot (spec §6.4). Read by
-    /// `plan(Uninstall)` (`StandaloneAdapter::command_uninstall_plan`)
-    /// and `inventory` (`rows`); produced by `recipes::RUSTUP`.
+    /// `plan(Uninstall)` (`StandaloneAdapter::command_uninstall_plan`),
+    /// `inventory` (`rows`) and `execute` (the gate, asked again before
+    /// the spawn); produced by `recipes::RUSTUP`.
     Command(CommandUninstall),
 }
 
@@ -223,15 +225,33 @@ pub struct CommandUninstall {
     pub timeout_secs: u64,
     pub cancel: CancelPolicy,
     /// Whether this install may be offered the command at all, from the
-    /// seat: `Some(reason)` puts `uninstall_blocked` on the artifact
+    /// seat and the disk: `Some` puts its `reason` on the artifact
     /// (`inventory`), which the gate refuses and the page hides the
-    /// button for, and makes `plan(Uninstall)` refuse with the same
-    /// reason. rustup's is `rustup::uninstall_blocked`: `NoSafeMethod`
-    /// unless Rust lives in its standard folders (plan ruling 18).
-    pub blocked: fn(&Detected) -> Option<UninstallBlocked>,
+    /// button for, makes `plan(Uninstall)` refuse with the same reason,
+    /// and -- asked once more by `execute` right before the spawn, since
+    /// the command deletes its folders wherever they resolve at run time
+    /// -- stops the run with `Fault::PathChanged` naming its `path`.
+    /// rustup's is `rustup::uninstall_blocked`: `NoSafeMethod` unless
+    /// Rust lives in its standard folders (plan ruling 18).
+    pub blocked: fn(&Detected) -> Option<GateRefusal>,
     /// The preview's warnings, from what `detect` seated and the disk.
     /// Read by `plan(Uninstall)`; rustup's is `rustup::uninstall_warnings`.
     pub warnings: fn(&Detected) -> Vec<Warning>,
+}
+
+/// What a `Command` uninstall's gate (`CommandUninstall.blocked`) answers
+/// when it refuses. `reason` is what the artifact carries (`inventory`)
+/// and what `plan(Uninstall)` refuses with
+/// (`AdapterError::UninstallBlocked`). `path` is the folder the rule
+/// failed at, absolute, for `execute`: it asks the gate again right
+/// before the spawn, and when a gate the preview passed refuses now, the
+/// folder is no longer where, or what, the preview said, and the run
+/// stops with `Fault::PathChanged` naming it. Produced by
+/// `rustup::standard_roots`, through `rustup::uninstall_blocked`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GateRefusal {
+    pub reason: UninstallBlocked,
+    pub path: PathBuf,
 }
 
 /// One path a path-list uninstall moves to the Trash.

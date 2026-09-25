@@ -21,8 +21,10 @@
 //! unix.rs:50-53). Both homes come from `RUSTUP_HOME`/`CARGO_HOME` or
 //! default under `HOME` (env.rs:67-79, :101-113) -- wherever they point,
 //! and permanently: nothing here goes to the Trash. So Canager offers the
-//! command only for the standard layout (`standard_roots`, ruling 18) and
-//! the preview names both folders by path.
+//! command only for the standard layout (`standard_roots`, ruling 18),
+//! asks that gate again right before the command runs
+//! (`StandaloneAdapter::execute`), and the preview names both folders by
+//! path.
 //!
 //! Nothing here runs a command or writes a file: `plan` hands in what
 //! `detect` seated, and this module lists `<rustup_home>/toolchains` and
@@ -31,6 +33,7 @@
 //! replays rustup's own cleanup on copies of them in memory, and answers
 //! with `Warning`s.
 
+use super::recipe::GateRefusal;
 use super::Detected;
 use crate::adapters::cargo::{instance_id_for, parse_crates2_bins};
 use crate::model::{ResourceLock, UninstallBlocked, Warning};
@@ -96,7 +99,7 @@ fn is_real_dir(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// The gate (ruling 18): `Some` only when the Rust this instance belongs
+/// The gate (ruling 18): `Ok` only when the Rust this instance belongs
 /// to lives where a fresh `rustup-init` puts it. Both homes as rustup
 /// computes them (`home` 0.5.12 over `RUSTUP_HOME`/`CARGO_HOME`/`HOME`,
 /// seated by `detect`; `None` is a relative value, unsupported); each
@@ -107,39 +110,50 @@ fn is_real_dir(path: &Path) -> bool {
 /// rustup home a directory that is not a link, or not there yet (rustup
 /// creates it on its first run). Anything else -- a custom home, a link
 /// to somewhere else, a relative variable -- and `uninstall()` would
-/// `remove_dir` a place this preview did not name: not offered.
-pub fn standard_roots(d: &Detected) -> Option<StandardRoots> {
-    let cargo_home = d.cargo_home.as_deref()?;
-    let rustup_home = d.rustup_home.as_deref()?;
-    if !d.home.is_absolute()
-        || cargo_home != d.home.join(".cargo")
-        || rustup_home != d.home.join(".rustup")
-    {
-        return None;
-    }
-    if !is_real_dir(cargo_home) {
-        return None;
-    }
+/// `remove_dir` a place this preview did not name: not offered, and the
+/// `Err` is `NoSafeMethod` at the standard folder the rule failed at --
+/// `<home>/.cargo`, or `<home>/.rustup` once the Cargo home passes -- so
+/// `execute`, asking again right before the spawn, can say which folder
+/// is no longer what the preview showed. The disk is read every time:
+/// the answer is for now, not for when `detect` seated the homes.
+pub fn standard_roots(d: &Detected) -> Result<StandardRoots, GateRefusal> {
+    let refused = |path: PathBuf| GateRefusal {
+        reason: UninstallBlocked::NoSafeMethod,
+        path,
+    };
+    let standard_cargo = d.home.join(".cargo");
+    let standard_rustup = d.home.join(".rustup");
+    let cargo_home = match d.cargo_home.as_deref() {
+        Some(cargo_home)
+            if d.home.is_absolute() && cargo_home == standard_cargo && is_real_dir(cargo_home) =>
+        {
+            cargo_home
+        }
+        _ => return Err(refused(standard_cargo)),
+    };
+    let rustup_home = match d.rustup_home.as_deref() {
+        Some(rustup_home) if rustup_home == standard_rustup => rustup_home,
+        _ => return Err(refused(standard_rustup)),
+    };
     match std::fs::symlink_metadata(rustup_home) {
         Ok(meta) if meta.file_type().is_dir() => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        _ => return None,
+        _ => return Err(refused(standard_rustup)),
     }
-    Some(StandardRoots {
+    Ok(StandardRoots {
         cargo_home: cargo_home.to_path_buf(),
         rustup_home: rustup_home.to_path_buf(),
     })
 }
 
-/// `CommandUninstall.blocked` of the `RUSTUP` recipe: `NoSafeMethod` for
-/// any layout but the standard one. The variant is the one the gate
-/// (`session/plans.rs`) and the Installed page already refuse and hide
-/// the button for; rustup's row says why in its own sentence
+/// `CommandUninstall.blocked` of the `RUSTUP` recipe: the gate's refusal
+/// -- `NoSafeMethod`, at the folder that fails -- for any layout but the
+/// standard one. The variant is the one the gate (`session/plans.rs`)
+/// and the Installed page already refuse and hide the button for;
+/// rustup's row says why in its own sentence
 /// (`installed.blocked.NoSafeMethod.standalone-rustup`, src/lib/sources.ts).
-pub fn uninstall_blocked(d: &Detected) -> Option<UninstallBlocked> {
-    standard_roots(d)
-        .is_none()
-        .then_some(UninstallBlocked::NoSafeMethod)
+pub fn uninstall_blocked(d: &Detected) -> Option<GateRefusal> {
+    standard_roots(d).err()
 }
 
 /// Every installed toolchain, by name: the entries of
@@ -447,7 +461,7 @@ pub fn shell_config_leftovers(
 /// refuses first). Paths are spelled with `~` by the crate's one rule
 /// (`scan::display_path`).
 pub fn warnings_with(d: &Detected, homebrew_prefixes: &[PathBuf]) -> Vec<Warning> {
-    let Some(roots) = standard_roots(d) else {
+    let Ok(roots) = standard_roots(d) else {
         return Vec::new();
     };
     let tilde = |path: &Path| {
@@ -515,6 +529,15 @@ mod tests {
         ". \"$HOME/.cargo/env\"".to_string()
     }
 
+    /// The folder a refused layout is refused at, for the assertions
+    /// below: `execute` names it when the gate the preview passed refuses
+    /// right before the spawn.
+    fn refused_at(d: &Detected) -> PathBuf {
+        let refusal = standard_roots(d).expect_err("not the standard layout");
+        assert_eq!(refusal.reason, UninstallBlocked::NoSafeMethod);
+        refusal.path
+    }
+
     #[test]
     fn test_standard_roots_accepts_only_the_default_layout_of_real_directories() {
         // Ruling 18: both roots as rustup computes them (`home` 0.5.12),
@@ -523,7 +546,9 @@ mod tests {
         // there yet. Anything else is a layout Canager will not offer to
         // delete: rustup's `uninstall()` removes `$RUSTUP_HOME` and
         // `$CARGO_HOME` whole (self_update.rs:960-966, :1029), wherever
-        // they point.
+        // they point. Each refusal names the standard folder the rule
+        // failed at: the Cargo home first, the rustup home once the Cargo
+        // home passes.
         let home = TempHome::new("roots-default");
         let cargo_home = home.dir(".cargo");
         let rustup_home = home.dir(".rustup");
@@ -536,19 +561,22 @@ mod tests {
         // still the standard layout.
         let home = TempHome::new("roots-no-rustup-home");
         let cargo_home = home.dir(".cargo");
-        assert!(standard_roots(&detected(home.path(), &cargo_home)).is_some());
+        assert!(standard_roots(&detected(home.path(), &cargo_home)).is_ok());
 
         // Custom, absolute: not offered.
         let home = TempHome::new("roots-custom-cargo");
         let custom = home.dir("elsewhere/cargo");
-        assert!(standard_roots(&detected(home.path(), &custom)).is_none());
+        assert_eq!(
+            refused_at(&detected(home.path(), &custom)),
+            home.path().join(".cargo")
+        );
         let home = TempHome::new("roots-custom-rustup");
         let cargo_home = home.dir(".cargo");
         let d = Detected {
             rustup_home: Some(home.dir("elsewhere/rustup")),
             ..detected(home.path(), &cargo_home)
         };
-        assert!(standard_roots(&d).is_none());
+        assert_eq!(refused_at(&d), home.path().join(".rustup"));
 
         // Relative (unsupported, seated as `None`): not offered.
         let home = TempHome::new("roots-relative");
@@ -557,39 +585,63 @@ mod tests {
             cargo_home: None,
             ..detected(home.path(), &cargo_home)
         };
-        assert!(standard_roots(&d).is_none());
+        assert_eq!(refused_at(&d), home.path().join(".cargo"));
         let d = Detected {
             rustup_home: None,
             ..detected(home.path(), &cargo_home)
         };
-        assert!(standard_roots(&d).is_none());
+        assert_eq!(refused_at(&d), home.path().join(".rustup"));
 
         // A root that is a link: the path Canager would list is not the
         // directory that would go.
         let home = TempHome::new("roots-linked-cargo");
         let elsewhere = home.dir("Volumes/Data/cargo");
         home.link(".cargo", &elsewhere);
-        assert!(standard_roots(&detected(home.path(), &home.path().join(".cargo"))).is_none());
+        assert_eq!(
+            refused_at(&detected(home.path(), &home.path().join(".cargo"))),
+            home.path().join(".cargo")
+        );
         let home = TempHome::new("roots-linked-rustup");
         let cargo_home = home.dir(".cargo");
         let elsewhere = home.dir("Volumes/Data/rustup");
         home.link(".rustup", &elsewhere);
-        assert!(standard_roots(&detected(home.path(), &cargo_home)).is_none());
+        assert_eq!(
+            refused_at(&detected(home.path(), &cargo_home)),
+            home.path().join(".rustup")
+        );
 
         // No `~/.cargo` at all: nothing to offer.
         let home = TempHome::new("roots-no-cargo-home");
-        assert!(standard_roots(&detected(home.path(), &home.path().join(".cargo"))).is_none());
+        assert_eq!(
+            refused_at(&detected(home.path(), &home.path().join(".cargo"))),
+            home.path().join(".cargo")
+        );
     }
 
     #[test]
-    fn test_uninstall_blocked_is_no_safe_method_for_anything_but_the_standard_layout() {
+    fn test_uninstall_blocked_is_the_gates_refusal_for_anything_but_the_standard_layout() {
         let home = TempHome::new("blocked");
         let cargo_home = home.dir(".cargo");
         assert_eq!(uninstall_blocked(&detected(home.path(), &cargo_home)), None);
         let custom = home.dir("elsewhere/cargo");
         assert_eq!(
             uninstall_blocked(&detected(home.path(), &custom)),
-            Some(UninstallBlocked::NoSafeMethod)
+            Some(GateRefusal {
+                reason: UninstallBlocked::NoSafeMethod,
+                path: home.path().join(".cargo"),
+            })
+        );
+        // The same seat, the disk changed: the folder that is now a link
+        // is the one named, which is what `execute` shows when this
+        // happens between the preview and the click.
+        let elsewhere = home.dir("Volumes/Data/rustup");
+        home.link(".rustup", &elsewhere);
+        assert_eq!(
+            uninstall_blocked(&detected(home.path(), &cargo_home)),
+            Some(GateRefusal {
+                reason: UninstallBlocked::NoSafeMethod,
+                path: home.path().join(".rustup"),
+            })
         );
     }
 

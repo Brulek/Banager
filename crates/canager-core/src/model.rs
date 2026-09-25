@@ -768,8 +768,16 @@ pub enum Fault {
     /// resolving outside the tool's own root (at Homebrew's or npm's copy,
     /// say) -- so the command was not started; a launcher re-pointed at a
     /// newer version inside that root is still the native install's, and
-    /// the command runs. `path` has the home folder abbreviated to `~`; it
-    /// is the kept path when a kept path is what changed. Built by
+    /// the command runs. For a standalone tool's command uninstall
+    /// (rustup's), the launcher likewise, and a folder the command
+    /// deletes: the recipe's gate that passed at the preview is asked
+    /// again right before the spawn, and a `~/.rustup` or `~/.cargo` that
+    /// is now a link to somewhere else, or otherwise not the real folder
+    /// the gate accepted (a `~/.rustup` that is simply gone still passes:
+    /// rustup finds nothing there), is `path`, the command not started --
+    /// rustup deletes wherever those resolve when it runs. `path` has the home
+    /// folder abbreviated to `~`; it is the kept path when a kept path is
+    /// what changed. Built by
     /// `removal::execute_removal` (`adapters/standalone/removal.rs`) and
     /// `StandaloneAdapter::execute` (`adapters/standalone/mod.rs`); read by
     /// `faultKey`/`faultArgs` in src/lib/format.ts.

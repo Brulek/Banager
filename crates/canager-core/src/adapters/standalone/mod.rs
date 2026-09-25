@@ -346,9 +346,9 @@ impl StandaloneAdapter {
     /// gate says this layout is not offered, otherwise with the warnings
     /// the recipe builds from the seat and the disk. Nothing is run here
     /// (the preview must not run rustup: plan ruling 4). Through
-    /// `run_plan` like every command; `affected` stays empty because a
-    /// non-empty list disables Confirm and nothing here breaks another
-    /// package.
+    /// `run_plan` like every command, after `execute` has asked the gate
+    /// once more; `affected` stays empty because a non-empty list
+    /// disables Confirm and nothing here breaks another package.
     fn command_uninstall_plan(
         &self,
         inst: &ManagerInstance,
@@ -356,8 +356,10 @@ impl StandaloneAdapter {
         detected: &Detected,
         cmd: &CommandUninstall,
     ) -> Result<Plan, AdapterError> {
-        if let Some(reason) = (cmd.blocked)(detected) {
-            return Err(AdapterError::UninstallBlocked { reason });
+        if let Some(refusal) = (cmd.blocked)(detected) {
+            return Err(AdapterError::UninstallBlocked {
+                reason: refusal.reason,
+            });
         }
         Ok(Plan {
             request: req.clone(),
@@ -482,7 +484,7 @@ impl StandaloneAdapter {
                 Some(Uninstall::Command(cmd)) => self
                     .seated_detected_for(inst)
                     .map_or(Some(UninstallBlocked::NoSafeMethod), |seat| {
-                        (cmd.blocked)(&seat)
+                        (cmd.blocked)(&seat).map(|refusal| refusal.reason)
                     }),
             },
         }]
@@ -771,7 +773,8 @@ impl StandaloneAdapter {
     /// A `Command` plan -- the upgrade, `<launcher> update`, or a
     /// `Command` uninstall, rustup's `<launcher> self uninstall -y` -- runs
     /// through `run_plan` like every source's, after one more look at the
-    /// launcher immediately before the spawn (below). A `TrashPaths` plan
+    /// launcher immediately before the spawn and, for the uninstall, one
+    /// more ask of the recipe's gate (both below). A `TrashPaths` plan
     /// is carried out here, item by item (`removal::execute_removal`),
     /// against the list re-read from the recipe and the disk and compared
     /// with what the preview saw (`previewed`) -- the plan's paths are
@@ -843,6 +846,45 @@ impl StandaloneAdapter {
                             .display()
                             .to_string(),
                     }));
+                }
+                // A `Command` uninstall deletes folders the preview named
+                // by path, and rustup's `uninstall()` deletes wherever
+                // `RUSTUP_HOME` and `CARGO_HOME` resolve *when it runs*
+                // (self_update.rs:955-966, :1029), permanently. So the
+                // recipe's gate, which passed at the preview, is asked
+                // again here, of the same seat and the disk as it is now,
+                // for the same reason the launcher is: a `~/.rustup` or
+                // `~/.cargo` that became a link to somewhere else after
+                // the preview -- the launcher's probe alone still passes
+                // for the second, a regular file at the end of the link --
+                // is `Fault::PathChanged` naming that folder, nothing
+                // started. The upgrade is not gated (plan ruling 18: `self
+                // update` touches only `$CARGO_HOME/bin`). A `Command` plan
+                // for an uninstall no `Command` recipe backs, or for an
+                // install, was not built by `plan` and is a bug's, refused.
+                match plan.request.kind {
+                    OpKind::Upgrade => {}
+                    OpKind::Uninstall => {
+                        let Some(Uninstall::Command(cmd)) = &self.recipe.uninstall else {
+                            return Err(AdapterError::Refused(format!(
+                                "{} has no uninstall command to run",
+                                self.meta.name
+                            )));
+                        };
+                        if let Some(refusal) = (cmd.blocked)(&detected) {
+                            return Ok(Outcome::CanagerFailed(Fault::PathChanged {
+                                path: crate::scan::display_path(&refusal.path, &detected.home)
+                                    .display()
+                                    .to_string(),
+                            }));
+                        }
+                    }
+                    OpKind::Install => {
+                        return Err(AdapterError::Refused(format!(
+                            "{} is never installed by a plan of Canager's",
+                            self.meta.name
+                        )));
+                    }
                 }
                 run_plan(&self.runner, plan, sink, op_id, cancel).await
             }
@@ -3945,5 +3987,85 @@ mod tests {
         // gone is `run_operation`'s reading afterwards (Task 8).
         assert_eq!(outcome, Outcome::Succeeded);
         assert_eq!(sink.snapshot().len(), 2, "two log lines, streamed");
+    }
+
+    #[tokio::test]
+    async fn test_execute_refuses_rustups_uninstall_when_a_root_became_a_link_after_the_preview() {
+        // The gate (ruling 18) passed at the preview: `~/.cargo` and
+        // `~/.rustup` were real directories at the standard place. Between
+        // the preview and the click either can become a link to somewhere
+        // else -- by hand, or by another tool -- and rustup's `uninstall()`
+        // deletes wherever `RUSTUP_HOME` and `CARGO_HOME` resolve when it
+        // runs (self_update.rs:955-966, :1029), permanently: a place the
+        // confirmed preview never named. So the gate is asked again right
+        // before the spawn, as the launcher is, and a layout that is no
+        // longer standard is `PathChanged` naming the folder; nothing runs.
+        // Both folders, one at a time: for `~/.cargo` the launcher's probe
+        // alone would still say `Present` (a regular file at the end of the
+        // link), so that case is the gate's own catch.
+        for linked in [".rustup", ".cargo"] {
+            let home = TempHome::new("rustup-execute-linked-root");
+            let cargo_home = home.path().join(".cargo");
+            let (adapter, inst, runner) = detected_rustup(
+                &home.env(vec![]),
+                &cargo_home,
+                Arc::new(MockHttpClient::new()),
+            )
+            .await;
+            home.dir(".rustup/toolchains/stable-aarch64-apple-darwin");
+            runner.respond(
+                vec![
+                    cargo_home.join("bin/rustup").to_str().unwrap(),
+                    "self",
+                    "uninstall",
+                    "-y",
+                ],
+                exited_0("info: rustup is uninstalled\n"),
+            );
+            let plan = adapter
+                .plan(
+                    &inst,
+                    &request_for("standalone-rustup", OpKind::Uninstall, "rustup"),
+                )
+                .await
+                .expect("the layout is standard at the preview");
+            let calls_before = runner.calls().len();
+
+            // The folder moves out and a link of its name points at it:
+            // the same path, the same contents, not the folder the
+            // preview showed.
+            let elsewhere = home.path().join("Volumes/Data").join(&linked[1..]);
+            std::fs::create_dir_all(elsewhere.parent().unwrap()).expect("create the volume");
+            std::fs::rename(home.path().join(linked), &elsewhere).expect("move the folder");
+            home.link(linked, &elsewhere);
+
+            let outcome = adapter
+                .execute(
+                    &plan,
+                    Arc::new(VecSink::new()),
+                    11,
+                    CancellationToken::new(),
+                )
+                .await
+                .expect("execute");
+
+            assert_eq!(
+                outcome,
+                Outcome::CanagerFailed(Fault::PathChanged {
+                    path: format!("~/{linked}")
+                }),
+                "{linked}"
+            );
+            assert_eq!(
+                runner.calls().len(),
+                calls_before,
+                "{linked}: nothing was run"
+            );
+            let kept = match linked {
+                ".rustup" => "toolchains/stable-aarch64-apple-darwin",
+                _ => "bin/rustup",
+            };
+            assert!(elsewhere.join(kept).exists(), "{linked}: left as it is");
+        }
     }
 }
