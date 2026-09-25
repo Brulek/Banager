@@ -140,12 +140,13 @@ function hasPlanError(item: BatchItem): item is BatchItem & { planError: string 
 
 /**
  * Whether each note says that typing the tool's name in Terminal may not
- * run this instance's copy: no executable of that name on the PATH
- * Canager sees (`NotOnPath`), a different one found there first
- * (`ShadowedBy*`), or a launcher whose program files are gone
- * (`LauncherOnly`). Read by `selfUpdatingHintKey`: "or just run it"
- * updates this copy only where typing the name runs it. A `Record`, so a
- * note added to `InstanceNote` without an answer here fails `tsc`.
+ * run this instance's copy: this copy is not on the PATH Canager sees, so
+ * the name finds nothing there or another copy (`NotOnPath`); another
+ * copy is found there before this one (`ShadowedBy*`); or the launcher's
+ * program files are gone (`LauncherOnly`). Read by `selfUpdatingHintKey`:
+ * "or just run it" updates this copy only where typing the name runs it.
+ * A `Record`, so a note added to `InstanceNote` without an answer here
+ * fails `tsc`.
  */
 const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   // Homebrew's: about its list of software, not about which copy runs.

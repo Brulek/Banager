@@ -1786,12 +1786,13 @@ describe("UpdatesPage", () => {
   it.each(pathNotes)(
     "tells a self-updating standalone copy under a %s notice that it is behind, not to just run it",
     async (note, noticeTitle) => {
-      // Typing `claude` in Terminal probably finds nothing, or runs
-      // another copy found first on PATH -- the notice under this heading
-      // says which. This copy updates itself only when it runs (spec
-      // §4.4), so "or just run it" would leave it behind with its badge
-      // up. The row keeps its button and says only that this copy is
-      // behind and that Canager can update it.
+      // Typing `claude` in Terminal probably does not run this copy: it
+      // is not on PATH, so nothing or another copy runs (`NotOnPath`), or
+      // another copy is found on PATH before it (`ShadowedBy*`) -- the
+      // notice under this heading says which. This copy updates itself
+      // only when it runs (spec §4.4), so "or just run it" would leave it
+      // behind with its badge up. The row keeps its button and says only
+      // that this copy is behind and that Canager can update it.
       instances = [
         ...snapshot.instances,
         { ...claudeInstance, status: { unavailable: null, notes: [note] } },

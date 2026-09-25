@@ -323,6 +323,17 @@ describe("sourceNoticesFor", () => {
     }
   });
 
+  it("has the not-on-PATH notice say typing the name won't find this copy, and that Terminal then finds nothing or runs another copy, in both locales", () => {
+    // NotOnPath is also the note when another copy is on PATH and this one
+    // is not (route::shadow_note): typing the name then runs that other
+    // copy. So the sentence says it is this copy that won't be found, and
+    // names both outcomes, instead of reading as "nothing runs".
+    expect(en.sourceNotice.notOnPath.description).toContain("probably won't find this copy");
+    expect(en.sourceNotice.notOnPath.description).toContain("either finds nothing or runs another copy");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("多半找不到这一份");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("要么什么也找不到，要么运行的是另一份");
+  });
+
   it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", () => {
     // The same rule as the no-safe-method sentence on this instance's own
     // row (its artifact carries NoSafeMethod until step C): Canager shows

@@ -886,6 +886,13 @@ mod tests {
             .detect(&home.env(vec![]))
             .await;
         assert_eq!(instances[0].status.notes, vec![InstanceNote::NotOnPath]);
+        // And with Homebrew's directory on PATH but not the launcher's:
+        // NotOnPath too. Homebrew's copy runs when the name is typed, but
+        // this copy is not behind it on PATH; it is not on PATH at all.
+        let instances = adapter(Arc::new(MockRunner::new()))
+            .detect(&home.env(vec![home.path().join("opt/homebrew/bin")]))
+            .await;
+        assert_eq!(instances[0].status.notes, vec![InstanceNote::NotOnPath]);
     }
 
     #[tokio::test]

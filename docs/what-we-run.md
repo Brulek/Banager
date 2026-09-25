@@ -490,9 +490,11 @@ regardless. The version is the first token of the first non-empty line
 
 Canager also asks where `claude` would run from if typed in Terminal (the
 first regular file named `claude` with executable bits in Canager's
-`PATH`) and, when that is not this copy, says so under the source: not on
-`PATH`, or shadowed by a Homebrew, npm or unknown copy. That is a notice,
-not a command.
+`PATH`) and, when that is not this copy, says so under the source:
+shadowed by a Homebrew, npm or unknown copy when this copy comes later on
+`PATH`, or not on `PATH` when no such file is this copy, whether typing
+`claude` then finds nothing or another copy. That is a notice, not a
+command.
 
 **Environment Canager adds to version reads** (`CLAUDE.version.env`;
 upgrade adds no override and inherits ambient variables):

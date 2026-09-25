@@ -188,35 +188,48 @@ pub fn lexical_join(dir: &Path, target: &Path) -> PathBuf {
 
 /// Which copy runs when the user types `command`, given that this
 /// instance's binary is `real` (spec §七): `None` when the first
-/// executable `command` on `PATH` is this very file, otherwise one of the
-/// four payload-free notes. Payload-free on purpose (`InstanceNote`'s
+/// executable `command` on `PATH` is this very file; `NotOnPath` when no
+/// executable `command` on `PATH` is, since typing the name then never
+/// runs this copy, whether it finds nothing or another copy; otherwise --
+/// this file is on `PATH`, behind another copy -- the `ShadowedBy*` note
+/// classifying the first one. Payload-free on purpose (`InstanceNote`'s
 /// rule, from the instance-level channel spec's §2.3, restated in spec
 /// §七); the sentence names the command, which the user knows, not the
 /// winner's path, which they would not.
 pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<InstanceNote> {
     // Standalone-only lookup: changing the shared package-manager
     // discovery helper would broaden this step beyond its PATH notices.
-    let first = env
+    // Every executable `command` on PATH, in PATH's order, as its
+    // canonical path; `None` for one that does not canonicalise.
+    let mut found = env
         .path_dirs
         .iter()
         .map(|dir| dir.join(command))
-        .find(|path| {
+        .filter(|path| {
             std::fs::metadata(path)
                 .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
                 .unwrap_or(false)
-        });
-    let Some(first) = first else {
+        })
+        .map(|path| std::fs::canonicalize(path).ok());
+    let Some(first) = found.next() else {
         return Some(InstanceNote::NotOnPath);
     };
-    let Ok(first_real) = std::fs::canonicalize(&first) else {
-        return Some(InstanceNote::ShadowedByOther);
-    };
-    if first_real == real {
+    if first.as_deref() == Some(real) {
         return None;
     }
-    Some(if has_component(&first_real, &["Cellar", "Caskroom"]) {
+    // The first one is not this file, or does not resolve. It shadows
+    // this copy only if this copy is on PATH behind it: with no later
+    // entry resolving to this file, no PATH entry is known to reach this
+    // copy, so the note is that it is not on PATH.
+    if !found.any(|later| later.as_deref() == Some(real)) {
+        return Some(InstanceNote::NotOnPath);
+    }
+    let Some(first) = first else {
+        return Some(InstanceNote::ShadowedByOther);
+    };
+    Some(if has_component(&first, &["Cellar", "Caskroom"]) {
         InstanceNote::ShadowedByHomebrew
-    } else if has_component(&first_real, &["node_modules"]) {
+    } else if has_component(&first, &["node_modules"]) {
         InstanceNote::ShadowedByNpm
     } else {
         InstanceNote::ShadowedByOther
@@ -553,6 +566,55 @@ mod tests {
         assert_eq!(
             shadow_note("claude", &env, &layout.real),
             Some(InstanceNote::NotOnPath)
+        );
+    }
+
+    #[test]
+    fn test_shadow_note_says_not_on_path_when_another_copy_is_on_path_and_this_one_is_not() {
+        // The launcher's directory is missing from PATH and no link to
+        // this copy is on it, so typing the name never runs this copy,
+        // whatever copy PATH finds instead. A `ShadowedBy*` note would say
+        // that copy comes earlier in PATH than this one, which is not in
+        // PATH at all; uninstalling that copy would leave the name finding
+        // nothing.
+        for tail in [
+            "opt/homebrew/Caskroom/claude-code/2.1.267/claude",
+            "opt/homebrew/Cellar/x/1/bin/claude",
+            "opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js",
+            "Applications/Some.app/Contents/MacOS/claude",
+        ] {
+            let home = TempHome::new("shadow-only-another-copy");
+            let layout = claude_layout(&home, "2.1.281");
+            let winner = home.executable(tail);
+            let first = home.dir("first-on-path");
+            home.link("first-on-path/claude", &winner);
+            let env = home.env(vec![first]);
+            assert_eq!(
+                shadow_note("claude", &env, &layout.real),
+                Some(InstanceNote::NotOnPath),
+                "{tail}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shadow_note_counts_a_link_to_this_copy_as_this_copy_being_on_path() {
+        // `~/.local/bin` is missing from PATH, but `~/bin/claude` links to
+        // the launcher and `~/bin` is on PATH after Homebrew's directory:
+        // this copy is on PATH, behind Homebrew's, so Homebrew's shadows
+        // it. What decides is whether an executable `claude` on PATH is
+        // this file, not whether the launcher's own directory is listed.
+        let home = TempHome::new("shadow-reached-through-a-link");
+        let layout = claude_layout(&home, "2.1.281");
+        let cask = home.executable("opt/homebrew/Caskroom/claude-code/2.1.267/claude");
+        let brew_bin = home.dir("opt/homebrew/bin");
+        home.link("opt/homebrew/bin/claude", &cask);
+        let bin = home.dir("bin");
+        home.link("bin/claude", &layout.launcher);
+        let env = home.env(vec![brew_bin, bin]);
+        assert_eq!(
+            shadow_note("claude", &env, &layout.real),
+            Some(InstanceNote::ShadowedByHomebrew)
         );
     }
 

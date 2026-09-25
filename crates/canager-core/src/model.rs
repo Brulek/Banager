@@ -105,15 +105,20 @@ pub enum InstanceNote {
     /// none. Nothing has failed. When the update ends the shell refreshes
     /// again (see `Session::background_change`), so this clears by itself.
     IndexUpdating,
-    /// Typing this tool's name in Terminal would not find it: the
-    /// directory its launcher lives in is not on the `PATH` Canager sees.
-    /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for
-    /// a tool installed by its own installer; read by `sourceNoticesFor`
-    /// in src/lib/sources.ts.
+    /// Typing this tool's name in Terminal would not find this copy: no
+    /// executable of that name on the `PATH` Canager sees is it (usually
+    /// because the directory its launcher lives in is not on that `PATH`).
+    /// The name then finds nothing, or another copy; either way this is
+    /// the note, not a `ShadowedBy*` one, which would put that copy
+    /// earlier on `PATH` than one that is not on it. Produced by
+    /// `StandaloneAdapter::detect` (`route::shadow_note`) for a tool
+    /// installed by its own installer; read by `sourceNoticesFor` in
+    /// src/lib/sources.ts.
     NotOnPath,
-    /// Typing the name runs a copy Homebrew installed instead of this one:
-    /// the first executable of that name on `PATH` resolves under a
-    /// `Cellar` or `Caskroom` directory. Same producer and reader as
+    /// Typing the name runs a copy Homebrew installed instead of this one,
+    /// and this one is on `PATH` behind it: the first executable of that
+    /// name on `PATH` resolves under a `Cellar` or `Caskroom` directory,
+    /// and a later one is this copy. Same producer and reader as
     /// `NotOnPath`.
     ShadowedByHomebrew,
     /// As `ShadowedByHomebrew`, for a copy npm installed (it resolves under
