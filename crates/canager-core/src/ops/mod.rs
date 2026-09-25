@@ -882,6 +882,21 @@ impl Drop for ResourceLockGuard {
 }
 
 impl OperationManager {
+    /// The resource locks held this instant: by operations from the
+    /// moment `run_operation` acquires theirs until `finish` releases
+    /// them, and by a refresh's per-instance fetches
+    /// (`acquire_resource_lock`). A snapshot of the same `held` set both
+    /// of those use, read by `Session::refresh_round` before its
+    /// detection fan-out so that an adapter whose instance an operation is
+    /// working on is neither detected nor inventoried that round (phase 4
+    /// step E: `rustup self update` replaces the binary that both
+    /// `rustup --version` and, through the `cargo` proxy, `cargo
+    /// --version` would run). It decides nothing about acquisition, which
+    /// stays in `run_operation`'s own loop.
+    pub fn locks_held(&self) -> HashSet<ResourceLock> {
+        self.held.lock().unwrap().clone()
+    }
+
     /// Waits (polling every 50ms, the same cadence `run_operation` already
     /// uses for its own lock-wait loop) until `lock` is free, then holds it
     /// until the returned guard drops. `refresh` uses this to take the same

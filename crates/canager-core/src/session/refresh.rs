@@ -5,10 +5,21 @@
 
 use super::{DetectOutcome, Session, Snapshot, SourceError};
 use crate::adapters::{AdapterError, CheckOptions};
-use crate::model::{InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable};
+use crate::model::{
+    InstanceId, InstanceNote, InstanceStatus, ManagerInstance, ResourceLock, Unavailable,
+};
 use crate::runner::HostEnv;
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use tokio_util::task::AbortOnDropHandle;
+
+/// One adapter's part in a round's detection: spawned, or skipped with
+/// last round's instances because an operation holds one of them
+/// (`refresh_round`).
+enum Detection {
+    Spawned(AbortOnDropHandle<Vec<ManagerInstance>>),
+    Skipped(Vec<ManagerInstance>),
+}
 
 impl Session {
     /// Detect every registered adapter's instances concurrently (Task 11: a
@@ -151,10 +162,50 @@ impl Session {
         // `JoinHandle` it wraps, so a refresh that runs to completion sees
         // identical join results; the only new `Err` it can produce is a
         // cancellation, and nothing but dropping this future cancels.
+        //
+        // An adapter one of whose instances an operation is holding right
+        // now is not asked anything this round (phase 4 step E). Its
+        // `detect` runs the tool's own binary -- and on a Mac with rustup,
+        // `rustup self update` replaces that very binary while it holds
+        // both `standalone-rustup` and the cargo instance's lock, and the
+        // `cargo` the cargo adapter would run is the same binary in proxy
+        // mode, which begins by deleting the updater the operation is
+        // about to run. So: the held set is read once here; every adapter
+        // with a previous-round instance whose id is a held lock keeps
+        // last round's instances unchanged (no notice, no `stale`: nothing
+        // failed), and the per-instance loop below carries the held
+        // instances' rows forward instead of waiting on their lock -- a
+        // refresh used to wait out a `brew install` for minutes. Instances
+        // of a skipped adapter that are not themselves held are still
+        // inventoried under their own lock. The operation's own reading
+        // afterwards (`run_operation`'s reconcile, under its locks) and the
+        // refresh the front end runs when it finishes replace these rows.
+        // Read once, so an operation submitted after this line may start
+        // while a detect it would have skipped is running its one
+        // `--version`: that window is the command's duration.
+        let held = self.ops.locks_held();
+        let mut under_operation: HashSet<InstanceId> = HashSet::new();
         let mut adapters: Vec<_> = self.adapters.values().collect();
         adapters.sort_by(|a, b| a.meta().id.cmp(&b.meta().id));
-        let mut detect_handles = Vec::with_capacity(adapters.len());
+        let mut detections = Vec::with_capacity(adapters.len());
         for adapter in adapters {
+            let adapter_id = adapter.meta().id.clone();
+            let carried: Vec<ManagerInstance> = previous
+                .instances
+                .iter()
+                .filter(|i| i.adapter_id == adapter_id)
+                .cloned()
+                .collect();
+            let held_here: Vec<InstanceId> = carried
+                .iter()
+                .filter(|i| held.contains(&ResourceLock(i.id.clone())))
+                .map(|i| i.id.clone())
+                .collect();
+            if !held_here.is_empty() {
+                under_operation.extend(held_here);
+                detections.push((adapter_id, Detection::Skipped(carried)));
+                continue;
+            }
             // Cloned into the task because `tokio::spawn` needs a 'static
             // future: iterating `values()` by reference would tie it to
             // `&self`. (Written as an explicit clone rather than
@@ -162,14 +213,23 @@ impl Session {
             // `unnecessary_to_owned` misreads the latter here.)
             let adapter = adapter.clone();
             let env = env.clone();
-            detect_handles.push((
-                adapter.meta().id.clone(),
-                AbortOnDropHandle::new(tokio::spawn(async move { adapter.detect(&env).await })),
+            detections.push((
+                adapter_id,
+                Detection::Spawned(AbortOnDropHandle::new(tokio::spawn(async move {
+                    adapter.detect(&env).await
+                }))),
             ));
         }
         let mut instances = Vec::new();
         let mut detect_errors = Vec::new();
-        for (adapter_id, handle) in detect_handles {
+        for (adapter_id, detection) in detections {
+            let handle = match detection {
+                Detection::Skipped(carried) => {
+                    instances.extend(carried);
+                    continue;
+                }
+                Detection::Spawned(handle) => handle,
+            };
             match handle.await {
                 Ok(found) => instances.extend(found),
                 Err(_join_err) => {
@@ -245,7 +305,10 @@ impl Session {
             // rendered a group header, that sentence, and no rows at all.
             // `issue_plan`'s gate (spec §2.5) is what stops those rows
             // offering an Uninstall button that could not possibly work.
-            if inst.status.unavailable.is_some() {
+            // And an instance an operation is holding (`under_operation`,
+            // above): its rows are last round's, and this round does not
+            // wait for the operation's lock to take them again.
+            if inst.status.unavailable.is_some() || under_operation.contains(&inst.id) {
                 artifacts.extend(
                     previous
                         .artifacts
@@ -614,7 +677,7 @@ mod tests {
     use crate::session::{DetectOutcome, Session, Snapshot};
     use async_trait::async_trait;
     use std::collections::HashMap;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicI64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
@@ -1393,8 +1456,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_refresh_is_mutually_exclusive_with_an_operation_on_the_same_instance_but_not_others(
+    async fn test_refresh_carries_an_instance_under_an_operation_forward_and_still_refreshes_the_others(
     ) {
+        // Phase 4 step E (plan ruling 19): an instance an operation is
+        // holding is neither detected nor inventoried this round -- its
+        // rows are last round's, unchanged, and the refresh does not wait
+        // for the operation to end -- while every other instance, even of
+        // the same adapter, is refreshed as usual. Before this the refresh
+        // waited on the instance's lock, for as long as the operation took.
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -1410,10 +1479,11 @@ mod tests {
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], None);
-        session
+        let first = session
             .refresh(&non_root_env(), &CheckOptions::default())
             .await;
         state.lock().unwrap().inventory_calls.clear();
+        assert_eq!(state.lock().unwrap().detect_calls, 1);
 
         let req = OpRequest {
             kind: OpKind::Install,
@@ -1436,33 +1506,307 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        let session_for_refresh = session.clone();
-        let refresh_task = tokio::spawn(async move {
-            session_for_refresh
-                .refresh(&non_root_env(), &CheckOptions::default())
-                .await
-        });
-
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // The refresh returns while the operation is still running: it
+        // neither detects `fake` (one of its instances is held) nor
+        // inventories `fake:1`; `fake:2` is inventoried as ever.
+        let snapshot = tokio::time::timeout(
+            Duration::from_secs(2),
+            session.refresh(&non_root_env(), &CheckOptions::default()),
+        )
+        .await
+        .expect("a refresh must not wait for an operation on one instance");
         {
-            let calls = state.lock().unwrap().inventory_calls.clone();
+            let s = state.lock().unwrap();
             assert!(
-                calls.contains(&"fake:2".to_string()),
-                "a different instance's refresh must proceed while fake:1 is locked"
+                s.inventory_calls.contains(&"fake:2".to_string()),
+                "a different instance's refresh must proceed while fake:1 is held"
             );
             assert!(
-                !calls.contains(&"fake:1".to_string()),
-                "fake:1's refresh must not run while fake:1's operation is still holding its lock"
+                !s.inventory_calls.contains(&"fake:1".to_string()),
+                "fake:1's refresh must not run while fake:1's operation holds its lock"
+            );
+            assert_eq!(
+                s.detect_calls, 1,
+                "the adapter's detect is not run this round"
             );
         }
-
-        session.cancel(op_id).expect("cancel a Running op");
-        let snapshot = tokio::time::timeout(Duration::from_secs(2), refresh_task)
-            .await
-            .expect("refresh must not hang once the blocking operation is cancelled")
-            .expect("refresh task panicked");
+        // Carried forward *unchanged*: the same instance, no notice, no
+        // stale flag, its rows as they were.
+        let fake_1 = snapshot
+            .instances
+            .iter()
+            .find(|i| i.id == "fake:1")
+            .expect("fake:1");
+        assert_eq!(
+            fake_1,
+            first.instances.iter().find(|i| i.id == "fake:1").unwrap()
+        );
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "jq"));
         assert!(snapshot.artifacts.iter().any(|a| a.key.name == "wget"));
+        assert!(!snapshot.stale);
+        assert!(snapshot.errors.is_empty(), "{:?}", snapshot.errors);
+
+        // And once the operation is over, the next refresh reads again.
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Done)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled operation never finished"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        state.lock().unwrap().inventory_calls.clear();
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        let s = state.lock().unwrap();
+        assert_eq!(s.detect_calls, 2);
+        assert!(s.inventory_calls.contains(&"fake:1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_an_operation_on_another_adapters_instance_does_not_skip_this_adapters_detect() {
+        // The skip is by the held lock's name against the adapter's own
+        // previous instances: an operation on `a:1` leaves adapter `b`
+        // entirely alone.
+        let (a, a_state) = FakeAdapter::new("a");
+        let (b, b_state) = FakeAdapter::new("b");
+        {
+            let mut s = a_state.lock().unwrap();
+            s.instances = vec![make_instance("a", "a:1")];
+            s.artifacts
+                .insert("a:1".to_string(), vec![make_artifact("a:1", "jq")]);
+            s.block_execute = true;
+        }
+        {
+            let mut s = b_state.lock().unwrap();
+            s.instances = vec![make_instance("b", "b:1")];
+            s.artifacts
+                .insert("b:1".to_string(), vec![make_artifact("b:1", "wget")]);
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![a, b], None);
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        b_state.lock().unwrap().inventory_calls.clear();
+
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "a:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        let op_id = session.submit(issued.id).expect("submit");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert_eq!(a_state.lock().unwrap().detect_calls, 1, "a is skipped");
+        assert_eq!(b_state.lock().unwrap().detect_calls, 2, "b is detected");
+        assert!(b_state
+            .lock()
+            .unwrap()
+            .inventory_calls
+            .contains(&"b:1".to_string()));
+        session.cancel(op_id).expect("cancel");
+    }
+
+    /// rustup's native layout in a temp home, built by hand
+    /// (`adapters::standalone::testing` is not visible from here): the
+    /// launcher, its `cargo` proxy link, and a `HostEnv` whose `PATH`
+    /// finds the proxy so the cargo adapter detects too.
+    fn rustup_home() -> (PathBuf, HostEnv) {
+        use std::os::unix::fs::PermissionsExt;
+        let raw = std::env::temp_dir().join(format!(
+            "canager-refresh-rustup-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&raw).expect("temp home");
+        let home = std::fs::canonicalize(&raw).expect("canonical temp home");
+        let bin = home.join(".cargo/bin");
+        std::fs::create_dir_all(&bin).expect("cargo bin");
+        let launcher = bin.join("rustup");
+        std::fs::write(&launcher, b"#!/bin/sh\n").expect("rustup");
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
+            .expect("executable rustup");
+        std::os::unix::fs::symlink("rustup", bin.join("cargo")).expect("cargo proxy");
+        let env = HostEnv {
+            path_dirs: vec![bin],
+            home: home.clone(),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        (home, env)
+    }
+
+    fn exited_0(stdout: &str) -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_refresh_during_rustups_self_update_runs_neither_rustup_nor_cargo() {
+        // Review Focus #6, with the real adapters: `rustup self update`
+        // holds `standalone-rustup` and `cargo:<home>` (Task 6), and while
+        // it runs a refresh must not run the rustup binary at all -- not
+        // as `rustup --version`, not as `cargo --version` (the proxy is
+        // the same binary, and both begin by deleting the updater the
+        // operation is about to run: plan ruling 4). Both rows are carried
+        // forward unchanged; the next refresh after the operation reads
+        // again.
+        use crate::adapters::cargo::CargoAdapter;
+        use crate::adapters::standalone::recipes::RUSTUP;
+        use crate::adapters::standalone::StandaloneAdapter;
+        use crate::http::{HttpResponse, MockHttpClient};
+        use crate::model::{Attention, ResourceLock};
+        use crate::trash::MockTrasher;
+
+        let (home, env) = rustup_home();
+        let launcher = home.join(".cargo/bin/rustup").to_string_lossy().to_string();
+        let cargo = home.join(".cargo/bin/cargo").to_string_lossy().to_string();
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![launcher.as_str(), "--version"],
+            exited_0("rustup 1.29.1 (d95a37b6a 2026-08-13)\n"),
+        );
+        runner.respond(
+            vec![cargo.as_str(), "--version"],
+            exited_0("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
+        );
+        // Illustrative log text (never recorded: the recording rules
+        // forbid running it); the outcome rests on the exit code and the
+        // two version readings alone. Slow enough for a refresh to land
+        // while it runs.
+        runner.respond(
+            vec![launcher.as_str(), "self", "update"],
+            exited_0("  rustup unchanged - 1.29.1\n"),
+        );
+        runner.delay(
+            vec![launcher.as_str(), "self", "update"],
+            Duration::from_millis(400),
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            "https://static.rust-lang.org/rustup/release-stable.toml",
+            HttpResponse {
+                status: 200,
+                body: "schema-version = '1'\nversion = '1.29.1'\n".to_string(),
+            },
+        );
+        let rustup: Arc<dyn Adapter> = Arc::new(StandaloneAdapter::new(
+            &RUSTUP,
+            runner.clone(),
+            http.clone(),
+            Arc::new(MockTrasher::new()),
+        ));
+        let cargo_adapter: Arc<dyn Adapter> =
+            Arc::new(CargoAdapter::new(runner.clone(), http.clone()));
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![rustup.clone(), cargo_adapter], None);
+
+        let first = session.refresh(&env, &CheckOptions::default()).await;
+        let mut ids: Vec<&str> = first.instances.iter().map(|i| i.id.as_str()).collect();
+        ids.sort();
+        let cargo_id = format!("cargo:{}", home.join(".cargo").display());
+        assert_eq!(ids, vec![cargo_id.as_str(), "standalone-rustup"]);
+        assert!(first.errors.is_empty(), "{:?}", first.errors);
+
+        let inst = first
+            .instances
+            .iter()
+            .find(|i| i.id == "standalone-rustup")
+            .expect("rustup's instance")
+            .clone();
+        let req = OpRequest {
+            kind: OpKind::Upgrade,
+            instance_id: "standalone-rustup".to_string(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "rustup".to_string(),
+        };
+        let plan = rustup.plan(&inst, &req).await.expect("plan");
+        assert_eq!(
+            plan.locks,
+            vec![
+                ResourceLock("standalone-rustup".to_string()),
+                ResourceLock(cargo_id.clone())
+            ]
+        );
+        let op_id = session.ops.submit(plan);
+        // Until the operation's own before-reading is done and `self
+        // update` is under way: from here every call is the refresh's.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !runner
+            .calls()
+            .iter()
+            .any(|c| c.len() == 3 && c[1] == "self" && c[2] == "update")
+        {
+            assert!(Instant::now() < deadline, "self update never started");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(session
+            .ops
+            .locks_held()
+            .contains(&ResourceLock(cargo_id.clone())));
+
+        let before = runner.calls().len();
+        let during = session.refresh(&env, &CheckOptions::default()).await;
+        let new_calls = runner.calls()[before..].to_vec();
+        assert!(
+            new_calls.is_empty(),
+            "a refresh during rustup's self update ran {new_calls:?}"
+        );
+        assert_eq!(during.instances, first.instances);
+        assert_eq!(during.artifacts, first.artifacts);
+        assert!(!during.stale);
+        assert!(during.errors.is_empty(), "{:?}", during.errors);
+
+        assert_eq!(
+            session.ops.wait(op_id).await,
+            Some(Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade))
+        );
+        assert!(session.ops.locks_held().is_empty());
+        let before = runner.calls().len();
+        session.refresh(&env, &CheckOptions::default()).await;
+        let after: Vec<Vec<String>> = runner.calls()[before..].to_vec();
+        assert!(
+            after
+                .iter()
+                .any(|c| c[0] == launcher && c[1] == "--version"),
+            "after the operation, rustup is read again: {after:?}"
+        );
+        assert!(
+            after.iter().any(|c| c[0] == cargo && c[1] == "--version"),
+            "and so is cargo: {after:?}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// Dropping a refresh future mid-flight must cancel its workers, not
