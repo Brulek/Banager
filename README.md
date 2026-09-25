@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 596 Rust tests (plus 3 more
-> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 350 front-end
+> **Status: pre-release.** The core and the UI work and are covered by 666 Rust tests (plus 3 more
+> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 361 front-end
 > tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
 > rely on.
 
@@ -130,19 +130,21 @@ user cannot read is treated as a bug.
 
 Rust's refusals are translated too, not just the frames around them. A plan built against a source
 that is read-only, unavailable or gone, an operation Canager can't prepare (a name it won't pass to
-a tool, a program that has gone missing), a preview that has expired or already been used, a
-settings change it couldn't save, an operation Canager itself couldn't carry out (the program was
-removed between the check and the run, say), Canager's own remarks in the operation log (waiting for
-Homebrew to finish updating, a stream it could no longer read) and its verdicts on a result (the
-command said it worked but the package isn't there) each arrive as a small structured payload the
-front end renders in the user's language.
+a tool, a program that has gone missing, a path on an uninstall list that is outside your home
+folder, in a folder other apps share, missing, not yours or not what the instructions describe), a
+preview that has expired or already been used, a settings change it couldn't save, an operation
+Canager itself couldn't carry out (the program was removed between the check and the run, say, or a
+path changed between the preview and the click), Canager's own remarks in the operation log
+(waiting for Homebrew to finish updating, a stream it could no longer read, each item it moved to
+the Trash) and its verdicts on a result (the command said it worked but the package isn't there)
+each arrive as a small structured payload the front end renders in the user's language.
 
 Three kinds of text are shown as-is:
 
 - **Another program's own words.** Every line `brew` or `npm` prints in the operation log, and
   the last lines of its stderr when an operation fails; the reason macOS gives when it can't start
-  a tool, whether Canager is preparing an operation or running one, or can't save Canager's
-  settings for a cause Canager doesn't recognise.
+  a tool, whether Canager is preparing an operation or running one, can't save Canager's settings
+  for a cause Canager doesn't recognise, or refuses to move an item to the Trash.
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
@@ -192,24 +194,26 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 596 个 Rust 测试（另有 3 个要连着真实的
-Homebrew 或真实的废纸篓才跑，平时是跳过的）和 350 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 666 个 Rust 测试（另有 3 个要连着真实的
+Homebrew 或真实的废纸篓才跑，平时是跳过的）和 361 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
 中文用户读不懂的句子算 bug。
 
 Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所针对的来源只读、连不上或已不存在，操作无法
-准备（某个名字 Canager 不肯交给工具、某个程序不见了），预览已过期或已用过，设置没能保存，操作因为
-Canager 自己这边的原因没能执行（比如程序在检查之后、运行之前被删掉了），Canager 自己在操作日志里说的话
-（等待 Homebrew 更新完毕、某个输出流读不下去了），以及它对结果的判断（命令说成功了，但那个包并不在），
+准备（某个名字 Canager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、
+放在其它应用共用的文件夹里、不存在、不属于你或者和说明写的不一样），预览已过期或已用过，设置没能保存，
+操作因为 Canager 自己这边的原因没能执行（比如程序在检查之后、运行之前被删掉了，或者某条路径在预览之后、
+点击之前变了），Canager 自己在操作日志里说的话（等待 Homebrew 更新完毕、某个输出流读不下去了、
+把哪一项移到了废纸篓），以及它对结果的判断（命令说成功了，但那个包并不在），
 都以一个结构化的小数据传到前端，用你选的语言显示。
 
 有三类文字会原样显示：
 
 - **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
   几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
-  或因为 Canager 不认识的原因无法保存设置时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
+  或因为 Canager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
 - **应用框架自己的报错**，只出现在一种情况：加载或刷新列表时，窗口完全联系不上 Canager 的其余部分——这时它
   自己的文字会原样显示在重试按钮旁边。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份

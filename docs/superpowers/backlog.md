@@ -231,6 +231,40 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - **cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。
 
+- **「放回原处」的记录只在一次卸载之内隔开**（2026-09-25，步骤 C）。无「完全磁盘访问」时，`trashItemAtURL:`
+  间隔 ≤1.5 秒的连续调用只有第一项在 `~/.Trash/.DS_Store` 里留下 Finder 的「放回原处」记录，间隔 ≥2 秒时每项都有
+  （spike：15/15 与 4/4，一台 Mac、macOS 27.0，机制不明；记录在调用返回之后才写）。`removal::execute_removal`
+  在同一次卸载里每移一项之后停 `PUT_BACK_SETTLE` = 3 秒（最后一项之后也停，再报告完成），但这个停顿**只管一次操作之内**：
+  操作管理器同时跑最多 3 个操作（`ops/mod.rs` 的 `Semaphore::new(3)`），两个 path-list 卸载并发时，两边的移动仍可能挤进
+  2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Canager，刚移的那一项也可能丢掉记录。
+  即使在一次卸载之内，3 秒也只是让每一项「多半」有记录（四次观察），不是保证；文案与信任文件都这样说（裁定 29）。
+  **修法的形状**：把「上一次移到废纸篓的时刻」放进全进程共享的一处（`Session::new` 交给所有独立安装工具适配器的是同一个
+  `Arc<RealTrasher>`），每次移动前补足到 3 秒，而不是只在 `execute_removal` 的循环里停；`MockTrasher` 与测试不受影响。
+  **现在不做的理由**：C 只有 Claude Code 一个 path-list 卸载，两次卸载都要各自预览、确认；步骤 D 加入 grok 与 agy 之后再做。
+  **同一处记两件没核实的事**：没有人真的点过「放回原处」（spike 只核对了 Finder 的记录；作者合并前在 Finder 启动的构建上
+  手动核一次，结果写进 `docs/what-we-run.md` 的「Moving files to the Trash」）；macOS 27.0 以外的版本与 Intel Mac 没跑过
+  （`tests/standalone_uninstall_test.rs` 的 `#[ignore]` 冒烟测试在作者的终端与 CI 上覆盖「移得进去」，悬空链接也在内，
+  但那两处都不是无 FDA 的环境，不覆盖「放得回来」）。
+- **检查 1 的「永不」清单挡住了 agy 的 `~/.cache/antigravity`**（2026-09-25，步骤 C）。步骤 C 照 spec §6.3 检查 1
+  括号里的清单执行：路径的 canonical 父目录不得是 `~` 本身，也不得是 `~/.local`、`~/.config`、`~/.cache`、`~/Library`、
+  `~/.cargo`（`recipe::SHARED_FOLDERS`；`removal::plan_removal` 按解析后的路径查，`recipes::tests` 按配方的写法查），
+  拒绝理由是 `SharedFolder`。claude 与 grok 的清单都通过；spec 给 agy 列的 `~/.cache/antigravity`（父目录 `~/.cache`）过不了。
+  **步骤 D 要做的决定**：给这一条路径一个有测试的明确例外（只对 optional 的 `Cache`），或者改 spec 的清单——不要悄悄放宽整条规则。
+- **`~/.local/bin` 或 `~/.claude` 整个是链接时，卸载会被拒绝**（2026-09-25，步骤 C，裁定 24）。步骤 C 要求家目录到清单上
+  每条路径之间的每一层都是真目录（`removal::check_item` 的祖先规则），所以用 dotfiles 工具把 `~/.local/bin` 整个链到别处
+  （哪怕仍在家目录里）的用户——以及 `~/.claude` 是链接、里面又有 `downloads` 的用户——Claude Code 这一行照常显示
+  （`route::probe` 先解析启动器所在的目录），但卸载在预览时就被拒绝，理由是 `not_what_instructions_expect`（文案说
+  「它本身或它所在的某个文件夹可能链到了别处」）。spec §6.3 的检查 1 原本接受这种链接。
+  **修法的形状**（真有人碰到再做）：只对启动器所在的那一层，允许它是一个指向家目录之内、又不在 `SHARED_FOLDERS` 里的链接，
+  并把它解析后的目录与预览时记下的一起比对（`ItemIdentity` 已经随计划带着），配测试；不要整体放宽祖先规则——
+  `~/.claude -> ~/Documents` 这类别名正是它挡住的。**现在不做的理由**：没有观察到这样的安装，放宽需要单独评审。
+- **升级后的读取仍把「看不清」当成「不在了」**（2026-09-25，步骤 C 顺带发现）。B 的 `StandaloneAdapter::reconcile`
+  （升级前后的读取）经 `inventory` 用 `route::probe`，权限错误、循环链接这类「看不清」一律成了 `Absent`：`claude update`
+  退出 0 之后如果恰好读不了 `~/.local/bin`，`run_operation` 会报 `NeedsAttention(GoneAfterUpgrade)`——说升级后不见了，
+  而事实是看不清。步骤 C 只把卸载之后的读取换成了 `route::probe_strict`（裁定 27）。**修法的形状**：`inventory` 改用
+  `probe_strict`，把 `Err` 映成 `AdapterError`（刷新时这个来源计入「部分数据可能不是最新的」横幅，而不是这一行消失），
+  升级前后的读取随之得到 `Err` → `Unconfirmed`；要连同 B 的「探测失败是『没装』，不是『没响应』」这条规则一起评审。
+
 ## 阶段 5（发现页）之前必须处理
 
 - `brew/mod.rs` `search`：只要 `--desc` 搜索有结果就丢弃名字匹配，搜 "jq" 搜不到 jq（fixture 可复现：`search-jq.txt` 第 3 行是 jq，`search-desc-jq.txt` 无 `jq:` 行）；且无表头输出的"第一组是 formulae"启发式会把纯 cask 结果标成 Formula。改法：按 (kind, name) 合并；用 `brew search --formula {q}` 与 `brew search --cask {q}` 得到无歧义的类型，`--desc` 只用来补描述；同步更新 `docs/what-we-run.md`。
