@@ -295,9 +295,9 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
         // to its launcher (rule 1).
         "standalone-claude" => vec![inst.prefix.clone()],
         // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
-        // scanned; rule 1 places the proxies and, from step E, rule 2
-        // places `cargo install`ed binaries. uv and (from Task 3b) pipx:
-        // rule 2, through the tool venv their artifacts carry. pip: a
+        // scanned; rule 1 places the proxies and rule 2 places
+        // `cargo install`ed binaries. uv and (from Task 3b) pipx: rule 2,
+        // through the tool venv their artifacts carry. pip: a
         // `parent()`-derived prefix, never a root.
         _ => Vec::new(),
     }
@@ -331,8 +331,10 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
 ///    /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code`
 ///    -- resolves into that bundle and under none of the roots rule 3
 ///    gives Homebrew, in a directory every scan reads. cargo fills `path`
-///    from step E, the standalone adapters from step B; for those, rules
-///    1 and 2 compare the same file and rule 2 decides nothing new.
+///    with the program each crate installed, which only this rule places
+///    (`hexyl` resolves to no instance's `exe_path`); the standalone
+///    adapters fill it from step B, and for those rules 1 and 2 compare
+///    the same file and rule 2 decides nothing new.
 /// 3. The entry resolves to a path under a directory the instance's
 ///    adapter *owns* -- `owned_roots`, the longest matching root when
 ///    roots nest (`owned` below).
@@ -676,6 +678,8 @@ mod tests {
             home: PathBuf::from(home),
             euid: 501,
             cargo_home: cargo_home.map(PathBuf::from),
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         }
     }

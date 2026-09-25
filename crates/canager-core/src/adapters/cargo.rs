@@ -14,7 +14,7 @@ use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse}
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -54,28 +54,128 @@ fn parse_crates2_entries(json: &str) -> Result<Vec<(String, String, String)>, Ad
     Ok(entries)
 }
 
-fn parse_crates2(json: &str, instance_id: &str) -> Result<Vec<InstalledArtifact>, AdapterError> {
+/// The one field of an `installs` *value* Canager reads: the programs the
+/// crate put in `<cargo_home>/bin`.
+#[derive(Debug, Deserialize)]
+struct Crates2Install {
+    #[serde(default)]
+    bins: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Crates2Bins {
+    #[serde(default)]
+    installs: HashMap<String, Crates2Install>,
+}
+
+/// `(crate name, the programs it installed)` for every crate in
+/// `.crates2.json`, sorted by name: the `bins` array in each `installs`
+/// value. `parse_crates2_entries` reads only the keys, which carry the
+/// name, version and source and nothing about the binaries -- so it
+/// cannot say which *file* a crate left in `bin/`: `ripgrep` installs
+/// `rg`, and a sentence that named the crate would name a program that
+/// is not there (phase 4 spec §6.4, §十三 #4). Reader: `parse_crates2`
+/// (the artifact's `path`); from this step's Task 5 on, the rustup
+/// recipe's uninstall warnings (`adapters/standalone/rustup.rs`, which
+/// name what `rustup self uninstall` deletes) read it too.
+pub(crate) fn parse_crates2_bins(json: &str) -> Result<Vec<(String, Vec<String>)>, AdapterError> {
+    let root: Crates2Bins =
+        serde_json::from_str(json).map_err(|e| AdapterError::Parse(e.to_string()))?;
+    let mut out: Vec<(String, Vec<String>)> = root
+        .installs
+        .into_iter()
+        .filter_map(|(key, install)| {
+            parse_install_key(&key).map(|(name, _, _)| (name, install.bins))
+        })
+        .collect();
+    out.sort();
+    Ok(out)
+}
+
+/// One artifact per crate. `path` is the program the crate installed
+/// under `<cargo_home>/bin`: the binary named after the crate when the
+/// record lists one, else the first it lists, else `None` for a crate
+/// that installed no program. `InstalledArtifact.path` holds one path,
+/// so the other binaries of a multi-binary crate (`cargo-binstall`'s
+/// `detect-targets`) are not attributed and stay on the Unknown page
+/// until it can hold several (backlog). The reader is the Unknown page's
+/// rule 2 (`scan/mod.rs`, `Known::index`): a `~/.cargo/bin/hexyl` that
+/// canonicalises to this path is cargo's.
+fn parse_crates2(
+    json: &str,
+    instance_id: &str,
+    cargo_home: &Path,
+) -> Result<Vec<InstalledArtifact>, AdapterError> {
     let entries = parse_crates2_entries(json)?;
+    let bins = parse_crates2_bins(json)?;
+    let bin_dir = cargo_home.join("bin");
     Ok(entries
         .into_iter()
-        .map(|(name, version, _source_kind)| InstalledArtifact {
-            key: ArtifactKey {
-                instance_id: instance_id.to_string(),
-                kind: ArtifactKind::Binary,
-                name: name.clone(),
-            },
-            display_name: name,
-            version,
-            reason: InstallReason::Requested,
-            description: None,
-            homepage: None,
-            size_bytes: None,
-            installed_at: None,
-            path: None,
-            auto_updates: false,
-            uninstall_blocked: None,
+        .map(|(name, version, _source_kind)| {
+            let path = bins
+                .iter()
+                .find(|(crate_name, _)| *crate_name == name)
+                .and_then(|(_, bins)| bins.iter().find(|b| **b == name).or_else(|| bins.first()))
+                .map(|bin| bin_dir.join(bin));
+            InstalledArtifact {
+                key: ArtifactKey {
+                    instance_id: instance_id.to_string(),
+                    kind: ArtifactKind::Binary,
+                    name: name.clone(),
+                },
+                display_name: name,
+                version,
+                reason: InstallReason::Requested,
+                description: None,
+                homepage: None,
+                size_bytes: None,
+                installed_at: None,
+                path,
+                auto_updates: false,
+                uninstall_blocked: None,
+            }
         })
         .collect())
+}
+
+/// rustup's switch against installing a toolchain as a side effect
+/// (`RUSTUP_AUTO_INSTALL=0`; rustup 1.29.1 `should_auto_install`,
+/// config.rs:435-441). On a rustup Mac `cargo` *is* the rustup binary,
+/// running in proxy mode (src/cli/proxy_mode.rs:14-59): before it runs
+/// the real cargo it resolves the active toolchain and, with none active
+/// and this switch off, installs one -- a download and a write, which a
+/// refresh must never cause. So every version read of that binary
+/// carries it: `CargoAdapter::detect`'s `cargo --version` here, and, once
+/// the rustup recipe lands (`recipes::RUSTUP`, this step's Task 6), that
+/// recipe's own `--version` through its `version.env`. A cargo that is
+/// not rustup's ignores the variable.
+pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL", "0");
+
+/// Where cargo's home is, by the `home` crate's rule (`path_env::tool_home`
+/// over `CARGO_HOME`): the one rule for the directory. From this step's
+/// Task 4 on the rustup recipe's `$CARGO_HOME/…` paths
+/// (`adapters/standalone/route.rs`, through `StandaloneAdapter::detect`)
+/// share it, so the two adapters can never disagree about it, and the
+/// lock name `instance_id_for` builds is built from the same path
+/// `detect` names cargo's instance by. `None` for a relative
+/// `CARGO_HOME`, which cargo resolves against a current directory Canager
+/// does not share: `detect` then lists no cargo instance rather than one
+/// whose prefix is somewhere cargo never looks.
+pub(crate) fn cargo_home_of(env: &HostEnv) -> Option<PathBuf> {
+    crate::runner::path_env::tool_home(env.cargo_home.as_deref(), &env.home, ".cargo")
+}
+
+/// The id of the cargo instance whose home is `cargo_home`:
+/// `cargo:<cargo_home>`, the persisted shape (`model::instance_id`). The
+/// single producer of that string (phase 4 spec §2.4): `detect` names its
+/// instance with it, and from this step's Task 5 on the rustup recipe's
+/// `extra_locks` (`adapters/standalone/rustup.rs`) builds the
+/// `ResourceLock` its `self update` and `self uninstall` plans hold with
+/// it. `acquire_resource_lock` compares lock names byte for byte and
+/// reports nothing for two that merely look alike, so there is one
+/// function and not two spellings.
+pub(crate) fn instance_id_for(cargo_home: &Path) -> String {
+    crate::model::instance_id("cargo", Some(&cargo_home.display().to_string()))
 }
 
 /// Real detection: resolves `cargo-binstall` through `HostEnv`'s hydrated
@@ -130,10 +230,12 @@ impl CargoAdapter {
         let Some(exe_path) = resolve_exe("cargo", env) else {
             return Vec::new();
         };
-        let cargo_home = env
-            .cargo_home
-            .clone()
-            .unwrap_or_else(|| env.home.join(".cargo"));
+        // The `home` crate's rule; `None` is a relative CARGO_HOME, which
+        // names a directory relative to cargo's own cwd, not Canager's:
+        // no instance, rather than one that reads the wrong place.
+        let Some(cargo_home) = cargo_home_of(env) else {
+            return Vec::new();
+        };
         *self.binstall.lock().unwrap() = (self.binstall_check)(env);
         let output = self
             .runner
@@ -141,7 +243,12 @@ impl CargoAdapter {
                 CommandSpec {
                     program: exe_path.clone(),
                     args: vec!["--version".to_string()],
-                    env: Vec::new(),
+                    // The cargo proxy is the rustup binary: never let a
+                    // version read install a toolchain (RUSTUP_AUTO_INSTALL_OFF).
+                    env: vec![(
+                        RUSTUP_AUTO_INSTALL_OFF.0.to_string(),
+                        RUSTUP_AUTO_INSTALL_OFF.1.to_string(),
+                    )],
                     cwd: None,
                     timeout: Duration::from_secs(30),
                     output_use: OutputUse::Parsed,
@@ -158,7 +265,10 @@ impl CargoAdapter {
         };
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
-            id: crate::model::instance_id(&self.meta.id, Some(&cargo_home.display().to_string())),
+            // Through `instance_id_for`, which the rustup recipe's cargo
+            // lock is built with too from this step's Task 5 on: one
+            // spelling of this id.
+            id: instance_id_for(&cargo_home),
             adapter_id: self.meta.id.clone(),
             exe_path,
             prefix: cargo_home,
@@ -202,7 +312,7 @@ impl CargoAdapter {
         inst: &ManagerInstance,
     ) -> Result<Vec<InstalledArtifact>, AdapterError> {
         let json = self.read_crates2(inst)?;
-        parse_crates2(&json, &inst.id)
+        parse_crates2(&json, &inst.id, &inst.prefix)
     }
 
     async fn latest_stable_version(&self, name: &str) -> Result<String, String> {
@@ -440,6 +550,7 @@ impl Adapter for CargoAdapter {
 mod tests {
     use super::*;
     use crate::testing::{command_args, command_program};
+    use std::path::Path;
 
     #[test]
     fn test_second_token_reads_cargos_recorded_version_line() {
@@ -492,12 +603,270 @@ mod tests {
     fn test_parse_crates2_from_the_recorded_fixture() {
         let json = std::fs::read_to_string("../../adapters/fixtures/cargo/1.98.1/crates2.json")
             .expect("read cargo crates2.json fixture");
-        let artifacts =
-            parse_crates2(&json, "cargo:/Users/brulek/.cargo").expect("parse crates2.json");
+        let artifacts = parse_crates2(
+            &json,
+            "cargo:/Users/someone/.cargo",
+            Path::new("/Users/someone/.cargo"),
+        )
+        .expect("parse crates2.json");
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].key.kind, ArtifactKind::Binary);
         assert_eq!(artifacts[0].key.name, "hexyl");
         assert_eq!(artifacts[0].version, "0.17.0");
+        // The program the crate installed, for the Unknown page's rule 2:
+        // `hexyl`'s one binary is `hexyl` (`"bins":["hexyl"]` in the
+        // recording), under the Cargo home's `bin/`.
+        assert_eq!(
+            artifacts[0].path,
+            Some(PathBuf::from("/Users/someone/.cargo/bin/hexyl"))
+        );
+    }
+
+    #[test]
+    fn test_parse_crates2_bins_reads_the_recorded_fixture() {
+        let json = std::fs::read_to_string("../../adapters/fixtures/cargo/1.98.1/crates2.json")
+            .expect("read cargo crates2.json fixture");
+        assert_eq!(
+            parse_crates2_bins(&json).expect("parse"),
+            vec![("hexyl".to_string(), vec!["hexyl".to_string()])]
+        );
+    }
+
+    #[test]
+    fn test_parse_crates2_bins_names_the_binaries_not_the_crate() {
+        // Edge cases the recorded fixture (one crate, one binary named
+        // after it) cannot show: `ripgrep` installs `rg`; a crate can
+        // install several programs; a record with no `bins` key is a
+        // crate that installed none. Sorted by crate name.
+        let json = r#"{"installs":{
+            "ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"version_req":null,"bins":["rg"],"features":[],"all_features":false,"no_default_features":false,"profile":"release","target":"aarch64-apple-darwin","rustc":"rustc 1.98.1\n"},
+            "cargo-binstall 1.16.0 (registry+https://github.com/rust-lang/crates.io-index)":{"version_req":null,"bins":["cargo-binstall","detect-targets"],"features":[],"all_features":false,"no_default_features":false,"profile":"release","target":"aarch64-apple-darwin","rustc":"rustc 1.98.1\n"},
+            "libonly 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"version_req":null,"features":[],"all_features":false,"no_default_features":false,"profile":"release","target":"aarch64-apple-darwin","rustc":"rustc 1.98.1\n"}
+        }}"#;
+        assert_eq!(
+            parse_crates2_bins(json).expect("parse"),
+            vec![
+                (
+                    "cargo-binstall".to_string(),
+                    vec!["cargo-binstall".to_string(), "detect-targets".to_string()]
+                ),
+                ("libonly".to_string(), Vec::new()),
+                ("ripgrep".to_string(), vec!["rg".to_string()]),
+            ]
+        );
+        let artifacts = parse_crates2(
+            json,
+            "cargo:/Users/someone/.cargo",
+            Path::new("/Users/someone/.cargo"),
+        )
+        .expect("parse");
+        let path_of = |name: &str| {
+            artifacts
+                .iter()
+                .find(|a| a.key.name == name)
+                .expect(name)
+                .path
+                .clone()
+        };
+        // The binary named after the crate when there is one, else the
+        // first listed, else none (ruling 7). `detect-targets`, the
+        // second binary of `cargo-binstall`, carries no artifact path and
+        // stays on the Unknown page until `path` can hold several.
+        assert_eq!(
+            path_of("ripgrep"),
+            Some(PathBuf::from("/Users/someone/.cargo/bin/rg"))
+        );
+        assert_eq!(
+            path_of("cargo-binstall"),
+            Some(PathBuf::from("/Users/someone/.cargo/bin/cargo-binstall"))
+        );
+        assert_eq!(path_of("libonly"), None);
+    }
+
+    #[test]
+    fn test_parse_crates2_bins_is_a_parse_error_for_anything_that_is_not_the_record() {
+        assert!(matches!(
+            parse_crates2_bins("not json"),
+            Err(AdapterError::Parse(_))
+        ));
+        assert!(matches!(
+            parse_crates2_bins(r#"{"installs":{"hexyl 0.17.0 (registry+x)":{"bins":"hexyl"}}}"#),
+            Err(AdapterError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn test_cargo_home_of_is_the_home_crates_rule_over_the_host_environment() {
+        // `tool_home` (runner/path_env.rs) over `HostEnv.cargo_home`:
+        // unset and empty are `<home>/.cargo`, absolute is itself, relative
+        // is unsupported -- the same answer rustup and cargo compute, so
+        // the lock name built from it names the directory they use.
+        let env = HostEnv {
+            path_dirs: Vec::new(),
+            home: PathBuf::from("/Users/someone"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        assert_eq!(
+            cargo_home_of(&env),
+            Some(PathBuf::from("/Users/someone/.cargo"))
+        );
+        let env = HostEnv {
+            cargo_home: Some(PathBuf::from("")),
+            ..env
+        };
+        assert_eq!(
+            cargo_home_of(&env),
+            Some(PathBuf::from("/Users/someone/.cargo"))
+        );
+        let env = HostEnv {
+            cargo_home: Some(PathBuf::from("/Volumes/Data/cargo")),
+            ..env
+        };
+        assert_eq!(
+            cargo_home_of(&env),
+            Some(PathBuf::from("/Volumes/Data/cargo"))
+        );
+        let env = HostEnv {
+            cargo_home: Some(PathBuf::from("cargo")),
+            ..env
+        };
+        assert_eq!(cargo_home_of(&env), None);
+    }
+
+    #[test]
+    fn test_instance_id_for_is_the_persisted_cargo_shape() {
+        // `cargo:<cargo_home>` (`model::instance_id`'s
+        // `test_instance_id_reproduces_every_shape_already_persisted`).
+        // The rustup recipe builds its cargo lock from this same function
+        // (adapters/standalone/rustup.rs), so the id and the lock cannot
+        // drift into two spellings that `acquire_resource_lock` would
+        // treat as unrelated.
+        assert_eq!(
+            instance_id_for(Path::new("/Users/someone/.cargo")),
+            "cargo:/Users/someone/.cargo"
+        );
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        assert_eq!(
+            adapter.meta.id, "cargo",
+            "the literal instance_id_for spells"
+        );
+    }
+
+    /// `MockRunner` keys and records argv only; this records the whole
+    /// `CommandSpec`, so a test can see the environment `detect` gave
+    /// `cargo --version`.
+    struct EnvRecordingRunner {
+        specs: Mutex<Vec<CommandSpec>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CommandRunner for EnvRecordingRunner {
+        async fn run(
+            &self,
+            spec: CommandSpec,
+            _on_line: Option<crate::runner::LineCallback>,
+            _cancel: CancellationToken,
+        ) -> Result<CommandOutput, crate::runner::RunnerError> {
+            self.specs.lock().unwrap().push(spec);
+            Ok(CommandOutput {
+                exit_code: Some(0),
+                stdout: "cargo 1.98.1 (797e8a9bc 2026-08-05)\n".to_string(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_reads_cargos_version_with_rustups_auto_install_off() {
+        // On a rustup Mac `cargo` is the rustup binary in proxy mode
+        // (rustup 1.29.1 src/cli/proxy_mode.rs:14-59): before it runs the
+        // real cargo it resolves the active toolchain, and with none active
+        // it *installs* one unless `RUSTUP_AUTO_INSTALL=0`
+        // (`should_auto_install`, config.rs:435-441). A refresh is
+        // read-only, so the switch goes on this read; a cargo that is not
+        // rustup's ignores the variable.
+        let home = temp_cargo_home("auto-install-off");
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).expect("bin");
+        std::fs::write(bin.join("cargo"), b"#!/bin/sh\n").expect("cargo");
+        let runner = Arc::new(EnvRecordingRunner {
+            specs: Mutex::new(Vec::new()),
+        });
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let env = HostEnv {
+            path_dirs: vec![bin.clone()],
+            home: home.parent().unwrap().to_path_buf(),
+            euid: 501,
+            cargo_home: Some(home.clone()),
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        let instances = adapter.detect(&env).await;
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].version, Some("1.98.1".to_string()));
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].program, bin.join("cargo"));
+        assert_eq!(specs[0].args, vec!["--version".to_string()]);
+        assert_eq!(
+            specs[0].env,
+            vec![("RUSTUP_AUTO_INSTALL".to_string(), "0".to_string())]
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_no_cargo_for_a_relative_cargo_home() {
+        // cargo itself would join a relative CARGO_HOME onto *its* current
+        // directory (`home` 0.5.12); Canager's is not that, so an instance
+        // whose prefix were that relative path would read `.crates2.json`
+        // from the wrong place and lock a name nothing else uses. No
+        // instance is the honest answer (ruling 6).
+        let home = temp_cargo_home("relative");
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).expect("bin");
+        std::fs::write(bin.join("cargo"), b"#!/bin/sh\n").expect("cargo");
+        let runner = Arc::new(MockRunner::new());
+        let adapter = CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new()));
+        let env = HostEnv {
+            path_dirs: vec![bin],
+            home: home.parent().unwrap().to_path_buf(),
+            euid: 501,
+            cargo_home: Some(PathBuf::from("cargo")),
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        };
+        assert!(adapter.detect(&env).await.is_empty());
+        assert!(
+            runner.calls().is_empty(),
+            "nothing is run for a home Canager cannot name"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn test_inventory_gives_every_cargo_artifact_the_path_of_its_program() {
+        let json = std::fs::read_to_string("../../adapters/fixtures/cargo/1.98.1/crates2.json")
+            .expect("read cargo crates2.json fixture");
+        let home = temp_cargo_home("paths");
+        std::fs::create_dir_all(&home).expect("create cargo home");
+        std::fs::write(home.join(".crates2.json"), &json).expect("write crates2.json");
+        let adapter =
+            CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        let inst = test_instance(home.clone());
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].path, Some(home.join("bin").join("hexyl")));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
@@ -522,6 +891,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert_eq!(default_binstall_check(&env), None);
@@ -875,6 +1246,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: Some(PathBuf::from("/opt/cargo")),
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let instances = CargoAdapter::detect(&adapter, &env).await;
@@ -926,6 +1299,8 @@ mod tests {
             home: PathBuf::from("/Users/brulek"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let instances = CargoAdapter::detect(&adapter, &env).await;
@@ -949,6 +1324,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert!(CargoAdapter::detect(&adapter, &env).await.is_empty());

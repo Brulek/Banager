@@ -56,8 +56,8 @@ a grace period, and then `SIGKILL` for whatever is left.
 Ollama button is pressed, and at the start of every Unknown-page scan,
 `HostEnv::discover`
 (`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
-`CARGO_HOME` and `OLLAMA_HOST` from Canager's environment and the
-effective user id from the process. Every package manager
+`CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
+environment and the effective user id from the process. Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
@@ -371,14 +371,26 @@ Adapter: `CargoAdapter` in `crates/canager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
-(30 s). Canager also looks for `cargo-binstall` on the same `PATH` and
-remembers the path found for plans. The Cargo home is `CARGO_HOME` from
-the environment, else `~/.cargo`. No environment variables are added to
-any cargo command.
+(30 s), with `RUSTUP_AUTO_INSTALL=0` in its environment: on a Mac with
+rustup, `cargo` is rustup's own binary standing in for cargo, and without
+that switch a version read with no Rust toolchain active would install
+one. A cargo that is not rustup's ignores it. That version read is the
+only cargo command Canager adds an environment variable to; the write
+commands below run with none added. Canager also looks for
+`cargo-binstall` on the same `PATH` and remembers the path found for
+plans. `CARGO_HOME` is read as cargo itself reads it: unset or an empty
+value means the default `~/.cargo`; an absolute value is the Cargo home;
+a relative value names a folder relative to cargo's own working
+directory, which Canager cannot know, so Canager then lists no Cargo
+source rather than guess.
 
 **Read-only reads.** `inventory` runs no command: it reads
 `<CARGO_HOME>/.crates2.json`, the file `cargo install` keeps its records
-in (a missing file means nothing is installed). `check_updates` reads the
+in (a missing file means nothing is installed). For each crate it also
+records the program the crate installed, `<CARGO_HOME>/bin/<binary>` (the
+binary named after the crate when there is one, else the first the record
+lists), which the Unknown page uses to place that program under Cargo
+rather than list it. `check_updates` reads the
 same file and, for each crate installed from the registry, asks crates.io
 once: `GET https://crates.io/api/v1/crates/{name}` (30 s), the name
 percent-encoded. Crates installed from a git repository or a local path

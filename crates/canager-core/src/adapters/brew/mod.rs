@@ -1512,6 +1512,8 @@ mod tests {
             },
             euid,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         }
     }
@@ -1571,6 +1573,8 @@ mod tests {
             home: PathBuf::from("/var/root"),
             euid: 0,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let user = HostEnv {
@@ -1578,6 +1582,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert!(BrewAdapter::refuses_as_root(&root));

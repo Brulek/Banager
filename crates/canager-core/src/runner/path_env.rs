@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::Url;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12,6 +12,24 @@ pub struct HostEnv {
     /// is: a Finder-launched app's process environment is minimal, and an
     /// adapter that reaches around `HostEnv` cannot be tested.
     pub cargo_home: Option<PathBuf>,
+    /// `RUSTUP_HOME` when the host environment sets it, raw; `None` means
+    /// "use the default", `home/.rustup`. Same reasoning as `cargo_home`.
+    /// Declared deferral: written by `discover` here, read from this
+    /// step's Task 4 on by `StandaloneAdapter::detect`
+    /// (adapters/standalone/mod.rs), which seats it for the rustup recipe:
+    /// its uninstall is offered only when this resolves to the default
+    /// (`rustup::standard_roots`, Task 5), and its toolchain names are
+    /// read under it. Interpreted by `tool_home`, never taken as a path
+    /// directly.
+    pub rustup_home: Option<PathBuf>,
+    /// `ZDOTDIR` when the host environment sets it, raw; `None` when
+    /// unset. rustup's own uninstall (1.29.1 `shell.rs:207-225`) edits
+    /// `$ZDOTDIR/.zshenv` and `$ZDOTDIR/.zprofile` as well as the ones
+    /// under `HOME`, so the rustup recipe's preview follows the same
+    /// visits (`rustup::rustup_rc_visits`, Task 5). Declared deferral, as
+    /// `rustup_home`: read from Task 4 on by `StandaloneAdapter::detect`,
+    /// which seats it.
+    pub zdotdir: Option<PathBuf>,
     /// `OLLAMA_HOST` when the host environment sets it, normalised by
     /// `normalize_ollama_host` into an absolute http(s) url with no trailing
     /// slash; `None` means Ollama's own default, `http://127.0.0.1:11434`,
@@ -73,6 +91,8 @@ impl HostEnv {
             .unwrap_or_else(|| PathBuf::from("/"));
         let euid = unsafe { libc::geteuid() };
         let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from);
+        let rustup_home = std::env::var_os("RUSTUP_HOME").map(PathBuf::from);
+        let zdotdir = std::env::var_os("ZDOTDIR").map(PathBuf::from);
         let ollama_host = std::env::var("OLLAMA_HOST")
             .ok()
             .as_deref()
@@ -82,8 +102,34 @@ impl HostEnv {
             home,
             euid,
             cargo_home,
+            rustup_home,
+            zdotdir,
             ollama_host,
         }
+    }
+}
+
+/// Where a tool that reads its home through the `home` crate will look --
+/// `home` 0.5.12, the version rustup 1.29.1 and cargo pin,
+/// `cargo_home_with_cwd_env` and `rustup_home_with_cwd_env`
+/// (crates/home/src/env.rs:67-79, :101-113): `setting` when it is set,
+/// not empty and absolute; `<home>/<default_dir>` when it is unset or
+/// empty (the crate filters an empty value out before it looks at it);
+/// `None` when it is relative. The crate joins a relative value onto the
+/// *tool's* current directory, which Canager neither knows nor shares --
+/// a Finder-launched app's is `/` -- so nothing Canager could read or
+/// lock would be the directory the tool uses, and "unsupported" is the
+/// only honest answer. Reader: `cargo::cargo_home_of` (cargo's instance;
+/// from this step's Task 4 on also the rustup recipe's `$CARGO_HOME`
+/// paths and cargo lock), joined in Task 4 by `StandaloneAdapter::detect`
+/// reading `rustup_home` (the rustup recipe's uninstall gate and
+/// toolchain listing).
+pub(crate) fn tool_home(setting: Option<&Path>, home: &Path, default_dir: &str) -> Option<PathBuf> {
+    match setting {
+        Some(p) if p.as_os_str().is_empty() => Some(home.join(default_dir)),
+        Some(p) if p.is_absolute() => Some(p.to_path_buf()),
+        Some(_) => None,
+        None => Some(home.join(default_dir)),
     }
 }
 
@@ -100,6 +146,7 @@ pub fn resolve_exe(name: &str, env: &HostEnv) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_discover_reads_a_nonempty_path() {
@@ -114,6 +161,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert_eq!(resolve_exe("sh", &env), Some(PathBuf::from("/bin/sh")));
@@ -126,9 +175,64 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert_eq!(resolve_exe("definitely-not-a-real-binary-xyz", &env), None);
+    }
+
+    #[test]
+    fn test_tool_home_follows_the_home_crates_rule() {
+        // `home` 0.5.12 (the crate rustup 1.29.1 and cargo read their homes
+        // through), `cargo_home_with_cwd_env` / `rustup_home_with_cwd_env`
+        // (crates/home/src/env.rs:67-79, :101-113): an unset or *empty*
+        // variable means `<home>/<default>`; an absolute one is taken as
+        // is; a relative one is joined onto the tool's own current
+        // directory, which Canager neither knows nor shares -- so for
+        // Canager it is unsupported, and nothing pretends to know where
+        // the tool will look.
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            tool_home(None, home, ".cargo"),
+            Some(PathBuf::from("/Users/someone/.cargo"))
+        );
+        assert_eq!(
+            tool_home(Some(Path::new("")), home, ".cargo"),
+            Some(PathBuf::from("/Users/someone/.cargo")),
+            "an empty CARGO_HOME is filtered out before the crate looks at it"
+        );
+        assert_eq!(
+            tool_home(Some(Path::new("/Volumes/Data/cargo")), home, ".cargo"),
+            Some(PathBuf::from("/Volumes/Data/cargo"))
+        );
+        assert_eq!(
+            tool_home(Some(Path::new("cargo-home")), home, ".rustup"),
+            None,
+            "relative: the crate joins it onto the tool's cwd, not Canager's"
+        );
+        assert_eq!(
+            tool_home(None, home, ".rustup"),
+            Some(PathBuf::from("/Users/someone/.rustup"))
+        );
+    }
+
+    #[test]
+    fn test_discover_reads_rustup_home_and_zdotdir_like_cargo_home() {
+        // Both are read the way `cargo_home` is: raw, from the process
+        // environment `fix_path_env` left (only PATH is restored from the
+        // login shell), `None` when unset. Interpreting them -- empty means
+        // default, relative means unsupported -- is `tool_home`'s and the
+        // rustup recipe's job, not this reader's. The test does not set
+        // the variables (a test must not change the process environment
+        // other tests read); it pins the shape against the variables as
+        // they are.
+        let env = HostEnv::discover();
+        assert_eq!(
+            env.rustup_home,
+            std::env::var_os("RUSTUP_HOME").map(PathBuf::from)
+        );
+        assert_eq!(env.zdotdir, std::env::var_os("ZDOTDIR").map(PathBuf::from));
     }
 
     #[test]

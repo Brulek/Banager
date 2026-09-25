@@ -711,6 +711,8 @@ async fn claude_upgrade_outputs(
             home: home.clone(),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         })
         .await;
@@ -748,6 +750,8 @@ async fn claude_upgrade_outputs(
                 home: home.clone(),
                 euid: 501,
                 cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
                 ollama_host: None,
             })
             .await;

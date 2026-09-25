@@ -927,6 +927,8 @@ pub(super) mod testing {
                 home: self.0.clone(),
                 euid: 501,
                 cargo_home: None,
+                rustup_home: None,
+                zdotdir: None,
                 ollama_host: None,
             }
         }

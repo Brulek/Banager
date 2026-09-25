@@ -295,6 +295,8 @@ impl Home {
             home: self.0.clone(),
             euid: std::fs::metadata(&self.0).expect("stat home").uid(),
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         }
     }

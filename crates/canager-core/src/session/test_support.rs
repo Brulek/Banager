@@ -24,6 +24,8 @@ pub(super) fn non_root_env() -> HostEnv {
         home: PathBuf::from("/tmp"),
         euid: 501,
         cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
         ollama_host: None,
     }
 }
@@ -36,6 +38,8 @@ pub(super) fn root_env() -> HostEnv {
         home: PathBuf::from("/var/root"),
         euid: 0,
         cargo_home: None,
+        rustup_home: None,
+        zdotdir: None,
         ollama_host: None,
     }
 }

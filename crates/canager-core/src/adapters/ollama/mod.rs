@@ -1133,6 +1133,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         assert_eq!(host_for(&env), DEFAULT_HOST);
@@ -1185,6 +1187,8 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let adapter = OllamaAdapter::new(runner.clone(), http);
@@ -1233,6 +1237,8 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             // A non-default port on this Mac, so the id assertion below
             // still proves the instance is keyed by the configured host.
             ollama_host: Some("http://localhost:11500".to_string()),
@@ -1284,6 +1290,8 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
@@ -1325,6 +1333,8 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: Some("http://10.0.0.5:11434".to_string()),
         };
         let adapter = OllamaAdapter::new(runner, Arc::new(MockHttpClient::new()))
@@ -1430,6 +1440,8 @@ mod tests {
             home: PathBuf::from("/tmp/fake-home"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let adapter =

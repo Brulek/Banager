@@ -712,6 +712,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let adapter = PipxAdapter::new(runner, Arc::new(MockHttpClient::new()));
@@ -1065,6 +1067,8 @@ mod tests {
             home: PathBuf::from("/tmp"),
             euid: 501,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let adapter: Arc<dyn Adapter> =

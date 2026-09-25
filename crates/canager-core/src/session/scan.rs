@@ -162,6 +162,8 @@ mod tests {
             home: home.clone(),
             euid: std::fs::metadata(&home).expect("stat home").uid(),
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
         let tool = Path::new("~/.local/bin/tool");

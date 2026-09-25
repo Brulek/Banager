@@ -63,6 +63,8 @@ impl Home {
             home: self.0.clone(),
             euid: fs::metadata(&self.0).expect("stat home").uid(),
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         }
     }
@@ -405,9 +407,9 @@ fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
     // `~/.cargo/bin`: rustup itself, thirteen proxies that are relative
     // symlinks to it, and one crate installed with `cargo install`. The
     // cargo instance's own executable is one of the proxies, so
-    // everything that resolves to `rustup` is cargo's. `hexyl` is not --
-    // until step E fills `InstalledArtifact.path` for cargo binaries it
-    // is listed here, honestly (spec §8.3; Task 10's delivery note).
+    // everything that resolves to `rustup` is cargo's. `hexyl` is not
+    // by this rule: with no artifact carrying its path it is listed,
+    // honestly; the test after this one gives cargo's inventory its say.
     let home = Home::new("rule-1");
     let bin = home.dir(".cargo/bin");
     exe(&bin, "rustup", b"x");
@@ -450,6 +452,47 @@ fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
     assert_eq!(scan.attributed, 14, "{:?}", scan.entries);
     assert_eq!(scan.entries.len(), 1, "{:?}", scan.entries);
     assert_eq!(scan.entries[0].path, tilde(".cargo/bin/hexyl"));
+}
+
+#[test]
+fn test_rule_2_claims_a_cargo_installed_program_through_its_artifacts_path() {
+    // The cargo adapter's inventory fills `InstalledArtifact.path` with
+    // `<cargo_home>/bin/<binary>` for every crate (`parse_crates2` in
+    // adapters/cargo.rs, phase 4 step E), so a `cargo install`ed program
+    // is claimed by rule 2 -- the same rule uv's shims use -- and no
+    // longer listed here.
+    let home = Home::new("rule-2-cargo");
+    let bin = home.dir(".cargo/bin");
+    exe(&bin, "rustup", b"x");
+    link(&bin, "cargo", Path::new("rustup"));
+    let hexyl = exe(&bin, "hexyl", b"x");
+    let cargo = ManagerInstance {
+        exe_path: bin.join("cargo"),
+        prefix: home.path().join(".cargo"),
+        ..manager_instance(
+            "cargo",
+            &format!("cargo:{}", home.path().join(".cargo").display()),
+        )
+    };
+    let hexyl_artifact = InstalledArtifact {
+        key: ArtifactKey {
+            instance_id: cargo.id.clone(),
+            kind: ArtifactKind::Binary,
+            name: "hexyl".to_string(),
+        },
+        ..artifact(&cargo.id, "hexyl", &hexyl)
+    };
+
+    let scan = scan_dirs(
+        &[bin],
+        &home.env(vec![]),
+        &[cargo],
+        &[hexyl_artifact],
+        ScanBudget::default(),
+    );
+
+    assert!(scan.entries.is_empty(), "{:?}", scan.entries);
+    assert_eq!(scan.attributed, 3);
 }
 
 #[test]

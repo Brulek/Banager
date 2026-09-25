@@ -766,6 +766,8 @@ mod tests {
             home: std::env::temp_dir().join(format!("canager-ipc-scan-{}", std::process::id())),
             euid: 0,
             cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
             ollama_host: None,
         };
 
