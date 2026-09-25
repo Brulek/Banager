@@ -29,9 +29,10 @@
 //! Nothing here runs a command or writes a file: `plan` hands in what
 //! `detect` seated, and this module lists `<rustup_home>/toolchains` and
 //! `<cargo_home>/bin` by name, reads `.crates2.json`, looks for
-//! Homebrew's `Cellar/rustup`, reads eight startup files under the home,
-//! replays rustup's own cleanup on copies of them in memory, and answers
-//! with `Warning`s.
+//! Homebrew's `Cellar/rustup`, reads eight startup files under the home
+//! (and zsh's three under a `ZDOTDIR` that is another folder), replays
+//! rustup's own cleanup on copies of them in memory, and answers with
+//! `Warning`s.
 
 use super::recipe::GateRefusal;
 use super::Detected;
@@ -42,9 +43,10 @@ use std::path::{Path, PathBuf};
 
 /// The startup files Canager reads (never writes) for a line about the
 /// Cargo env file, home-relative, in the order they are reported (spec
-/// §6.4). `$ZDOTDIR/.zshenv` and `$ZDOTDIR/.zprofile` are read only when
-/// `ZDOTDIR` is the home (then they are these files); a zsh whose files
-/// live elsewhere is not checked, and the trust file says so.
+/// §6.4). When `ZDOTDIR` names another folder, zsh's three -- `.zshenv`,
+/// `.zprofile`, `.zshrc` -- are read under it as well (`startup_files`);
+/// a `ZDOTDIR` Canager cannot see, one set only inside a zsh startup
+/// file, is not modelled, and the trust file says so.
 pub const SHELL_RC_CANDIDATES: [&str; 8] = [
     ".zshenv",
     ".zprofile",
@@ -407,28 +409,55 @@ pub fn classify_leftover(contents: &str, patterns: &LeftoverPatterns) -> Option<
     mentions.then_some(Leftover::Mentions)
 }
 
-/// One `LeavesShellConfigLine` per startup file under `home` that will
-/// still speak of the Cargo env file after `rustup self uninstall`, in
-/// `SHELL_RC_CANDIDATES` order, `path` spelled `~/<file>`, `certain` by
-/// tier. The eight files are read once (read-only: Canager never edits
-/// a startup file, spec §6.8), rustup's visits (`rustup_rc_visits`) are
-/// replayed on the copies -- so a second visit to the same file sees
-/// the first's result, as rustup's does -- and what is left is
-/// classified (`classify_leftover`). A visit to a file outside the eight
-/// (a `$ZDOTDIR` that is not the home) has no copy to act on.
+/// The files `shell_config_leftovers` reads, in the order it reports
+/// them: `SHELL_RC_CANDIDATES` under `home`, and, when `zdotdir` is an
+/// absolute folder other than `home` (compared lexically, as
+/// `rustup_rc_visits` spells its visits), zsh's `.zshenv`, `.zprofile`
+/// and `.zshrc` under it, each just before the home's -- the order rustup
+/// visits the first two in; rustup edits nobody's `.zshrc`, and a zsh
+/// with a `ZDOTDIR` reads that folder's, not the home's. An empty
+/// `ZDOTDIR` is none (shell.rs:213), the home's is these files (read
+/// once, visited twice), and a relative one is not modelled: rustup
+/// would resolve it against its own working directory, which this
+/// preview does not know.
+fn startup_files(home: &Path, zdotdir: Option<&Path>) -> Vec<PathBuf> {
+    let zdotdir = zdotdir.filter(|dir| dir.is_absolute() && *dir != home);
+    SHELL_RC_CANDIDATES
+        .iter()
+        .flat_map(|rc| {
+            let under_zdotdir = zdotdir
+                .filter(|_| matches!(*rc, ".zshenv" | ".zprofile" | ".zshrc"))
+                .map(|dir| dir.join(rc));
+            under_zdotdir.into_iter().chain([home.join(rc)])
+        })
+        .collect()
+}
+
+/// One `LeavesShellConfigLine` per startup file (`startup_files`) that
+/// will still speak of the Cargo env file after `rustup self uninstall`,
+/// in that order, `path` spelled by the crate's one rule
+/// (`scan::display_path`: `~/<file>` under the home, the full path
+/// elsewhere), `certain` by tier. The files are read once (read-only:
+/// Canager never edits a startup file, spec §6.8), rustup's visits
+/// (`rustup_rc_visits`) are replayed on the copies, keyed by path -- so
+/// a second visit to the same file sees the first's result, as rustup's
+/// does, and a visit to `$ZDOTDIR/.zshenv` or `$ZDOTDIR/.zprofile` acts
+/// on that file's own copy -- and what is left is classified
+/// (`classify_leftover`). A visit to a file not read (a relative
+/// `$ZDOTDIR`'s) has no copy to act on.
 pub fn shell_config_leftovers(
     home: &Path,
     zdotdir: Option<&Path>,
     cargo_home: &Path,
 ) -> Vec<Warning> {
     let spelled = cargo_home_str(home, cargo_home);
-    let mut files: BTreeMap<PathBuf, String> = SHELL_RC_CANDIDATES
+    let ordered = startup_files(home, zdotdir);
+    let mut files: BTreeMap<PathBuf, String> = ordered
         .iter()
-        .filter_map(|rc| {
-            let path = home.join(rc);
-            std::fs::read_to_string(&path)
+        .filter_map(|path| {
+            std::fs::read_to_string(path)
                 .ok()
-                .map(|contents| (path, contents))
+                .map(|contents| (path.clone(), contents))
         })
         .collect();
     for visit in rustup_rc_visits(home, zdotdir, &spelled) {
@@ -437,13 +466,13 @@ pub fn shell_config_leftovers(
         }
     }
     let patterns = leftover_patterns(home, cargo_home);
-    SHELL_RC_CANDIDATES
+    ordered
         .iter()
-        .filter_map(|rc| {
-            let contents = files.get(&home.join(rc))?;
+        .filter_map(|path| {
+            let contents = files.get(path)?;
             let tier = classify_leftover(contents, &patterns)?;
             Some(Warning::LeavesShellConfigLine {
-                path: format!("~/{rc}"),
+                path: crate::scan::display_path(path, home).display().to_string(),
                 certain: tier == Leftover::Sources,
             })
         })
@@ -910,9 +939,9 @@ mod tests {
         // deduplication (shell.rs:240-245), and `legacy_paths` chains
         // `$ZDOTDIR/.zprofile` before `~/.zprofile` (shell.rs:564-574):
         // with `ZDOTDIR=$HOME` the same file is visited twice per line,
-        // and each visit removes one exact copy. Another ZDOTDIR is a
-        // file Canager does not read: the visit is there, and
-        // `shell_config_leftovers` has no contents for it. An empty
+        // and each visit removes one exact copy. Another ZDOTDIR gets its
+        // own visits, to its `.zshenv` and `.zprofile`, which
+        // `shell_config_leftovers` reads as files of their own. An empty
         // ZDOTDIR is no ZDOTDIR (shell.rs:213).
         let home = Path::new("/Users/someone");
         let visits = rustup_rc_visits(home, Some(home), "$HOME/.cargo");
@@ -1229,6 +1258,113 @@ mod tests {
             shell_config_leftovers(home.path(), Some(home.path()), &home.path().join(".cargo")),
             vec![Warning::LeavesShellConfigLine {
                 path: "~/.zshenv".to_string(),
+                certain: true
+            }]
+        );
+    }
+
+    #[test]
+    fn test_startup_files_put_zshs_three_under_another_zdotdir_each_before_its_home_namesake() {
+        // The eight under the home alone when there is no ZDOTDIR, when it
+        // is the home (spelled with or without a trailing slash: its files
+        // are then those files, read once and visited twice), when it is
+        // empty (no ZDOTDIR, shell.rs:213), and when it is relative (rustup
+        // would resolve it against its own working directory, which this
+        // preview does not know). Another absolute folder adds its
+        // `.zshenv`, `.zprofile` and `.zshrc`, each just before the home's,
+        // in the order rustup visits them.
+        let home = Path::new("/Users/someone");
+        let eight: Vec<PathBuf> = SHELL_RC_CANDIDATES.iter().map(|rc| home.join(rc)).collect();
+        assert_eq!(startup_files(home, None), eight);
+        assert_eq!(startup_files(home, Some(home)), eight);
+        assert_eq!(
+            startup_files(home, Some(Path::new("/Users/someone/"))),
+            eight
+        );
+        assert_eq!(startup_files(home, Some(Path::new(""))), eight);
+        assert_eq!(startup_files(home, Some(Path::new(".config/zsh"))), eight);
+        let zdotdir = Path::new("/Users/someone/.config/zsh");
+        assert_eq!(
+            startup_files(home, Some(zdotdir)),
+            vec![
+                zdotdir.join(".zshenv"),
+                home.join(".zshenv"),
+                zdotdir.join(".zprofile"),
+                home.join(".zprofile"),
+                zdotdir.join(".zshrc"),
+                home.join(".zshrc"),
+                home.join(".bash_profile"),
+                home.join(".bash_login"),
+                home.join(".bashrc"),
+                home.join(".profile"),
+                home.join(".config/fish/config.fish"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_shell_config_leftovers_reads_zshs_files_under_another_zdotdir() {
+        // A zsh whose files live under `ZDOTDIR=$HOME/.config/zsh`: rustup
+        // visits `$ZDOTDIR/.zshenv` and `$ZDOTDIR/.zprofile` (and `~/.zshenv`
+        // once, not twice), zsh reads that folder's `.zshenv`, `.zprofile`
+        // and `.zshrc`, and rustup never edits a `.zshrc` -- so each of the
+        // three is read as a file of its own, replayed on, and named by its
+        // own path just before its home namesake. The `source` line rustup
+        // leaves in `$ZDOTDIR/.zshenv` (it removes that spelling only from
+        // the `legacy_paths` files) *will* error in every new zsh: the line
+        // the preview must not stay silent about.
+        let home = TempHome::new("rustup-rc-zdotdir-elsewhere");
+        let zdotdir = home.dir(".config/zsh");
+        std::fs::write(
+            zdotdir.join(".zshenv"),
+            format!("{}\nsource \"$HOME/.cargo/env\"\n", rc_line()),
+        )
+        .expect("write");
+        std::fs::write(
+            zdotdir.join(".zprofile"),
+            "export PATH=\"$HOME/.cargo/bin:$PATH\"\nsource \"$HOME/.cargo/env\"\n[ -f \"$HOME/.cargo/env\" ] && . \"$HOME/.cargo/env\"\n",
+        )
+        .expect("write");
+        std::fs::write(zdotdir.join(".zshrc"), format!("{}\n", rc_line())).expect("write");
+        std::fs::write(
+            home.path().join(".zshenv"),
+            format!("{}\n{}\n", rc_line(), rc_line()),
+        )
+        .expect("write");
+        assert_eq!(
+            shell_config_leftovers(home.path(), Some(&zdotdir), &home.path().join(".cargo")),
+            vec![
+                Warning::LeavesShellConfigLine {
+                    path: "~/.config/zsh/.zshenv".to_string(),
+                    certain: true
+                },
+                Warning::LeavesShellConfigLine {
+                    path: "~/.zshenv".to_string(),
+                    certain: true
+                },
+                Warning::LeavesShellConfigLine {
+                    path: "~/.config/zsh/.zprofile".to_string(),
+                    certain: false
+                },
+                Warning::LeavesShellConfigLine {
+                    path: "~/.config/zsh/.zshrc".to_string(),
+                    certain: true
+                },
+            ]
+        );
+        // A ZDOTDIR outside the home is named by its full path, and the
+        // folder that is no longer ZDOTDIR is no longer read.
+        let outside = TempHome::new("rustup-rc-zdotdir-outside");
+        std::fs::write(outside.path().join(".zshrc"), format!("{}\n", rc_line())).expect("write");
+        std::fs::remove_file(home.path().join(".zshenv")).expect("remove");
+        assert_eq!(
+            shell_config_leftovers(
+                home.path(),
+                Some(outside.path()),
+                &home.path().join(".cargo")
+            ),
+            vec![Warning::LeavesShellConfigLine {
+                path: outside.path().join(".zshrc").display().to_string(),
                 certain: true
             }]
         );

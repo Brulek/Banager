@@ -824,12 +824,15 @@ when `ZDOTDIR` is your home folder the same file is visited twice and two
 copies go. It never edits `~/.zshrc` or fish's `config.fish`. So before the
 uninstall Canager reads those eight files — `~/.zshenv`, `~/.zprofile`,
 `~/.zshrc`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.profile`,
-`~/.config/fish/config.fish` — replays rustup's removals on copies in
-memory, and names each file that still speaks of Cargo's env file: "will
-print an error" when what is left is a line in the exact form rustup itself
-writes (a file rustup does not edit, such as `~/.zshrc`; a second copy of
-its line; its line last in the file with no newline after it), "may" for
-any other mention rustup will not remove (a guarded line such as
+`~/.config/fish/config.fish` — and, when `ZDOTDIR` names a folder other
+than your home, that folder's `.zshenv`, `.zprofile` and `.zshrc` as well
+(each named by its own path, `~/.config/zsh/.zshrc` for one), replays
+rustup's removals on copies in memory, and names each file that still
+speaks of Cargo's env file: "will print an error" when what is left is a
+line in the exact form rustup itself writes (a file rustup does not edit,
+such as `~/.zshrc`; a second copy of its line; its line last in the file
+with no newline after it), "may" for any other mention rustup will not
+remove (a guarded line such as
 `[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`, an `echo`, another
 spelling such as `source ~/.cargo/env`, a `$CARGO_HOME/env`); a comment
 counts for nothing. rustup learns `ZDOTDIR` by asking `zsh` when your
@@ -921,8 +924,9 @@ All read-only, none saved anywhere else, none uploaded:
   names in `~/.rustup/toolchains` and in `~/.cargo/bin` (directory
   listings — nothing in them is opened), `~/.cargo/.crates2.json`, whether
   `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
-  the eight shell startup files named in its section, each read whole and
-  only searched for a line about Cargo's env file; nothing else under
+  the shell startup files named in its section (eight under your home, and
+  zsh's three under `ZDOTDIR` when that names another folder), each read
+  whole and only searched for a line about Cargo's env file; nothing else under
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.
