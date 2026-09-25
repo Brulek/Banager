@@ -45,7 +45,7 @@
       },
       "NoSafeMethod": {
         "badge": "无法在这里卸载",
-        "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。官方说明在它的网站上。",
+        "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。{{source}} 官方文档里说明了怎么卸载。",
         "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。"
       }
     }
@@ -159,7 +159,7 @@
     },
     "launcherOnly": {
       "title": "只剩下 {{command}} 这个链接了",
-      "description": "这个 {{command}} 链接指向的程序文件已经不在了，这个启动器无法运行。另一份安装在「终端」里可能仍然可用。Canager 还不能移走这个链接。想把 {{source}} 装回来，按它网站上的官方说明重新安装；想彻底删掉，按同一页的卸载说明做。"
+      "description": "这个 {{command}} 链接指向的程序文件已经不在了，这个启动器无法运行。另一份安装在「终端」里可能仍然可用。Canager 还不能移走这个链接。想把 {{source}} 装回来，按 {{source}} 官方文档里的安装步骤重新安装；想彻底删掉，按同一份文档里的卸载步骤做。"
     }
   },
   "planRefused": {

@@ -322,6 +322,18 @@ describe("sourceNoticesFor", () => {
       }
     }
   });
+
+  it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", () => {
+    // The same rule as the no-safe-method sentence on this instance's own
+    // row (its artifact carries NoSafeMethod until step C): Canager shows
+    // no homepage and opens no link, so "its website" and "the same page"
+    // named nothing the user could find from here.
+    expect(en.sourceNotice.launcherOnly.description).toContain("{{source}}'s official documentation");
+    expect(zhCN.sourceNotice.launcherOnly.description).toContain("{{source}} 官方文档");
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/website|same page|网站|同一页/);
+    }
+  });
 });
 
 describe("parseNotActionable", () => {
@@ -751,6 +763,18 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     }
     expect(en.adapters["standalone-claude"]).toBe("Claude Code");
     expect(zhCN.adapters["standalone-claude"]).toBe("Claude Code");
+  });
+
+  it("points at the tool's official documentation, not at a website Canager doesn't show, in the no-safe-method sentence", () => {
+    // Canager shows no homepage and opens no link (the Tauri opener
+    // paragraph in docs/what-we-run.md), so "its website" named nothing
+    // the user could find from the row. The documentation, called by the
+    // tool's own name, is something they can look up.
+    expect(en.installed.blocked.NoSafeMethod.description).toContain("{{source}}'s official documentation");
+    expect(zhCN.installed.blocked.NoSafeMethod.description).toContain("{{source}} 官方文档");
+    for (const locale of [en, zhCN]) {
+      expect(locale.installed.blocked.NoSafeMethod.description).not.toMatch(/website|网站/);
+    }
   });
 });
 

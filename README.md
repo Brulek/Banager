@@ -10,7 +10,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 593 Rust tests (plus 2 more
-> that touch a real Homebrew and only run with `--ignored`) and 341 front-end tests, but there is
+> that touch a real Homebrew and only run with `--ignored`) and 343 front-end tests, but there is
 > no downloadable build yet — v0.1 is being prepared. Nothing here is ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->

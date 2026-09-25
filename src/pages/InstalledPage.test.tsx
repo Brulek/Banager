@@ -449,7 +449,7 @@ describe("InstalledPage", () => {
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
     expect(
       getByText(
-        "Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.",
+        "Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.",
       ),
     ).toBeInTheDocument();
     expect(container.querySelector("code")).toBeNull();
@@ -507,7 +507,7 @@ describe("InstalledPage", () => {
       ),
     ).toBeInTheDocument();
     expect(getByText("No description available")).toBeInTheDocument();
-    expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. The official instructions are on its website.")).toBeInTheDocument();
+    expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.")).toBeInTheDocument();
     // Only the Homebrew artifact may offer Uninstall; B's actual Claude
     // artifact is NoSafeMethod and must still show both sentences.
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
