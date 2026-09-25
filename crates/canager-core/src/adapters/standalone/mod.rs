@@ -52,17 +52,36 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// What `detect` learned that the `Adapter` methods without a `HostEnv`
 /// need later -- the same seat `CargoAdapter.binstall` is (detect writes,
 /// later calls read; `Session` always detects before it asks anything
-/// else of an instance). `home`, which `check_updates` needs to find
-/// `~/.claude/settings.json` and the removal needs to expand its paths;
-/// `euid`, which the removal's check 3 compares each path's owner with
-/// (`removal::plan_removal`). Step E adds `cargo_home` (rustup's cargo
-/// lock). `Clone`, so `plan` and `execute` take a copy out of the mutex
-/// before they await anything, and the removal owns one for the blocking
-/// pool (`removal::Job`).
+/// else of an instance). `home`: `check_updates` finds
+/// `~/.claude/settings.json` with it, the removal expands its paths
+/// against it, and the rustup recipe's uninstall warnings read the shell
+/// startup files under it. `euid`: the removal's check 3 compares each
+/// path's owner with it (`removal::plan_removal`). `cargo_home`:
+/// `CARGO_HOME` by the `home` crate's rule (`cargo::cargo_home_of`, the
+/// rule `CargoAdapter::detect` names its instance by; `None` for a
+/// relative value, unsupported), which `seated_detected_for` and
+/// `execute` expand a `$CARGO_HOME` route under, and which the rustup
+/// recipe's `extra_locks` spells the cargo lock from and its gate and
+/// warnings read `.crates2.json` and `bin/` under. `rustup_home`:
+/// `RUSTUP_HOME` by the same rule (`path_env::tool_home`), which the
+/// rustup recipe's gate compares with `~/.rustup` and its warnings list
+/// `toolchains/` under. `zdotdir`: `ZDOTDIR` raw, which the rustup
+/// recipe's startup-file model visits `.zshenv`/`.zprofile` under, as
+/// rustup's own cleanup does. Declared deferral: the rustup recipe's
+/// readers of the last three are `rustup::{extra_locks,
+/// uninstall_blocked, uninstall_warnings}` (Task 5 of the phase 4 step E
+/// plan), called from `plan` and `inventory` once Task 6 puts them in the
+/// `RUSTUP` recipe. The seat is bound to an instance by
+/// `seated_detected_for`. `Clone`, so `plan` and `execute` take a copy out
+/// of the mutex before they await anything, and the removal owns one for
+/// the blocking pool (`removal::Job`).
 #[derive(Clone, Debug)]
 pub struct Detected {
     pub home: PathBuf,
     pub euid: u32,
+    pub cargo_home: Option<PathBuf>,
+    pub rustup_home: Option<PathBuf>,
+    pub zdotdir: Option<PathBuf>,
 }
 
 /// What `inventory` read at the launcher, kept for the `check_updates`
@@ -171,8 +190,17 @@ impl StandaloneAdapter {
     /// (never `resolve_exe`, spec D3), the fingerprint, the version read,
     /// the PATH note. One instance or none; never two.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
-        let launcher = route::expand(&env.home, self.recipe.route.launcher);
-        let root = route::expand(&env.home, self.recipe.route.root);
+        // The Cargo home by the `home` crate's rule (`None`: a relative
+        // CARGO_HOME, which no path of Canager's can stand for). A recipe
+        // under `$CARGO_HOME` then has no launcher to look for; a `~/`
+        // recipe is unaffected and seats `None`.
+        let cargo_home = crate::adapters::cargo::cargo_home_of(env);
+        let (Some(launcher), Some(root)) = (
+            route::expand_route(&env.home, cargo_home.as_deref(), self.recipe.route.launcher),
+            route::expand_route(&env.home, cargo_home.as_deref(), self.recipe.route.root),
+        ) else {
+            return Vec::new();
+        };
         let (version, unavailable, notes) =
             match route::probe(self.recipe.route.kind, &launcher, &root) {
                 Probe::Absent => return Vec::new(),
@@ -196,6 +224,13 @@ impl StandaloneAdapter {
         *self.detected.lock().unwrap() = Some(Detected {
             home: env.home.clone(),
             euid: env.euid,
+            cargo_home,
+            rustup_home: crate::runner::path_env::tool_home(
+                env.rustup_home.as_deref(),
+                &env.home,
+                ".rustup",
+            ),
+            zdotdir: env.zdotdir.clone(),
         });
         let unverified_version = self.meta.unverified_version(&version);
         vec![ManagerInstance {
@@ -262,6 +297,49 @@ impl StandaloneAdapter {
             kind: ArtifactKind::Binary,
             name: self.recipe.id.to_string(),
         }
+    }
+
+    /// What `detect` seated, bound to `inst` -- for the plan arms and the
+    /// inventory gate that need it: rustup's cargo lock, its
+    /// standard-layout gate and its uninstall warnings. The seat is one
+    /// slot that the latest `detect` overwrites, and `plan` is handed an
+    /// instance: a plan for an instance detected under home A after a
+    /// detect under home B would run A's launcher with B's locks and
+    /// warnings. So the launcher and root the seat expands to must be the
+    /// instance's own `exe_path` and `prefix`; anything else is
+    /// `Refused`, and so is a plan asked before any detect, which
+    /// `Session` never does (spec §3.2). A copy, so no mutex guard is
+    /// held across anything `plan` awaits. Read by both of `plan`'s arms;
+    /// `inventory`'s gate joins them with the `RUSTUP` recipe (Task 6 of
+    /// the phase 4 step E plan).
+    fn seated_detected_for(&self, inst: &ManagerInstance) -> Result<Detected, AdapterError> {
+        let seat = self.detected.lock().unwrap().clone().ok_or_else(|| {
+            AdapterError::Refused(format!(
+                "{} has not been detected yet, so nothing can be planned for it",
+                self.meta.name
+            ))
+        })?;
+        let route = &self.recipe.route;
+        let launcher = route::expand_route(&seat.home, seat.cargo_home.as_deref(), route.launcher);
+        let root = route::expand_route(&seat.home, seat.cargo_home.as_deref(), route.root);
+        if launcher.as_deref() != Some(inst.exe_path.as_path())
+            || root.as_deref() != Some(inst.prefix.as_path())
+        {
+            return Err(AdapterError::Refused(format!(
+                "{} was last detected under a different home than this instance's; refresh and try again",
+                self.meta.name
+            )));
+        }
+        Ok(seat)
+    }
+
+    /// Every lock a plan for this instance holds: its own, then the
+    /// recipe's `extra_locks` (rustup: the cargo instance's). Every plan
+    /// arm uses it, so none can forget the second lock.
+    fn locks(&self, inst: &ManagerInstance, detected: &Detected) -> Vec<ResourceLock> {
+        let mut locks = vec![ResourceLock(inst.id.clone())];
+        locks.extend((self.recipe.extra_locks)(detected));
+        locks
     }
 
     /// `Look`: the probe at the instance's own `exe_path` and `prefix`,
@@ -564,9 +642,11 @@ impl StandaloneAdapter {
                 };
                 match *uninstall {
                     Uninstall::Paths { remove, keep } => {
+                        let detected = self.seated_detected_for(inst)?;
+                        let locks = self.locks(inst, &detected);
                         let removal = removal::plan_removal(&removal::Job {
                             recipe: self.recipe,
-                            detected: self.detected_or_refuse()?,
+                            detected,
                             remove,
                             keep,
                         })?;
@@ -581,7 +661,7 @@ impl StandaloneAdapter {
                             },
                             // Everything lives under $HOME (spec §6.2).
                             needs_password: false,
-                            locks: vec![ResourceLock(inst.id.clone())],
+                            locks,
                             // Between items the token is watched; there is
                             // no process to stop (spec §6.2).
                             cancel_policy: CancelPolicy::KillThenReconcile,
@@ -596,6 +676,7 @@ impl StandaloneAdapter {
                 }
             }
             OpKind::Upgrade => {
+                let detected = self.seated_detected_for(inst)?;
                 let upgrade = &self.recipe.upgrade;
                 Ok(Plan {
                     request: req.clone(),
@@ -604,14 +685,18 @@ impl StandaloneAdapter {
                         // program the recipe could name (spec 附录 B).
                         program: inst.exe_path.clone(),
                         args: upgrade.args.iter().map(|a| a.to_string()).collect(),
-                        // Not the version read's environment: `claude
-                        // update` must not be told to stop updating (spec
-                        // §3.4).
+                        // Not the version read's environment: the tool's
+                        // updater must not be told to stop updating
+                        // (spec §3.4), and rustup's self update may
+                        // install nothing anyway.
                         env: Vec::new(),
                     },
                     // Everything lives under $HOME (spec §五).
                     needs_password: false,
-                    locks: vec![ResourceLock(inst.id.clone())],
+                    // The instance's own lock, plus rustup's cargo lock
+                    // (spec §2.4): a self update replaces the binary the
+                    // cargo instance's `cargo` proxy runs.
+                    locks: self.locks(inst, &detected),
                     cancel_policy: upgrade.cancel,
                     warnings: Vec::new(),
                     affected: Vec::new(),
@@ -623,7 +708,9 @@ impl StandaloneAdapter {
 
     /// What `detect` wrote, or a plain `Refused` when nothing has been
     /// detected -- unreachable through `Session`, which detects before it
-    /// plans (spec §3.2), so no sentence of its own.
+    /// plans (spec §3.2), so no sentence of its own. For `execute`, which
+    /// is handed a plan and no instance to bind the seat to; `plan` binds
+    /// through `seated_detected_for`.
     fn detected_or_refuse(&self) -> Result<Detected, AdapterError> {
         self.detected.lock().unwrap().clone().ok_or_else(|| {
             AdapterError::Refused(format!(
@@ -667,7 +754,26 @@ impl StandaloneAdapter {
             // spawn, the same edge the removal documents (`take_turn`).
             PlanAction::Command { program, .. } => {
                 let detected = self.detected_or_refuse()?;
-                let launcher = route::expand(&detected.home, self.recipe.route.launcher);
+                let route = &self.recipe.route;
+                // The seat's own launcher and root. `None` only for a
+                // `$CARGO_HOME` route whose seat has no usable Cargo home,
+                // which `detect` never seats (it lists nothing first); so
+                // a plan that reaches this cannot be that seat's, and is
+                // refused as one naming another program would be.
+                let (Some(launcher), Some(root)) = (
+                    route::expand_route(
+                        &detected.home,
+                        detected.cargo_home.as_deref(),
+                        route.launcher,
+                    ),
+                    route::expand_route(&detected.home, detected.cargo_home.as_deref(), route.root),
+                ) else {
+                    return Err(AdapterError::Refused(format!(
+                        "{}: the plan runs {}, but the last detect found no Cargo home to place the launcher under",
+                        self.meta.name,
+                        program.display()
+                    )));
+                };
                 // `plan` names the launcher and nothing else (spec 附录 B):
                 // a plan naming any other program was not built by it, and
                 // is a bug's, refused before anything is looked at or run.
@@ -679,7 +785,6 @@ impl StandaloneAdapter {
                         launcher.display()
                     )));
                 }
-                let root = route::expand(&detected.home, self.recipe.route.root);
                 if !matches!(
                     route::probe(self.recipe.route.kind, &launcher, &root),
                     Probe::Present { .. }
@@ -975,6 +1080,69 @@ pub(super) mod testing {
         }
     }
 
+    /// rustup's native layout: `<cargo_home>/bin/rustup`, an executable
+    /// regular file, and the thirteen proxies rustup installs beside it as
+    /// relative links to it (`TOOLS` + `DUP_TOOLS` in rustup's
+    /// `src/lib.rs`; `ls -la ~/.cargo/bin` on this Mac, unknown-scan.md
+    /// §2).
+    pub struct RustupLayout {
+        pub cargo_home: PathBuf,
+        pub launcher: PathBuf,
+    }
+
+    /// Here until Task 5 of the phase 4 step E plan moves it to
+    /// `rustup.rs`, where the uninstall preview reads it in production.
+    pub const RUSTUP_PROXIES: [&str; 13] = [
+        "cargo",
+        "cargo-clippy",
+        "cargo-fmt",
+        "cargo-miri",
+        "clippy-driver",
+        "rls",
+        "rust-analyzer",
+        "rust-gdb",
+        "rust-gdbgui",
+        "rust-lldb",
+        "rustc",
+        "rustdoc",
+        "rustfmt",
+    ];
+
+    pub fn rustup_layout(cargo_home: &Path) -> RustupLayout {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = cargo_home.join("bin");
+        std::fs::create_dir_all(&bin).expect("create cargo bin");
+        let launcher = bin.join("rustup");
+        std::fs::write(&launcher, b"#!/bin/sh\n").expect("write rustup");
+        // Executable, as the installer leaves it and as
+        // `TempHome::executable` makes claude's target: B's `shadow_note`
+        // accepts only a `PATH` hit with an execute bit, so a 0644
+        // launcher would give every detect over `<cargo_home>/bin` a
+        // `NotOnPath` note.
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
+            .expect("executable rustup");
+        for proxy in RUSTUP_PROXIES {
+            std::os::unix::fs::symlink("rustup", bin.join(proxy)).expect("proxy link");
+        }
+        RustupLayout {
+            cargo_home: cargo_home.to_path_buf(),
+            launcher,
+        }
+    }
+
+    /// A `Detected` seat as `detect` writes it for `home` with this Cargo
+    /// home, the default rustup home and no `ZDOTDIR`, for the recipe
+    /// functions that take one.
+    pub fn detected(home: &Path, cargo_home: &Path) -> super::Detected {
+        super::Detected {
+            home: home.to_path_buf(),
+            euid: 501,
+            cargo_home: Some(cargo_home.to_path_buf()),
+            rustup_home: Some(home.join(".rustup")),
+            zdotdir: None,
+        }
+    }
+
     /// Takes every permission off the folder `path` until dropped, so an
     /// `lstat` of anything inside it fails with a permission error -- the
     /// "could not tell" a probe must never read as "gone" -- and gives
@@ -1006,7 +1174,7 @@ pub(super) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::recipe::{Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
+    use super::recipe::{no_extra_locks, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
     use super::recipes::CLAUDE;
     use super::testing::{claude_layout, TempHome};
     use super::*;
@@ -2011,13 +2179,21 @@ mod tests {
     #[tokio::test]
     async fn test_plan_upgrade_is_the_tools_own_update_command_without_the_version_env() {
         // Spec §五: `<launcher> update`, 1800 s, KillThenReconcile, the
-        // instance's own lock, no password. Version reads add
-        // `DISABLE_AUTOUPDATER=1`; upgrade adds no environment override.
-        // RealRunner inherits ambient variables, including this one.
+        // instance's own lock and no other (claude's `extra_locks` is
+        // empty), no password. Version reads add `DISABLE_AUTOUPDATER=1`;
+        // upgrade adds no environment override (spec §3.4): the updater
+        // must be allowed to update. RealRunner inherits ambient
+        // variables, including this one. Detected first: the Upgrade arm
+        // reads the seat.
         let home = TempHome::new("plan-upgrade");
         let layout = claude_layout(&home, "2.1.281");
-        let adapter = adapter(Arc::new(MockRunner::new()));
-        let inst = instance_for(&layout, Some("2.1.281"));
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let adapter = adapter(runner);
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
 
         let plan = adapter
             .plan(
@@ -2043,6 +2219,133 @@ mod tests {
         assert!(plan.affected.is_empty());
         assert_eq!(plan.timeout_secs, 1800);
         assert_eq!(plan.request.name, "claude");
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_is_refused_before_any_detect() {
+        // Unreachable through `Session`, which detects before it plans;
+        // the adapter's own answer for a plan asked of it cold (spec §3.2).
+        let home = TempHome::new("plan-cold");
+        let layout = claude_layout(&home, "2.1.281");
+        let adapter = adapter(Arc::new(MockRunner::new()));
+        assert!(matches!(
+            adapter
+                .plan(
+                    &instance_for(&layout, Some("2.1.281")),
+                    &request(OpKind::Upgrade, ArtifactKind::Binary, "claude")
+                )
+                .await,
+            Err(AdapterError::Refused(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_plan_refuses_an_instance_the_seat_no_longer_describes() {
+        // The seat is one slot the latest detect overwrites. Detect home
+        // A, then home B, then plan for A's instance: the program would be
+        // A's launcher and the locks and warnings B's (ruling 9). Refused,
+        // until a detect of A seats A again.
+        let home_a = TempHome::new("seat-a");
+        let layout_a = claude_layout(&home_a, "2.1.281");
+        let home_b = TempHome::new("seat-b");
+        let layout_b = claude_layout(&home_b, "2.1.281");
+        let runner = Arc::new(MockRunner::new());
+        for layout in [&layout_a, &layout_b] {
+            runner.respond(
+                vec![layout.launcher.to_str().unwrap(), "--version"],
+                exited_0("2.1.281 (Claude Code)\n"),
+            );
+        }
+        let adapter = adapter(runner);
+        let inst_a = adapter.detect(&home_a.env(vec![])).await.remove(0);
+        let inst_b = adapter.detect(&home_b.env(vec![])).await.remove(0);
+        assert_ne!(inst_a.exe_path, inst_b.exe_path);
+
+        let req = request(OpKind::Upgrade, ArtifactKind::Binary, "claude");
+        assert!(
+            matches!(
+                adapter.plan(&inst_a, &req).await,
+                Err(AdapterError::Refused(_))
+            ),
+            "A's instance against B's seat"
+        );
+        assert_eq!(
+            adapter
+                .plan(&inst_b, &req)
+                .await
+                .expect("B's instance against B's seat")
+                .action,
+            PlanAction::Command {
+                program: layout_b.launcher.clone(),
+                args: vec!["update".to_string()],
+                env: Vec::new(),
+            }
+        );
+        adapter.detect(&home_a.env(vec![])).await;
+        assert_eq!(
+            adapter
+                .plan(&inst_a, &req)
+                .await
+                .expect("A's instance against A's seat")
+                .action,
+            PlanAction::Command {
+                program: layout_a.launcher.clone(),
+                args: vec!["update".to_string()],
+                env: Vec::new(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_seats_the_two_homes_and_zdotdir_for_the_plans_that_need_them() {
+        // `Detected.cargo_home` follows `CARGO_HOME` (through
+        // `cargo::cargo_home_of`), `rustup_home` follows `RUSTUP_HOME`
+        // (through `path_env::tool_home`), `zdotdir` is carried raw: the
+        // rustup recipe's lock, gate and warnings read them in `plan` and
+        // `inventory`, which have no HostEnv of their own.
+        let home = TempHome::new("detect-seat");
+        let layout = claude_layout(&home, "2.1.281");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("2.1.281 (Claude Code)\n"),
+        );
+        let adapter = adapter(runner);
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        let seat = adapter.seated_detected_for(&inst).expect("seated");
+        assert_eq!(seat.cargo_home, Some(home.path().join(".cargo")));
+        assert_eq!(seat.rustup_home, Some(home.path().join(".rustup")));
+        assert_eq!(seat.zdotdir, None);
+
+        let custom_cargo = home.path().join("elsewhere/cargo");
+        let custom_rustup = home.path().join("elsewhere/rustup");
+        let inst = adapter
+            .detect(&HostEnv {
+                cargo_home: Some(custom_cargo.clone()),
+                rustup_home: Some(custom_rustup.clone()),
+                zdotdir: Some(home.path().to_path_buf()),
+                ..home.env(vec![])
+            })
+            .await
+            .remove(0);
+        let seat = adapter.seated_detected_for(&inst).expect("seated");
+        assert_eq!(seat.cargo_home, Some(custom_cargo));
+        assert_eq!(seat.rustup_home, Some(custom_rustup));
+        assert_eq!(seat.zdotdir, Some(home.path().to_path_buf()));
+
+        // Relative values: unsupported, seated as `None`; an empty one is
+        // the default (the `home` crate's rule, Task 1).
+        let inst = adapter
+            .detect(&HostEnv {
+                cargo_home: Some(PathBuf::from("cargo")),
+                rustup_home: Some(PathBuf::from("")),
+                ..home.env(vec![])
+            })
+            .await
+            .remove(0);
+        let seat = adapter.seated_detected_for(&inst).expect("seated");
+        assert_eq!(seat.cargo_home, None);
+        assert_eq!(seat.rustup_home, Some(home.path().join(".rustup")));
     }
 
     #[tokio::test]
@@ -2124,6 +2427,7 @@ mod tests {
             cancel: CancelPolicy::KillThenReconcile,
         },
         uninstall: None,
+        extra_locks: no_extra_locks,
     };
 
     #[tokio::test]
@@ -2366,17 +2670,19 @@ mod tests {
     async fn test_execute_refuses_an_upgrade_plan_that_names_another_program_as_canagers_own_bug() {
         // `plan` names the launcher and nothing else (spec 附录 B). A plan
         // whose program is any other file was not built by `plan`, and so
-        // is one with no detect before it (no home to find the launcher
-        // under -- unreachable through `Session`, which detects first):
-        // both are refused as Canager's own bug (`Refused`, which
-        // `run_operation` reports as `Fault::Internal`), nothing spawned --
-        // never run on the plan's word.
+        // is one handed to an adapter with no detect before it (no home to
+        // find the launcher under -- unreachable through `Session`, which
+        // detects first; `plan` itself refuses such an adapter,
+        // `test_plan_upgrade_is_refused_before_any_detect`): both are
+        // refused as Canager's own bug (`Refused`, which `run_operation`
+        // reports as `Fault::Internal`), nothing spawned -- never run on
+        // the plan's word.
         let UpgradeSetup {
             home,
-            layout,
             runner,
             adapter: detected,
             inst,
+            ..
         } = detected_for_upgrade("execute-upgrade-other-program").await;
         let other = home.executable("elsewhere/claude");
         runner.respond(
@@ -2401,7 +2707,7 @@ mod tests {
 
         let fresh = Arc::new(MockRunner::new());
         let undetected = adapter(fresh.clone());
-        let plan = upgrade_plan(&undetected, &instance_for(&layout, Some("2.1.281"))).await;
+        let plan = upgrade_plan(&detected, &inst).await;
         assert!(matches!(
             undetected
                 .execute(&plan, Arc::new(VecSink::new()), 1, CancellationToken::new())

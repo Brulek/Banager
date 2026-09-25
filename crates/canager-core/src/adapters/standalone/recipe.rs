@@ -4,14 +4,15 @@
 //!
 //! Only the shapes something produces exist here. Step C added the
 //! path-list uninstall (`uninstall: Option<Uninstall>`, `Uninstall::Paths`);
-//! step D adds `backup_globs`, a `FlatFile` route, `Expect::File`, the
-//! other `Latest` sources and an optional `upgrade` (agy updates itself
-//! only); step E a `SecondToken` version parse, the `HttpTomlVersion`
-//! source, `$CARGO_HOME` paths and `Uninstall::Command`. A variant or
-//! field defined before anything produces it is this project's most
-//! common defect (spec §十三 #41).
+//! step E adds, for rustup, the `SecondToken` version parse, the
+//! `HttpTomlVersion` source, the `FlatFile` route, `$CARGO_HOME` paths,
+//! `extra_locks` and `Uninstall::Command`; step D adds `backup_globs`,
+//! `Expect::File`, the other `Latest` sources and an optional `upgrade`
+//! (agy updates itself only). A variant or field defined before anything
+//! produces it is this project's most common defect (spec §十三 #41).
 
-use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
+use super::Detected;
+use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock};
 
 /// A tool installed by its own installer, as data.
 #[derive(Debug)]
@@ -29,8 +30,9 @@ pub struct Recipe {
     /// copy here (spec §十三 #45).
     pub meta_toml: &'static str,
     /// Where the installer puts the launcher and the tool's root. Read by
-    /// `detect` (expanded against `HostEnv.home`) and, through the
-    /// instance's `exe_path`/`prefix`, by `inventory`.
+    /// `detect` (expanded against `HostEnv.home` and the Cargo home,
+    /// `route::expand_route`) and, through the instance's
+    /// `exe_path`/`prefix`, by `inventory`.
     pub route: Route,
     /// How the installed version is read. Read by `detect` and
     /// `inventory` (and so by `reconcile`).
@@ -52,21 +54,43 @@ pub struct Recipe {
     /// recipe since step C, the second batch's Ollama.app). Read by
     /// `inventory` (`uninstall_blocked`), `plan(Uninstall)` and `execute`.
     pub uninstall: Option<Uninstall>,
+    /// Locks every plan of this tool holds besides its own instance lock,
+    /// from what `detect` seated. rustup's is the cargo instance's
+    /// (`rustup::extra_locks`, Task 5 of the phase 4 step E plan):
+    /// `rustup self update` unlinks and re-copies the binary all thirteen
+    /// `$CARGO_HOME/bin` proxies run, `cargo` among them, and `rustup self
+    /// uninstall` deletes the `.crates2.json` cargo's inventory reads
+    /// (spec §2.4). A tool with its own directory holds nothing else:
+    /// `no_extra_locks`. Read by `StandaloneAdapter::locks`, for every
+    /// plan.
+    pub extra_locks: fn(&Detected) -> Vec<ResourceLock>,
 }
 
-/// The installer's fixed paths. Every path starts with `~/` and is expanded
-/// by `route::expand` against `HostEnv.home` -- never `std::env::var("HOME")`,
-/// which a Finder-launched app cannot be tested against (spec §3.1).
-/// `recipes::tests::test_every_recipe_path_is_under_home` holds every
-/// recipe to that.
+/// `Recipe.extra_locks` for a tool that touches nothing another source
+/// reads: only its own instance lock, which every plan holds anyway.
+pub fn no_extra_locks(_: &Detected) -> Vec<ResourceLock> {
+    Vec::new()
+}
+
+/// The installer's fixed paths. Every path starts with `~/` or
+/// `$CARGO_HOME` and is expanded by `route::expand_route` against
+/// `HostEnv.home` and the Cargo home `cargo::cargo_home_of` answers --
+/// never `std::env::var("HOME")`, which a Finder-launched app cannot be
+/// tested against (spec §3.1).
+/// `recipes::tests::test_every_recipe_path_is_under_home_or_the_cargo_home`
+/// holds every recipe to that, and
+/// `recipes::tests::test_a_paths_recipe_names_only_home_paths` holds a
+/// recipe with a path-list uninstall to `~/` alone, which is all
+/// `route::expand` knows.
 #[derive(Debug)]
 pub struct Route {
     pub kind: RouteKind,
-    /// The launcher: `~/.local/bin/claude`. The instance's `exe_path` and
-    /// the program every plan runs.
+    /// The launcher: `~/.local/bin/claude`, `$CARGO_HOME/bin/rustup`. The
+    /// instance's `exe_path` and the program every plan runs.
     pub launcher: &'static str,
-    /// The tool's own root: `~/.local/share/claude`. The instance's
-    /// `prefix`; what the launcher must resolve into.
+    /// The tool's own root: `~/.local/share/claude`, `$CARGO_HOME`. The
+    /// instance's `prefix`; what a `SymlinkIntoRoot` launcher must resolve
+    /// into.
     pub root: &'static str,
 }
 
@@ -80,6 +104,15 @@ pub enum RouteKind {
     /// decides, lexically normalised, whether this is the half-uninstalled
     /// `LauncherOnly` state (spec §3.3 step 2).
     SymlinkIntoRoot,
+    /// The launcher is a regular file, not a link (rustup:
+    /// `$CARGO_HOME/bin/rustup`, an 11 MB Mach-O executable, VERIFIED on
+    /// this Mac; agy in step D). Its real path is itself; `root` is the
+    /// instance's `prefix` and plays no part in the fingerprint. A link
+    /// at that path is not this route's install, and a dangling link at
+    /// it is not this install half-removed (no launcher-only state). Its
+    /// producer is the `RUSTUP` recipe (Task 6 of the phase 4 step E
+    /// plan).
+    FlatFile,
 }
 
 /// The read-only version command, run against the launcher.
@@ -150,9 +183,11 @@ pub struct UpgradeCmd {
     pub cancel: CancelPolicy,
 }
 
-/// How a tool is removed (phase 4 spec §6.1). Only the arm this step
-/// produces exists: `Command` (rustup's own `self uninstall`, with a
-/// probe, warnings and extra locks) arrives with step E.
+/// How a tool is removed (phase 4 spec §6.1). Only the arm something
+/// produces exists: `Command` (rustup's own `self uninstall`, gated to the
+/// standard layout and with a read-only preview of what it deletes; its
+/// second lock is `Recipe.extra_locks`) arrives with Task 6 of the phase 4
+/// step E plan.
 #[derive(Debug)]
 pub enum Uninstall {
     /// No command exists; the vendor's own instructions are a list of

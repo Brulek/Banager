@@ -15,14 +15,46 @@ use std::path::{Component, Path, PathBuf};
 /// the process's `HOME` as `HostEnv::discover` read it, not canonicalised:
 /// the Unknown page (scan/mod.rs) compares an instance's raw `exe_path`
 /// with the raw directory entries it reads, so both must come from the
-/// same spelling. A path not starting with `~/` is a programming error in
-/// a recipe constant; `recipes::tests::test_every_recipe_path_is_under_home`
-/// catches it before this can.
+/// same spelling. The path-list uninstall's function (`removal.rs`), for
+/// recipes whose every path is `~/`. A path not starting with `~/` is a
+/// programming error in a recipe constant;
+/// `recipes::tests::test_a_paths_recipe_names_only_home_paths` catches it
+/// before this can.
 pub fn expand(home: &Path, spec: &str) -> PathBuf {
     let rest = spec
         .strip_prefix("~/")
         .unwrap_or_else(|| panic!("recipe path {spec:?} must start with ~/"));
     home.join(rest)
+}
+
+/// A recipe route path under `home` (`~/.local/bin/claude`) or under the
+/// Cargo home (`$CARGO_HOME/bin/rustup`, or the bare `$CARGO_HOME`,
+/// rustup's root). `HostEnv.home` is the `HOME` the login shell exported
+/// and `cargo_home` is `cargo::cargo_home_of`'s answer (`CARGO_HOME`
+/// when set, by the `home` crate's rule), neither canonicalised: the
+/// Unknown page (scan/mod.rs) compares an instance's raw `exe_path` with
+/// the raw directory entries it reads, so both must come from the same
+/// spelling. `None` only for a `$CARGO_HOME` path when there is no
+/// usable Cargo home (a relative `CARGO_HOME`, which names a directory
+/// relative to cargo's own cwd): `detect` then lists nothing. `expand`
+/// (above) is the `~/`-only function the path-list uninstall uses; a
+/// `Paths` recipe may name only `~/` paths
+/// (`recipes::tests::test_a_paths_recipe_names_only_home_paths`). Any
+/// other shape is a programming error in a recipe constant;
+/// `recipes::tests::test_every_recipe_path_is_under_home_or_the_cargo_home`
+/// catches it before this can. Read by `StandaloneAdapter::detect`,
+/// `seated_detected_for` and `execute`.
+pub fn expand_route(home: &Path, cargo_home: Option<&Path>, spec: &str) -> Option<PathBuf> {
+    if let Some(rest) = spec.strip_prefix("~/") {
+        return Some(home.join(rest));
+    }
+    if spec == "$CARGO_HOME" {
+        return cargo_home.map(Path::to_path_buf);
+    }
+    if let Some(rest) = spec.strip_prefix("$CARGO_HOME/") {
+        return cargo_home.map(|cargo_home| cargo_home.join(rest));
+    }
+    panic!("recipe path {spec:?} must start with ~/ or $CARGO_HOME")
 }
 
 /// What is at a recipe's launcher path.
@@ -159,9 +191,28 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
                         Ok(Probe::Absent)
                     }
                 }
+                RouteKind::FlatFile => {
+                    // The installer's own copy is a regular file; a link
+                    // of that name points at somebody else's.
+                    if meta.file_type().is_file() {
+                        Ok(Probe::Present { real })
+                    } else {
+                        Ok(Probe::Absent)
+                    }
+                }
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Only a link-shaped route has a launcher-only state (program
+            // files gone, link left). A flat-file launcher *is* the
+            // program, so a dangling link at its path is not this install
+            // half-removed -- and rustup's root is the whole Cargo home,
+            // under which any link text would land. Exhaustive, so a
+            // future kind has to decide.
+            match kind {
+                RouteKind::SymlinkIntoRoot => {}
+                RouteKind::FlatFile => return Ok(Probe::Absent),
+            }
             if !meta.file_type().is_symlink() {
                 return Ok(Probe::Absent);
             }
@@ -313,15 +364,132 @@ mod tests {
     #[should_panic(expected = "must start with ~/")]
     fn test_expand_refuses_a_path_that_is_not_under_home() {
         // Unreachable from the shipped recipes
-        // (`recipes::tests::test_every_recipe_path_is_under_home`); a
+        // (`recipes::tests::test_a_paths_recipe_names_only_home_paths`
+        // holds every path the path-list uninstall expands to `~/`); a
         // panic here is a programming error surfacing at the first test
         // run, not a state of anyone's Mac.
         let _ = expand(Path::new("/Users/someone"), "/usr/local/bin/claude");
     }
 
+    #[test]
+    fn test_expand_route_joins_home_paths_always_and_cargo_home_paths_when_there_is_one() {
+        // rustup's launcher and root (spec §3.5): `$CARGO_HOME/bin/rustup`
+        // and the bare `$CARGO_HOME`. The Cargo home is whatever
+        // `cargo::cargo_home_of` answered -- `CARGO_HOME` when set -- so
+        // a Mac with it set finds rustup where rustup actually is; and
+        // `None` (a relative CARGO_HOME, unsupported) means a recipe under
+        // it has no path at all, while a `~/` path never depends on it.
+        let home = Path::new("/Users/someone");
+        let default = Path::new("/Users/someone/.cargo");
+        assert_eq!(
+            expand_route(home, Some(default), "~/.local/bin/claude"),
+            Some(PathBuf::from("/Users/someone/.local/bin/claude"))
+        );
+        assert_eq!(
+            expand_route(home, None, "~/.local/bin/claude"),
+            Some(PathBuf::from("/Users/someone/.local/bin/claude"))
+        );
+        assert_eq!(
+            expand_route(home, Some(default), "$CARGO_HOME/bin/rustup"),
+            Some(PathBuf::from("/Users/someone/.cargo/bin/rustup"))
+        );
+        assert_eq!(
+            expand_route(
+                home,
+                Some(Path::new("/Volumes/Data/cargo")),
+                "$CARGO_HOME/bin/rustup"
+            ),
+            Some(PathBuf::from("/Volumes/Data/cargo/bin/rustup"))
+        );
+        assert_eq!(
+            expand_route(home, Some(Path::new("/Volumes/Data/cargo")), "$CARGO_HOME"),
+            Some(PathBuf::from("/Volumes/Data/cargo"))
+        );
+        assert_eq!(expand_route(home, None, "$CARGO_HOME/bin/rustup"), None);
+        assert_eq!(expand_route(home, None, "$CARGO_HOME"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "must start with ~/ or $CARGO_HOME")]
+    fn test_expand_route_refuses_any_other_shape() {
+        let home = Path::new("/Users/someone");
+        let _ = expand_route(home, Some(&home.join(".cargo")), "/usr/local/bin/rustup");
+    }
+
     use super::super::recipe::RouteKind;
-    use super::super::testing::{claude_layout, TempHome, Unreadable};
+    use super::super::testing::{claude_layout, rustup_layout, TempHome, Unreadable};
     use crate::model::InstanceNote;
+
+    #[test]
+    fn test_probe_finds_a_flat_file_launcher_and_its_real_path_is_itself() {
+        // rustup: `$CARGO_HOME/bin/rustup` is an 11 MB Mach-O regular file
+        // (spec §3.5, VERIFIED); its thirteen proxies are links *to* it,
+        // but the launcher itself is no link.
+        let home = TempHome::new("probe-flat-present");
+        let layout = rustup_layout(&home.path().join(".cargo"));
+        assert_eq!(
+            probe(RouteKind::FlatFile, &layout.launcher, &layout.cargo_home),
+            Probe::Present {
+                real: layout.launcher.clone()
+            }
+        );
+    }
+
+    #[test]
+    fn test_probe_rejects_a_link_or_a_directory_where_a_flat_file_is_expected() {
+        // A `rustup` that is itself a symlink (Homebrew's keg-only formula
+        // linked by hand, or anything else) is not the installer's copy;
+        // nor is a directory of that name.
+        let home = TempHome::new("probe-flat-link");
+        let elsewhere = home.file("opt/homebrew/Cellar/rustup/1.29.1/bin/rustup");
+        let launcher = home.link(".cargo/bin/rustup", &elsewhere);
+        assert_eq!(
+            probe(RouteKind::FlatFile, &launcher, &home.path().join(".cargo")),
+            Probe::Absent
+        );
+
+        let home = TempHome::new("probe-flat-dir");
+        let launcher = home.dir(".cargo/bin/rustup");
+        assert_eq!(
+            probe(RouteKind::FlatFile, &launcher, &home.path().join(".cargo")),
+            Probe::Absent
+        );
+    }
+
+    #[test]
+    fn test_probe_is_absent_for_a_flat_file_launcher_that_is_not_there() {
+        let home = TempHome::new("probe-flat-missing");
+        assert_eq!(
+            probe(
+                RouteKind::FlatFile,
+                &home.path().join(".cargo/bin/rustup"),
+                &home.path().join(".cargo")
+            ),
+            Probe::Absent
+        );
+    }
+
+    #[test]
+    fn test_probe_is_absent_for_a_dangling_link_where_a_flat_file_is_expected() {
+        // A flat-file launcher is the program itself, so a dangling link
+        // at its path is not this install half-removed. rustup's root is
+        // the whole Cargo home: without the flat-file rule this link's
+        // text lands under it and the row would be a version-less rustup
+        // whose plans run a dangling link (Ruling 8).
+        let home = TempHome::new("probe-flat-dangling");
+        let cargo_home = home.dir(".cargo");
+        let launcher = home.link(".cargo/bin/rustup", Path::new("rustup.old"));
+        assert_eq!(
+            probe(RouteKind::FlatFile, &launcher, &cargo_home),
+            Probe::Absent
+        );
+        // The same link under the link-shaped route is still B's
+        // `LauncherOnly`: the rule belongs to the route, not to the link.
+        assert_eq!(
+            probe(RouteKind::SymlinkIntoRoot, &launcher, &cargo_home),
+            Probe::LauncherOnly
+        );
+    }
 
     #[test]
     fn test_probe_finds_a_launcher_that_links_into_its_root() {

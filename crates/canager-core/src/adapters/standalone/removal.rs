@@ -713,11 +713,15 @@ mod tests {
     }
 
     /// What `detect` would have written for `home`, as the user this test
-    /// runs as (the files it makes are that user's).
+    /// runs as (the files it makes are that user's), with the default
+    /// Cargo and rustup homes and no `ZDOTDIR`.
     fn detected(home: &Path) -> Detected {
         Detected {
             home: home.to_path_buf(),
             euid: std::fs::metadata(home).expect("home metadata").uid(),
+            cargo_home: Some(home.join(".cargo")),
+            rustup_home: Some(home.join(".rustup")),
+            zdotdir: None,
         }
     }
 

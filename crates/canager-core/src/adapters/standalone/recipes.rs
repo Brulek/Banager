@@ -6,8 +6,8 @@
 //! constant to the invariants the code relies on.
 
 use super::recipe::{
-    Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route, RouteKind, Uninstall, UpgradeCmd,
-    VersionCmd, VersionParse,
+    no_extra_locks, Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route, RouteKind, Uninstall,
+    UpgradeCmd, VersionCmd, VersionParse,
 };
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat};
 
@@ -115,6 +115,7 @@ pub static CLAUDE: Recipe = Recipe {
             },
         ],
     }),
+    extra_locks: no_extra_locks,
 };
 
 /// Every tool this adapter type registers, in registration order. The
@@ -132,16 +133,19 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_every_recipe_path_is_under_home() {
-        // `route::expand` joins a `~/` path onto `HostEnv.home` and nothing
-        // else: a recipe path that does not start that way is a programming
-        // error this test turns into a red build, not a runtime surprise.
-        // (`$CARGO_HOME/` joins with rustup, step E.)
+    fn test_every_recipe_path_is_under_home_or_the_cargo_home() {
+        // `route::expand_route` joins `~/` onto `HostEnv.home` and
+        // `$CARGO_HOME` (bare, or with a `/`) onto the Cargo home, and
+        // nothing else: a recipe path shaped any other way is a
+        // programming error this test turns into a red build, not a
+        // runtime surprise.
         for recipe in RECIPES {
             for path in [recipe.route.launcher, recipe.route.root] {
                 assert!(
-                    path.starts_with("~/"),
-                    "{}: recipe path {path:?} must start with ~/",
+                    path.starts_with("~/")
+                        || path == "$CARGO_HOME"
+                        || path.starts_with("$CARGO_HOME/"),
+                    "{}: recipe path {path:?} must start with ~/ or $CARGO_HOME",
                     recipe.id
                 );
                 assert!(
@@ -151,6 +155,44 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_a_paths_recipe_names_only_home_paths() {
+        // The path-list uninstall (`removal.rs`, step C) expands its
+        // recipe's route and every remove/keep spec with B's two-argument
+        // `route::expand`, which knows `~/` and nothing else. A tool whose
+        // paths live under `$CARGO_HOME` (rustup) uninstalls with its own
+        // command, so this holds today by construction; this test keeps
+        // it true when the next `Paths` recipe lands, rather than letting
+        // `expand` panic at plan time.
+        for recipe in RECIPES {
+            let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
+                continue;
+            };
+            let mut paths = vec![recipe.route.launcher, recipe.route.root];
+            paths.extend(remove.iter().map(|spec| spec.path));
+            paths.extend(keep.iter().map(|spec| spec.path));
+            for path in paths {
+                assert!(
+                    path.starts_with("~/"),
+                    "{}: a Paths recipe may only name ~/ paths, got {path:?}",
+                    recipe.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_claude_holds_no_lock_but_its_own() {
+        // `extra_locks` exists for rustup (step E), whose self update and
+        // self uninstall touch what the cargo adapter reads; a tool with
+        // its own directory holds only its own instance lock.
+        let detected = crate::adapters::standalone::testing::detected(
+            Path::new("/Users/someone"),
+            Path::new("/Users/someone/.cargo"),
+        );
+        assert!((CLAUDE.extra_locks)(&detected).is_empty());
     }
 
     #[test]
