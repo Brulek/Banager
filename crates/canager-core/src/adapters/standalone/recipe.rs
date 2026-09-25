@@ -226,28 +226,35 @@ pub struct CommandUninstall {
     /// Whether this install may be offered the command at all, from the
     /// seat and the disk: `Some` puts its `reason` on the artifact
     /// (`inventory`), which the gate refuses and the page hides the
-    /// button for, makes `plan(Uninstall)` refuse with the same reason,
-    /// and -- asked once more by `execute` right before the spawn, since
-    /// the command deletes its folders wherever they resolve at run time
-    /// -- stops the run with `Fault::PathChanged` naming its `path`.
-    /// rustup's is `rustup::uninstall_blocked`: `NoSafeMethod` unless
-    /// Rust lives in its standard folders (plan ruling 18).
+    /// button for, and -- asked once more by `execute` right before the
+    /// spawn, since the command deletes its folders wherever they resolve
+    /// at run time -- stops the run with `Fault::PathChanged` naming its
+    /// `path`. `plan(Uninstall)` does not read it: `preview` asks the same
+    /// gate and answers from that one reading. rustup's is
+    /// `rustup::uninstall_blocked`: `NoSafeMethod` unless Rust lives in
+    /// its standard folders (plan ruling 18).
     pub blocked: fn(&Detected) -> Option<GateRefusal>,
-    /// The preview's warnings, from what `detect` seated and the disk.
-    /// Read by `plan(Uninstall)`; rustup's is `rustup::uninstall_warnings`.
-    pub warnings: fn(&Detected) -> Vec<Warning>,
+    /// The preview, from what `detect` seated and the disk: the gate's
+    /// refusal, which `plan(Uninstall)` refuses with, or the warnings the
+    /// dialog lists. One function and one reading of the disk, so the
+    /// gate cannot pass on one look while the warnings come from another
+    /// -- a layout that changed between two readings gave a plan with no
+    /// warnings at all (step E's whole-step review). Read by
+    /// `plan(Uninstall)`; rustup's is `rustup::uninstall_preview`.
+    pub preview: fn(&Detected) -> Result<Vec<Warning>, GateRefusal>,
 }
 
-/// What a `Command` uninstall's gate (`CommandUninstall.blocked`) answers
-/// when it refuses. `reason` is what the artifact carries (`inventory`)
-/// and what `plan(Uninstall)` refuses with
-/// (`AdapterError::UninstallBlocked`). `path` is the folder, or the link
-/// at the top of one, that the rule failed at, absolute, for `execute`:
-/// it asks the gate again right before the spawn, and when a gate the
-/// preview passed refuses now, that path is no longer where, or what, the
-/// preview said, and the run stops with `Fault::PathChanged` naming it.
-/// Produced by `rustup::standard_roots`, through
-/// `rustup::uninstall_blocked`.
+/// What a `Command` uninstall's gate answers when it refuses
+/// (`CommandUninstall.blocked`'s `Some`, `CommandUninstall.preview`'s
+/// `Err`). `reason` is what the artifact carries (`inventory`) and what
+/// `plan(Uninstall)` refuses with (`AdapterError::UninstallBlocked`).
+/// `path` is the folder, or the link at the top of one, that the rule
+/// failed at, absolute, for `execute`: it asks the gate again right
+/// before the spawn, and when a gate the preview passed refuses now, that
+/// path is no longer where, or what, the preview said, and the run stops
+/// with `Fault::PathChanged` naming it. Produced by
+/// `rustup::standard_roots`, through `rustup::uninstall_blocked` and
+/// `rustup::uninstall_preview`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GateRefusal {
     pub reason: UninstallBlocked,

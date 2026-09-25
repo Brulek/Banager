@@ -174,8 +174,9 @@ pub static CLAUDE: Recipe = Recipe {
 ///   and both are real directories (`rustup::uninstall_blocked`, plan
 ///   ruling 18): 1.29.1's `uninstall()` removes both homes whole,
 ///   wherever they point, and never to the Trash. The preview runs no
-///   command; its warnings (`rustup::uninstall_warnings`) come from the
-///   `toolchains/` listing, a listing of `$CARGO_HOME/bin`,
+///   command; it (`rustup::uninstall_preview`) asks that same gate once
+///   and builds its warnings from the roots that one answer named, out of
+///   the `toolchains/` listing, a listing of `$CARGO_HOME/bin`,
 ///   `.crates2.json`, Homebrew's Cellar and eight startup files -- read
 ///   from 1.29.1's source, which removes the whole Cargo home, every
 ///   program in its `bin/` included (`rustup.rs`'s module doc has the
@@ -222,7 +223,7 @@ pub static RUSTUP: Recipe = Recipe {
         timeout_secs: 600,
         cancel: CancelPolicy::NoCancel,
         blocked: rustup::uninstall_blocked,
-        warnings: rustup::uninstall_warnings,
+        preview: rustup::uninstall_preview,
     })),
     extra_locks: rustup::extra_locks,
 };
@@ -599,9 +600,14 @@ mod tests {
                 ) -> Option<crate::adapters::standalone::recipe::GateRefusal>
         ));
         assert!(std::ptr::fn_addr_eq(
-            cmd.warnings,
-            super::super::rustup::uninstall_warnings
-                as fn(&crate::adapters::standalone::Detected) -> Vec<crate::model::Warning>
+            cmd.preview,
+            super::super::rustup::uninstall_preview
+                as fn(
+                    &crate::adapters::standalone::Detected,
+                ) -> Result<
+                    Vec<crate::model::Warning>,
+                    crate::adapters::standalone::recipe::GateRefusal,
+                >
         ));
         assert!(std::ptr::fn_addr_eq(
             RUSTUP.extra_locks,

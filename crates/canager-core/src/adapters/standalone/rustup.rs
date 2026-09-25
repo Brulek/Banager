@@ -23,8 +23,8 @@
 //! and permanently: nothing here goes to the Trash. So Canager offers the
 //! command only for the standard layout (`standard_roots`, ruling 18),
 //! asks that gate again right before the command runs
-//! (`StandaloneAdapter::execute`), and the preview names both folders by
-//! path.
+//! (`StandaloneAdapter::execute`), and the preview (`uninstall_preview`)
+//! asks it once and names both folders by path from that one answer.
 //!
 //! Nothing here runs a command or writes a file: `plan` hands in what
 //! `detect` seated, and this module lists `<rustup_home>/toolchains` and
@@ -84,7 +84,7 @@ pub const RUSTUP_PROXIES: [&str; 13] = [
 /// Homebrew's two default prefixes (Apple Silicon, Intel), where a
 /// `Cellar/rustup` directory means the `rustup` formula is installed. A
 /// custom prefix is unsupported by Homebrew itself on Apple Silicon and
-/// is not looked for. Read by `uninstall_warnings`.
+/// is not looked for. Read by `uninstall_preview`.
 pub const HOMEBREW_PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
 
 /// The two folders `rustup self uninstall` deletes, when they are the
@@ -525,20 +525,26 @@ pub fn shell_config_leftovers(
         .collect()
 }
 
-/// The uninstall preview's list for `rustup self uninstall -y`, in the
-/// order the dialog shows it (spec §6.6), over a caller-given list of
-/// Homebrew prefixes so the tests are hermetic: the rustup home by path
-/// with every toolchain in it, the Cargo home by path, the programs in
-/// its `bin/` when there are any (rulings 1 and 16: 1.29.1 removes the
-/// whole Cargo home), the Homebrew line when its Cellar has a rustup
-/// (ruling 21), the shell edit, and each startup file left speaking of
-/// Cargo's env file. Empty for a layout the gate refuses (`plan`
-/// refuses first). Paths are spelled with `~` by the crate's one rule
+/// The uninstall preview for `rustup self uninstall -y`, over a
+/// caller-given list of Homebrew prefixes so the tests are hermetic: for
+/// any layout but the standard one, the gate's refusal (`standard_roots`),
+/// which `plan` refuses with; otherwise the dialog's list, in the order
+/// it shows it (spec §6.6), built from the two roots that same answer
+/// named -- the rustup home by path with every toolchain in it, the Cargo
+/// home by path, the programs in its `bin/` when there are any (rulings 1
+/// and 16: 1.29.1 removes the whole Cargo home), the Homebrew line when
+/// its Cellar has a rustup (ruling 21), the shell edit, and each startup
+/// file left speaking of Cargo's env file. The gate is asked here, once,
+/// and not by `plan` before it: two readings of the disk let a layout
+/// that changed between them pass the first and leave the second with
+/// nothing to say, a plan with no warnings at all (step E's whole-step
+/// review). Paths are spelled with `~` by the crate's one rule
 /// (`scan::display_path`).
-pub fn warnings_with(d: &Detected, homebrew_prefixes: &[PathBuf]) -> Vec<Warning> {
-    let Ok(roots) = standard_roots(d) else {
-        return Vec::new();
-    };
+pub fn preview_with(
+    d: &Detected,
+    homebrew_prefixes: &[PathBuf],
+) -> Result<Vec<Warning>, GateRefusal> {
+    let roots = standard_roots(d)?;
     let tilde = |path: &Path| {
         crate::scan::display_path(path, &d.home)
             .display()
@@ -566,14 +572,14 @@ pub fn warnings_with(d: &Detected, homebrew_prefixes: &[PathBuf]) -> Vec<Warning
         d.zdotdir.as_deref(),
         &roots.cargo_home,
     ));
-    warnings
+    Ok(warnings)
 }
 
-/// `CommandUninstall.warnings` of the `RUSTUP` recipe: `warnings_with`
+/// `CommandUninstall.preview` of the `RUSTUP` recipe: `preview_with`
 /// over Homebrew's real prefixes.
-pub fn uninstall_warnings(d: &Detected) -> Vec<Warning> {
+pub fn uninstall_preview(d: &Detected) -> Result<Vec<Warning>, GateRefusal> {
     let prefixes: Vec<PathBuf> = HOMEBREW_PREFIXES.iter().map(PathBuf::from).collect();
-    warnings_with(d, &prefixes)
+    preview_with(d, &prefixes)
 }
 
 /// The cargo instance's lock, spelled by the one function that spells
@@ -1582,12 +1588,12 @@ mod tests {
                 certain: true,
             },
         ];
-        assert_eq!(warnings_with(&d, &[]), expected);
+        assert_eq!(preview_with(&d, &[]), Ok(expected.clone()));
         let brew = home.dir("opt/homebrew");
         home.dir("opt/homebrew/Cellar/rustup/1.29.1");
-        let mut with_brew = expected.clone();
+        let mut with_brew = expected;
         with_brew.insert(3, Warning::HomebrewRustupLosesToolchains);
-        assert_eq!(warnings_with(&d, &[brew]), with_brew);
+        assert_eq!(preview_with(&d, &[brew]), Ok(with_brew));
 
         // No toolchains directory, nothing cargo-installed, no startup
         // files: the three unconditional lines, the toolchain one without
@@ -1596,8 +1602,8 @@ mod tests {
         let cargo_home = home.dir(".cargo");
         let d = detected(home.path(), &cargo_home);
         assert_eq!(
-            warnings_with(&d, &[]),
-            vec![
+            preview_with(&d, &[]),
+            Ok(vec![
                 Warning::RemovesToolchains {
                     path: "~/.rustup".to_string(),
                     names: Vec::new()
@@ -1606,23 +1612,33 @@ mod tests {
                     path: "~/.cargo".to_string()
                 },
                 Warning::EditsShellConfig,
-            ]
+            ])
         );
-        // `uninstall_warnings` is the same function over the real
+        // `uninstall_preview` is the same function over the real
         // prefixes -- whatever this Mac's Cellar holds, the two answers
         // agree; it is exercised through `plan` in Task 6 (with the
         // Homebrew line filtered, since that depends on the test Mac).
         let real: Vec<PathBuf> = HOMEBREW_PREFIXES.iter().map(PathBuf::from).collect();
-        assert_eq!(uninstall_warnings(&d), warnings_with(&d, &real));
+        assert_eq!(uninstall_preview(&d), preview_with(&d, &real));
     }
 
     #[test]
-    fn test_warnings_are_empty_for_a_layout_the_gate_refuses() {
-        // `plan` refuses before it asks; this is the function's own
-        // answer for a layout it will not describe.
-        let home = TempHome::new("rustup-warnings-refused");
+    fn test_preview_refuses_a_layout_the_gate_refuses_with_the_gates_refusal() {
+        // The one answer `plan` takes for both the gate and the warnings:
+        // for a layout it will not describe, the refusal `uninstall_blocked`
+        // gives over the same seat and disk -- never `Ok` with nothing in
+        // it.
+        let home = TempHome::new("rustup-preview-refused");
         let custom = home.dir("elsewhere/cargo");
-        assert!(warnings_with(&detected(home.path(), &custom), &[]).is_empty());
+        let d = detected(home.path(), &custom);
+        assert_eq!(
+            preview_with(&d, &[]),
+            Err(GateRefusal {
+                reason: UninstallBlocked::NoSafeMethod,
+                path: home.path().join(".cargo"),
+            })
+        );
+        assert_eq!(preview_with(&d, &[]).err(), uninstall_blocked(&d));
     }
 
     #[test]

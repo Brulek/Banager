@@ -70,7 +70,7 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// recipe's startup-file model visits `.zshenv`/`.zprofile` under, as
 /// rustup's own cleanup does. The rustup recipe's readers of the last
 /// three are `rustup::{extra_locks, uninstall_blocked,
-/// uninstall_warnings}`, which the `RUSTUP` recipe (`recipes.rs`) names
+/// uninstall_preview}`, which the `RUSTUP` recipe (`recipes.rs`) names
 /// and `plan` and `inventory` call through it. The seat is bound to an
 /// instance by `seated_detected_for`. `Clone`, so `plan` and `execute`
 /// take a copy out of the mutex before they await anything, and the
@@ -343,12 +343,17 @@ impl StandaloneAdapter {
 
     /// `Uninstall::Command` (spec §6.4): the tool's own uninstall argv
     /// against the launcher, refused with the recipe's reason when its
-    /// gate says this layout is not offered, otherwise with the warnings
-    /// the recipe builds from the seat and the disk. Nothing is run here
-    /// (the preview must not run rustup: plan ruling 4). Through
-    /// `run_plan` like every command, after `execute` has asked the gate
-    /// once more; `affected` stays empty because a non-empty list
-    /// disables Confirm and nothing here breaks another package.
+    /// preview's gate says this layout is not offered, otherwise with the
+    /// warnings that same preview built from the seat and the disk. The
+    /// recipe's `preview` is asked once and answers both: asking `blocked`
+    /// and then a warnings function was two readings of the disk, and a
+    /// layout that changed between them -- passing the first, refused by
+    /// the second -- gave a plan with no warnings at all (step E's
+    /// whole-step review). Nothing is run here (the preview must not run
+    /// rustup: plan ruling 4). Through `run_plan` like every command,
+    /// after `execute` has asked the gate (`blocked`) once more;
+    /// `affected` stays empty because a non-empty list disables Confirm
+    /// and nothing here breaks another package.
     fn command_uninstall_plan(
         &self,
         inst: &ManagerInstance,
@@ -356,11 +361,10 @@ impl StandaloneAdapter {
         detected: &Detected,
         cmd: &CommandUninstall,
     ) -> Result<Plan, AdapterError> {
-        if let Some(refusal) = (cmd.blocked)(detected) {
-            return Err(AdapterError::UninstallBlocked {
+        let warnings =
+            (cmd.preview)(detected).map_err(|refusal| AdapterError::UninstallBlocked {
                 reason: refusal.reason,
-            });
-        }
+            })?;
         Ok(Plan {
             request: req.clone(),
             action: PlanAction::Command {
@@ -371,7 +375,7 @@ impl StandaloneAdapter {
             needs_password: false,
             locks: self.locks(inst, detected),
             cancel_policy: cmd.cancel,
-            warnings: (cmd.warnings)(detected),
+            warnings,
             affected: Vec::new(),
             timeout_secs: cmd.timeout_secs,
         })
@@ -1251,7 +1255,9 @@ pub(super) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::recipe::{no_extra_locks, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse};
+    use super::recipe::{
+        no_extra_locks, GateRefusal, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse,
+    };
     use super::recipes::{CLAUDE, RUSTUP};
     use super::testing::{claude_layout, rustup_layout, TempHome};
     use super::*;
@@ -3817,6 +3823,128 @@ mod tests {
                 Warning::EditsShellConfig,
             ]
         );
+    }
+
+    /// `RUSTUP` with a gate that changes the layout the moment it passes:
+    /// the disk changing between one reading and the next, made
+    /// deterministic. Every other field is `RUSTUP`'s.
+    static RUSTUP_GATE_THEN_LINK: Recipe = Recipe {
+        id: "rustup",
+        meta_toml: include_str!("../../../../../adapters/meta/standalone-rustup.toml"),
+        route: Route {
+            kind: RouteKind::FlatFile,
+            launcher: "$CARGO_HOME/bin/rustup",
+            root: "$CARGO_HOME",
+        },
+        version: VersionCmd {
+            args: &["--version"],
+            env: &[crate::adapters::cargo::RUSTUP_AUTO_INSTALL_OFF],
+            parse: VersionParse::SecondToken,
+        },
+        latest: Latest::HttpTomlVersion { url: RELEASE_URL },
+        self_updates: false,
+        upgrade: UpgradeCmd {
+            args: &["self", "update"],
+            timeout_secs: 600,
+            cancel: CancelPolicy::NoCancel,
+        },
+        uninstall: Some(Uninstall::Command(CommandUninstall {
+            args: &["self", "uninstall", "-y"],
+            timeout_secs: 600,
+            cancel: CancelPolicy::NoCancel,
+            blocked: gate_then_link,
+            preview: rustup::uninstall_preview,
+        })),
+        extra_locks: rustup::extra_locks,
+    };
+
+    /// rustup's own gate and, when it passes, the layout change: the
+    /// seat's `~/.rustup` replaced by a link to `<home>/Volumes/Data/rustup`,
+    /// which the gate refuses on its next reading. Only ever handed a
+    /// `TempHome`'s seat.
+    fn gate_then_link(d: &Detected) -> Option<GateRefusal> {
+        let refusal = rustup::uninstall_blocked(d);
+        if refusal.is_none() {
+            let rustup_home = d.home.join(".rustup");
+            let elsewhere = d.home.join("Volumes/Data/rustup");
+            std::fs::create_dir_all(&elsewhere).expect("create the other folder");
+            std::fs::remove_dir_all(&rustup_home).expect("remove the real rustup home");
+            std::os::unix::fs::symlink(&elsewhere, &rustup_home).expect("link the rustup home");
+        }
+        refusal
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_rustup_answers_its_gate_and_its_warnings_from_one_reading() {
+        // Step E's whole-step review: `plan` asked the recipe's gate and
+        // then its warnings, two readings of the disk, and a layout that
+        // changed between them -- passing the first, refused by the
+        // second -- came out as a plan for `rustup self uninstall -y`
+        // with no warnings at all. `RUSTUP_GATE_THEN_LINK` makes that
+        // change happen the moment its gate passes. The plan asks one
+        // function (`CommandUninstall.preview`) once: the layout it
+        // describes is the one it let through, so it names both folders;
+        // and the gate this recipe hooks is not what `plan` reads, so the
+        // link is not made by it.
+        let home = TempHome::new("rustup-plan-one-reading");
+        let cargo_home = home.path().join(".cargo");
+        let layout = rustup_layout(&cargo_home);
+        home.dir(".rustup/toolchains/stable-aarch64-apple-darwin");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(RUSTUP_VERSION_LINE),
+        );
+        let adapter = StandaloneAdapter::new(
+            &RUSTUP_GATE_THEN_LINK,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        );
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        let request = request_for("standalone-rustup", OpKind::Uninstall, "rustup");
+        let is_real_dir = || {
+            std::fs::symlink_metadata(home.path().join(".rustup"))
+                .expect("lstat the rustup home")
+                .file_type()
+                .is_dir()
+        };
+
+        let plan = adapter
+            .plan(&inst, &request)
+            .await
+            .expect("the standard layout is offered");
+        assert!(
+            plan.warnings.contains(&Warning::RemovesToolchains {
+                path: "~/.rustup".to_string(),
+                names: vec!["stable-aarch64-apple-darwin".to_string()],
+            }) && plan.warnings.contains(&Warning::DeletesCargoHome {
+                path: "~/.cargo".to_string(),
+            }),
+            "a plan the gate let through names both folders; got {:?}",
+            plan.warnings
+        );
+        assert!(
+            is_real_dir(),
+            "`plan` reads the preview alone, never this recipe's `blocked`"
+        );
+
+        // The hooked gate does fire where `blocked` is read, `inventory`
+        // (and `execute`), and once the layout has changed the plan's one
+        // reading refuses: a changed layout is a refusal, never a plan
+        // with nothing to say.
+        let artifacts = adapter.inventory(&inst).await.expect("inventory");
+        assert_eq!(
+            artifacts[0].uninstall_blocked, None,
+            "the gate passed before it changed the layout"
+        );
+        assert!(!is_real_dir(), "the hooked gate made the link");
+        assert!(matches!(
+            adapter.plan(&inst, &request).await,
+            Err(AdapterError::UninstallBlocked {
+                reason: UninstallBlocked::NoSafeMethod
+            })
+        ));
     }
 
     #[tokio::test]
