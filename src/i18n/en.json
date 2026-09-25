@@ -158,7 +158,7 @@
     },
     "shadowedByNpm": {
       "title": "Another copy runs when you type {{command}}",
-      "description": "Canager found this native copy of {{source}} and an executable in a npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
+      "description": "Canager found this native copy of {{source}} and an executable in an npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that other copy. Check the Installed page for it; Canager may not list its installation."
     },
     "shadowedByOther": {
       "title": "Another copy runs when you type {{command}}",
