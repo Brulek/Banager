@@ -1092,9 +1092,14 @@ Canager neither chooses nor sees them.
 - Never runs an installer script, and never reruns one to update a tool.
 - Never runs `rustup update`: rustup's own update of its toolchains, which
   an interruption leaves half installed. Only `rustup self update`, which
-  replaces rustup alone. Never runs `rustup` at all while an update or
-  uninstall of it is under way, and never lets a version read of rustup or
-  cargo install a toolchain (`RUSTUP_AUTO_INSTALL=0`).
+  replaces rustup alone. A refresh that begins while an update or uninstall
+  of rustup is under way runs neither `rustup` nor `cargo`. It looks once,
+  as it begins, so an update or uninstall that starts after that look can
+  overlap the version reads of rustup and cargo that refresh is making
+  (rustup's section); its other reads of either source run under that
+  source's lock, which the operation holds until it ends. Never lets a
+  version read of rustup or cargo install a toolchain
+  (`RUSTUP_AUTO_INSTALL=0`).
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
   Canager offers that only when the preview can name exactly those two.
