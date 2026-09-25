@@ -127,8 +127,13 @@ while a `brew update` a refresh left running is still going (Homebrew's
 section) — there is nothing to compare, and an upgrade that exits 0 is
 reported as a success whenever the package is still present afterwards,
 whether or not its version moved. A command that was
-cancelled or timed out is reported as unconfirmed unless the reading after
-settles it (`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
+cancelled or timed out, or that a signal Canager did not send ended
+(killed from Activity Monitor, say), is reported as unconfirmed unless
+the reading after settles it: an install after which the package is
+present, or an uninstall after which it is gone, is reported as
+succeeded, and one the user cancelled that did not take effect as
+cancelled; an upgrade stopped partway is never settled either way
+(`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
 ## Homebrew

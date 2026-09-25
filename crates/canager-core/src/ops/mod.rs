@@ -740,22 +740,28 @@ impl OperationManager {
                     }
                 },
             },
-            // The command was stopped: `run_plan` (adapters/mod.rs) turns
-            // a run the runner cancelled or timed out into this, and no
-            // production `execute` returns it any other way (brew's own
-            // Cancel, while it waits for a `brew update`, is `Cancelled`
-            // before its command starts). The reading after it tells us the
-            // artifact's *current* state, not whether this op caused it.
-            // Presence is proof enough for Install (wasn't there, now is)
-            // and Uninstall (was there, now isn't).
+            // The command did not reach its exit: `run_plan`
+            // (adapters/mod.rs) turns a run the runner cancelled or timed
+            // out, or one a signal the run did not send ended (Activity
+            // Monitor, `kill`, a crash), into this; a path-list uninstall
+            // (adapters/standalone/removal.rs) returns it for a Cancel or
+            // a spent budget before an item and for an item whose move
+            // panicked; brew's own Cancel, while it waits for a `brew
+            // update`, is `Cancelled` before its command starts. The
+            // reading after it tells us the artifact's *current* state,
+            // not whether this op caused it. Presence is proof enough for
+            // Install (wasn't there, now is) and Uninstall (was there, now
+            // isn't).
             //
             // When the run was stopped by the user's own Cancel (the token
-            // is only ever fired by `cancel()`; a timeout never touches
-            // it) and reconcile shows the install or uninstall did *not*
-            // take effect, the cancel is what happened, and the user is
-            // told so. If the work finished anyway, the arms below report
-            // `Succeeded`, not `Cancelled`: the race goes to whatever
-            // reconcile actually found.
+            // is only ever fired by `cancel()`; neither a timeout nor a
+            // signal from outside touches it) and reconcile shows the
+            // install or uninstall did *not* take effect, the cancel is
+            // what happened, and the user is told so. If the work finished
+            // anyway, the arms below report `Succeeded`, not `Cancelled`:
+            // the race goes to whatever reconcile actually found. A run a
+            // signal ended with the token unfired stays `Unconfirmed`
+            // here, never `Cancelled`: nobody pressed Cancel.
             //
             // An upgrade stopped here is `Unconfirmed`, whatever its two
             // version readings say. Do not let the comparison turn it into

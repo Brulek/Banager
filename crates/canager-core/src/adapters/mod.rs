@@ -498,14 +498,28 @@ pub trait Adapter: Send + Sync {
 
 /// Runs a plan through the runner, streaming each line to the sink, and maps
 /// the result the way every adapter must: a clean exit is `Succeeded`, a
-/// cancelled or timed-out run is `Unconfirmed` (the operation may or may not
-/// have taken effect — only `reconcile` can say), and a non-zero exit is
-/// `Failed` carrying the last five stderr lines.
+/// run that did not reach its exit is `Unconfirmed` (the operation may or
+/// may not have taken effect — only `reconcile` can say), and a non-zero
+/// exit is `Failed` carrying the last five stderr lines.
+///
+/// Three things end a run short of its exit, and all three are
+/// `Unconfirmed`: the runner stopped it at the user's Cancel (`cancelled`)
+/// or at the plan's deadline (`timed_out`), or a signal the run did not
+/// send ended it — Activity Monitor, `kill`, a crash — which `RealRunner`
+/// reports as no exit code with neither flag set (runner/real.rs, the
+/// `child_code` arm of `run`). A command ended that way reported no
+/// failure: whatever it wrote to stderr before it died is not a verdict,
+/// and `run_operation` (ops/mod.rs) shows a `Failed` as the tool's own
+/// verdict and reconciles it with nothing, so mapping it there — as this
+/// did until B's Astra finding B-3 — reported an uninstall killed after
+/// it had removed the tool as a failure. The `Ok(Outcome::Unconfirmed)`
+/// arm judges by the reading after instead, and calls the stop
+/// `Cancelled` only when the user's own token fired.
 ///
 /// Every adapter's `execute()` calls this function to turn a finished run
 /// into an `Outcome`; brew is the only one that does anything else first
 /// (`refuse_if_root`, since Homebrew itself refuses to run as root). It
-/// lives here so the cancelled/timed-out rule and the five-line summary can
+/// lives here so the did-not-finish rule and the five-line summary can
 /// only ever mean one thing; an earlier draft of this phase had six
 /// byte-identical copies of it.
 pub async fn run_plan(
@@ -553,14 +567,18 @@ pub async fn run_plan(
     }
     match output.exit_code {
         Some(0) => Ok(Outcome::Succeeded),
-        code => {
+        Some(code) => {
             let stderr_lines: Vec<&str> = output.stderr.lines().collect();
             let start = stderr_lines.len().saturating_sub(5);
             Ok(Outcome::Failed {
-                exit_code: code,
+                exit_code: Some(code),
                 summary: stderr_lines[start..].join("\n"),
             })
         }
+        // Neither flag is set, so the runner stopped nothing: a signal the
+        // run did not send ended the command before it could exit (the doc
+        // comment above). No exit code, no verdict.
+        None => Ok(Outcome::Unconfirmed),
     }
 }
 
@@ -708,36 +726,40 @@ mod tests {
         assert_eq!(second_token("onlyoneword\n"), None);
     }
 
+    /// An install plan that runs `/bin/fake` with `args`, for the
+    /// `run_plan` tests: what `run_plan` returns depends only on the
+    /// `CommandOutput` the runner answers with.
+    fn plan_for(args: Vec<&str>) -> Plan {
+        use crate::model::{CancelPolicy, OpKind, OpRequest, ResourceLock};
+        use std::path::PathBuf;
+
+        Plan {
+            request: OpRequest {
+                kind: OpKind::Install,
+                instance_id: "fake:1".to_string(),
+                artifact_kind: ArtifactKind::Package,
+                name: "jq".to_string(),
+            },
+            action: PlanAction::Command {
+                program: PathBuf::from("/bin/fake"),
+                args: args.into_iter().map(|a| a.to_string()).collect(),
+                env: Vec::new(),
+            },
+            needs_password: false,
+            locks: vec![ResourceLock("fake:1".to_string())],
+            cancel_policy: CancelPolicy::KillThenReconcile,
+            warnings: Vec::new(),
+            affected: Vec::new(),
+            timeout_secs: 60,
+        }
+    }
+
     #[tokio::test]
     async fn test_run_plan_maps_a_cancelled_run_to_unconfirmed_and_a_failure_to_the_last_stderr_lines(
     ) {
         use crate::events::VecSink;
-        use crate::model::{CancelPolicy, OpKind, OpRequest, ResourceLock};
         use crate::runner::{CommandOutput, MockRunner};
-        use std::path::PathBuf;
         use tokio_util::sync::CancellationToken;
-
-        fn plan_for(args: Vec<&str>) -> Plan {
-            Plan {
-                request: OpRequest {
-                    kind: OpKind::Install,
-                    instance_id: "fake:1".to_string(),
-                    artifact_kind: ArtifactKind::Package,
-                    name: "jq".to_string(),
-                },
-                action: PlanAction::Command {
-                    program: PathBuf::from("/bin/fake"),
-                    args: args.into_iter().map(|a| a.to_string()).collect(),
-                    env: Vec::new(),
-                },
-                needs_password: false,
-                locks: vec![ResourceLock("fake:1".to_string())],
-                cancel_policy: CancelPolicy::KillThenReconcile,
-                warnings: Vec::new(),
-                affected: Vec::new(),
-                timeout_secs: 60,
-            }
-        }
 
         let runner_raw = MockRunner::new();
         runner_raw.respond(
@@ -789,6 +811,47 @@ mod tests {
                 exit_code: Some(2),
                 summary: "l3\nl4\nl5\nl6\nl7".to_string(),
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_plan_maps_a_run_ended_by_a_signal_it_did_not_send_to_unconfirmed() {
+        // No exit code and neither flag set is how `RealRunner` reports a
+        // child that a signal the run did not send ended -- Activity
+        // Monitor, `kill`, a crash (runner/real.rs, the `child_code` arm of
+        // `run`). Such a command did not run to its end and reported no
+        // failure: whatever it wrote to stderr before it died is not a
+        // verdict, so it is not `Failed`, which `run_operation` shows as
+        // the tool's own and never reconciles. `Unconfirmed` is reconciled
+        // like a Cancel or a timeout.
+        use crate::events::VecSink;
+        use crate::runner::{CommandOutput, MockRunner};
+        use tokio_util::sync::CancellationToken;
+
+        let runner_raw = MockRunner::new();
+        runner_raw.respond(
+            vec!["/bin/fake", "killed"],
+            CommandOutput {
+                exit_code: None,
+                stdout: "==> Pouring jq".to_string(),
+                stderr: "Warning: partial\n".to_string(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let runner: Arc<dyn CommandRunner> = Arc::new(runner_raw);
+
+        assert_eq!(
+            run_plan(
+                &runner,
+                &plan_for(vec!["killed"]),
+                Arc::new(VecSink::new()),
+                3,
+                CancellationToken::new()
+            )
+            .await
+            .expect("run_plan"),
+            Outcome::Unconfirmed
         );
     }
 

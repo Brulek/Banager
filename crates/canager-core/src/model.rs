@@ -636,7 +636,9 @@ pub enum Outcome {
     /// The tool ran and failed. `summary` is the last lines of the tool's
     /// own stderr and nothing else: the front end shows it as-is, quoted
     /// inside a translated sentence, because it is another program's words.
-    /// A failure of Canager's own is `CanagerFailed`, never this.
+    /// A failure of Canager's own is `CanagerFailed`, never this. A tool a
+    /// signal ended before it could exit reported no failure, and is
+    /// `Unconfirmed`, never this (`run_plan` in `adapters/mod.rs`).
     Failed {
         exit_code: Option<i32>,
         summary: String,
@@ -652,10 +654,11 @@ pub enum Outcome {
     /// without mangling the second.
     CanagerFailed(Fault),
     /// Canager cannot tell what the operation did: the reading after it
-    /// failed, or the command was stopped partway (a Cancel or the timeout)
-    /// and what is installed now does not show whether it took effect.
-    /// Every upgrade stopped partway ends here, whatever its version reads
-    /// (`run_operation` in `ops/mod.rs` says why).
+    /// failed, or the command did not reach its exit (a Cancel, the
+    /// timeout, or a signal Canager did not send -- Activity Monitor,
+    /// `kill`, a crash) and what is installed now does not show whether it
+    /// took effect. Every upgrade stopped partway ends here, whatever its
+    /// version reads (`run_operation` in `ops/mod.rs` says why).
     Unconfirmed,
 }
 

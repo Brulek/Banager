@@ -15,10 +15,14 @@
 //! the exit code and the inventories.
 //!
 //! The "stopped partway" cases at the end of the Homebrew and pipx sections
-//! are the opposite: a command the user cancelled, or the timeout stopped,
-//! is `Unconfirmed` whatever its inventory reads, because these tools write
-//! the version it reports partway through an upgrade (the
-//! `Ok(Outcome::Unconfirmed)` arm of `run_operation` cites their lines).
+//! are the opposite: a command the user cancelled, the timeout stopped, or
+//! a signal the run did not send ended (`Stop`), is `Unconfirmed` whatever
+//! its inventory reads, because these tools write the version it reports
+//! partway through an upgrade (the `Ok(Outcome::Unconfirmed)` arm of
+//! `run_operation` cites their lines). The pipx section also holds this
+//! file's two uninstall cases: ended by such a signal, an uninstall is
+//! judged by whether the tool is still there, as after a Cancel or the
+//! timeout.
 //!
 //! The Claude Code section reads no recorded inventory: its adapter's
 //! inventory probes a real launcher link and runs `--version`, so the
@@ -76,6 +80,12 @@ enum Stop {
     Cancel,
     /// The command ran past its timeout.
     Timeout,
+    /// A signal the run did not send ended the command -- Activity
+    /// Monitor, `kill`, a crash. `RealRunner` reports that as no exit code
+    /// with neither flag set (runner/real.rs, the `child_code` arm of
+    /// `run`; pinned by
+    /// `test_a_child_ended_by_a_signal_the_run_did_not_send_reports_no_exit_code_and_neither_flag`).
+    Killed,
 }
 
 impl Stop {
@@ -151,12 +161,27 @@ async fn upgrade(
     kind: ArtifactKind,
     name: &str,
 ) -> Outcome {
+    submit(OpKind::Upgrade, runner, adapter, inst, kind, name).await
+}
+
+/// Submits an operation of `op_kind` on `name` through a fresh
+/// `OperationManager` and returns its outcome. If `runner` is running a
+/// command scripted as cancelled, presses Cancel on the op, as the user
+/// would.
+async fn submit(
+    op_kind: OpKind,
+    runner: &ScriptedRunner,
+    adapter: Arc<dyn Adapter>,
+    inst: ManagerInstance,
+    kind: ArtifactKind,
+    name: &str,
+) -> Outcome {
     let mut manager = OperationManager::new(Arc::new(VecSink::new()));
     manager.register_adapter(adapter.clone());
     let manager = Arc::new(manager);
     manager.register_instance(inst.clone());
     let req = OpRequest {
-        kind: OpKind::Upgrade,
+        kind: op_kind,
         instance_id: inst.id.clone(),
         artifact_kind: kind,
         name: name.to_string(),
@@ -355,7 +380,7 @@ async fn test_a_formula_upgrade_stopped_before_its_new_keg_was_linked_is_unconfi
         aria2["installed"].as_array_mut().unwrap().push(new_keg);
         aria2["linked_keg"] = serde_json::Value::Null;
     });
-    for stop in [Stop::Cancel, Stop::Timeout] {
+    for stop in [Stop::Cancel, Stop::Timeout, Stop::Killed] {
         let outcome = brew_upgrade_formula(
             "aria2",
             stop.output(),
@@ -374,7 +399,7 @@ async fn test_a_cask_upgrade_stopped_after_it_wrote_the_new_version_is_unconfirm
     // Stopped in between, the version reads as the new one and the app is
     // not installed.
     let after = brew_info(|info| cask(info, "onyx")["installed"] = "5.1.0".into());
-    for stop in [Stop::Cancel, Stop::Timeout] {
+    for stop in [Stop::Cancel, Stop::Timeout, Stop::Killed] {
         let outcome = brew_upgrade_cask(
             "onyx",
             stop.output(),
@@ -476,6 +501,64 @@ async fn test_a_pipx_upgrade_cancelled_before_it_wrote_the_new_version_is_unconf
     // before and the venv has already changed.
     let recorded = fixture("pipx/1.17.3/list.json");
     let outcome = pipx_upgrade(Stop::Cancel.output(), vec![recorded.clone(), recorded]).await;
+    assert_eq!(outcome, Outcome::Unconfirmed);
+}
+
+/// Submits an uninstall of cowsay. An uninstall takes no reading before
+/// the command (`run_operation`), so `list_after` is the one `pipx list
+/// --json` answer, read by `reconcile` after it.
+async fn pipx_uninstall(uninstall_output: CommandOutput, list_after: &str) -> Outcome {
+    let runner = Arc::new(ScriptedRunner::default());
+    runner.script(&[PIPX, "uninstall", "cowsay"], vec![uninstall_output]);
+    runner.script(&[PIPX, "list", "--json"], vec![exited_0(list_after, "")]);
+    let inst = ManagerInstance {
+        exe_path: PathBuf::from(PIPX),
+        ..canager_core::testing::manager_instance("pipx", "pipx")
+    };
+    submit(
+        OpKind::Uninstall,
+        &runner,
+        Arc::new(PipxAdapter::new(
+            runner.clone(),
+            Arc::new(MockHttpClient::new()),
+        )),
+        inst,
+        ArtifactKind::Tool,
+        "cowsay",
+    )
+    .await
+}
+
+/// `pipx list --json` as recorded, with cowsay's venv taken out: the
+/// reading an uninstall that removed it leaves.
+fn pipx_list_without_cowsay() -> String {
+    let mut list: serde_json::Value =
+        serde_json::from_str(&fixture("pipx/1.17.3/list.json")).expect("fixture");
+    let removed = list["venvs"].as_object_mut().unwrap().remove("cowsay");
+    assert!(removed.is_some(), "the fixture lists cowsay");
+    list.to_string()
+}
+
+#[tokio::test]
+async fn test_a_pipx_uninstall_ended_by_a_signal_the_run_did_not_send_succeeded_once_the_tool_is_gone(
+) {
+    // Ended by a signal the run did not send (`Stop::Killed`), `pipx
+    // uninstall` reported nothing: no exit code, no failure of its own. So
+    // the reading after decides, as it does after the user's own Cancel or
+    // the timeout (the `Ok(Outcome::Unconfirmed)` arm of `run_operation`):
+    // cowsay is gone, which is what an uninstall is for.
+    let outcome = pipx_uninstall(Stop::Killed.output(), &pipx_list_without_cowsay()).await;
+    assert_eq!(outcome, Outcome::Succeeded);
+}
+
+#[tokio::test]
+async fn test_a_pipx_uninstall_ended_by_a_signal_the_run_did_not_send_is_unconfirmed_while_the_tool_remains(
+) {
+    // Same stop, cowsay still listed. Not `Cancelled`: nobody pressed
+    // Cancel (the token that arm checks was never fired). Not `Failed`:
+    // pipx never said it failed, and a `Failed` is shown as the tool's own
+    // verdict and reconciled by nothing.
+    let outcome = pipx_uninstall(Stop::Killed.output(), &fixture("pipx/1.17.3/list.json")).await;
     assert_eq!(outcome, Outcome::Unconfirmed);
 }
 
@@ -760,7 +843,7 @@ async fn test_a_claude_update_exiting_zero_with_no_version_before_it_falls_back_
 
 #[tokio::test]
 async fn test_a_stopped_claude_upgrade_stays_unconfirmed_even_if_the_version_moves() {
-    for stop in [Stop::Cancel, Stop::Timeout] {
+    for stop in [Stop::Cancel, Stop::Timeout, Stop::Killed] {
         assert_eq!(
             claude_upgrade(stop.output(), vec!["2.1.281", "2.1.290"]).await,
             Outcome::Unconfirmed

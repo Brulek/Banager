@@ -986,6 +986,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_a_child_ended_by_a_signal_the_run_did_not_send_reports_no_exit_code_and_neither_flag(
+    ) {
+        // The shell SIGKILLs itself: a signal this run did not send, as
+        // Activity Monitor or `kill` would send one. Neither the deadline
+        // nor the token fired, so the run stopped nothing, and a child
+        // ended by a signal has no exit code. `run_plan`
+        // (adapters/mod.rs) reads exactly this shape as `Unconfirmed`.
+        let runner = RealRunner::new();
+        let spec = CommandSpec {
+            program: sh(),
+            args: vec!["-c".to_string(), "kill -KILL $$".to_string()],
+            env: vec![],
+            cwd: None,
+            timeout: std::time::Duration::from_secs(5),
+            output_use: OutputUse::Transcript,
+        };
+        let output = runner
+            .run(spec, None, CancellationToken::new())
+            .await
+            .expect("spawn /bin/sh");
+        assert_eq!(output.exit_code, None);
+        assert!(!output.timed_out);
+        assert!(!output.cancelled);
+    }
+
+    #[tokio::test]
     async fn test_full_transcript_reassembles_multibyte_utf8_split_across_reads() {
         // U+4E03 ('七') encodes as the 3 UTF-8 bytes 0xE4 0xB8 0x83 (octal
         // \344 \270 \203). Write the first two bytes, then sleep long enough
