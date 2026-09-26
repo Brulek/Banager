@@ -34,7 +34,8 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstallReason, InstalledArtifact, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallBlocked, UpdateBlocked, UpdateCandidate,
+    UpdateChannel,
 };
 use crate::runner::{CommandRunner, CommandSpec, HostEnv, OutputUse};
 use crate::trash::Trasher;
@@ -128,7 +129,8 @@ pub struct StandaloneAdapter {
     recipe: &'static Recipe,
     meta: AdapterMeta,
     runner: Arc<dyn CommandRunner>,
-    /// The channel pointer request in `check_updates`.
+    /// The request an HTTP `Latest` source makes -- a channel pointer, a
+    /// release file, a manifest -- in `check_updates` (`published`).
     http: Arc<dyn HttpClient>,
     /// The system's "move to Trash", for a path-list uninstall
     /// (`removal::execute_removal`, from `execute`): `RealTrasher` in
@@ -140,8 +142,24 @@ pub struct StandaloneAdapter {
     /// Read by `execute`.
     trash_gap: Duration,
     detected: Mutex<Option<Detected>>,
+    /// The CPU architecture this Canager runs as (`std::env::consts::ARCH`;
+    /// `with_arch` in tests): a `Latest::HttpJsonField` manifest is fetched
+    /// only on the architectures it was verified for
+    /// (`latest::manifest_arch_allowed`). Read by `published`.
+    arch: &'static str,
     /// Written by `inventory`, taken by `check_updates` (`Reading`).
     inventoried: Mutex<Option<Reading>>,
+}
+
+/// What the world knows about this tool's newest version, per the recipe's
+/// `Latest` (`StandaloneAdapter::published`).
+enum Published {
+    /// A version to compare with the installed one (a channel pointer, a
+    /// release file, a manifest).
+    Version(String),
+    /// The tool's own verdict (grok's `update --check --json`): shown as
+    /// answered, never compared (spec §4.3).
+    ToolSays(latest::UpdateCheck),
 }
 
 impl StandaloneAdapter {
@@ -174,6 +192,7 @@ impl StandaloneAdapter {
             trasher,
             trash_gap: removal::PUT_BACK_SETTLE,
             detected: Mutex::new(None),
+            arch: std::env::consts::ARCH,
             inventoried: Mutex::new(None),
         }
     }
@@ -183,6 +202,14 @@ impl StandaloneAdapter {
     /// test waits seconds per item. Public so `tests/` can use it too.
     pub fn with_trash_gap(mut self, gap: Duration) -> StandaloneAdapter {
         self.trash_gap = gap;
+        self
+    }
+
+    /// Test seam: the architecture `published` believes it runs on, so
+    /// both the Apple-silicon and the Intel branch of a manifest lookup
+    /// are tested on whatever machine runs the tests.
+    pub fn with_arch(mut self, arch: &'static str) -> StandaloneAdapter {
+        self.arch = arch;
         self
     }
 
@@ -532,6 +559,12 @@ impl StandaloneAdapter {
     /// switch says; that the tool usually updates itself is for the row to
     /// say (`selfUpdatingHint`, which arrives with Task 10 of the phase 4
     /// step B plan), not hidden behind a setting.
+    ///
+    /// A recipe with no `upgrade` (agy) gets its candidate with
+    /// `UpdateBlocked::SelfUpdatesOnly`: no button, a badge, and a sentence
+    /// saying to open the tool. A `Latest::Command` recipe (grok) is asked
+    /// itself and believed: `updateAvailable` decides, and `latestVersion`
+    /// is shown as printed (`Published::ToolSays`).
     pub async fn check_updates(
         &self,
         inst: &ManagerInstance,
@@ -561,47 +594,54 @@ impl StandaloneAdapter {
             )]
             .into());
         };
-        let remote = match self.latest_version().await {
-            Ok(remote) => remote,
-            Err(reason) => {
-                return Ok(vec![uncheckable_candidate(
-                    key,
-                    current,
-                    UpdateChannel::Registry,
-                    reason,
-                )]
-                .into())
-            }
-        };
-        Ok(match latest::compare_dotted(&current, &remote) {
-            Some(Ordering::Less) => vec![UpdateCandidate {
+        let decided: Result<Option<(String, UpdateChannel)>, String> =
+            match self.published(&inst.exe_path).await {
+                Err(reason) => Err(reason),
+                // The tool's own verdict, as answered (spec §4.3).
+                Ok(Published::ToolSays(check)) => {
+                    Ok(check.available.then_some((check.latest, UpdateChannel::Native)))
+                }
+                Ok(Published::Version(remote)) => match latest::compare_dotted(&current, &remote) {
+                    Some(Ordering::Less) => Ok(Some((remote, UpdateChannel::Registry))),
+                    Some(Ordering::Equal | Ordering::Greater) => Ok(None),
+                    None => Err(format!(
+                        "cannot compare the installed version {current:?} with the published {remote:?}"
+                    )),
+                },
+            };
+        Ok(match decided {
+            Err(reason) => vec![uncheckable_candidate(
                 key,
                 current,
-                target: remote,
-                channel: UpdateChannel::Registry,
+                UpdateChannel::Registry,
+                reason,
+            )],
+            Ok(None) => Vec::new(),
+            Ok(Some((target, channel))) => vec![UpdateCandidate {
+                key,
+                current,
+                target,
+                channel,
                 checkable: true,
                 warnings: Vec::new(),
-                blocked: None,
+                // A tool with no update command Canager may run: the newer
+                // version is real and has no button (spec §4.4, D5 item 4).
+                blocked: self
+                    .recipe
+                    .upgrade
+                    .is_none()
+                    .then_some(UpdateBlocked::SelfUpdatesOnly),
             }],
-            Some(Ordering::Equal | Ordering::Greater) => Vec::new(),
-            None => {
-                let reason = format!(
-                    "cannot compare the installed version {current:?} with the published {remote:?}"
-                );
-                vec![uncheckable_candidate(
-                    key,
-                    current,
-                    UpdateChannel::Registry,
-                    reason,
-                )]
-            }
         }
         .into())
     }
 
-    /// The newest published version per the recipe's `Latest`, or the
-    /// reason it could not be read (one line, for an uncheckable row).
-    async fn latest_version(&self) -> Result<String, String> {
+    /// What the world knows about this tool's newest version, per the
+    /// recipe's `Latest`: a version to compare with the installed one
+    /// (`Published::Version`), or the tool's own verdict
+    /// (`Published::ToolSays`, grok). `Err` is the one-line reason of an
+    /// uncheckable row.
+    async fn published(&self, launcher: &Path) -> Result<Published, String> {
         match self.recipe.latest {
             Latest::ClaudeChannel { base } => {
                 // `home` from detect's seat; before any detect (which
@@ -634,7 +674,7 @@ impl StandaloneAdapter {
                         resp.status
                     ));
                 }
-                latest::parse_channel_body(&resp.body)
+                latest::parse_channel_body(&resp.body).map(Published::Version)
             }
             Latest::HttpTomlVersion { url } => {
                 let resp = self
@@ -650,13 +690,79 @@ impl StandaloneAdapter {
                 if resp.status != 200 {
                     return Err(format!("{url} returned status {}", resp.status));
                 }
-                latest::parse_release_stable_toml(&resp.body)
+                latest::parse_release_stable_toml(&resp.body).map(Published::Version)
+            }
+            Latest::HttpJsonField { url, field } => {
+                // Only where the manifest URL was verified (Apple silicon);
+                // elsewhere the row says so and nothing is sent.
+                latest::manifest_arch_allowed(self.arch)?;
+                let resp = self
+                    .http
+                    .send(HttpRequest {
+                        method: "GET",
+                        url: url.to_string(),
+                        headers: Vec::new(),
+                        timeout: Duration::from_secs(30),
+                    })
+                    .await
+                    .map_err(|e| format!("request to {url} failed: {e}"))?;
+                if resp.status != 200 {
+                    return Err(format!("{url} returned status {}", resp.status));
+                }
+                latest::parse_json_field(&resp.body, field).map(Published::Version)
+            }
+            Latest::Command {
+                args,
+                timeout_secs,
+                latest_field,
+                available_field,
+                error_field,
+            } => {
+                // The tool's own read-only check, against the launcher, with
+                // no environment of Canager's (spec §3.4's variables are for
+                // the version read).
+                let shown = args.join(" ");
+                let output = self
+                    .runner
+                    .run(
+                        CommandSpec {
+                            program: launcher.to_path_buf(),
+                            args: args.iter().map(|a| a.to_string()).collect(),
+                            env: Vec::new(),
+                            cwd: None,
+                            timeout: Duration::from_secs(timeout_secs),
+                            output_use: OutputUse::Parsed,
+                        },
+                        None,
+                        CancellationToken::new(),
+                    )
+                    .await
+                    .map_err(|e| format!("could not run `{shown}`: {e}"))?;
+                if output.timed_out || output.cancelled {
+                    return Err(format!("`{shown}` did not finish within {timeout_secs} s"));
+                }
+                if output.exit_code != Some(0) {
+                    return Err(format!(
+                        "`{shown}` exited with {:?}: {}",
+                        output.exit_code,
+                        output.stderr.lines().next().unwrap_or("").trim()
+                    ));
+                }
+                latest::parse_update_check(
+                    &output.stdout,
+                    latest_field,
+                    available_field,
+                    error_field,
+                )
+                .map(Published::ToolSays)
             }
         }
     }
 
     /// Spec §五: the tool's own documented update command, run against the
-    /// launcher through `run_plan` unchanged. `Install` is `Unsupported`
+    /// launcher through `run_plan` unchanged, or, for a recipe with none
+    /// (agy), `UpdateBlocked::SelfUpdatesOnly` -- the gate
+    /// (`blocked_upgrade`) refuses that first. `Install` is `Unsupported`
     /// (the installer is the tool's own and Canager never runs it;
     /// installing tools is phase 5). `Uninstall` is the recipe's path list
     /// as a `TrashPaths` plan under the removal's checks (spec §6.2-§6.3),
@@ -732,7 +838,15 @@ impl StandaloneAdapter {
             }
             OpKind::Upgrade => {
                 let detected = self.seated_detected_for(inst)?;
-                let upgrade = &self.recipe.upgrade;
+                // A tool that installs its updates itself and offers nothing
+                // Canager may run (agy): the gate refuses this first
+                // (`blocked_upgrade`, from the candidate's `blocked`); this is
+                // its late twin for a stale snapshot (spec §五).
+                let Some(upgrade) = &self.recipe.upgrade else {
+                    return Err(AdapterError::UpdateBlocked {
+                        reason: UpdateBlocked::SelfUpdatesOnly,
+                    });
+                };
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -1181,6 +1295,54 @@ pub(super) mod testing {
         }
     }
 
+    /// Antigravity's layout as its installer writes it (agy.md §2, §3a): a
+    /// regular executable at `~/.local/bin/agy` -- the whole program -- and
+    /// the tool's root beside the Gemini CLI's other folders.
+    pub struct AgyLayout {
+        pub launcher: PathBuf,
+        pub root: PathBuf,
+    }
+
+    pub fn agy_layout(home: &TempHome) -> AgyLayout {
+        let launcher = home.executable(".local/bin/agy");
+        let root = home.dir(".gemini/antigravity-cli");
+        home.file(".gemini/antigravity-cli/updater/update_status.json");
+        home.file(".gemini/antigravity-cli/conversations/c1.jsonl");
+        AgyLayout { launcher, root }
+    }
+
+    /// Grok Build's layout as its installer writes it (grok.md §1, §2): the
+    /// download `~/.grok/downloads/grok-<version>-macos-aarch64`, two links
+    /// to it in `~/.grok/bin` -- `grok`, whose text is *relative*
+    /// (`../downloads/…`, spec §3.5, VERIFIED), and `agent`, made the same
+    /// way here -- the vendored `bundled/` and `completions/`, and the files
+    /// `~/.grok` keeps that an uninstall leaves alone.
+    pub struct GrokLayout {
+        pub launcher: PathBuf,
+        pub agent: PathBuf,
+        pub root: PathBuf,
+        pub real: PathBuf,
+    }
+
+    pub fn grok_layout(home: &TempHome, version: &str) -> GrokLayout {
+        let real = home.executable(&format!(".grok/downloads/grok-{version}-macos-aarch64"));
+        let target = PathBuf::from(format!("../downloads/grok-{version}-macos-aarch64"));
+        let launcher = home.link(".grok/bin/grok", &target);
+        let agent = home.link(".grok/bin/agent", &target);
+        home.file(".grok/bundled/agents/default.md");
+        home.file(".grok/completions/zsh/_grok");
+        home.file(".grok/config.toml");
+        home.file(".grok/auth.json");
+        home.file(".grok/sessions/s1.jsonl");
+        home.file(".grok/memory/notes.md");
+        GrokLayout {
+            launcher,
+            agent,
+            root: home.path().join(".grok"),
+            real,
+        }
+    }
+
     /// rustup's native layout: `<cargo_home>/bin/rustup`, an executable
     /// regular file, and the thirteen proxies rustup installs beside it as
     /// relative links to it (`TOOLS` + `DUP_TOOLS` in rustup's
@@ -1260,8 +1422,8 @@ mod tests {
     use super::recipe::{
         no_extra_locks, GateRefusal, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse,
     };
-    use super::recipes::{CLAUDE, RUSTUP};
-    use super::testing::{claude_layout, rustup_layout, TempHome};
+    use super::recipes::{AGY, CLAUDE, GROK, RUSTUP};
+    use super::testing::{agy_layout, claude_layout, grok_layout, rustup_layout, TempHome};
     use super::*;
     use crate::adapters::cargo::CargoAdapter;
     use crate::adapters::{Adapter, CheckOptions};
@@ -1270,7 +1432,7 @@ mod tests {
     use crate::model::{
         ArtifactKind, CancelPolicy, Fault, InstallReason, InstanceNote, ItemKind, KeptWhat, OpKind,
         OpRequest, Outcome, PlanAction, RemovedWhat, ResourceLock, Unavailable, UninstallBlocked,
-        UninstallUnsafeReason, UpdateChannel, Warning,
+        UninstallUnsafeReason, UpdateBlocked, UpdateChannel, Warning,
     };
     use crate::runner::{CommandOutput, MockRunner, RunnerError};
     use crate::testing::{command_args, command_env, command_program};
@@ -2507,11 +2669,11 @@ mod tests {
             base: "https://downloads.claude.ai/claude-code-releases",
         },
         self_updates: true,
-        upgrade: UpgradeCmd {
+        upgrade: Some(UpgradeCmd {
             args: &["update"],
             timeout_secs: 1800,
             cancel: CancelPolicy::KillThenReconcile,
-        },
+        }),
         uninstall: None,
         extra_locks: no_extra_locks,
         backup_globs: &[],
@@ -3846,11 +4008,11 @@ mod tests {
         },
         latest: Latest::HttpTomlVersion { url: RELEASE_URL },
         self_updates: false,
-        upgrade: UpgradeCmd {
+        upgrade: Some(UpgradeCmd {
             args: &["self", "update"],
             timeout_secs: 600,
             cancel: CancelPolicy::NoCancel,
-        },
+        }),
         uninstall: Some(Uninstall::Command(CommandUninstall {
             args: &["self", "uninstall", "-y"],
             timeout_secs: 600,
@@ -4381,5 +4543,1037 @@ mod tests {
             }
             None => panic!("both are dotted versions: {installed} vs {published}"),
         }
+    }
+
+    // ---- Antigravity CLI ----
+
+    const AGY_MANIFEST_URL: &str =
+        "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json";
+
+    fn agy_adapter(runner: Arc<dyn CommandRunner>, http: Arc<MockHttpClient>) -> StandaloneAdapter {
+        StandaloneAdapter::new(&AGY, runner, http, Arc::new(MockTrasher::new()))
+            .with_trash_gap(Duration::ZERO)
+            .with_arch("aarch64")
+    }
+
+    fn agy_request(kind: OpKind) -> OpRequest {
+        request_for("standalone-agy", kind, "agy")
+    }
+
+    /// A detected agy over `home`, `--version` answering `version`.
+    async fn detected_agy(
+        home: &TempHome,
+        version: &str,
+        http: Arc<MockHttpClient>,
+    ) -> (
+        StandaloneAdapter,
+        ManagerInstance,
+        super::testing::AgyLayout,
+    ) {
+        let layout = agy_layout(home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(&format!("{version}\n")),
+        );
+        let adapter = agy_adapter(runner, http);
+        let inst = adapter.detect(&env_as_owner(home)).await.remove(0);
+        (adapter, inst, layout)
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_agy_as_a_flat_file_read_with_its_auto_update_off() {
+        // Spec §3.3 (FlatFile: a regular file, its real path itself), §3.4
+        // (the documented switch on every version read), §2.2 (exe_path is
+        // the file, prefix the root).
+        let home = TempHome::new("agy-detect");
+        let layout = agy_layout(&home);
+        let runner = Arc::new(RecordingRunner {
+            specs: StdMutex::new(Vec::new()),
+            output: exited_0("1.2.10\n"),
+        });
+        let adapter = agy_adapter(runner.clone(), Arc::new(MockHttpClient::new()));
+
+        let instances = adapter.detect(&env_as_owner(&home)).await;
+
+        assert_eq!(instances.len(), 1);
+        let inst = &instances[0];
+        assert_eq!(inst.id, "standalone-agy");
+        assert_eq!(inst.adapter_id, "standalone-agy");
+        assert_eq!(inst.exe_path, layout.launcher);
+        assert_eq!(inst.prefix, layout.root);
+        assert_eq!(inst.version.as_deref(), Some("1.2.10"));
+        assert_eq!(inst.status.unavailable, None);
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].program, layout.launcher);
+        assert_eq!(specs[0].args, vec!["--version".to_string()]);
+        assert_eq!(
+            specs[0].env,
+            vec![(
+                "AGY_CLI_DISABLE_AUTO_UPDATE".to_string(),
+                "true".to_string()
+            )]
+        );
+        assert_eq!(specs[0].timeout, Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_nothing_for_an_agy_that_is_a_link() {
+        // The Homebrew cask's `agy` is a link into its Caskroom (agy.md §3b):
+        // Homebrew's row, never this one; and a flat-file route has no
+        // launcher-only state (E's ruling 8), so a dangling link is nothing.
+        let home = TempHome::new("agy-link");
+        let cask = home.executable("opt/homebrew/Caskroom/antigravity-cli/1.2.9/antigravity");
+        home.link(".local/bin/agy", &cask);
+        home.dir(".gemini/antigravity-cli");
+        let adapter = agy_adapter(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()));
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+        std::fs::remove_file(home.path().join(".local/bin/agy")).unwrap();
+        home.link(
+            ".local/bin/agy",
+            &home.path().join(".gemini/antigravity-cli/bin/agy"),
+        );
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_agy_lists_a_newer_manifest_version_with_no_button() {
+        // Spec §4.4 D5 item 4: a real candidate (the manifest is newer),
+        // `SelfUpdatesOnly` (no `upgrade`), `Registry` channel, one GET with
+        // no header of Canager's.
+        let home = TempHome::new("agy-check-newer");
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            AGY_MANIFEST_URL,
+            answer(r#"{"version":"1.2.11","url":"https://storage.googleapis.com/x.tar.gz","sha512":"00"}"#),
+        );
+        let (adapter, inst, _) = detected_agy(&home, "1.2.10", http.clone()).await;
+        // `check_updates` compares the version `inventory` read, and
+        // refuses without one: the order `refresh_round` keeps.
+        adapter.inventory(&inst).await.expect("inventory");
+
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        assert_eq!(
+            out.candidates,
+            vec![UpdateCandidate {
+                key: ArtifactKey {
+                    instance_id: "standalone-agy".to_string(),
+                    kind: ArtifactKind::Binary,
+                    name: "agy".to_string(),
+                },
+                current: "1.2.10".to_string(),
+                target: "1.2.11".to_string(),
+                channel: UpdateChannel::Registry,
+                checkable: true,
+                warnings: Vec::new(),
+                blocked: Some(UpdateBlocked::SelfUpdatesOnly),
+            }]
+        );
+        assert_eq!(http.calls(), vec![AGY_MANIFEST_URL.to_string()]);
+        let request = &http.requests()[0];
+        assert_eq!(request.method, "GET");
+        assert!(request.headers.is_empty());
+        assert_eq!(request.timeout, Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_agy_lists_nothing_when_the_manifest_is_not_newer() {
+        for body in [r#"{"version":"1.2.10"}"#, r#"{"version":"1.2.9"}"#] {
+            let home = TempHome::new("agy-check-current");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(AGY_MANIFEST_URL, answer(body));
+            let (adapter, inst, _) = detected_agy(&home, "1.2.10", http).await;
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("check_updates");
+            assert!(out.candidates.is_empty(), "{body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_agy_is_uncheckable_on_an_intel_mac_without_a_request() {
+        // Spec §3.1/§3.5: the darwin_amd64 manifest is unverified, so an
+        // Intel Mac (or Rosetta) gets "could not check" with the reason and
+        // nothing leaves the machine.
+        let home = TempHome::new("agy-check-intel");
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(AGY_MANIFEST_URL, answer(r#"{"version":"1.2.11"}"#));
+        let layout = agy_layout(&home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("1.2.10\n"),
+        );
+        let adapter = agy_adapter(runner, http.clone()).with_arch("x86_64");
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        adapter.inventory(&inst).await.expect("inventory");
+
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        assert_eq!(out.candidates.len(), 1);
+        let c = &out.candidates[0];
+        assert!(!c.checkable);
+        assert_eq!(c.current, "1.2.10");
+        assert_eq!(c.target, "1.2.10");
+        assert!(
+            matches!(&c.warnings[..], [Warning::Message(m)] if m.contains("Intel") && m.contains("x86_64")),
+            "{:?}",
+            c.warnings
+        );
+        assert!(
+            http.calls().is_empty(),
+            "no request on an unverified architecture"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_agy_marks_a_bad_manifest_uncheckable() {
+        for (body, needle) in [
+            (
+                "<html>Sign in to the network</html>",
+                "manifest is not JSON",
+            ),
+            (r#"{"url":"x"}"#, "no `version` string"),
+            (r#"{"version":"latest"}"#, "not a version"),
+        ] {
+            let home = TempHome::new("agy-check-bad");
+            let http = Arc::new(MockHttpClient::new());
+            http.respond(AGY_MANIFEST_URL, answer(body));
+            let (adapter, inst, _) = detected_agy(&home, "1.2.10", http).await;
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("a failed lookup is not a source failure");
+            assert_eq!(out.candidates.len(), 1, "{body}");
+            assert!(!out.candidates[0].checkable);
+            assert!(
+                matches!(&out.candidates[0].warnings[..], [Warning::Message(m)] if m.contains(needle)),
+                "{body}: {:?}",
+                out.candidates[0].warnings
+            );
+        }
+        let home = TempHome::new("agy-check-503");
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(
+            AGY_MANIFEST_URL,
+            HttpResponse {
+                status: 503,
+                body: String::new(),
+            },
+        );
+        let (adapter, inst, _) = detected_agy(&home, "1.2.10", http).await;
+        adapter.inventory(&inst).await.expect("inventory");
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap();
+        assert!(!out.candidates[0].checkable);
+        assert!(
+            matches!(&out.candidates[0].warnings[..], [Warning::Message(m)] if m.contains("503"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_for_agy_is_refused_as_self_updating() {
+        // The gate refuses it first from the candidate's `blocked`; the
+        // adapter refuses it again for a stale snapshot (spec §五).
+        let home = TempHome::new("agy-plan-upgrade");
+        let (adapter, inst, _) =
+            detected_agy(&home, "1.2.10", Arc::new(MockHttpClient::new())).await;
+        assert!(matches!(
+            adapter.plan(&inst, &agy_request(OpKind::Upgrade)).await,
+            Err(AdapterError::UpdateBlocked {
+                reason: UpdateBlocked::SelfUpdatesOnly
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_agy_lists_the_backup_and_the_program_and_keeps_its_state() {
+        // Spec §6.3's agy row as ruled: any `agy.<time>.old` first, the
+        // program (the launcher) last; the root, the staging folder and the
+        // two shell files kept and said when present -- and not said when
+        // absent (C's ruling 6).
+        let home = TempHome::new("agy-plan-uninstall-full");
+        home.file(".local/bin/agy.1727000000.old");
+        home.dir(".cache/antigravity/staging");
+        home.file(".zshrc");
+        home.file(".zprofile");
+        let (adapter, inst, layout) =
+            detected_agy(&home, "1.2.10", Arc::new(MockHttpClient::new())).await;
+
+        let plan = adapter
+            .plan(&inst, &agy_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+
+        let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+            panic!("a path list: {:?}", plan.action);
+        };
+        assert_eq!(
+            paths,
+            &vec![
+                home.path().join(".local/bin/agy.1727000000.old"),
+                layout.launcher.clone(),
+            ]
+        );
+        assert_eq!(previewed.len(), 2);
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::WillTrash {
+                    path: "~/.local/bin/agy.1727000000.old".to_string(),
+                    what: RemovedWhat::Backups,
+                },
+                Warning::WillTrash {
+                    path: "~/.local/bin/agy".to_string(),
+                    what: RemovedWhat::Launcher,
+                },
+                Warning::WillKeep {
+                    path: "~/.gemini/antigravity-cli".to_string(),
+                    what: KeptWhat::ToolState,
+                },
+                Warning::WillKeep {
+                    path: "~/.cache/antigravity".to_string(),
+                    what: KeptWhat::InstallerCache,
+                },
+                Warning::WillKeep {
+                    path: "~/.zshrc".to_string(),
+                    what: KeptWhat::ShellConfigLines,
+                },
+                Warning::WillKeep {
+                    path: "~/.zprofile".to_string(),
+                    what: KeptWhat::ShellConfigLines,
+                },
+            ]
+        );
+        assert_eq!(plan.locks, vec![ResourceLock("standalone-agy".to_string())]);
+        assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+
+        // The minimum: no backup, no staging folder, no zprofile.
+        let home = TempHome::new("agy-plan-uninstall-min");
+        home.file(".zshrc");
+        let (adapter, inst, layout) =
+            detected_agy(&home, "1.2.10", Arc::new(MockHttpClient::new())).await;
+        let plan = adapter
+            .plan(&inst, &agy_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(paths, &vec![layout.launcher.clone()]);
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::WillTrash {
+                    path: "~/.local/bin/agy".to_string(),
+                    what: RemovedWhat::Launcher,
+                },
+                Warning::WillKeep {
+                    path: "~/.gemini/antigravity-cli".to_string(),
+                    what: KeptWhat::ToolState,
+                },
+                Warning::WillKeep {
+                    path: "~/.zshrc".to_string(),
+                    what: KeptWhat::ShellConfigLines,
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_for_agy_moves_both_items_leaves_its_state_and_reads_as_gone() {
+        let home = TempHome::new("agy-execute");
+        home.file(".local/bin/agy.1727000000.old");
+        home.dir(".cache/antigravity/staging");
+        let trasher = Arc::new(MockTrasher::new());
+        let layout = agy_layout(&home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("1.2.10\n"),
+        );
+        let adapter = StandaloneAdapter::new(
+            &AGY,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            trasher.clone(),
+        )
+        .with_trash_gap(Duration::ZERO)
+        .with_arch("aarch64");
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let plan = adapter
+            .plan(&inst, &agy_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(&trasher.calls(), paths);
+        assert_eq!(trasher.kinds(), vec![ItemKind::File, ItemKind::File]);
+        assert!(
+            layout.root.join("conversations/c1.jsonl").is_file(),
+            "the root stays"
+        );
+        assert!(
+            home.path().join(".cache/antigravity/staging").is_dir(),
+            "the staging folder stays"
+        );
+        let key = adapter.artifact_key(&inst);
+        assert!(
+            !adapter
+                .reconcile_after_uninstall(&inst, &key)
+                .await
+                .expect("a reading")
+                .present
+        );
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_execute_for_agy_refuses_a_launcher_its_updater_replaced_after_the_preview() {
+        // Review Focus 1: agy's updater replaces the file at the launcher's
+        // path -- this Mac's changed twice in two days (the phase 4 step D
+        // plan's ruling 18). A replacement written as a new file (agy.md §4
+        // infers an atomic replace, UNVERIFIED) has a new inode, so the
+        // preview's identity no longer matches: nothing moves.
+        let home = TempHome::new("agy-execute-replaced");
+        let trasher = Arc::new(MockTrasher::new());
+        let layout = agy_layout(&home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0("1.2.10\n"),
+        );
+        let adapter = StandaloneAdapter::new(
+            &AGY,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            trasher.clone(),
+        )
+        .with_trash_gap(Duration::ZERO)
+        .with_arch("aarch64");
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let plan = adapter
+            .plan(&inst, &agy_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+        // Made while the old one still exists, then renamed over it, so it
+        // cannot get the old inode back (C's tests do the same).
+        let replacement = home.executable(".local/bin/agy.new");
+        std::fs::rename(&replacement, &layout.launcher).unwrap();
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(
+            outcome,
+            Outcome::CanagerFailed(Fault::PathChanged {
+                path: "~/.local/bin/agy".to_string()
+            })
+        );
+        assert!(trasher.calls().is_empty());
+    }
+
+    // ---- Grok Build ----
+
+    fn grok_adapter(runner: Arc<dyn CommandRunner>) -> StandaloneAdapter {
+        StandaloneAdapter::new(
+            &GROK,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            Arc::new(MockTrasher::new()),
+        )
+        .with_trash_gap(Duration::ZERO)
+    }
+
+    fn grok_request(kind: OpKind) -> OpRequest {
+        request_for("standalone-grok", kind, "grok")
+    }
+
+    const GROK_VERSION_LINE: &str = "grok 1.0.41 (4220f3b224a6)\n";
+    const GROK_CHECK_CURRENT: &str = r#"{"currentVersion":"1.0.41","latestVersion":"1.0.41","updateAvailable":false,"installer":"internal","channel":"stable","autoUpdate":true,"error":null}"#;
+    const GROK_CHECK_NEWER: &str = r#"{"currentVersion":"1.0.41","latestVersion":"1.0.42","updateAvailable":true,"installer":"internal","channel":"stable","autoUpdate":true,"error":null}"#;
+
+    /// A runner answering grok's two read-only commands.
+    fn grok_runner(layout: &super::testing::GrokLayout, check: CommandOutput) -> Arc<MockRunner> {
+        let runner = Arc::new(MockRunner::new());
+        let launcher = layout.launcher.to_str().unwrap();
+        runner.respond(vec![launcher, "--version"], exited_0(GROK_VERSION_LINE));
+        runner.respond(vec![launcher, "update", "--check", "--json"], check);
+        runner
+    }
+
+    /// A detected grok over `home` (`trasher` its Trash), its check command
+    /// answering `check`.
+    async fn detected_grok(
+        home: &TempHome,
+        check: CommandOutput,
+        trasher: Arc<MockTrasher>,
+    ) -> (
+        StandaloneAdapter,
+        ManagerInstance,
+        super::testing::GrokLayout,
+    ) {
+        let layout = grok_layout(home, "1.0.41");
+        let runner = grok_runner(&layout, check);
+        let adapter =
+            StandaloneAdapter::new(&GROK, runner, Arc::new(MockHttpClient::new()), trasher)
+                .with_trash_gap(Duration::ZERO);
+        let inst = adapter.detect(&env_as_owner(home)).await.remove(0);
+        (adapter, inst, layout)
+    }
+
+    #[tokio::test]
+    async fn test_detect_lists_grok_through_its_relative_launcher_link_reading_the_second_token() {
+        // Spec §3.5 (VERIFIED): `~/.grok/bin/grok ->
+        // ../downloads/grok-1.0.41-macos-aarch64`, relative; grok.md §1:
+        // `grok --version` -> `grok 1.0.41 (4220f3b224a6)`. No environment
+        // on the read (none is documented).
+        let home = TempHome::new("grok-detect");
+        let layout = grok_layout(&home, "1.0.41");
+        let runner = Arc::new(RecordingRunner {
+            specs: StdMutex::new(Vec::new()),
+            output: exited_0(GROK_VERSION_LINE),
+        });
+        let adapter = grok_adapter(runner.clone());
+
+        let instances = adapter
+            .detect(&home.env(vec![home.path().join(".grok/bin")]))
+            .await;
+
+        // One instance, although `bin/agent` resolves to the same download:
+        // the route looks at the one fixed launcher path.
+        assert_eq!(instances.len(), 1);
+        assert_eq!(std::fs::canonicalize(&layout.agent).unwrap(), layout.real);
+        let inst = &instances[0];
+        assert_eq!(inst.id, "standalone-grok");
+        assert_eq!(inst.exe_path, layout.launcher);
+        assert_eq!(inst.prefix, layout.root);
+        assert_eq!(inst.version.as_deref(), Some("1.0.41"));
+        assert!(inst.status.notes.is_empty(), "PATH finds this very copy");
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].args, vec!["--version".to_string()]);
+        assert!(specs[0].env.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_grok_asks_its_own_read_only_check_and_trusts_its_answer() {
+        // Spec §4.3: grok's `updateAvailable` decides; §4.1: the channel is
+        // Native (the tool's own answer); the phase 4 step D plan's ruling
+        // 10: the target is `latestVersion` as printed. No button is
+        // withheld (grok has `grok update`).
+        let home = TempHome::new("grok-check-newer");
+        let (adapter, inst, layout) = detected_grok(
+            &home,
+            exited_0(GROK_CHECK_NEWER),
+            Arc::new(MockTrasher::new()),
+        )
+        .await;
+        // `check_updates` takes the version `inventory` read (the
+        // candidate's `current`), and refuses without one: the order
+        // `refresh_round` keeps.
+        adapter.inventory(&inst).await.expect("inventory");
+
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+
+        assert_eq!(
+            out.candidates,
+            vec![UpdateCandidate {
+                key: ArtifactKey {
+                    instance_id: "standalone-grok".to_string(),
+                    kind: ArtifactKind::Binary,
+                    name: "grok".to_string(),
+                },
+                current: "1.0.41".to_string(),
+                target: "1.0.42".to_string(),
+                channel: UpdateChannel::Native,
+                checkable: true,
+                warnings: Vec::new(),
+                blocked: None,
+            }]
+        );
+        // The check runs against the launcher, with the recipe's argv and
+        // its own timeout, and no environment of Canager's.
+        let runner = Arc::new(RecordingRunner {
+            specs: StdMutex::new(Vec::new()),
+            output: exited_0(GROK_VERSION_LINE),
+        });
+        let adapter = grok_adapter(runner.clone());
+        let inst = adapter.detect(&home.env(vec![])).await.remove(0);
+        adapter.inventory(&inst).await.expect("inventory");
+        let _ = adapter.check_updates(&inst, &CheckOptions::default()).await;
+        let specs = runner.specs.lock().unwrap();
+        let check = specs
+            .iter()
+            .find(|spec| spec.args.first().map(String::as_str) == Some("update"))
+            .expect("the check command ran");
+        assert_eq!(check.program, layout.launcher);
+        assert_eq!(
+            check.args,
+            vec![
+                "update".to_string(),
+                "--check".to_string(),
+                "--json".to_string()
+            ]
+        );
+        assert!(check.env.is_empty());
+        assert_eq!(check.timeout, Duration::from_secs(60));
+        assert_eq!(check.output_use, OutputUse::Parsed);
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_grok_lists_nothing_when_it_says_no_update_and_is_uncheckable_when_it_fails(
+    ) {
+        // Review Focus 4: the tool's word is final when it answers; when it
+        // fails, prints something else, or times out, the row is "could not
+        // check" with a short reason -- never an `Err` for the source.
+        let home = TempHome::new("grok-check-current");
+        let (adapter, inst, _) = detected_grok(
+            &home,
+            exited_0(GROK_CHECK_CURRENT),
+            Arc::new(MockTrasher::new()),
+        )
+        .await;
+        adapter.inventory(&inst).await.expect("inventory");
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .unwrap();
+        assert!(out.candidates.is_empty());
+
+        let failing = [
+            (
+                CommandOutput {
+                    exit_code: Some(1),
+                    stdout: String::new(),
+                    stderr: "error: could not reach x.ai\n".to_string(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+                "exited with Some(1)",
+            ),
+            (
+                exited_0("<html><body>Sign in to the network</body></html>\n"),
+                "did not print JSON",
+            ),
+            (
+                exited_0(r#"{"currentVersion":"1.0.41","latest":"1.0.42","updateAvailable":true}"#),
+                "no `latestVersion` string",
+            ),
+            // Exit 0, `updateAvailable: false`, and grok's own `error` set:
+            // the plausible offline shape. Not "up to date" -- "could not
+            // check", with grok's words (the phase 4 step D plan's ruling
+            // 10).
+            (
+                exited_0(
+                    r#"{"currentVersion":"1.0.41","latestVersion":"1.0.41","updateAvailable":false,"installer":"internal","channel":"stable","autoUpdate":true,"error":"failed to reach the update server"}"#,
+                ),
+                "reported: failed to reach the update server",
+            ),
+            (
+                CommandOutput {
+                    exit_code: None,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: true,
+                    cancelled: false,
+                },
+                "did not finish within 60 s",
+            ),
+        ];
+        for (check, needle) in failing {
+            let home = TempHome::new("grok-check-failing");
+            let (adapter, inst, _) =
+                detected_grok(&home, check, Arc::new(MockTrasher::new())).await;
+            adapter.inventory(&inst).await.expect("inventory");
+            let out = adapter
+                .check_updates(&inst, &CheckOptions::default())
+                .await
+                .expect("a failed lookup is not a source failure");
+            assert_eq!(out.candidates.len(), 1, "{needle}");
+            let c = &out.candidates[0];
+            assert!(!c.checkable);
+            assert_eq!(c.current, "1.0.41");
+            assert_eq!(c.target, "1.0.41");
+            assert_eq!(c.channel, UpdateChannel::Registry);
+            assert!(
+                matches!(&c.warnings[..], [Warning::Message(m)] if m.contains(needle)),
+                "{needle}: {:?}",
+                c.warnings
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_upgrade_for_grok_is_its_own_update_command() {
+        // Spec §五's grok row: `<grok> update`, 1800 s, KillThenReconcile,
+        // its own lock and no other, no environment, no password.
+        let home = TempHome::new("grok-plan-upgrade");
+        let (adapter, inst, layout) = detected_grok(
+            &home,
+            exited_0(GROK_CHECK_CURRENT),
+            Arc::new(MockTrasher::new()),
+        )
+        .await;
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Upgrade))
+            .await
+            .expect("a plan");
+        assert_eq!(command_program(&plan), layout.launcher);
+        assert_eq!(command_args(&plan), &["update".to_string()]);
+        assert!(command_env(&plan).is_empty());
+        assert!(!plan.needs_password);
+        assert_eq!(
+            plan.locks,
+            vec![ResourceLock("standalone-grok".to_string())]
+        );
+        assert_eq!(plan.cancel_policy, CancelPolicy::KillThenReconcile);
+        assert_eq!(plan.timeout_secs, 1800);
+        assert!(plan.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_grok_moves_its_folders_and_its_launcher_link_last_and_keeps_its_home(
+    ) {
+        // Spec §6.3's grok row as the phase 4 step D plan rules it (rulings
+        // 3 and 4): with everything present but no fallback links, three
+        // folders and the fish file, then `bin/agent` and `bin/grok` last --
+        // the folder `~/.grok/bin` itself is not listed; `~/.grok` and
+        // `~/.zshrc` kept and said. A `/usr/local/bin/grok` on the machine
+        // running this test, if there is one, is not a link into this temp
+        // home, so it gets no sentence (its ruling 6): the expected list does
+        // not depend on the host.
+        let home = TempHome::new("grok-plan-uninstall-full");
+        home.file(".zshrc");
+        home.file(".config/fish/completions/grok.fish");
+        home.file(".grok/bin/my-own-script");
+        let (adapter, inst, layout) = detected_grok(
+            &home,
+            exited_0(GROK_CHECK_CURRENT),
+            Arc::new(MockTrasher::new()),
+        )
+        .await;
+
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+
+        let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+            panic!("a path list: {:?}", plan.action);
+        };
+        assert_eq!(
+            paths,
+            &vec![
+                home.path().join(".grok/downloads"),
+                home.path().join(".grok/bundled"),
+                home.path().join(".grok/completions"),
+                home.path().join(".config/fish/completions/grok.fish"),
+                layout.agent.clone(),
+                layout.launcher.clone(),
+            ]
+        );
+        assert_eq!(
+            previewed.iter().map(|i| i.kind).collect::<Vec<_>>(),
+            vec![
+                ItemKind::Dir,
+                ItemKind::Dir,
+                ItemKind::Dir,
+                ItemKind::File,
+                ItemKind::Symlink,
+                ItemKind::Symlink
+            ]
+        );
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::WillTrash {
+                    path: "~/.grok/downloads".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/bundled".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/completions".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.config/fish/completions/grok.fish".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/bin/agent".to_string(),
+                    what: RemovedWhat::Launcher
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/bin/grok".to_string(),
+                    what: RemovedWhat::Launcher
+                },
+                Warning::WillKeep {
+                    path: "~/.grok".to_string(),
+                    what: KeptWhat::SettingsAndHistory
+                },
+                Warning::WillKeep {
+                    path: "~/.zshrc".to_string(),
+                    what: KeptWhat::ShellConfigLines
+                },
+            ]
+        );
+        assert_eq!(plan.timeout_secs, removal::TIMEOUT_SECS);
+        // The user's own script in the PATH folder is neither listed nor
+        // moved (the step D plan's ruling 4).
+        assert!(!paths.contains(&home.path().join(".grok/bin/my-own-script")));
+        assert!(!paths.contains(&home.path().join(".grok/bin")));
+
+        // The minimum: downloads and the two links only, nothing kept to
+        // mention but `~/.grok` itself.
+        let home = TempHome::new("grok-plan-uninstall-min");
+        let layout_min = grok_layout(&home, "1.0.41");
+        std::fs::remove_dir_all(layout_min.root.join("bundled")).unwrap();
+        std::fs::remove_dir_all(layout_min.root.join("completions")).unwrap();
+        let runner = grok_runner(&layout_min, exited_0(GROK_CHECK_CURRENT));
+        let adapter = grok_adapter(runner);
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(
+            paths,
+            &vec![
+                home.path().join(".grok/downloads"),
+                layout_min.agent.clone(),
+                layout_min.launcher.clone()
+            ]
+        );
+        assert_eq!(plan.warnings.len(), 4, "{:?}", plan.warnings);
+    }
+
+    #[tokio::test]
+    async fn test_plan_uninstall_for_grok_keeps_a_foreign_agent_link_and_moves_its_own_fallback_links_first(
+    ) {
+        // Review Focus 2 (spec §十三 #27): `~/.local/bin/agent` belongs to
+        // another CLI -- kept and said, the uninstall goes on. grok's own
+        // `~/.local/bin/grok` (a link into the root) is moved, and moved
+        // first, while every folder its text could pass through still
+        // exists (the phase 4 step D plan's ruling 3).
+        let home = TempHome::new("grok-plan-foreign-agent");
+        let other = home.executable("other-cli/agent");
+        home.link(".local/bin/agent", &other);
+        let trasher = Arc::new(MockTrasher::new());
+        let (adapter, inst, layout) =
+            detected_grok(&home, exited_0(GROK_CHECK_CURRENT), trasher.clone()).await;
+        let fallback = home.link(".local/bin/grok", &layout.launcher);
+
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan, not a refusal");
+
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(paths[0], fallback);
+        assert_eq!(paths.last(), Some(&layout.launcher));
+        assert!(!paths.contains(&home.path().join(".local/bin/agent")));
+        assert_eq!(
+            plan.warnings[0],
+            Warning::WillTrash {
+                path: "~/.local/bin/grok".to_string(),
+                what: RemovedWhat::Launcher
+            }
+        );
+        let kept_position = plan
+            .warnings
+            .iter()
+            .position(|w| {
+                *w == Warning::WillKeep {
+                    path: "~/.local/bin/agent".to_string(),
+                    what: KeptWhat::NotOurs,
+                }
+            })
+            .expect("the foreign link is said to stay");
+        assert!(
+            plan.warnings[..kept_position]
+                .iter()
+                .all(|w| matches!(w, Warning::WillTrash { .. })),
+            "after the moves, before the recipe's kept paths: {:?}",
+            plan.warnings
+        );
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(&trasher.calls(), paths);
+        assert!(
+            std::fs::symlink_metadata(home.path().join(".local/bin/agent"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the foreign link is untouched"
+        );
+        assert!(layout.root.join("config.toml").is_file());
+        assert!(layout.root.join("auth.json").is_file());
+        assert!(layout.root.join("sessions/s1.jsonl").is_file());
+        let key = adapter.artifact_key(&inst);
+        assert!(
+            !adapter
+                .reconcile_after_uninstall(&inst, &key)
+                .await
+                .unwrap()
+                .present
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_stopped_grok_uninstall_leaves_a_launcher_only_row_that_a_second_uninstall_finishes(
+    ) {
+        // Review Focus 6: macOS refuses `bundled` (the second item). The
+        // download folder is in the Trash, `~/.grok/bin/grok` and
+        // `~/.grok/bin/agent` dangle into `~/.grok` -- the launcher-only
+        // state (spec §3.3 step 2, relative link text) -- the row stays, and
+        // a second uninstall lists `downloads` as already gone and finishes
+        // with the two links, `grok` last.
+        let home = TempHome::new("grok-stopped");
+        let trasher = Arc::new(MockTrasher::new());
+        trasher.refuse_call(1, "Operation not permitted");
+        let (adapter, inst, layout) =
+            detected_grok(&home, exited_0(GROK_CHECK_CURRENT), trasher.clone()).await;
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                exit_code: None,
+                summary: "Operation not permitted".to_string()
+            }
+        );
+        assert_eq!(trasher.calls().len(), 2);
+        assert!(std::fs::symlink_metadata(&layout.launcher)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        // Both links now dangle: there, but resolving to nothing.
+        assert!(std::fs::symlink_metadata(&layout.agent)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(!layout.agent.exists() && !layout.launcher.exists());
+        assert_eq!(
+            route::probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+            Probe::LauncherOnly
+        );
+        let key = adapter.artifact_key(&inst);
+        assert!(
+            adapter
+                .reconcile_after_uninstall(&inst, &key)
+                .await
+                .unwrap()
+                .present
+        );
+
+        // The next refresh: a launcher-only row, no version read.
+        let rows = adapter.detect(&env_as_owner(&home)).await;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status.notes, vec![InstanceNote::LauncherOnly]);
+        assert_eq!(rows[0].version, None);
+
+        // The second uninstall, with a Trash that accepts everything.
+        let second = Arc::new(MockTrasher::new());
+        let runner = grok_runner(&layout, exited_0(GROK_CHECK_CURRENT));
+        let adapter = StandaloneAdapter::new(
+            &GROK,
+            runner,
+            Arc::new(MockHttpClient::new()),
+            second.clone(),
+        )
+        .with_trash_gap(Duration::ZERO);
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan");
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list");
+        };
+        assert_eq!(
+            paths,
+            &vec![
+                home.path().join(".grok/bundled"),
+                home.path().join(".grok/completions"),
+                layout.agent.clone(),
+                layout.launcher.clone(),
+            ]
+        );
+        assert_eq!(
+            plan.warnings[0],
+            Warning::AlreadyGone {
+                path: "~/.grok/downloads".to_string()
+            }
+        );
+        let outcome = adapter
+            .execute(
+                &plan,
+                Arc::new(VecSink::new()),
+                10,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(
+            route::probe(RouteKind::SymlinkIntoRoot, &layout.launcher, &layout.root),
+            Probe::Absent
+        );
+        assert!(
+            std::fs::symlink_metadata(&layout.agent).is_err(),
+            "agent went too"
+        );
+        assert!(
+            layout.root.join("bin").is_dir(),
+            "the emptied folder stays (step D plan ruling 4)"
+        );
+        assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
     }
 }

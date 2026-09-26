@@ -22,7 +22,7 @@ impl Session {
     /// result is the caller's, not session state, and does not enter the
     /// `Snapshot` (it is not about the managed sources, and would either
     /// bump `same_content` on every scan or be ignored by it). The
-    /// backup-file patterns of every standalone recipe
+    /// backup-file patterns of every registered standalone recipe
     /// (`recipes::backup_globs`) are handed in for rule 4; only the ones
     /// with an instance in the snapshot claim anything.
     pub fn scan_unknown(&self, env: &HostEnv) -> UnknownScan {

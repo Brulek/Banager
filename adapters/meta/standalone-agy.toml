@@ -1,0 +1,7 @@
+schema_version = 1
+id = "standalone-agy"
+name = "Antigravity CLI"
+kind = "standalone"
+platforms = ["macos"]
+homepage = "https://antigravity.google/docs/cli/install/"
+verified_versions = ["1.2.10"]

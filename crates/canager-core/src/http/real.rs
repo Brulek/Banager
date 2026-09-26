@@ -28,8 +28,11 @@ pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 /// (`CargoAdapter::latest_stable_version`), pypi.org
 /// (`PipxAdapter::latest_pypi_version`), registry.ollama.ai
 /// (`OllamaAdapter::compare_digests`), downloads.claude.ai
-/// (`StandaloneAdapter::check_updates`, Claude Code's channel pointer) and
-/// static.rust-lang.org (the same, rustup's release file).
+/// (`StandaloneAdapter::check_updates`, Claude Code's channel pointer),
+/// static.rust-lang.org (the same, rustup's release file) and
+/// antigravity-cli-auto-updater-974169037036.us-central1.run.app (the
+/// same, Antigravity CLI's version manifest, a Google Cloud Run service;
+/// on Apple silicon only).
 /// `send` refuses any other https host
 /// before a connection is opened -- fail closed, so a URL built from data
 /// off disk or off the network (a crate name, a model reference) can at
@@ -52,6 +55,7 @@ pub const ALLOWED_HTTPS_HOSTS: &[&str] = &[
     "registry.ollama.ai",
     "downloads.claude.ai",
     "static.rust-lang.org",
+    "antigravity-cli-auto-updater-974169037036.us-central1.run.app",
 ];
 
 /// `Ok(())` when `url` is one `send` may fetch: any `http` URL, or an
@@ -609,5 +613,16 @@ mod tests {
         // `RUSTUP` recipe (adapters/standalone/recipes.rs), phase 4 step E.
         host_allowed("https://static.rust-lang.org/rustup/release-stable.toml")
             .expect("static.rust-lang.org");
+    }
+
+    #[test]
+    fn test_host_allowed_accepts_agys_version_manifest() {
+        // The exact URL `StandaloneAdapter::check_updates` requests for the
+        // `AGY` recipe (adapters/standalone/recipes.rs), phase 4 step D --
+        // on Apple silicon only (`latest::manifest_arch_allowed`).
+        host_allowed(
+            "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json",
+        )
+        .expect("antigravity-cli-auto-updater-974169037036.us-central1.run.app");
     }
 }

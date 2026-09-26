@@ -1,5 +1,6 @@
 //! Versions: the installed one out of a `--version` line, the published
-//! one out of an endpoint's body, and how the two compare.
+//! one out of an endpoint's body or a tool's own update check, and how the
+//! two compare.
 //!
 //! Dotted integers, compared component by component. The existing
 //! adapters compare with `!=`, because a package registry never reports a
@@ -7,7 +8,9 @@
 //! pointer can (Claude Code's `stable` pointer was 2.1.274 while the
 //! installed `latest` was 2.1.282, recorded in
 //! `adapters/fixtures/standalone-claude/2.1.282/`), so only `remote > local`
-//! is an update (phase 4 spec §4.3). No `semver` crate: these tools' versions
+//! is an update (phase 4 spec §4.3) -- unless the tool answers for itself
+//! (`parse_update_check`), whose verdict is taken as answered and never
+//! compared (the same section). No `semver` crate: these tools' versions
 //! can include suffixes; those remain intact and uncheckable. Calver (`2026.9.12`) is right under this
 //! rule where a string comparison is wrong.
 
@@ -110,7 +113,7 @@ pub fn parse_channel_body(body: &str) -> Result<String, String> {
 /// string, or whose version is not a dotted version. The reason becomes
 /// an uncheckable row's description, so it quotes at most a few
 /// characters of the body, never a page of HTML. Read by
-/// `StandaloneAdapter::latest_version` for `Latest::HttpTomlVersion`.
+/// `StandaloneAdapter::published` for `Latest::HttpTomlVersion`.
 pub fn parse_release_stable_toml(body: &str) -> Result<String, String> {
     let shown = || -> String { body.trim().chars().take(40).collect() };
     let table: toml::Value = toml::from_str(body)
@@ -130,6 +133,119 @@ pub fn parse_release_stable_toml(body: &str) -> Result<String, String> {
     } else {
         Err(format!(
             "the release file's version is not a version (got {version:?})"
+        ))
+    }
+}
+
+/// The version a JSON manifest names in its top-level `field` -- agy's
+/// `manifests/darwin_arm64.json` answers `{"version":"1.2.9","url":…,
+/// "sha512":…}` (agy.md §4, VERIFIED live) -- trimmed; `Err` with a short
+/// reason for a body that is not JSON, has no such string, or names
+/// something that is not a dotted version. The reason becomes an
+/// uncheckable row's description, so it quotes at most a few characters
+/// of the body, never a page of HTML. Read by
+/// `StandaloneAdapter::published` for `Latest::HttpJsonField`.
+pub fn parse_json_field(body: &str, field: &str) -> Result<String, String> {
+    let shown = || -> String { body.trim().chars().take(40).collect() };
+    let value: serde_json::Value = serde_json::from_str(body)
+        .map_err(|_| format!("the manifest is not JSON (got {:?})", shown()))?;
+    let version = value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("the manifest has no `{field}` string (got {:?})", shown()))?
+        .trim();
+    if is_dotted_version(version) {
+        Ok(version.to_string())
+    } else {
+        Err(format!(
+            "the manifest's `{field}` is not a version (got {version:?})"
+        ))
+    }
+}
+
+/// What a tool's own read-only update check answered (grok's `update
+/// --check --json`, grok.md §3, VERIFIED on this Mac): the newest version
+/// it knows of, and whether it calls that an update. Read by
+/// `StandaloneAdapter::check_updates`, which trusts `available` and never
+/// compares (spec §4.3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpdateCheck {
+    pub latest: String,
+    pub available: bool,
+}
+
+/// `UpdateCheck` out of the check command's stdout: a JSON object whose
+/// `latest_field` is a non-empty string, whose `available_field` is a
+/// boolean, and whose `error_field` (when the recipe names one) is absent
+/// or `null` -- `{"currentVersion":"1.0.41","latestVersion":"1.0.41",
+/// "updateAvailable":false,…,"error":null}`. `Err` with a short reason
+/// otherwise; a non-null error is quoted, since `updateAvailable: false`
+/// beside it means the tool could not find out, not that nothing is newer
+/// (ruling 10 of the phase 4 step D plan). The tool's `latest` is taken as
+/// it is, suffix and all: it is shown, not compared. Read by
+/// `StandaloneAdapter::published` for `Latest::Command`.
+pub fn parse_update_check(
+    stdout: &str,
+    latest_field: &str,
+    available_field: &str,
+    error_field: Option<&str>,
+) -> Result<UpdateCheck, String> {
+    let shown = || -> String { stdout.trim().chars().take(40).collect() };
+    let value: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|_| format!("the update check did not print JSON (got {:?})", shown()))?;
+    if let Some(error) = error_field.and_then(|field| value.get(field)) {
+        if !error.is_null() {
+            let text = match error.as_str() {
+                Some(text) => text.trim().to_string(),
+                None => error.to_string(),
+            };
+            let text: String = text.chars().take(80).collect();
+            return Err(format!("the update check reported: {text}"));
+        }
+    }
+    let latest = value
+        .get(latest_field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "the update check has no `{latest_field}` string (got {:?})",
+                shown()
+            )
+        })?
+        .trim()
+        .to_string();
+    let available = value
+        .get(available_field)
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            format!(
+                "the update check has no `{available_field}` boolean (got {:?})",
+                shown()
+            )
+        })?;
+    if latest.is_empty() {
+        return Err(format!("the update check's `{latest_field}` is empty"));
+    }
+    Ok(UpdateCheck { latest, available })
+}
+
+/// The CPU architectures a `Latest::HttpJsonField` manifest URL has been
+/// verified for: agy's `darwin_arm64.json` was fetched live (agy.md §4);
+/// the `darwin_amd64.json` the install script's `${os}_${arch}` rule
+/// implies was not (spec §3.5, §十一). Spelled as `std::env::consts::ARCH`
+/// spells it -- `aarch64`, never `arm64`. Read by `manifest_arch_allowed`.
+pub const MANIFEST_VERIFIED_ARCHES: [&str; 1] = ["aarch64"];
+
+/// `Ok` when a manifest lookup may be made on `arch`; otherwise the reason
+/// the row says "could not check" -- an Intel Mac, or a universal build
+/// under Rosetta, which reports `x86_64`: the safe direction, no request
+/// to an unverified URL. Read by `StandaloneAdapter::published`.
+pub fn manifest_arch_allowed(arch: &str) -> Result<(), String> {
+    if MANIFEST_VERIFIED_ARCHES.contains(&arch) {
+        Ok(())
+    } else {
+        Err(format!(
+            "not yet verified on Intel Macs: this Canager runs as {arch:?}, and the manifest URL is verified for Apple silicon only"
         ))
     }
 }
@@ -403,6 +519,115 @@ mod tests {
             let err = parse_release_stable_toml(body).expect_err(body);
             assert!(err.contains("release file"), "{body:?}: {err}");
             assert!(err.len() < 140, "the reason stays short: {err}");
+        }
+    }
+
+    #[test]
+    fn test_parse_json_field_reads_agys_manifest_version_and_nothing_else() {
+        // agy.md §4, VERIFIED live 2026-09-24: the manifest is one JSON
+        // object with `version`, `url`, `sha512`. Only `version` is read;
+        // the other two are the installer's business.
+        let manifest = r#"{"version":"1.2.9","url":"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.2.9-5905287731871744/darwin-arm/cli_mac_arm64.tar.gz","sha512":"8a96"}"#;
+        assert_eq!(
+            parse_json_field(manifest, "version"),
+            Ok("1.2.9".to_string())
+        );
+        assert_eq!(
+            parse_json_field(r#"{ "version" : " 1.2.10 " }"#, "version"),
+            Ok("1.2.10".to_string())
+        );
+        for (body, needle) in [
+            ("", "not JSON"),
+            ("<html>Sign in</html>", "not JSON"),
+            (r#"{"url":"x"}"#, "no `version` string"),
+            (r#"{"version":12}"#, "no `version` string"),
+            (r#"{"version":"latest"}"#, "not a version"),
+            (r#"{"version":"1.2.9-beta"}"#, "not a version"),
+        ] {
+            let err = parse_json_field(body, "version").expect_err(body);
+            assert!(err.contains(needle), "{body:?}: {err}");
+            assert!(err.len() < 120, "the reason stays short: {err}");
+        }
+    }
+
+    #[test]
+    fn test_parse_update_check_reads_groks_answer_and_nothing_else() {
+        // grok.md §3, VERIFIED on this Mac: `grok update --check --json`
+        // prints one JSON object. Only the three fields the recipe names are
+        // read; `latest` is taken as printed, since it is never compared;
+        // a non-null `error` makes the whole answer a failure, since
+        // `updateAvailable: false` beside an error is "could not check",
+        // never "up to date" (ruling 10 of the phase 4 step D plan).
+        let answer = r#"{"currentVersion":"1.0.41","latestVersion":"1.0.41","updateAvailable":false,"installer":"internal","channel":"stable","autoUpdate":true,"error":null}"#;
+        assert_eq!(
+            parse_update_check(answer, "latestVersion", "updateAvailable", Some("error")),
+            Ok(UpdateCheck {
+                latest: "1.0.41".to_string(),
+                available: false,
+            })
+        );
+        assert_eq!(
+            parse_update_check(
+                r#"{"latestVersion":"1.0.42-alpha.1","updateAvailable":true}"#,
+                "latestVersion",
+                "updateAvailable",
+                Some("error")
+            ),
+            Ok(UpdateCheck {
+                latest: "1.0.42-alpha.1".to_string(),
+                available: true,
+            })
+        );
+        // No error field named: the key is not looked at.
+        assert!(parse_update_check(
+            r#"{"latestVersion":"1.0.41","updateAvailable":false,"error":"ignored"}"#,
+            "latestVersion",
+            "updateAvailable",
+            None
+        )
+        .is_ok());
+        for (body, needle) in [
+            ("", "did not print JSON"),
+            ("Checking for updates...\n", "did not print JSON"),
+            (r#"{"updateAvailable":true}"#, "no `latestVersion` string"),
+            (
+                r#"{"latestVersion":"1.0.42"}"#,
+                "no `updateAvailable` boolean",
+            ),
+            (
+                r#"{"latestVersion":"1.0.42","updateAvailable":"yes"}"#,
+                "no `updateAvailable` boolean",
+            ),
+            (r#"{"latestVersion":"","updateAvailable":true}"#, "is empty"),
+            (
+                r#"{"latestVersion":"1.0.41","updateAvailable":false,"error":"network unreachable"}"#,
+                "reported: network unreachable",
+            ),
+            (
+                r#"{"latestVersion":"1.0.41","updateAvailable":false,"error":{"code":7}}"#,
+                r#"reported: {"code":7}"#,
+            ),
+        ] {
+            let err = parse_update_check(body, "latestVersion", "updateAvailable", Some("error"))
+                .expect_err(body);
+            assert!(err.contains(needle), "{body:?}: {err}");
+            assert!(err.len() < 140, "the reason stays short: {err}");
+        }
+    }
+
+    #[test]
+    fn test_manifest_arch_allowed_only_on_apple_silicon() {
+        // Spec §3.1/§3.5: only the darwin_arm64 manifest was fetched; an
+        // Intel Mac, or a universal build under Rosetta (which reports
+        // x86_64), gets "could not check" with the reason, not a request
+        // to an unverified URL. `std::env::consts::ARCH` spells it
+        // `aarch64`, never `arm64`.
+        assert_eq!(MANIFEST_VERIFIED_ARCHES, ["aarch64"]);
+        assert_eq!(manifest_arch_allowed("aarch64"), Ok(()));
+        for arch in ["x86_64", "arm64", ""] {
+            let err = manifest_arch_allowed(arch).expect_err(arch);
+            assert!(err.contains("Intel"), "{arch:?}: {err}");
+            assert!(err.contains(arch), "{arch:?}: {err}");
         }
     }
 }

@@ -7,9 +7,10 @@
 //! moves each path to the Trash in order -- the launcher last -- running
 //! every check on that item once more immediately before its move and,
 //! before the launcher's move, looking once more for every other listed
-//! path, which must be gone by then (`listed_path_back`). Nothing here
-//! knows the `Adapter` contract (`mod.rs` does) or how an item is moved
-//! (`crate::trash` does).
+//! path, which must be gone by then unless it is an optional one this run
+//! never moved that Canager cannot confirm is the tool's
+//! (`listed_path_back`). Nothing here knows the `Adapter` contract
+//! (`mod.rs` does) or how an item is moved (`crate::trash` does).
 //!
 //! What the checks guard against is change by accident: the tool's own
 //! updater, the user, another app doing its ordinary work between the
@@ -671,41 +672,80 @@ enum Turn {
 /// alone cannot tell (`Present` if the launcher's target is among the new
 /// files, `LauncherOnly` if not; the folder is there either way). So
 /// before the launcher moves, every other path the recipe lists must be
-/// gone from the disk: each was moved earlier in this run, was already
-/// gone at the preview (`Warning::AlreadyGone`), or was never there (an
-/// optional path). One whose `lstat` answers anything but "no such file"
-/// -- it is there again, or cannot be looked at -- is returned, and the
-/// run stops before the launcher (`Turn::Changed`): the launcher stays,
-/// the row with it, and a fresh preview lists what came back. Read by
-/// `take_turn`.
-fn listed_path_back(look: &Look<'_>) -> Option<PathBuf> {
+/// gone from the disk: each was moved earlier in this run (`moved`), was
+/// already gone at the preview (`Warning::AlreadyGone`), or was never
+/// there (an optional path). One whose `lstat` answers anything but "no
+/// such file" -- it is there again, or cannot be looked at -- is returned,
+/// and the run stops before the launcher (`Turn::Changed`): the launcher
+/// stays, the row with it, and a fresh preview lists what came back. The
+/// one exception is an optional path this run never moved that Canager
+/// cannot confirm is the tool's, by the preview's own rule
+/// (`kept_as_not_ours`): not something the list moves -- a preview lists
+/// it among what stays (`WillKeep { NotOurs }`) -- and stopping for it
+/// would stop every run of an uninstall whose preview kept it, such as a
+/// foreign `~/.local/bin/agent` beside Grok Build's (spec §十三 #27; ruling
+/// 5 of the phase 4 step D plan). A path this run moved is never
+/// excepted: back as anything, it is there again. Read by `take_turn`.
+fn listed_path_back(look: &Look<'_>, moved: &[PathBuf]) -> Option<PathBuf> {
     let home = look.job.detected.home.as_path();
     look.job
         .remove
         .iter()
-        .map(|spec| route::expand(home, spec.path))
-        .filter(|path| *path != look.launcher)
-        .find(|path| {
-            !matches!(
+        .map(|spec| (spec, route::expand(home, spec.path)))
+        .filter(|(_, path)| *path != look.launcher)
+        .find(|(spec, path)| {
+            let gone = matches!(
                 std::fs::symlink_metadata(path),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound
-            )
+            );
+            let excepted =
+                spec.optional && !moved.contains(path) && kept_as_not_ours(look, spec, path);
+            !gone && !excepted
         })
+        .map(|(_, path)| path)
+}
+
+/// Whether the preview's own rule keeps `path`, an optional listed path,
+/// as one Canager cannot confirm is the tool's (`WillKeep { NotOurs }`) --
+/// `plan_removal`'s two branches that say so, asked again from this look:
+/// its `lstat` fails with anything but "no such file" (it cannot be looked
+/// at), or `check_item` refuses it for a reason `keeps_instead` names.
+/// Gone, it is not kept at all, and when a kept path cannot be placed
+/// (`kept_places`) nothing is confirmed: `false` for both. Read by
+/// `listed_path_back`.
+fn kept_as_not_ours(look: &Look<'_>, spec: &'static RemoveSpec, path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => kept_places(look).is_ok_and(|kept| {
+            matches!(
+                check_item(look, &kept, spelled(spec.path), spec.expect, path),
+                Err(refusal) if keeps_instead(refusal.reason)
+            )
+        }),
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
 }
 
 /// One item's turn, on tokio's blocking pool: every check again, from a
 /// fresh look (the home folder, the kept paths, the item's folders, the
 /// item itself), its identity compared with what the preview saw, and then
 /// -- with nothing in between -- the move. At the launcher's turn, before
-/// its own checks, every other listed path must be gone
-/// (`listed_path_back`). `check_item`'s last step is the `lstat` that
+/// its own checks, every other listed path must be gone, save an optional
+/// one this run never moved (`moved`: the paths before this one) that
+/// Canager cannot confirm is the tool's (`listed_path_back`).
+/// `check_item`'s last step is the `lstat` that
 /// produced `seen`, and `Trasher::trash` is handed that answer's kind
 /// rather than looking again: Canager checks each item immediately before
 /// moving it; a program running as you that swaps the item in that instant
 /// could still race it (docs/what-we-run.md, "Moving files to the Trash").
 /// That is the documented edge of the design: the system's call takes a
 /// path, and what it finds there is what it moves.
-fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Trasher) -> Turn {
+fn take_turn(
+    job: &Job,
+    path: &Path,
+    previewed: ItemIdentity,
+    moved: &[PathBuf],
+    trasher: &dyn Trasher,
+) -> Turn {
     // The item as the list stands now (`listed_items`: a listed path, or a
     // backup a pattern matches); one that is no longer listed -- a backup
     // that vanished by its turn -- is not what the preview saw.
@@ -716,7 +756,7 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
         return Turn::Changed(path.to_path_buf());
     };
     if path == look.launcher {
-        if let Some(back) = listed_path_back(&look) {
+        if let Some(back) = listed_path_back(&look, moved) {
             return Turn::Changed(back);
         }
     }
@@ -746,10 +786,11 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
 /// each path in order: after the first, the pause (Cancel ends it, and it
 /// never outlasts the budget); Cancel and the budget checked; one turn on
 /// the blocking pool (`take_turn`: at the launcher's, that every other
-/// listed path is gone; every check again, the identity against the
-/// preview's, the move), awaited to its end even if Cancel arrives
-/// meanwhile -- a move handed to the system finishes and is reported; one
-/// log note. After the last move the same pause once more, before
+/// listed path is gone or, optional and never moved by this run, one
+/// Canager cannot confirm is the tool's; every check again, the identity
+/// against the preview's, the move), awaited to its end even if Cancel
+/// arrives meanwhile -- a move handed to the system finishes and is
+/// reported; one log note. After the last move the same pause once more, before
 /// `Succeeded` (a Cancel there only cuts it short: everything is moved).
 ///
 /// `Succeeded` only when every path was moved; `Failed` with the system's
@@ -832,8 +873,13 @@ pub async fn execute_removal(
         }
         let turn = {
             let (job, path, trasher) = (job.clone(), path.clone(), Arc::clone(trasher));
-            tokio::task::spawn_blocking(move || take_turn(&job, &path, previewed, trasher.as_ref()))
-                .await
+            // Every path before this one was moved by this run: a turn that
+            // did not move its item ended the run (below).
+            let moved = confirmed.paths[..index].to_vec();
+            tokio::task::spawn_blocking(move || {
+                take_turn(&job, &path, previewed, &moved, trasher.as_ref())
+            })
+            .await
         };
         match turn {
             Ok(Turn::Moved(trashed_to)) => sink.emit(OperationEvent::Note {
@@ -2252,6 +2298,70 @@ mod tests {
             Warning::AlreadyGone {
                 path: "~/.local/share/claude".to_string()
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_moves_the_launcher_past_a_path_kept_as_not_ours_never_past_one_it_moved(
+    ) {
+        // Ruling 5 of the phase 4 step D plan: an optional path that is there
+        // but that Canager cannot confirm is the tool's is kept and said, and
+        // the uninstall goes on (spec §十三 #27). At the launcher's turn it is
+        // still there -- nothing moved it -- and the preview showed it
+        // staying, so the launcher moves. Claude Code's `~/.claude` as a link
+        // to `~/Documents`, whose `downloads` the preview keeps.
+        let home = TempHome::new("removal-exec-past-not-ours");
+        let layout = claude_layout(&home, "2.1.281");
+        let documents = home.dir("Documents");
+        home.dir("Documents/downloads");
+        home.link(".claude", &documents);
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        assert!(preview
+            .warnings
+            .contains(&keep("~/.claude/downloads", KeptWhat::NotOurs)));
+        let trasher: Arc<dyn Trasher> = Arc::new(MockTrasher::new());
+
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert!(
+            std::fs::symlink_metadata(&layout.launcher).is_err(),
+            "the launcher moved"
+        );
+        assert!(
+            home.path().join("Documents/downloads").is_dir(),
+            "what the preview kept stays"
+        );
+
+        // A path this run moved, back as something that is not the tool's
+        // (the cache folder, back as a file): it is there again, so it still
+        // stops the run before the launcher, whatever it is now.
+        let home = TempHome::new("removal-exec-moved-back-as-other");
+        let layout = claude_layout(&home, "2.1.281");
+        let downloads = home.dir(".claude/downloads");
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let recreating = Arc::new(RecreatingTrasher {
+            inner: MockTrasher::new(),
+            after: 1,
+            recreate: downloads.clone(),
+            calls: StdMutex::new(0),
+        });
+        let trasher: Arc<dyn Trasher> = recreating.clone();
+
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, path_changed("~/.claude/downloads"));
+        assert!(downloads.is_file(), "what came back is left as it is");
+        assert!(
+            std::fs::symlink_metadata(&layout.launcher)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the launcher stays"
         );
     }
 

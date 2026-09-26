@@ -562,10 +562,13 @@ pub enum UpdateBlocked {
     Pinned,
     /// The tool installs its updates itself and has no update command
     /// Canager may run for it, so a newer version is listed with no
-    /// button. One producer: `StandaloneAdapter::check_updates`
+    /// button. Produced by `StandaloneAdapter::check_updates`
     /// (`adapters/standalone/mod.rs`) for a recipe whose `upgrade` is
     /// `None` -- Antigravity CLI, whose `agy update` is undocumented, takes
-    /// no options and has never been run (agy.md §4; spec §4.4). Not "no
+    /// no options and has never been run (agy.md §4; spec §4.4) -- and, for
+    /// the same recipe, by `StandaloneAdapter::plan`'s `Upgrade` arm inside
+    /// `AdapterError::UpdateBlocked`: the gate's late twin for a stale
+    /// snapshot (spec §五). Not "no
     /// candidate": the Installed row would then say "up to date", which is
     /// false while 1.2.11 exists; not `checkable: false`: Canager did
     /// check. Read by the gate (`blocked_upgrade` in session/plans.rs,

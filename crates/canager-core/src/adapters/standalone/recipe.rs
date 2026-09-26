@@ -7,9 +7,10 @@
 //! step E adds, for rustup, the `SecondToken` version parse, the
 //! `HttpTomlVersion` source, the `FlatFile` route, `$CARGO_HOME` paths,
 //! `extra_locks` and `Uninstall::Command`; step D added `backup_globs` and
-//! adds `Expect::File`, the other `Latest` sources and an optional `upgrade`
-//! (agy updates itself only). A variant or field defined before anything
-//! produces it is this project's most common defect (spec §十三 #41).
+//! adds `Expect::File`, the two `Latest` sources a manifest and a tool's own
+//! check need, and an optional `upgrade` (agy updates itself only). A
+//! variant or field defined before anything produces it is this project's
+//! most common defect (spec §十三 #41).
 
 use super::Detected;
 use crate::model::{CancelPolicy, KeptWhat, RemovedWhat, ResourceLock, UninstallBlocked, Warning};
@@ -48,8 +49,14 @@ pub struct Recipe {
     /// a standalone tool, the Updates page's `selfUpdatingHint` sentence,
     /// arrives with Task 10 of the phase 4 step B plan.
     pub self_updates: bool,
-    /// The tool's own documented update command. Read by `plan(Upgrade)`.
-    pub upgrade: UpgradeCmd,
+    /// The tool's own documented update command, or `None` for a tool that
+    /// installs its updates itself and offers nothing Canager may run
+    /// (agy: `agy update` is undocumented, takes no options and has never
+    /// been run, agy.md §4). `None` puts `UpdateBlocked::SelfUpdatesOnly`
+    /// on every update candidate the recipe produces and makes
+    /// `plan(Upgrade)` refuse with the same reason (spec §4.4, D5). Read by
+    /// `check_updates` and `plan(Upgrade)`.
+    pub upgrade: Option<UpgradeCmd>,
     /// How the tool is removed, or `None` when there is no safe way: the
     /// artifact then carries `UninstallBlocked::NoSafeMethod`, the gate
     /// refuses and the page says so (spec §6.1 "Neither"; no first-batch
@@ -121,8 +128,8 @@ pub enum RouteKind {
     /// instance's `prefix` and plays no part in the fingerprint. A link
     /// at that path is not this route's install, and a dangling link at
     /// it is not this install half-removed (no launcher-only state). Its
-    /// producer is the `RUSTUP` recipe (Task 6 of the phase 4 step E
-    /// plan).
+    /// producers are the `RUSTUP` recipe (Task 6 of the phase 4 step E
+    /// plan) and `AGY` (Task 5 of the phase 4 step D plan).
     FlatFile,
 }
 
@@ -153,12 +160,14 @@ pub enum VersionParse {
     /// `info:` lines rustup prints after that go to stderr, which the
     /// version read never looks at (recorded as
     /// `adapters/fixtures/standalone-rustup/<v>/version-stderr.txt`). Its
-    /// producer is the `RUSTUP` recipe.
+    /// producers are the `RUSTUP` and `GROK` recipes.
     SecondToken,
 }
 
 /// Where the newest published version is read from. Only VERIFIED
-/// endpoints (spec D4); every host here is on `ALLOWED_HTTPS_HOSTS`
+/// endpoints (spec D4), or the tool's own VERIFIED read-only check
+/// (`Command`, which makes its own connection); every host here is on
+/// `ALLOWED_HTTPS_HOSTS`
 /// (`recipes::tests::test_every_recipe_latest_url_is_an_allowed_https_host`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Latest {
@@ -179,9 +188,39 @@ pub enum Latest {
     /// itself reads (`DEFAULT_UPDATE_ROOT` in rustup 1.29.1's
     /// `src/cli/self_update.rs`; rustup.md §6, VERIFIED). Parsed by
     /// `latest::parse_release_stable_toml`, read by
-    /// `StandaloneAdapter::latest_version`. Its producer is the `RUSTUP`
+    /// `StandaloneAdapter::published`. Its producer is the `RUSTUP`
     /// recipe (Task 6 of the phase 4 step E plan).
     HttpTomlVersion { url: &'static str },
+    /// `GET url`, a JSON object whose top-level `field` is the newest
+    /// version (agy's `manifests/darwin_arm64.json`, VERIFIED live, agy.md
+    /// §4). Made only on the architectures `latest::MANIFEST_VERIFIED_ARCHES`
+    /// names: on an Intel Mac, or under Rosetta, the row is "could not
+    /// check" with the reason and no request is sent (spec §3.1; the amd64
+    /// manifest is §十一's). Read by `StandaloneAdapter::published`
+    /// (`latest::parse_json_field`). Its producer is the `AGY` recipe.
+    HttpJsonField {
+        url: &'static str,
+        field: &'static str,
+    },
+    /// `<launcher> args`, whose stdout is a JSON object: `latest_field` the
+    /// newest version, `available_field` whether the tool calls it an
+    /// update -- trusted as answered, never compared (spec §4.3) -- and
+    /// `error_field`, when the tool has one, the key whose non-null value
+    /// means the check itself failed (grok's `"error":null` on success,
+    /// grok.md §3): then the row is "could not check" with that text, never
+    /// "up to date". Only a subcommand whose own `--help` says it installs
+    /// nothing may be named here (grok's `update --check --json`: "Check for
+    /// updates without installing", grok.md §4;
+    /// `recipes::tests::test_every_command_latest_source_only_checks`),
+    /// since it runs on every refresh. Read by `StandaloneAdapter::published`
+    /// (`latest::parse_update_check`). Its producer is the `GROK` recipe.
+    Command {
+        args: &'static [&'static str],
+        timeout_secs: u64,
+        latest_field: &'static str,
+        available_field: &'static str,
+        error_field: Option<&'static str>,
+    },
 }
 
 /// The tool's own update command, run against the launcher through

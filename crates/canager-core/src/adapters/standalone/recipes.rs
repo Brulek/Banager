@@ -1,9 +1,9 @@
-//! The tools, as data. One `pub static` per tool, `RECIPES` listing them
-//! in registration order; `StandaloneAdapter::new` builds one adapter per
-//! entry (`all()`). Each tool also has a meta TOML
-//! (`adapters/meta/standalone-<id>.toml`) and a recorded fixture directory
-//! (`adapters/fixtures/standalone-<id>/`), and the tests below hold every
-//! constant to the invariants the code relies on.
+//! The tools, as data. One `pub static` per tool, `RECIPES` listing the
+//! registered ones in registration order; `StandaloneAdapter::new` builds
+//! one adapter per entry (`all()`). Each registered tool also has a meta
+//! TOML (`adapters/meta/standalone-<id>.toml`) and a recorded fixture
+//! directory (`adapters/fixtures/standalone-<id>/`), and the tests below
+//! hold every registered constant to the invariants the code relies on.
 
 use super::recipe::{
     no_extra_locks, CommandUninstall, Expect, KeepSpec, Latest, Recipe, RemoveSpec, Route,
@@ -81,11 +81,11 @@ pub static CLAUDE: Recipe = Recipe {
         base: "https://downloads.claude.ai/claude-code-releases",
     },
     self_updates: true,
-    upgrade: UpgradeCmd {
+    upgrade: Some(UpgradeCmd {
         args: &["update"],
         timeout_secs: 1800,
         cancel: CancelPolicy::KillThenReconcile,
-    },
+    }),
     uninstall: Some(Uninstall::Paths {
         remove: &[
             RemoveSpec {
@@ -115,6 +115,290 @@ pub static CLAUDE: Recipe = Recipe {
             KeepSpec {
                 path: "~/.claude.json",
                 what: KeptWhat::Settings,
+            },
+        ],
+    }),
+    extra_locks: no_extra_locks,
+    backup_globs: &[],
+};
+
+/// Antigravity CLI (`agy`), Google's terminal agent, installed by its own
+/// script (`curl -fsSL https://antigravity.google/cli/install.sh | bash`,
+/// run by the user; Canager never runs it).
+///
+/// Every value here is from `.superpowers/phase4/agy.md` (VERIFIED on this
+/// Mac, in the install script read in full, or in Google's own
+/// documentation, 2026-09-24, unless noted) and from the phase 4 spec's
+/// agy rows (§3.4, §3.5, §6.3), which re-checked the version read on
+/// 1.2.10; Task 6 of the phase 4 step D plan records the version line, the
+/// manifest, the updater's status file and the layout into
+/// `adapters/fixtures/standalone-agy/<version>/`:
+/// - the launcher `~/.local/bin/agy` is a regular Mach-O file (176 MB on
+///   this Mac), the whole program; the installer copies it there
+///   (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`, §3a).
+///   The root `~/.gemini/antigravity-cli` holds its conversations, logs,
+///   cache, builtin skills and updater state together (§2); `~/.gemini`
+///   itself is shared with Gemini CLI and is never touched. The Homebrew
+///   cask's `agy` is a link into its Caskroom and is Homebrew's row (§3b);
+/// - `agy --version` prints one bare version (`1.2.9`, §4). It is read with
+///   `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the switch Google documents for
+///   its background updater (§4, doc text). On 1.2.10 `--version` did not
+///   reach the updater at all -- no new log file, `update_status.json`
+///   untouched, no updater process (spec §3.4, §十三 #10, which make every
+///   recording of a `verified_versions` entry repeat that observation and
+///   write it into its README) -- so the switch is a belt on top; the
+///   spawns agy.md §4 logged came from runs with a prompt (spec §3.4);
+/// - the newest published version is the `version` of the JSON manifest
+///   the installer and the updater both read,
+///   `…/manifests/darwin_arm64.json` (§3a, §4; VERIFIED live). Only that
+///   file was fetched, so the lookup is made on Apple silicon only
+///   (`latest::manifest_arch_allowed`); the amd64 manifest is spec §十一's;
+/// - it installs its updates itself, in the background, at most every 15
+///   minutes (§4: the documented debounce and this Mac's own log), so
+///   `self_updates` is true and, since `agy update` is undocumented, takes
+///   no options and has never been run (§4), there is no `upgrade`: every
+///   newer version is `UpdateBlocked::SelfUpdatesOnly` -- a badge, no
+///   button, and a sentence saying to open it once (spec §4.4, D5, Q3);
+/// - there is no vendor uninstall document and no `agy uninstall` (§5).
+///   The list combines the installer's own path with the cask's `zap`
+///   (which trashes only `~/.gemini/antigravity-cli`) -- a synthesis, as
+///   agy.md §5 says of its own list: the launcher is the list's one path
+///   -- it is the whole program, listed as `RemovedWhat::Launcher`, "the
+///   command itself" (phase 4 step D plan ruling 2) -- and goes after any
+///   `agy.<time>.old` its updater left beside it (`backup_globs`, spec
+///   §3.5). Kept, and said when present: the root (`ToolState`: no vendor
+///   list says which of its folders could go alone, and the cask treats it
+///   as one, spec §十三 #24), `~/.cache/antigravity` (the installer's
+///   staging folder, directly in `~/.cache`, which check 1 never moves
+///   from -- kept and said rather than excepted, phase 4 step D plan ruling
+///   1), and the two shell files the installer added its PATH line to
+///   (each marked `# Added by Antigravity CLI installer`, §2).
+///
+/// Not yet in `RECIPES`: Task 6 of the phase 4 step D plan registers it
+/// together with the recording and the trust-file section that
+/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
+/// source. Until then only the tests read it, and of the invariants tests
+/// below only `test_every_command_latest_source_only_checks` reaches it.
+pub static AGY: Recipe = Recipe {
+    id: "agy",
+    meta_toml: include_str!("../../../../../adapters/meta/standalone-agy.toml"),
+    route: Route {
+        kind: RouteKind::FlatFile,
+        launcher: "~/.local/bin/agy",
+        root: "~/.gemini/antigravity-cli",
+    },
+    version: VersionCmd {
+        args: &["--version"],
+        env: &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")],
+        parse: VersionParse::FirstToken,
+    },
+    latest: Latest::HttpJsonField {
+        url: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json",
+        field: "version",
+    },
+    self_updates: true,
+    upgrade: None,
+    uninstall: Some(Uninstall::Paths {
+        remove: &[RemoveSpec {
+            path: "~/.local/bin/agy",
+            expect: Expect::File,
+            what: RemovedWhat::Launcher,
+            optional: false,
+        }],
+        keep: &[
+            KeepSpec {
+                path: "~/.gemini/antigravity-cli",
+                what: KeptWhat::ToolState,
+            },
+            KeepSpec {
+                path: "~/.cache/antigravity",
+                what: KeptWhat::InstallerCache,
+            },
+            KeepSpec {
+                path: "~/.zshrc",
+                what: KeptWhat::ShellConfigLines,
+            },
+            KeepSpec {
+                path: "~/.zprofile",
+                what: KeptWhat::ShellConfigLines,
+            },
+        ],
+    }),
+    extra_locks: no_extra_locks,
+    backup_globs: &[Glob {
+        dir: "~/.local/bin",
+        prefix: "agy.",
+        suffix: ".old",
+        what: RemovedWhat::Backups,
+    }],
+};
+
+/// Grok Build (`grok`), xAI's terminal agent, installed by its own script
+/// (`curl -fsSL https://x.ai/cli/install.sh | bash`, run by the user;
+/// Canager never runs it).
+///
+/// Every value here is from `.superpowers/phase4/grok.md` (VERIFIED on
+/// this Mac, in the install script, or in the README the tool ships,
+/// 2026-09-24, unless noted) and from the phase 4 spec's grok rows
+/// (§3.5, §五, §6.3); Task 6 of the phase 4 step D plan records the version
+/// line, grok's own check and the layout into
+/// `adapters/fixtures/standalone-grok/<version>/`:
+/// - the launcher `~/.grok/bin/grok` is a *relative* symbolic link,
+///   `../downloads/grok-<version>-macos-aarch64`, into the root `~/.grok`
+///   (spec §3.5, VERIFIED); `bin/agent` is a second link to the same file
+///   (§1, §2). Old downloads stay in `downloads/` after an update (three
+///   on this Mac, ~400 MB). The Homebrew cask `grok-build` puts its links
+///   in `/opt/homebrew/bin` and is Homebrew's row; the Homebrew *formula*
+///   named `grok` is an unrelated regex library (§2, §7);
+/// - `grok --version` prints `grok 1.0.41 (4220f3b224a6)` (§1): the second
+///   token, no environment (none is documented). Whether `--version` runs
+///   grok's launch-time updater, and whether that updater installs or only
+///   checks, are both UNVERIFIED (§5; phase 4 step D plan ruling 16), so
+///   Task 6's recording notes what `~/.grok/version.json`'s mtime, the
+///   `bin/` links and `downloads/` do around the read it records, and
+///   stops if a link or `downloads/` changes;
+/// - the newest published version is asked of grok itself: `update --check
+///   --json`, whose `--help` says "Check for updates without installing"
+///   (§3, §4; run on this Mac) and which prints `{"currentVersion":…,
+///   "latestVersion":…,"updateAvailable":…,…,"error":null}`.
+///   `updateAvailable` is believed and `latestVersion` shown (spec §4.3);
+///   a non-null `error` makes the row "could not check" with that text
+///   (ruling 10 of the phase 4 step D plan); 60 s. `~/.grok/version.json`
+///   keeps the time of grok's last check (`checked_at`, §1), so this check
+///   likely rewrites that file on every Canager refresh -- grok's write,
+///   not Canager's, which Task 6's recording observes and the trust file's
+///   Grok Build section is to state;
+/// - `auto_update = true` in its config means "check for updates on
+///   launch" (§5); whether it *installs* one is UNVERIFIED, so the row is
+///   not called self-updating (spec §4.4, §十三 #25);
+/// - `grok update` is the documented upgrade (§4): a new file in
+///   `downloads/` and a re-pointed link, the old binary left in place.
+///   1800 s, `KillThenReconcile`. How it behaves with its input closed
+///   has not been observed (spec §五): the author records it on a CI
+///   runner before this step merges (the step D plan's "pre-merge
+///   verification");
+/// - there is no `grok uninstall` and no vendor uninstall document (§6);
+///   the de-facto `rm -rf ~/.grok` would take the login, sessions and
+///   memory, which spec Q4 keeps. The list is the README's "File
+///   Locations" table plus the install script: the two optional fallback
+///   links the installer makes when `~/.grok/bin` is not on PATH *first*
+///   (their link text is UNVERIFIED -- one hop or two -- so they go while
+///   every folder it could pass through is still on the disk; a
+///   precaution, since step C's check 4 would accept them dangling too;
+///   step D plan ruling 3), then `downloads/` (the program), `bundled/`
+///   and `completions/` (optional), the fish completion the installer also
+///   writes (optional; spec §十三 #17), then the two links the installer
+///   put in `~/.grok/bin`: `agent` (optional, a second name for the same
+///   command) and `grok` -- the launcher -- last. The folder `~/.grok/bin`
+///   itself is not moved (spec §6.3 listed it whole; step D plan ruling 4):
+///   it is on the user's PATH, so a script of their own may sit in it, and
+///   it stays inside the kept `~/.grok`, empty unless they put something
+///   there. Kept, and said when present: `~/.grok` (`config.toml`,
+///   `auth.json`, `sessions/`, `memory/`, `skills/`, `plugins/`),
+///   `~/.zshrc`, where the installer writes its marked PATH block for zsh,
+///   macOS's default shell (§2), and, reported only when it is a link into
+///   `~/.grok` (never Homebrew's or another CLI's), a link the installer
+///   may have put in `/usr/local/bin`, which becomes a dead link (spec
+///   §6.3; step D plan ruling 6).
+///
+/// Not yet in `RECIPES`: Task 6 of the phase 4 step D plan registers it
+/// together with the recording and the trust-file section that
+/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
+/// source. Until then only the tests read it, and of the invariants tests
+/// below only `test_every_command_latest_source_only_checks` reaches it.
+pub static GROK: Recipe = Recipe {
+    id: "grok",
+    meta_toml: include_str!("../../../../../adapters/meta/standalone-grok.toml"),
+    route: Route {
+        kind: RouteKind::SymlinkIntoRoot,
+        launcher: "~/.grok/bin/grok",
+        root: "~/.grok",
+    },
+    version: VersionCmd {
+        args: &["--version"],
+        env: &[],
+        parse: VersionParse::SecondToken,
+    },
+    latest: Latest::Command {
+        args: &["update", "--check", "--json"],
+        timeout_secs: 60,
+        latest_field: "latestVersion",
+        available_field: "updateAvailable",
+        error_field: Some("error"),
+    },
+    self_updates: false,
+    upgrade: Some(UpgradeCmd {
+        args: &["update"],
+        timeout_secs: 1800,
+        cancel: CancelPolicy::KillThenReconcile,
+    }),
+    uninstall: Some(Uninstall::Paths {
+        remove: &[
+            RemoveSpec {
+                path: "~/.local/bin/grok",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.local/bin/agent",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.grok/downloads",
+                expect: Expect::Dir,
+                what: RemovedWhat::Program,
+                optional: false,
+            },
+            RemoveSpec {
+                path: "~/.grok/bundled",
+                expect: Expect::Dir,
+                what: RemovedWhat::Program,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.grok/completions",
+                expect: Expect::Dir,
+                what: RemovedWhat::Program,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.config/fish/completions/grok.fish",
+                expect: Expect::File,
+                what: RemovedWhat::Program,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.grok/bin/agent",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: true,
+            },
+            RemoveSpec {
+                path: "~/.grok/bin/grok",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: false,
+            },
+        ],
+        keep: &[
+            KeepSpec {
+                path: "~/.grok",
+                what: KeptWhat::SettingsAndHistory,
+            },
+            KeepSpec {
+                path: "~/.zshrc",
+                what: KeptWhat::ShellConfigLines,
+            },
+            KeepSpec {
+                path: "/usr/local/bin/grok",
+                what: KeptWhat::OutsideHome,
+            },
+            KeepSpec {
+                path: "/usr/local/bin/agent",
+                what: KeptWhat::OutsideHome,
             },
         ],
     }),
@@ -215,11 +499,11 @@ pub static RUSTUP: Recipe = Recipe {
         url: "https://static.rust-lang.org/rustup/release-stable.toml",
     },
     self_updates: false,
-    upgrade: UpgradeCmd {
+    upgrade: Some(UpgradeCmd {
         args: &["self", "update"],
         timeout_secs: 600,
         cancel: CancelPolicy::NoCancel,
-    },
+    }),
     uninstall: Some(Uninstall::Command(CommandUninstall {
         args: &["self", "uninstall", "-y"],
         timeout_secs: 600,
@@ -380,9 +664,13 @@ mod tests {
 
     #[test]
     fn test_claude_updates_with_its_own_updater() {
-        assert_eq!(CLAUDE.upgrade.args, &["update"]);
-        assert_eq!(CLAUDE.upgrade.timeout_secs, 1800);
-        assert_eq!(CLAUDE.upgrade.cancel, CancelPolicy::KillThenReconcile);
+        let upgrade = CLAUDE
+            .upgrade
+            .as_ref()
+            .expect("claude has an update command");
+        assert_eq!(upgrade.args, &["update"]);
+        assert_eq!(upgrade.timeout_secs, 1800);
+        assert_eq!(upgrade.cancel, CancelPolicy::KillThenReconcile);
         assert_eq!(
             CLAUDE.latest,
             Latest::ClaudeChannel {
@@ -421,6 +709,11 @@ mod tests {
                     ),
                 ],
                 Latest::HttpTomlVersion { url } => vec![url.to_string()],
+                Latest::HttpJsonField { url, .. } => vec![url.to_string()],
+                // The tool's own command makes its own connection, under its
+                // own configuration (docs/what-we-run.md, the network
+                // section's last paragraph): no host of Canager's.
+                Latest::Command { .. } => Vec::new(),
             };
             for url in urls {
                 host_allowed(&url).unwrap_or_else(|e| panic!("{}: {url}: {e}", recipe.id));
@@ -621,9 +914,13 @@ mod tests {
     fn test_rustup_updates_and_uninstalls_itself_with_no_cancel_the_gate_and_the_cargo_lock() {
         // `self update`, never `update` (spec §五, D6): the latter touches
         // the toolchains and an interruption leaves them half installed.
-        assert_eq!(RUSTUP.upgrade.args, &["self", "update"]);
-        assert_eq!(RUSTUP.upgrade.timeout_secs, 600);
-        assert_eq!(RUSTUP.upgrade.cancel, CancelPolicy::NoCancel);
+        let upgrade = RUSTUP
+            .upgrade
+            .as_ref()
+            .expect("rustup has an update command");
+        assert_eq!(upgrade.args, &["self", "update"]);
+        assert_eq!(upgrade.timeout_secs, 600);
+        assert_eq!(upgrade.cancel, CancelPolicy::NoCancel);
         let Some(Uninstall::Command(cmd)) = &RUSTUP.uninstall else {
             panic!("rustup uninstalls with its own command");
         };
@@ -667,13 +964,19 @@ mod tests {
         // `rustup update` is the one subcommand this recipe must never
         // build (spec D6, 附录 B). Scoped to rustup on purpose: `update`
         // is dangerous only as *rustup's* first argument, and it is
-        // claude's documented upgrade (`claude update`, spec §五; B's
-        // `CLAUDE.upgrade.args`), so a ban over every recipe would fail
-        // on the one recipe that is right to use it.
+        // claude's and grok's documented upgrade (`claude update`, `grok
+        // update`, spec §五; the args of B's `CLAUDE.upgrade` and of
+        // `GROK.upgrade`) and the first word of grok's read-only check
+        // (`GROK.latest`, `update --check --json`), so a ban over every
+        // recipe would fail on the two recipes that are right to use it.
         let Some(Uninstall::Command(cmd)) = &RUSTUP.uninstall else {
             panic!("rustup uninstalls with its own command");
         };
-        for argv in [RUSTUP.upgrade.args, RUSTUP.version.args, cmd.args] {
+        let upgrade = RUSTUP
+            .upgrade
+            .as_ref()
+            .expect("rustup has an update command");
+        for argv in [upgrade.args, RUSTUP.version.args, cmd.args] {
             assert_ne!(argv.first(), Some(&"update"), "rustup: {argv:?}");
         }
     }
@@ -724,6 +1027,230 @@ mod tests {
         for (recipe, (id, globs)) in RECIPES.iter().zip(&listed) {
             assert_eq!(id, &format!("standalone-{}", recipe.id));
             assert!(std::ptr::eq(*globs, recipe.backup_globs));
+        }
+    }
+
+    #[test]
+    fn test_agy_is_a_flat_file_read_with_its_auto_update_off_that_updates_itself() {
+        // Spec §3.4/§3.5's agy column, and agy.md §2/§4 (VERIFIED on this
+        // Mac): a regular Mach-O file at `~/.local/bin/agy`, root
+        // `~/.gemini/antigravity-cli`; `--version` prints one bare version
+        // and is read with Google's documented updater switch.
+        assert_eq!(AGY.id, "agy");
+        assert_eq!(AGY.route.kind, RouteKind::FlatFile);
+        assert_eq!(AGY.route.launcher, "~/.local/bin/agy");
+        assert_eq!(AGY.route.root, "~/.gemini/antigravity-cli");
+        assert_eq!(AGY.version.args, &["--version"]);
+        assert_eq!(AGY.version.env, &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")]);
+        assert_eq!(AGY.version.parse, VersionParse::FirstToken);
+        assert!(AGY.self_updates);
+        assert_eq!(
+            AGY.latest,
+            Latest::HttpJsonField {
+                url: "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json",
+                field: "version",
+            }
+        );
+        let meta = AdapterMeta::from_toml(AGY.meta_toml).expect("meta");
+        assert_eq!(meta.name, "Antigravity CLI");
+        assert_eq!(
+            meta.homepage,
+            "https://antigravity.google/docs/cli/install/"
+        );
+    }
+
+    #[test]
+    fn test_agy_has_no_update_command_and_a_one_path_uninstall_with_a_backup_pattern() {
+        // Spec §4.4 D5 item 4: `agy update` is undocumented and unrun, so no
+        // upgrade -- every candidate is SelfUpdatesOnly. Spec §6.3's agy row
+        // as the phase 4 step D plan rules it (its rulings 1 and 2): the
+        // launcher is the whole program and goes alone, the updater's
+        // `.old` copies go before it, the root and the staging folder stay
+        // and are said.
+        assert!(AGY.upgrade.is_none());
+        let Some(Uninstall::Paths { remove, keep }) = &AGY.uninstall else {
+            panic!("agy has a path list");
+        };
+        let remove: Vec<(&str, Expect, RemovedWhat, bool)> = remove
+            .iter()
+            .map(|spec| (spec.path, spec.expect, spec.what, spec.optional))
+            .collect();
+        assert_eq!(
+            remove,
+            vec![(
+                "~/.local/bin/agy",
+                Expect::File,
+                RemovedWhat::Launcher,
+                false
+            )]
+        );
+        let keep: Vec<(&str, KeptWhat)> = keep.iter().map(|spec| (spec.path, spec.what)).collect();
+        assert_eq!(
+            keep,
+            vec![
+                ("~/.gemini/antigravity-cli", KeptWhat::ToolState),
+                ("~/.cache/antigravity", KeptWhat::InstallerCache),
+                ("~/.zshrc", KeptWhat::ShellConfigLines),
+                ("~/.zprofile", KeptWhat::ShellConfigLines),
+            ]
+        );
+        assert_eq!(
+            AGY.backup_globs,
+            &[Glob {
+                dir: "~/.local/bin",
+                prefix: "agy.",
+                suffix: ".old",
+                what: RemovedWhat::Backups,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_grok_is_a_relative_link_route_read_with_the_second_token_that_asks_itself_for_updates()
+    {
+        // Spec §3.5's grok column (the link text, relative, VERIFIED there)
+        // and grok.md §1/§3/§4 (VERIFIED on this Mac):
+        // `~/.grok/bin/grok -> ../downloads/grok-<v>-macos-aarch64`, a
+        // relative link into `~/.grok`; `grok --version` prints
+        // `grok 1.0.41 (4220f3b224a6)`; `update --check --json` is its own
+        // read-only check ("without installing"); `grok update` is the
+        // documented upgrade; whether it installs updates on its own is
+        // UNVERIFIED, so it is not called self-updating (spec §4.4).
+        assert_eq!(GROK.id, "grok");
+        assert_eq!(GROK.route.kind, RouteKind::SymlinkIntoRoot);
+        assert_eq!(GROK.route.launcher, "~/.grok/bin/grok");
+        assert_eq!(GROK.route.root, "~/.grok");
+        assert_eq!(GROK.version.args, &["--version"]);
+        assert!(GROK.version.env.is_empty());
+        assert_eq!(GROK.version.parse, VersionParse::SecondToken);
+        assert!(!GROK.self_updates);
+        assert_eq!(
+            GROK.latest,
+            Latest::Command {
+                args: &["update", "--check", "--json"],
+                timeout_secs: 60,
+                latest_field: "latestVersion",
+                available_field: "updateAvailable",
+                error_field: Some("error"),
+            }
+        );
+        let upgrade = GROK.upgrade.as_ref().expect("grok has an update command");
+        assert_eq!(upgrade.args, &["update"]);
+        assert_eq!(upgrade.timeout_secs, 1800);
+        assert_eq!(upgrade.cancel, CancelPolicy::KillThenReconcile);
+        assert!(GROK.backup_globs.is_empty());
+        let meta = AdapterMeta::from_toml(GROK.meta_toml).expect("meta");
+        assert_eq!(meta.name, "Grok Build");
+        assert_eq!(meta.homepage, "https://x.ai/build");
+    }
+
+    #[test]
+    fn test_grok_uninstall_moves_its_own_fallback_links_first_and_its_launcher_link_last() {
+        // Spec §6.3's grok row, in the phase 4 step D plan's order (its
+        // rulings 3 and 4): the two optional fallback links first (their
+        // link text is unverified, so they go while every folder it could
+        // pass through is still there), the program folders, the fish
+        // completion, then the two links the installer put in
+        // `~/.grok/bin` -- `agent`, and `grok` itself last -- never the
+        // folder, which may hold the user's own scripts (it is on PATH).
+        // `~/.grok` itself stays with its settings, login, sessions and
+        // memory; the shell file stays; a fallback link in /usr/local/bin
+        // is reported when it links into `~/.grok`, never touched (its
+        // ruling 6).
+        let Some(Uninstall::Paths { remove, keep }) = &GROK.uninstall else {
+            panic!("grok has a path list");
+        };
+        let remove: Vec<(&str, Expect, RemovedWhat, bool)> = remove
+            .iter()
+            .map(|spec| (spec.path, spec.expect, spec.what, spec.optional))
+            .collect();
+        assert_eq!(
+            remove,
+            vec![
+                (
+                    "~/.local/bin/grok",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    true
+                ),
+                (
+                    "~/.local/bin/agent",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    true
+                ),
+                (
+                    "~/.grok/downloads",
+                    Expect::Dir,
+                    RemovedWhat::Program,
+                    false
+                ),
+                ("~/.grok/bundled", Expect::Dir, RemovedWhat::Program, true),
+                (
+                    "~/.grok/completions",
+                    Expect::Dir,
+                    RemovedWhat::Program,
+                    true
+                ),
+                (
+                    "~/.config/fish/completions/grok.fish",
+                    Expect::File,
+                    RemovedWhat::Program,
+                    true
+                ),
+                (
+                    "~/.grok/bin/agent",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    true
+                ),
+                (
+                    "~/.grok/bin/grok",
+                    Expect::SymlinkIntoRoot,
+                    RemovedWhat::Launcher,
+                    false
+                ),
+            ]
+        );
+        let keep: Vec<(&str, KeptWhat)> = keep.iter().map(|spec| (spec.path, spec.what)).collect();
+        assert_eq!(
+            keep,
+            vec![
+                ("~/.grok", KeptWhat::SettingsAndHistory),
+                ("~/.zshrc", KeptWhat::ShellConfigLines),
+                ("/usr/local/bin/grok", KeptWhat::OutsideHome),
+                ("/usr/local/bin/agent", KeptWhat::OutsideHome),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_every_command_latest_source_only_checks() {
+        // Spec §3.1: a `Latest::Command` may name only a subcommand whose own
+        // --help says it installs nothing -- grok's `update --check --json`
+        // ("Check for updates without installing", grok.md §4). It runs on
+        // every refresh; `update` without `--check` would be an upgrade.
+        for recipe in RECIPES.iter().chain([&&AGY, &&GROK]) {
+            if let Latest::Command {
+                args, timeout_secs, ..
+            } = recipe.latest
+            {
+                assert!(
+                    args.contains(&"--check"),
+                    "{}: {args:?} must carry --check",
+                    recipe.id
+                );
+                assert!(
+                    args.contains(&"--json"),
+                    "{}: {args:?} must ask for machine-readable output",
+                    recipe.id
+                );
+                assert!(
+                    timeout_secs <= 120,
+                    "{}: a check is not an install",
+                    recipe.id
+                );
+            }
         }
     }
 }
