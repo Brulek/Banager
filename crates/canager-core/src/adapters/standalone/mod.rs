@@ -4435,6 +4435,102 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_execute_refuses_rustups_uninstall_when_bin_toolchains_or_update_hashes_became_a_link_after_the_preview(
+    ) {
+        // Step E's whole-step review: rustup 1.29.1's `uninstall()` reaches
+        // `bin/<name>`, `toolchains/<name>` and `update-hashes/<name>`
+        // through their parent and follows a link at the parent's name
+        // (`rustup::standard_roots`' doc has the source lines), so a link
+        // at one of those three would have it delete inside wherever that
+        // link leads. The gate refuses any link at the top of either root.
+        // Here the preview saw real folders, and then one of the three
+        // became a link to the same contents elsewhere: `execute` asks the
+        // gate again right before the spawn and stops with `PathChanged`
+        // naming the link, rustup is never run, and what the link leads to
+        // is left as it was. The launcher's own look still passes in all
+        // three -- for `bin` the flat-file probe follows the linked folder
+        // to a regular `rustup` -- so the refusal is the gate's alone. A
+        // preview asked for after the change refuses as well.
+        for container in [".cargo/bin", ".rustup/toolchains", ".rustup/update-hashes"] {
+            let home = TempHome::new("rustup-execute-linked-container");
+            let cargo_home = home.path().join(".cargo");
+            let (adapter, inst, runner) = detected_rustup(
+                &home.env(vec![]),
+                &cargo_home,
+                Arc::new(MockHttpClient::new()),
+            )
+            .await;
+            home.file(".rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc");
+            home.file(".rustup/update-hashes/stable-aarch64-apple-darwin");
+            let launcher = cargo_home.join("bin/rustup");
+            runner.respond(
+                vec![launcher.to_str().unwrap(), "self", "uninstall", "-y"],
+                exited_0("info: rustup is uninstalled\n"),
+            );
+            let request = request_for("standalone-rustup", OpKind::Uninstall, "rustup");
+            let plan = adapter
+                .plan(&inst, &request)
+                .await
+                .expect("the layout is standard at the preview");
+            let calls_before = runner.calls().len();
+
+            // The folder moves out and a link of its name points at it:
+            // the same path, the same contents, not the folder the
+            // preview showed.
+            let name = Path::new(container).file_name().expect("a folder name");
+            let elsewhere = home.path().join("Volumes/Data").join(name);
+            std::fs::create_dir_all(elsewhere.parent().unwrap()).expect("create the volume");
+            std::fs::rename(home.path().join(container), &elsewhere).expect("move the folder");
+            home.link(container, &elsewhere);
+            assert!(
+                matches!(
+                    route::probe(RouteKind::FlatFile, &launcher, &cargo_home),
+                    Probe::Present { .. }
+                ),
+                "{container}: the launcher's look alone would let the command run"
+            );
+
+            let outcome = adapter
+                .execute(
+                    &plan,
+                    Arc::new(VecSink::new()),
+                    12,
+                    CancellationToken::new(),
+                )
+                .await
+                .expect("execute");
+
+            assert_eq!(
+                outcome,
+                Outcome::CanagerFailed(Fault::PathChanged {
+                    path: format!("~/{container}")
+                }),
+                "{container}"
+            );
+            assert_eq!(
+                runner.calls().len(),
+                calls_before,
+                "{container}: nothing was run"
+            );
+            let kept = match container {
+                ".cargo/bin" => "rustup",
+                ".rustup/toolchains" => "stable-aarch64-apple-darwin/bin/rustc",
+                _ => "stable-aarch64-apple-darwin",
+            };
+            assert!(elsewhere.join(kept).exists(), "{container}: left as it is");
+            assert!(
+                matches!(
+                    adapter.plan(&inst, &request).await,
+                    Err(AdapterError::UninstallBlocked {
+                        reason: UninstallBlocked::NoSafeMethod
+                    })
+                ),
+                "{container}: a new preview refuses"
+            );
+        }
+    }
+
     /// The recorded fixture directory for the version the rustup meta
     /// file verifies: `adapters/fixtures/standalone-rustup/<verified>/`.
     fn rustup_fixture(name: &str) -> String {
