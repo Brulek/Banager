@@ -9,7 +9,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 839 Rust tests (plus 3 more
+> **Status: pre-release.** The core and the UI work and are covered by 842 Rust tests (plus 3 more
 > that touch a real Homebrew or the real Trash and only run with `--ignored`) and 376 front-end
 > tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
 > rely on.
@@ -206,7 +206,7 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 839 个 Rust 测试（另有 3 个要连着真实的
+**目前处于发布前阶段**，核心与界面已经可用、有 842 个 Rust 测试（另有 3 个要连着真实的
 Homebrew 或真实的废纸篓才跑，平时是跳过的）和 376 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 

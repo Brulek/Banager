@@ -135,8 +135,8 @@
     "removesCargoInstalled_other": "Cargo 文件夹的 bin 文件夹里的 {{count}} 个程序也会被删掉：{{names}}。其中用 cargo install 装的，重新安装 Rust 之后可以再用 cargo install 装回来。",
     "homebrewRustupLosesToolchains": "这台 Mac 上还装了 Homebrew 的 rustup（brew install rustup）。它用的是同一组文件夹，所以它的工具链也会一起没了。",
     "editsShellConfig": "rustup 会修改你的 shell 设置文件，删掉它当初加的那一行。",
-    "leavesShellConfigLine": "卸载后 {{path}} 里还有一行会去加载 Cargo 的 env 文件，而那个文件已经被删掉了，所以每开一个终端窗口都会报一句错，直到你自己把那一行删掉。",
-    "leavesShellConfigLineMaybe": "卸载后 {{path}} 里还有一行提到 Cargo 的 env 文件，rustup 不会删它。如果那一行会去加载这个文件，每开一个终端窗口都会报一句错，直到你自己改掉它。"
+    "leavesShellConfigLine": "卸载后 {{path}} 里还有一行会去加载 Cargo 的 env 文件，而那个文件已经被删掉了，所以凡是读这个文件的 shell，每次启动都会报一句错，直到你自己把那一行删掉。",
+    "leavesShellConfigLineMaybe": "卸载后 {{path}} 里还有一行提到 Cargo 的 env 文件，rustup 不会删它。如果那一行会去加载这个文件，读这个文件的 shell 启动时可能会报一句错，直到你自己改掉那一行。"
   },
   "standalone": {
     "summary": {

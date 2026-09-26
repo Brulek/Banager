@@ -1042,7 +1042,7 @@ exit 0 with it gone is reported as succeeded, an exit 0 with it still there
 as needing attention, and a run stopped by the timeout is judged by the
 same look — gone is succeeded, still there is unconfirmed.
 `--no-modify-path` is not passed: rustup removing its own line beats
-leaving one that prints an error in every new terminal.
+leaving one that makes every shell reading that file print an error.
 
 **Which Rust.** rustup runs with the environment Canager itself was
 started with: at launch Canager restores only `PATH` from your login shell,
@@ -1071,18 +1071,42 @@ uninstall Canager reads those eight files — `~/.zshenv`, `~/.zprofile`,
 than your home, that folder's `.zshenv`, `.zprofile` and `.zshrc` as well
 (each named by its own path, `~/.config/zsh/.zshrc` for one), replays
 rustup's removals on copies in memory, and names each file that still
-speaks of Cargo's env file: "will print an error" when what is left is a
-line in the exact form rustup itself writes (a file rustup does not edit,
-such as `~/.zshrc`; a second copy of its line; its line last in the file
-with no newline after it), "may" for any other mention rustup will not
-remove (a guarded line such as
-`[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`, an `echo`, another
-spelling such as `source ~/.cargo/env`, a `$CARGO_HOME/env`); a comment
-counts for nothing. rustup learns `ZDOTDIR` by asking `zsh` when your
-login shell is not zsh; Canager runs nothing and reads only the variable
-it was started with, so a `ZDOTDIR` set only inside a zsh startup file is
-not modelled, and a zsh whose files live under such a `ZDOTDIR` is not
-read.
+speaks of Cargo's env file. The preview does not say which shells read
+which file, only what a shell that reads it will meet: "will print an
+error" when what is left is a line in the exact form rustup itself writes
+(a file rustup does not edit, such as `~/.zshrc`; a second copy of its
+line; its line last in the file with no newline after it) and every line
+above it stands alone. Canager reads each of those lines with sh's quoting
+and lets it stand alone only as a whole command that ends on that line:
+no quote, `(`, `{`, `$(` or `${` left open, nor a `)` or `}` that does
+not match the innermost one still open on it; no `(` and `)` with only
+blanks between them, as a function definition has; no `<<` outside
+quotes (a here-document, whose body is the lines below); no `[[` without
+a `]]` after it, nor a `]]` without a `[[` before it; no `\`, `|`, `&&`
+or `|&` at its end, nor `and`, `or`, `not` or `!` as its last word; no
+`\` inside single quotes (sh and fish read it differently); and none of
+`if`, `then`, `elif`, `else`, `fi`, `case`, `esac`, `for`, `select`,
+`while`, `until`, `do`, `done`, `repeat`, `foreach`, `function`,
+`coproc`, `begin`, `end`, `switch`, `return`, `exit`, `logout`, `bye` or
+`exec` as a word anywhere on it, quoted or not — the words of
+conditionals, loops, functions, blocks and coprocesses, and of the
+commands that end the file or the shell. In that check the rest of a
+line from a `#` that follows a space or tab, outside quotes and outside
+`${…}`, is a comment and is not read. This is a small reader, not a
+shell: it looks only for what is listed here; a line that does not stand
+alone — even a block that closes before rustup's line — makes every line
+below it "may"; and what a command above the line does when it runs,
+such as a file it loads, a string it evaluates, or an alias or option it
+sets, is not followed. "May" is for everything else that mentions the env
+file and that rustup will not remove: rustup's own line inside an `if`, a
+function or a here-document, or below a line that does not stand alone; a
+guarded line such as `[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"`;
+an `echo`; another spelling such as `source ~/.cargo/env`; a
+`$CARGO_HOME/env`. A line that is only a comment counts for nothing.
+rustup learns `ZDOTDIR` by asking `zsh` when your login shell is not zsh;
+Canager runs nothing and reads only the variable it was started with, so
+a `ZDOTDIR` set only inside a zsh startup file is not modelled, and a zsh
+whose files live under such a `ZDOTDIR` is not read.
 
 ## Unknown-source scan (phase 4, step F): read-only, no command runs
 
@@ -1203,7 +1227,8 @@ All read-only, none saved anywhere else, none uploaded:
   `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
   the shell startup files named in its section (eight under your home, and
   zsh's three under `ZDOTDIR` when that names another folder), each read
-  whole and only searched for a line about Cargo's env file; nothing else under
+  whole and only searched for a line about Cargo's env file and for
+  whether the lines above it stand alone, as its section says; nothing else under
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.

@@ -143,8 +143,8 @@
     "removesCargoInstalled_other": "{{count}} programs in the Cargo folder's bin folder are deleted too: {{names}}. The ones cargo install put there, cargo install can put back after you reinstall Rust.",
     "homebrewRustupLosesToolchains": "Homebrew's rustup is installed too (brew install rustup). It uses the same folders, so it loses its toolchains as well.",
     "editsShellConfig": "rustup will edit your shell settings files to remove the line it added.",
-    "leavesShellConfigLine": "After this, {{path}} still has a line that loads Cargo's env file, which will be gone, so every new Terminal window will print an error until you remove that line yourself.",
-    "leavesShellConfigLineMaybe": "After this, {{path}} still mentions Cargo's env file on a line rustup won't remove. If that line loads the file, every new Terminal window will print an error until you change it yourself."
+    "leavesShellConfigLine": "After this, {{path}} still has a line that loads Cargo's env file, which will be gone, so a shell that reads that file will print an error each time it starts, until you remove that line yourself.",
+    "leavesShellConfigLineMaybe": "After this, {{path}} still mentions Cargo's env file on a line rustup won't remove. If that line loads the file, a shell that reads that file may print an error when it starts, until you change that line yourself."
   },
   "standalone": {
     "summary": {

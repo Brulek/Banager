@@ -376,8 +376,8 @@ pub fn remove_first_exact_line(contents: &mut String, line: &str) -> bool {
 }
 
 /// How a startup file may speak of the Cargo env file (ruling 22).
-/// `sourcing`: whole lines (trimmed) that *will* fail once the file is
-/// gone -- the sourcing forms rustup itself writes (`. "<X>/env"`,
+/// `sourcing`: whole lines (trimmed) that fail whenever they run once the
+/// file is gone -- the sourcing forms rustup itself writes (`. "<X>/env"`,
 /// `source "<X>/env"`, fish's `source "<X>/env.fish"`) with `<X>` a
 /// spelling whose target is this Cargo home. `needles`: substrings that
 /// mention the env file at all, for the qualified tier.
@@ -421,9 +421,11 @@ pub fn leftover_patterns(home: &Path, cargo_home: &Path) -> LeftoverPatterns {
 }
 
 /// What a startup file will do about the Cargo env file after rustup's
-/// cleanup: `Sources` -- a line rustup's own form spells, which *will*
-/// print an error in every new terminal; `Mentions` -- some other
-/// non-comment line naming the file, which *may*.
+/// cleanup: `Sources` -- a line rustup's own form spells with every line
+/// above it standing alone (`stands_alone`), so, as far as the file's own
+/// lines show, a shell that reads the file runs it and *will* print an
+/// error; `Mentions` -- some other non-comment line naming the file, or
+/// rustup's form below a line that does not stand alone, which *may*.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Leftover {
     Sources,
@@ -433,26 +435,228 @@ pub enum Leftover {
 /// The tier of a file's remaining contents, or `None` for a file that
 /// says nothing about the env file outside comments. A comment is a
 /// trimmed line starting with `#`; the certain tier wins over the
-/// qualified one within a file.
+/// qualified one within a file. A line in one of rustup's sourcing forms
+/// is certain only while every non-blank, non-comment line above it
+/// stands alone (`stands_alone`): inside an `if`, a function body, a
+/// here-document or a quote, or below any line Canager cannot vouch for,
+/// whether it runs depends on shell syntax Canager does not follow --
+/// once one line does not stand alone, none below it is certain.
 pub fn classify_leftover(contents: &str, patterns: &LeftoverPatterns) -> Option<Leftover> {
     let mut mentions = false;
+    let mut all_above_stand_alone = true;
     for raw in contents.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if patterns.sourcing.iter().any(|form| form == line) {
+        let sources = patterns.sourcing.iter().any(|form| form == line);
+        if sources && all_above_stand_alone {
             return Some(Leftover::Sources);
         }
-        if patterns
-            .needles
-            .iter()
-            .any(|needle| line.contains(needle.as_str()))
+        if sources
+            || patterns
+                .needles
+                .iter()
+                .any(|needle| line.contains(needle.as_str()))
         {
             mentions = true;
         }
+        all_above_stand_alone = all_above_stand_alone && stands_alone(line);
     }
     mentions.then_some(Leftover::Mentions)
+}
+
+/// Words that, standing anywhere on a line -- quoted or not, delimited
+/// by white space or by `;`, `&`, `|`, `(`, `)`, `{`, `}`, `<`, `>` --
+/// keep it from standing alone (`stands_alone`): the reserved words of
+/// sh's, bash's, zsh's and fish's conditionals, loops, `case` and
+/// `switch`, functions, blocks and coprocesses, whose bodies run only
+/// sometimes, more than once, when called or in the background; and the
+/// commands that end the file or the shell before the lines below them
+/// run -- `return`, `exit`, `logout`, zsh's `bye`, and `exec`, which
+/// replaces the shell with the program it names.
+const UNSURE_WORDS: [&str; 25] = [
+    "if", "then", "elif", "else", "fi", "case", "esac", "for", "select", "while", "until", "do",
+    "done", "repeat", "foreach", "function", "coproc", "begin", "end", "switch", "return", "exit",
+    "logout", "bye", "exec",
+];
+
+/// Words that, last on a line, act on a command the line does not hold:
+/// fish's `and`, `or` and `not`, and `!`. Read by `stands_alone`.
+const DANGLING_WORDS: [&str; 4] = ["and", "or", "not", "!"];
+
+/// Whether `line` -- one line of a startup file, trimmed, neither blank
+/// nor a comment -- stands alone: read with sh's quoting, it is a whole
+/// command that ends where the line ends, so the line below it is not
+/// part of it or under its control. Not alone: a quote left open (`'…'`,
+/// `"…"`, `$'…'`, `` `…` ``); a `(`, `{`, `$(` or `${` left open, or a
+/// `)` or `}` that does not match the innermost one still open on the
+/// line; a `(` and a `)` with nothing but blanks between them, anywhere
+/// on it, as a function definition has (zsh's body may be the next
+/// line); `<<` outside quotes, a here-document, whose body is the lines
+/// below; a `[[` word with no `]]` word after it, or a `]]` with no `[[`
+/// before it; a `\` last, joining the next line on; a `|`, `&&` or `|&`
+/// last, or one of `DANGLING_WORDS` as the last word; a `\` inside single
+/// quotes, which sh reads as itself and fish as an escape; and any of
+/// `UNSURE_WORDS` as a word. A `#` first on the line or after a space or
+/// tab, outside quotes and outside `${…}`, begins a comment, which is not
+/// read; a `#` anywhere else is read as part of the line. A small reader,
+/// not a shell: it looks for what is listed here, and what a command on
+/// the line does when it runs -- a file it loads, a string it evaluates,
+/// an alias or an option it sets -- is not followed. Read by
+/// `classify_leftover`.
+fn stands_alone(line: &str) -> bool {
+    /// What is open at a point of the line, innermost last.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Open {
+        /// `(` or `$(`: commands inside.
+        Paren,
+        /// `{`: a group of commands, or a brace expansion.
+        Brace,
+        /// `${`: a parameter expansion, where `#` is an operator.
+        Param,
+        /// `"`: `\`, `$(`, `${` and `` ` `` still act inside.
+        Double,
+        /// `` ` ``: up to the next backtick not escaped, as POSIX reads it.
+        Backtick,
+    }
+    let chars: Vec<char> = line.chars().collect();
+    let mut open: Vec<Open> = Vec::new();
+    // The line up to its comment, quote marks and escaping backslashes
+    // left out, for the word checks below.
+    let mut text = String::new();
+    // Whether the character before this one was a space or tab outside
+    // quotes (or this is the first): only then does `#` begin a comment.
+    let mut after_blank = true;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        let inside = open.last().copied();
+        let mut blank = false;
+        match c {
+            '\\' => match next {
+                Some(escaped) => {
+                    text.push(escaped);
+                    i += 1;
+                }
+                None => return false,
+            },
+            '`' if inside == Some(Open::Backtick) => {
+                open.pop();
+            }
+            _ if inside == Some(Open::Backtick) => text.push(c),
+            '"' if inside == Some(Open::Double) => {
+                open.pop();
+            }
+            '`' => open.push(Open::Backtick),
+            '$' if next == Some('(') => {
+                open.push(Open::Paren);
+                text.push_str("$(");
+                i += 1;
+            }
+            '$' if next == Some('{') => {
+                open.push(Open::Param);
+                text.push_str("${");
+                i += 1;
+            }
+            _ if inside == Some(Open::Double) => text.push(c),
+            // Outside quotes from here on.
+            '\'' => {
+                let Some(len) = chars[i + 1..].iter().position(|&q| q == '\'') else {
+                    return false;
+                };
+                let quoted = &chars[i + 1..i + 1 + len];
+                if quoted.contains(&'\\') {
+                    return false;
+                }
+                text.extend(quoted);
+                i += len + 1;
+            }
+            '$' if next == Some('\'') => {
+                // `$'…'`, where a `\` escapes the character after it.
+                let mut j = i + 2;
+                loop {
+                    match chars.get(j) {
+                        None => return false,
+                        Some('\'') => break,
+                        Some('\\') => match chars.get(j + 1) {
+                            Some(&escaped) => {
+                                text.push(escaped);
+                                j += 2;
+                            }
+                            None => return false,
+                        },
+                        Some(&other) => {
+                            text.push(other);
+                            j += 1;
+                        }
+                    }
+                }
+                i = j;
+            }
+            // `$"…"` is `"…"` to this reader.
+            '$' if next == Some('"') => {}
+            '"' => open.push(Open::Double),
+            '(' => {
+                open.push(Open::Paren);
+                text.push(c);
+            }
+            '{' => {
+                open.push(Open::Brace);
+                text.push(c);
+            }
+            ')' => {
+                if open.pop() != Some(Open::Paren) {
+                    return false;
+                }
+                text.push(c);
+            }
+            '}' => {
+                if !matches!(open.pop(), Some(Open::Brace | Open::Param)) {
+                    return false;
+                }
+                text.push(c);
+            }
+            '<' if next == Some('<') => return false,
+            '#' if after_blank && inside != Some(Open::Param) => break,
+            _ => {
+                blank = c == ' ' || c == '\t';
+                text.push(c);
+            }
+        }
+        after_blank = blank;
+        i += 1;
+    }
+    if !open.is_empty() {
+        return false;
+    }
+    let code = text.trim_end();
+    if code.ends_with('|') || code.ends_with("&&") || code.ends_with("|&") {
+        return false;
+    }
+    let opens_function = code
+        .char_indices()
+        .any(|(at, c)| c == '(' && code[at + 1..].trim_start().starts_with(')'));
+    let words: Vec<&str> = code
+        .split(|c: char| c.is_whitespace() || ";&|(){}<>".contains(c))
+        .filter(|word| !word.is_empty())
+        .collect();
+    let mut tests_open = 0usize;
+    for word in &words {
+        match *word {
+            "[[" => tests_open += 1,
+            "]]" if tests_open == 0 => return false,
+            "]]" => tests_open -= 1,
+            _ => {}
+        }
+    }
+    !opens_function
+        && tests_open == 0
+        && !words
+            .last()
+            .is_some_and(|last| DANGLING_WORDS.contains(last))
+        && !words.iter().any(|word| UNSURE_WORDS.contains(word))
 }
 
 /// The files `shell_config_leftovers` reads, in the order it reports
@@ -1282,11 +1486,154 @@ mod tests {
     }
 
     #[test]
+    fn test_classify_leftover_is_certain_only_below_lines_that_stand_alone() {
+        // Step E's code review: rustup's exact line proves nothing on its
+        // own -- inside an `if` it runs only when the test passes, in a
+        // function body only when the function is called, in a
+        // here-document or a quote never -- so it is "may" unless every
+        // line above it stands alone (`stands_alone`). Canager does not
+        // track where a block closes, so a closed one above it makes it
+        // "may" too.
+        let home = Path::new("/Users/someone");
+        let p = leftover_patterns(home, Path::new("/Users/someone/.cargo"));
+        let line = rc_line();
+        for (why, contents) in [
+            (
+                "a guard",
+                format!("if [ -f \"$HOME/.cargo/env\" ]; then\n    {line}\nfi\n"),
+            ),
+            ("a function body", format!("rust_env() {{\n  {line}\n}}\n")),
+            (
+                "zsh's function whose body is the next command",
+                format!("rust_env()\n{line}\n"),
+            ),
+            ("a here-document", format!("cat <<'EOF'\n{line}\nEOF\n")),
+            (
+                "a line joined on by &&",
+                format!("[ -d \"$HOME/.cargo\" ] &&\n{line}\n"),
+            ),
+            (
+                "a line joined on by a backslash",
+                format!("test -d \"$HOME/.cargo\" \\\n{line}\n"),
+            ),
+            (
+                "a quote left open",
+                format!("alias rust_env='\n{line}\n'\n"),
+            ),
+            (
+                "a return above it",
+                format!("[[ $- != *i* ]] && return\n{line}\n"),
+            ),
+            (
+                "a closed block above it",
+                format!("if [ -n \"$ZSH_VERSION\" ]; then\n  setopt no_beep\nfi\n{line}\n"),
+            ),
+            (
+                "fish's if",
+                "if status is-interactive\n    source \"$HOME/.cargo/env.fish\"\nend\n".to_string(),
+            ),
+        ] {
+            assert_eq!(
+                classify_leftover(&contents, &p),
+                Some(Leftover::Mentions),
+                "{why}"
+            );
+        }
+        // Lines that stand alone above it -- this Mac's `~/.zshrc` has its
+        // line below ones like these -- leave it certain; a comment counts
+        // for nothing, whatever it holds.
+        let plain = [
+            "alias ll=\"ls -l\"",
+            "# >>> an installer's block >>>",
+            "export PATH=\"$HOME/.local/bin:$PATH\"",
+            "# <<< an installer's block <<<",
+            "fpath=(/Users/someone/.docker/completions $fpath)",
+            "autoload -Uz compinit",
+            "compinit",
+            "eval \"$(/opt/homebrew/bin/brew shellenv)\"",
+            "[ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\"  # it's nvm's",
+            "export GREETING='it'\\''s here'",
+            "",
+            &line,
+            "",
+        ]
+        .join("\n");
+        assert_eq!(classify_leftover(&plain, &p), Some(Leftover::Sources));
+    }
+
+    #[test]
+    fn test_stands_alone_accepts_whole_commands_and_refuses_what_it_cannot_follow() {
+        for line in [
+            ". \"$HOME/.cargo/env\"",
+            "export PATH=\"$HOME/.local/bin:$PATH\"",
+            "alias ll='ls -l'",
+            "fpath=(/Users/someone/.docker/completions $fpath)",
+            "eval \"$(/opt/homebrew/bin/brew shellenv)\"",
+            "[ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\"  # This loads nvm",
+            // A comment's own quotes and words are not read.
+            "export GREETING='it'\\''s here' # don't: if unsure, exit",
+            "source <(kubectl completion zsh)",
+            "[[ -f ~/.fzf.zsh ]] && source ~/.fzf.zsh",
+            "print -P '%F{blue}hi%f'",
+            "export NVM_DIR=\"$([ -z \"${XDG_CONFIG_HOME-}\" ] && printf %s \"${HOME}/.nvm\" || printf %s \"${XDG_CONFIG_HOME}/nvm\")\"",
+            // `#` inside `${…}`, inside a word, after `(` (zsh's glob
+            // flags): not a comment, and read on.
+            "echo ${#path} ${PATH##*/} a#b *(#qN)",
+            "x=$'a\\'b'",
+            "sleep 1 &",
+            "set -gx PATH $HOME/.local/bin $PATH",
+            "status is-interactive; and fish_vi_key_bindings",
+        ] {
+            assert!(stands_alone(line), "{line}");
+        }
+        for line in [
+            "if [ -f \"$HOME/.cargo/env\" ]; then",
+            "fi",
+            "while read line; do",
+            "case \":$PATH:\" in",
+            // Closed on one line, but Canager does not follow a loop.
+            "for f in ~/.zsh/*.zsh; do source \"$f\"; done",
+            "rust_env() {",
+            "rust_env()",
+            "function rust_env {",
+            "{",
+            "}",
+            "cat <<'EOF'",
+            "alias rust_env='",
+            "echo \"unclosed",
+            "x=$(",
+            // A comment inside `$(…)` swallows its `)`.
+            "echo $(echo hi # a comment)",
+            "[ -d \"$HOME/.cargo\" ] &&",
+            "ls |",
+            "test -d \"$HOME/.cargo\" \\",
+            "[[ -f ~/.fzf.zsh",
+            "]] && [[ -f ~/.fzf.zsh",
+            "[[ $- != *i* ]] && return",
+            "exit",
+            "exec zsh",
+            // Quoted or not, a word is a word.
+            "eval 'return 0'",
+            "e\"xit\"",
+            "set -x FOO 'a\\'b'",
+            "x=$'a\\'",
+            "test -f ~/.cargo/env.fish; and",
+            "if status is-interactive",
+            "end",
+            // A word counts wherever it stands.
+            "zstyle ':completion:*' menu select",
+        ] {
+            assert!(!stands_alone(line), "{line}");
+        }
+    }
+
+    #[test]
     fn test_shell_config_leftovers_reports_the_file_rustup_does_not_edit() {
         // This Mac (spec §6.4, re-checked 2026-09-25): `~/.zshenv:1` and
         // `~/.profile:1` hold rustup's line, `~/.zshrc:17` holds the same
         // line but rustup never edits `.zshrc` -- after the uninstall
-        // every new zsh prints `no such file or directory: …/.cargo/env`.
+        // every new interactive zsh, which reads `.zshrc`, prints `no such
+        // file or directory: …/.cargo/env`.
         let home = TempHome::new("rustup-rc-zshrc");
         for rc in [".zshenv", ".profile", ".zshrc"] {
             std::fs::write(home.path().join(rc), format!("{}\n", rc_line())).expect("write rc");
@@ -1296,6 +1643,30 @@ mod tests {
             vec![Warning::LeavesShellConfigLine {
                 path: "~/.zshrc".to_string(),
                 certain: true
+            }]
+        );
+    }
+
+    #[test]
+    fn test_shell_config_leftovers_qualifies_rustups_line_inside_a_guard() {
+        // Step E's code review: a `.zshrc` whose line sits inside an
+        // `if [ -f … ]; then … fi`. rustup leaves `.zshrc` alone, and the
+        // guard skips the missing file, so "will print an error" would be
+        // wrong: "may".
+        let home = TempHome::new("rustup-rc-guarded");
+        std::fs::write(
+            home.path().join(".zshrc"),
+            format!(
+                "if [ -f \"$HOME/.cargo/env\" ]; then\n    {}\nfi\n",
+                rc_line()
+            ),
+        )
+        .expect("write");
+        assert_eq!(
+            shell_config_leftovers(home.path(), None, &home.path().join(".cargo")),
+            vec![Warning::LeavesShellConfigLine {
+                path: "~/.zshrc".to_string(),
+                certain: false
             }]
         );
     }
@@ -1469,8 +1840,8 @@ mod tests {
         // three is read as a file of its own, replayed on, and named by its
         // own path just before its home namesake. The `source` line rustup
         // leaves in `$ZDOTDIR/.zshenv` (it removes that spelling only from
-        // the `legacy_paths` files) *will* error in every new zsh: the line
-        // the preview must not stay silent about.
+        // the `legacy_paths` files) *will* error whenever zsh reads that
+        // file: the line the preview must not stay silent about.
         let home = TempHome::new("rustup-rc-zdotdir-elsewhere");
         let zdotdir = home.dir(".config/zsh");
         std::fs::write(

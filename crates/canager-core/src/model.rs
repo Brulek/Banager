@@ -532,12 +532,15 @@ pub enum Warning {
     /// After rustup's own cleanup, `path` (`$HOME` spelled `~`) will still
     /// hold a line about Cargo's env file, which is then gone. `certain`
     /// is true when that line is one of the sourcing forms rustup itself
-    /// writes and its target is this Cargo home, so it *will* print an
-    /// error in every new terminal until the user removes it (a file
+    /// writes, its target is this Cargo home, and every line above it
+    /// stands alone (`rustup::classify_leftover`), so a shell that reads
+    /// the file *will* print an error until the user removes it (a file
     /// rustup does not edit, such as `~/.zshrc`, or a second copy of the
     /// line); false for any other mention rustup will not remove (a
-    /// guarded `[ -f … ] && . …`, an `echo`, another spelling), which
-    /// *may*. One per file (`rustup::shell_config_leftovers`).
+    /// guarded `[ -f … ] && . …`, an `echo`, another spelling, rustup's
+    /// own form inside an `if` or below any line that does not stand
+    /// alone), which *may*. Which shells read which file is not decided.
+    /// One per file (`rustup::shell_config_leftovers`).
     LeavesShellConfigLine { path: String, certain: bool },
     /// Not yet localised -- see this type's doc comment.
     Message(String),

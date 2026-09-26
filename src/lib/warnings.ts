@@ -74,7 +74,9 @@ export function warningKey(warning: Warning): string | null {
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalled";
   if ("LeavesShellConfigLine" in warning) {
     // "will print an error" only for a line rustup's own sourcing form
-    // spells; anything else that mentions the env file "may".
+    // spells with every line above it standing alone (the core decides,
+    // `rustup::classify_leftover`); anything else that mentions the env
+    // file "may".
     return warning.LeavesShellConfigLine.certain
       ? "warnings.leavesShellConfigLine"
       : "warnings.leavesShellConfigLineMaybe";
