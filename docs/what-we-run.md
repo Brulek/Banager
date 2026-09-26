@@ -630,15 +630,21 @@ itself nor one of the folders directly in it that many tools share
 (`~/.local`, `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`); every
 folder between the home folder and the path must be a real folder, not
 a link — so a `~/.local/bin` kept as a link to a dotfiles folder
-refuses the uninstall, and so does a `~/.claude` that is a link when
-the download cache is inside it; the path must belong to the user
+refuses the uninstall, while a `~/.claude` that is a link leaves the
+download cache inside it where it is, and the preview says so; the path
+must belong to the user
 Canager runs as; it must be what the instructions describe — the
 program files and the download cache real folders, the launcher one
 symbolic link straight into `~/.local/share/claude`; and, with every
 link resolved, moving it must not take `~/.claude` or `~/.claude.json`
-along (of `~/.claude`, only `downloads` lies inside it, as listed). If
-any check fails, the whole uninstall is refused, in the user's language,
-and nothing is moved. The preview also records what each path is — its
+along (of `~/.claude`, only `downloads` lies inside it, as listed). If a
+check fails on a path the list requires, the whole uninstall is refused,
+in the user's language, and nothing is moved; an optional path that is
+there but that Canager cannot confirm is the tool's — the wrong kind of
+thing, a link elsewhere, a folder on the way that is a link — stays,
+and the preview lists it among what is kept. Not yours, or would take a
+kept path along, refuses whether the path is optional or not. The
+preview also records what each path is — its
 device, inode and kind, from `lstat` — and Canager keeps that with the
 plan it issued, never sending it to the window. When the preview is
 confirmed the list is built again from the disk

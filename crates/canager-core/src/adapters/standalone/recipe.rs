@@ -299,9 +299,7 @@ pub const SHARED_FOLDERS: [&str; 5] = [".local", ".config", ".cache", "Library",
 
 /// What check 4 requires at a `RemoveSpec.path` (spec §6.3) -- at the
 /// path itself: every folder above it must be a real folder whatever it
-/// expects (the ancestry rule, `removal::check_item`). Only the kinds
-/// Claude Code's list has exist in this step; `File` (Antigravity's
-/// launcher, a plain executable) arrives with step D.
+/// expects (the ancestry rule, `removal::check_item`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Expect {
     /// A symbolic link -- the one kind of listed path that may be a link --
@@ -312,11 +310,21 @@ pub enum Expect {
     SymlinkIntoRoot,
     /// A real directory, not a link.
     Dir,
+    /// A regular file, not a link: Antigravity's launcher (`~/.local/bin/agy`,
+    /// the whole program), grok's fish completion file, and every backup
+    /// copy a `Glob` matches (`removal::listed_items`).
+    File,
 }
 
 /// One path a path-list uninstall leaves alone, named in the preview so
 /// the user knows their settings stay (`Warning::WillKeep`); listed only
-/// when it exists.
+/// when it exists. `path` is `~/…` and protected by the checks
+/// (`removal::kept_places`, `disturbed`) -- except when `what` is
+/// `KeptWhat::OutsideHome`: then it is an absolute path outside the home
+/// folder (`/usr/local/bin/grok`), reported when it exists and never
+/// protected (`removal::outside_home_keeps`): a fallback link *into* the
+/// program folder would otherwise refuse the uninstall it exists for
+/// (`recipes::tests` hold the two spellings apart).
 #[derive(Debug)]
 pub struct KeepSpec {
     pub path: &'static str,

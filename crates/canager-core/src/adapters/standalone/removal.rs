@@ -23,7 +23,10 @@ use super::route::{self, Probe};
 use super::Detected;
 use crate::adapters::AdapterError;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
-use crate::model::{Fault, ItemIdentity, ItemKind, Outcome, UninstallUnsafeReason, Warning};
+use crate::model::{
+    Fault, ItemIdentity, ItemKind, KeptWhat, Outcome, RemovedWhat, UninstallUnsafeReason, Warning,
+};
+use crate::scan::Glob;
 use crate::trash::{TrashError, Trasher};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -59,7 +62,8 @@ pub const TIMEOUT_SECS: u64 = 120;
 pub const PUT_BACK_SETTLE: Duration = Duration::from_secs(3);
 
 /// One tool's removal as the checks see it: the recipe (for its route),
-/// what detect learned (home, euid) and the recipe's two lists. Owned --
+/// what detect learned (home, euid) and the recipe's two lists and its
+/// backup-file patterns. Owned --
 /// a copy of `Detected`, the rest `'static` recipe data -- so each item's
 /// last check and its move can run together on tokio's blocking pool
 /// (`execute_removal`). Built by `StandaloneAdapter::plan` and `::execute`;
@@ -70,6 +74,8 @@ pub struct Job {
     pub detected: Detected,
     pub remove: &'static [RemoveSpec],
     pub keep: &'static [KeepSpec],
+    /// The recipe's backup-file patterns (`Recipe.backup_globs`): check 5.
+    pub globs: &'static [Glob],
 }
 
 /// What `plan_removal` found: the absolute paths to move, in order; what
@@ -170,6 +176,146 @@ fn identity_of(meta: &std::fs::Metadata) -> ItemIdentity {
     }
 }
 
+/// One thing the list may move, as the checks see it: a listed
+/// `RemoveSpec`, or a backup file one of the recipe's `backup_globs`
+/// matched (check 5). `rel` is how the recipe spells it under the home
+/// folder -- for a match, the pattern's folder joined with the file's name
+/// (`.local/bin/agy.1727000000.old`) -- which the ancestry rule compares
+/// against; `path` where it is. Built by `listed_items`; read by
+/// `plan_removal` and `take_turn`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Item {
+    rel: PathBuf,
+    path: PathBuf,
+    expect: Expect,
+    what: RemovedWhat,
+    optional: bool,
+}
+
+/// The list as it stands on the disk now, in execution order: every listed
+/// path, with the backup files the recipe's patterns match (`Job.globs`,
+/// spec §6.3 check 5) placed before the last listed path -- the launcher
+/// -- so it still goes last (spec §6.2). A
+/// match is a regular file (never a link) directly in the pattern's folder
+/// whose name is prefix + something + suffix (`Glob::matches_name`), in
+/// name order so the preview is stable; a folder that cannot be read
+/// matches nothing (the launcher's own check speaks for that folder).
+/// Every match is optional: it may be gone by its turn, and one Canager
+/// cannot confirm is the tool's is kept and said, like an optional listed
+/// path.
+fn listed_items(job: &Job) -> Vec<Item> {
+    let home = job.detected.home.as_path();
+    let listed = |spec: &RemoveSpec| Item {
+        rel: spelled(spec.path).to_path_buf(),
+        path: route::expand(home, spec.path),
+        expect: spec.expect,
+        what: spec.what,
+        optional: spec.optional,
+    };
+    let Some((last, before)) = job.remove.split_last() else {
+        return Vec::new();
+    };
+    let mut items: Vec<Item> = before.iter().map(listed).collect();
+    for glob in job.globs {
+        let dir = glob.dir_under(home);
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut names: Vec<String> = read
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| glob.matches_name(name))
+            .filter(|name| {
+                std::fs::symlink_metadata(dir.join(name))
+                    .is_ok_and(|meta| meta.file_type().is_file())
+            })
+            .collect();
+        names.sort();
+        items.extend(names.into_iter().map(|name| Item {
+            rel: spelled(glob.dir).join(&name),
+            path: dir.join(&name),
+            expect: Expect::File,
+            what: glob.what,
+            optional: true,
+        }));
+    }
+    items.push(listed(last));
+    items
+}
+
+/// Which of a check's refusals mean, for an *optional* path, "not this
+/// install's, leave it" rather than "stop": the wrong shape, a link
+/// elsewhere or a folder on the way that is a link
+/// (`NotWhatInstructionsExpect`), and a folder that leads out of the home
+/// folder or into a shared one (`OutsideHome`, `SharedFolder`) -- all
+/// places Canager will not move from, none of them a reason to leave the
+/// tool uninstallable (spec §十三 #27). `NotOwnedByYou` and `OverlapsKept`
+/// still stop the whole list: they are about what the move would do, not
+/// about whose the path is. Read by `plan_removal`.
+fn keeps_instead(reason: UninstallUnsafeReason) -> bool {
+    matches!(
+        reason,
+        UninstallUnsafeReason::NotWhatInstructionsExpect
+            | UninstallUnsafeReason::OutsideHome
+            | UninstallUnsafeReason::SharedFolder
+    )
+}
+
+/// The kept paths outside the home folder that are this tool's links --
+/// grok's installer may put `/usr/local/bin/grok` and `/usr/local/bin/agent`
+/// there when `~/.grok/bin` is not on PATH (grok.md §2) -- each as a
+/// `WillKeep` sentence: Canager never moves anything outside the home
+/// folder (spec §6.3), so after the uninstall they are dead links the user
+/// can delete. Only a link *into the root* (`points_into`) gets the
+/// sentence: the same path may be Homebrew's live link into its Caskroom
+/// (an Intel Mac's `/usr/local`), another CLI's `agent`, or a file, and
+/// "a dead link you can delete" would then be false. Spelled absolute in
+/// the recipe (`recipes::tests` hold them to `/`, never `~/`), so nothing
+/// to expand; never protected (`kept_places` skips them: a link into the
+/// program folder would otherwise refuse the uninstall). Read by
+/// `plan_removal`.
+fn outside_home_keeps(look: &Look<'_>) -> Vec<Warning> {
+    look.job
+        .keep
+        .iter()
+        .filter(|spec| spec.what == KeptWhat::OutsideHome)
+        .filter(|spec| points_into(Path::new(spec.path), &look.root))
+        .map(|spec| Warning::WillKeep {
+            path: spec.path.to_string(),
+            what: KeptWhat::OutsideHome,
+        })
+        .collect()
+}
+
+/// Whether `link` is a symbolic link whose target lies under `root` (the
+/// recipe's root as expanded for this home): where it resolves when it
+/// resolves, or -- dangling, as on the second run of a stopped uninstall
+/// whose `downloads/` is already in the Trash -- where its own text points,
+/// folded from the link's folder without touching the disk
+/// (`route::lexical_join`), compared against the root as spelled and as
+/// canonical. Anything that is not a symbolic link, or is not there, is
+/// not the installer's fallback link: `false`. Read by `outside_home_keeps`.
+fn points_into(link: &Path, root: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(link) else {
+        return false;
+    };
+    if !meta.file_type().is_symlink() {
+        return false;
+    }
+    let canonical_root = std::fs::canonicalize(root).ok();
+    match std::fs::canonicalize(link) {
+        Ok(real) => canonical_root.is_some_and(|root| real.starts_with(root)),
+        Err(_) => {
+            let Ok(text) = std::fs::read_link(link) else {
+                return false;
+            };
+            let folder = link.parent().unwrap_or(Path::new("/"));
+            let named = route::lexical_join(folder, &text);
+            named.starts_with(root) || canonical_root.is_some_and(|root| named.starts_with(root))
+        }
+    }
+}
+
 /// One look at the disk: the home folder resolved, and the route's two
 /// paths as the recipe expands them. Taken afresh by `plan_removal` and by
 /// every item's turn (`take_turn`), never kept across a pause.
@@ -210,6 +356,12 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
     let mut kept = Vec::new();
     for spec in look.job.keep {
+        // Reported, not protected (`outside_home_keeps`): absolute, outside
+        // the home folder, and possibly a link *into* the program folder,
+        // which `disturbed` would otherwise call `OverlapsKept`.
+        if spec.what == KeptWhat::OutsideHome {
+            continue;
+        }
         let path = route::expand(home, spec.path);
         match std::fs::symlink_metadata(&path) {
             Ok(_) => {}
@@ -269,10 +421,12 @@ fn is_shared_folder(folder: &Path, canonical_home: &Path) -> bool {
 }
 
 /// Every check on one listed path that is there (spec §6.3 checks 1, 3
-/// and 4, and rulings 24 and 25), returning what it is. Its last step is
-/// the `lstat` whose answer it returns, so a caller that moves the item
-/// next has nothing on the disk between the check and the move
-/// (`take_turn`). In order:
+/// and 4, and rulings 24 and 25), returning what it is. `rel` is the
+/// recipe's spelling of the path under the home folder (a glob match's is
+/// its pattern's folder plus its name), `expect` what must be there. Its
+/// last step is the `lstat` whose answer it returns, so a caller that
+/// moves the item next has nothing on the disk between the check and the
+/// move (`take_turn`). In order:
 ///
 /// - check 1: the folder the path is in, fully resolved, is inside the
 ///   home folder (`OutsideHome`) and is neither the home folder itself nor
@@ -290,20 +444,20 @@ fn is_shared_folder(folder: &Path, canonical_home: &Path) -> bool {
 ///   dangling launcher-only state (`route::probe`);
 /// - last, the item's own `lstat`: there (`Missing`), the user's own
 ///   (check 3, `NotOwnedByYou`), and the kind the instructions describe --
-///   a real directory for `Dir`, a link for `SymlinkIntoRoot`, so the item
-///   is a link only where the recipe says so (check 4,
-///   `NotWhatInstructionsExpect`).
+///   a real directory for `Dir`, a link for `SymlinkIntoRoot`, a regular
+///   file for `File`, so the item is a link only where the recipe says so
+///   (check 4, `NotWhatInstructionsExpect`).
 fn check_item(
     look: &Look<'_>,
     kept: &[Kept],
-    spec: &'static RemoveSpec,
+    rel: &Path,
+    expect: Expect,
     path: &Path,
 ) -> Result<ItemIdentity, Refusal> {
     use UninstallUnsafeReason::{
         Missing, NotOwnedByYou, NotWhatInstructionsExpect, OutsideHome, OverlapsKept, SharedFolder,
     };
     let refuse = |reason| Refusal::new(path, reason);
-    let rel = spelled(spec.path);
     let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(refuse(NotWhatInstructionsExpect));
     };
@@ -326,7 +480,7 @@ fn check_item(
     if let Some(kept) = disturbed(kept, rel, &real_folder.join(name)) {
         return Err(Refusal::new(&kept.path, OverlapsKept));
     }
-    if spec.expect == Expect::SymlinkIntoRoot
+    if expect == Expect::SymlinkIntoRoot
         && !matches!(
             route::probe(look.job.recipe.route.kind, path, &look.root),
             Probe::Present { .. } | Probe::LauncherOnly
@@ -343,9 +497,10 @@ fn check_item(
         return Err(refuse(NotOwnedByYou));
     }
     let identity = identity_of(&meta);
-    let expected = match spec.expect {
+    let expected = match expect {
         Expect::Dir => ItemKind::Dir,
         Expect::SymlinkIntoRoot => ItemKind::Symlink,
+        Expect::File => ItemKind::File,
     };
     if identity.kind != expected {
         return Err(refuse(NotWhatInstructionsExpect));
@@ -353,16 +508,20 @@ fn check_item(
     Ok(identity)
 }
 
-/// Spec §6.3 on every path the recipe lists (check 5, the backup-file
-/// patterns, arrives with step D's `backup_globs`), then the kept paths.
-/// Check 2 (is it there?) goes first, because the others need something
-/// to look at: a missing optional path is skipped, a missing program
-/// directory of a launcher-only install is `AlreadyGone` (re-probed from
-/// the disk now, ruling 4), anything else missing refuses. Then
-/// `check_item`. Any failure refuses the whole list with nothing moved
-/// (`AdapterError::UninstallUnsafe`, one of six reasons); an empty list is
-/// a plain `Refused` (unreachable while the launcher is listed and the row
-/// exists), and so is a home folder that cannot be resolved.
+/// Spec §6.3 on every item of the list -- the recipe's paths and, before
+/// the last of them, the backup files its patterns match (check 5,
+/// `listed_items`) -- then the kept paths. Check 2 (is it there?) goes
+/// first, because the others need something to look at: a missing optional
+/// item is skipped, a missing program directory of a launcher-only install
+/// is `AlreadyGone` (re-probed from the disk now, ruling 4 of the step C
+/// plan), anything else missing refuses. Then `check_item`; an optional
+/// item it cannot confirm is the tool's is kept and said (`WillKeep {
+/// NotOurs }`, after the moves; `keeps_instead`). Any other failure refuses
+/// the whole list with nothing moved (`AdapterError::UninstallUnsafe`, one
+/// of six reasons); an empty list is a plain `Refused` (unreachable while
+/// the launcher is listed and the row exists), and so is a home folder
+/// that cannot be resolved. The kept paths come last: the recipe's under
+/// the home folder, then the ones outside it (`outside_home_keeps`).
 pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let home = job.detected.home.as_path();
     let look = Look::new(job).map_err(|e| {
@@ -378,40 +537,64 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let mut paths = Vec::new();
     let mut identities = Vec::new();
     let mut warnings = Vec::new();
-    for spec in job.remove {
-        let path = route::expand(home, spec.path);
+    let mut not_ours = Vec::new();
+    for item in listed_items(job) {
         // Check 2: is it there? `lstat`, so a dangling launcher counts.
-        match std::fs::symlink_metadata(&path) {
+        match std::fs::symlink_metadata(&item.path) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if spec.optional {
+                if item.optional {
                     continue;
                 }
-                if launcher_only && path != look.launcher {
+                if launcher_only && item.path != look.launcher {
                     warnings.push(Warning::AlreadyGone {
-                        path: shown(home, &path),
+                        path: shown(home, &item.path),
                     });
                     continue;
                 }
-                return Err(Refusal::new(&path, UninstallUnsafeReason::Missing).into_error(home));
+                return Err(
+                    Refusal::new(&item.path, UninstallUnsafeReason::Missing).into_error(home)
+                );
             }
             // Unreadable (a permission error, a loop): not something the
-            // instructions describe, and not something to move blind.
+            // instructions describe, and not something to move blind -- an
+            // optional one is left where it is and said.
+            Err(_) if item.optional => {
+                not_ours.push(Warning::WillKeep {
+                    path: shown(home, &item.path),
+                    what: KeptWhat::NotOurs,
+                });
+                continue;
+            }
             Err(_) => {
-                return Err(
-                    Refusal::new(&path, UninstallUnsafeReason::NotWhatInstructionsExpect)
-                        .into_error(home),
+                return Err(Refusal::new(
+                    &item.path,
+                    UninstallUnsafeReason::NotWhatInstructionsExpect,
                 )
+                .into_error(home))
             }
         }
-        let identity =
-            check_item(&look, &kept, spec, &path).map_err(|refusal| refusal.into_error(home))?;
-        warnings.push(Warning::WillTrash {
-            path: shown(home, &path),
-            what: spec.what,
-        });
-        identities.push(identity);
-        paths.push(path);
+        match check_item(&look, &kept, &item.rel, item.expect, &item.path) {
+            Ok(identity) => {
+                warnings.push(Warning::WillTrash {
+                    path: shown(home, &item.path),
+                    what: item.what,
+                });
+                identities.push(identity);
+                paths.push(item.path);
+            }
+            // An optional path that is there but not, as far as Canager can
+            // tell, this install's (spec §6.3 check 4, §十三 #27): kept, and
+            // said after the moves. Never the launcher, which is never
+            // optional.
+            Err(refusal) if item.optional && keeps_instead(refusal.reason) => {
+                not_ours.push(Warning::WillKeep {
+                    path: shown(home, &item.path),
+                    what: KeptWhat::NotOurs,
+                });
+            }
+            Err(refusal) => return Err(refusal.into_error(home)),
+        }
     }
     if paths.is_empty() {
         return Err(AdapterError::Refused(format!(
@@ -419,10 +602,12 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
             job.recipe.id
         )));
     }
+    warnings.extend(not_ours);
     warnings.extend(kept.iter().map(|kept| Warning::WillKeep {
         path: shown(home, &kept.path),
         what: kept.spec.what,
     }));
+    warnings.extend(outside_home_keeps(&look));
     Ok(Removal {
         paths,
         identities,
@@ -521,12 +706,10 @@ fn listed_path_back(look: &Look<'_>) -> Option<PathBuf> {
 /// That is the documented edge of the design: the system's call takes a
 /// path, and what it finds there is what it moves.
 fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Trasher) -> Turn {
-    let home = job.detected.home.as_path();
-    let Some(spec) = job
-        .remove
-        .iter()
-        .find(|spec| route::expand(home, spec.path) == path)
-    else {
+    // The item as the list stands now (`listed_items`: a listed path, or a
+    // backup a pattern matches); one that is no longer listed -- a backup
+    // that vanished by its turn -- is not what the preview saw.
+    let Some(item) = listed_items(job).into_iter().find(|item| item.path == path) else {
         return Turn::Changed(path.to_path_buf());
     };
     let Ok(look) = Look::new(job) else {
@@ -537,7 +720,9 @@ fn take_turn(job: &Job, path: &Path, previewed: ItemIdentity, trasher: &dyn Tras
             return Turn::Changed(back);
         }
     }
-    let seen = match kept_places(&look).and_then(|kept| check_item(&look, &kept, spec, path)) {
+    let seen = match kept_places(&look)
+        .and_then(|kept| check_item(&look, &kept, &item.rel, item.expect, path))
+    {
         Ok(seen) => seen,
         Err(refusal) => return Turn::Changed(refusal.path),
     };
@@ -702,6 +887,7 @@ mod tests {
     use super::*;
     use crate::events::VecSink;
     use crate::model::{KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
+    use crate::scan::Glob;
     use crate::trash::{MockTrasher, TrashError};
     use std::sync::Mutex as StdMutex;
 
@@ -733,6 +919,7 @@ mod tests {
             detected: d.clone(),
             remove,
             keep,
+            globs: &[],
         }
     }
 
@@ -740,6 +927,18 @@ mod tests {
     /// is (leaked; a test's lifetime is the process's).
     fn only(spec: RemoveSpec) -> &'static [RemoveSpec] {
         Box::leak(Box::new([spec]))
+    }
+
+    /// A one-pattern glob list, `'static` like a recipe's.
+    fn only_glob(glob: Glob) -> &'static [Glob] {
+        Box::leak(Box::new([glob]))
+    }
+
+    /// A one-path keep list, `'static` like a recipe's; `path` is leaked
+    /// too, so a test can keep a path under its own temp directory.
+    fn only_keep(path: String, what: KeptWhat) -> &'static [KeepSpec] {
+        let path: &'static str = Box::leak(path.into_boxed_str());
+        Box::leak(Box::new([KeepSpec { path, what }]))
     }
 
     fn trash(path: &str, what: RemovedWhat) -> Warning {
@@ -921,28 +1120,14 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_removal_refuses_a_path_reached_through_a_linked_folder_inside_home() {
-        // Ruling 24, the review's second counterexample: with `~/.claude ->
-        // ~/Documents`, an unrelated `~/Documents/downloads` would pass
-        // every other check as Claude Code's cache. Every folder between the
-        // home folder and a listed path must be a real folder -- inside the
-        // home folder or not -- so it is refused, and so is a launcher whose
-        // `~/.local/bin` is kept as a link to a dotfiles folder.
-        let home = TempHome::new("removal-linked-cache-parent");
-        let _layout = claude_layout(&home, "2.1.281");
-        let documents = home.dir("Documents");
-        home.dir("Documents/downloads");
-        home.link(".claude", &documents);
-        let d = detected(home.path());
-        let (path, reason) = refused(plan_removal(&claude_job(&d)));
-        assert_eq!(
-            (path.as_str(), reason),
-            (
-                "~/.claude/downloads",
-                UninstallUnsafeReason::NotWhatInstructionsExpect
-            )
-        );
-
+    fn test_plan_removal_refuses_a_launcher_reached_through_a_linked_folder_inside_home() {
+        // Ruling 24 of the step C plan: every folder between the home
+        // folder and a listed path must be a real folder -- inside the home
+        // folder or not -- so a launcher whose `~/.local/bin` is kept as a
+        // link to a dotfiles folder is refused. (C's other half, an
+        // optional `~/.claude/downloads` behind a linked `~/.claude`, is
+        // kept and said since step D: see
+        // `test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere`.)
         let home = TempHome::new("removal-linked-bin-inside");
         let real = home.executable(".local/share/claude/versions/2.1.281");
         let dotfiles_bin = home.dir("dotfiles/bin");
@@ -1093,37 +1278,381 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_removal_refuses_an_optional_path_of_the_wrong_shape() {
-        // Ruling 1: in this step an `optional` path that exists but is not
-        // what the list expects -- `~/.claude/downloads` as a link, or as a
-        // file -- refuses the whole uninstall. Step D replaces this branch
-        // with a skip and `WillKeep { NotOurs }`, and this test with its own.
-        let home = TempHome::new("removal-optional-link");
+    fn test_plan_removal_keeps_an_optional_path_it_cannot_confirm_is_the_tools_and_says_so() {
+        // Spec §6.3 check 4 (§十三 #27): an optional path that is there but
+        // not what the list describes -- `~/.claude/downloads` as a link
+        // elsewhere, or as a file -- is not this install's to move. C
+        // refused the whole uninstall for it; now it stays, the preview
+        // says so after the moves, and the uninstall goes on. (The array
+        // is typed as fn pointers: two closures never share a type, and
+        // the coercion does not reach inside a tuple; the alias keeps
+        // clippy's `type_complexity` quiet.)
+        type Make = fn(&TempHome);
+        let cases: [(&str, Make); 2] = [
+            ("removal-optional-link", |home| {
+                let elsewhere = home.dir("elsewhere/downloads");
+                home.link(".claude/downloads", &elsewhere);
+            }),
+            ("removal-optional-file", |home| {
+                home.file(".claude/downloads");
+            }),
+        ];
+        for (tag, make) in cases {
+            let home = TempHome::new(tag);
+            let layout = claude_layout(&home, "2.1.281");
+            make(&home);
+            let d = detected(home.path());
+
+            let removal = plan_removal(&claude_job(&d)).expect("a plan");
+
+            assert_eq!(
+                removal.paths,
+                vec![
+                    home.path().join(".local/share/claude"),
+                    layout.launcher.clone()
+                ],
+                "{tag}"
+            );
+            assert_eq!(
+                removal.warnings,
+                vec![
+                    trash("~/.local/share/claude", RemovedWhat::Program),
+                    trash("~/.local/bin/claude", RemovedWhat::Launcher),
+                    keep("~/.claude/downloads", KeptWhat::NotOurs),
+                    keep("~/.claude", KeptWhat::SettingsAndHistory),
+                ],
+                "{tag}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere() {
+        // The other reasons the skip covers (ruling 5): an optional path
+        // whose folder is a link inside the home folder (C's ruling 24 case,
+        // `~/.claude -> ~/Documents`, which C refused as
+        // `NotWhatInstructionsExpect` and now keeps), to another volume
+        // (`OutsideHome`), or into a shared folder (`SharedFolder`). None is
+        // the tool's to move; a grok whose `~/.config` is a dotfiles link
+        // keeps its fish completion rather than becoming impossible to
+        // uninstall.
+        let home = TempHome::new("removal-optional-linked-inside");
         let _layout = claude_layout(&home, "2.1.281");
-        let elsewhere = home.dir("elsewhere/downloads");
-        home.link(".claude/downloads", &elsewhere);
+        let documents = home.dir("Documents");
+        home.dir("Documents/downloads");
+        home.link(".claude", &documents);
         let d = detected(home.path());
-        let (path, reason) = refused(plan_removal(&claude_job(&d)));
+        let removal = plan_removal(&claude_job(&d)).expect("a plan, not C's refusal");
+        assert_eq!(
+            removal.warnings,
+            vec![
+                trash("~/.local/share/claude", RemovedWhat::Program),
+                trash("~/.local/bin/claude", RemovedWhat::Launcher),
+                keep("~/.claude/downloads", KeptWhat::NotOurs),
+                keep("~/.claude", KeptWhat::SettingsAndHistory),
+            ]
+        );
+        assert!(home.path().join("Documents/downloads").is_dir());
+
+        let outside = TempHome::new("removal-optional-outside");
+        let home = TempHome::new("removal-optional-folder-away");
+        let _layout = claude_layout(&home, "2.1.281");
+        let away = outside.dir("claude-state");
+        outside.dir("claude-state/downloads");
+        home.link(".claude", &away);
+        let d = detected(home.path());
+        let removal = plan_removal(&claude_job(&d)).expect("a plan");
+        assert!(removal
+            .warnings
+            .contains(&keep("~/.claude/downloads", KeptWhat::NotOurs)));
+        assert_eq!(removal.paths.len(), 2);
+
+        let home = TempHome::new("removal-optional-shared");
+        let _layout = claude_layout(&home, "2.1.281");
+        home.dir(".cache/thing");
+        let d = detected(home.path());
+        let job = Job {
+            recipe: &CLAUDE,
+            detected: d.clone(),
+            remove: Box::leak(Box::new([
+                RemoveSpec {
+                    path: "~/.cache/thing",
+                    expect: Expect::Dir,
+                    what: RemovedWhat::Cache,
+                    optional: true,
+                },
+                RemoveSpec {
+                    path: "~/.local/bin/claude",
+                    expect: Expect::SymlinkIntoRoot,
+                    what: RemovedWhat::Launcher,
+                    optional: false,
+                },
+            ])),
+            keep: &[],
+            globs: &[],
+        };
+        let removal = plan_removal(&job).expect("a plan");
+        assert_eq!(
+            removal.warnings,
+            vec![
+                trash("~/.local/bin/claude", RemovedWhat::Launcher),
+                keep("~/.cache/thing", KeptWhat::NotOurs),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_removal_still_refuses_an_optional_path_that_is_not_yours_or_overlaps_a_kept_one() {
+        // The skip is for "not ours", never for "not yours" or "would take
+        // what stays": those two refuse for an optional path exactly as for
+        // a required one.
+        let home = TempHome::new("removal-optional-owner");
+        let _layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        let d = Detected {
+            euid: detected(home.path()).euid + 1,
+            ..detected(home.path())
+        };
+        let job = Job {
+            recipe: &CLAUDE,
+            detected: d,
+            remove: only(RemoveSpec {
+                path: "~/.claude/downloads",
+                expect: Expect::Dir,
+                what: RemovedWhat::Cache,
+                optional: true,
+            }),
+            keep: &[],
+            globs: &[],
+        };
+        let (path, reason) = refused(plan_removal(&job));
         assert_eq!(
             (path.as_str(), reason),
-            (
-                "~/.claude/downloads",
-                UninstallUnsafeReason::NotWhatInstructionsExpect
-            )
+            ("~/.claude/downloads", UninstallUnsafeReason::NotOwnedByYou)
         );
 
-        let home = TempHome::new("removal-optional-file");
-        let _layout = claude_layout(&home, "2.1.281");
-        home.file(".claude/downloads");
+        let home = TempHome::new("removal-optional-overlap");
+        let layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        // The kept settings file is a link into the optional cache folder.
+        home.link(".claude.json", &home.path().join(".claude/downloads"));
         let d = detected(home.path());
         let (path, reason) = refused(plan_removal(&claude_job(&d)));
         assert_eq!(
             (path.as_str(), reason),
-            (
-                "~/.claude/downloads",
-                UninstallUnsafeReason::NotWhatInstructionsExpect
-            )
+            ("~/.claude.json", UninstallUnsafeReason::OverlapsKept)
         );
+        assert!(layout.root.is_dir());
+    }
+
+    #[test]
+    fn test_plan_removal_moves_backup_files_a_pattern_names_before_the_launcher() {
+        // Check 5 (spec §6.3): a regular file in the pattern's folder named
+        // prefix+something+suffix is moved, listed as a backup, before the
+        // last listed path; a link of that name and a name without the
+        // middle are not matches. Name order, so the preview is stable.
+        let home = TempHome::new("removal-globs");
+        let layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        home.file(".local/bin/claude.1727000000.old");
+        home.file(".local/bin/claude.1726000000.old");
+        home.file(".local/bin/claude.old");
+        home.link(".local/bin/claude.9.old", &layout.real);
+        let d = detected(home.path());
+        let (remove, keep) = claude_lists();
+        let job = Job {
+            recipe: &CLAUDE,
+            detected: d,
+            remove,
+            keep,
+            globs: only_glob(Glob {
+                dir: "~/.local/bin",
+                prefix: "claude.",
+                suffix: ".old",
+                what: RemovedWhat::Backups,
+            }),
+        };
+
+        let removal = plan_removal(&job).expect("a plan");
+
+        assert_eq!(
+            removal.paths,
+            vec![
+                home.path().join(".local/share/claude"),
+                home.path().join(".claude/downloads"),
+                home.path().join(".local/bin/claude.1726000000.old"),
+                home.path().join(".local/bin/claude.1727000000.old"),
+                layout.launcher.clone(),
+            ]
+        );
+        assert_eq!(removal.identities[2].kind, ItemKind::File);
+        assert_eq!(
+            removal.warnings[2],
+            trash("~/.local/bin/claude.1726000000.old", RemovedWhat::Backups)
+        );
+        assert_eq!(
+            removal.warnings[4],
+            trash("~/.local/bin/claude", RemovedWhat::Launcher)
+        );
+        // With the launcher as the only listed path, the backups still come
+        // before it.
+        let job = Job {
+            remove: only(RemoveSpec {
+                path: "~/.local/bin/claude",
+                expect: Expect::SymlinkIntoRoot,
+                what: RemovedWhat::Launcher,
+                optional: false,
+            }),
+            ..job
+        };
+        let removal = plan_removal(&job).expect("a plan");
+        assert_eq!(removal.paths.last(), Some(&layout.launcher));
+        assert_eq!(removal.paths.len(), 3);
+    }
+
+    #[test]
+    fn test_plan_removal_lists_a_kept_path_outside_the_home_folder_as_a_sentence_only() {
+        // Ruling 6: grok's installer may leave `/usr/local/bin/grok`, a link
+        // into `~/.grok/downloads`. It is reported (it becomes a dead link),
+        // never protected -- as a kept path it would refuse the very
+        // uninstall it exists for (`OverlapsKept`) -- and reported only when
+        // it is a link into this tool's root: the same path may be
+        // Homebrew's live link into its Caskroom (an Intel Mac), another
+        // CLI's `agent`, or a plain file, and "a dead link you can delete"
+        // would then be a false sentence. Stood in for by paths under
+        // another temp directory, since a test cannot write to
+        // /usr/local/bin.
+        let outside = TempHome::new("removal-outside-keep");
+        let home = TempHome::new("removal-outside-keep-home");
+        let layout = claude_layout(&home, "2.1.281");
+        let fallback = outside.link("bin/claude", &layout.real);
+        let caskroom = outside.executable("Caskroom/claude-code/2.1.281/claude");
+        let brews = outside.link("bin/claude-brew", &caskroom);
+        let plain = outside.file("bin/claude-file");
+        let (remove, _) = claude_lists();
+        let job_for = |kept: &Path| Job {
+            recipe: &CLAUDE,
+            detected: detected(home.path()),
+            remove,
+            keep: only_keep(kept.display().to_string(), KeptWhat::OutsideHome),
+            globs: &[],
+        };
+
+        // A link into the root: reported, after the moves.
+        let removal = plan_removal(&job_for(&fallback)).expect("a plan, not OverlapsKept");
+        assert_eq!(
+            removal.warnings,
+            vec![
+                trash("~/.local/share/claude", RemovedWhat::Program),
+                trash("~/.local/bin/claude", RemovedWhat::Launcher),
+                Warning::WillKeep {
+                    path: fallback.display().to_string(),
+                    what: KeptWhat::OutsideHome,
+                },
+            ]
+        );
+        // A link elsewhere (Homebrew's), a regular file, and nothing at all:
+        // no sentence, and no refusal.
+        for (what, kept) in [("a link elsewhere", &brews), ("a regular file", &plain)] {
+            let removal = plan_removal(&job_for(kept)).expect("a plan");
+            assert_eq!(removal.warnings.len(), 2, "{what}: {:?}", removal.warnings);
+        }
+        std::fs::remove_file(&fallback).unwrap();
+        let removal = plan_removal(&job_for(&fallback)).expect("a plan");
+        assert_eq!(removal.warnings.len(), 2);
+    }
+
+    #[test]
+    fn test_points_into_reads_a_links_target_resolved_or_by_its_own_text() {
+        // The one question `outside_home_keeps` asks: is this a symbolic
+        // link into the root? Resolved when it resolves; by its own text,
+        // folded from its folder, when it dangles (the second run of a
+        // stopped uninstall, `downloads/` already in the Trash); never for
+        // a file or a folder.
+        let home = TempHome::new("removal-points-into");
+        let root = home.dir(".grok");
+        let real = home.executable(".grok/downloads/grok-1.0.41-macos-aarch64");
+        let outside = TempHome::new("removal-points-into-outside");
+        let resolving = outside.link("bin/grok", &real);
+        let dangling = outside.link(
+            "bin/grok-gone",
+            &home
+                .path()
+                .join(".grok/downloads/grok-1.0.40-macos-aarch64"),
+        );
+        let relative_dangling = outside.link(
+            "bin/grok-rel",
+            Path::new(&format!(
+                "../../{}/.grok/bin/grok",
+                home.path().file_name().unwrap().to_str().unwrap()
+            )),
+        );
+        let elsewhere = outside.link("bin/other", &outside.executable("Caskroom/x/grok"));
+        let file = outside.file("bin/file");
+        let folder = outside.dir("bin/folder");
+        assert!(points_into(&resolving, &root));
+        assert!(points_into(&dangling, &root));
+        // `../../<home-name>/.grok/bin/grok` from `<outside>/bin`: the two
+        // temp homes are siblings, so the text lands under the root.
+        assert!(
+            points_into(&relative_dangling, &root),
+            "{relative_dangling:?}"
+        );
+        assert!(!points_into(&elsewhere, &root));
+        assert!(!points_into(&file, &root));
+        assert!(!points_into(&folder, &root));
+        assert!(!points_into(&outside.path().join("bin/missing"), &root));
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_moves_a_backup_the_preview_listed_and_stops_when_one_appears_after_it(
+    ) {
+        // Check 5 at run time: the backup the preview listed is moved in its
+        // place; a second backup appearing between the preview and the
+        // click makes the fresh list differ, and nothing moves.
+        let home = TempHome::new("removal-exec-globs");
+        let layout = claude_layout(&home, "2.1.281");
+        home.file(".local/bin/claude.1727000000.old");
+        let (remove, keep) = claude_lists();
+        let job = Job {
+            recipe: &CLAUDE,
+            detected: detected(home.path()),
+            remove,
+            keep,
+            globs: only_glob(Glob {
+                dir: "~/.local/bin",
+                prefix: "claude.",
+                suffix: ".old",
+                what: RemovedWhat::Backups,
+            }),
+        };
+        let preview = plan_removal(&job).unwrap();
+        let mock = Arc::new(MockTrasher::new());
+        let trasher: Arc<dyn Trasher> = mock.clone();
+
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(mock.calls(), preview.paths);
+        assert_eq!(mock.kinds()[1], ItemKind::File, "the backup, as a file");
+        assert!(std::fs::symlink_metadata(&layout.launcher).is_err());
+
+        let home = TempHome::new("removal-exec-glob-appeared");
+        let _layout = claude_layout(&home, "2.1.281");
+        home.file(".local/bin/claude.1727000000.old");
+        let job = Job {
+            detected: detected(home.path()),
+            ..job
+        };
+        let preview = plan_removal(&job).unwrap();
+        home.file(".local/bin/claude.1727000600.old");
+        let mock = Arc::new(MockTrasher::new());
+        let trasher: Arc<dyn Trasher> = mock.clone();
+
+        let (outcome, _) = run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, path_changed("~/.local/bin/claude.1727000600.old"));
+        assert!(mock.calls().is_empty());
     }
 
     #[test]
@@ -1153,6 +1682,7 @@ mod tests {
                     optional: false,
                 }),
                 keep: &[],
+                globs: &[],
             };
             let (path, reason) = refused(plan_removal(&job));
             assert_eq!(
@@ -1181,6 +1711,7 @@ mod tests {
                 optional: true,
             }),
             keep: &[],
+            globs: &[],
         };
 
         assert!(matches!(plan_removal(&job), Err(AdapterError::Refused(_))));

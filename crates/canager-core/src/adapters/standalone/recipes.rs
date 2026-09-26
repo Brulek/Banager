@@ -281,22 +281,30 @@ mod tests {
         }
     }
 
+    /// The kept paths of a `Paths` recipe that must live under home (every
+    /// one but the report-only `OutsideHome` ones, ruling 6 of the step D
+    /// plan).
+    fn home_keeps(keep: &'static [KeepSpec]) -> impl Iterator<Item = &'static str> {
+        keep.iter()
+            .filter(|spec| spec.what != KeptWhat::OutsideHome)
+            .map(|spec| spec.path)
+    }
+
     #[test]
     fn test_a_paths_recipe_names_only_home_paths() {
-        // The path-list uninstall (`removal.rs`, step C) expands its
-        // recipe's route and every remove/keep spec with B's two-argument
-        // `route::expand`, which knows `~/` and nothing else. A tool whose
-        // paths live under `$CARGO_HOME` (rustup) uninstalls with its own
-        // command, so this holds today by construction; this test keeps
-        // it true when the next `Paths` recipe lands, rather than letting
-        // `expand` panic at plan time.
+        // The path-list uninstall (`removal.rs`) expands its recipe's route
+        // and every remove/keep spec with B's two-argument `route::expand`,
+        // which knows `~/` and nothing else -- except the report-only
+        // `OutsideHome` keeps, which it never expands. A `$CARGO_HOME` tool
+        // (rustup) uninstalls with its own command.
         for recipe in RECIPES {
             let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
                 continue;
             };
             let mut paths = vec![recipe.route.launcher, recipe.route.root];
             paths.extend(remove.iter().map(|spec| spec.path));
-            paths.extend(keep.iter().map(|spec| spec.path));
+            paths.extend(home_keeps(keep));
+            paths.extend(recipe.backup_globs.iter().map(|glob| glob.dir));
             for path in paths {
                 assert!(
                     path.starts_with("~/"),
@@ -437,14 +445,20 @@ mod tests {
     fn test_every_uninstall_path_is_under_home_and_not_in_a_shared_folder() {
         // `route::expand` panics on a path that does not start with `~/`,
         // and the removal's check 1 refuses a path whose folder is the home
-        // folder or one of `SHARED_FOLDERS` (ruling 5) -- a recipe listing
-        // one would refuse every uninstall, and the never-list exists so no
-        // recipe can quietly move `~/.local/bin` whole. Held here, on the
-        // data as spelled, so the first test run says so rather than a
-        // user's dialog.
+        // folder or one of `SHARED_FOLDERS` -- a recipe listing one would
+        // refuse every uninstall, and the never-list exists so no recipe
+        // can quietly move `~/.local/bin` whole. The one exception is a
+        // kept path outside the home folder, which is never expanded:
+        // absolute, never `~/`, never under a user's home.
         for recipe in RECIPES {
             let (remove, keep) = path_lists(recipe);
-            for path in remove.iter().chain(keep.iter()) {
+            let Some(Uninstall::Paths {
+                keep: keep_specs, ..
+            }) = &recipe.uninstall
+            else {
+                continue;
+            };
+            for path in remove.iter().copied().chain(home_keeps(keep_specs)) {
                 let rest = path
                     .strip_prefix("~/")
                     .unwrap_or_else(|| panic!("{}: {path:?} must start with ~/", recipe.id));
@@ -457,6 +471,18 @@ mod tests {
                     recipe.id
                 );
             }
+            for spec in keep_specs
+                .iter()
+                .filter(|spec| spec.what == KeptWhat::OutsideHome)
+            {
+                assert!(
+                    spec.path.starts_with('/') && !spec.path.starts_with("/Users/"),
+                    "{}: an OutsideHome keep names an absolute path outside every home, got {:?}",
+                    recipe.id,
+                    spec.path
+                );
+            }
+            assert_eq!(keep.len(), keep_specs.len());
             for path in &remove {
                 let folder = Path::new(path.strip_prefix("~/").unwrap())
                     .parent()
@@ -473,12 +499,14 @@ mod tests {
 
     #[test]
     fn test_every_paths_recipe_moves_its_launcher_last_and_lists_no_path_inside_another() {
-        // Spec §6.2: the launcher last, so a run that stops partway leaves
-        // exactly the launcher-only state a second run finishes. Spec
-        // §6.3's former check 7: no removed path is inside another removed
-        // path (moving `a` and then `a/b` would fail on the second), and no
-        // kept path is inside a removed one (it would go with it) -- both
-        // properties of the constant, not of the Mac.
+        // Spec §6.2: the launcher itself last (claude, agy, grok's
+        // `~/.grok/bin/grok`; never a folder holding it, ruling 4 of the
+        // step D plan), so a run that stops partway leaves exactly the
+        // launcher-only state a second run finishes -- and what it is must
+        // match the route: a link for `SymlinkIntoRoot`, a file for
+        // `FlatFile`. Spec §6.3's former check 7: no removed path is inside
+        // another removed path, and no kept path is inside a removed one
+        // -- properties of the constant, not of the Mac.
         for recipe in RECIPES {
             let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
                 continue;
@@ -486,9 +514,6 @@ mod tests {
             let last = remove
                 .last()
                 .unwrap_or_else(|| panic!("{}: an empty remove list", recipe.id));
-            // The launcher itself. (Grok's list ends with `~/.grok/bin`, the
-            // folder that holds its launcher: step D widens this with that
-            // recipe, not before.)
             assert_eq!(
                 last.path, recipe.route.launcher,
                 "{}: the last path must be the launcher",
@@ -500,6 +525,11 @@ mod tests {
                 "{}: the launcher is never optional",
                 recipe.id
             );
+            let expected = match recipe.route.kind {
+                RouteKind::SymlinkIntoRoot => Expect::SymlinkIntoRoot,
+                RouteKind::FlatFile => Expect::File,
+            };
+            assert_eq!(last.expect, expected, "{}", recipe.id);
             let removed: Vec<&str> = remove.iter().map(|spec| spec.path).collect();
             for a in &removed {
                 for b in &removed {
@@ -509,7 +539,7 @@ mod tests {
                         recipe.id
                     );
                 }
-                for kept in keep.iter().map(|spec| spec.path) {
+                for kept in home_keeps(keep) {
                     assert!(
                         kept != *a && !kept.starts_with(&format!("{a}/")),
                         "{}: kept {kept:?} is inside removed {a:?}",

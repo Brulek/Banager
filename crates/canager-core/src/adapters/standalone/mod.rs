@@ -699,6 +699,7 @@ impl StandaloneAdapter {
                             detected,
                             remove,
                             keep,
+                            globs: self.recipe.backup_globs,
                         })?;
                         Ok(Plan {
                             request: req.clone(),
@@ -909,6 +910,7 @@ impl StandaloneAdapter {
                         detected: self.detected_or_refuse()?,
                         remove,
                         keep,
+                        globs: self.recipe.backup_globs,
                     },
                     removal::Confirmed { paths, previewed },
                     &self.trasher,
