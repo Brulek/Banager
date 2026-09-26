@@ -889,6 +889,28 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Updates itself");
     expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("自己更新");
   });
+
+  it("promises the self-installed update only while the tool's automatic updates are on", () => {
+    // Google documents `AGY_CLI_DISABLE_AUTO_UPDATE=true` as turning
+    // Antigravity CLI's background updater off (agy.md §4). Set in a
+    // shell's startup file, it stops the very run the sentence asks for
+    // from installing anything, and Canager does not look for it, so the
+    // promise says "unless" in both locales.
+    for (const copy of [
+      en.updates.blocked.SelfUpdatesOnly.description,
+      en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
+    ]) {
+      expect(copy).toContain(
+        "unless its automatic updates have been turned off, it checks for updates when it starts",
+      );
+    }
+    for (const copy of [
+      zhCN.updates.blocked.SelfUpdatesOnly.description,
+      zhCN.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
+    ]) {
+      expect(copy).toContain("只要它的自动更新没有被关掉，它启动时就会检查更新");
+    }
+  });
 });
 
 describe("UNINSTALL_BLOCKED_KEYS", () => {

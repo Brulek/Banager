@@ -437,11 +437,12 @@ export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undef
  * The command a `SelfUpdatesOnly` row's sentence tells the user to run
  * once: the tool itself -- its launcher, which is the standalone
  * instance's `exe_path` (`StandaloneAdapter::detect`) -- with no
- * arguments. Opening it is what makes it check for updates (spec §4.4);
- * `<launcher> --version` would not (agy 1.2.10 never reaches its updater
- * from `--version`, spec §3.4). Quoted by `displayToken` when the path has
- * a space, like the unpin commands. The bare name when the snapshot lacks
- * the instance, which `refresh` never produces.
+ * arguments. Opening it is what makes it check for updates, while its
+ * automatic updates are on (spec §4.4); `<launcher> --version` would not
+ * (agy 1.2.10 never reaches its updater from `--version`, spec §3.4).
+ * Quoted by `displayToken` when the path has a space, like the unpin
+ * commands. The bare name when the snapshot lacks the instance, which
+ * `refresh` never produces.
  */
 function launcherCommand(key: ArtifactKey, instance: ManagerInstance | undefined): string {
   return displayToken(instance?.exe_path ?? key.name);
@@ -556,9 +557,12 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // The tool installs its updates itself (agy: a 15-minute debounce on
     // its background check, agy.md §4) and offers no command Canager may
     // run, so the sentence says what does work: open it once, then quit.
-    // The available sentence names the versions the row compared; the
-    // unavailable one cannot promise a current target and says only that
-    // a newer version was seen.
+    // That works only while the tool's automatic updates are on -- agy's
+    // documented switch, `AGY_CLI_DISABLE_AUTO_UPDATE=true`, turns them
+    // off, and Canager does not look for it -- so the promise says
+    // "unless". The available sentence names the versions the row
+    // compared; the unavailable one cannot promise a current target and
+    // says only that a newer version was seen.
     description: "updates.blocked.SelfUpdatesOnly.description",
     descriptionSourceUnavailable: "updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable",
     // The reason *is* "it updates itself": no separate sentence exists for

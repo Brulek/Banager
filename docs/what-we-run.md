@@ -756,11 +756,16 @@ never an error for the source.
 
 **Write commands**: none. Antigravity CLI installs its updates itself in
 the background (at most every 15 minutes, by Google's documentation and
-this Mac's own log), and its `agy update` subcommand is undocumented, has
-no options and has never been run — so Canager offers no Update button: a
-newer version is listed with the badge "Updates itself" and a sentence
-that says to open the tool once and quit it. `Session::issue_plan` refuses
-the upgrade as well, and so does the adapter.
+this Mac's own log), unless `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the
+switch Google documents for turning that off, is set where it runs; and
+its `agy update` subcommand is undocumented, has no options and has never
+been run — so Canager offers no Update button: a newer version is listed
+with the badge "Updates itself" and a sentence that says to open the tool
+once and quit it, after which it installs the new version unless its
+automatic updates have been turned off. Canager does not look for that
+switch, so the sentence cannot say whether it is set.
+`Session::issue_plan` refuses the upgrade as well, and so does the
+adapter.
 
 **Uninstall** (only after the user reviews and confirms a preview; no
 command runs): Canager moves to the Trash, in this order, any backup copy

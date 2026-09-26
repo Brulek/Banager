@@ -1864,8 +1864,9 @@ describe("UpdatesPage", () => {
     // launcher's live version), so the row stays and is counted with what
     // Canager cannot update; the tool has no update command Canager could
     // run, so there is no button and no checkbox, and the sentence says
-    // what does work -- opening the tool, which checks at most every 15
-    // minutes -- with the launcher set apart as code. The claude fixtures
+    // what does work while its automatic updates are on -- opening the
+    // tool, which checks at most every 15 minutes -- with the launcher set
+    // apart as code. The claude fixtures
     // stand in for agy here: the copy record is per reason, not per tool.
     instances = [...snapshot.instances, claudeInstance];
     updates = [{ ...claudeUpdate, blocked: "SelfUpdatesOnly" }, snapshot.updates[1]];
@@ -1881,7 +1882,7 @@ describe("UpdatesPage", () => {
     expect(
       getByText(
         wholeSentence(
-          "A newer version of Claude Code is out (2.1.281 → 2.1.290), and Claude Code installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run /Users/someone/.local/bin/claude in Terminal, then quit it): it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
+          "A newer version of Claude Code is out (2.1.281 → 2.1.290), and Claude Code installs updates itself in the background — Canager doesn't have a safe way to do it for you. Open it once (run /Users/someone/.local/bin/claude in Terminal, then quit it): unless its automatic updates have been turned off, it checks for updates when it starts, at most once every 15 minutes, and installs the new version in the background.",
         ),
       ),
     ).toBeInTheDocument();
