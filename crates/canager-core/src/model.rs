@@ -900,7 +900,9 @@ pub enum Attention {
     NotInstalledAfterInstall,
     /// An uninstall ended as if it had succeeded -- its command exited 0,
     /// or a path-list uninstall moved every listed path to the Trash -- and
-    /// the item is still installed.
+    /// the item is still installed: for a path-list uninstall, its launcher
+    /// or another path on its list is there
+    /// (`StandaloneAdapter::reconcile_after_uninstall`).
     StillInstalledAfterUninstall,
     /// An upgrade exited 0 and the item is no longer installed at all.
     GoneAfterUpgrade,

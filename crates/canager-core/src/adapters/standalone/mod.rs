@@ -1091,12 +1091,26 @@ impl StandaloneAdapter {
     /// error, which `run_operation` reports as `Unconfirmed`, never as a
     /// finished uninstall (Ruling 27). No version is read: presence is the
     /// whole question, and a stopped uninstall's launcher has none.
+    ///
+    /// For a recipe with a path list, a launcher that is gone is not the
+    /// whole answer: a copy of the tool still running can put its program
+    /// folder or its cache back after the launcher's move, and without the
+    /// launcher no row would show them. So every other path on the list,
+    /// and every backup file its patterns match, is looked at too
+    /// (`removal::left_behind`, with `plan`'s paths as the ones the run
+    /// moved, bound to this instance's seat): one that is there is the
+    /// tool still there, and one Canager cannot look at is an error, as
+    /// for the launcher. What the preview's own rule keeps as not the
+    /// tool's, and this run never moved, is not counted (`left_behind`
+    /// says why). A launcher still there answers alone: the tool is there,
+    /// whatever else is.
     pub async fn reconcile_after_uninstall(
         &self,
         inst: &ManagerInstance,
         key: &ArtifactKey,
+        plan: &Plan,
     ) -> Result<Reconciled, AdapterError> {
-        let present =
+        let launcher_there =
             match route::probe_strict(self.recipe.route.kind, &inst.exe_path, &inst.prefix) {
                 Ok(Probe::Absent) => false,
                 Ok(Probe::Present { .. } | Probe::LauncherOnly) => true,
@@ -1107,11 +1121,33 @@ impl StandaloneAdapter {
                     )))
                 }
             };
+        let left_behind = match self.recipe.uninstall {
+            Some(Uninstall::Paths { remove, keep }) if !launcher_there => {
+                let moved: &[PathBuf] = match &plan.action {
+                    PlanAction::TrashPaths { paths, .. } => paths,
+                    PlanAction::Command { .. } => &[],
+                };
+                let job = removal::Job {
+                    recipe: self.recipe,
+                    detected: self.seated_detected_for(inst)?,
+                    remove,
+                    keep,
+                    globs: self.recipe.backup_globs,
+                };
+                removal::left_behind(&job, moved).map_err(|path| {
+                    AdapterError::Parse(format!(
+                        "cannot tell whether {} is still there",
+                        path.display()
+                    ))
+                })?
+            }
+            _ => Vec::new(),
+        };
         // The one artifact, matched as `reconcile_from` matches -- kind and
         // name, never the instance id (adapters/mod.rs says why).
         let this_tool = key.kind == ArtifactKind::Binary && key.name == self.recipe.id;
         Ok(Reconciled {
-            present: present && this_tool,
+            present: (launcher_there || !left_behind.is_empty()) && this_tool,
             version: None,
         })
     }
@@ -1211,8 +1247,9 @@ impl Adapter for StandaloneAdapter {
         &self,
         inst: &ManagerInstance,
         key: &ArtifactKey,
+        plan: &Plan,
     ) -> Result<Reconciled, AdapterError> {
-        StandaloneAdapter::reconcile_after_uninstall(self, inst, key).await
+        StandaloneAdapter::reconcile_after_uninstall(self, inst, key, plan).await
     }
 }
 
@@ -3553,17 +3590,18 @@ mod tests {
         // truthfully (`Cancelled` after a Cancel,
         // `StillInstalledAfterUninstall` after an exit that claimed
         // success) -- while `reconcile` keeps B's strict rule for upgrades;
-        // a launcher that is gone is absent; and one Canager cannot look at
-        // (its folder unreadable) is neither: an error, which
-        // `run_operation` reports as `Unconfirmed`, never as a finished
-        // uninstall.
+        // a launcher that is gone, with every other path the plan listed,
+        // is absent; and one Canager cannot look at (its folder
+        // unreadable) is neither: an error, which `run_operation` reports
+        // as `Unconfirmed`, never as a finished uninstall.
         let trasher = Arc::new(MockTrasher::new());
-        let (_home, layout, adapter, inst) = full_install("reconcile-after", trasher).await;
+        let (home, layout, adapter, inst) = full_install("reconcile-after", trasher).await;
         let key = adapter.artifact_key(&inst);
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
         std::fs::remove_dir_all(&layout.root).unwrap();
 
         let still_there = adapter
-            .reconcile_after_uninstall(&inst, &key)
+            .reconcile_after_uninstall(&inst, &key, &plan)
             .await
             .expect("a reading");
         assert!(still_there.present);
@@ -3575,17 +3613,66 @@ mod tests {
         let bin = layout.launcher.parent().unwrap().to_path_buf();
         if let Some(_locked) = super::testing::Unreadable::new(&bin) {
             assert!(matches!(
-                adapter.reconcile_after_uninstall(&inst, &key).await,
+                adapter.reconcile_after_uninstall(&inst, &key, &plan).await,
                 Err(AdapterError::Parse(_))
             ));
         }
 
         std::fs::remove_file(&layout.launcher).unwrap();
+        std::fs::remove_dir(home.path().join(".claude/downloads")).unwrap();
         let gone = adapter
-            .reconcile_after_uninstall(&inst, &key)
+            .reconcile_after_uninstall(&inst, &key, &plan)
             .await
             .expect("a reading");
         assert!(!gone.present);
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_after_uninstall_counts_a_listed_path_that_is_there_as_still_there() {
+        // The launcher is last so the row shows what a stopped run left; a
+        // copy of Claude Code still running can put its program folder or
+        // its cache back after the launcher's move, and the launcher alone
+        // would then read as gone. So after a path-list uninstall every
+        // other path on the list is looked for too (`removal::left_behind`,
+        // with the plan's paths as the ones this run moved): one that is
+        // there is the tool still there, and one Canager cannot look at is
+        // an error, never "gone".
+        let trasher = Arc::new(MockTrasher::new());
+        let (home, _layout, adapter, inst) =
+            full_install("reconcile-left-behind", trasher.clone()).await;
+        let key = adapter.artifact_key(&inst);
+        let plan = adapter.plan(&inst, &uninstall()).await.expect("plan");
+        let PlanAction::TrashPaths { paths, previewed } = &plan.action else {
+            panic!("a path list");
+        };
+        for (path, seen) in paths.iter().zip(previewed) {
+            trasher.trash(path, seen.kind).expect("the mock moves it");
+        }
+        let reading = adapter.reconcile_after_uninstall(&inst, &key, &plan).await;
+        assert!(!reading.expect("a reading").present, "everything moved");
+
+        home.file(".local/share/claude/versions/2.1.282");
+        let reading = adapter.reconcile_after_uninstall(&inst, &key, &plan).await;
+        assert!(reading.expect("a reading").present, "the program folder");
+        std::fs::remove_dir_all(home.path().join(".local/share/claude")).unwrap();
+
+        let cache = home.dir(".claude/downloads");
+        let reading = adapter.reconcile_after_uninstall(&inst, &key, &plan).await;
+        assert!(reading.expect("a reading").present, "the cache folder");
+        std::fs::remove_dir(&cache).unwrap();
+
+        if let Some(_locked) = super::testing::Unreadable::new(&home.path().join(".claude")) {
+            let reading = adapter.reconcile_after_uninstall(&inst, &key, &plan).await;
+            assert!(
+                matches!(reading, Err(AdapterError::Parse(_))),
+                "{reading:?}"
+            );
+        }
+        let reading = adapter.reconcile_after_uninstall(&inst, &key, &plan).await;
+        assert!(
+            !reading.expect("a reading").present,
+            "everything gone again"
+        );
     }
 
     #[tokio::test]
@@ -5106,7 +5193,7 @@ mod tests {
         let key = adapter.artifact_key(&inst);
         assert!(
             !adapter
-                .reconcile_after_uninstall(&inst, &key)
+                .reconcile_after_uninstall(&inst, &key, &plan)
                 .await
                 .expect("a reading")
                 .present
@@ -5644,7 +5731,7 @@ mod tests {
         let key = adapter.artifact_key(&inst);
         assert!(
             !adapter
-                .reconcile_after_uninstall(&inst, &key)
+                .reconcile_after_uninstall(&inst, &key, &plan)
                 .await
                 .unwrap()
                 .present
@@ -5791,7 +5878,7 @@ mod tests {
         let key = adapter.artifact_key(&inst);
         assert!(
             adapter
-                .reconcile_after_uninstall(&inst, &key)
+                .reconcile_after_uninstall(&inst, &key, &plan)
                 .await
                 .unwrap()
                 .present

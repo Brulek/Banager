@@ -367,13 +367,15 @@ async fn test_install_and_uninstall_take_no_before_reading() {
 /// launcher's folder is for the standalone adapter). `execute` reports
 /// `outcome`, first firing the operation's own token when
 /// `cancel_in_execute` is set: a user's Cancel landing while the uninstall
-/// ran.
+/// ran. Every plan `execute` and `reconcile_after_uninstall` are handed is
+/// kept, in `handed`, in the order they were handed.
 struct SplitReadingAdapter {
     meta: AdapterMeta,
     still_there: Option<bool>,
     outcome: Outcome,
     cancel_in_execute: bool,
     calls: Mutex<Vec<&'static str>>,
+    handed: Mutex<Vec<Plan>>,
 }
 
 impl SplitReadingAdapter {
@@ -396,6 +398,7 @@ impl SplitReadingAdapter {
             outcome,
             cancel_in_execute,
             calls: Mutex::new(Vec::new()),
+            handed: Mutex::new(Vec::new()),
         }
     }
 }
@@ -452,12 +455,13 @@ impl Adapter for SplitReadingAdapter {
 
     async fn execute(
         &self,
-        _plan: &Plan,
+        plan: &Plan,
         _sink: Arc<dyn EventSink>,
         _op_id: OpId,
         cancel: CancellationToken,
     ) -> Result<Outcome, AdapterError> {
         self.calls.lock().unwrap().push("execute");
+        self.handed.lock().unwrap().push(plan.clone());
         if self.cancel_in_execute {
             cancel.cancel();
         }
@@ -477,8 +481,10 @@ impl Adapter for SplitReadingAdapter {
         &self,
         _inst: &ManagerInstance,
         _key: &ArtifactKey,
+        plan: &Plan,
     ) -> Result<Reconciled, AdapterError> {
         self.calls.lock().unwrap().push("reconcile_after_uninstall");
+        self.handed.lock().unwrap().push(plan.clone());
         match self.still_there {
             Some(present) => Ok(Reconciled {
                 present,
@@ -596,6 +602,49 @@ async fn test_an_upgrade_and_an_install_keep_the_strict_reading() {
     .await;
     assert_eq!(outcome, Outcome::Unconfirmed);
     assert_eq!(calls, vec!["execute", "reconcile"]);
+}
+
+#[tokio::test]
+async fn test_the_reading_after_an_uninstall_is_handed_the_plan_the_uninstall_carried_out() {
+    // A path-list uninstall's reading asks which paths the run moved
+    // (`StandaloneAdapter::reconcile_after_uninstall`), so it must be handed
+    // the plan `execute` was handed -- the one submitted, never one built
+    // afresh. The submitted plan's budget (7 s) is not the one the
+    // adapter's own `plan` builds (60 s), so a plan built afresh would not
+    // compare equal.
+    let mut manager = OperationManager::new(Arc::new(VecSink::new()));
+    let adapter = Arc::new(SplitReadingAdapter::new(
+        Some(false),
+        Outcome::Succeeded,
+        false,
+    ));
+    manager.register_adapter(adapter.clone());
+    let manager = Arc::new(manager);
+    let inst = make_instance("fake:/handed-the-plan");
+    manager.register_instance(inst.clone());
+    let req = OpRequest {
+        kind: OpKind::Uninstall,
+        instance_id: inst.id.clone(),
+        artifact_kind: ArtifactKind::Binary,
+        name: "tool".to_string(),
+    };
+    let submitted = Plan {
+        timeout_secs: 7,
+        ..adapter.plan(&inst, &req).await.expect("plan")
+    };
+
+    let op_id = manager.submit(submitted.clone());
+
+    assert_eq!(manager.wait(op_id).await, Some(Outcome::Succeeded));
+    assert_eq!(
+        adapter.calls.lock().unwrap().clone(),
+        vec!["execute", "reconcile_after_uninstall"]
+    );
+    assert_eq!(
+        adapter.handed.lock().unwrap().clone(),
+        vec![submitted.clone(), submitted],
+        "execute and the reading after it are handed the one submitted plan"
+    );
 }
 
 #[tokio::test]

@@ -921,31 +921,87 @@ fn listed_path_back(look: &Look<'_>, moved: &[PathBuf]) -> Option<PathBuf> {
                 std::fs::symlink_metadata(path),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound
             );
-            let excepted =
-                spec.optional && !moved.contains(path) && kept_as_not_ours(look, spec, path);
+            let excepted = spec.optional
+                && !moved.contains(path)
+                && kept_as_not_ours(look, spelled(spec.path), spec.expect, path);
             !gone && !excepted
         })
         .map(|(_, path)| path)
 }
 
-/// Whether the preview's own rule keeps `path`, an optional listed path,
-/// as one Canager cannot confirm is the tool's (`WillKeep { NotOurs }`) --
-/// `plan_removal`'s two branches that say so, asked again from this look:
-/// its `lstat` fails with anything but "no such file" (it cannot be looked
-/// at), or `check_item` refuses it for a reason `keeps_instead` names.
-/// Gone, it is not kept at all, and when a kept path cannot be placed
-/// (`kept_places`) nothing is confirmed: `false` for both. Read by
-/// `listed_path_back`.
-fn kept_as_not_ours(look: &Look<'_>, spec: &'static RemoveSpec, path: &Path) -> bool {
+/// Whether the preview's own rule keeps `path` -- an optional listed path,
+/// or a backup file a pattern matches (every match is optional,
+/// `listed_items`), spelled `rel` under the home folder and expected to be
+/// `expect` -- as one Canager cannot confirm is the tool's (`WillKeep {
+/// NotOurs }`): `plan_removal`'s two branches that say so, asked again
+/// from this look. Its `lstat` fails with anything but "no such file" (it
+/// cannot be looked at), or `check_item` refuses it for a reason
+/// `keeps_instead` names. Gone, it is not kept at all, and when a kept
+/// path cannot be placed (`kept_places`) nothing is confirmed: `false` for
+/// both. Read by `listed_path_back` and `left_behind`.
+fn kept_as_not_ours(look: &Look<'_>, rel: &Path, expect: Expect, path: &Path) -> bool {
     match std::fs::symlink_metadata(path) {
         Ok(_) => kept_places(look).is_ok_and(|kept| {
             matches!(
-                check_item(look, &kept, spelled(spec.path), spec.expect, path),
+                check_item(look, &kept, rel, expect, path),
                 Err(refusal) if keeps_instead(refusal.reason)
             )
         }),
         Err(error) => error.kind() != std::io::ErrorKind::NotFound,
     }
+}
+
+/// What a path-list uninstall left behind, read from the disk now: every
+/// path the recipe lists other than the launcher, and every backup file
+/// its patterns match now (`listed_items`, the preview's own way of
+/// finding them -- a pattern's folder that cannot be read matches
+/// nothing), each `lstat`ed, in the list's order. "No such file" is gone.
+/// One that is there is left behind -- moved by this run (`moved`) and
+/// there again, or never moved and there now -- and is returned with the
+/// others. One whose `lstat` fails any other way cannot be told, and is
+/// the `Err`: whoever asked must not call the tool gone. The one exception
+/// is `listed_path_back`'s, for the same reason: an optional path this run
+/// never moved that the preview's own rule keeps as not the tool's
+/// (`kept_as_not_ours`, asked of a fresh `Look`; a home folder that cannot
+/// be resolved confirms nothing) -- one it cannot look at among them --
+/// is not something the list moves, and counting it would make every
+/// uninstall whose preview kept it, such as a foreign `~/.local/bin/agent`
+/// beside Grok Build's, look unfinished. A path this run moved is never
+/// excepted. The launcher is not looked at here:
+/// `StandaloneAdapter::reconcile_after_uninstall` probes it.
+///
+/// The launcher goes last so that a run that stops leaves a row
+/// (`listed_path_back`); once it has moved, nothing on the Installed page
+/// shows what the list left, and a copy of the tool still running can put
+/// its program folder or its download cache back after the launcher's
+/// move -- during the pause that follows it (`PUT_BACK_SETTLE`), say. Read
+/// by `StandaloneAdapter::reconcile_after_uninstall`, with the plan's
+/// paths as `moved`, which counts anything left behind as the tool still
+/// there.
+pub fn left_behind(job: &Job, moved: &[PathBuf]) -> Result<Vec<PathBuf>, PathBuf> {
+    let launcher = route::expand(&job.detected.home, job.recipe.route.launcher);
+    let mut left = Vec::new();
+    for item in listed_items(job) {
+        if item.path == launcher {
+            continue;
+        }
+        let seen = std::fs::symlink_metadata(&item.path);
+        if matches!(&seen, Err(error) if error.kind() == std::io::ErrorKind::NotFound) {
+            continue;
+        }
+        let excepted = item.optional
+            && !moved.contains(&item.path)
+            && Look::new(job)
+                .is_ok_and(|look| kept_as_not_ours(&look, &item.rel, item.expect, &item.path));
+        if excepted {
+            continue;
+        }
+        match seen {
+            Ok(_) => left.push(item.path),
+            Err(_) => return Err(item.path),
+        }
+    }
+    Ok(left)
 }
 
 /// One item's turn, on tokio's blocking pool: every check again, from a
@@ -1162,8 +1218,10 @@ pub async fn execute_removal(
 #[cfg(test)]
 mod tests {
     use super::super::recipe::{Expect, KeepSpec, RemoveSpec, Uninstall};
-    use super::super::recipes::{CLAUDE, GROK};
-    use super::super::testing::{claude_layout, grok_layout, TempHome, TimedTrasher};
+    use super::super::recipes::{AGY, CLAUDE, GROK};
+    use super::super::testing::{
+        agy_layout, claude_layout, grok_layout, TempHome, TimedTrasher, Unreadable,
+    };
     use super::*;
     use crate::events::VecSink;
     use crate::model::{KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
@@ -2926,6 +2984,145 @@ mod tests {
                 .is_symlink(),
             "the launcher stays"
         );
+    }
+
+    /// What a run that moved every path the preview listed leaves on the
+    /// disk: each one handed to `mock`, in order, as the preview saw it.
+    fn move_all(mock: &MockTrasher, removal: &Removal) {
+        for (path, seen) in removal.paths.iter().zip(&removal.identities) {
+            mock.trash(path, seen.kind).expect("the mock moves it");
+        }
+    }
+
+    /// A `Job` over a recipe's own lists and patterns, for `home`.
+    fn job_of(recipe: &'static Recipe, home: &Path) -> Job {
+        let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
+            panic!("{} has a path list", recipe.id);
+        };
+        Job {
+            recipe,
+            detected: detected(home),
+            remove,
+            keep,
+            globs: recipe.backup_globs,
+        }
+    }
+
+    #[test]
+    fn test_left_behind_finds_nothing_once_every_listed_path_is_gone() {
+        // The ordinary end of an uninstall: every path the preview listed is
+        // in the Trash, the optional cache the preview did not list (it was
+        // not there) is still not there, and the kept paths are not asked
+        // about.
+        let home = TempHome::new("left-gone");
+        let _layout = claude_layout(&home, "2.1.281");
+        home.file(".claude.json");
+        let job = job_of(&CLAUDE, home.path());
+        let preview = plan_removal(&job).unwrap();
+        move_all(&MockTrasher::new(), &preview);
+
+        assert_eq!(left_behind(&job, &preview.paths), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn test_left_behind_names_each_listed_path_that_is_there_after_the_moves() {
+        // What a copy of Claude Code still running can do after the moves:
+        // its program folder back, with a newer version in it, and the
+        // download cache -- not there at the preview, so never moved --
+        // made anew. Both are named, in the list's order, whatever is in
+        // them. The launcher, back too, is not looked at here:
+        // `reconcile_after_uninstall` probes it.
+        let home = TempHome::new("left-back");
+        let layout = claude_layout(&home, "2.1.281");
+        let job = job_of(&CLAUDE, home.path());
+        let preview = plan_removal(&job).unwrap();
+        let downloads = home.path().join(".claude/downloads");
+        assert!(
+            !preview.paths.contains(&downloads),
+            "no cache at the preview"
+        );
+        move_all(&MockTrasher::new(), &preview);
+        home.file(".local/share/claude/versions/2.1.282");
+        home.file(".claude/downloads/claude-2.1.282.tgz");
+        home.link(".local/bin/claude", &layout.real);
+
+        assert_eq!(
+            left_behind(&job, &preview.paths),
+            Ok(vec![layout.root.clone(), downloads])
+        );
+
+        // A backup file Antigravity's updater left after the uninstall: a
+        // match of the recipe's pattern now, named too.
+        let home = TempHome::new("left-back-backup");
+        let _layout = agy_layout(&home);
+        home.file(".local/bin/agy.1727000000.old");
+        let job = job_of(&AGY, home.path());
+        let preview = plan_removal(&job).unwrap();
+        assert_eq!(preview.paths.len(), 2, "the backup, then the launcher");
+        move_all(&MockTrasher::new(), &preview);
+        let backup = home.file(".local/bin/agy.1727000600.old");
+
+        assert_eq!(left_behind(&job, &preview.paths), Ok(vec![backup]));
+    }
+
+    #[test]
+    fn test_left_behind_cannot_tell_a_moved_path_it_cannot_look_at() {
+        // `~/.claude` loses every permission after the cache inside it was
+        // moved: whether the cache is back cannot be told, and "cannot
+        // tell" is not "gone". The path is the error, and a reading built
+        // on this one errs too. (Permissions do not stop root: skipped, and
+        // said, when the tests run as root.)
+        let home = TempHome::new("left-cannot-tell");
+        let _layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        let job = job_of(&CLAUDE, home.path());
+        let preview = plan_removal(&job).unwrap();
+        move_all(&MockTrasher::new(), &preview);
+        let Some(_locked) = Unreadable::new(&home.path().join(".claude")) else {
+            return;
+        };
+
+        assert_eq!(
+            left_behind(&job, &preview.paths),
+            Err(home.path().join(".claude/downloads"))
+        );
+    }
+
+    #[test]
+    fn test_left_behind_leaves_out_what_the_previews_rule_keeps_as_not_the_tools_never_what_it_moved(
+    ) {
+        // `listed_path_back`'s exception, for the same reason: an optional
+        // path this run never moved that the preview's own rule keeps as
+        // not the tool's (`kept_as_not_ours`) is not something the list
+        // moves, and counting it would end every uninstall whose preview
+        // kept it as needing attention. Grok Build's `~/.local/bin/agent`,
+        // there as another program's link.
+        let home = TempHome::new("left-kept");
+        let _layout = grok_layout(&home, "1.0.41");
+        let other = home.executable("other-cli/agent");
+        let agent = home.link(".local/bin/agent", &other);
+        let job = job_of(&GROK, home.path());
+        let preview = plan_removal(&job).unwrap();
+        assert!(!preview.paths.contains(&agent));
+        assert!(preview
+            .warnings
+            .contains(&keep("~/.local/bin/agent", KeptWhat::NotOurs)));
+        move_all(&MockTrasher::new(), &preview);
+
+        assert_eq!(left_behind(&job, &preview.paths), Ok(Vec::new()));
+
+        // A path the run moved is never excepted: there afterwards, as
+        // anything at all, it is left behind.
+        let mut moved = preview.paths.clone();
+        moved.push(agent.clone());
+        assert_eq!(left_behind(&job, &moved), Ok(vec![agent.clone()]));
+
+        // The rule also keeps a path it cannot look at: one this run never
+        // moved stays out, one it moved is the error -- cannot tell.
+        if let Some(_locked) = Unreadable::new(&home.path().join(".local/bin")) {
+            assert_eq!(left_behind(&job, &preview.paths), Ok(Vec::new()));
+            assert_eq!(left_behind(&job, &moved), Err(agent));
+        }
     }
 
     #[tokio::test]

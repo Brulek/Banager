@@ -680,10 +680,15 @@ impl OperationManager {
 
         // After an uninstall only presence decides anything below, and an
         // adapter may answer that when it cannot answer what version is
-        // installed (`Adapter::reconcile_after_uninstall`); everything
-        // else keeps the full reading.
+        // installed (`Adapter::reconcile_after_uninstall`, handed the plan
+        // `execute` just carried out: a path-list uninstall's reading asks
+        // which paths it moved); everything else keeps the full reading.
         let reconciled = match plan.request.kind {
-            OpKind::Uninstall => adapter.reconcile_after_uninstall(&instance, &key).await,
+            OpKind::Uninstall => {
+                adapter
+                    .reconcile_after_uninstall(&instance, &key, &plan)
+                    .await
+            }
             OpKind::Install | OpKind::Upgrade => adapter.reconcile(&instance, &key).await,
         };
 

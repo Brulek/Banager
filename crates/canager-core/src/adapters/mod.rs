@@ -487,10 +487,17 @@ pub trait Adapter: Send + Sync {
     /// launcher should be, say -- answers `Err`, never `present: false`:
     /// `run_operation` turns an `Err` into `Unconfirmed`, so "could not
     /// tell" is never reported as a finished uninstall.
+    ///
+    /// `plan` is the plan the uninstall carried out -- the one `execute`
+    /// was handed -- for an adapter whose answer depends on what it did:
+    /// the standalone path-list uninstall reads which paths it moved, and
+    /// counts a listed path that is there afterwards as the tool still
+    /// there (`removal::left_behind`). The default ignores it.
     async fn reconcile_after_uninstall(
         &self,
         inst: &ManagerInstance,
         key: &ArtifactKey,
+        _plan: &Plan,
     ) -> Result<Reconciled, AdapterError> {
         self.reconcile(inst, key).await
     }

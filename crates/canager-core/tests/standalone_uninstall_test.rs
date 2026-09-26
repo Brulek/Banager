@@ -569,6 +569,35 @@ async fn test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_suc
     assert_eq!(trasher.inner.calls().len(), 3, "every item was moved");
 }
 
+#[tokio::test]
+async fn test_an_uninstall_that_cannot_tell_whether_a_moved_path_came_back_is_unconfirmed() {
+    // After the launcher's move -- the third -- a copy of Claude Code still
+    // running could put back what the uninstall moved. Here `~/.claude`
+    // loses every permission right then, so whether its cache came back
+    // cannot be told. "Could not tell" is not "gone": `Unconfirmed`, never
+    // `Succeeded`, although every item was moved and the launcher's folder
+    // reads fine. (Skipped, and said, when the tests run as root.)
+    let home = Home::new("cannot-tell-cache");
+    if std::fs::metadata(home.path()).expect("stat home").uid() == 0 {
+        eprintln!("running as root: permissions stop nothing, check skipped");
+        return;
+    }
+    let launcher = claude_layout(home.path());
+    let trasher = Arc::new(LockingTrasher {
+        inner: MockTrasher::new(),
+        lock_after_call: 3,
+        folder: home.path().join(".claude"),
+    });
+    let session = session_with(&launcher, trasher.clone());
+    session.refresh(&home.env(), &CheckOptions::default()).await;
+    let issued = session.issue_plan(&uninstall()).await.expect("preview");
+
+    let op_id = session.submit(issued.id).expect("submit");
+
+    assert_eq!(outcome_of(&session, op_id).await, Outcome::Unconfirmed);
+    assert_eq!(trasher.inner.calls().len(), 3, "every item was moved");
+}
+
 /// Review Focus 8: the real call, on each kind of item a path-list
 /// uninstall can move -- a file, a directory, a link to a file, a link to
 /// a directory, and a dangling link (what the launcher is when every

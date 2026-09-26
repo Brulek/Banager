@@ -697,10 +697,15 @@ already under way is always finished first) — always leaves it: a stop
 before the first move changes nothing, and the row stays as it was; once
 the program files are in the Trash, the next refresh shows the
 launcher-only row, and its Uninstall lists them as already gone and
-moves the rest. Afterwards Canager looks for the launcher again
-(`reconcile_after_uninstall`): the uninstall is reported as succeeded
-only when it is gone, and as unconfirmed when Canager cannot tell (a
-folder it may not read, say).
+moves the rest. Afterwards Canager looks for the launcher again, and for
+every other path on the list (`reconcile_after_uninstall`,
+`removal::left_behind`): a Claude Code still running can put its program
+files or its cache back after the launcher has gone to the Trash, and
+with the launcher gone no row would show them. The uninstall is reported
+as succeeded only when all of them are gone, and as unconfirmed when
+Canager cannot tell (a folder it may not read, say); a path the preview's
+own rule keeps as not Claude Code's, and that the uninstall never moved,
+is not counted.
 
 ## Antigravity CLI
 

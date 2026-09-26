@@ -12,7 +12,8 @@ use canager_core::adapters::{Adapter, AdapterError, CheckOptions};
 use canager_core::events::{OpId, VecSink};
 use canager_core::http::{HttpResponse, MockHttpClient};
 use canager_core::model::{
-    ArtifactKind, OpKind, OpRequest, OpStatus, Outcome, PlanAction, UpdateBlocked,
+    ArtifactKind, KeptWhat, OpKind, OpRequest, OpStatus, Outcome, PlanAction, UpdateBlocked,
+    Warning,
 };
 use canager_core::runner::{CommandOutput, HostEnv, MockRunner};
 use canager_core::session::Session;
@@ -276,6 +277,48 @@ async fn test_uninstalling_grok_through_the_session_moves_its_folders_and_keeps_
         after.instances.iter().any(|i| i.id == "standalone-agy"),
         "agy is untouched"
     );
+}
+
+#[tokio::test]
+async fn test_uninstalling_grok_past_another_programs_agent_link_the_preview_kept_succeeds() {
+    // Spec §十三 #27 through the whole path: `~/.local/bin/agent` is another
+    // program's link, so the preview keeps it and says so, and the
+    // uninstall moves everything else. The link is still there afterwards
+    // and this run never moved it; the preview's own rule keeps it as not
+    // grok's, so the reading after the moves does not count it as grok
+    // left behind: `Succeeded`, the link untouched, and no grok row on the
+    // next refresh.
+    let home = Home::new("grok-foreign-agent");
+    let other = home.executable("other-cli/agent");
+    let agent = home.link(".local/bin/agent", &other);
+    let trasher = Arc::new(MockTrasher::new());
+    let (session, launcher) = session_with(&home, trasher.clone());
+    session.refresh(&home.env(), &CheckOptions::default()).await;
+
+    let issued = session
+        .issue_plan(&request("standalone-grok", OpKind::Uninstall, "grok"))
+        .await
+        .expect("the preview keeps the link and goes on");
+    let PlanAction::TrashPaths { paths, .. } = &issued.plan.action else {
+        panic!("a path list, not a command: {:?}", issued.plan.action);
+    };
+    assert!(!paths.contains(&agent));
+    assert!(issued.plan.warnings.contains(&Warning::WillKeep {
+        path: "~/.local/bin/agent".to_string(),
+        what: KeptWhat::NotOurs,
+    }));
+
+    let op_id = session.submit(issued.id).expect("submit");
+    assert_eq!(outcome_of(&session, op_id).await, Outcome::Succeeded);
+    assert_eq!(&trasher.calls(), paths);
+    assert_eq!(paths.last(), Some(&launcher));
+    assert_eq!(
+        std::fs::read_link(&agent).expect("the link is still there"),
+        other,
+        "and untouched"
+    );
+    let after = session.refresh(&home.env(), &CheckOptions::default()).await;
+    assert!(after.instances.iter().all(|i| i.id != "standalone-grok"));
 }
 
 #[tokio::test]
