@@ -231,10 +231,11 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 
 - **cask 的命令行链接只认第一个 `app`**（2026-09-25，步骤 F 整体评审项）。`/usr/local` 的 Homebrew 上，cask 的 `binary` 把 `/usr/local/bin/code` 链到 `/Applications/Visual Studio Code.app/…` 里面，不在扫描给 brew 的三个根（`Cellar`/`Caskroom`/`opt`）之下，而 `/usr/local/bin` 每次都扫，于是已安装页列在 Homebrew 下的 cask，其命令在来源不明页被说成「没有来源装过」。现在 `parse_info_installed`（`adapters/brew/parse.rs`）把 cask 的 `InstalledArtifact.path` 填成 `brew info --installed --json=v2` 里 `app` 条目旁的绝对 `target`（`/Applications/X.app`，随 `--appdir` 走），扫描规则 2 据此认领。仍会列出的（`docs/what-we-run.md` 扫描一节已写明）：同一 cask 第二个 `app` 里的命令、`pkg` 装到 `.app` 与 `Caskroom` 之外的命令、`app` 条目没有绝对 `target` 的 cask。`path` 只有一个位置；改成多值是 Rust + TypeScript 镜像的线格式变更，单独成任务。
 
-- **「放回原处」的记录只在一次卸载之内隔开**（2026-09-25，步骤 C）。无「完全磁盘访问」时，`trashItemAtURL:`
+- **「放回原处」的记录只在一次卸载之内隔开**（2026-09-25，步骤 C；2026-09-26 改成跨卸载也隔开，见本条「已做」；
+  末段两件没核实的事仍开着）。无「完全磁盘访问」时，`trashItemAtURL:`
   间隔 ≤1.5 秒的连续调用只有第一项在 `~/.Trash/.DS_Store` 里留下 Finder 的「放回原处」记录，间隔 ≥2 秒时每项都有
   （spike：15/15 与 4/4，一台 Mac、macOS 27.0，机制不明；记录在调用返回之后才写）。`removal::execute_removal`
-  在同一次卸载里每移一项之后停 `PUT_BACK_SETTLE` = 3 秒（最后一项之后也停，再报告完成），但这个停顿**只管一次操作之内**：
+  原先在同一次卸载里每移一项之后停 `PUT_BACK_SETTLE` = 3 秒（最后一项之后也停，再报告完成），但这个停顿**只管一次操作之内**：
   操作管理器同时跑最多 3 个操作（`ops/mod.rs` 的 `Semaphore::new(3)`），两个 path-list 卸载并发时，两边的移动仍可能挤进
   2 秒之内，后一项就会丢掉记录——文件照样在废纸篓里，只是只能手动拖回；卸载还在运行时退出 Canager，刚移的那一项也可能丢掉记录。
   即使在一次卸载之内，3 秒也只是让每一项「多半」有记录（四次观察），不是保证；文案与信任文件都这样说（裁定 29）。
@@ -243,7 +244,18 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **现在不做的理由**：C 只有 Claude Code 一个 path-list 卸载，两次卸载都要各自预览、确认；步骤 D 加入 grok 与 agy 之后再做。
   （2026-09-26：步骤 D 已加入两者，path-list 卸载现在有 Claude Code、Antigravity CLI、Grok Build 三个，各自只锁自己的实例，
   所以两个不同工具的卸载可以同时跑；本条按上面的约定到期，仍未做。）
-  **同一处记两件没核实的事**：没有人真的点过「放回原处」（spike 只核对了 Finder 的记录；作者合并前在 Finder 启动的构建上
+  **已做**（2026-09-26，步骤 D 整体评审项）：照上面的形状做了，差一处——时刻不放进 `RealTrasher`，而放进新的
+  `removal::LastMove`，由 `standalone::all` 把同一个交给它建的每个适配器（与同一个 trasher 并排；`Session::new` 只调一次
+  `all`，所以它就是全进程共享的那一处）。原因：`RealTrasher::trash` 是在一项最后一次检查**之后**才被调用的，在那里补等 3 秒，
+  就把「检查紧挨着移动」拉开成最多 3 秒的空档（`take_turn`；信任文件写明检查与调用之间什么也不看）。现在每一项在检查**之前**等：
+  先拿到 `LastMove` 的锁，再等到离上一次移动（本次卸载的或另一个卸载的）满 `settle`，然后检查、移动、记下时刻，最后才放锁——
+  另一个卸载的移动插不进来，每次移动都在上一次移动返回之后至少 `settle`（生产里是 3 秒）才开始。取消与时间预算照旧能打断这两段等待，
+  等另一个卸载的时间也算进本次卸载的预算。`new` 单独建的适配器各有自己的一个，所以原有测试的断言一条没改。测试：`removal::tests` 的
+  `test_execute_removal_waits_the_gap_after_another_uninstalls_move_before_its_first_item` 与
+  `test_execute_removal_waits_out_another_uninstalls_turn_unless_cancelled_or_out_of_time`，`standalone::tests` 的
+  `test_grok_and_agy_uninstalls_running_at_once_keep_the_gap_between_all_their_moves`（用 `one_per_recipe`，即 `all` 建的
+  那组适配器）。预览里「访达的『放回原处』多半也能用」一句因此对同时跑的两个卸载也成立，没有改。
+  **同一处记两件没核实的事**（仍开着）：没有人真的点过「放回原处」（spike 只核对了 Finder 的记录；作者合并前在 Finder 启动的构建上
   手动核一次，结果写进 `docs/what-we-run.md` 的「Moving files to the Trash」）；macOS 27.0 以外的版本与 Intel Mac 没跑过
   （`tests/standalone_uninstall_test.rs` 的 `#[ignore]` 冒烟测试在作者的终端与 CI 上覆盖「移得进去」，悬空链接也在内，
   但那两处都不是无 FDA 的环境，不覆盖「放得回来」）。

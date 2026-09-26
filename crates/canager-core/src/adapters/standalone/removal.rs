@@ -39,13 +39,16 @@ use tokio_util::sync::CancellationToken;
 /// the runner to time out; `execute_removal` keeps its own clock against
 /// this (through `Pacing.budget`) and stops between items once it is spent
 /// -- before an item, never during one: a move already handed to the
-/// system is waited for. The moves take milliseconds; the budget covers the
-/// pauses below and a Trash that is slow to answer. Read by
-/// `StandaloneAdapter::plan`.
+/// system is waited for. The moves take milliseconds; the budget is for the
+/// pauses below -- a run's own, and the ones another path-list uninstall
+/// running at the same time adds (`LastMove`) -- and for a Trash that is
+/// slow to answer. Read by `StandaloneAdapter::plan`.
 pub const TIMEOUT_SECS: u64 = 120;
 
-/// The pause after each item: before the next one, and after the last
-/// before the run is reported finished. From a process without Full Disk
+/// The gap after each move to the Trash: before the next move -- this
+/// run's next item, or an item of another path-list uninstall running at
+/// the same time (`LastMove`) -- and after a run's last move before that
+/// run is reported finished. From a process without Full Disk
 /// Access -- a Finder-launched Canager -- Finder wrote its "Put Back"
 /// record for only the first of a burst of `trashItemAtURL:` calls up to
 /// 1.5 s apart, and for every item when they were 2 s or more apart
@@ -53,11 +56,11 @@ pub const TIMEOUT_SECS: u64 = 120;
 /// not known). Those 4 runs also stayed alive 3 s after their last call,
 /// and the record is written after the call returns (with Full Disk
 /// Access, a process that exited at once lost the later records): hence
-/// the same pause after the last item. Three seconds is the largest gap
+/// the same gap after a run's last item. Three seconds is the largest gap
 /// measured to work, a full second above the largest that failed: it makes
 /// Put Back likely for every item, not certain -- an item without the
 /// record can still be dragged back out of the Trash -- and
-/// `docs/what-we-run.md` says so. Each pause is cut short by Cancel and by
+/// `docs/what-we-run.md` says so. Each wait is cut short by Cancel and by
 /// what is left of `TIMEOUT_SECS`. Read by `StandaloneAdapter::new`;
 /// `with_trash_gap` sets it to zero for tests.
 pub const PUT_BACK_SETTLE: Duration = Duration::from_secs(3);
@@ -102,15 +105,37 @@ pub struct Confirmed<'a> {
     pub previewed: &'a [ItemIdentity],
 }
 
-/// How `execute_removal` paces itself: the pause after each item
-/// (`PUT_BACK_SETTLE` in production, zero in tests) and the budget it
-/// stops between items once spent (`Plan.timeout_secs`). Built by
-/// `StandaloneAdapter::execute`.
-#[derive(Clone, Copy, Debug)]
+/// How `execute_removal` paces itself: the gap it keeps after each move
+/// (`PUT_BACK_SETTLE` in production, zero in tests), the clock it keeps
+/// that gap on -- shared with every other path-list uninstall that can run
+/// at the same time (`LastMove`) -- and the budget it stops between items
+/// once spent (`Plan.timeout_secs`). Built by `StandaloneAdapter::execute`.
+#[derive(Clone, Debug)]
 pub struct Pacing {
     pub settle: Duration,
     pub budget: Duration,
+    pub last_move: Arc<LastMove>,
 }
+
+/// When this process last moved an item to the Trash (`None` before its
+/// first move), behind the lock an item's turn holds from its wait to its
+/// move. One for every path-list uninstall that can run at the same time:
+/// `standalone::all` hands one to every adapter it builds, beside the one
+/// trasher, and `Session::new` calls it once. The operation manager runs
+/// up to three operations at once and a path-list uninstall locks only its
+/// own instance, so two tools' uninstalls can run side by side; the Trash
+/// spike's bursts were one process's calls (`PUT_BACK_SETTLE`), and to
+/// macOS two uninstalls in Canager are one process too. So each item waits
+/// for the lock, then until its run's `Pacing.settle` has passed since the
+/// move recorded here, has its turn, and records its own move before it
+/// lets go (`wait_for_the_trash`, `execute_removal`): no other uninstall's
+/// move lands in between, and every move made through one `LastMove`
+/// begins at least its run's `settle` after the move before it returned,
+/// whichever uninstall made that one. Built by `StandaloneAdapter::new`
+/// (one per adapter) and `standalone::all` (one for all it builds); read
+/// by `execute_removal`.
+#[derive(Debug, Default)]
+pub struct LastMove(tokio::sync::Mutex<Option<Instant>>);
 
 /// A path that fails a check, and which one. The path is absolute -- a
 /// listed path, or for `OverlapsKept` the kept path a listed one would
@@ -648,11 +673,12 @@ fn first_difference<'a>(planned: &'a [PathBuf], fresh: &'a [PathBuf]) -> Option<
         })
 }
 
-/// Waits `gap` -- Finder's time to write the Put Back record of the item
-/// just moved (`PUT_BACK_SETTLE`), already cut to what is left of the
-/// budget -- or until `cancel` fires, whichever comes first; `true` when it
-/// was the cancel. No wait at all for a zero gap (tests,
-/// `StandaloneAdapter::with_trash_gap`, a spent budget).
+/// Waits `gap` -- what is left of Finder's time to write the Put Back
+/// record of the last item moved (`PUT_BACK_SETTLE`), already cut to what
+/// is left of the budget -- or until `cancel` fires, whichever comes
+/// first; `true` when it was the cancel. No wait at all for a zero gap
+/// (tests, `StandaloneAdapter::with_trash_gap`, a gap already over, a
+/// spent budget).
 async fn pause(gap: Duration, cancel: &CancellationToken) -> bool {
     if gap.is_zero() {
         return false;
@@ -662,6 +688,49 @@ async fn pause(gap: Duration, cancel: &CancellationToken) -> bool {
         _ = cancel.cancelled() => true,
         _ = tokio::time::sleep(gap) => false,
     }
+}
+
+/// How the wait before an item ended (`wait_for_the_trash`).
+enum Wait<'p> {
+    /// The turn at the Trash is this run's until the guard drops; the
+    /// item's move is recorded in it first.
+    Ready(tokio::sync::MutexGuard<'p, Option<Instant>>),
+    /// Cancel ended a wait.
+    Cancelled,
+    /// The budget was spent first.
+    OutOfTime,
+}
+
+/// The wait before each item: for the turn at the Trash -- no other
+/// path-list uninstall's item between its own wait and its move
+/// (`LastMove`'s lock) -- and then until `pacing.settle` has passed since
+/// the last move recorded in `pacing.last_move`, this run's previous
+/// item's or another run's (Finder's time to write that item's Put Back
+/// record, `PUT_BACK_SETTLE`). The turn is held through the second wait,
+/// so no other uninstall's move can land between it and this item's.
+/// Cancel ends either wait and is answered before a spent budget, as a run
+/// the user stopped needs no line of Canager's; neither wait outlasts the
+/// budget (`left`). Read by `execute_removal`.
+async fn wait_for_the_trash<'p>(
+    pacing: &'p Pacing,
+    left: impl Fn() -> Duration,
+    cancel: &CancellationToken,
+) -> Wait<'p> {
+    let turn = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Wait::Cancelled,
+        turn = pacing.last_move.0.lock() => turn,
+        _ = tokio::time::sleep(left()) => return Wait::OutOfTime,
+    };
+    let since = (*turn).map_or(Duration::MAX, |at| at.elapsed());
+    if pause(pacing.settle.saturating_sub(since).min(left()), cancel).await || cancel.is_cancelled()
+    {
+        return Wait::Cancelled;
+    }
+    if left().is_zero() {
+        return Wait::OutOfTime;
+    }
+    Wait::Ready(turn)
 }
 
 /// How one item's turn ended (`take_turn`).
@@ -799,15 +868,18 @@ fn take_turn(
 /// difference is `Fault::PathChanged` before anything moves, so a Claude
 /// Code that updated itself between the preview and the click (its updater
 /// re-points the launcher) sends the user back to a fresh preview. Then
-/// each path in order: after the first, the pause (Cancel ends it, and it
-/// never outlasts the budget); Cancel and the budget checked; one turn on
-/// the blocking pool (`take_turn`: at the launcher's, that every other
-/// listed path is gone or, optional and never moved by this run, one
-/// Canager cannot confirm is the tool's; every check again, the identity
-/// against the preview's, the move), awaited to its end even if Cancel
-/// arrives meanwhile -- a move handed to the system finishes and is
-/// reported; one log note. After the last move the same pause once more, before
-/// `Succeeded` (a Cancel there only cuts it short: everything is moved).
+/// each path in order: the wait for the turn at the Trash and for
+/// `settle` since the last move made through `pacing.last_move`, this
+/// run's or another path-list uninstall's running at the same time
+/// (`wait_for_the_trash`: Cancel ends it, and it never outlasts the
+/// budget); one turn on the blocking pool (`take_turn`: at the launcher's,
+/// that every other listed path is gone or, optional and never moved by
+/// this run, one Canager cannot confirm is the tool's; every check again,
+/// the identity against the preview's, the move), awaited to its end even
+/// if Cancel arrives meanwhile -- a move handed to the system finishes and
+/// is reported -- and its move recorded before the turn is let go; one log
+/// note. After the last move the same pause once more, before `Succeeded`
+/// (a Cancel there only cuts it short: everything is moved).
 ///
 /// `Succeeded` only when every path was moved; `Failed` with the system's
 /// own words when it refused one (the launcher, last, is then still there,
@@ -865,28 +937,29 @@ pub async fn execute_removal(
         return Ok(changed(home, path));
     }
     for (index, (path, &previewed)) in confirmed.paths.iter().zip(confirmed.previewed).enumerate() {
-        if index > 0 && pause(pacing.settle.min(left()), &cancel).await {
-            return Ok(Outcome::Unconfirmed);
-        }
-        // Cancel first: a run the user stopped needs no line of Canager's
-        // (`run_operation` reports it as `Cancelled` once it finds the
-        // launcher, last, still there). A spent budget is the stop nobody
-        // asked for, so it says which item it stopped before and how much
-        // time there was -- otherwise the log ends at the last move and the
-        // outcome says only "unconfirmed".
-        if cancel.is_cancelled() {
-            return Ok(Outcome::Unconfirmed);
-        }
-        if left().is_zero() {
-            sink.emit(OperationEvent::Note {
-                op_id,
-                note: LogNote::OutOfTime {
-                    path: shown(home, path),
-                    seconds: pacing.budget.as_secs(),
-                },
-            });
-            return Ok(Outcome::Unconfirmed);
-        }
+        // The turn at the Trash, `settle` after the last move made through
+        // `pacing.last_move` -- this run's previous item's or another
+        // uninstall's (`wait_for_the_trash`). Cancel first: a run the user
+        // stopped needs no line of Canager's (`run_operation` reports it as
+        // `Cancelled` once it finds the launcher, last, still there). A
+        // spent budget is the stop nobody asked for, so it says which item
+        // it stopped before and how much time there was -- otherwise the
+        // log ends at the last move and the outcome says only
+        // "unconfirmed".
+        let mut last_move = match wait_for_the_trash(&pacing, left, &cancel).await {
+            Wait::Ready(last_move) => last_move,
+            Wait::Cancelled => return Ok(Outcome::Unconfirmed),
+            Wait::OutOfTime => {
+                sink.emit(OperationEvent::Note {
+                    op_id,
+                    note: LogNote::OutOfTime {
+                        path: shown(home, path),
+                        seconds: pacing.budget.as_secs(),
+                    },
+                });
+                return Ok(Outcome::Unconfirmed);
+            }
+        };
         let turn = {
             let (job, path, trasher) = (job.clone(), path.clone(), Arc::clone(trasher));
             // Every path before this one was moved by this run: a turn that
@@ -897,6 +970,13 @@ pub async fn execute_removal(
             })
             .await
         };
+        // Recorded before the turn is let go, so the next move -- this
+        // run's or another uninstall's -- waits `settle` from this one. A
+        // turn that panicked may have moved its item: it counts as a move.
+        if matches!(turn, Ok(Turn::Moved(_)) | Err(_)) {
+            *last_move = Some(Instant::now());
+        }
+        drop(last_move);
         match turn {
             Ok(Turn::Moved(trashed_to)) => sink.emit(OperationEvent::Note {
                 op_id,
@@ -945,7 +1025,7 @@ pub async fn execute_removal(
 mod tests {
     use super::super::recipe::{Expect, KeepSpec, RemoveSpec, Uninstall};
     use super::super::recipes::CLAUDE;
-    use super::super::testing::{claude_layout, TempHome};
+    use super::super::testing::{claude_layout, TempHome, TimedTrasher};
     use super::*;
     use crate::events::VecSink;
     use crate::model::{KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
@@ -1808,10 +1888,13 @@ mod tests {
         (outcome, notes)
     }
 
+    /// No gap after a move, the production budget, and a `LastMove` of
+    /// this run's own.
     fn no_gap() -> Pacing {
         Pacing {
             settle: Duration::ZERO,
             budget: Duration::from_secs(TIMEOUT_SECS),
+            last_move: Arc::default(),
         }
     }
 
@@ -2522,6 +2605,7 @@ mod tests {
         let spent = Pacing {
             settle: Duration::ZERO,
             budget: Duration::ZERO,
+            ..no_gap()
         };
 
         let (outcome, notes) = run(&job, &preview, &trasher, spent, CancellationToken::new()).await;
@@ -2552,6 +2636,7 @@ mod tests {
         let tight = Pacing {
             settle: Duration::from_secs(5),
             budget: Duration::from_secs(1),
+            ..no_gap()
         };
         let started = Instant::now();
 
@@ -2595,7 +2680,7 @@ mod tests {
         let trasher: Arc<dyn Trasher> = Arc::new(MockTrasher::new());
         let paced = Pacing {
             settle: Duration::from_millis(100),
-            budget: Duration::from_secs(TIMEOUT_SECS),
+            ..no_gap()
         };
         let started = Instant::now();
 
@@ -2624,7 +2709,7 @@ mod tests {
         let trasher: Arc<dyn Trasher> = mock.clone();
         let gap = Pacing {
             settle: Duration::from_secs(5),
-            budget: Duration::from_secs(TIMEOUT_SECS),
+            ..no_gap()
         };
         let started = Instant::now();
 
@@ -2637,6 +2722,103 @@ mod tests {
             "the cancel ended the 5 s wait: {:?}",
             started.elapsed()
         );
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_waits_the_gap_after_another_uninstalls_move_before_its_first_item(
+    ) {
+        // Another tool's uninstall has just moved an item through the same
+        // `LastMove` -- two can run at once: up to three operations, each
+        // locking only its own instance. Finder's Put Back record needs the
+        // gap between one process's moves whichever uninstall made them, so
+        // this run's first move waits it out too, not only its later ones.
+        let home = TempHome::new("removal-exec-after-another");
+        let _layout = claude_layout(&home, "2.1.281");
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let timed = Arc::new(TimedTrasher::default());
+        let trasher: Arc<dyn Trasher> = timed.clone();
+        let paced = Pacing {
+            settle: Duration::from_millis(300),
+            ..no_gap()
+        };
+        let other_move = Instant::now();
+        *paced.last_move.0.lock().await = Some(other_move);
+
+        let (outcome, _) = run(&job, &preview, &trasher, paced, CancellationToken::new()).await;
+
+        assert_eq!(outcome, Outcome::Succeeded);
+        let began = timed.began();
+        assert_eq!(began.len(), 2, "the program folder and the launcher");
+        assert!(
+            began[0].duration_since(other_move) >= Duration::from_millis(300),
+            "the first move began {:?} after the other uninstall's",
+            began[0].duration_since(other_move)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_waits_out_another_uninstalls_turn_unless_cancelled_or_out_of_time(
+    ) {
+        // Another tool's uninstall holds the turn at the Trash
+        // (`LastMove`): one of its items is between its wait and its move.
+        // No item of this run moves until it lets go. Cancel ends that
+        // wait at once, with no line of Canager's; a spent budget ends it
+        // too, with the note naming the item the run stopped before.
+        // Nothing moves either time; once the other turn is over, the same
+        // list goes ahead.
+        let home = TempHome::new("removal-exec-other-turn");
+        let _layout = claude_layout(&home, "2.1.281");
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let mock = Arc::new(MockTrasher::new());
+        let trasher: Arc<dyn Trasher> = mock.clone();
+        let shared = no_gap();
+        let other_turn = shared.last_move.0.lock().await;
+
+        let token = CancellationToken::new();
+        let pressed = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            pressed.cancel();
+        });
+        let cancelled = tokio::time::timeout(
+            Duration::from_secs(10),
+            run(&job, &preview, &trasher, shared.clone(), token),
+        )
+        .await
+        .expect("the cancel ended the wait");
+        assert_eq!(cancelled, (Outcome::Unconfirmed, vec![]));
+        assert!(mock.calls().is_empty(), "{:?}", mock.calls());
+
+        let spent = Pacing {
+            budget: Duration::from_millis(100),
+            ..shared.clone()
+        };
+        let out_of_time = tokio::time::timeout(
+            Duration::from_secs(10),
+            run(&job, &preview, &trasher, spent, CancellationToken::new()),
+        )
+        .await
+        .expect("the budget ended the wait");
+        assert_eq!(
+            out_of_time,
+            (
+                Outcome::Unconfirmed,
+                vec![LogNote::OutOfTime {
+                    path: "~/.local/share/claude".to_string(),
+                    seconds: 0,
+                }]
+            )
+        );
+        assert!(mock.calls().is_empty(), "{:?}", mock.calls());
+
+        drop(other_turn);
+        let (outcome, _) = run(&job, &preview, &trasher, shared, CancellationToken::new()).await;
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(mock.calls(), preview.paths);
     }
 
     /// A trasher that cannot ask the system at all: what `RealTrasher`

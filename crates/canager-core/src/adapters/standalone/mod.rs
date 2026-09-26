@@ -137,10 +137,16 @@ pub struct StandaloneAdapter {
     /// production (`Session::new`), `MockTrasher` in tests -- injected
     /// like the runner and the client.
     trasher: Arc<dyn Trasher>,
-    /// The pause after each item of a path-list uninstall
+    /// The gap a path-list uninstall keeps after each move to the Trash
     /// (`removal::PUT_BACK_SETTLE`); zero in tests (`with_trash_gap`).
     /// Read by `execute`.
     trash_gap: Duration,
+    /// When this process last moved an item to the Trash, and the turn at
+    /// it (`removal::LastMove`): one for every adapter `all()` builds, so
+    /// the gap after each move holds across two tools' uninstalls running
+    /// at the same time; one of its own for an adapter `new` builds alone.
+    /// Read by `execute`.
+    last_move: Arc<removal::LastMove>,
     detected: Mutex<Option<Detected>>,
     /// The CPU architecture this Canager runs as (`std::env::consts::ARCH`;
     /// `with_arch` in tests): a `Latest::HttpJsonField` manifest is fetched
@@ -191,14 +197,15 @@ impl StandaloneAdapter {
             http,
             trasher,
             trash_gap: removal::PUT_BACK_SETTLE,
+            last_move: Arc::default(),
             detected: Mutex::new(None),
             arch: std::env::consts::ARCH,
             inventoried: Mutex::new(None),
         }
     }
 
-    /// Test seam, like `BrewAdapter::with_background_change`: the pause
-    /// after each item of a path-list uninstall -- zero in tests, so no
+    /// Test seam, like `BrewAdapter::with_background_change`: the gap a
+    /// path-list uninstall keeps after each move -- zero in tests, so no
     /// test waits seconds per item. Public so `tests/` can use it too.
     pub fn with_trash_gap(mut self, gap: Duration) -> StandaloneAdapter {
         self.trash_gap = gap;
@@ -1031,6 +1038,7 @@ impl StandaloneAdapter {
                     removal::Pacing {
                         settle: self.trash_gap,
                         budget: Duration::from_secs(plan.timeout_secs),
+                        last_move: Arc::clone(&self.last_move),
                     },
                     sink,
                     op_id,
@@ -1106,21 +1114,36 @@ impl StandaloneAdapter {
 }
 
 /// One adapter per recipe in `recipes::RECIPES`, over the shared runner,
-/// http client and trasher, for `Session::new`'s registration list.
+/// http client and trasher and one shared `removal::LastMove`
+/// (`one_per_recipe`), for `Session::new`'s registration list.
 pub fn all(
     runner: Arc<dyn CommandRunner>,
     http: Arc<dyn HttpClient>,
     trasher: Arc<dyn Trasher>,
 ) -> Vec<Arc<dyn Adapter>> {
+    one_per_recipe(runner, http, trasher)
+        .into_iter()
+        .map(|adapter| Arc::new(adapter) as Arc<dyn Adapter>)
+        .collect()
+}
+
+/// `all`'s adapters: one per recipe, over the one runner, client and
+/// trasher, and one `removal::LastMove` among them all. `Session::new`
+/// calls `all` once, so that clock is this process's: the gap after each
+/// move to the Trash holds across every path-list uninstall it runs at the
+/// same time (up to three operations run at once, and each path-list
+/// uninstall locks only its own instance), not only within one.
+fn one_per_recipe(
+    runner: Arc<dyn CommandRunner>,
+    http: Arc<dyn HttpClient>,
+    trasher: Arc<dyn Trasher>,
+) -> Vec<StandaloneAdapter> {
+    let last_move = Arc::new(removal::LastMove::default());
     recipes::RECIPES
         .iter()
-        .map(|&recipe| {
-            Arc::new(StandaloneAdapter::new(
-                recipe,
-                runner.clone(),
-                http.clone(),
-                trasher.clone(),
-            )) as Arc<dyn Adapter>
+        .map(|&recipe| StandaloneAdapter {
+            last_move: Arc::clone(&last_move),
+            ..StandaloneAdapter::new(recipe, runner.clone(), http.clone(), trasher.clone())
         })
         .collect()
 }
@@ -1415,6 +1438,44 @@ pub(super) mod testing {
             let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
         }
     }
+
+    /// A `MockTrasher` that also notes when each move began, for the tests
+    /// of the gap after each move -- two uninstalls' moves among them when
+    /// both runs are handed this one trasher, as `all()` hands its adapters
+    /// one.
+    #[derive(Default)]
+    pub struct TimedTrasher {
+        pub inner: crate::trash::MockTrasher,
+        began: std::sync::Mutex<Vec<std::time::Instant>>,
+    }
+
+    impl TimedTrasher {
+        /// When each move began, earliest first.
+        pub fn began(&self) -> Vec<std::time::Instant> {
+            let mut began = self.began.lock().unwrap().clone();
+            began.sort();
+            began
+        }
+
+        /// The time between each move's beginning and the next one's.
+        pub fn gaps(&self) -> Vec<std::time::Duration> {
+            self.began()
+                .windows(2)
+                .map(|pair| pair[1].duration_since(pair[0]))
+                .collect()
+        }
+    }
+
+    impl crate::trash::Trasher for TimedTrasher {
+        fn trash(
+            &self,
+            path: &Path,
+            kind: crate::model::ItemKind,
+        ) -> Result<PathBuf, crate::trash::TrashError> {
+            self.began.lock().unwrap().push(std::time::Instant::now());
+            self.inner.trash(path, kind)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1423,7 +1484,9 @@ mod tests {
         no_extra_locks, GateRefusal, Route, RouteKind, UpgradeCmd, VersionCmd, VersionParse,
     };
     use super::recipes::{AGY, CLAUDE, GROK, RUSTUP};
-    use super::testing::{agy_layout, claude_layout, grok_layout, rustup_layout, TempHome};
+    use super::testing::{
+        agy_layout, claude_layout, grok_layout, rustup_layout, TempHome, TimedTrasher,
+    };
     use super::*;
     use crate::adapters::cargo::CargoAdapter;
     use crate::adapters::{Adapter, CheckOptions};
@@ -5668,6 +5731,81 @@ mod tests {
             "the emptied folder stays (step D plan ruling 4)"
         );
         assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+    }
+
+    // ---- Two tools' uninstalls at the same time ----
+
+    #[tokio::test]
+    async fn test_grok_and_agy_uninstalls_running_at_once_keep_the_gap_between_all_their_moves() {
+        // The whole-step review's case: Uninstall confirmed on Grok Build,
+        // then on Antigravity CLI while the first still runs -- the
+        // operation manager runs up to three operations at once, and each
+        // path-list uninstall locks only its own instance. The two adapters
+        // are the ones `all()` builds (`one_per_recipe`), over one trasher
+        // and one `removal::LastMove`, so each of the six moves -- grok's
+        // five, agy's one -- begins at least the gap after the one before
+        // it, whichever tool's that was: the Trash spike found Put Back
+        // recorded for every item only when one process's moves were 2 s or
+        // more apart (`removal::PUT_BACK_SETTLE`). With a gap kept within
+        // each run alone, the two runs' first moves began within a
+        // millisecond of each other.
+        let home = TempHome::new("grok-and-agy-at-once");
+        let grok = grok_layout(&home, "1.0.41");
+        let agy = agy_layout(&home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![grok.launcher.to_str().unwrap(), "--version"],
+            exited_0(GROK_VERSION_LINE),
+        );
+        runner.respond(
+            vec![agy.launcher.to_str().unwrap(), "--version"],
+            exited_0("1.2.10\n"),
+        );
+        let timed = Arc::new(TimedTrasher::default());
+        let gap = Duration::from_millis(100);
+        let mut adapters: std::collections::HashMap<&str, StandaloneAdapter> =
+            one_per_recipe(runner, Arc::new(MockHttpClient::new()), timed.clone())
+                .into_iter()
+                .map(|adapter| (adapter.recipe.id, adapter.with_trash_gap(gap)))
+                .collect();
+        let grok_adapter = adapters.remove("grok").expect("grok is registered");
+        let agy_adapter = adapters.remove("agy").expect("agy is registered");
+        let grok_inst = grok_adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let agy_inst = agy_adapter.detect(&env_as_owner(&home)).await.remove(0);
+        let grok_plan = grok_adapter
+            .plan(&grok_inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("grok's plan");
+        let agy_plan = agy_adapter
+            .plan(&agy_inst, &agy_request(OpKind::Uninstall))
+            .await
+            .expect("agy's plan");
+
+        let (grok_outcome, agy_outcome) = tokio::join!(
+            grok_adapter.execute(
+                &grok_plan,
+                Arc::new(VecSink::new()),
+                1,
+                CancellationToken::new()
+            ),
+            agy_adapter.execute(
+                &agy_plan,
+                Arc::new(VecSink::new()),
+                2,
+                CancellationToken::new()
+            ),
+        );
+
+        assert_eq!(grok_outcome.expect("grok's run"), Outcome::Succeeded);
+        assert_eq!(agy_outcome.expect("agy's run"), Outcome::Succeeded);
+        let moved = timed.inner.calls();
+        assert_eq!(moved.len(), 6, "grok's five and agy's one: {moved:?}");
+        assert!(moved.contains(&agy.launcher) && moved.contains(&grok.launcher));
+        let gaps = timed.gaps();
+        assert!(
+            gaps.iter().all(|between| *between >= gap),
+            "the time between one move's beginning and the next one's: {gaps:?}"
+        );
     }
 
     // ---- The recordings of Antigravity CLI and Grok Build ----

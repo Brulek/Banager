@@ -1240,12 +1240,19 @@ uninstall there, with macOS's own reason (`LogNote::TrashFailed`); and
 when the time budget runs out between items, the log names the item the
 uninstall stopped before and the budget it ran out of
 (`LogNote::OutOfTime`). After each move Canager waits 3 seconds
-(`removal::PUT_BACK_SETTLE`) — before the next one, and before it
-reports the uninstall finished; Cancel ends the wait, and no wait
-outlasts the uninstall's time budget — and the second finding below says
-why. A debug build of Canager, never a release one, also tries to list
-the Trash after each move and prints whether it may; that is how the
-pre-merge check learns the build it ran had no Full Disk Access.
+(`removal::PUT_BACK_SETTLE`) before it moves anything else, and before it
+reports the uninstall finished. That holds across uninstalls: up to three
+operations run at once and each path-list uninstall locks only its own
+tool, so two tools' uninstalls can run side by side, and their moves take
+turns on one shared clock (`removal::LastMove`) — an item waits while an
+item of the other uninstall is waiting or moving, then until 3 seconds
+after the last move Canager made, and only then gets its last check and
+its move. Cancel ends a wait, and no wait outlasts the uninstall's time
+budget; time spent waiting for another uninstall's moves comes out of it
+too. The second finding below says why. A debug build of Canager, never
+a release one, also tries to list the Trash after each move and prints
+whether it may; that is how the pre-merge check learns the build it ran
+had no Full Disk Access.
 
 How this was verified, on 2026-09-25, with a small test app on macOS
 27.0 (build 26A428), Apple silicon — ad-hoc signed, launched the way
@@ -1261,16 +1268,19 @@ a listing of `~/.Trash`:
 - Finder keeps Put Back as a record per item in `~/.Trash/.DS_Store`.
   Every item got one when the calls were at least 2 seconds apart (4 runs
   out of 4); when they came 1.5 seconds apart or less, only the first
-  item of the burst did (15 runs out of 15). Hence the 3-second pause: it
-  makes Put Back likely for every item, not certain, and an item without
-  the record can still be dragged back out of the Trash by hand. The
-  runs that recorded every item also kept running for 3 seconds after the
-  last call, and the record is written after the call returns — with Full
-  Disk Access, a process that quit at once lost the later records — so
-  Canager waits after the last move too, and quitting Canager while an
-  uninstall is still running may leave the item it moved last without
-  Put Back. Why macOS behaves this way is not known: the pause is a
-  measurement on one Mac, not a documented guarantee.
+  item of the burst did (15 runs out of 15). Those were one process's
+  calls, and two uninstalls in Canager are one process too — hence the
+  3-second pause between any two of Canager's moves, not only between one
+  uninstall's: it makes Put Back likely for every item, not certain, and
+  an item without the record can still be dragged back out of the Trash
+  by hand. The runs that recorded every item also kept running for 3
+  seconds after the last call, and the record is written after the call
+  returns — with Full Disk Access, a process that quit at once lost the
+  later records — so Canager waits after an uninstall's last move too,
+  and quitting Canager while an uninstall is still running may leave the
+  item it moved last without Put Back. Why macOS behaves this way is not
+  known: the pause is a measurement on one Mac, not a documented
+  guarantee.
 - A plain `rename` into `~/.Trash` from the same process succeeded too
   (24 runs out of 24), where the design had expected it to be refused:
   the Trash's protection covers listing it, not adding to it, so a `mv`
