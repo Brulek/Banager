@@ -285,11 +285,14 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
 - **grok 回退链接的链接文本未核实**（2026-09-26，步骤 D）。`~/.local/bin/grok`、`~/.local/bin/agent` 只在 `~/.grok/bin`
   不在 PATH 上时由安装器创建（grok.md §2：它依次试 `~/.local/bin` 与 `/usr/local/bin`，用第一个可写的），本机没有，
   链接文本指向 `~/.grok/bin/grok` 还是直接指向 `downloads/` 里的文件不知道。配方把这两条列为 optional 且**排在最前**
-  （步骤 D 计划裁定 3）——这是预防，不是纠错：检查 4 对这类路径用 `route::probe`，链接悬空时走 `probe_strict` 的 NotFound
-  分支，按链接自己的文本判定（`one_hop`，只把**已存在**的前缀解析掉），两种文本在 `downloads/` 进废纸篓之后都答
-  `LauncherOnly` 并被接受；排在最前，是让它们在文本可能经过的每个文件夹都还在时就走掉，检查 4 看到的是一条能解析的链接
-  （`Present`：文本与解析结果都得落在 `~/.grok` 里），不只凭文本；中途停下也不会留下一条看起来像别人的悬空
-  `~/.local/bin/grok`。若它不是 grok 的（另一个 CLI 的 `agent`），按 `NotOurs` 保留并说明。`/usr/local/bin` 里的同名路径
+  （步骤 D 计划裁定 3）——这是预防，不是纠错：检查 4 对这两条（以及 `~/.grok/bin/agent`）用 `route::leads_to_program`
+  （`Expect::SymlinkToProgram`，配方里的 `GROK_PROGRAM_LINK`）：链接自己的文本（`one_hop`，只把**已存在**的前缀解析掉）
+  得落在 `~/.grok/downloads` 里，或正是 `~/.grok/bin/grok`、`~/.grok/bin/agent` 之一；能解析时，解析结果还得落在
+  `~/.grok/downloads` 里，或正是启动器指向的那个文件。只「落在 `~/.grok` 里」不算：`~/.grok` 是这次卸载保留的文件夹，
+  用户的插件、技能也在里面（步骤 D 整步评审）。两种文本在 `downloads/` 进废纸篓之后都仍被接受（悬空时只看文本）；
+  排在最前，是让它们在文本可能经过的每个文件夹都还在时就走掉，检查 4 看到的是一条能解析的链接，不只凭文本；中途停下
+  也不会留下一条看起来像别人的悬空 `~/.local/bin/grok`。若它不是 grok 的（另一个 CLI 的 `agent`，或用户自己指向
+  `~/.grok` 里某个插件、技能的程序的链接），按 `NotOurs` 保留并说明。`/usr/local/bin` 里的同名路径
   只在**链接进 `~/.grok`** 时才报「会变成失效链接」（`removal::points_into`；Intel Mac 上它可能是 Homebrew `grok-build`
   的活链接，步骤 D 计划裁定 6）。**核实办法**：在 CI runner 上让 `~/.grok/bin` 不在 PATH 上装一次（安装器只在这时才建
   回退链接），再 `readlink` 两个候选位置——可以加进步骤 D 计划「The author's pre-merge verification」的工作流。

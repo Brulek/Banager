@@ -5461,6 +5461,97 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_plan_uninstall_for_grok_keeps_links_into_its_kept_folders_that_do_not_lead_to_its_program(
+    ) {
+        // `~/.grok` is also the folder this uninstall keeps -- its plugins
+        // and skills among it -- so a link pointing into it is not thereby
+        // grok's. The user's own `~/.local/bin/agent` to a plugin's program,
+        // `~/.local/bin/grok` to a skill's, and grok's `~/.grok/bin/agent`
+        // replaced by a link to that plugin: none leads to grok's program,
+        // so each is kept and said (`NotOurs`), the uninstall goes on, and
+        // afterwards each still runs what it ran -- the plugin and the skill
+        // stay with the rest of `~/.grok`.
+        let home = TempHome::new("grok-plan-links-into-kept");
+        let trasher = Arc::new(MockTrasher::new());
+        let (adapter, inst, layout) =
+            detected_grok(&home, exited_0(GROK_CHECK_CURRENT), trasher.clone()).await;
+        let plugin = home.executable(".grok/plugins/p/bin/agent");
+        let skill = home.executable(".grok/skills/s/bin/grok");
+        let local_grok = home.link(".local/bin/grok", &skill);
+        let local_agent = home.link(".local/bin/agent", &plugin);
+        std::fs::remove_file(&layout.agent).unwrap();
+        home.link(".grok/bin/agent", Path::new("../plugins/p/bin/agent"));
+
+        let plan = adapter
+            .plan(&inst, &grok_request(OpKind::Uninstall))
+            .await
+            .expect("a plan, not a refusal");
+
+        let PlanAction::TrashPaths { paths, .. } = &plan.action else {
+            panic!("a path list: {:?}", plan.action);
+        };
+        assert_eq!(
+            paths,
+            &vec![
+                home.path().join(".grok/downloads"),
+                home.path().join(".grok/bundled"),
+                home.path().join(".grok/completions"),
+                layout.launcher.clone(),
+            ]
+        );
+        let not_ours = |path: &str| Warning::WillKeep {
+            path: path.to_string(),
+            what: KeptWhat::NotOurs,
+        };
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::WillTrash {
+                    path: "~/.grok/downloads".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/bundled".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/completions".to_string(),
+                    what: RemovedWhat::Program
+                },
+                Warning::WillTrash {
+                    path: "~/.grok/bin/grok".to_string(),
+                    what: RemovedWhat::Launcher
+                },
+                not_ours("~/.local/bin/grok"),
+                not_ours("~/.local/bin/agent"),
+                not_ours("~/.grok/bin/agent"),
+                Warning::WillKeep {
+                    path: "~/.grok".to_string(),
+                    what: KeptWhat::SettingsAndHistory
+                },
+            ]
+        );
+
+        let outcome = adapter
+            .execute(&plan, Arc::new(VecSink::new()), 9, CancellationToken::new())
+            .await
+            .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        assert_eq!(&trasher.calls(), paths);
+        for (link, target) in [
+            (&local_grok, &skill),
+            (&local_agent, &plugin),
+            (&layout.agent, &plugin),
+        ] {
+            assert_eq!(
+                std::fs::canonicalize(link).expect("the link still resolves"),
+                *target,
+                "{link:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn test_a_stopped_grok_uninstall_leaves_a_launcher_only_row_that_a_second_uninstall_finishes(
     ) {
         // Review Focus 6: macOS refuses `bundled` (the second item). The

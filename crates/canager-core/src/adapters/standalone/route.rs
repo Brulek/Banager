@@ -98,7 +98,8 @@ fn has_component(path: &Path, names: &[&str]) -> bool {
 /// Resolve existing components before interpreting `..`; only genuinely
 /// missing components may remain lexical. Errors (permissions, loops,
 /// non-directories, or dangling intermediate symlinks) are not evidence of
-/// missing program files. Private reader: `probe`'s NotFound branch.
+/// missing program files. Private readers: `probe_strict`'s NotFound
+/// branch, `placed` (and through it `one_hop`), and `leads_to_program`.
 fn canonicalize_existing_prefix(path: &Path) -> std::io::Result<PathBuf> {
     let mut resolved = PathBuf::new();
     for component in path.components() {
@@ -234,19 +235,65 @@ pub fn probe_strict(kind: RouteKind, launcher: &Path, root: &Path) -> std::io::R
 /// (`readlink`) taken from the launcher's resolved directory -- so a
 /// relative `../` means what it means under a `~/.local/bin` that is
 /// itself a link -- with the destination's own directory resolved as far
-/// as it exists and the destination itself not followed: it may be gone
-/// (the launcher-only state) or a link the tool keeps inside its root.
-/// Read by `probe_strict`, in both of its launcher arms.
+/// as it exists and the destination itself not followed (`placed`): it may
+/// be gone (the launcher-only state) or a link the tool keeps inside its
+/// root. Read by `probe_strict`, in both of its launcher arms, and by
+/// `leads_to_program`, for any link.
 fn one_hop(launcher: &Path) -> std::io::Result<PathBuf> {
     let text = std::fs::read_link(launcher)?;
     let dir = std::fs::canonicalize(launcher.parent().unwrap_or(Path::new("/")))?;
     // `join` with an absolute text is that text.
-    let joined = dir.join(text);
-    match (joined.parent(), joined.file_name()) {
+    placed(&dir.join(text))
+}
+
+/// `path` as `one_hop` places a link's destination: its folder resolved as
+/// far as it exists (`canonicalize_existing_prefix`), its last component
+/// not followed. Read by `one_hop`, and by `leads_to_program` to place the
+/// links a link may point at the same way, so the two compare.
+fn placed(path: &Path) -> std::io::Result<PathBuf> {
+    match (path.parent(), path.file_name()) {
         (Some(parent), Some(name)) => Ok(canonicalize_existing_prefix(parent)?.join(name)),
-        // A text ending in `..`, or naming `/`: a directory, resolved like
+        // A path ending in `..`, or naming `/`: a directory, resolved like
         // any other -- never a program the route could run.
-        _ => canonicalize_existing_prefix(&joined),
+        _ => canonicalize_existing_prefix(path),
+    }
+}
+
+/// Whether `link` is another link to the program a route's launcher runs
+/// -- grok's `~/.grok/bin/agent`, or a fallback link its installer made in
+/// `~/.local/bin` -- rather than a link to something else in the tool's
+/// folder. `probe_strict`'s fingerprint (text and target inside the root)
+/// cannot tell: grok's root, `~/.grok`, also holds the user's plugins,
+/// skills and scripts, which its uninstall keeps. So the launcher's
+/// one-link shape, against the program instead: the link's own text
+/// (`one_hop`) must land inside `program` -- the folder the program's
+/// files are in -- or name one of `via`, the tool's own links such a link
+/// may point at instead (grok's installer's fallback text is unverified:
+/// one hop, or two through `~/.grok/bin`); and where the link resolves, if
+/// it does, must be inside `program` or be `runs`, the file the launcher
+/// runs (`Probe::Present`'s `real`; `None` when the launcher runs nothing:
+/// it dangles, or is not this route's). A dangling link -- `program`
+/// already in the Trash, or removed by hand -- is judged by its text alone,
+/// as the launcher is. Anything else -- not a link, not there, a loop or an
+/// error on the way -- is `false`: not confirmed. Read by
+/// `removal::check_item`, for `Expect::SymlinkToProgram`.
+pub fn leads_to_program(link: &Path, program: &Path, via: &[PathBuf], runs: Option<&Path>) -> bool {
+    let is_link = std::fs::symlink_metadata(link).is_ok_and(|meta| meta.file_type().is_symlink());
+    if !is_link {
+        return false;
+    }
+    let (Ok(hop), Ok(program)) = (one_hop(link), canonicalize_existing_prefix(program)) else {
+        return false;
+    };
+    let names_one_of_via = via
+        .iter()
+        .any(|other| placed(other).is_ok_and(|other| other == hop));
+    if !hop.starts_with(&program) && !names_one_of_via {
+        return false;
+    }
+    match std::fs::canonicalize(link) {
+        Ok(real) => real.starts_with(&program) || runs == Some(real.as_path()),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
     }
 }
 
@@ -417,7 +464,7 @@ mod tests {
     }
 
     use super::super::recipe::RouteKind;
-    use super::super::testing::{claude_layout, rustup_layout, TempHome, Unreadable};
+    use super::super::testing::{claude_layout, grok_layout, rustup_layout, TempHome, Unreadable};
     use crate::model::InstanceNote;
 
     #[test]
@@ -815,6 +862,165 @@ mod tests {
             ),
             Probe::LauncherOnly
         );
+    }
+
+    #[test]
+    fn test_leads_to_program_accepts_a_link_to_the_program_directly_or_through_the_tools_own_links()
+    {
+        // grok's `~/.grok/bin/agent` points straight at a download, as the
+        // launcher does. The fallback links its installer may make in
+        // `~/.local/bin` say one hop or two (unverified, grok.md §2):
+        // straight at a download -- the current one, or an older one an
+        // update left -- or at one of the two links in `~/.grok/bin`.
+        let home = TempHome::new("program-link-accepts");
+        let layout = grok_layout(&home, "1.0.41");
+        let older = home.executable(".grok/downloads/grok-1.0.34-macos-aarch64");
+        let program = layout.root.join("downloads");
+        let via = [layout.launcher.clone(), layout.agent.clone()];
+        let links = [
+            layout.agent.clone(),
+            home.link(
+                ".local/bin/grok",
+                Path::new("../../.grok/downloads/grok-1.0.41-macos-aarch64"),
+            ),
+            home.link(".local/bin/grok-older", &older),
+            home.link(".local/bin/grok-two-hops", &layout.launcher),
+            home.link(".local/bin/agent", &layout.agent),
+        ];
+        for link in &links {
+            assert!(
+                leads_to_program(link, &program, &via, Some(layout.real.as_path())),
+                "{link:?}"
+            );
+        }
+        // The same, with every path spelled through a home reached by a
+        // symlink (`HostEnv.home` may be one, a home on another volume):
+        // the link's text and the paths it is compared with are placed
+        // alike, each folder resolved.
+        let linked = home.link("linked-home", home.path());
+        let spelled = |path: &Path| linked.join(path.strip_prefix(home.path()).unwrap());
+        let via = [spelled(&layout.launcher), spelled(&layout.agent)];
+        for link in &links {
+            assert!(
+                leads_to_program(
+                    &spelled(link),
+                    &spelled(&program),
+                    &via,
+                    Some(layout.real.as_path())
+                ),
+                "{link:?} through the linked home"
+            );
+        }
+    }
+
+    #[test]
+    fn test_leads_to_program_refuses_a_link_into_the_rest_of_the_tools_folder_or_elsewhere() {
+        // `~/.grok` is also the folder grok's uninstall keeps: a plugin's or
+        // a skill's program, or a script of the user's in `~/.grok/bin`, is
+        // not grok's, and neither is a link to one. Nor is a link whose own
+        // text names neither the program folder nor one of the two links in
+        // `~/.grok/bin`, even when it resolves into the program through
+        // another link: once that other link is in the Trash it dangles,
+        // with nothing left to say whose it was -- the launcher's one-link
+        // rule. Nor a link to a "download" that is itself a link out of the
+        // program folder, a regular file, or nothing at all.
+        let home = TempHome::new("program-link-refuses");
+        let layout = grok_layout(&home, "1.0.41");
+        let program = layout.root.join("downloads");
+        let via = [layout.launcher.clone(), layout.agent.clone()];
+        let runs = Some(layout.real.as_path());
+        let plugin = home.executable(".grok/plugins/p/bin/agent");
+        let skill = home.executable(".grok/skills/s/bin/grok");
+        let script = home.executable(".grok/bin/my-own-script");
+        home.link(".local/bin/grok", &layout.real);
+        let current = home.link(".grok/downloads/current", &plugin);
+        let refused = [
+            home.link(".local/bin/agent", &plugin),
+            home.link(".local/bin/skill", &skill),
+            home.link(".local/bin/script", &script),
+            home.link(".local/bin/agent-beside-grok", Path::new("grok")),
+            home.link(".local/bin/elsewhere", &home.executable("other/grok")),
+            home.link(".local/bin/current", &current),
+            home.file(".local/bin/plain"),
+            home.path().join(".local/bin/missing"),
+        ];
+        for link in &refused {
+            assert!(!leads_to_program(link, &program, &via, runs), "{link:?}");
+        }
+
+        // grok's own `agent` replaced by a link to the plugin: not grok's,
+        // and neither is a fallback through it, although that one's text
+        // names one of the two links -- it ends at the plugin.
+        std::fs::remove_file(&layout.agent).unwrap();
+        home.link(".grok/bin/agent", Path::new("../plugins/p/bin/agent"));
+        let through_agent = home.link(".local/bin/agent-two-hops", &layout.agent);
+        assert!(!leads_to_program(&layout.agent, &program, &via, runs));
+        assert!(!leads_to_program(&through_agent, &program, &via, runs));
+        // And through a loop, nothing is confirmed.
+        std::fs::remove_file(&layout.agent).unwrap();
+        home.link(".grok/bin/agent", Path::new("agent"));
+        assert!(!leads_to_program(&through_agent, &program, &via, runs));
+    }
+
+    #[test]
+    fn test_leads_to_program_reads_a_dangling_link_by_its_own_text() {
+        // With the program folder in the Trash -- the uninstall moves
+        // `~/.grok/downloads` before `~/.grok/bin/agent`, or it was removed
+        // by hand -- the links dangle and their own text decides, as the
+        // launcher's does: into the program folder, or at one of the two
+        // links in `~/.grok/bin`, is grok's; into a plugin that has since
+        // been removed is not. There is no file the launcher runs.
+        let home = TempHome::new("program-link-dangling");
+        let layout = grok_layout(&home, "1.0.41");
+        let program = layout.root.join("downloads");
+        let via = [layout.launcher.clone(), layout.agent.clone()];
+        let accepted = [
+            layout.agent.clone(),
+            home.link(
+                ".local/bin/grok",
+                Path::new("../../.grok/downloads/grok-1.0.41-macos-aarch64"),
+            ),
+            home.link(".local/bin/grok-two-hops", &layout.launcher),
+            home.link(".local/bin/agent", &layout.agent),
+        ];
+        let plugin_gone = home.link(
+            ".local/bin/plugin",
+            &layout.root.join("plugins/gone/bin/agent"),
+        );
+        std::fs::remove_dir_all(&program).unwrap();
+        for link in &accepted {
+            assert!(!link.exists(), "{link:?} dangles");
+            assert!(leads_to_program(link, &program, &via, None), "{link:?}");
+        }
+        assert!(!leads_to_program(&plugin_gone, &program, &via, None));
+    }
+
+    #[test]
+    fn test_leads_to_program_accepts_the_very_file_the_launcher_runs_wherever_it_is() {
+        // Another name for the command is also a link to exactly the file
+        // the launcher runs, in a layout whose launcher runs one outside the
+        // program folder. Only that file, and only when there is one: a
+        // launcher that is not this route's gives none.
+        let home = TempHome::new("program-link-runs");
+        let program = home.dir(".grok/downloads");
+        let runs = home.executable(".grok/versions/1.0.41/grok");
+        let other = home.executable(".grok/versions/1.0.40/grok");
+        let launcher = home.link(".grok/bin/grok", Path::new("../versions/1.0.41/grok"));
+        let via = [launcher.clone()];
+        let fallback = home.link(".local/bin/grok", &launcher);
+        assert!(leads_to_program(
+            &fallback,
+            &program,
+            &via,
+            Some(runs.as_path())
+        ));
+        assert!(!leads_to_program(&fallback, &program, &via, None));
+        assert!(!leads_to_program(
+            &fallback,
+            &program,
+            &via,
+            Some(other.as_path())
+        ));
     }
 
     #[test]

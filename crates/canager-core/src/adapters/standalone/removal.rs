@@ -441,11 +441,15 @@ fn is_shared_folder(folder: &Path, canonical_home: &Path) -> bool {
 ///   its identity (`NotWhatInstructionsExpect`);
 /// - kept paths stay kept (ruling 25, `disturbed`; `OverlapsKept`, naming
 ///   the kept path);
-/// - check 4 for a launcher: the one-hop link into the root, or its
-///   dangling launcher-only state (`route::probe`);
+/// - check 4 for a launcher (`SymlinkIntoRoot`): the one-hop link into the
+///   root, or its dangling launcher-only state (`route::probe`); for
+///   another link to the program (`SymlinkToProgram`), that it leads to
+///   the program or to the file the launcher runs, not merely into the
+///   root, which may be the very folder the uninstall keeps
+///   (`route::leads_to_program`; `NotWhatInstructionsExpect` either way);
 /// - last, the item's own `lstat`: there (`Missing`), the user's own
 ///   (check 3, `NotOwnedByYou`), and the kind the instructions describe --
-///   a real directory for `Dir`, a link for `SymlinkIntoRoot`, a regular
+///   a real directory for `Dir`, a link for either link kind, a regular
 ///   file for `File`, so the item is a link only where the recipe says so
 ///   (check 4, `NotWhatInstructionsExpect`).
 fn check_item(
@@ -481,12 +485,24 @@ fn check_item(
     if let Some(kept) = disturbed(kept, rel, &real_folder.join(name)) {
         return Err(Refusal::new(&kept.path, OverlapsKept));
     }
-    if expect == Expect::SymlinkIntoRoot
-        && !matches!(
-            route::probe(look.job.recipe.route.kind, path, &look.root),
+    let kind = look.job.recipe.route.kind;
+    let confirmed = match expect {
+        Expect::SymlinkIntoRoot => matches!(
+            route::probe(kind, path, &look.root),
             Probe::Present { .. } | Probe::LauncherOnly
-        )
-    {
+        ),
+        Expect::SymlinkToProgram { program, via } => {
+            let home = look.job.detected.home.as_path();
+            let runs = match route::probe(kind, &look.launcher, &look.root) {
+                Probe::Present { real } => Some(real),
+                Probe::Absent | Probe::LauncherOnly => None,
+            };
+            let via: Vec<PathBuf> = via.iter().map(|link| route::expand(home, link)).collect();
+            route::leads_to_program(path, &route::expand(home, program), &via, runs.as_deref())
+        }
+        Expect::Dir | Expect::File => true,
+    };
+    if !confirmed {
         return Err(refuse(NotWhatInstructionsExpect));
     }
     let meta = match std::fs::symlink_metadata(path) {
@@ -500,7 +516,7 @@ fn check_item(
     let identity = identity_of(&meta);
     let expected = match expect {
         Expect::Dir => ItemKind::Dir,
-        Expect::SymlinkIntoRoot => ItemKind::Symlink,
+        Expect::SymlinkIntoRoot | Expect::SymlinkToProgram { .. } => ItemKind::Symlink,
         Expect::File => ItemKind::File,
     };
     if identity.kind != expected {

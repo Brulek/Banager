@@ -7,8 +7,9 @@
 //! step E adds, for rustup, the `SecondToken` version parse, the
 //! `HttpTomlVersion` source, the `FlatFile` route, `$CARGO_HOME` paths,
 //! `extra_locks` and `Uninstall::Command`; step D added `backup_globs` and
-//! adds `Expect::File`, the two `Latest` sources a manifest and a tool's own
-//! check need, and an optional `upgrade` (agy updates itself only). A
+//! adds `Expect::File`, `Expect::SymlinkToProgram` (grok's links besides its
+//! launcher), the two `Latest` sources a manifest and a tool's own check
+//! need, and an optional `upgrade` (agy updates itself only). A
 //! variant or field defined before anything produces it is this project's
 //! most common defect (spec §十三 #41).
 
@@ -338,15 +339,36 @@ pub const SHARED_FOLDERS: [&str; 5] = [".local", ".config", ".cache", "Library",
 
 /// What check 4 requires at a `RemoveSpec.path` (spec §6.3) -- at the
 /// path itself: every folder above it must be a real folder whatever it
-/// expects (the ancestry rule, `removal::check_item`).
+/// expects (the ancestry rule, `removal::check_item`). The two link kinds
+/// are the only listed paths that may be links.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Expect {
-    /// A symbolic link -- the one kind of listed path that may be a link --
-    /// whose own text points into the recipe's root and which resolves
-    /// there, or, dangling, whose own text points into it (the
-    /// launcher-only state): exactly as `route::probe` decides for the
-    /// launcher.
+    /// The launcher of a link-shaped route: a symbolic link whose own text
+    /// points into the recipe's root and which resolves there, or,
+    /// dangling, whose own text points into it (the launcher-only state):
+    /// exactly as `route::probe` decides for the launcher. Only the
+    /// launcher (`recipes::tests`): a root may be the very folder the
+    /// uninstall keeps, so for any other link "points into the root" says
+    /// nothing about whose it is.
     SymlinkIntoRoot,
+    /// Another symbolic link to the launcher's program -- grok's
+    /// `~/.grok/bin/agent`, and the fallback links its installer may make
+    /// in `~/.local/bin` -- checked against the program, never merely the
+    /// root: grok's root, `~/.grok`, is also what its uninstall keeps, with
+    /// the user's plugins and skills in it. The link's own text must land
+    /// inside `program`, the folder the program's files are in, or name one
+    /// of `via`, the tool's own links such a link may point at instead; and
+    /// where it resolves, if it does, must be inside `program` or be the
+    /// file the launcher runs (`route::leads_to_program`). Dangling -- once
+    /// `program` is in the Trash -- the text alone decides, as for the
+    /// launcher. Both are `~/` paths of the same list: `program` a folder it
+    /// requires and moves as the program, `via` the launcher or another of
+    /// its links to the program (`recipes::tests`). Produced by
+    /// `recipes::GROK`; read by `removal::check_item`.
+    SymlinkToProgram {
+        program: &'static str,
+        via: &'static [&'static str],
+    },
     /// A real directory, not a link.
     Dir,
     /// A regular file, not a link: Antigravity's launcher (`~/.local/bin/agy`,

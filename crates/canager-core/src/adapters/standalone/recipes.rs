@@ -287,27 +287,32 @@ pub static AGY: Recipe = Recipe {
 ///   links the installer makes when `~/.grok/bin` is not on PATH *first*
 ///   (their link text is UNVERIFIED -- one hop or two -- so they go while
 ///   every folder it could pass through is still on the disk; a
-///   precaution, since step C's check 4 would accept them dangling too;
-///   step D plan ruling 3), then `downloads/` (the program), `bundled/`
-///   and `completions/` (optional), the fish completion the installer also
-///   writes (optional; spec §十三 #17), then the two links the installer
-///   put in `~/.grok/bin`: `agent` (optional, a second name for the same
-///   command) and `grok` -- the launcher -- last. The folder `~/.grok/bin`
-///   itself is not moved (spec §6.3 listed it whole; step D plan ruling 4):
-///   it is on the user's PATH, so a script of their own may sit in it, and
-///   it stays inside the kept `~/.grok`, empty unless they put something
-///   there. Kept, and said when present: `~/.grok` (`config.toml`,
-///   `auth.json`, `sessions/`, `memory/`, `skills/`, `plugins/`),
-///   `~/.zshrc`, where the installer writes its marked PATH block for zsh,
-///   macOS's default shell (§2), and, reported only when it is a link into
-///   `~/.grok` (never Homebrew's or another CLI's), a link the installer
-///   may have put in `/usr/local/bin`, which becomes a dead link (spec
-///   §6.3; step D plan ruling 6).
+///   precaution, since check 4 would accept them dangling too, by their
+///   text, `GROK_PROGRAM_LINK`; step D plan ruling 3), then `downloads/`
+///   (the program), `bundled/` and `completions/` (optional), the fish
+///   completion the installer also writes (optional; spec §十三 #17), then
+///   the two links the installer put in `~/.grok/bin`: `agent` (optional, a
+///   second name for the same command) and `grok` -- the launcher -- last.
+///   The folder `~/.grok/bin` itself is not moved (spec §6.3 listed it
+///   whole; step D plan ruling 4): it is on the user's PATH, so a script of
+///   their own may sit in it, and it stays inside the kept `~/.grok`, empty
+///   unless they put something there. Kept, and said when present:
+///   `~/.grok` (`config.toml`, `auth.json`, `sessions/`, `memory/`,
+///   `skills/`, `plugins/`), `~/.zshrc`, where the installer writes its
+///   marked PATH block for zsh, macOS's default shell (§2), and, reported
+///   only when it is a link into `~/.grok` (never Homebrew's or another
+///   CLI's), a link the installer may have put in `/usr/local/bin`, which
+///   becomes a dead link (spec §6.3; step D plan ruling 6).
 ///
 /// Registered in `RECIPES` together with what `fixtures_layout_test` and
 /// `what_we_run_test` demand of a registered source: the recording in
 /// `adapters/fixtures/standalone-grok/<version>/` and the `## Grok Build`
 /// section of `docs/what-we-run.md`.
+///
+/// The three links besides the launcher are `GROK_PROGRAM_LINK`s: each is
+/// moved only when it leads to the program in `~/.grok/downloads`, never
+/// merely because it points into `~/.grok` -- the folder this list keeps,
+/// plugins and skills included.
 pub static GROK: Recipe = Recipe {
     id: "grok",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-grok.toml"),
@@ -338,13 +343,13 @@ pub static GROK: Recipe = Recipe {
         remove: &[
             RemoveSpec {
                 path: "~/.local/bin/grok",
-                expect: Expect::SymlinkIntoRoot,
+                expect: GROK_PROGRAM_LINK,
                 what: RemovedWhat::Launcher,
                 optional: true,
             },
             RemoveSpec {
                 path: "~/.local/bin/agent",
-                expect: Expect::SymlinkIntoRoot,
+                expect: GROK_PROGRAM_LINK,
                 what: RemovedWhat::Launcher,
                 optional: true,
             },
@@ -374,7 +379,7 @@ pub static GROK: Recipe = Recipe {
             },
             RemoveSpec {
                 path: "~/.grok/bin/agent",
-                expect: Expect::SymlinkIntoRoot,
+                expect: GROK_PROGRAM_LINK,
                 what: RemovedWhat::Launcher,
                 optional: true,
             },
@@ -406,6 +411,23 @@ pub static GROK: Recipe = Recipe {
     }),
     extra_locks: no_extra_locks,
     backup_globs: &[],
+};
+
+/// What grok's links besides its launcher -- `~/.grok/bin/agent` and the
+/// two fallback links in `~/.local/bin` -- must be (check 4,
+/// `Expect::SymlinkToProgram`): a link to the program in
+/// `~/.grok/downloads`, straight there, as the installer's `bin/grok` and
+/// `bin/agent` point (`../downloads/grok-<version>-macos-aarch64`: spec
+/// §3.5, and the recorded `layout.txt`), or through one of those two links,
+/// since whether a fallback link's text takes one hop or two is unverified
+/// (grok.md §2). "Into
+/// `~/.grok`" would not do: `~/.grok` is what this uninstall keeps, and a
+/// link of the user's to a plugin's or a skill's program there, or to a
+/// script of theirs in `~/.grok/bin`, is not grok's -- such a link is kept
+/// and said (`KeptWhat::NotOurs`), and still works afterwards.
+const GROK_PROGRAM_LINK: Expect = Expect::SymlinkToProgram {
+    program: "~/.grok/downloads",
+    via: &["~/.grok/bin/grok", "~/.grok/bin/agent"],
 };
 
 /// rustup, the Rust toolchain installer, installed by its own script
@@ -591,6 +613,12 @@ mod tests {
             paths.extend(remove.iter().map(|spec| spec.path));
             paths.extend(home_keeps(keep));
             paths.extend(recipe.backup_globs.iter().map(|glob| glob.dir));
+            for spec in remove.iter() {
+                if let Expect::SymlinkToProgram { program, via } = spec.expect {
+                    paths.push(program);
+                    paths.extend(via.iter().copied());
+                }
+            }
             for path in paths {
                 assert!(
                     path.starts_with("~/"),
@@ -841,6 +869,58 @@ mod tests {
                         kept != *a && !kept.starts_with(&format!("{a}/")),
                         "{}: kept {kept:?} is inside removed {a:?}",
                         recipe.id
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_every_link_a_paths_recipe_moves_besides_its_launcher_must_lead_to_its_program() {
+        // Only the launcher is checked against the whole root
+        // (`SymlinkIntoRoot`, as detect checks it). Any other link the list
+        // moves is checked against the program (`SymlinkToProgram`): a
+        // tool's root may be the very folder its uninstall keeps -- grok's
+        // `~/.grok`, with the user's plugins and skills in it -- so a link
+        // into it is not thereby the tool's. And what such a link may lead
+        // to is the list's own: `program` a folder it moves as the program
+        // and requires, `via` the launcher or another of its links to the
+        // program -- so a recipe cannot widen the check to a folder it keeps.
+        for recipe in RECIPES {
+            let Some(Uninstall::Paths { remove, .. }) = &recipe.uninstall else {
+                continue;
+            };
+            for spec in remove
+                .iter()
+                .filter(|spec| spec.path != recipe.route.launcher)
+            {
+                assert_ne!(
+                    spec.expect,
+                    Expect::SymlinkIntoRoot,
+                    "{}: {:?} is not the launcher; a link to the program is SymlinkToProgram",
+                    recipe.id,
+                    spec.path
+                );
+                let Expect::SymlinkToProgram { program, via } = spec.expect else {
+                    continue;
+                };
+                assert!(
+                    remove.iter().any(|folder| folder.path == program
+                        && folder.expect == Expect::Dir
+                        && folder.what == RemovedWhat::Program
+                        && !folder.optional),
+                    "{}: {:?} must lead into a program folder the list requires, not {program:?}",
+                    recipe.id,
+                    spec.path
+                );
+                for link in via {
+                    assert!(
+                        *link == recipe.route.launcher
+                            || remove.iter().any(|other| other.path == *link
+                                && matches!(other.expect, Expect::SymlinkToProgram { .. })),
+                        "{}: {:?} may point only at the launcher or another of the list's links to the program, not {link:?}",
+                        recipe.id,
+                        spec.path
                     );
                 }
             }
@@ -1160,9 +1240,16 @@ mod tests {
         // `~/.grok` itself stays with its settings, login, sessions and
         // memory; the shell file stays; a fallback link in /usr/local/bin
         // is reported when it links into `~/.grok`, never touched (its
-        // ruling 6).
+        // ruling 6). The three links besides the launcher must lead to the
+        // program in `~/.grok/downloads` -- straight there, or through one
+        // of the two links in `~/.grok/bin` -- never merely into the kept
+        // `~/.grok` (the whole-step review of step D).
         let Some(Uninstall::Paths { remove, keep }) = &GROK.uninstall else {
             panic!("grok has a path list");
+        };
+        let to_program = Expect::SymlinkToProgram {
+            program: "~/.grok/downloads",
+            via: &["~/.grok/bin/grok", "~/.grok/bin/agent"],
         };
         let remove: Vec<(&str, Expect, RemovedWhat, bool)> = remove
             .iter()
@@ -1171,15 +1258,10 @@ mod tests {
         assert_eq!(
             remove,
             vec![
-                (
-                    "~/.local/bin/grok",
-                    Expect::SymlinkIntoRoot,
-                    RemovedWhat::Launcher,
-                    true
-                ),
+                ("~/.local/bin/grok", to_program, RemovedWhat::Launcher, true),
                 (
                     "~/.local/bin/agent",
-                    Expect::SymlinkIntoRoot,
+                    to_program,
                     RemovedWhat::Launcher,
                     true
                 ),
@@ -1202,12 +1284,7 @@ mod tests {
                     RemovedWhat::Program,
                     true
                 ),
-                (
-                    "~/.grok/bin/agent",
-                    Expect::SymlinkIntoRoot,
-                    RemovedWhat::Launcher,
-                    true
-                ),
+                ("~/.grok/bin/agent", to_program, RemovedWhat::Launcher, true),
                 (
                     "~/.grok/bin/grok",
                     Expect::SymlinkIntoRoot,

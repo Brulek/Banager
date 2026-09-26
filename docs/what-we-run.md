@@ -868,9 +868,16 @@ present), then the two links the installer put in `~/.grok/bin`:
 command itself. The folder `~/.grok/bin` is not moved: the installer put
 it on your `PATH`, so a script of your own may be in it, and it stays
 inside `~/.grok`, empty unless you put something there. Each path passes
-the checks Claude Code's section describes; an optional one Canager cannot
+the checks Claude Code's section describes, and the three links besides
+`~/.grok/bin/grok` pass one more: `~/.grok` is also the folder this
+uninstall keeps, so pointing into it does not make a link grok's. Each
+must lead to grok's program — its own text pointing into
+`~/.grok/downloads` or at `~/.grok/bin/grok` or `~/.grok/bin/agent`, and,
+if it still leads somewhere, leading into `~/.grok/downloads` or to the
+very file `~/.grok/bin/grok` runs. An optional path Canager cannot
 confirm is grok's own — a `~/.local/bin/agent` that belongs to another
-program, say — stays and the preview says so. The launcher is last: once
+program, say, or a link of yours to a plugin's or a skill's program
+inside `~/.grok` — stays and the preview says so. The launcher is last: once
 `~/.grok/downloads` is in the Trash, a run that stops leaves a
 launcher-only row that a second Uninstall finishes, as for Claude Code.
 The whole uninstall has 120 s, as Claude Code's does. It keeps `~/.grok`
