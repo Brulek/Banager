@@ -417,10 +417,12 @@ pub enum KeptWhat {
     /// A link outside the home folder the installer may have made into the
     /// tool's root (`/usr/local/bin/grok`): never touched, reported so the
     /// user knows it becomes a dead link. Reported only when it is a link
-    /// into the root (`removal::points_into`): a `/usr/local/bin/grok` that
-    /// is Homebrew's, or an `agent` that is another CLI's, gets no sentence.
-    /// Report-only: `kept_places` does not protect it (a link into the
-    /// program folder would otherwise refuse the uninstall it exists for).
+    /// into the root that leads nowhere once the uninstall's moves are done
+    /// (`removal::dead_after`): a `/usr/local/bin/grok` that is Homebrew's,
+    /// an `agent` that is another CLI's, or a link to a plugin's program in
+    /// the `~/.grok` the uninstall keeps, gets no sentence. Report-only:
+    /// `kept_places` does not protect it (a link into the program folder
+    /// would otherwise refuse the uninstall it exists for).
     OutsideHome,
     /// An optional listed path that is there but Canager could not confirm
     /// is this install's -- the wrong shape, a link elsewhere, a folder on

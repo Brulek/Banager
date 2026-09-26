@@ -305,9 +305,11 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   排在最前，是让它们在文本可能经过的每个文件夹都还在时就走掉，检查 4 看到的是一条能解析的链接，不只凭文本；中途停下
   也不会留下一条看起来像别人的悬空 `~/.local/bin/grok`。若它不是 grok 的（另一个 CLI 的 `agent`，或用户自己指向
   `~/.grok` 里某个插件、技能的程序的链接），按 `NotOurs` 保留并说明。`/usr/local/bin` 里的同名路径
-  只在**链接进 `~/.grok`** 时才报「会变成失效链接」（`removal::points_into`；Intel Mac 上它可能是 Homebrew `grok-build`
-  的活链接，步骤 D 计划裁定 6）。**核实办法**：在 CI runner 上让 `~/.grok/bin` 不在 PATH 上装一次（安装器只在这时才建
-  回退链接），再 `readlink` 两个候选位置——可以加进步骤 D 计划「The author's pre-merge verification」的工作流。
+  只在**链接进 `~/.grok`、且移动做完后确实指向空处**时才报「会变成失效链接」（`removal::dead_after`：已经悬空，
+  或通往目标的路上经过清单要移走的路径；Intel Mac 上它可能是 Homebrew `grok-build` 的活链接，步骤 D 计划裁定 6；
+  指向保留的 `~/.grok` 里某个插件程序的链接卸载后仍能用，不报，步骤 D 整步评审）。**核实办法**：在 CI runner 上
+  让 `~/.grok/bin` 不在 PATH 上装一次（安装器只在这时才建回退链接），再 `readlink` 两个候选位置——可以加进步骤 D
+  计划「The author's pre-merge verification」的工作流。
 - **grok 的 `~/.grok/bin` 不整目录移动**（2026-09-26，步骤 D 计划裁定 4，与 spec §6.3 的 `~/.grok/bin · Dir` 不同）。
   安装器把它加进了 PATH，用户自己的脚本可能放在里面；清单列的是安装器放进去的两条链接（`agent`、最后 `grok`），文件夹本身
   留在被保留的 `~/.grok` 里（用户没往里放东西时是空的；安装器写进 shell 配置文件的 PATH 行照旧指向它，无害）。若日后要连

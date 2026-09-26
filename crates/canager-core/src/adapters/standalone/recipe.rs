@@ -385,9 +385,10 @@ pub enum Expect {
 /// when it exists. `path` is `~/…` and protected by the checks
 /// (`removal::kept_places`, `disturbed`) -- except when `what` is
 /// `KeptWhat::OutsideHome`: then it is an absolute path outside the home
-/// folder (`/usr/local/bin/grok`), reported when it exists and never
-/// protected (`removal::outside_home_keeps`): a fallback link *into* the
-/// program folder would otherwise refuse the uninstall it exists for
+/// folder (`/usr/local/bin/grok`), reported only when it is a link into the
+/// root that the uninstall leaves leading nowhere, and never protected
+/// (`removal::outside_home_keeps`): a fallback link *into* the program
+/// folder would otherwise refuse the uninstall it exists for
 /// (`recipes::tests` hold the two spellings apart).
 #[derive(Debug)]
 pub struct KeepSpec {

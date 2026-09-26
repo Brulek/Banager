@@ -299,10 +299,12 @@ pub static AGY: Recipe = Recipe {
 ///   unless they put something there. Kept, and said when present:
 ///   `~/.grok` (`config.toml`, `auth.json`, `sessions/`, `memory/`,
 ///   `skills/`, `plugins/`), `~/.zshrc`, where the installer writes its
-///   marked PATH block for zsh, macOS's default shell (§2), and, reported
-///   only when it is a link into `~/.grok` (never Homebrew's or another
-///   CLI's), a link the installer may have put in `/usr/local/bin`, which
-///   becomes a dead link (spec §6.3; step D plan ruling 6).
+///   marked PATH block for zsh, macOS's default shell (§2), and a link the
+///   installer may have put in `/usr/local/bin`, reported only when it is a
+///   link into `~/.grok` that the moves leave leading nowhere -- to the
+///   download, or through `~/.grok/bin/grok` -- never Homebrew's, another
+///   CLI's, or one to a plugin's program in the `~/.grok` this list keeps
+///   (spec §6.3; step D plan ruling 6; `removal::dead_after`).
 ///
 /// Registered in `RECIPES` together with what `fixtures_layout_test` and
 /// `what_we_run_test` demand of a registered source: the recording in
@@ -1239,11 +1241,13 @@ mod tests {
         // folder, which may hold the user's own scripts (it is on PATH).
         // `~/.grok` itself stays with its settings, login, sessions and
         // memory; the shell file stays; a fallback link in /usr/local/bin
-        // is reported when it links into `~/.grok`, never touched (its
-        // ruling 6). The three links besides the launcher must lead to the
-        // program in `~/.grok/downloads` -- straight there, or through one
-        // of the two links in `~/.grok/bin` -- never merely into the kept
-        // `~/.grok` (the whole-step review of step D).
+        // is never touched, and reported when it links into `~/.grok` and
+        // the moves leave it leading nowhere (its ruling 6). The three
+        // links besides the launcher must lead to the program in
+        // `~/.grok/downloads` -- straight there, or through one of the two
+        // links in `~/.grok/bin` -- never merely into the kept `~/.grok`
+        // (the whole-step review of step D, which also narrowed the
+        // /usr/local/bin report to links left leading nowhere).
         let Some(Uninstall::Paths { remove, keep }) = &GROK.uninstall else {
             panic!("grok has a path list");
         };

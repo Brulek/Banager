@@ -899,12 +899,15 @@ itself — `config.toml`, `auth.json` (the login), `sessions/`, `memory/`,
 `skills/`, `plugins/` — and `~/.zshrc`, where the installer wrote its
 marked block. A `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside
 your home folder, so Canager never touches it: when it is a link into
-`~/.grok` (the installer's fallback), the preview says it becomes a dead
+`~/.grok` that leads nowhere once the paths above are in the Trash — the
+installer's fallback, to grok's download or through `~/.grok/bin/grok`,
+or one that leads nowhere already — the preview says it becomes a dead
 link; when it is something else (Homebrew's `grok-build` link on an Intel
-Mac, another program's `agent`), the preview says nothing about it. There
-is no vendor uninstall document and no `grok uninstall`; the list is
-grok's own README ("File Locations") plus its install script, and the
-fixture README says so.
+Mac, another program's `agent`, or a link to a plugin's program in the
+`~/.grok` this uninstall keeps, which still works afterwards), the preview
+says nothing about it. There is no vendor uninstall document and no
+`grok uninstall`; the list is grok's own README ("File Locations") plus
+its install script, and the fixture README says so.
 
 ## rustup
 
@@ -1220,9 +1223,10 @@ All read-only, none saved anywhere else, none uploaded:
   `~/.grok/bin/grok`, and whether `~/.grok` and `~/.zshrc` exist and
   where they lead; for the preview and when it is confirmed, also whether
   `/usr/local/bin/grok` and `/usr/local/bin/agent` are links into
-  `~/.grok` (`lstat`, `readlink`, `realpath`). Nothing in
-  `~/.grok/config.toml` or `~/.grok/auth.json` is read. After an
-  uninstall: the same look at the launcher that detection makes, and
+  `~/.grok` and, for one that is and still leads somewhere, every folder,
+  link and file on its way there (`lstat`, `readlink`, `realpath`).
+  Nothing in `~/.grok/config.toml` or `~/.grok/auth.json` is read. After
+  an uninstall: the same look at the launcher that detection makes, and
   nothing else — no version is read.
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
   (`lstat`, `realpath`); whether `~/.cargo` and `~/.rustup` are real folders

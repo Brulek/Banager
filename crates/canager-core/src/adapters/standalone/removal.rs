@@ -287,30 +287,59 @@ fn keeps_instead(reason: UninstallUnsafeReason) -> bool {
     )
 }
 
-/// The kept paths outside the home folder that are this tool's links --
-/// grok's installer may put `/usr/local/bin/grok` and `/usr/local/bin/agent`
-/// there when `~/.grok/bin` is not on PATH (grok.md §2) -- each as a
-/// `WillKeep` sentence: Canager never moves anything outside the home
-/// folder (spec §6.3), so after the uninstall they are dead links the user
-/// can delete. Only a link *into the root* (`points_into`) gets the
-/// sentence: the same path may be Homebrew's live link into its Caskroom
-/// (an Intel Mac's `/usr/local`), another CLI's `agent`, or a file, and
-/// "a dead link you can delete" would then be false. Spelled absolute in
-/// the recipe (`recipes::tests` hold them to `/`, never `~/`), so nothing
-/// to expand; never protected (`kept_places` skips them: a link into the
-/// program folder would otherwise refuse the uninstall). Read by
+/// The kept paths outside the home folder that this uninstall leaves as
+/// dead links -- grok's installer may put `/usr/local/bin/grok` and
+/// `/usr/local/bin/agent` there when `~/.grok/bin` is not on PATH (grok.md
+/// §2) -- each as a `WillKeep` sentence: Canager never moves anything
+/// outside the home folder (spec §6.3), so they stay, leading nowhere, and
+/// the user can delete them. Only a link into the root that leads nowhere
+/// once `moved` -- where each path the list moves is, its folder resolved
+/// -- has gone (`dead_after`) gets the sentence: the same path may be
+/// Homebrew's live link into its Caskroom (an Intel Mac's `/usr/local`),
+/// another CLI's `agent`, a file, or a link of the user's into what the
+/// uninstall keeps of the root (a plugin's program in grok's `~/.grok`),
+/// and "a dead link you can delete" would then be false. Spelled absolute
+/// in the recipe (`recipes::tests` hold them to `/`, never `~/`), so
+/// nothing to expand; never protected (`kept_places` skips them: a link
+/// into the program folder would otherwise refuse the uninstall). Read by
 /// `plan_removal`.
-fn outside_home_keeps(look: &Look<'_>) -> Vec<Warning> {
+fn outside_home_keeps(look: &Look<'_>, moved: &[PathBuf]) -> Vec<Warning> {
     look.job
         .keep
         .iter()
         .filter(|spec| spec.what == KeptWhat::OutsideHome)
-        .filter(|spec| points_into(Path::new(spec.path), &look.root))
+        .filter(|spec| dead_after(Path::new(spec.path), &look.root, moved))
         .map(|spec| Warning::WillKeep {
             path: spec.path.to_string(),
             what: KeptWhat::OutsideHome,
         })
         .collect()
+}
+
+/// Whether `link` is a symbolic link into the root (`points_into`) that,
+/// as far as this look can tell, leads nowhere once the paths in `moved`
+/// have gone to the Trash: one that leads nowhere already -- the second run
+/// of a stopped uninstall, grok's `downloads/` already in the Trash -- or
+/// one whose way to what it leads to (`the_way_to`) passes one of them or
+/// something inside one, compared as `disturbed` compares a kept path's
+/// way: grok's download, or its launcher on the way there. A link into the
+/// root whose way passes none of them -- to a plugin's program in grok's
+/// kept `~/.grok`, or to a `~/.grok/bin/agent` the list keeps as not
+/// grok's -- leads where it did afterwards: `false`. `false` too for a link
+/// whose way cannot be looked up, or that does not resolve for a reason
+/// other than a name that is not there: nothing then confirms it leads
+/// nowhere afterwards. Read by `outside_home_keeps`.
+fn dead_after(link: &Path, root: &Path, moved: &[PathBuf]) -> bool {
+    if !points_into(link, root) {
+        return false;
+    }
+    match std::fs::canonicalize(link) {
+        Ok(_) => the_way_to(link).is_ok_and(|way| {
+            way.iter()
+                .any(|step| moved.iter().any(|place| step.starts_with(place)))
+        }),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 /// Whether `link` is a symbolic link whose target lies under `root` (the
@@ -320,7 +349,7 @@ fn outside_home_keeps(look: &Look<'_>) -> Vec<Warning> {
 /// folded from the link's folder without touching the disk
 /// (`route::lexical_join`), compared against the root as spelled and as
 /// canonical. Anything that is not a symbolic link, or is not there, is
-/// not the installer's fallback link: `false`. Read by `outside_home_keeps`.
+/// not the installer's fallback link: `false`. Read by `dead_after`.
 fn points_into(link: &Path, root: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(link) else {
         return false;
@@ -666,7 +695,8 @@ fn check_item(
 /// of six reasons); an empty list is a plain `Refused` (unreachable while
 /// the launcher is listed and the row exists), and so is a home folder
 /// that cannot be resolved. The kept paths come last: the recipe's under
-/// the home folder, then the ones outside it (`outside_home_keeps`).
+/// the home folder, then the ones outside it that the moves leave leading
+/// nowhere (`outside_home_keeps`).
 pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
     let home = job.detected.home.as_path();
     let look = Look::new(job).map_err(|e| {
@@ -681,6 +711,10 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
 
     let mut paths = Vec::new();
     let mut identities = Vec::new();
+    // Where each path in `paths` is, its folder resolved -- the resolved
+    // home joined with the recipe's spelling, which `check_item` confirmed
+    // -- for `outside_home_keeps`.
+    let mut moved = Vec::new();
     let mut warnings = Vec::new();
     let mut not_ours = Vec::new();
     for item in listed_items(job) {
@@ -726,6 +760,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
                     what: item.what,
                 });
                 identities.push(identity);
+                moved.push(look.canonical_home.join(&item.rel));
                 paths.push(item.path);
             }
             // An optional path that is there but not, as far as Canager can
@@ -752,7 +787,7 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
         path: shown(home, &kept.path),
         what: kept.spec.what,
     }));
-    warnings.extend(outside_home_keeps(&look));
+    warnings.extend(outside_home_keeps(&look, &moved));
     Ok(Removal {
         paths,
         identities,
@@ -1127,8 +1162,8 @@ pub async fn execute_removal(
 #[cfg(test)]
 mod tests {
     use super::super::recipe::{Expect, KeepSpec, RemoveSpec, Uninstall};
-    use super::super::recipes::CLAUDE;
-    use super::super::testing::{claude_layout, TempHome, TimedTrasher};
+    use super::super::recipes::{CLAUDE, GROK};
+    use super::super::testing::{claude_layout, grok_layout, TempHome, TimedTrasher};
     use super::*;
     use crate::events::VecSink;
     use crate::model::{KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
@@ -1935,12 +1970,12 @@ mod tests {
         // into `~/.grok/downloads`. It is reported (it becomes a dead link),
         // never protected -- as a kept path it would refuse the very
         // uninstall it exists for (`OverlapsKept`) -- and reported only when
-        // it is a link into this tool's root: the same path may be
-        // Homebrew's live link into its Caskroom (an Intel Mac), another
-        // CLI's `agent`, or a plain file, and "a dead link you can delete"
-        // would then be a false sentence. Stood in for by paths under
-        // another temp directory, since a test cannot write to
-        // /usr/local/bin.
+        // it is a link into this tool's root (and, the test below, one the
+        // moves leave leading nowhere): the same path may be Homebrew's live
+        // link into its Caskroom (an Intel Mac), another CLI's `agent`, or a
+        // plain file, and "a dead link you can delete" would then be a false
+        // sentence. Stood in for by paths under another temp directory,
+        // since a test cannot write to /usr/local/bin.
         let outside = TempHome::new("removal-outside-keep");
         let home = TempHome::new("removal-outside-keep-home");
         let layout = claude_layout(&home, "2.1.281");
@@ -1982,12 +2017,83 @@ mod tests {
     }
 
     #[test]
+    fn test_plan_removal_calls_a_link_outside_the_home_folder_dead_only_when_the_moves_leave_it_leading_nowhere(
+    ) {
+        // The whole-step review of step D: grok's root, `~/.grok`, is also
+        // the folder its uninstall keeps, so a link outside the home folder
+        // that points into it is not thereby dead afterwards. One to grok's
+        // download, straight or through the launcher, runs through a path
+        // the list moves, and one already leading nowhere (the second run of
+        // a stopped uninstall) leads nowhere still: "a dead link you can
+        // delete" is said of those. One to a plugin's program in the kept
+        // `~/.grok`, or to a `~/.grok/bin/agent` that is the user's own
+        // script (kept as not grok's), still runs afterwards: nothing is
+        // said of those. Stood in for by links under another temp
+        // directory, as in the test above.
+        let outside = TempHome::new("removal-outside-dies");
+        let home = TempHome::new("removal-outside-dies-home");
+        let layout = grok_layout(&home, "1.0.41");
+        let plugin = home.executable(".grok/plugins/p/bin/agent");
+        std::fs::remove_file(&layout.agent).unwrap();
+        let script = home.executable(".grok/bin/agent");
+        let Some(Uninstall::Paths { remove, .. }) = &GROK.uninstall else {
+            panic!("grok has a path list");
+        };
+        let said_dead = |kept: &Path| {
+            let job = Job {
+                recipe: &GROK,
+                detected: detected(home.path()),
+                remove,
+                keep: only_keep(kept.display().to_string(), KeptWhat::OutsideHome),
+                globs: &[],
+            };
+            let removal = plan_removal(&job).expect("a plan");
+            removal
+                .warnings
+                .contains(&keep(&kept.display().to_string(), KeptWhat::OutsideHome))
+        };
+        let old_download = home
+            .path()
+            .join(".grok/downloads/grok-1.0.40-macos-aarch64");
+
+        for (what, kept, dead) in [
+            (
+                "to the launcher",
+                outside.link("bin/grok", &layout.launcher),
+                true,
+            ),
+            (
+                "to the download",
+                outside.link("bin/download", &layout.real),
+                true,
+            ),
+            (
+                "leading nowhere",
+                outside.link("bin/old", &old_download),
+                true,
+            ),
+            (
+                "to a plugin's program",
+                outside.link("bin/plugin", &plugin),
+                false,
+            ),
+            (
+                "to the user's own agent",
+                outside.link("bin/agent", &script),
+                false,
+            ),
+        ] {
+            assert_eq!(said_dead(&kept), dead, "a link {what}");
+        }
+    }
+
+    #[test]
     fn test_points_into_reads_a_links_target_resolved_or_by_its_own_text() {
-        // The one question `outside_home_keeps` asks: is this a symbolic
-        // link into the root? Resolved when it resolves; by its own text,
-        // folded from its folder, when it dangles (the second run of a
-        // stopped uninstall, `downloads/` already in the Trash); never for
-        // a file or a folder.
+        // The first question `dead_after` asks for `outside_home_keeps`: is
+        // this a symbolic link into the root? Resolved when it resolves; by
+        // its own text, folded from its folder, when it dangles (the second
+        // run of a stopped uninstall, `downloads/` already in the Trash);
+        // never for a file or a folder.
         let home = TempHome::new("removal-points-into");
         let root = home.dir(".grok");
         let real = home.executable(".grok/downloads/grok-1.0.41-macos-aarch64");
