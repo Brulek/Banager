@@ -1764,6 +1764,65 @@ describe("UpdatesPage", () => {
     expect(queryByText(/usually updates itself/)).toBeNull();
   });
 
+  it("gives a standalone tool's row the summary its Installed row shows, not 'No description available'", async () => {
+    // A standalone artifact's `description` is `null` on the wire (a bare
+    // string cannot be localised), so its sentence is looked up by adapter
+    // id, on this page as on the Installed page (`artifactBlurb`). Grok
+    // Build is not called self-updating (`auto_updates: false`: whether it
+    // installs updates on its own is unverified), so its actionable row
+    // gets no self-updating hint and shows that sentence.
+    const grokKey: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
+    instances = [
+      ...snapshot.instances,
+      {
+        id: "standalone-grok",
+        adapter_id: "standalone-grok",
+        exe_path: "/Users/someone/.grok/bin/grok",
+        prefix: "/Users/someone/.grok",
+        scope: "User",
+        version: "1.0.41",
+        status: { unavailable: null, notes: [] },
+        unverified_version: null,
+        read_only_reason: null,
+      },
+    ];
+    updates = [
+      {
+        key: grokKey,
+        current: "1.0.41",
+        target: "1.0.42",
+        channel: "Native",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    artifacts = [
+      {
+        key: grokKey,
+        display_name: "Grok Build",
+        version: "1.0.41",
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: "/Users/someone/.grok/downloads/grok-1.0.41-macos-aarch64",
+        auto_updates: false,
+        uninstall_blocked: null,
+      },
+    ];
+    const { findByText, queryByText, getAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    expect(
+      await findByText(
+        "xAI's Grok coding assistant for the terminal. Installed with its own installer.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText("No description available")).toBeNull();
+    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+  });
+
   it("gives a standalone row that cannot be checked its reason, not the self-updating hint", async () => {
     instances = [...snapshot.instances, claudeInstance];
     updates = [

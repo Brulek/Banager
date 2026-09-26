@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ADAPTER_LABEL_KEYS,
+  artifactBlurb,
   canWrite,
   failedSourceCount,
   hasSourceNotice,
@@ -1067,6 +1068,26 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     expect(zhCN.standalone.summary["standalone-grok"]).toBe(
       "xAI 的 Grok 终端编程助手。用它自己的安装器装的。",
     );
+  });
+});
+
+describe("artifactBlurb", () => {
+  it("gives the artifact's own description first, then a standalone tool's summary, else nothing", () => {
+    // The one lookup both pages' rows read, so the Updates row of a tool
+    // with no description of its own says what its Installed row says.
+    expect(artifactBlurb(fakeT, "Verify system files structure", "brew")).toBe(
+      "Verify system files structure",
+    );
+    expect(artifactBlurb(fakeT, null, "standalone-grok")).toBe(
+      "standalone.summary.standalone-grok",
+    );
+    expect(artifactBlurb(fakeT, undefined, "standalone-rustup")).toBe(
+      "standalone.summary.standalone-rustup",
+    );
+    // A package manager's row with no blurb, and a row whose instance is
+    // not in the snapshot: nothing, so the page says it has no description.
+    expect(artifactBlurb(fakeT, null, "npm")).toBeNull();
+    expect(artifactBlurb(fakeT, null, undefined)).toBeNull();
   });
 });
 

@@ -9,6 +9,7 @@ import { SourceNotices } from "../components/SourceNotices";
 import { UninstallDialog } from "../components/UninstallDialog";
 import {
   ADAPTER_LABEL_KEYS,
+  artifactBlurb,
   canWrite,
   isAvailable,
   sourceNoticesFor,
@@ -155,8 +156,9 @@ export function InstalledPage() {
 
   // The row's description. A standalone tool's artifact carries no blurb
   // (a bare string cannot be localised), so its row reads one by adapter
-  // id (`standaloneSummaryKey`) and shows it beside any refusal: what the
-  // tool is still needs saying on a row that cannot be uninstalled here.
+  // id (`artifactBlurb`, which the Updates page's rows read too) and shows
+  // it beside any refusal: what the tool is still needs saying on a row
+  // that cannot be uninstalled here.
   // Any other row the tool will not uninstall says why in place of its
   // blurb, as a pinned row does on the Updates page: it is the one thing
   // the user has to read to understand why there is no Uninstall button.
@@ -168,7 +170,7 @@ export function InstalledPage() {
     sourceLabel: string,
   ): ReactNode {
     const summaryKey = standaloneSummaryKey(instance.adapter_id);
-    const blurb = artifact.description ?? (summaryKey === null ? null : t(summaryKey));
+    const blurb = artifactBlurb(t, artifact.description, instance.adapter_id);
     if (artifact.uninstall_blocked !== null) {
       const copy = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id);
       const refusal = withCommand(

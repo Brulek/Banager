@@ -12,6 +12,7 @@ import {
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
+  artifactBlurb,
   isAvailable,
   planErrorMessage,
   settingsSaveErrorMessage,
@@ -389,7 +390,9 @@ export function UpdatesPage() {
   }, [snapshot]);
 
   // Default view hides version numbers (Global Constraints); the row falls
-  // back to the artifact's description, exactly as the Installed page does.
+  // back to the artifact's blurb -- its description, or a standalone
+  // tool's summary sentence -- through the lookup the Installed page uses
+  // (`artifactBlurb`).
   const descriptionFor = (candidate: UpdateCandidate): string => {
     if (candidate.channel === "Digest") {
       // Ollama. `current` is the local manifest digest that /api/tags
@@ -408,7 +411,11 @@ export function UpdatesPage() {
       return t("updates.versionChange", { current: candidate.current, target: candidate.target });
     }
     return (
-      artifactsById.get(artifactKeyId(candidate.key))?.description ?? t("installed.noDescription")
+      artifactBlurb(
+        t,
+        artifactsById.get(artifactKeyId(candidate.key))?.description,
+        instancesById.get(candidate.key.instance_id)?.adapter_id,
+      ) ?? t("installed.noDescription")
     );
   };
 

@@ -42,8 +42,9 @@ export type StandaloneAdapterId =
   | "standalone-grok";
 
 /**
- * One sentence per standalone tool, for the Installed page's description
- * slot: what the tool is and that its own installer put it there.
+ * One sentence per standalone tool, for the description slot of its rows
+ * on the Installed and Updates pages (`artifactBlurb`): what the tool is
+ * and that its own installer put it there.
  * `InstalledArtifact.description` is a bare string that cannot be
  * localised, so the standalone adapter's inventory leaves it `null` and
  * the sentence's i18n key is kept here by adapter id, with its text in
@@ -68,6 +69,27 @@ export function standaloneSummaryKey(adapterId: string): string | null {
   return Object.prototype.hasOwnProperty.call(STANDALONE_SUMMARY_KEYS, adapterId)
     ? STANDALONE_SUMMARY_KEYS[adapterId as StandaloneAdapterId]
     : null;
+}
+
+/**
+ * A row's blurb: the artifact's own `description`, or, for a standalone
+ * tool, whose artifact carries none, its summary sentence
+ * (`standaloneSummaryKey`); `null` when there is neither. The one lookup
+ * both pages' rows use -- `installedDescription` in
+ * src/pages/InstalledPage.tsx and `descriptionFor` in
+ * src/pages/UpdatesPage.tsx -- so a tool's Updates row cannot say "No
+ * description available" while its Installed row has a sentence.
+ * `adapterId` is `undefined` for a row whose instance is not in the
+ * snapshot, which leaves only the description to go on.
+ */
+export function artifactBlurb(
+  t: Translate,
+  description: string | null | undefined,
+  adapterId: string | undefined,
+): string | null {
+  if (description !== null && description !== undefined) return description;
+  const summaryKey = adapterId === undefined ? null : standaloneSummaryKey(adapterId);
+  return summaryKey === null ? null : t(summaryKey);
 }
 
 /**
