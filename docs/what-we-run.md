@@ -747,8 +747,10 @@ password):
 | Newest published version (`check_updates`), on Apple silicon only | `GET https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json` — the manifest the installer and the updater read; its top-level `version` | 30 s |
 
 On an Intel Mac, or when Canager itself runs under Rosetta (it then
-reports `x86_64`), no request is made and the row says the check is not
-yet verified there: only the Apple-silicon manifest has been fetched. An
+reports `x86_64`), no request is made: only the Apple-silicon manifest
+has been fetched. The row says only that Canager could not check it for
+updates; why (the check is not yet verified on Intel Macs) is shown, in
+English, with "Show technical details" turned on in Settings. An
 update is listed only when the manifest's version is greater than the
 installed one, comparing dot-separated integers; a failed request, a
 non-200 answer or a body that is not such a manifest is "could not check",
@@ -1396,7 +1398,7 @@ connection, any `https` request whose host is not on this list
 | `registry.ollama.ai` | `GET /v2/{namespace}/{name}/manifests/{tag}` — one model's manifest | Ollama's `check_updates` |
 | `downloads.claude.ai` | `GET /claude-code-releases/latest` or `/stable` — the newest published Claude Code version on that channel, answered as one bare version number | Claude Code's `check_updates` (`StandaloneAdapter`) |
 | `static.rust-lang.org` | `GET /rustup/release-stable.toml` — the newest published rustup version, a two-line TOML file (`version = '…'`) | rustup's `check_updates` (`StandaloneAdapter`) |
-| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Canager itself runs on Apple silicon — on an Intel Mac no request is made and the row says the check is not yet verified there |
+| `antigravity-cli-auto-updater-974169037036.us-central1.run.app` | `GET /manifests/darwin_arm64.json` — the newest published Antigravity CLI version for Apple silicon, as the JSON manifest its installer and its updater read (`version`, `url`, `sha512`; only `version` is used) | Antigravity CLI's `check_updates` (`StandaloneAdapter`), only when Canager itself runs on Apple silicon — on an Intel Mac no request is made and the row says only that it could not be checked (why, only with "Show technical details" on) |
 
 Plain `http` is exempt from the list for one caller: the Ollama daemon at
 `OLLAMA_HOST` or `http://127.0.0.1:11434` (`GET /api/tags`), which may be
