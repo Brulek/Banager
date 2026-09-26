@@ -1,0 +1,14 @@
+~/.grok/bin:
+total 0
+drwxr-xr-x   4 501  20   128 Sep 24 06:12 .
+drwxr-xr-x  40 501  20  1280 Sep 26 10:04 ..
+lrwxr-xr-x@  1 501  20    38 Sep 24 06:12 agent -> ../downloads/grok-1.0.41-macos-aarch64
+lrwxr-xr-x@  1 501  20    38 Sep 24 06:12 grok -> ../downloads/grok-1.0.41-macos-aarch64
+
+~/.grok/downloads:
+total 812392
+drwxr-xr-x   5 501  20        160 Sep 24 06:12 .
+drwxr-xr-x  40 501  20       1280 Sep 26 10:04 ..
+-rwxr-xr-x@  1 501  20  143016096 Sep 17 06:00 grok-1.0.34-macos-aarch64
+-rwxr-xr-x@  1 501  20  145657952 Sep 24 06:12 grok-1.0.41-macos-aarch64
+-rwxr-xr-x   1 501  20  127259280 Jul 11 18:02 grok-macos-aarch64

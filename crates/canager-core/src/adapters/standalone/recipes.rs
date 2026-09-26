@@ -128,11 +128,11 @@ pub static CLAUDE: Recipe = Recipe {
 ///
 /// Every value here is from `.superpowers/phase4/agy.md` (VERIFIED on this
 /// Mac, in the install script read in full, or in Google's own
-/// documentation, 2026-09-24, unless noted) and from the phase 4 spec's
-/// agy rows (§3.4, §3.5, §6.3), which re-checked the version read on
-/// 1.2.10; Task 6 of the phase 4 step D plan records the version line, the
-/// manifest, the updater's status file and the layout into
-/// `adapters/fixtures/standalone-agy/<version>/`:
+/// documentation, 2026-09-24, unless noted), from the phase 4 spec's agy
+/// rows (§3.4, §3.5, §6.3), which re-checked the version read on 1.2.10,
+/// and from the recording in `adapters/fixtures/standalone-agy/<version>/`
+/// (the version line, the manifest, the updater's status file and the
+/// layout; 1.2.11, 2026-09-26):
 /// - the launcher `~/.local/bin/agy` is a regular Mach-O file (176 MB on
 ///   this Mac), the whole program; the installer copies it there
 ///   (`TARGET_DIR=$HOME/.local/bin`, `BINARY_PATH=$TARGET_DIR/agy`, §3a).
@@ -142,8 +142,9 @@ pub static CLAUDE: Recipe = Recipe {
 ///   cask's `agy` is a link into its Caskroom and is Homebrew's row (§3b);
 /// - `agy --version` prints one bare version (`1.2.9`, §4). It is read with
 ///   `AGY_CLI_DISABLE_AUTO_UPDATE=true`, the switch Google documents for
-///   its background updater (§4, doc text). On 1.2.10 `--version` did not
-///   reach the updater at all -- no new log file, `update_status.json`
+///   its background updater (§4, doc text). On 1.2.10 (the spec) and on
+///   1.2.11 (the recording, whose README has the numbers) `--version` did
+///   not reach the updater at all -- no new log file, `update_status.json`
 ///   untouched, no updater process (spec §3.4, §十三 #10, which make every
 ///   recording of a `verified_versions` entry repeat that observation and
 ///   write it into its README) -- so the switch is a belt on top; the
@@ -174,11 +175,10 @@ pub static CLAUDE: Recipe = Recipe {
 ///   1), and the two shell files the installer added its PATH line to
 ///   (each marked `# Added by Antigravity CLI installer`, §2).
 ///
-/// Not yet in `RECIPES`: Task 6 of the phase 4 step D plan registers it
-/// together with the recording and the trust-file section that
-/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
-/// source. Until then only the tests read it, and of the invariants tests
-/// below only `test_every_command_latest_source_only_checks` reaches it.
+/// Registered in `RECIPES` together with what `fixtures_layout_test` and
+/// `what_we_run_test` demand of a registered source: the recording in
+/// `adapters/fixtures/standalone-agy/<version>/` and the
+/// `## Antigravity CLI` section of `docs/what-we-run.md`.
 pub static AGY: Recipe = Recipe {
     id: "agy",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-agy.toml"),
@@ -239,10 +239,10 @@ pub static AGY: Recipe = Recipe {
 ///
 /// Every value here is from `.superpowers/phase4/grok.md` (VERIFIED on
 /// this Mac, in the install script, or in the README the tool ships,
-/// 2026-09-24, unless noted) and from the phase 4 spec's grok rows
-/// (§3.5, §五, §6.3); Task 6 of the phase 4 step D plan records the version
-/// line, grok's own check and the layout into
-/// `adapters/fixtures/standalone-grok/<version>/`:
+/// 2026-09-24, unless noted), from the phase 4 spec's grok rows (§3.5,
+/// §五, §6.3), and from the recording in
+/// `adapters/fixtures/standalone-grok/<version>/` (the version line, grok's
+/// own check and the layout; 1.0.41, 2026-09-26):
 /// - the launcher `~/.grok/bin/grok` is a *relative* symbolic link,
 ///   `../downloads/grok-<version>-macos-aarch64`, into the root `~/.grok`
 ///   (spec §3.5, VERIFIED); `bin/agent` is a second link to the same file
@@ -253,21 +253,24 @@ pub static AGY: Recipe = Recipe {
 /// - `grok --version` prints `grok 1.0.41 (4220f3b224a6)` (§1): the second
 ///   token, no environment (none is documented). Whether `--version` runs
 ///   grok's launch-time updater, and whether that updater installs or only
-///   checks, are both UNVERIFIED (§5; phase 4 step D plan ruling 16), so
-///   Task 6's recording notes what `~/.grok/version.json`'s mtime, the
-///   `bin/` links and `downloads/` do around the read it records, and
-///   stops if a link or `downloads/` changes;
+///   checks, are both UNVERIFIED (§5; phase 4 step D plan ruling 16). The
+///   recording watched `~/.grok/version.json`'s mtime, the `bin/` links and
+///   `downloads/` around the read it holds, and would have stopped had a
+///   link or `downloads/` changed: on 1.0.41 none of the three moved, and
+///   nothing under `~/.grok` was written by the read;
 /// - the newest published version is asked of grok itself: `update --check
 ///   --json`, whose `--help` says "Check for updates without installing"
 ///   (§3, §4; run on this Mac) and which prints `{"currentVersion":…,
 ///   "latestVersion":…,"updateAvailable":…,…,"error":null}`.
 ///   `updateAvailable` is believed and `latestVersion` shown (spec §4.3);
 ///   a non-null `error` makes the row "could not check" with that text
-///   (ruling 10 of the phase 4 step D plan); 60 s. `~/.grok/version.json`
-///   keeps the time of grok's last check (`checked_at`, §1), so this check
-///   likely rewrites that file on every Canager refresh -- grok's write,
-///   not Canager's, which Task 6's recording observes and the trust file's
-///   Grok Build section is to state;
+///   (ruling 10 of the phase 4 step D plan); 60 s. The check writes inside
+///   `~/.grok` when it runs -- grok's writes, not Canager's, once per
+///   refresh: on the recording it replaced `version.json` with the time of
+///   the check (`checked_at`, §1), added two lines to its log
+///   `logs/unified.jsonl` and touched the user guide it ships in
+///   `docs/user-guide/` (the files' modification times moved), and the
+///   trust file's Grok Build section says so;
 /// - `auto_update = true` in its config means "check for updates on
 ///   launch" (§5); whether it *installs* one is UNVERIFIED, so the row is
 ///   not called self-updating (spec §4.4, §十三 #25);
@@ -301,11 +304,10 @@ pub static AGY: Recipe = Recipe {
 ///   may have put in `/usr/local/bin`, which becomes a dead link (spec
 ///   §6.3; step D plan ruling 6).
 ///
-/// Not yet in `RECIPES`: Task 6 of the phase 4 step D plan registers it
-/// together with the recording and the trust-file section that
-/// `fixtures_layout_test` and `what_we_run_test` demand of a registered
-/// source. Until then only the tests read it, and of the invariants tests
-/// below only `test_every_command_latest_source_only_checks` reaches it.
+/// Registered in `RECIPES` together with what `fixtures_layout_test` and
+/// `what_we_run_test` demand of a registered source: the recording in
+/// `adapters/fixtures/standalone-grok/<version>/` and the `## Grok Build`
+/// section of `docs/what-we-run.md`.
 pub static GROK: Recipe = Recipe {
     id: "grok",
     meta_toml: include_str!("../../../../../adapters/meta/standalone-grok.toml"),
@@ -518,7 +520,7 @@ pub static RUSTUP: Recipe = Recipe {
 /// Every tool this adapter type registers, in registration order. The
 /// refresh fans out alphabetically by adapter id regardless
 /// (`refresh_round`), so this order is only the reading order.
-pub static RECIPES: &[&Recipe] = &[&CLAUDE, &RUSTUP];
+pub static RECIPES: &[&Recipe] = &[&CLAUDE, &AGY, &GROK, &RUSTUP];
 
 /// Every registered tool's backup-file patterns, keyed by its adapter id
 /// (`standalone-<id>`), for the Unknown page's rule 4
@@ -681,9 +683,11 @@ mod tests {
 
     #[test]
     fn test_recipes_lists_each_registered_tool_once_in_reading_order() {
-        assert_eq!(RECIPES.len(), 2);
+        assert_eq!(RECIPES.len(), 4);
         assert!(std::ptr::eq(RECIPES[0], &CLAUDE));
-        assert!(std::ptr::eq(RECIPES[1], &RUSTUP));
+        assert!(std::ptr::eq(RECIPES[1], &AGY));
+        assert!(std::ptr::eq(RECIPES[2], &GROK));
+        assert!(std::ptr::eq(RECIPES[3], &RUSTUP));
         let mut ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
         ids.dedup();
         assert_eq!(ids.len(), RECIPES.len(), "one recipe per tool");
@@ -1230,7 +1234,7 @@ mod tests {
         // --help says it installs nothing -- grok's `update --check --json`
         // ("Check for updates without installing", grok.md §4). It runs on
         // every refresh; `update` without `--check` would be an upgrade.
-        for recipe in RECIPES.iter().chain([&&AGY, &&GROK]) {
+        for recipe in RECIPES {
             if let Latest::Command {
                 args, timeout_secs, ..
             } = recipe.latest

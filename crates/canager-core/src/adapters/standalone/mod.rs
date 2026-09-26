@@ -2980,6 +2980,8 @@ mod tests {
             ids,
             vec![
                 "standalone-claude".to_string(),
+                "standalone-agy".to_string(),
+                "standalone-grok".to_string(),
                 "standalone-rustup".to_string()
             ]
         );
@@ -5575,5 +5577,246 @@ mod tests {
             "the emptied folder stays (step D plan ruling 4)"
         );
         assert!(adapter.detect(&env_as_owner(&home)).await.is_empty());
+    }
+
+    // ---- The recordings of Antigravity CLI and Grok Build ----
+
+    /// A file of a recipe's recorded fixture directory: the one version its
+    /// meta names (`verified_versions[0]`), under
+    /// `adapters/fixtures/standalone-<id>/`. B's `fixture` is claude's and
+    /// E's `rustup_fixture` rustup's.
+    fn recorded(recipe: &'static Recipe, name: &str) -> String {
+        let meta = AdapterMeta::from_toml(recipe.meta_toml).expect("meta");
+        let version = meta
+            .verified_versions
+            .first()
+            .expect("meta lists the recorded version");
+        let path = format!(
+            "../../adapters/fixtures/standalone-{}/{version}/{name}",
+            recipe.id
+        );
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+    }
+
+    #[test]
+    fn test_agys_recorded_version_line_is_one_bare_version_matching_the_meta() {
+        let meta = AdapterMeta::from_toml(AGY.meta_toml).expect("meta");
+        let line = recorded(&AGY, "version.txt");
+        let version = latest::parse_version(&line, AGY.version.parse).expect("a version");
+        assert_eq!(Some(&version), meta.verified_versions.first());
+        assert!(latest::is_dotted_version(&version), "{version:?}");
+        assert_eq!(
+            line.trim(),
+            version,
+            "agy prints the bare version and nothing else (agy.md §4)"
+        );
+    }
+
+    #[test]
+    fn test_agys_recorded_manifest_names_a_version_the_check_can_compare() {
+        // The manifest may name a newer version than the recorded launcher
+        // (one published between the two reads, before agy's updater
+        // installed it): what is pinned is that the check can read and
+        // compare it, not which way the comparison goes.
+        let manifest = recorded(&AGY, "manifest-darwin_arm64.json");
+        let Latest::HttpJsonField { field, .. } = AGY.latest else {
+            panic!("agy reads a manifest");
+        };
+        let remote = latest::parse_json_field(&manifest, field).expect("a version");
+        let local =
+            latest::parse_version(&recorded(&AGY, "version.txt"), AGY.version.parse).unwrap();
+        assert!(
+            latest::compare_dotted(&local, &remote).is_some(),
+            "{local} vs {remote}"
+        );
+    }
+
+    #[test]
+    fn test_groks_recorded_version_line_yields_the_second_token_matching_the_meta() {
+        let meta = AdapterMeta::from_toml(GROK.meta_toml).expect("meta");
+        let line = recorded(&GROK, "version.txt");
+        assert!(line.starts_with("grok "), "{line:?}");
+        let version = latest::parse_version(&line, GROK.version.parse).expect("a version");
+        assert_eq!(Some(&version), meta.verified_versions.first());
+        assert!(latest::is_dotted_version(&version), "{version:?}");
+    }
+
+    #[test]
+    fn test_groks_recorded_update_check_parses_and_names_the_installed_version_when_nothing_is_newer(
+    ) {
+        let body = recorded(&GROK, "update-check.json");
+        let Latest::Command {
+            latest_field,
+            available_field,
+            error_field,
+            ..
+        } = GROK.latest
+        else {
+            panic!("grok asks itself");
+        };
+        let check = latest::parse_update_check(&body, latest_field, available_field, error_field)
+            .expect("grok's JSON: both fields present, `error` null");
+        // `latest` is shown, never compared, and the recipe takes it with
+        // any suffix (a prerelease day is a truthful recording too), so it
+        // is not held to a dotted shape here. When grok said nothing was
+        // available, its latest is the installed version it also printed.
+        if !check.available {
+            let local =
+                latest::parse_version(&recorded(&GROK, "version.txt"), GROK.version.parse).unwrap();
+            assert_eq!(check.latest, local);
+        }
+    }
+
+    /// Both recordings' `layout.txt` are `ls -lan` with the home folder's
+    /// absolute path replaced by `~`, and their READMEs say so (step D
+    /// plan ruling 17): no absolute home directory and no `.local` host
+    /// name survives in either file of either directory, and each layout
+    /// still shows what its route relies on -- agy's launcher a regular
+    /// executable file, grok's two `bin/` entries relative links to the
+    /// verified version's download.
+    #[test]
+    fn test_the_recorded_agy_and_grok_layouts_show_their_routes_and_name_no_home_or_host() {
+        for recipe in [&AGY, &GROK] {
+            for name in ["layout.txt", "README.md"] {
+                let text = recorded(recipe, name);
+                for prefix in ["/Users/", "/home/"] {
+                    assert!(
+                        !text.contains(prefix),
+                        "{}'s {name} names an absolute home directory under {prefix}",
+                        recipe.id
+                    );
+                }
+                // `X.local` is a Mac's Bonjour host name when `X` ends in a
+                // letter, digit or hyphen; `~/.local/...` is preceded by `/`
+                // and is not one.
+                let names_a_host = text.match_indices(".local").any(|(at, _)| {
+                    text[..at]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '-')
+                });
+                assert!(!names_a_host, "{}'s {name} names a .local host", recipe.id);
+            }
+        }
+        let agy = recorded(&AGY, "layout.txt");
+        assert!(
+            agy.lines()
+                .any(|line| line.starts_with("-rwx") && line.ends_with(" ~/.local/bin/agy")),
+            "agy's launcher is an executable regular file: {agy}"
+        );
+        let verified = AdapterMeta::from_toml(GROK.meta_toml)
+            .expect("meta")
+            .verified_versions[0]
+            .clone();
+        let download = format!("grok-{verified}-macos-aarch64");
+        let grok = recorded(&GROK, "layout.txt");
+        for name in ["grok", "agent"] {
+            assert!(
+                grok.lines().any(|line| line.starts_with('l')
+                    && line.ends_with(&format!(" {name} -> ../downloads/{download}"))),
+                "bin/{name} is a relative link to {download}: {grok}"
+            );
+        }
+        assert!(
+            grok.lines()
+                .any(|line| line.starts_with("-rwx") && line.ends_with(&format!(" {download}"))),
+            "{download} is an executable regular file in downloads/: {grok}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_agy_over_the_recorded_manifest_lists_only_a_real_update() {
+        // The runner answers `--version` with the recorded line and the
+        // manifest's URL answers the recorded manifest: a candidate, with no
+        // button, exactly when the manifest's version is greater than the
+        // installed one -- both derived from the recording, so a
+        // re-recording on a later day stays honest.
+        let line = recorded(&AGY, "version.txt");
+        let installed = latest::parse_version(&line, AGY.version.parse).expect("version line");
+        let body = recorded(&AGY, "manifest-darwin_arm64.json");
+        let published = latest::parse_json_field(&body, "version").expect("manifest");
+        let home = TempHome::new("agy-check-recorded");
+        let layout = agy_layout(&home);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![layout.launcher.to_str().unwrap(), "--version"],
+            exited_0(&line),
+        );
+        let http = Arc::new(MockHttpClient::new());
+        http.respond(AGY_MANIFEST_URL, answer(&body));
+        let adapter = agy_adapter(runner, http.clone());
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        // `check_updates` compares the version `inventory` read, and
+        // refuses without one: the order `refresh_round` keeps.
+        adapter.inventory(&inst).await.expect("inventory");
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert_eq!(http.calls(), vec![AGY_MANIFEST_URL.to_string()]);
+        match latest::compare_dotted(&installed, &published) {
+            Some(Ordering::Less) => {
+                assert_eq!(out.candidates.len(), 1, "{installed} < {published}");
+                assert_eq!(out.candidates[0].target, published);
+                assert!(out.candidates[0].checkable);
+                assert_eq!(
+                    out.candidates[0].blocked,
+                    Some(UpdateBlocked::SelfUpdatesOnly)
+                );
+            }
+            Some(Ordering::Equal | Ordering::Greater) => {
+                assert!(out.candidates.is_empty(), "{installed} >= {published}");
+            }
+            None => panic!("both are dotted versions: {installed} vs {published}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_updates_for_grok_over_its_recorded_check_lists_what_grok_said() {
+        // The runner answers `--version` and `update --check --json` with
+        // the recorded bytes: a candidate exactly when grok said an update
+        // is available, targeting the version grok named -- believed,
+        // never compared (spec §4.3).
+        let line = recorded(&GROK, "version.txt");
+        let installed = latest::parse_version(&line, GROK.version.parse).expect("version line");
+        let body = recorded(&GROK, "update-check.json");
+        let Latest::Command {
+            latest_field,
+            available_field,
+            error_field,
+            ..
+        } = GROK.latest
+        else {
+            panic!("grok asks itself");
+        };
+        let said = latest::parse_update_check(&body, latest_field, available_field, error_field)
+            .expect("grok's JSON");
+        let home = TempHome::new("grok-check-recorded");
+        let layout = grok_layout(&home, &installed);
+        let runner = Arc::new(MockRunner::new());
+        let launcher = layout.launcher.to_str().unwrap();
+        runner.respond(vec![launcher, "--version"], exited_0(&line));
+        runner.respond(
+            vec![launcher, "update", "--check", "--json"],
+            exited_0(&body),
+        );
+        let adapter = grok_adapter(runner);
+        let inst = adapter.detect(&env_as_owner(&home)).await.remove(0);
+        // `check_updates` takes the version `inventory` read (the
+        // candidate's `current`), and refuses without one.
+        adapter.inventory(&inst).await.expect("inventory");
+        let out = adapter
+            .check_updates(&inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        if said.available {
+            assert_eq!(out.candidates.len(), 1, "{said:?}");
+            assert_eq!(out.candidates[0].current, installed);
+            assert_eq!(out.candidates[0].target, said.latest);
+            assert_eq!(out.candidates[0].channel, UpdateChannel::Native);
+            assert_eq!(out.candidates[0].blocked, None, "grok has `grok update`");
+        } else {
+            assert!(out.candidates.is_empty(), "{said:?}");
+        }
     }
 }

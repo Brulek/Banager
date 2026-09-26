@@ -299,15 +299,14 @@ fn app_bundle<'a>(candidates: impl IntoIterator<Item = &'a Path>) -> Option<Stri
 /// `exe_path.parent()` at npm.rs:194-197 is its `NotResponding` arm
 /// only), and what npm owns under it is `lib/node_modules`, not `bin`.
 ///
-/// The standalone adapters add their tool roots as their recipes land --
-/// `standalone-claude` → `~/.local/share/claude`, `standalone-agy` →
+/// The standalone adapters own their tool roots -- `standalone-claude` →
+/// `~/.local/share/claude`, `standalone-agy` →
 /// `~/.gemini/antigravity-cli`, `standalone-grok` → `~/.grok`, each the
 /// instance's `prefix`; `standalone-rustup` nothing (its root is the
 /// Cargo home, whose `bin/` is scanned; rule 1 has the launcher and its
-/// proxies, rule 2 the `cargo install`ed programs) -- in the same change
-/// that first produces an instance with one of those ids. A row here
-/// with no adapter that can produce its instance would be a definition
-/// without a producer (spec §十).
+/// proxies, rule 2 the `cargo install`ed programs). A row here with no
+/// adapter that can produce its instance would be a definition without a
+/// producer (spec §十).
 pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
     match inst.adapter_id.as_str() {
         // Not `/Applications`: a cask claims its own `.app` through rule
@@ -330,16 +329,16 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
         // `prefix = exe_path.parent()`; the root derived from that does
         // not exist and is simply absent from the index.
         "npm" => vec![inst.prefix.join("lib").join("node_modules")],
-        // A tool installed by its own installer owns its root
-        // (`~/.local/share/claude`, the `versions/<v>` store its launcher
-        // links into). The launcher itself is the instance's `exe_path`
-        // and rules 0/1 have it; this row is for anything else that
-        // resolves under the root. Added with the adapter that first
-        // produces the instance (phase 4 step B); `standalone-agy` and
-        // `standalone-grok` follow with their recipes in step D, and
-        // `standalone-rustup` never joins: everything of rustup's resolves
-        // to its launcher (rule 1).
-        "standalone-claude" => vec![inst.prefix.clone()],
+        // A tool installed by its own installer owns its root: Claude Code's
+        // `~/.local/share/claude` (the `versions/<v>` store its launcher
+        // links into), Antigravity's `~/.gemini/antigravity-cli`, Grok's
+        // `~/.grok` (whose `downloads/` its two links resolve into). The
+        // launcher itself is the instance's `exe_path` and rules 0/1 have
+        // it; this row is for anything else that resolves under the root.
+        // `standalone-rustup` never joins: its root is the Cargo home, whose
+        // `bin/` is scanned; rule 1 has its launcher and proxies, rule 2 the
+        // `cargo install`ed programs.
+        "standalone-claude" | "standalone-agy" | "standalone-grok" => vec![inst.prefix.clone()],
         // cargo: `$CARGO_HOME` holds `bin/`, the very directory being
         // scanned; rule 1 places the proxies and rule 2 places
         // `cargo install`ed binaries. uv and (from Task 3b) pipx: rule 2,
@@ -970,6 +969,19 @@ mod tests {
             owned_roots(&claude),
             vec![PathBuf::from("/Users/someone/.local/share/claude")]
         );
+        // The two other path-list tools own their roots the same way
+        // (phase 4 step D): agy's `~/.gemini/antigravity-cli`, grok's
+        // `~/.grok`, each the instance's `prefix`.
+        for (adapter, prefix) in [
+            ("standalone-agy", "/Users/someone/.gemini/antigravity-cli"),
+            ("standalone-grok", "/Users/someone/.grok"),
+        ] {
+            let inst = ManagerInstance {
+                prefix: PathBuf::from(prefix),
+                ..crate::testing::manager_instance(adapter, adapter)
+            };
+            assert_eq!(owned_roots(&inst), vec![PathBuf::from(prefix)], "{adapter}");
+        }
         // A `parent()`-derived prefix, or `$CARGO_HOME`, is never a root.
         for (adapter, id, prefix) in [
             (

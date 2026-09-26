@@ -6,27 +6,31 @@
 //! three Homebrew flags the file promises are never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
 //! enforces, the one thing the allowlist refuses that a reader would not
-//! expect (an `https://` `OLLAMA_HOST`), every path Claude Code's uninstall
-//! moves or keeps with that uninstall's time budget, the call Canager
-//! makes to move a file to the Trash with the pause after each such move,
-//! that the `PATH` look behind Claude Code's notice goes on past the
-//! first executable `claude`, and that the never-list's bullet about
-//! rustup's own update or uninstall being under way states the window in
-//! which a refresh's version read can still overlap it. A source, host,
-//! variable, limit, path or pause added or changed, or that look
-//! shortened, without its line in the document fails here.
+//! expect (an `https://` `OLLAMA_HOST`), every path each path-list
+//! uninstall (Claude Code's, Antigravity CLI's, Grok Build's) moves or
+//! keeps with that uninstall's time budget, and the never-list's promise
+//! to keep each settings-and-state path those lists keep, the read-only
+//! check command of a tool asked for its own update check with the words
+//! that it installs nothing, the call Canager makes to move a file to the
+//! Trash with the pause after each such move, that the `PATH` look behind
+//! Claude Code's notice goes on past the first executable `claude`, and
+//! that the never-list's bullet about rustup's own update or uninstall
+//! being under way states the window in which a refresh's version read
+//! can still overlap it. A source, host, variable, limit, path, check or
+//! pause added or changed, or that look shortened, without its line in
+//! the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::npm::NpmAdapter;
-use canager_core::adapters::standalone::recipe::Uninstall;
-use canager_core::adapters::standalone::recipes::CLAUDE;
+use canager_core::adapters::standalone::recipe::{Latest, Uninstall};
+use canager_core::adapters::standalone::recipes::RECIPES;
 use canager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
 use canager_core::adapters::standalone::route::shadow_note;
 use canager_core::adapters::AdapterMeta;
 use canager_core::events::VecSink;
 use canager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
 use canager_core::http::HttpError;
-use canager_core::model::InstanceNote;
+use canager_core::model::{InstanceNote, KeptWhat};
 use canager_core::runner::HostEnv;
 use canager_core::scan::ScanBudget;
 use canager_core::session::Session;
@@ -265,31 +269,96 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
 }
 
 #[test]
-fn test_what_we_run_names_every_path_claude_codes_uninstall_moves_or_keeps() {
-    // The list is the recipe's, and a reader deciding whether to press
-    // Uninstall reads it here: a path added to or dropped from
-    // `CLAUDE.uninstall` without this section changing is a trust file
-    // that no longer says what Canager moves.
+fn test_what_we_run_states_the_read_only_check_command_of_every_tool_that_asks_itself() {
+    // A `Latest::Command` recipe runs the tool's own subcommand on every
+    // refresh (grok's `update --check --json`, which its --help calls a
+    // check "without installing"). The section for that tool has to show
+    // the argv and say it installs nothing -- a reader who sees `grok
+    // update` in a refresh table and nothing more would think Canager
+    // upgrades grok behind their back.
     let doc = read_doc();
-    let body = section_body(&doc, "Claude Code")
-        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## Claude Code` section"));
-    let Some(Uninstall::Paths { remove, keep }) = &CLAUDE.uninstall else {
-        panic!("CLAUDE carries a path-list uninstall since phase 4 step C");
-    };
-    let listed = remove
-        .iter()
-        .map(|spec| spec.path)
-        .chain(keep.iter().map(|spec| spec.path));
-    for path in listed {
+    for recipe in RECIPES {
+        let Latest::Command { args, .. } = recipe.latest else {
+            continue;
+        };
+        let meta = AdapterMeta::from_toml(recipe.meta_toml).expect("meta");
+        let body = section_body(&doc, &meta.name)
+            .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## {}` section", meta.name));
+        let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            body.contains(&format!("`{path}`")),
-            "the `## Claude Code` section of docs/what-we-run.md does not name `{path}`, which CLAUDE.uninstall lists"
+            folded.contains(&args.join(" ")),
+            "the `## {}` section does not show `{}`",
+            meta.name,
+            args.join(" ")
+        );
+        assert!(
+            folded.contains("without installing"),
+            "the `## {}` section does not say the check installs nothing",
+            meta.name
         );
     }
+}
+
+#[test]
+fn test_what_we_run_names_every_path_a_path_list_uninstall_moves_or_keeps() {
+    // The lists are the recipes', and a reader deciding whether to press
+    // Uninstall reads them here: a path added to or dropped from a
+    // recipe's `uninstall` or `backup_globs` without its section changing
+    // is a trust file that no longer says what Canager moves. Every
+    // `Paths` recipe (Claude Code, Antigravity CLI, Grok Build since step
+    // D), by the name its meta gives its section; each section states the
+    // uninstall's budget; and every settings-and-state path a list keeps
+    // (`Settings`, `SettingsAndHistory`, `ToolState`) is also named in the
+    // never-list, whose promise is the one the reader relies on.
+    let doc = read_doc();
+    let never = section_body(&doc, "What Canager never does").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## What Canager never does` section")
+    });
     let budget = format!("{TIMEOUT_SECS} s");
-    assert!(
-        body.contains(&budget),
-        "the `## Claude Code` section of docs/what-we-run.md does not state the uninstall's budget, {budget:?} (removal::TIMEOUT_SECS)"
+    let mut paths_recipes = 0;
+    for recipe in RECIPES {
+        let Some(Uninstall::Paths { remove, keep }) = &recipe.uninstall else {
+            continue;
+        };
+        paths_recipes += 1;
+        let meta = AdapterMeta::from_toml(recipe.meta_toml).expect("meta");
+        let body = section_body(&doc, &meta.name)
+            .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## {}` section", meta.name));
+        let listed = remove
+            .iter()
+            .map(|spec| spec.path)
+            .chain(keep.iter().map(|spec| spec.path))
+            .chain(recipe.backup_globs.iter().map(|glob| glob.dir));
+        for path in listed {
+            assert!(
+                body.contains(&format!("`{path}`")),
+                "the `## {}` section of docs/what-we-run.md does not name `{path}`, which {}'s uninstall lists",
+                meta.name,
+                recipe.id
+            );
+        }
+        assert!(
+            body.contains(&budget),
+            "the `## {}` section of docs/what-we-run.md does not state the uninstall's budget, {budget:?} (removal::TIMEOUT_SECS)",
+            meta.name
+        );
+        for spec in keep.iter().filter(|spec| {
+            matches!(
+                spec.what,
+                KeptWhat::Settings | KeptWhat::SettingsAndHistory | KeptWhat::ToolState
+            )
+        }) {
+            assert!(
+                never.contains(&format!("`{}`", spec.path)),
+                "the never-list of docs/what-we-run.md does not promise `{}` stays, which {}'s uninstall keeps",
+                spec.path,
+                recipe.id
+            );
+        }
+    }
+    assert_eq!(
+        paths_recipes, 3,
+        "Claude Code, Antigravity CLI and Grok Build uninstall by path list"
     );
 }
 

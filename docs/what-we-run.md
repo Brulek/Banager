@@ -2,19 +2,23 @@
 
 Every command Canager runs, every file it reads, writes or moves to the
 Trash, every host it connects to and every environment variable it sets,
-for the nine sources it manages today: Homebrew, npm, pipx, uv, pip
-(read-only), Cargo, Ollama, and two tools with their own installer, Claude
-Code and rustup. Each sentence describes what the code does now and names the
-function it describes, so it can be checked against
-`crates/canager-core/src/adapters/` rather than believed.
-`crates/canager-core/tests/what_we_run_test.rs` checks the parts a test
-can: a section per registered source, every host on the https allowlist,
-every environment variable Homebrew's and npm's commands are given, the
-three Homebrew flags this file promises are never passed, that the
-unknown-source scan's section states the two limits the code enforces,
-that Claude Code's section names every path its uninstall moves or keeps
-and that uninstall's time budget, and that the Trash section names the
-call and states the pause after each move.
+for the eleven sources it manages today: Homebrew, npm, pipx, uv, pip
+(read-only), Cargo, Ollama, and four tools with their own installer:
+Claude Code, Antigravity CLI, Grok Build and rustup. Each sentence
+describes what the code does now and names the function it describes, so
+it can be checked against `crates/canager-core/src/adapters/` rather than
+believed. `crates/canager-core/tests/what_we_run_test.rs` checks the parts
+a test can: a section per registered source, every host on the https
+allowlist, every environment variable Homebrew's and npm's commands are
+given, the three Homebrew flags this file promises are never passed, that
+the unknown-source scan's section states the two limits the code
+enforces, that the sections of the three tools uninstalled by moving files
+to the Trash (Claude Code, Antigravity CLI, Grok Build) name every path
+those uninstalls move or keep and their time budget, and the never-list
+every path of settings or state they keep, that Grok Build's section
+shows the update check it runs on every refresh and says it installs
+nothing, and that the Trash section names the call and states the pause
+after each move.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -61,7 +65,8 @@ environment and the effective user id from the process. Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
-own installer: Claude Code at the one path its installer writes, rustup at
+own installer: Claude Code at `~/.local/bin/claude`, Antigravity CLI at
+`~/.local/bin/agy`, Grok Build at `~/.grok/bin/grok`, rustup at
 `$CARGO_HOME/bin/rustup` (their sections). The path that was found is the
 one previewed and the one run.
 
@@ -106,17 +111,20 @@ asks for a password.
 
 **An operation** is previewed first: `plan` builds the exact argv — or,
 for an uninstall that runs no command, the exact list of paths it will
-move to the Trash (Claude Code's section) — and the front end shows it
-(`plan_operation` in `src-tauri/src/ipc.rs`; the front end never builds
-an argv and sends back only the id of a plan Rust issued). The plan can
-be confirmed for ten minutes (`PLAN_LIFETIME` in
-`crates/canager-core/src/session/plans.rs`), after which it has to be
-previewed again. Before a plan is built, `Session::issue_plan` refuses an
-operation on a source that is read-only or not answering, and an upgrade
-or uninstall the tool itself reports it will refuse (a pinned package) —
-the buttons the pages hide are backed by that refusal, not only by the
-page. On confirmation `run_operation` (`crates/canager-core/src/ops/mod.rs`)
-takes the plan's locks, runs the command (or moves the listed paths to the
+move to the Trash (the Claude Code, Antigravity CLI and Grok Build
+sections) — and the front end shows it (`plan_operation` in
+`src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
+only the id of a plan Rust issued). The plan can be confirmed for ten
+minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),
+after which it has to be previewed again. Before a plan is built,
+`Session::issue_plan` refuses an operation on a source that is read-only
+or not answering, an upgrade or uninstall the tool itself reports it will
+refuse (a pinned package), and an update of a tool that installs its
+updates itself and has no update command Canager may run (Antigravity
+CLI's section) — the buttons the pages hide are backed by that refusal,
+not only by the page. On confirmation
+`run_operation` (`crates/canager-core/src/ops/mod.rs`) takes the plan's
+locks, runs the command (or moves the listed paths to the
 Trash), and then re-reads the inventory to check what actually happened;
 an upgrade is also preceded by a reading,
 so the version before can be compared with the version after. An install
@@ -676,6 +684,207 @@ moves the rest. Afterwards Canager looks for the launcher again
 only when it is gone, and as unconfirmed when Canager cannot tell (a
 folder it may not read, say).
 
+## Antigravity CLI
+
+Adapter: `StandaloneAdapter` over the `AGY` recipe in
+`crates/canager-core/src/adapters/standalone/` (`recipes.rs` is the data,
+`mod.rs` the behaviour, `route.rs` the recognition, `removal.rs` the
+uninstall). Verified against Antigravity CLI 1.2.11 (the version in
+`adapters/meta/standalone-agy.toml` and the name of the recorded fixture
+directory). The row is one tool, installed by Google's own installer
+(`curl -fsSL https://antigravity.google/cli/install.sh | bash`, run by the
+user — Canager never runs it), and the one item under it is the tool
+itself.
+
+**Detect.** Canager looks at the fixed path the installer writes,
+`~/.local/bin/agy` — never an `agy` found through `PATH` — and checks with
+`lstat` and `realpath` that it is a regular file: the installer copies the
+binary there, and a link of that name is somebody else's (the Homebrew
+cask's `agy` is a link into its Caskroom, and is Homebrew's row). There is
+no launcher-only state: the file *is* the program. Canager then runs
+`<agy> --version` (30 s) with `AGY_CLI_DISABLE_AUTO_UPDATE=true` in its
+environment, the switch Google documents for its background updater. On
+the recorded version (1.2.11, 2026-09-26), `--version` alone did not reach
+the updater at all — no new log file under
+`~/.gemini/antigravity-cli/log`, `updater/update_status.json` untouched, no
+updater process, checked around the very read the fixture records — so
+the switch is a belt on top of that; a run with a prompt is what writes a
+log and starts the updater. The version is the first token of the first
+non-empty line (`1.2.11`).
+
+Canager also asks where `agy` would run from if typed in Terminal, as it
+does for Claude Code, and says so under the source. That is a notice, not
+a command.
+
+**Environment Canager adds to version reads** (`AGY.version.env`):
+
+    AGY_CLI_DISABLE_AUTO_UPDATE=true
+
+**Read-only commands and requests** (background checks; never need a
+password):
+
+| Purpose | Argv or request | Timeout |
+|---|---|---|
+| Detect, and inventory (whose reading the update check compares) | `<agy> --version`, with `AGY_CLI_DISABLE_AUTO_UPDATE=true` | 30 s |
+| Newest published version (`check_updates`), on Apple silicon only | `GET https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json` — the manifest the installer and the updater read; its top-level `version` | 30 s |
+
+On an Intel Mac, or when Canager itself runs under Rosetta (it then
+reports `x86_64`), no request is made and the row says the check is not
+yet verified there: only the Apple-silicon manifest has been fetched. An
+update is listed only when the manifest's version is greater than the
+installed one, comparing dot-separated integers; a failed request, a
+non-200 answer or a body that is not such a manifest is "could not check",
+never an error for the source.
+
+**Write commands**: none. Antigravity CLI installs its updates itself in
+the background (at most every 15 minutes, by Google's documentation and
+this Mac's own log), and its `agy update` subcommand is undocumented, has
+no options and has never been run — so Canager offers no Update button: a
+newer version is listed with the badge "Updates itself" and a sentence
+that says to open the tool once and quit it. `Session::issue_plan` refuses
+the upgrade as well, and so does the adapter.
+
+**Uninstall** (only after the user reviews and confirms a preview; no
+command runs): Canager moves to the Trash, in this order, any backup copy
+`agy.<time>.old` the updater left in `~/.local/bin` (a regular file with
+that name shape, each listed in the preview), then `~/.local/bin/agy`
+itself — through the same call and the same checks as Claude Code's
+uninstall ("Moving files to the Trash"). If the updater writes a new
+backup or a new launcher file between the preview and the click, nothing
+is moved and the uninstall asks for a fresh preview (`Fault::PathChanged`).
+It keeps, and the preview says so when they exist:
+`~/.gemini/antigravity-cli` (the tool's own root, where its conversations,
+history, builtin skills, cache and updater state live together — no vendor
+list says which of them could go alone, and the Homebrew cask's `zap`
+treats it as one folder; `~/.gemini` itself is shared with Gemini CLI and
+is never touched), `~/.cache/antigravity` (the installer's download staging
+folder, usually empty: it sits directly in `~/.cache`, one of the folders
+Canager never moves anything out of), and `~/.zshrc` and `~/.zprofile`,
+where the installer adds its `PATH` line (Canager never edits a startup
+file, and does not read these to find the line). The whole uninstall has
+120 s, as Claude Code's does. There is no vendor uninstall document; the
+list is the installer script's own path plus the cask's `zap`, and the
+fixture README says so.
+
+## Grok Build
+
+Adapter: `StandaloneAdapter` over the `GROK` recipe in
+`crates/canager-core/src/adapters/standalone/`. Verified against Grok
+Build 1.0.41 (the version in `adapters/meta/standalone-grok.toml` and the
+name of the recorded fixture directory). The row is one tool, installed by
+xAI's own installer (`curl -fsSL https://x.ai/cli/install.sh | bash`, run
+by the user — Canager never runs it), and the one item under it is the
+tool itself.
+
+**Detect.** Canager looks at the fixed path the installer writes,
+`~/.grok/bin/grok`, and checks with `lstat`, `readlink` and `realpath` that
+it is a symbolic link whose own text names a place inside `~/.grok` and
+which resolves there — the installer's layout, a relative link,
+`../downloads/grok-<version>-macos-aarch64` (`bin/agent` is a second link
+to the same file). A `grok` there that resolves into a `Cellar`,
+`Caskroom`, `node_modules` or `corepack` directory is a package manager's
+copy and is not listed here; the Homebrew cask `grok-build` puts its links
+in `/opt/homebrew/bin` and is Homebrew's row; the Homebrew *formula* named
+`grok` is an unrelated library. A dangling link whose own text points into
+`~/.grok` (the downloads folder was removed — by an uninstall that stopped
+partway, or by hand) is listed with no version and a notice saying so, and
+Uninstall removes what is left. For a link that resolves, Canager runs
+`<grok> --version` (30 s) with no added environment (none is documented).
+Whether `--version` runs grok's launch-time updater, and whether that
+updater installs or only checks, are both unverified; on the recorded
+version (1.0.41, 2026-09-26) `--version` left `~/.grok/bin`,
+`~/.grok/downloads` and `~/.grok/version.json`'s timestamp unchanged and
+wrote nothing under `~/.grok`, as the fixture README records around the
+very read it holds. The version is the second token of the first
+non-empty line (`grok 1.0.41 (4220f3b224a6)`).
+
+Canager also asks where `grok` would run from if typed in Terminal and
+says so under the source. That is a notice, not a command.
+
+**Read-only commands** (background checks that install nothing and never
+need a password; grok's own check writes inside `~/.grok`, below):
+
+| Purpose | Argv | Timeout |
+|---|---|---|
+| Detect, inventory (the version the update check lists as current), and the reading before and after an update | `<grok> --version` | 30 s |
+| Newest published version (`check_updates`) | `<grok> update --check --json` — grok's own check; its `--help` describes `--check` as "Check for updates without installing" | 60 s |
+
+Grok's own check prints one JSON object; Canager believes its
+`updateAvailable` and shows its `latestVersion`, comparing nothing itself
+(the channel is the tool's own, "Native"). A check that exits non-zero,
+prints something that is not that JSON, does not finish in 60 seconds, or
+answers with a non-null `error` field (grok could not find out — say,
+offline) is "could not check" with grok's own words, never "up to date"
+and never an error for the source. Canager makes no network request of
+its own for grok; the check's connection is grok's, under grok's
+configuration (`~/.grok/config.toml`, which Canager does not read). The
+check writes inside `~/.grok` each time it runs, so every refresh causes
+those writes — grok's, not Canager's ("Files Canager writes"). On the
+recorded run (2026-09-26) it replaced `~/.grok/version.json`, whose
+`checked_at` became the time of the check; added two lines to grok's own
+log, `~/.grok/logs/unified.jsonl`, recording that it loaded its saved
+login (`~/.grok/auth.json`, which Canager never reads); and touched the 27
+files of the user guide grok ships, `~/.grok/docs/user-guide` (their
+modification times moved; no file was added or removed). Whether grok
+installs updates on its own (`auto_update = true` means "check for updates
+on launch") is unverified, so the row is not described as self-updating.
+
+**Write commands** (only run after the user reviews and confirms a plan
+preview):
+
+| Purpose | Argv | Timeout | Needs a password |
+|---|---|---|---|
+| Upgrade | `<grok> update` | 1800 s | No |
+| Uninstall | none: Canager moves up to eight paths to the Trash itself (below) | 120 s; Canager stops between items once it is spent | No |
+
+`grok update` downloads the new version into `~/.grok/downloads` and
+re-points the `bin/` links, leaving the old download in place (the
+installer's layout; the update's own steps were not read). Immediately
+before starting it, Canager looks at `~/.grok/bin/grok` once more, the way
+Detect does (no command runs): it must still be one link straight into
+`~/.grok` that resolves there; if it has gone, dangles, is a plain file or
+now points elsewhere, the update is not started, and the operation reports
+the launcher as changed since the preview. Cancel: allowed
+(`KillThenReconcile`) — the runner stops the process group, Canager reads
+`<grok> --version` again, and the operation is reported as unconfirmed
+regardless of that reading. An update that exits 0 with the version
+unchanged is reported as needing attention, as for every source. **How
+`grok update` behaves when nothing can answer a prompt (Canager gives it
+no terminal and a closed stdin) has not been observed by this project**;
+the author records it on a CI runner before this step merges, and this
+paragraph then says what was seen.
+
+**Uninstall** (only after the user reviews and confirms a preview; no
+command runs): Canager moves to the Trash, in this order,
+`~/.local/bin/grok` and `~/.local/bin/agent` when the installer made them
+(it does so only when `~/.grok/bin` was not on `PATH`; they go first,
+while every folder their link text could pass through is still there —
+what that text says has not been checked on a Mac that has them),
+`~/.grok/downloads` (the program: every downloaded version),
+`~/.grok/bundled` and `~/.grok/completions` (the vendored agents and shell
+completions, when present), `~/.config/fish/completions/grok.fish` (when
+present), then the two links the installer put in `~/.grok/bin`:
+`~/.grok/bin/agent` (when present) and last `~/.grok/bin/grok`, the
+command itself. The folder `~/.grok/bin` is not moved: the installer put
+it on your `PATH`, so a script of your own may be in it, and it stays
+inside `~/.grok`, empty unless you put something there. Each path passes
+the checks Claude Code's section describes; an optional one Canager cannot
+confirm is grok's own — a `~/.local/bin/agent` that belongs to another
+program, say — stays and the preview says so. The launcher is last: once
+`~/.grok/downloads` is in the Trash, a run that stops leaves a
+launcher-only row that a second Uninstall finishes, as for Claude Code.
+The whole uninstall has 120 s, as Claude Code's does. It keeps `~/.grok`
+itself — `config.toml`, `auth.json` (the login), `sessions/`, `memory/`,
+`skills/`, `plugins/` — and `~/.zshrc`, where the installer wrote its
+marked block. A `/usr/local/bin/grok` or `/usr/local/bin/agent` is outside
+your home folder, so Canager never touches it: when it is a link into
+`~/.grok` (the installer's fallback), the preview says it becomes a dead
+link; when it is something else (Homebrew's `grok-build` link on an Intel
+Mac, another program's `agent`), the preview says nothing about it. There
+is no vendor uninstall document and no `grok uninstall`; the list is
+grok's own README ("File Locations") plus its install script, and the
+fixture README says so.
+
 ## rustup
 
 Adapter: `StandaloneAdapter` over the `RUSTUP` recipe in
@@ -886,7 +1095,8 @@ that tool's environment, and a Homebrew cask's command in `<prefix>/bin`
 cask's `app` stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
 `lib/node_modules` under its global prefix; Ollama's `~/.ollama`; Claude
-Code's `~/.local/share/claude`).
+Code's `~/.local/share/claude`; Antigravity CLI's
+`~/.gemini/antigravity-cli`; Grok Build's `~/.grok`).
 A regular file in a tool's own bin directory whose name is one of the
 backup patterns that tool's recipe declares — `agy.<time>.old` in
 `~/.local/bin`, the copies Antigravity's updater leaves — is that tool's
@@ -934,6 +1144,32 @@ All read-only, none saved anywhere else, none uploaded:
   Code's section). After an uninstall: the same look at the launcher
   that detection makes (`lstat`, `readlink`, `realpath`, the same paths),
   and nothing else — no version is read.
+- Antigravity CLI: whether `~/.local/bin/agy` exists and what it is
+  (`lstat`, `realpath`); for the notice under the source, each `PATH`
+  directory's `agy`, as for Claude Code. For an uninstall preview, when
+  it is confirmed, and again right before each path is moved: the same
+  reads as for Claude Code's list, for `~/.local/bin/agy` and every
+  `agy.<time>.old` backup, which Canager finds among the names in
+  `~/.local/bin` (the Unknown page's rule 4 goes by the same names); and
+  whether `~/.gemini/antigravity-cli`, `~/.cache/antigravity`, `~/.zshrc`
+  and `~/.zprofile` exist and where they lead (`lstat`, `realpath`;
+  nothing in them is read). After an uninstall: the same look at the
+  launcher that detection makes, and nothing else — no version is read.
+- Grok Build: whether `~/.grok/bin/grok` exists and where it links to
+  (`lstat`, `readlink`, `realpath`, also for the folder the link is in and
+  for `~/.grok`); for the notice under the source, each `PATH` directory's
+  `grok`, as for Claude Code. For an uninstall preview, when it is
+  confirmed, and again right before each path is moved: the same reads as
+  for Claude Code's list, for `~/.local/bin/grok`, `~/.local/bin/agent`,
+  `~/.grok/downloads`, `~/.grok/bundled`, `~/.grok/completions`,
+  `~/.config/fish/completions/grok.fish`, `~/.grok/bin/agent` and
+  `~/.grok/bin/grok`, and whether `~/.grok` and `~/.zshrc` exist and
+  where they lead; for the preview and when it is confirmed, also whether
+  `/usr/local/bin/grok` and `/usr/local/bin/agent` are links into
+  `~/.grok` (`lstat`, `readlink`, `realpath`). Nothing in
+  `~/.grok/config.toml` or `~/.grok/auth.json` is read. After an
+  uninstall: the same look at the launcher that detection makes, and
+  nothing else — no version is read.
 - rustup: whether `$CARGO_HOME/bin/rustup` exists and is a regular file
   (`lstat`, `realpath`); whether `~/.cargo` and `~/.rustup` are real folders
   and not links, and whether anything directly inside either is a link
@@ -964,9 +1200,15 @@ renamed into place, so a crash mid-write cannot leave it corrupt; the
 directory is created if it is missing). Nothing else on the Mac is
 written or deleted by Canager itself. It moves files in one case: a
 confirmed uninstall of a tool that has no uninstall command (Claude Code,
-today) moves the paths its preview listed to the Trash (next section).
-Every other change to what is installed is made by the tool named in the
-preview, running the command shown there.
+Antigravity CLI or Grok Build) moves the paths its preview listed to the
+Trash (next section). The programs Canager runs write their own files as
+they run — Grok Build's own update check (`grok update --check --json`,
+Grok Build's section), for one, writes inside `~/.grok` on every refresh:
+on the recorded run it replaced `~/.grok/version.json` with the time of
+the check, added two lines to its log and touched the user guide it
+ships. Those writes are grok's, not Canager's. Every other change to what
+is installed is made by the tool named in the preview, running the
+command shown there.
 
 ## Moving files to the Trash
 
@@ -975,10 +1217,11 @@ in Canager that changes a file on the Mac other than its own settings.
 It makes one call per path, `NSFileManager
 trashItemAtURL:resultingItemURL:error:` — the call Finder makes for Move
 to Trash — through the `objc2-foundation` crate, and it is called only by
-a confirmed path-list uninstall (`removal::execute_removal`, Claude
-Code's section), for each path right after that path's last check. It
-never deletes anything, never empties the Trash and never renames a file
-itself, and a symbolic link is moved as the link, never its target: the
+a confirmed path-list uninstall (`removal::execute_removal`; the Claude
+Code, Antigravity CLI and Grok Build sections), for each path right after
+that path's last check. It never deletes anything, never empties the Trash
+and never renames a file itself, and a symbolic link is moved as the
+link, never its target: the
 item's kind comes from the `lstat` that ends its last check, so a link is
 never handed to the system as a folder, and nothing else looks at the
 path between that check and the call. The call itself takes a path, so
@@ -1092,9 +1335,10 @@ calls it yet, so no request to it is made; when app self-update ships,
 this paragraph changes.
 
 The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
-`pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull` and `claude update`
-each reach whatever index, registry or release server they are configured
-to use. Those are the tools' connections, under the tools' configuration;
+`pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull`, `claude update`,
+`rustup self update`, `grok update --check --json` and `grok update` each
+reach whatever index, registry or release server they are configured to
+use. Those are the tools' connections, under the tools' configuration;
 Canager neither chooses nor sees them.
 
 ## What Canager never does
@@ -1115,6 +1359,10 @@ Canager neither chooses nor sees them.
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and
   Canager offers that only when the preview can name exactly those two.
+- Never runs `agy update` (undocumented, never observed), and never runs
+  `grok update` from a refresh: the refresh runs `grok update --check
+  --json`, which grok's own help describes as checking without
+  installing; `grok update` runs only after a confirmed preview.
 - Never passes `--zap`, `--force` or `--ignore-dependencies` to Homebrew
   (the brew plan test), and never runs a bare `brew upgrade`.
 - Never runs a `brew` command as root.
@@ -1122,10 +1370,14 @@ Canager neither chooses nor sees them.
   preview the user confirmed within the last ten minutes.
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
+- Never opens a tool to make it update itself: a self-updating tool's row
+  tells the user how, and Canager runs nothing.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
 - Never deletes a file and never empties the Trash. Never writes a file
-  on the Mac itself other than its own `settings.json`, and moves files
+  on the Mac itself other than its own `settings.json` (the programs it
+  runs write their own files — Grok Build's update check writes inside
+  `~/.grok` on every refresh, as its section says), and moves files
   only to the Trash, only for an uninstall the user confirmed, and only
   the paths its preview listed; never edits a shell startup file — rustup's
   own uninstall edits its startup line and deletes its two folders
@@ -1137,7 +1389,11 @@ Canager neither chooses nor sees them.
   user, or anything that is not what the tool's uninstall instructions
   describe; never moves the settings, login and history Claude Code keeps
   in `~/.claude` (of that folder only its download cache,
-  `~/.claude/downloads`) or `~/.claude.json`, nor anything they lead to.
+  `~/.claude/downloads`) or `~/.claude.json`, the login, sessions, memory
+  and settings Grok Build keeps in `~/.grok` (of that folder only
+  `downloads/`, `bundled/`, `completions/` and the two links in `bin/`),
+  or anything in Antigravity CLI's `~/.gemini/antigravity-cli` — nor
+  `~/.gemini` itself, which Gemini CLI shares — nor anything they lead to.
 - Never connects to an `https` host that is not on the list above, and
   never follows a redirect.
 - Never reports an operation as succeeded on the tool's exit code alone:

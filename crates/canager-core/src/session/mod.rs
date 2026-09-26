@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_registers_all_nine_adapters() {
+    fn test_new_registers_all_eleven_adapters() {
         let sink = Arc::new(VecSink::new());
         let session = Session::new(sink, None);
         assert_eq!(
@@ -526,7 +526,9 @@ mod tests {
                 "ollama".to_string(),
                 "pip".to_string(),
                 "pipx".to_string(),
+                "standalone-agy".to_string(),
                 "standalone-claude".to_string(),
+                "standalone-grok".to_string(),
                 "standalone-rustup".to_string(),
                 "uv".to_string(),
             ]
