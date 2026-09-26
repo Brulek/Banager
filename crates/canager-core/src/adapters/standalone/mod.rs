@@ -26,8 +26,8 @@ pub mod rustup;
 use self::recipe::{CommandUninstall, Latest, Recipe, Uninstall};
 use self::route::Probe;
 use crate::adapters::{
-    ensure_instance_match, reconcile_from, run_plan, uncheckable_candidate, validate_package_name,
-    Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
+    ensure_instance_match, lookup_failure_reason, reconcile_from, run_plan, uncheckable_candidate,
+    validate_package_name, Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome,
 };
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, HttpRequest};
@@ -727,8 +727,9 @@ impl StandaloneAdapter {
             } => {
                 // The tool's own read-only check, against the launcher, with
                 // no environment of Canager's (spec §3.4's variables are for
-                // the version read).
-                let shown = args.join(" ");
+                // the version read). A failure names it as the user would
+                // type it: `recipe.id` is the command's name.
+                let shown = format!("{} {}", self.recipe.id, args.join(" "));
                 let output = self
                     .runner
                     .run(
@@ -749,10 +750,13 @@ impl StandaloneAdapter {
                     return Err(format!("`{shown}` did not finish within {timeout_secs} s"));
                 }
                 if output.exit_code != Some(0) {
-                    return Err(format!(
-                        "`{shown}` exited with {:?}: {}",
+                    // Worded as every other lookup that runs a command: the
+                    // tool's own first line of stderr, or, when it said
+                    // nothing, its exit code (or that it did not finish).
+                    return Err(lookup_failure_reason(
+                        &shown,
                         output.exit_code,
-                        output.stderr.lines().next().unwrap_or("").trim()
+                        &output.stderr,
                     ));
                 }
                 latest::parse_update_check(
@@ -5329,6 +5333,10 @@ mod tests {
         assert!(out.candidates.is_empty());
 
         let failing = [
+            // A check that fails is worded as every other lookup that runs
+            // a command (`lookup_failure_reason`, the generic sentence
+            // README.md's list of English explanations names): the command
+            // as typed and grok's own first line of stderr...
             (
                 CommandOutput {
                     exit_code: Some(1),
@@ -5337,7 +5345,30 @@ mod tests {
                     timed_out: false,
                     cancelled: false,
                 },
-                "exited with Some(1)",
+                "grok update --check --json: error: could not reach x.ai",
+            ),
+            // ...or, when grok said nothing, its exit code as a number...
+            (
+                CommandOutput {
+                    exit_code: Some(1),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+                "`grok update --check --json` exited with code 1",
+            ),
+            // ...or, with no exit code (a signal ended it) and nothing
+            // said, that it did not finish.
+            (
+                CommandOutput {
+                    exit_code: None,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+                "`grok update --check --json` did not finish",
             ),
             (
                 exited_0("<html><body>Sign in to the network</body></html>\n"),
@@ -5365,7 +5396,7 @@ mod tests {
                     timed_out: true,
                     cancelled: false,
                 },
-                "did not finish within 60 s",
+                "`grok update --check --json` did not finish within 60 s",
             ),
         ];
         for (check, needle) in failing {
@@ -5383,8 +5414,9 @@ mod tests {
             assert_eq!(c.current, "1.0.41");
             assert_eq!(c.target, "1.0.41");
             assert_eq!(c.channel, UpdateChannel::Registry);
+            // Never Rust's own spelling of an exit code (`Some(1)`).
             assert!(
-                matches!(&c.warnings[..], [Warning::Message(m)] if m.contains(needle)),
+                matches!(&c.warnings[..], [Warning::Message(m)] if m.contains(needle) && !m.contains("Some(")),
                 "{needle}: {:?}",
                 c.warnings
             );

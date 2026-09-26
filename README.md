@@ -170,18 +170,18 @@ Three kinds of text are shown as-is:
   than translated — with the switch off you see only a short generic sentence instead. There are
   more than a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
   "... did not finish", or the tool's own first line of stderr) from any lookup that runs a
-  command, Grok Build's own update check among them (which has a few more of its own: an answer
-  that is not grok's JSON, or an error grok itself reported); from the six lookups Canager makes
-  over HTTP instead of a command line, that request's own wording — pipx's PyPI lookup ("PyPI
-  request failed: ...", "PyPI returned status 503", "could not parse PyPI response: ..."), Cargo's
-  equivalent for crates.io, Ollama's for its own registry, Claude Code's for its release channel,
-  rustup's for its release file, and Antigravity CLI's for its manifest (or, on an Intel Mac, why
-  it made no request); and the two about the installed version: "cannot read the installed version
-  now", from the code Claude Code, Antigravity CLI, Grok Build and rustup share, and "cannot
-  compare the installed version ... with the published ...", from Claude Code, Antigravity CLI and
-  rustup only, since Grok Build's check takes grok's own answer and compares no versions. They
-  should all become structured payloads like the refusals above, and until they do, what a Chinese
-  user sees there with the switch on is in English.
+  command, Grok Build's own update check among them (which has a few more of its own: a check
+  Canager could not run, an answer that is not grok's JSON, or an error grok itself reported); from
+  the six lookups Canager makes over HTTP instead of a command line, that request's own wording —
+  pipx's PyPI lookup ("PyPI request failed: ...", "PyPI returned status 503", "could not parse PyPI
+  response: ..."), Cargo's equivalent for crates.io, Ollama's for its own registry, Claude Code's
+  for its release channel, rustup's for its release file, and Antigravity CLI's for its manifest
+  (or, on an Intel Mac, why it made no request); and the two about the installed version: "cannot
+  read the installed version now", from the code Claude Code, Antigravity CLI, Grok Build and
+  rustup share, and "cannot compare the installed version ... with the published ...", from Claude
+  Code, Antigravity CLI and rustup only, since Grok Build's check takes grok's own answer and
+  compares no versions. They should all become structured payloads like the refusals above, and
+  until they do, what a Chinese user sees there with the switch on is in English.
 
 ## Design notes
 
@@ -236,7 +236,7 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
   有十几处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
   finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源，Grok Build 用它自己的命令检查更新也在其中
-  （它还另有几句：回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
+  （它还另有几句：Canager 没能运行这个检查、回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
   pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的发布通道、rustup 查它的发布文件、
   Antigravity CLI 查它的版本清单（在 Intel Mac 上则是它为什么没发请求）——各自请求失败、返回状态异常、
   解析失败时的原文提示；还有两句关于已安装版本的原文提示：读不到已安装版本，出自 Claude Code、

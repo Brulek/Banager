@@ -838,9 +838,15 @@ Grok's own check prints one JSON object; Canager believes its
 (the channel is the tool's own, "Native"). A check that exits non-zero,
 prints something that is not that JSON, does not finish in 60 seconds, or
 answers with a non-null `error` field (grok could not find out — say,
-offline) is "could not check" with grok's own words, never "up to date"
-and never an error for the source. Canager makes no network request of
-its own for grok; the check's connection is grok's, under grok's
+offline) is "could not check" with a short reason, never "up to date" and
+never an error for the source. The reason quotes grok's `error` text when
+it gave one, and says so when Canager could not run the check, when it did
+not finish in 60 seconds, or when it did not print that JSON; any other
+end than exit code 0 is worded as every other lookup that runs a command
+words it: the first line of grok's stderr or, when there is none, how the
+check ended (that `grok update --check --json` exited with code 1, say).
+Canager makes no network request of its own for grok; the check's
+connection is grok's, under grok's
 configuration (`~/.grok/config.toml`, which Canager does not read). The
 check writes inside `~/.grok` each time it runs, so every refresh causes
 those writes — grok's, not Canager's ("Files Canager writes"). On the
