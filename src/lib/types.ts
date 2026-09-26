@@ -10,12 +10,15 @@ export type OpStatus =
   | "Done";
 export type DetectOutcome = "Found" | "Missing";
 // Rust `Attention`: which way reconcile contradicted a command that
-// reported success. Worded by the front end, per variant.
+// reported success -- or, `BackAfterUninstall`, what a path-list
+// uninstall's own last look found after it had moved everything. Worded by
+// the front end, per variant.
 export type Attention =
   | "NotInstalledAfterInstall"
   | "StillInstalledAfterUninstall"
   | "GoneAfterUpgrade"
-  | "UnchangedAfterUpgrade";
+  | "UnchangedAfterUpgrade"
+  | "BackAfterUninstall";
 // Rust `Fault`: why Canager itself could not carry an operation out.
 // Unit variants are bare strings, data variants single-key objects (serde's
 // external tagging). Worded by the front end, per variant; the fields are
@@ -364,7 +367,8 @@ export type LogNote =
   | { ReadFailed: { stream: Stream; error: string } }
   | { MovedToTrash: { path: string; trashed_to: string } }
   | { TrashFailed: { path: string; error: string } }
-  | { OutOfTime: { path: string; seconds: number } };
+  | { OutOfTime: { path: string; seconds: number } }
+  | { BackAfterUninstall: { path: string } };
 export type OperationEvent =
   | { Status: { op_id: number; status: OpStatus } }
   | { Log: { op_id: number; stream: Stream; line: string } }

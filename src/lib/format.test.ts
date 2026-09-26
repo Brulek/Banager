@@ -123,6 +123,26 @@ describe("outcomeKey", () => {
       "需要留意：更新命令显示成功，但版本和更新前一样，程序并没有更新它。操作日志里也许能看到原因。",
     );
   });
+
+  it("says part of a path-list uninstall came back, that the log names it, and what to do", () => {
+    // `execute_removal` (crates/canager-core/src/adapters/standalone/removal.rs)
+    // sends this itself when, after the pause that follows its last move,
+    // part of what its list names is there: a copy of the tool still
+    // running can put its program folder or its cache back, and with the
+    // launcher gone no row shows it. Each such path gets a log line of its
+    // own (`operations.logNote.backAfterUninstall`), carrying the path.
+    const back: Outcome = { NeedsAttention: "BackAfterUninstall" };
+    expect(outcomeKey(back)).toBe("NeedsAttention.BackAfterUninstall");
+    expect(outcomeArgs(back)).toEqual({});
+    expect(en.operations.outcome.NeedsAttention.BackAfterUninstall).toBe(
+      "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstall).toBe(
+      "需要留意：清单上的东西都已移到废纸篓，但之后有一部分又回来了（还在运行的这个工具就可能这样）。操作日志里写着回来的是什么。请先退出这个工具；如果列表里还有它，就再卸载一次，否则请自己把回来的东西移到废纸篓。",
+    );
+    expect(en.operations.logNote.backAfterUninstall).toContain("{{path}}");
+    expect(zhCN.operations.logNote.backAfterUninstall).toContain("{{path}}");
+  });
 });
 
 describe("outcomeKey for Canager's own failures", () => {

@@ -65,6 +65,16 @@ pub enum LogNote {
     /// `removal::execute_removal`, which then returns `Outcome::Unconfirmed`;
     /// worded by `LogDrawer.tsx`.
     OutOfTime { path: String, seconds: u64 },
+    /// A path-list uninstall moved every path on its list to the Trash,
+    /// and after the pause that follows its last move `path` (home folder
+    /// abbreviated to `~`), a path on that list, was there: one it moved,
+    /// back again -- a copy of the tool still running can put its program
+    /// folder or its download cache back -- or one it never moved, there
+    /// now (`removal::left_behind`). Canager left it where it is. One per
+    /// such path, in the list's order, from `removal::execute_removal`,
+    /// which then returns `Outcome::NeedsAttention(Attention::
+    /// BackAfterUninstall)`; worded by `LogDrawer.tsx`.
+    BackAfterUninstall { path: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +212,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&out_of_time).unwrap(),
             r#"{"Note":{"op_id":7,"note":{"OutOfTime":{"path":"~/.local/bin/claude","seconds":120}}}}"#
+        );
+        // The fourth: a path on the list that was there when the run looked
+        // once more after the pause that follows its last move.
+        let back = OperationEvent::Note {
+            op_id: 7,
+            note: LogNote::BackAfterUninstall {
+                path: "~/.local/share/claude".to_string(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            r#"{"Note":{"op_id":7,"note":{"BackAfterUninstall":{"path":"~/.local/share/claude"}}}}"#
         );
     }
 

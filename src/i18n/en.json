@@ -242,7 +242,8 @@
       "readFailedStderr": "Canager couldn't read any more of this command's error messages ({{error}}), so they end here.",
       "movedToTrash": "Moved {{path}} to the Trash (now at {{trashedTo}}).",
       "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped here. Your Mac gave this reason: {{error}}",
-      "outOfTime": "The {{seconds}} seconds Canager allows this uninstall ran out, so it stopped before moving {{path}}. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest."
+      "outOfTime": "The {{seconds}} seconds Canager allows this uninstall ran out, so it stopped before moving {{path}}. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest.",
+      "backAfterUninstall": "{{path}} came back after everything on the list had gone to the Trash. Canager left it where it is."
     },
     "kind": {
       "Install": "Installing",
@@ -266,7 +267,8 @@
         "NotInstalledAfterInstall": "Needs attention: the install reported success, but it isn't installed",
         "StillInstalledAfterUninstall": "Needs attention: the uninstall seemed to succeed, but it's still installed",
         "GoneAfterUpgrade": "Needs attention: the update reported success, but it's no longer installed",
-        "UnchangedAfterUpgrade": "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why."
+        "UnchangedAfterUpgrade": "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why.",
+        "BackAfterUninstall": "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself."
       },
       "Failed": "Failed: {{summary}}",
       "FailedSilent": "Failed. The program didn't say why — the operation log may show more.",

@@ -48,6 +48,24 @@ CI 时再升，升了没法在本地验证）；8pt 网格（约 51 处，需要
   （`uvx` 同样认不出，阶段 4 步骤 F 的交付说明已写）。正确形状：spec §十一 的 `Adapter::owned_roots(&self, env)`
   trait 方法——pip 的实现调用一次 `sysconfig.get_path("scripts", "osx_framework_user")`，结果只进扫描，不上线格式。
 
+- **卸载之后回来的程序文件，已安装页上看不见**（2026-09-26；修复的 A、B 两部分在 `f3712ca` 与紧随其后的提交
+  「Report what came back after a path-list uninstall's last pause, and name it in the log」，C 部分待作者决定）。
+  path-list 卸载把启动器（清单最后一项）移进废纸篓之后还要停最多 3 秒（`removal::PUT_BACK_SETTLE`），还在运行的
+  工具可能在这段时间里重建程序文件夹或下载缓存。已做的：A——`Adapter::reconcile_after_uninstall` 多收一个 `plan`，
+  独立安装工具的读取在启动器不在时再用 `removal::left_behind` 看清单上的其它路径和备份文件，留下的算「还在」，
+  看不清的算读不出（`Unconfirmed`）；B——`removal::execute_removal` 在最后一次停顿之后自己再看一遍，回来的每条
+  路径在操作日志里各写一行（`LogNote::BackAfterUninstall`），结果报 `NeedsAttention(BackAfterUninstall)`，看不清时
+  报 `Unconfirmed`。两者都不算预览按自己的规则判为「不是这个工具的」、这次也没移走的可选路径（与
+  `removal::listed_path_back` 同一个例外）。**仍然存在的缺口**：启动器已经不在，而 `detect` 只认启动器
+  （`route::probe` 为 `Absent` 就不列实例），所以下一次刷新没有这一行——回来的文件只出现在这次操作的结果和日志
+  里，已安装页上没有可以再点一次的「卸载」；Claude Code 的程序文件夹与下载缓存也不在来源不明页固定扫描的那几个
+  bin 文件夹里。**C 的形状**（没有做，是作者的产品决定）：`detect` 在启动器不在、清单上的程序路径
+  （`RemovedWhat::Program`）还在时也列出这个实例，带一个新的无载荷 `InstanceNote`（例如
+  `ProgramWithoutLauncher`，与 `LauncherOnly` 相对）——一次线格式变更，连带 TypeScript 镜像、两种语言的文案与
+  `src/lib/sources.ts` 的读取方；`plan_removal` 的检查 2 现在对缺失的启动器报 `Missing`，要改成在这种状态下把
+  它列为「已经不在」（`Warning::AlreadyGone`），移走其余的。**副作用**：手动删掉启动器、留下程序文件的安装
+  （例如只执行过 `rm ~/.local/bin/claude`）也会因此出现一行——现在它不出现。
+
 ## 阶段 2（界面 / IPC）之前必须处理
 
 - `crates/canager-core/src/adapters/mod.rs` `validate_package_name`：拒绝以 `/` 或 `.` 开头、含 `..` 段、以 `.rb` 结尾的名字，否则 `brew install --formula /tmp/evil.rb` 可执行任意本地 formula。IPC 暴露 install 之前必须修。

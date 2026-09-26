@@ -145,6 +145,31 @@ describe("LogDrawer", () => {
     );
   });
 
+  it("names what came back after a path-list uninstall moved everything, under the outcome that says so", async () => {
+    // The run's own last look, once the pause after its last move is
+    // over: one line per path it found there, and the outcome pointing at
+    // those lines -- with the launcher gone, nothing else on screen shows
+    // them.
+    mockInvoke.mockResolvedValue([
+      { ...runningOp, status: "Done", outcome: { NeedsAttention: "BackAfterUninstall" } },
+    ]);
+    const { findByText } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({
+        opId: 1,
+        note: { BackAfterUninstall: { path: "~/.local/share/claude" } },
+      });
+    });
+
+    await findByText(
+      "~/.local/share/claude came back after everything on the list had gone to the Trash. Canager left it where it is.",
+    );
+    await findByText(
+      "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself.",
+    );
+  });
+
   it("only shows log lines for the focused operation", async () => {
     const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
 

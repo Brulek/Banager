@@ -45,6 +45,9 @@ function noteText(t: TFunction, note: LogNote): string {
     const { path, seconds } = note.OutOfTime;
     return t("operations.logNote.outOfTime", { path, seconds });
   }
+  if ("BackAfterUninstall" in note) {
+    return t("operations.logNote.backAfterUninstall", { path: note.BackAfterUninstall.path });
+  }
   const unhandled: never = note;
   return unhandled;
 }

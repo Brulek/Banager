@@ -40,16 +40,18 @@ export function outcomeKey(outcome: Outcome): string {
   return unhandled;
 }
 
-/** The variant name of one way reconcile contradicted a command's success,
- *  listed for the same reason as `faultKey`'s: each needs a sentence in both
- *  locales under `operations.outcome.NeedsAttention`, and a template string
- *  would take a new one without a word. */
+/** The variant name of one way reconcile contradicted a command's success
+ *  -- or, `BackAfterUninstall`, what a path-list uninstall's own last look
+ *  found -- listed for the same reason as `faultKey`'s: each needs a
+ *  sentence in both locales under `operations.outcome.NeedsAttention`, and a
+ *  template string would take a new one without a word. */
 function attentionKey(attention: Attention): string {
   switch (attention) {
     case "NotInstalledAfterInstall":
     case "StillInstalledAfterUninstall":
     case "GoneAfterUpgrade":
     case "UnchangedAfterUpgrade":
+    case "BackAfterUninstall":
       return attention;
     default: {
       const unhandled: never = attention;

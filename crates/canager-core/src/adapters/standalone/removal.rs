@@ -9,8 +9,10 @@
 //! before the launcher's move, looking once more for every other listed
 //! path, which must be gone by then unless it is an optional one this run
 //! never moved that Canager cannot confirm is the tool's
-//! (`listed_path_back`). Nothing here knows the `Adapter` contract
-//! (`mod.rs` does) or how an item is moved (`crate::trash` does).
+//! (`listed_path_back`); and, once the pause after the last move is over,
+//! looking for them all again and naming any that came back
+//! (`left_behind`). Nothing here knows the `Adapter` contract (`mod.rs`
+//! does) or how an item is moved (`crate::trash` does).
 //!
 //! What the checks guard against is change by accident: the tool's own
 //! updater, the user, another app doing its ordinary work between the
@@ -25,7 +27,8 @@ use super::Detected;
 use crate::adapters::AdapterError;
 use crate::events::{EventSink, LogNote, OpId, OperationEvent};
 use crate::model::{
-    Fault, ItemIdentity, ItemKind, KeptWhat, Outcome, RemovedWhat, UninstallUnsafeReason, Warning,
+    Attention, Fault, ItemIdentity, ItemKind, KeptWhat, Outcome, RemovedWhat,
+    UninstallUnsafeReason, Warning,
 };
 use crate::scan::Glob;
 use crate::trash::{TrashError, Trasher};
@@ -975,9 +978,11 @@ fn kept_as_not_ours(look: &Look<'_>, rel: &Path, expect: Expect, path: &Path) ->
 /// shows what the list left, and a copy of the tool still running can put
 /// its program folder or its download cache back after the launcher's
 /// move -- during the pause that follows it (`PUT_BACK_SETTLE`), say. Read
-/// by `StandaloneAdapter::reconcile_after_uninstall`, with the plan's
-/// paths as `moved`, which counts anything left behind as the tool still
-/// there.
+/// by `execute_removal`, once that pause is over, with every path it moved
+/// as `moved`: it names each path left behind in the log and reports
+/// `NeedsAttention(BackAfterUninstall)`. And by
+/// `StandaloneAdapter::reconcile_after_uninstall`, with the plan's paths as
+/// `moved`, which counts anything left behind as the tool still there.
 pub fn left_behind(job: &Job, moved: &[PathBuf]) -> Result<Vec<PathBuf>, PathBuf> {
     let launcher = route::expand(&job.detected.home, job.recipe.route.launcher);
     let mut left = Vec::new();
@@ -1072,18 +1077,25 @@ fn take_turn(
 /// the identity against the preview's, the move), awaited to its end even
 /// if Cancel arrives meanwhile -- a move handed to the system finishes and
 /// is reported -- and its move recorded before the turn is let go; one log
-/// note. After the last move the same pause once more, before `Succeeded`
-/// (a Cancel there only cuts it short: everything is moved).
+/// note. After the last move the same pause once more (a Cancel there only
+/// cuts it short: everything is moved), and then one more look, on the
+/// blocking pool, for every other path on the list (`left_behind`, with
+/// every path the run moved): the launcher has moved, so no row would
+/// show what a copy of the tool still running put back meanwhile.
 ///
-/// `Succeeded` only when every path was moved; `Failed` with the system's
+/// `Succeeded` only when every path was moved and that last look found
+/// nothing left behind; `NeedsAttention(BackAfterUninstall)` when it found
+/// something, each path named by a `LogNote::BackAfterUninstall` in the
+/// list's order, and nothing moved again; `Failed` with the system's
 /// own words when it refused one (the launcher, last, is then still there,
 /// and the row comes back as launcher-only); `CanagerFailed(Internal)`
 /// when Canager could not ask the system at all (`TrashError::Unsupported`,
 /// at the first item); `Unconfirmed` when cancelled or out of time between
 /// items (the budget's stop, the one the user did not ask for, first
-/// writes `LogNote::OutOfTime` naming the item it stopped before), or when
-/// a turn panicked -- `run_operation` then reads the disk and reports what
-/// it finds. Never an `Err` for a state of the Mac: the
+/// writes `LogNote::OutOfTime` naming the item it stopped before), when
+/// a turn panicked, or when the last look could not tell (a path it could
+/// not look at) or panicked -- `run_operation` then reads the disk and
+/// reports what it finds. Never an `Err` for a state of the Mac: the
 /// `Err` arm is a bug's (a home folder that cannot be resolved, an empty
 /// list, a plan that lost what its preview saw). Read by
 /// `StandaloneAdapter::execute`.
@@ -1212,7 +1224,32 @@ pub async fn execute_removal(
     // run gave it. Everything is in the Trash by now, so a Cancel or the
     // budget only cuts the wait short.
     pause(pacing.settle.min(left()), &cancel).await;
-    Ok(Outcome::Succeeded)
+    // Then one more look, on the blocking pool, at every other path on the
+    // list, every path this run moved among them (`left_behind`): the
+    // launcher has moved, so no row shows what a copy of the tool still
+    // running put back meanwhile, and only this run can say it.
+    let look = {
+        let (job, moved) = (job.clone(), confirmed.paths.to_vec());
+        tokio::task::spawn_blocking(move || left_behind(&job, &moved)).await
+    };
+    match look {
+        Ok(Ok(back)) if back.is_empty() => Ok(Outcome::Succeeded),
+        Ok(Ok(back)) => {
+            for path in &back {
+                sink.emit(OperationEvent::Note {
+                    op_id,
+                    note: LogNote::BackAfterUninstall {
+                        path: shown(home, path),
+                    },
+                });
+            }
+            Ok(Outcome::NeedsAttention(Attention::BackAfterUninstall))
+        }
+        // A path it cannot look at, or a look that panicked: whether
+        // anything came back is not known, and `run_operation` reads the
+        // disk again.
+        Ok(Err(_)) | Err(_) => Ok(Outcome::Unconfirmed),
+    }
 }
 
 #[cfg(test)]
@@ -1224,7 +1261,7 @@ mod tests {
     };
     use super::*;
     use crate::events::VecSink;
-    use crate::model::{KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
+    use crate::model::{Attention, KeptWhat, RemovedWhat, UninstallUnsafeReason, Warning};
     use crate::scan::Glob;
     use crate::trash::{MockTrasher, TrashError};
     use std::sync::Mutex as StdMutex;
@@ -2793,14 +2830,16 @@ mod tests {
     }
 
     /// A trasher that, right after its `after`-th call (0-based) has moved
-    /// its item, writes the file `recreate` (folders made as needed): a
-    /// listed path back before the next item's turn -- in production,
-    /// during the pause that follows -- as when a Claude Code still running
-    /// installs an update into a program folder that was just moved.
+    /// its item, writes each file in `recreate` (folders made as needed): a
+    /// listed path back before what comes next -- the next item's turn, or
+    /// after the last item the run's look once the pause is over; in
+    /// production, during the pause that follows -- as when a Claude Code
+    /// still running installs an update into a program folder that was
+    /// just moved.
     struct RecreatingTrasher {
         inner: MockTrasher,
         after: usize,
-        recreate: PathBuf,
+        recreate: Vec<PathBuf>,
         calls: StdMutex<usize>,
     }
 
@@ -2813,8 +2852,10 @@ mod tests {
                 *calls - 1
             };
             if nth == self.after {
-                std::fs::create_dir_all(self.recreate.parent().unwrap()).unwrap();
-                std::fs::write(&self.recreate, b"#!/bin/sh\n").unwrap();
+                for file in &self.recreate {
+                    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+                    std::fs::write(file, b"#!/bin/sh\n").unwrap();
+                }
             }
             result
         }
@@ -2844,7 +2885,7 @@ mod tests {
             let recreating = Arc::new(RecreatingTrasher {
                 inner: MockTrasher::new(),
                 after: 0,
-                recreate: recreated.clone(),
+                recreate: vec![recreated.clone()],
                 calls: StdMutex::new(0),
             });
             let trasher: Arc<dyn Trasher> = recreating.clone();
@@ -2895,7 +2936,7 @@ mod tests {
         let recreating = Arc::new(RecreatingTrasher {
             inner: MockTrasher::new(),
             after: 1,
-            recreate: downloads.join("claude-2.1.282.tgz"),
+            recreate: vec![downloads.join("claude-2.1.282.tgz")],
             calls: StdMutex::new(0),
         });
         let trasher: Arc<dyn Trasher> = recreating.clone();
@@ -2968,7 +3009,7 @@ mod tests {
         let recreating = Arc::new(RecreatingTrasher {
             inner: MockTrasher::new(),
             after: 1,
-            recreate: downloads.clone(),
+            recreate: vec![downloads.clone()],
             calls: StdMutex::new(0),
         });
         let trasher: Arc<dyn Trasher> = recreating.clone();
@@ -3123,6 +3164,150 @@ mod tests {
             assert_eq!(left_behind(&job, &preview.paths), Ok(Vec::new()));
             assert_eq!(left_behind(&job, &moved), Err(agent));
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_names_what_is_there_again_after_the_last_moves_pause() {
+        // The launcher's move is the last, and the run pauses once more
+        // before it reports (`PUT_BACK_SETTLE`). A copy of Claude Code still
+        // running can put its program folder or its cache back in that
+        // pause, and with the launcher gone no row would show them. So once
+        // the pause is over the run looks again (`left_behind`): what is
+        // there makes it `NeedsAttention(BackAfterUninstall)`, with one
+        // `BackAfterUninstall` line per path after the three moves, in the
+        // list's order, the path the list names rather than what is inside
+        // it. Nothing is moved again. Here the trasher writes the files
+        // right after the launcher's move, its third call.
+        let program = ".local/share/claude/versions/2.1.282";
+        let cache = ".claude/downloads/claude-2.1.282.tgz";
+        for (tag, recreate, named) in [
+            ("program", vec![program], vec!["~/.local/share/claude"]),
+            ("cache", vec![cache], vec!["~/.claude/downloads"]),
+            (
+                "both",
+                vec![cache, program],
+                vec!["~/.local/share/claude", "~/.claude/downloads"],
+            ),
+        ] {
+            let home = TempHome::new(&format!("removal-exec-back-{tag}"));
+            let layout = claude_layout(&home, "2.1.281");
+            home.dir(".claude/downloads");
+            let d = detected(home.path());
+            let job = claude_job(&d);
+            let preview = plan_removal(&job).unwrap();
+            let recreating = Arc::new(RecreatingTrasher {
+                inner: MockTrasher::new(),
+                after: 2,
+                recreate: recreate.iter().map(|rel| home.path().join(rel)).collect(),
+                calls: StdMutex::new(0),
+            });
+            let trasher: Arc<dyn Trasher> = recreating.clone();
+
+            let (outcome, notes) =
+                run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+            assert_eq!(
+                outcome,
+                Outcome::NeedsAttention(Attention::BackAfterUninstall),
+                "{tag}"
+            );
+            assert_eq!(recreating.inner.calls(), preview.paths, "{tag}: once each");
+            assert_eq!(notes.len(), 3 + named.len(), "{tag}: {notes:?}");
+            assert!(
+                notes[..3]
+                    .iter()
+                    .all(|note| matches!(note, LogNote::MovedToTrash { .. })),
+                "{tag}: {notes:?}"
+            );
+            let back: Vec<LogNote> = named
+                .iter()
+                .map(|path| LogNote::BackAfterUninstall {
+                    path: path.to_string(),
+                })
+                .collect();
+            assert_eq!(notes[3..], back[..], "{tag}");
+            assert!(
+                recreate.iter().all(|rel| home.path().join(rel).is_file()),
+                "{tag}: what came back is left as it is"
+            );
+            assert!(
+                std::fs::symlink_metadata(&layout.launcher).is_err(),
+                "{tag}: the launcher moved"
+            );
+        }
+    }
+
+    /// A trasher that, right after its `after`-th call (0-based) has moved
+    /// its item, takes every permission off `folder`, so nothing inside it
+    /// can be looked at, and gives `0o755` back when dropped, so the temp
+    /// home can be removed.
+    struct LockingTrasher {
+        inner: MockTrasher,
+        after: usize,
+        folder: PathBuf,
+        calls: StdMutex<usize>,
+    }
+
+    impl Trasher for LockingTrasher {
+        fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError> {
+            use std::os::unix::fs::PermissionsExt;
+            let result = self.inner.trash(path, kind);
+            let nth = {
+                let mut calls = self.calls.lock().unwrap();
+                *calls += 1;
+                *calls - 1
+            };
+            if nth == self.after {
+                std::fs::set_permissions(&self.folder, std::fs::Permissions::from_mode(0o000))
+                    .unwrap();
+            }
+            result
+        }
+    }
+
+    impl Drop for LockingTrasher {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.folder, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_is_unconfirmed_when_its_last_look_cannot_tell() {
+        // `~/.claude` loses every permission right after the launcher's
+        // move: whether the cache moved out of it is there again cannot be
+        // told in the look after the pause, and "cannot tell" is not "gone".
+        // `Unconfirmed`, for `run_operation` to read the disk again, and no
+        // line of its own: no path was seen. (Permissions do not stop root:
+        // skipped, and said, when the tests run as root.)
+        let home = TempHome::new("removal-exec-back-unknown");
+        if std::fs::metadata(home.path()).unwrap().uid() == 0 {
+            eprintln!("running as root: permissions stop nothing, check skipped");
+            return;
+        }
+        let _layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let locking = Arc::new(LockingTrasher {
+            inner: MockTrasher::new(),
+            after: 2,
+            folder: home.path().join(".claude"),
+            calls: StdMutex::new(0),
+        });
+        let trasher: Arc<dyn Trasher> = locking.clone();
+
+        let (outcome, notes) =
+            run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, Outcome::Unconfirmed);
+        assert_eq!(locking.inner.calls(), preview.paths);
+        assert_eq!(
+            notes.len(),
+            3,
+            "the three moves and nothing else: {notes:?}"
+        );
     }
 
     #[tokio::test]

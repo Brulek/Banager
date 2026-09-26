@@ -189,6 +189,10 @@ describe("types", () => {
     // What `model.rs`'s `test_needs_attention_is_a_bare_variant_name_on_the_wire`
     // asserts serde emits.
     expect(JSON.stringify(needsAttention)).toBe('{"NeedsAttention":"GoneAfterUpgrade"}');
+    // The same test's line for a path-list uninstall's own last look.
+    const backAfter: Outcome = { NeedsAttention: "BackAfterUninstall" };
+    expect(JSON.stringify(backAfter)).toBe('{"NeedsAttention":"BackAfterUninstall"}');
+    expect(roundTrip(backAfter)).toEqual(backAfter);
     expect(roundTrip(failed)).toEqual({ Failed: { exit_code: 1, summary: "boom" } });
     expect(JSON.stringify(failed)).toBe('{"Failed":{"exit_code":1,"summary":"boom"}}');
 
@@ -353,6 +357,14 @@ describe("types", () => {
     };
     expect(JSON.stringify(outOfTime)).toBe(
       '{"Note":{"op_id":7,"note":{"OutOfTime":{"path":"~/.local/bin/claude","seconds":120}}}}',
+    );
+    // The fourth: a path on the list that was there when the run
+    // looked once more, after the pause that follows its last move.
+    const backAfter: OperationEvent = {
+      Note: { op_id: 7, note: { BackAfterUninstall: { path: "~/.local/share/claude" } } },
+    };
+    expect(JSON.stringify(backAfter)).toBe(
+      '{"Note":{"op_id":7,"note":{"BackAfterUninstall":{"path":"~/.local/share/claude"}}}}',
     );
     const parsedUiEvent = roundTrip(uiEvent);
     expect("Operation" in parsedUiEvent && parsedUiEvent.Operation).toEqual({

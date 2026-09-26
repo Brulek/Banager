@@ -234,7 +234,8 @@
       "readFailedStderr": "Canager 无法继续读取该命令的错误信息（{{error}}），错误信息到此为止。",
       "movedToTrash": "已把 {{path}} 移到废纸篓（现在在 {{trashedTo}}）。",
       "trashFailed": "没能把 {{path}} 移到废纸篓，卸载在这里停下了。系统给出的原因是：{{error}}",
-      "outOfTime": "这次卸载可用的 {{seconds}} 秒已经用完，Canager 在移动 {{path}} 之前停下了。之前已经移走的都在废纸篓里，其余的没有动过。可以再卸载一次，把剩下的移走。"
+      "outOfTime": "这次卸载可用的 {{seconds}} 秒已经用完，Canager 在移动 {{path}} 之前停下了。之前已经移走的都在废纸篓里，其余的没有动过。可以再卸载一次，把剩下的移走。",
+      "backAfterUninstall": "清单上的东西都移到废纸篓之后，{{path}} 又回来了。Canager 没有动它。"
     },
     "kind": {
       "Install": "正在安装",
@@ -258,7 +259,8 @@
         "NotInstalledAfterInstall": "需要留意：安装命令显示成功，但实际并没有装上",
         "StillInstalledAfterUninstall": "需要留意：卸载看似成功，但实际仍未移除",
         "GoneAfterUpgrade": "需要留意：更新命令显示成功，但更新后它已不见了",
-        "UnchangedAfterUpgrade": "需要留意：更新命令显示成功，但版本和更新前一样，程序并没有更新它。操作日志里也许能看到原因。"
+        "UnchangedAfterUpgrade": "需要留意：更新命令显示成功，但版本和更新前一样，程序并没有更新它。操作日志里也许能看到原因。",
+        "BackAfterUninstall": "需要留意：清单上的东西都已移到废纸篓，但之后有一部分又回来了（还在运行的这个工具就可能这样）。操作日志里写着回来的是什么。请先退出这个工具；如果列表里还有它，就再卸载一次，否则请自己把回来的东西移到废纸篓。"
       },
       "Failed": "失败：{{summary}}",
       "FailedSilent": "失败。这个程序没有说明原因，操作日志里也许能看到更多。",

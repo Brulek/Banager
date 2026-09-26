@@ -648,6 +648,33 @@ async fn test_the_reading_after_an_uninstall_is_handed_the_plan_the_uninstall_ca
 }
 
 #[tokio::test]
+async fn test_a_path_list_uninstalls_own_needs_attention_passes_the_reading_after_unchanged() {
+    // A path-list uninstall that moved everything and then found part of
+    // what its list names there reports that itself, from its own look
+    // after its last pause (`removal::execute_removal`). `run_operation`
+    // still takes the reading after, and passes an `execute` answer that
+    // is neither `Succeeded` nor `Unconfirmed` on as it is -- whether that
+    // reading says gone, still there, or cannot tell.
+    for still_there in [Some(false), Some(true), None] {
+        let (outcome, calls) = run_split(
+            OpKind::Uninstall,
+            SplitReadingAdapter::new(
+                still_there,
+                Outcome::NeedsAttention(Attention::BackAfterUninstall),
+                false,
+            ),
+        )
+        .await;
+        assert_eq!(
+            outcome,
+            Outcome::NeedsAttention(Attention::BackAfterUninstall),
+            "{still_there:?}"
+        );
+        assert_eq!(calls, vec!["execute", "reconcile_after_uninstall"]);
+    }
+}
+
+#[tokio::test]
 async fn test_an_adapter_that_does_not_override_it_verifies_an_uninstall_with_reconcile() {
     // The trait's default: every source but the standalone one keeps
     // verifying an uninstall exactly as before this method existed.

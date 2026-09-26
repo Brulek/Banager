@@ -1103,7 +1103,9 @@ impl StandaloneAdapter {
     /// for the launcher. What the preview's own rule keeps as not the
     /// tool's, and this run never moved, is not counted (`left_behind`
     /// says why). A launcher still there answers alone: the tool is there,
-    /// whatever else is.
+    /// whatever else is. (`removal::execute_removal` takes the same look
+    /// itself once the pause after its last move is over, and names what
+    /// it finds; this reading, a moment later, sees what came back since.)
     pub async fn reconcile_after_uninstall(
         &self,
         inst: &ManagerInstance,

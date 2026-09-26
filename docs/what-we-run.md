@@ -697,15 +697,21 @@ already under way is always finished first) — always leaves it: a stop
 before the first move changes nothing, and the row stays as it was; once
 the program files are in the Trash, the next refresh shows the
 launcher-only row, and its Uninstall lists them as already gone and
-moves the rest. Afterwards Canager looks for the launcher again, and for
-every other path on the list (`reconcile_after_uninstall`,
-`removal::left_behind`): a Claude Code still running can put its program
-files or its cache back after the launcher has gone to the Trash, and
-with the launcher gone no row would show them. The uninstall is reported
-as succeeded only when all of them are gone, and as unconfirmed when
-Canager cannot tell (a folder it may not read, say); a path the preview's
-own rule keeps as not Claude Code's, and that the uninstall never moved,
-is not counted.
+moves the rest. A Claude Code still running can put its program files or
+its cache back after the launcher has gone to the Trash, and with the
+launcher gone no row would show them. So once the pause after the last
+move is over, Canager looks for every other path on the list once more
+(`removal::left_behind`): each one that is there is named in the
+operation log (`LogNote::BackAfterUninstall`) and left where it is, and
+the uninstall is reported as needing attention
+(`Attention::BackAfterUninstall`) — quit Claude Code, then uninstall it
+again if it is still listed, or move what came back to the Trash
+yourself. Then Canager looks for the launcher again and, when it is
+gone, for every other path on the list (`reconcile_after_uninstall`):
+the uninstall is reported as succeeded only when all of them are gone,
+and as unconfirmed when Canager cannot tell (a folder it may not read,
+say). Neither look counts a path the preview's own rule keeps as not
+Claude Code's and that the uninstall never moved.
 
 ## Antigravity CLI
 
@@ -1326,10 +1332,13 @@ one gap remains: Canager checks each item immediately before moving it;
 a program running as you that swaps the item in that instant could still
 race it. Each move is written to the operation log with where the item
 now is (`LogNote::MovedToTrash`); an item macOS refuses stops the
-uninstall there, with macOS's own reason (`LogNote::TrashFailed`); and
-when the time budget runs out between items, the log names the item the
+uninstall there, with macOS's own reason (`LogNote::TrashFailed`); when
+the time budget runs out between items, the log names the item the
 uninstall stopped before and the budget it ran out of
-(`LogNote::OutOfTime`). After each move Canager waits 3 seconds
+(`LogNote::OutOfTime`); and a path on the list that is there once the
+pause after the last move is over is named too, and left where it is
+(`LogNote::BackAfterUninstall`; the Claude Code section says why).
+After each move Canager waits 3 seconds
 (`removal::PUT_BACK_SETTLE`) before it moves anything else, and before it
 reports the uninstall finished. That holds across uninstalls: up to three
 operations run at once and each path-list uninstall locks only its own

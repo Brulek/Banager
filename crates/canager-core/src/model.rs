@@ -781,9 +781,12 @@ pub enum Outcome {
     /// (`run_operation`). A cancel that lost the race to the command
     /// finishing is `Succeeded`, not this.
     Cancelled,
-    /// The command reported success but reconcile disagrees. Carries
-    /// which disagreement, never a sentence: the front end words it in the
-    /// user's language (the drawer and the operation bar both show it).
+    /// The command reported success but reconcile disagrees -- or a
+    /// path-list uninstall moved everything on its list and then found part
+    /// of what the list names there (`Attention::BackAfterUninstall`, from
+    /// its own last look). Carries which disagreement, never a sentence: the
+    /// front end words it in the user's language (the drawer and the
+    /// operation bar both show it).
     NeedsAttention(Attention),
     /// Another program failed the operation, and `summary` is that
     /// program's own words and nothing of Canager's: the front end shows it
@@ -893,7 +896,8 @@ pub enum Fault {
 }
 
 /// What reconcile found that the command's own success did not account
-/// for. See [`Outcome::NeedsAttention`].
+/// for -- or, for `BackAfterUninstall`, what a path-list uninstall's own
+/// last look found. See [`Outcome::NeedsAttention`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attention {
     /// An install exited 0 and the item is not installed.
@@ -912,6 +916,19 @@ pub enum Attention {
     /// this only when two reads of the installed version, one taken before
     /// the command and one after, both succeeded and are equal.
     UnchangedAfterUpgrade,
+    /// A path-list uninstall moved every path on its list to the Trash,
+    /// and when it looked once more, after the pause that follows its last
+    /// move (`removal::left_behind`), part of what its list names was
+    /// there: a path it moved, back again -- a copy of the tool still
+    /// running can put its program folder or its download cache back --
+    /// or one it never moved, there now. Nothing is moved again, and each
+    /// such path has its own `LogNote::BackAfterUninstall` line. The
+    /// launcher moved too, so unless it is back as well no row shows what
+    /// came back: this outcome and those lines do. Built by
+    /// `removal::execute_removal` (`adapters/standalone/removal.rs`), which
+    /// `run_operation` passes on unchanged; read by `attentionKey` in
+    /// src/lib/format.ts.
+    BackAfterUninstall,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1381,6 +1398,11 @@ mod tests {
             serde_json::to_string(&Outcome::NeedsAttention(Attention::UnchangedAfterUpgrade))
                 .unwrap(),
             r#"{"NeedsAttention":"UnchangedAfterUpgrade"}"#
+        );
+        // A path-list uninstall's own last look (`removal::execute_removal`).
+        assert_eq!(
+            serde_json::to_string(&Outcome::NeedsAttention(Attention::BackAfterUninstall)).unwrap(),
+            r#"{"NeedsAttention":"BackAfterUninstall"}"#
         );
     }
 

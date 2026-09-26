@@ -285,9 +285,9 @@ async fn test_uninstalling_grok_past_another_programs_agent_link_the_preview_kep
     // program's link, so the preview keeps it and says so, and the
     // uninstall moves everything else. The link is still there afterwards
     // and this run never moved it; the preview's own rule keeps it as not
-    // grok's, so the reading after the moves does not count it as grok
-    // left behind: `Succeeded`, the link untouched, and no grok row on the
-    // next refresh.
+    // grok's, so neither the run's own last look nor the reading after it
+    // counts it as grok left behind: `Succeeded`, the link untouched, and
+    // no grok row on the next refresh.
     let home = Home::new("grok-foreign-agent");
     let other = home.executable("other-cli/agent");
     let agent = home.link(".local/bin/agent", &other);

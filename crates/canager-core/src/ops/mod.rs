@@ -751,8 +751,10 @@ impl OperationManager {
             // Monitor, `kill`, a crash), into this; a path-list uninstall
             // (adapters/standalone/removal.rs) returns it for a Cancel or
             // a spent budget before an item and for an item whose move
-            // panicked; brew's own Cancel, while it waits for a `brew
-            // update`, is `Cancelled` before its command starts. The
+            // panicked -- and also once every item moved, when its last
+            // look cannot tell whether a listed path is there; brew's
+            // own Cancel, while it waits for a `brew update`, is
+            // `Cancelled` before its command starts. The
             // reading after it tells us the artifact's *current* state,
             // not whether this op caused it. Presence is proof enough for
             // Install (wasn't there, now is) and Uninstall (was there, now
@@ -831,6 +833,11 @@ impl OperationManager {
                     },
                 }
             }
+            // Anything else `execute` answered stands as it is, whatever
+            // the reading after says -- a tool's own `Failed`, Canager's
+            // `CanagerFailed`, brew's `Cancelled` before its command starts,
+            // and a path-list uninstall's `NeedsAttention(BackAfterUninstall)`,
+            // which its own last look found (adapters/standalone/removal.rs).
             Ok(other) => other,
             Err(e) => execute_error_outcome(e),
         };

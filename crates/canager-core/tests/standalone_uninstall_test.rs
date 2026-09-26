@@ -18,11 +18,11 @@
 use canager_core::adapters::standalone::recipes::CLAUDE;
 use canager_core::adapters::standalone::StandaloneAdapter;
 use canager_core::adapters::{Adapter, CheckOptions};
-use canager_core::events::{OpId, VecSink};
+use canager_core::events::{LogNote, OpId, OperationEvent, VecSink};
 use canager_core::http::{HttpResponse, MockHttpClient};
 use canager_core::model::{
-    ArtifactKind, Fault, InstanceNote, ItemKind, KeptWhat, OpKind, OpRequest, OpStatus, Outcome,
-    PlanAction, RemovedWhat, Warning,
+    ArtifactKind, Attention, Fault, InstanceNote, ItemKind, KeptWhat, OpKind, OpRequest, OpStatus,
+    Outcome, PlanAction, RemovedWhat, Warning,
 };
 use canager_core::runner::{CommandOutput, HostEnv, MockRunner};
 use canager_core::session::Session;
@@ -118,6 +118,12 @@ fn tree(root: &Path) -> BTreeSet<PathBuf> {
 /// scripted, whose update check answers "no newer version", and whose Trash
 /// is `trasher`, with no pause after each item.
 fn session_with(launcher: &Path, trasher: Arc<dyn Trasher>) -> Arc<Session> {
+    session_over(launcher, trasher, Arc::new(VecSink::new()))
+}
+
+/// `session_with`, its events -- the operation log among them -- going to
+/// `sink`.
+fn session_over(launcher: &Path, trasher: Arc<dyn Trasher>, sink: Arc<VecSink>) -> Arc<Session> {
     let runner = Arc::new(MockRunner::new());
     runner.respond(
         vec![launcher.to_str().unwrap(), "--version"],
@@ -139,11 +145,7 @@ fn session_with(launcher: &Path, trasher: Arc<dyn Trasher>) -> Arc<Session> {
     );
     let adapter =
         StandaloneAdapter::new(&CLAUDE, runner, http, trasher).with_trash_gap(Duration::ZERO);
-    Session::with_adapters(
-        Arc::new(VecSink::new()),
-        vec![Arc::new(adapter) as Arc<dyn Adapter>],
-        None,
-    )
+    Session::with_adapters(sink, vec![Arc::new(adapter) as Arc<dyn Adapter>], None)
 }
 
 fn uninstall() -> OpRequest {
@@ -567,6 +569,100 @@ async fn test_an_uninstall_whose_last_reading_cannot_tell_is_unconfirmed_not_suc
 
     assert_eq!(outcome_of(&session, op_id).await, Outcome::Unconfirmed);
     assert_eq!(trasher.inner.calls().len(), 3, "every item was moved");
+}
+
+/// A `MockTrasher` that, right after its `after_call`-th move, writes the
+/// file `recreate` (folders made as needed): after the third -- the
+/// launcher's -- what a copy of Claude Code still running can do during
+/// the pause that follows it.
+struct RecreatingTrasher {
+    inner: MockTrasher,
+    after_call: usize,
+    recreate: PathBuf,
+}
+
+impl Trasher for RecreatingTrasher {
+    fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError> {
+        let moved = self.inner.trash(path, kind)?;
+        if self.inner.calls().len() == self.after_call {
+            std::fs::create_dir_all(self.recreate.parent().unwrap()).expect("its folders");
+            std::fs::write(&self.recreate, b"#!/bin/sh\n").expect("the file");
+        }
+        Ok(moved)
+    }
+}
+
+#[tokio::test]
+async fn test_what_comes_back_after_the_launchers_move_needs_attention_and_the_log_names_it() {
+    // The finding behind the run's last look: the launcher's move is the
+    // last, a copy of Claude Code still running can put its program folder
+    // or its cache back in the pause that follows it, and with the launcher
+    // gone the next refresh shows no row for it. So the uninstall is not
+    // reported as succeeded: `NeedsAttention(BackAfterUninstall)`, and the
+    // operation log names the path that came back, once. The program
+    // folder (a newer version written into it), then the cache (a download
+    // written into it).
+    for (tag, recreate, named) in [
+        (
+            "program",
+            ".local/share/claude/versions/2.1.282",
+            "~/.local/share/claude",
+        ),
+        (
+            "cache",
+            ".claude/downloads/claude-2.1.282.tgz",
+            "~/.claude/downloads",
+        ),
+    ] {
+        let home = Home::new(&format!("back-{tag}"));
+        let launcher = claude_layout(home.path());
+        let trasher = Arc::new(RecreatingTrasher {
+            inner: MockTrasher::new(),
+            after_call: 3,
+            recreate: home.path().join(recreate),
+        });
+        let sink = Arc::new(VecSink::new());
+        let session = session_over(&launcher, trasher.clone(), sink.clone());
+        session.refresh(&home.env(), &CheckOptions::default()).await;
+        let issued = session.issue_plan(&uninstall()).await.expect("preview");
+
+        let op_id = session.submit(issued.id).expect("submit");
+
+        assert_eq!(
+            outcome_of(&session, op_id).await,
+            Outcome::NeedsAttention(Attention::BackAfterUninstall),
+            "{tag}"
+        );
+        assert_eq!(trasher.inner.calls().len(), 3, "{tag}: each item once");
+        let came_back: Vec<LogNote> = sink
+            .snapshot()
+            .into_iter()
+            .filter_map(|event| match event {
+                OperationEvent::Note { op_id: id, note } if id == op_id => Some(note),
+                _ => None,
+            })
+            .filter(|note| matches!(note, LogNote::BackAfterUninstall { .. }))
+            .collect();
+        assert_eq!(
+            came_back,
+            vec![LogNote::BackAfterUninstall {
+                path: named.to_string()
+            }],
+            "{tag}"
+        );
+        assert!(home.path().join(recreate).is_file(), "{tag}: left as it is");
+        // This outcome and that line are all that shows it: the launcher is
+        // gone, so the next refresh lists no row (docs/superpowers/
+        // backlog.md, phase 4's known gaps, has what would give it one).
+        let snapshot = session.refresh(&home.env(), &CheckOptions::default()).await;
+        assert!(
+            snapshot
+                .instances
+                .iter()
+                .all(|i| i.id != "standalone-claude"),
+            "{tag}"
+        );
+    }
 }
 
 #[tokio::test]
