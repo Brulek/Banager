@@ -9,7 +9,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 829 Rust tests (plus 3 more
+> **Status: pre-release.** The core and the UI work and are covered by 831 Rust tests (plus 3 more
 > that touch a real Homebrew or the real Trash and only run with `--ignored`) and 376 front-end
 > tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
 > rely on.
@@ -176,11 +176,12 @@ Three kinds of text are shown as-is:
   request failed: ...", "PyPI returned status 503", "could not parse PyPI response: ..."), Cargo's
   equivalent for crates.io, Ollama's for its own registry, Claude Code's for its release channel,
   rustup's for its release file, and Antigravity CLI's for its manifest (or, on an Intel Mac, why
-  it made no request); and the two about the installed version ("cannot read the installed
-  version now", "cannot compare the installed version ... with the published ...") from the code
-  Claude Code, Antigravity CLI, Grok Build and rustup share. They should all become structured
-  payloads like the refusals above, and until they do, what a Chinese user sees there with the
-  switch on is in English.
+  it made no request); and the two about the installed version: "cannot read the installed version
+  now", from the code Claude Code, Antigravity CLI, Grok Build and rustup share, and "cannot
+  compare the installed version ... with the published ...", from Claude Code, Antigravity CLI and
+  rustup only, since Grok Build's check takes grok's own answer and compares no versions. They
+  should all become structured payloads like the refusals above, and until they do, what a Chinese
+  user sees there with the switch on is in English.
 
 ## Design notes
 
@@ -205,7 +206,7 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 829 个 Rust 测试（另有 3 个要连着真实的
+**目前处于发布前阶段**，核心与界面已经可用、有 831 个 Rust 测试（另有 3 个要连着真实的
 Homebrew 或真实的废纸篓才跑，平时是跳过的）和 376 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
@@ -238,9 +239,10 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   （它还另有几句：回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
   pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的发布通道、rustup 查它的发布文件、
   Antigravity CLI 查它的版本清单（在 Intel Mac 上则是它为什么没发请求）——各自请求失败、返回状态异常、
-  解析失败时的原文提示；还有 Claude Code、Antigravity CLI、Grok Build 与 rustup 共用的代码里的两句原文提示：
-  读不到已安装版本、或已安装版本与发布版本无法比较。这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，
-  中文用户在开关打开时看到的，就是英文。
+  解析失败时的原文提示；还有两句关于已安装版本的原文提示：读不到已安装版本，出自 Claude Code、
+  Antigravity CLI、Grok Build 与 rustup 共用的代码；已安装版本与发布版本无法比较，只出自 Claude Code、
+  Antigravity CLI 与 rustup，因为 Grok Build 的检查直接采信 grok 自己的回答，不比较版本。
+  这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，中文用户在开关打开时看到的，就是英文。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
 点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew
