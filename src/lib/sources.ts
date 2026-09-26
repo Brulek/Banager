@@ -276,7 +276,10 @@ export function sourceNoticesFor(
         descriptionKey: "sourceNotice.indexUpdating.description",
       });
     } else if (note === "NotOnPath") {
-      // The four "which copy runs" notes of a standalone tool (spec §七).
+      // The four PATH notes of a standalone tool (spec §七): typing its
+      // name may not run this copy, because no executable with that name
+      // on PATH is this copy, or because another program with that name
+      // comes first.
       // Info, not warning: the install works, the user just needs to know
       // what typing its name does. `{{command}}` is the launcher's file
       // name -- the word the user types -- not its path, which this

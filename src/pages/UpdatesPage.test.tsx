@@ -1837,21 +1837,22 @@ describe("UpdatesPage", () => {
   // puts under the source's heading.
   const pathNotes: [InstanceNote, string][] = [
     ["NotOnPath", "Claude Code isn't in your PATH"],
-    ["ShadowedByHomebrew", "Another copy runs when you type claude"],
-    ["ShadowedByNpm", "Another copy runs when you type claude"],
-    ["ShadowedByOther", "Another copy runs when you type claude"],
+    ["ShadowedByHomebrew", "Another program named claude runs when you type claude"],
+    ["ShadowedByNpm", "Another program named claude runs when you type claude"],
+    ["ShadowedByOther", "Another program named claude runs when you type claude"],
   ];
 
   it.each(pathNotes)(
     "tells a self-updating standalone copy under a %s notice that it is behind, not to just run it",
     async (note, noticeTitle) => {
       // Typing `claude` in Terminal probably does not run this copy: it
-      // is not on PATH, so nothing or another copy runs (`NotOnPath`), or
-      // another copy is found on PATH before it (`ShadowedBy*`) -- the
-      // notice under this heading says which. This copy updates itself
-      // only when it runs (spec §4.4), so "or just run it" would leave it
-      // behind with its badge up. The row keeps its button and says only
-      // that this copy is behind and that Canager can update it.
+      // is not on PATH, so nothing or another program named `claude` runs
+      // (`NotOnPath`), or another program with that name is found on PATH
+      // before it (`ShadowedBy*`) -- the notice under this heading says
+      // which. This copy updates itself only when it runs (spec §4.4), so
+      // "or just run it" would leave it behind with its badge up. The row
+      // keeps its button and says only that this copy is behind and that
+      // Canager can update it.
       instances = [
         ...snapshot.instances,
         { ...claudeInstance, status: { unavailable: null, notes: [note] } },
@@ -1874,7 +1875,7 @@ describe("UpdatesPage", () => {
   );
 
   it.each(pathNotes)(
-    "says everything is up to date under a %s notice: which copy runs is not whether Canager could check it",
+    "says everything is up to date under a %s notice: what typing the name runs is not whether Canager could check it",
     async (note, noticeTitle) => {
       // One source, Claude Code, which answered: with no updates listed,
       // Canager read this copy's version and the published one, and the

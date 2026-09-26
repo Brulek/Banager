@@ -238,10 +238,10 @@ describe("sourceNoticesFor", () => {
     version: "2.1.281",
   });
 
-  it("tells a standalone tool's user which copy runs when they type its name", () => {
+  it("tells a standalone tool's user when typing its name may not run this copy", () => {
     // Four payload-free notes, four actionable sentences (spec §七): the
-    // path of the winning copy is not in the notice -- the user this app
-    // is for would not recognise it -- but the command name is, so the
+    // path of what PATH finds first is not in the notice -- the user this
+    // app is for would not recognise it -- but the command name is, so the
     // sentence can say "when you type claude".
     for (const [note, id, key] of [
       ["NotOnPath", "not-on-path", "sourceNotice.notOnPath"],
@@ -306,8 +306,8 @@ describe("sourceNoticesFor", () => {
       ] as const) {
         expect(locale.sourceNotice[key].description).toContain("{{command}}");
       }
-      // The three "another copy runs" notices share one title, and the
-      // three descriptions each name the other copy differently.
+      // The three "another program with that name runs" notices share one
+      // title, and two of the descriptions say whose directory it is in.
       expect(locale.sourceNotice.shadowedByNpm.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
       expect(locale.sourceNotice.shadowedByOther.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
       expect(locale.sourceNotice.shadowedByHomebrew.description).toContain("Homebrew");
@@ -333,15 +333,18 @@ describe("sourceNoticesFor", () => {
     }
   });
 
-  it("has the not-on-PATH notice say typing the name won't find this copy, and that Terminal then finds nothing or runs another copy, in both locales", () => {
-    // NotOnPath is also the note when another copy is on PATH and this one
-    // is not (route::shadow_note): typing the name then runs that other
-    // copy. So the sentence says it is this copy that won't be found, and
-    // names both outcomes, instead of reading as "nothing runs".
+  it("has the not-on-PATH notice say typing the name won't find this copy, and that Terminal then finds nothing or runs another program with that name, in both locales", () => {
+    // NotOnPath is also the note when another executable with the tool's
+    // name is on PATH and this copy is not (route::shadow_note): typing the
+    // name then runs that other program, which may or may not be another
+    // copy of the tool. So the sentence says it is this copy that won't be
+    // found, and names both outcomes, instead of reading as "nothing runs".
     expect(en.sourceNotice.notOnPath.description).toContain("probably won't find this copy");
-    expect(en.sourceNotice.notOnPath.description).toContain("either finds nothing or runs another copy");
+    expect(en.sourceNotice.notOnPath.description).toContain(
+      "either finds nothing or runs another program named {{command}}",
+    );
     expect(zhCN.sourceNotice.notOnPath.description).toContain("多半找不到这一份");
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("要么什么也找不到，要么运行的是另一份");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("要么什么也找不到，要么运行的是另一个同名程序");
   });
 
   it("has the not-on-PATH notice say no executable entry on PATH reaches this copy, and give the missing folder as the likely cause, in both locales", () => {
@@ -360,6 +363,36 @@ describe("sourceNoticesFor", () => {
     expect(zhCN.sourceNotice.notOnPath.description).toContain("没有一个可执行的 {{command}} 通向这一份");
     expect(zhCN.sourceNotice.notOnPath.description).toContain("最可能的原因是它所在的文件夹不在 PATH 里");
     expect(zhCN.sourceNotice.notOnPath.description).not.toMatch(/这一份：它所在的文件夹/);
+  });
+
+  it("calls what PATH finds instead another program with the tool's name, never another copy, in both locales: it may only share the name", () => {
+    // Step D's review: route::shadow_note compares the name the user types
+    // and where the first executable of that name resolves -- a Homebrew
+    // directory, an npm one, or anywhere else -- never what program it is.
+    // Homebrew's formula `grok`, a regular-expression tool, gets the very
+    // note that the `grok` of Homebrew's cask `grok-build`, which is Grok
+    // Build, gets; npm's package `grok-cli`, a third-party wrapper, puts a
+    // `grok` on PATH that is not Grok Build either (route.rs,
+    // test_shadow_note_classifies_by_where_the_first_one_resolves_not_by_what_program_it_is).
+    // So the three notices name another program with the same name, say it
+    // may be another copy or a different program, and none of the four
+    // PATH notices calls it a copy.
+    for (const key of ["shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
+      expect(en.sourceNotice[key].title).toBe("Another program named {{command}} runs when you type {{command}}");
+      expect(zhCN.sourceNotice[key].title).toBe("输入 {{command}} 时运行的是另一个同名程序");
+      expect(en.sourceNotice[key].description).toContain(
+        "It may be another copy of {{source}}, or a different program that happens to have the same name.",
+      );
+      expect(zhCN.sourceNotice[key].description).toContain(
+        "它可能是 {{source}} 的另一份安装，也可能只是碰巧同名的另一个程序。",
+      );
+    }
+    for (const key of ["notOnPath", "shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
+      expect(en.sourceNotice[key].title).not.toMatch(/copy/i);
+      expect(en.sourceNotice[key].description).not.toMatch(/runs? (that other|another) copy/);
+      expect(zhCN.sourceNotice[key].title).not.toMatch(/另一份/);
+      expect(zhCN.sourceNotice[key].description).not.toMatch(/运行的是另一份/);
+    }
   });
 
   it("points at the tool's official documentation, not at a website Canager doesn't show, when the launcher is left without its program", () => {

@@ -551,10 +551,14 @@ first regular file named `claude` with executable bits in Canager's
 notice. When it is another file, Canager looks on down `PATH` the same
 way for a `claude` that resolves to this copy, stopping at the first
 that does or at the end of `PATH`, and says so under the source:
-shadowed by a Homebrew, npm or unknown copy (the first one, by where it
-resolves) when this copy comes later on `PATH`, or not on `PATH` when no
-such file is this copy — also the notice when `PATH` has no executable
-`claude` at all — whether typing `claude` then finds nothing or another
+another program named `claude` comes first — from Homebrew, from npm or
+from somewhere else, by where the first one resolves — when this copy
+comes later on `PATH`, or not on `PATH` when no such file is this copy —
+also the notice when `PATH` has no executable `claude` at all — whether
+typing `claude` then finds nothing or another program with that name.
+Where a `claude` resolves does not say what program it is, so the first
+of those notices says it may be another copy of Claude Code or a
+different program with the same name, and neither calls it another
 copy. Both looks are reads (`stat`, `realpath`; listed under Files
 Canager reads); that is a notice, not a command.
 
@@ -813,7 +817,13 @@ very read it holds. The version is the second token of the first
 non-empty line (`grok 1.0.41 (4220f3b224a6)`).
 
 Canager also asks where `grok` would run from if typed in Terminal and
-says so under the source. That is a notice, not a command.
+says so under the source, as it does for Claude Code. The `grok` of the
+formula above, and that of npm's package `grok-cli` (a third-party
+wrapper), are not Grok Build. Canager tells where a `grok` resolves — a
+Homebrew directory, an npm one or anywhere else — not which program it
+is, so the notice calls a `grok` that comes first another program with
+that name, which may or may not be Grok Build, and never another copy.
+That is a notice, not a command.
 
 **Read-only commands** (background checks that install nothing and never
 need a password; grok's own check writes inside `~/.grok`, below):

@@ -108,24 +108,30 @@ pub enum InstanceNote {
     /// Typing this tool's name in Terminal would not find this copy: no
     /// executable of that name on the `PATH` Canager sees is it (usually
     /// because the directory its launcher lives in is not on that `PATH`).
-    /// The name then finds nothing, or another copy; either way this is
-    /// the note, not a `ShadowedBy*` one, which would put that copy
-    /// earlier on `PATH` than one that is not on it. Produced by
-    /// `StandaloneAdapter::detect` (`route::shadow_note`) for a tool
-    /// installed by its own installer; read by `sourceNoticesFor` in
+    /// The name then finds nothing, or another program with that name;
+    /// either way this is the note, not a `ShadowedBy*` one, which would
+    /// put that program earlier on `PATH` than a copy that is not on it.
+    /// Produced by `StandaloneAdapter::detect` (`route::shadow_note`) for a
+    /// tool installed by its own installer; read by `sourceNoticesFor` in
     /// src/lib/sources.ts.
     NotOnPath,
-    /// Typing the name runs a copy Homebrew installed instead of this one,
-    /// and this one is on `PATH` behind it: the first executable of that
-    /// name on `PATH` resolves under a `Cellar` or `Caskroom` directory,
-    /// and a later one is this copy. Same producer and reader as
-    /// `NotOnPath`.
+    /// Typing the name runs another program with that name instead of this
+    /// copy, and this copy is on `PATH` behind it: the first executable of
+    /// that name on `PATH` resolves under a `Cellar` or `Caskroom`
+    /// directory (Homebrew's), and a later one is this copy. Where it
+    /// resolves is all the note says: it may be another copy of the tool
+    /// or a different program with the same name (Homebrew's formula
+    /// `grok` is a regular-expression tool, not Grok Build), so its notice
+    /// never calls it a copy. Same producer and reader as `NotOnPath`.
     ShadowedByHomebrew,
-    /// As `ShadowedByHomebrew`, for a copy npm installed (it resolves under
-    /// a `node_modules` directory).
+    /// As `ShadowedByHomebrew`, for one that resolves under a
+    /// `node_modules` directory (npm's; the `grok` of its package
+    /// `grok-cli`, a third-party wrapper, resolves there and is not Grok
+    /// Build).
     ShadowedByNpm,
-    /// As `ShadowedByHomebrew`, for a copy Canager does not recognise; the
-    /// Unknown page may show where it is.
+    /// As `ShadowedByHomebrew`, for one that resolves anywhere else, or
+    /// that Canager could not resolve; the Unknown page may show where it
+    /// is.
     ShadowedByOther,
     /// The launcher is still there but points at program files that are
     /// gone: the program directory was removed by hand or by another tool,

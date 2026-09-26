@@ -141,12 +141,12 @@ function hasPlanError(item: BatchItem): item is BatchItem & { planError: string 
 /**
  * Whether each note says that typing the tool's name in Terminal may not
  * run this instance's copy: this copy is not on the PATH Canager sees, so
- * the name finds nothing there or another copy (`NotOnPath`); another
- * copy is found there before this one (`ShadowedBy*`); or the launcher's
- * program files are gone (`LauncherOnly`). Read by `selfUpdatingHintKey`:
- * "or just run it" updates this copy only where typing the name runs it.
- * A `Record`, so a note added to `InstanceNote` without an answer here
- * fails `tsc`.
+ * the name finds nothing there or another program with that name
+ * (`NotOnPath`); another program with that name is found there before this
+ * copy (`ShadowedBy*`); or the launcher's program files are gone
+ * (`LauncherOnly`). Read by `selfUpdatingHintKey`: "or just run it"
+ * updates this copy only where typing the name runs it. A `Record`, so a
+ * note added to `InstanceNote` without an answer here fails `tsc`.
  */
 const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   // Homebrew's: about its list of software, not about which copy runs.
@@ -167,8 +167,8 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
  * list that may be out of date; it is still downloading (`IndexUpdating`),
  * so they were not checked this time at all; or the launcher is left
  * without its program (`LauncherOnly`), so there is no installed version
- * to check. The four PATH notes are about which copy runs when the tool's
- * name is typed in Terminal, not about the check. Read by
+ * to check. The four PATH notes are about what runs when the tool's name
+ * is typed in Terminal, not about the check. Read by
  * `everySourceChecked`, which chooses the sentence the page shows when
  * there are no updates at all. A `Record`, so a note added to
  * `InstanceNote` without an answer here fails `tsc`.

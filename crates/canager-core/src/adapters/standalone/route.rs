@@ -322,16 +322,22 @@ pub fn lexical_join(dir: &Path, target: &Path) -> PathBuf {
     out
 }
 
-/// Which copy runs when the user types `command`, given that this
-/// instance's binary is `real` (spec §七): `None` when the first
-/// executable `command` on `PATH` is this very file; `NotOnPath` when no
-/// executable `command` on `PATH` is, since typing the name then never
-/// runs this copy, whether it finds nothing or another copy; otherwise --
-/// this file is on `PATH`, behind another copy -- the `ShadowedBy*` note
-/// classifying the first one. Payload-free on purpose (`InstanceNote`'s
-/// rule, from the instance-level channel spec's §2.3, restated in spec
-/// §七); the sentence names the command, which the user knows, not the
-/// winner's path, which they would not.
+/// Whether typing `command` runs this copy, given that this instance's
+/// binary is `real` (spec §七): `None` when the first executable `command`
+/// on `PATH` is this very file; `NotOnPath` when no executable `command`
+/// on `PATH` is, since typing the name then never runs this copy, whether
+/// it finds nothing or another program with that name; otherwise -- this
+/// file is on `PATH`, behind another executable with that name -- the
+/// `ShadowedBy*` note classifying the first one by where it resolves. Only
+/// by where, which does not say what program it is: Homebrew's formula
+/// `grok`, a regular-expression tool, gets the same `ShadowedByHomebrew`
+/// as the `grok` of Homebrew's cask `grok-build`, which is Grok Build, and
+/// the `grok` of npm's package `grok-cli`, a third-party wrapper, gets
+/// `ShadowedByNpm`. So the notices call the first one another program
+/// with that name, never another copy. Payload-free on purpose
+/// (`InstanceNote`'s rule, from the instance-level channel spec's §2.3,
+/// restated in spec §七); the sentence names the command, which the user
+/// knows, not the winner's path, which they would not.
 pub fn shadow_note(command: &str, env: &HostEnv, real: &Path) -> Option<InstanceNote> {
     // Standalone-only lookup: changing the shared package-manager
     // discovery helper would broaden this step beyond its PATH notices.
@@ -1057,13 +1063,13 @@ mod tests {
     }
 
     #[test]
-    fn test_shadow_note_says_not_on_path_when_another_copy_is_on_path_and_this_one_is_not() {
+    fn test_shadow_note_says_not_on_path_when_a_namesake_is_on_path_and_this_copy_is_not() {
         // The launcher's directory is missing from PATH and no link to
         // this copy is on it, so typing the name never runs this copy,
-        // whatever copy PATH finds instead. A `ShadowedBy*` note would say
-        // that copy comes earlier in PATH than this one, which is not in
-        // PATH at all; uninstalling that copy would leave the name finding
-        // nothing.
+        // whatever program with that name PATH finds instead. A
+        // `ShadowedBy*` note would say that program comes earlier in PATH
+        // than this copy, which is not in PATH at all; uninstalling that
+        // program would leave the name finding nothing.
         for tail in [
             "opt/homebrew/Caskroom/claude-code/2.1.267/claude",
             "opt/homebrew/Cellar/x/1/bin/claude",
@@ -1160,7 +1166,7 @@ mod tests {
     }
 
     #[test]
-    fn test_shadow_note_classifies_the_copy_that_wins_on_path() {
+    fn test_shadow_note_classifies_the_executable_that_wins_on_path() {
         for (tail, expected) in [
             (
                 "opt/homebrew/Caskroom/claude-code/2.1.267/claude",
@@ -1187,6 +1193,45 @@ mod tests {
             let env = home.env(vec![first, home.path().join(".local/bin")]);
             assert_eq!(
                 shadow_note("claude", &env, &layout.real),
+                Some(expected),
+                "{tail}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shadow_note_classifies_by_where_the_first_one_resolves_not_by_what_program_it_is() {
+        // A name and a place, nothing more (step D's review): Homebrew's
+        // formula `grok`, a regular-expression tool (`bin/grok` in its
+        // keg), gets the very note that the `grok` of Homebrew's cask
+        // `grok-build` -- Grok Build itself, its download staged in the
+        // Caskroom -- gets, and the `grok` of npm's package `grok-cli`, a
+        // third-party wrapper whose `grok` is its `index.js`, gets npm's.
+        // Which is why the notices call what runs another program with
+        // that name and never another copy, in both locales
+        // (src/lib/sources.test.ts).
+        for (tail, expected) in [
+            (
+                "opt/homebrew/Cellar/grok/0.9.2_2/bin/grok",
+                InstanceNote::ShadowedByHomebrew,
+            ),
+            (
+                "opt/homebrew/Caskroom/grok-build/1.0.41/grok-1.0.41-macos-aarch64",
+                InstanceNote::ShadowedByHomebrew,
+            ),
+            (
+                "opt/homebrew/lib/node_modules/grok-cli/index.js",
+                InstanceNote::ShadowedByNpm,
+            ),
+        ] {
+            let home = TempHome::new("shadow-namesake");
+            let layout = grok_layout(&home, "1.0.41");
+            let winner = home.executable(tail);
+            let brew_bin = home.dir("opt/homebrew/bin");
+            home.link("opt/homebrew/bin/grok", &winner);
+            let env = home.env(vec![brew_bin, home.path().join(".grok/bin")]);
+            assert_eq!(
+                shadow_note("grok", &env, &layout.real),
                 Some(expected),
                 "{tail}"
             );
