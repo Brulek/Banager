@@ -165,13 +165,13 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
  * none: Homebrew's list of software could not be downloaded
  * (`IndexMayBeStale`), so its updates were checked against a copy of that
  * list that may be out of date; it is still downloading (`IndexUpdating`),
- * so they were not checked this time at all; or only the launcher is left
- * (`LauncherOnly`), so there is no installed version to check. The four
- * PATH notes are about which copy runs when the tool's name is typed in
- * Terminal, not about the check. Read by `everySourceChecked`, which
- * chooses the sentence the page shows when there are no updates at all.
- * A `Record`, so a note added to `InstanceNote` without an answer here
- * fails `tsc`.
+ * so they were not checked this time at all; or the launcher is left
+ * without its program (`LauncherOnly`), so there is no installed version
+ * to check. The four PATH notes are about which copy runs when the tool's
+ * name is typed in Terminal, not about the check. Read by
+ * `everySourceChecked`, which chooses the sentence the page shows when
+ * there are no updates at all. A `Record`, so a note added to
+ * `InstanceNote` without an answer here fails `tsc`.
  */
 const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
   IndexMayBeStale: true,

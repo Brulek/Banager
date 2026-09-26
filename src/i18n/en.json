@@ -207,7 +207,7 @@
       "description": "Canager found another executable earlier in its PATH than this copy of {{source}}. Typing {{command}} in Terminal will likely run that other copy. The Unknown page may show where it is."
     },
     "launcherOnly": {
-      "title": "Only the {{command}} link is left",
+      "title": "The {{command}} link is still there, but its program is gone",
       "description": "The program files this {{command}} link points to are gone, so this link can't run (another installation may still work in Terminal). If an earlier uninstall stopped partway, they may be in the Trash. Uninstall moves the link to the Trash too. If you didn't mean to remove {{source}}, put its folder back from the Trash and refresh, or reinstall it by following the install steps in {{source}}'s official documentation."
     }
   },

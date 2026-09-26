@@ -1130,7 +1130,7 @@ entries and file metadata and nothing else:
 | It looks at | How |
 |---|---|
 | `~/.local/bin`, `~/bin`, `/usr/local/bin`, `~/.cargo/bin` (and `$CARGO_HOME/bin` when that variable is set), `~/go/bin`, `~/.bun/bin`, `~/.deno/bin`, plus every `PATH` entry under your home folder (`candidate_dirs`) | `read_dir`, one level deep — a subdirectory is never entered; a directory that does not exist, or that cannot be read, is skipped silently; two names for one directory are read once (`scan_dirs`) |
-| each entry | `lstat`, `readlink`, `realpath`, `stat` (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run |
+| each entry | `lstat`, `readlink`, `realpath`, `stat` (`examine`): what kind of file it is, where a link points, its size and date, who owns it. A file with no execute bit is not listed. Nothing's *contents* are read, and `file(1)` is not run. A broken link, while a source's own executable is a link that leads nowhere too, also gets `lstat`, `readlink` and `realpath` on the folders and links its text leads through, to see where it would lead (`dead_end`) |
 
 It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
@@ -1144,12 +1144,16 @@ and its result is not stored.
 A program is *not* listed when a known source accounts for it
 (`Known::claimant`): it is a source's own executable, or resolves to the
 same file one does (`~/.cargo/bin/cargo` and rustup's other proxies all
-resolve to `rustup`); it resolves under a path a source reported
-installing (a file or a directory: a uv or pipx tool's shim resolves into
-that tool's environment, and a Homebrew cask's command in `<prefix>/bin`
-— `code`, `docker` — resolves into the `.app` the cask moved into
-`/Applications`, which `brew info --installed --json=v2` names beside the
-cask's `app` stanza); or it resolves under a directory a source owns
+resolve to `rustup`), or — a link that leads nowhere — would lead to the
+same missing file as a source's own executable that leads nowhere too
+(Grok Build's `~/.grok/bin/agent` beside its launcher once
+`~/.grok/downloads` is gone: the Uninstall that finishes that state moves
+both); it resolves under a path a source reported installing (a file or
+a directory: a uv or pipx tool's shim resolves into that tool's
+environment, and a Homebrew cask's command in `<prefix>/bin` — `code`,
+`docker` — resolves into the `.app` the cask moved into `/Applications`,
+which `brew info --installed --json=v2` names beside the cask's `app`
+stanza); or it resolves under a directory a source owns
 (`owned_roots`: Homebrew's `Cellar`, `Caskroom` and `opt`; npm's
 `lib/node_modules` under its global prefix; Ollama's `~/.ollama`; Claude
 Code's `~/.local/share/claude`; Antigravity CLI's

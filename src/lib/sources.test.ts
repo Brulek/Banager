@@ -266,7 +266,7 @@ describe("sourceNoticesFor", () => {
     }
   });
 
-  it("warns, and names the link, when only a standalone tool's launcher is left", () => {
+  it("warns, and names the link, when a standalone tool's launcher is left without its program", () => {
     // The half-uninstalled state (program files gone, launcher dangling):
     // a warning because this launcher is broken; another PATH copy may
     // work. No button on the notice: the row's own Uninstall moves the
@@ -362,7 +362,7 @@ describe("sourceNoticesFor", () => {
     expect(zhCN.sourceNotice.notOnPath.description).not.toMatch(/这一份：它所在的文件夹/);
   });
 
-  it("points at the tool's official documentation, not at a website Canager doesn't show, when only the launcher is left", () => {
+  it("points at the tool's official documentation, not at a website Canager doesn't show, when the launcher is left without its program", () => {
     // The same rule as the no-safe-method sentence (the row of a recipe
     // without an uninstall method; this row's own before step C): Canager shows
     // no homepage and opens no link, so "its website" and "the same page"
@@ -371,6 +371,22 @@ describe("sourceNoticesFor", () => {
     expect(zhCN.sourceNotice.launcherOnly.description).toContain("{{source}} 官方文档");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/website|same page|网站|同一页/);
+    }
+  });
+
+  it("does not call the launcher all that is left, in both locales: grok's agent link can dangle beside it", () => {
+    // The whole-step review of step D: in Grok Build's launcher-only state
+    // `~/.grok/bin/agent` dangles beside `~/.grok/bin/grok`, and a stopped
+    // uninstall can leave other listed paths as well, so "Only the grok
+    // link is left" was untrue. The title says what holds for every
+    // launcher-only row: this link is still there, and what it points to
+    // is not.
+    expect(en.sourceNotice.launcherOnly.title).toBe(
+      "The {{command}} link is still there, but its program is gone",
+    );
+    expect(zhCN.sourceNotice.launcherOnly.title).toBe("{{command}} 这个链接还在，但它指向的程序已经不在了");
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.launcherOnly.title).not.toMatch(/only|只剩/i);
     }
   });
 });

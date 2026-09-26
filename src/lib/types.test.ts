@@ -168,7 +168,8 @@ describe("types", () => {
     expect(roundTrip(notResponding)).toEqual(notResponding);
 
     // The five notes a standalone tool's detect can add (phase 4): which
-    // copy runs when its name is typed, or that only its launcher is left.
+    // copy runs when its name is typed, or that its launcher is left
+    // without its program.
     const standalone: InstanceStatus = {
       unavailable: null,
       notes: ["NotOnPath", "ShadowedByHomebrew", "ShadowedByNpm", "ShadowedByOther", "LauncherOnly"],

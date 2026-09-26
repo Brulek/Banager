@@ -358,13 +358,22 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
 /// 0. The entry *is* an instance's `exe_path`, byte for byte, no
 ///    `canonicalize`. This is what catches a launcher that is a dangling
 ///    symlink (step B's `InstanceNote::LauncherOnly`, the state a
-///    stopped uninstall leaves): `canonicalize` fails on it, so rules
-///    1-3 cannot see it, and it would otherwise be listed as a broken
-///    link here while also being a source on the Installed page.
+///    stopped uninstall leaves): `canonicalize` fails on it, so rules 2
+///    and 3 cannot see it, and rule 1 only when `dead_end` can tell where
+///    it would lead: without rule 0, a launcher `dead_end` cannot place
+///    would be listed as a broken link here while also being a source on
+///    the Installed page.
 /// 1. The entry resolves to the same file an instance's `exe_path`
 ///    resolves to. rustup's thirteen proxies in `~/.cargo/bin` are
 ///    relative links to `rustup`, and so is the cargo instance's own
 ///    `cargo`; grok's `agent` and `grok` links resolve to one download.
+///    Or, both leading nowhere, the entry would lead to the same missing
+///    file as an instance's `exe_path` would (`dead_end`): the launcher-only
+///    state again, where grok's `~/.grok/bin/agent` would lead to the
+///    download its launcher would, and so would a fallback link the
+///    installer made in `~/.local/bin`, whether its text names one of the
+///    two or the download itself -- links grok's uninstall takes for
+///    grok's too (`route::leads_to_program`) and moves with the launcher.
 /// 2. The entry resolves to a path *under* an artifact's
 ///    `InstalledArtifact.path` (equal, when that path is a file). uv is
 ///    the first real input: its `path` is the tool's venv directory
@@ -390,6 +399,11 @@ pub fn owned_roots(inst: &ManagerInstance) -> Vec<PathBuf> {
 struct Known {
     exe_raw: Vec<(PathBuf, InstanceId)>,
     exe_canonical: Vec<(PathBuf, InstanceId)>,
+    /// Rule 1 for a link that leads nowhere: where each instance's
+    /// `exe_path` that leads nowhere would lead (`dead_end`), with the
+    /// instance. Empty unless some instance's `exe_path` leads nowhere;
+    /// while it is empty, `claimant` looks up no broken link's `dead_end`.
+    exe_dead_ends: Vec<(PathBuf, InstanceId)>,
     artifact_roots: Vec<(PathBuf, InstanceId)>,
     /// Rule 3: every `owned_roots` of every instance, canonical, with the
     /// instance that owns it. A root that does not exist (Homebrew with
@@ -413,10 +427,16 @@ impl Known {
     ) -> Known {
         let mut exe_raw = Vec::with_capacity(instances.len());
         let mut exe_canonical = Vec::with_capacity(instances.len());
+        let mut exe_dead_ends = Vec::new();
         for inst in instances {
             exe_raw.push((inst.exe_path.clone(), inst.id.clone()));
-            if let Ok(canonical) = std::fs::canonicalize(&inst.exe_path) {
-                exe_canonical.push((canonical, inst.id.clone()));
+            match std::fs::canonicalize(&inst.exe_path) {
+                Ok(canonical) => exe_canonical.push((canonical, inst.id.clone())),
+                Err(_) => {
+                    if let Some(end) = dead_end(&inst.exe_path) {
+                        exe_dead_ends.push((end, inst.id.clone()));
+                    }
+                }
             }
         }
         let artifact_roots = artifacts
@@ -453,6 +473,7 @@ impl Known {
         Known {
             exe_raw,
             exe_canonical,
+            exe_dead_ends,
             artifact_roots,
             owned,
             backups,
@@ -493,6 +514,15 @@ impl Known {
                 return Some(id);
             }
         }
+        // Rule 1 for a link that leads nowhere: the same missing file an
+        // instance's `exe_path`, leading nowhere too, would lead to.
+        if kind == EntryKind::BrokenSymlink && !self.exe_dead_ends.is_empty() {
+            if let Some(end) = dead_end(raw) {
+                if let Some((_, id)) = self.exe_dead_ends.iter().find(|(exe, _)| *exe == end) {
+                    return Some(id);
+                }
+            }
+        }
         // Rule 4: a backup the tool's own updater left, by name, in the
         // pattern's directory, a regular file -- a link of that name is
         // somebody's link, not the updater's copy.
@@ -511,6 +541,82 @@ impl Known {
     }
 }
 
+/// The most links macOS follows in one lookup (`MAXSYMLINKS`); `dead_end`
+/// gives up on a chain of more, as the system does on a loop.
+const MOST_LINKS: usize = 32;
+
+/// Where `link`, a symbolic link that leads nowhere, would lead: the place
+/// its text names, read from the link's folder (`placed`), and -- while
+/// that place is itself a link -- the place that link's text names in
+/// turn, until one is not there. Once grok's `downloads/` is in the Trash,
+/// that is `~/.grok/downloads/grok-<version>-macos-aarch64` for its
+/// launcher and for `~/.grok/bin/agent` beside it, and for a fallback link
+/// in `~/.local/bin` whose text names either. `None` when a place on the
+/// way is there and is not a link (the link leads somewhere after all) or
+/// cannot be placed or looked at, and when more than `MOST_LINKS` links
+/// stand in the way. Read by `Known::index`, for an instance's `exe_path`,
+/// and by `Known::claimant`, for a broken link (rule 1).
+fn dead_end(link: &Path) -> Option<PathBuf> {
+    let mut link = link.to_path_buf();
+    for _ in 0..MOST_LINKS {
+        let text = std::fs::read_link(&link).ok()?;
+        // `join` with an absolute text is that text.
+        let place = placed(&link.parent()?.join(text))?;
+        match std::fs::symlink_metadata(&place) {
+            Ok(meta) if meta.file_type().is_symlink() => link = place,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(place),
+            Ok(_) | Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// The place `path` names, its last name not followed: every folder on the
+/// way resolved while it is there -- `canonicalize` on each in turn, so a
+/// linked folder is followed and a `..` after it climbs from where it led,
+/// as the system's lookup does -- and, from the first folder that is not
+/// there, the rest folded without touching the disk. `None` for a relative
+/// `path`, one ending in `..` or naming `/`, and one with a folder on the
+/// way that is there but cannot be resolved (a link to nothing, a loop, a
+/// file, a folder Canager may not look into). Read by `dead_end`.
+fn placed(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let name = path.file_name()?;
+    let mut folder = PathBuf::new();
+    let mut there = true;
+    for component in path.parent()?.components() {
+        match component {
+            Component::Normal(part) => {
+                folder.push(part);
+                if there {
+                    match std::fs::canonicalize(&folder) {
+                        Ok(real) => folder = real,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::NotFound
+                                && std::fs::symlink_metadata(&folder).is_err_and(|error| {
+                                    error.kind() == std::io::ErrorKind::NotFound
+                                }) =>
+                        {
+                            there = false;
+                        }
+                        Err(_) => return None,
+                    }
+                }
+            }
+            // Safe while `folder` holds no link: what is there of it is
+            // resolved, and the rest is not there.
+            Component::ParentDir => {
+                folder.pop();
+            }
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => folder.push(component.as_os_str()),
+        }
+    }
+    Some(folder.join(name))
+}
+
 /// One directory entry as the page will describe it, or `None` for the
 /// ones the scan does not list at all: a subdirectory (depth 1, never
 /// recursed -- `~/Library/pnpm` on the research machine held `bin/` and
@@ -518,8 +624,9 @@ impl Known {
 /// position (checked on the target; a theoretical boundary, the
 /// research machine had none), anything that is neither a file nor a
 /// link, and an entry whose `lstat` failed -- one failed `stat` costs that
-/// entry and nothing else. Every file-system read of the scan is here or
-/// in `scan_dirs`'s `read_dir`.
+/// entry and nothing else. Every file-system read the walk makes is here,
+/// in `scan_dirs`'s `read_dir`, or -- for a broken link, while some
+/// instance's launcher leads nowhere too -- in `dead_end` (rule 1).
 fn examine(raw: &Path, home: &Path, euid: u32) -> Option<UnknownEntry> {
     let lstat = std::fs::symlink_metadata(raw).ok()?;
     let file_type = lstat.file_type();

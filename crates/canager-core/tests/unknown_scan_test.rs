@@ -503,6 +503,64 @@ fn test_rule_1_claims_everything_that_resolves_to_an_instances_launcher() {
 }
 
 #[test]
+fn test_rule_1_claims_a_link_leading_nowhere_that_would_lead_where_a_launcher_leading_nowhere_would(
+) {
+    // Grok Build's launcher-only state, a stopped uninstall having moved
+    // `~/.grok/downloads` to the Trash (the whole-step review of step D):
+    // the launcher `~/.grok/bin/grok` -- rule 0's -- and `~/.grok/bin/agent`
+    // beside it both still name the one download, which is gone; so do the
+    // fallback links the installer makes in `~/.local/bin`, whether their
+    // text names the download or the launcher. Grok's uninstall moves every
+    // one of them, so none is a stranger: rule 1 claims a link that would
+    // lead to the same missing file as an instance's own launcher that
+    // leads nowhere too. A link to another missing file is still listed.
+    let home = Home::new("rule-1-dangling");
+    let grok_bin = home.dir(".grok/bin");
+    let local_bin = home.dir(".local/bin");
+    let downloads = home.path().join(".grok/downloads");
+    let text = Path::new("../downloads/grok-1.0.41-macos-aarch64");
+    let launcher = link(&grok_bin, "grok", text);
+    link(&grok_bin, "agent", text);
+    link(&local_bin, "grok", &launcher);
+    link(
+        &local_bin,
+        "agent",
+        &downloads.join("grok-1.0.41-macos-aarch64"),
+    );
+    link(
+        &local_bin,
+        "grok-old",
+        &downloads.join("grok-1.0.40-macos-aarch64"),
+    );
+    let instance = ManagerInstance {
+        exe_path: launcher,
+        prefix: home.path().join(".grok"),
+        ..manager_instance("standalone-grok", "standalone-grok")
+    };
+
+    let scan = scan_dirs(
+        &[grok_bin, local_bin],
+        &home.env(vec![]),
+        &[instance],
+        &[],
+        &[],
+        ScanBudget::default(),
+    );
+
+    let listed: Vec<PathBuf> = scan.entries.iter().map(|e| e.path.clone()).collect();
+    assert_eq!(
+        listed,
+        vec![tilde(".local/bin/grok-old")],
+        "{:?}",
+        scan.entries
+    );
+    assert_eq!(
+        scan.attributed, 4,
+        "the launcher (rule 0), `agent` and the two fallback links (rule 1)"
+    );
+}
+
+#[test]
 fn test_rule_2_claims_a_cargo_installed_program_through_its_artifacts_path() {
     // The cargo adapter's inventory fills `InstalledArtifact.path` with
     // `<cargo_home>/bin/<binary>` for every crate (`parse_crates2` in

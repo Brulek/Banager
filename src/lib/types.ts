@@ -169,8 +169,8 @@ export type Unavailable = "NotRunning" | "NotResponding" | "RefusesAsRoot";
  * on purpose, so a bare string. `sourceNoticesFor` in src/lib/sources.ts
  * ends its loop over these in a `never`, so a variant added here without
  * a branch there fails `tsc`. The last five are a standalone tool's
- * (phase 4): which copy runs when its name is typed, or that only its
- * launcher is left.
+ * (phase 4): which copy runs when its name is typed, or that its
+ * launcher is left without its program.
  */
 export type InstanceNote =
   | "IndexMayBeStale"

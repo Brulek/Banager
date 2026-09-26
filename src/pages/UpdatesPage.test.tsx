@@ -1894,7 +1894,7 @@ describe("UpdatesPage", () => {
     },
   );
 
-  it("does not say everything is up to date when only Claude Code's launcher is left: there was no installed version to check", async () => {
+  it("does not say everything is up to date when Claude Code's launcher is left without its program: there was no installed version to check", async () => {
     // Its program files are gone, so `StandaloneAdapter::check_updates`
     // returns before reading either version: there is no installed one to
     // compare with the published one. No updates from it means it was not
@@ -1906,7 +1906,7 @@ describe("UpdatesPage", () => {
     artifacts = [{ ...claudeArtifact, version: "", path: null }];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    expect(await findByText("Only the claude link is left")).toBeInTheDocument();
+    expect(await findByText("The claude link is still there, but its program is gone")).toBeInTheDocument();
     expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).toBeNull();
   });
