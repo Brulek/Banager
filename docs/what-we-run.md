@@ -1488,8 +1488,10 @@ Canager neither chooses nor sees them.
 - Never moves anything outside the home folder, anything directly in the
   home folder or in a folder many tools share there (`~/.local`,
   `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`), anything reached
-  through a folder that is a link, anything that does not belong to the
-  user, or anything that is not what the tool's uninstall list describes
+  through a folder that is a link between where the home folder really is
+  and it (the home folder itself may be reached through a link), anything
+  that does not belong to the user, or anything that is not what the
+  tool's uninstall list describes
   (for Claude Code, Anthropic's removal steps plus its installer's
   download cache; for Antigravity CLI and Grok Build, which publish no
   removal steps, Canager's own reading of how each was installed);

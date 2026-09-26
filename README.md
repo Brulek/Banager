@@ -69,11 +69,13 @@ This app runs package managers on your behalf, so the boundary matters more than
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never
-  directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and never
-  through a folder that is a link — yours, what that tool's uninstall list describes, and clear of
-  what it keeps. Canager remembers what each path was when you saw the preview; when you confirm,
-  and again right before each path moves, it checks everything once more, and if anything differs
-  it stops before moving that path, and the operation log lists anything it had already moved.
+  directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and with no
+  folder that is a link between where your home folder really is and the path (the home folder
+  itself may be reached through a link) — yours, what that tool's uninstall list describes, and
+  clear of what it keeps. Canager remembers what each path was when you saw the preview; when you
+  confirm, and again right before each path moves, it checks everything once more, and if anything
+  differs it stops before moving that path, and the operation log lists anything it had already
+  moved.
 
 ## What it deliberately does not do yet
 
