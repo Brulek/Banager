@@ -23,7 +23,9 @@
     "cargo": "Cargo",
     "ollama": "Ollama",
     "standalone-claude": "Claude Code",
-    "standalone-rustup": "rustup"
+    "standalone-rustup": "rustup",
+    "standalone-agy": "Antigravity CLI（agy）",
+    "standalone-grok": "Grok Build（grok）"
   },
   "installed": {
     "filterLabel": "筛选已安装项目",
@@ -139,7 +141,9 @@
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
-      "standalone-rustup": "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。"
+      "standalone-rustup": "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。",
+      "standalone-agy": "Google 的 Antigravity 终端编程助手。用它自己的安装器装的。",
+      "standalone-grok": "xAI 的 Grok 终端编程助手。用它自己的安装器装的。"
     }
   },
   "sourceNotice": {
@@ -346,7 +350,7 @@
     },
     "noSources": {
       "title": "Canager 还没有可管理的内容",
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
     },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
@@ -356,7 +360,7 @@
     },
     "nothingInstalled": {
       "title": "还没有安装任何东西",
-      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用各自的原生安装器装在默认位置的 Claude Code 和 rustup，会出现在这里。"
+      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup，会出现在这里。"
     }
   }
 }

@@ -27,13 +27,19 @@ export const ADAPTER_LABEL_KEYS: Record<string, string> = {
   ollama: "adapters.ollama",
   "standalone-claude": "adapters.standalone-claude",
   "standalone-rustup": "adapters.standalone-rustup",
+  "standalone-agy": "adapters.standalone-agy",
+  "standalone-grok": "adapters.standalone-grok",
 };
 
 /** The adapter ids of the tools with their own installer, one per recipe
  *  in `recipes::RECIPES` (crates/canager-core/src/adapters/standalone/
  *  recipes.rs). A union so `STANDALONE_SUMMARY_KEYS` is a `Record` over
  *  it: a tool added here without a summary key there fails `tsc`. */
-export type StandaloneAdapterId = "standalone-claude" | "standalone-rustup";
+export type StandaloneAdapterId =
+  | "standalone-claude"
+  | "standalone-rustup"
+  | "standalone-agy"
+  | "standalone-grok";
 
 /**
  * One sentence per standalone tool, for the Installed page's description
@@ -46,6 +52,8 @@ export type StandaloneAdapterId = "standalone-claude" | "standalone-rustup";
 export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-claude": "standalone.summary.standalone-claude",
   "standalone-rustup": "standalone.summary.standalone-rustup",
+  "standalone-agy": "standalone.summary.standalone-agy",
+  "standalone-grok": "standalone.summary.standalone-grok",
 };
 
 /**

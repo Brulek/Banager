@@ -23,7 +23,9 @@
     "cargo": "Cargo",
     "ollama": "Ollama",
     "standalone-claude": "Claude Code",
-    "standalone-rustup": "rustup"
+    "standalone-rustup": "rustup",
+    "standalone-agy": "Antigravity CLI (agy)",
+    "standalone-grok": "Grok Build (grok)"
   },
   "installed": {
     "filterLabel": "Filter installed items",
@@ -147,7 +149,9 @@
   "standalone": {
     "summary": {
       "standalone-claude": "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
-      "standalone-rustup": "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo."
+      "standalone-rustup": "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo.",
+      "standalone-agy": "Google's Antigravity coding assistant for the terminal. Installed with its own installer.",
+      "standalone-grok": "xAI's Grok coding assistant for the terminal. Installed with its own installer."
     }
   },
   "sourceNotice": {
@@ -357,7 +361,7 @@
     },
     "noSources": {
       "title": "Nothing for Canager to manage yet",
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
     },
     "refreshFailed": {
       "title": "Some data might be out of date",
@@ -368,7 +372,7 @@
     },
     "nothingInstalled": {
       "title": "Nothing installed yet",
-      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code and rustup installed at their own installers' default locations."
+      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code, Antigravity CLI, Grok Build and rustup installed at their own installers' default locations."
     }
   }
 }

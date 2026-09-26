@@ -939,6 +939,8 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     // sentence's key here by adapter id, and every package manager keeps
     // `installed.noDescription` for an unblocked package with no blurb.
     expect(standaloneSummaryKey("standalone-claude")).toBe("standalone.summary.standalone-claude");
+    expect(standaloneSummaryKey("standalone-agy")).toBe("standalone.summary.standalone-agy");
+    expect(standaloneSummaryKey("standalone-grok")).toBe("standalone.summary.standalone-grok");
     for (const id of ["brew", "npm", "pipx", "uv", "pip", "cargo", "ollama", "toString", ""]) {
       expect(standaloneSummaryKey(id)).toBeNull();
     }
@@ -964,6 +966,32 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     );
     expect(en.adapters["standalone-rustup"]).toBe("rustup");
     expect(zhCN.adapters["standalone-rustup"]).toBe("rustup");
+  });
+
+  it("labels Antigravity CLI and Grok Build with the command the user types, in both locales", () => {
+    // Spec §9.2: the label carries the command name in parentheses, since
+    // "Antigravity CLI" and "Grok Build" are not what the user types.
+    expect(en.adapters["standalone-agy"]).toBe("Antigravity CLI (agy)");
+    expect(zhCN.adapters["standalone-agy"]).toBe("Antigravity CLI（agy）");
+    expect(en.adapters["standalone-grok"]).toBe("Grok Build (grok)");
+    expect(zhCN.adapters["standalone-grok"]).toBe("Grok Build（grok）");
+    expect(ADAPTER_LABEL_KEYS["standalone-agy"]).toBe("adapters.standalone-agy");
+    expect(ADAPTER_LABEL_KEYS["standalone-grok"]).toBe("adapters.standalone-grok");
+  });
+
+  it("has the two AI CLIs' sentences in both locales, naming the publisher and the installer route", () => {
+    expect(en.standalone.summary["standalone-agy"]).toBe(
+      "Google's Antigravity coding assistant for the terminal. Installed with its own installer.",
+    );
+    expect(zhCN.standalone.summary["standalone-agy"]).toBe(
+      "Google 的 Antigravity 终端编程助手。用它自己的安装器装的。",
+    );
+    expect(en.standalone.summary["standalone-grok"]).toBe(
+      "xAI's Grok coding assistant for the terminal. Installed with its own installer.",
+    );
+    expect(zhCN.standalone.summary["standalone-grok"]).toBe(
+      "xAI 的 Grok 终端编程助手。用它自己的安装器装的。",
+    );
   });
 });
 
