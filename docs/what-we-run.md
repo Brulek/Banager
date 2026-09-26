@@ -832,8 +832,11 @@ is, so the notice calls a `grok` that comes first another program with
 that name, which may or may not be Grok Build, and never another copy.
 That is a notice, not a command.
 
-**Read-only commands** (background checks that install nothing and never
-need a password; grok's own check writes inside `~/.grok`, below):
+**Read-only commands** (background checks that never need a password.
+Grok's `--help` says its own check installs nothing, though the check
+writes inside `~/.grok`, below; whether `--version` reaches grok's
+launch-time updater, and whether that updater installs or only checks,
+are both unverified, above):
 
 | Purpose | Argv | Timeout |
 |---|---|---|
