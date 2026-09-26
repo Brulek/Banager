@@ -683,17 +683,52 @@ fn startup_files(home: &Path, zdotdir: Option<&Path>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// One `LeavesShellConfigLine` per startup file (`startup_files`) that
-/// will still speak of the Cargo env file after `rustup self uninstall`,
-/// in that order, `path` spelled by the crate's one rule
+/// Which file a startup file's name leads to: `(st_dev, st_ino)` of the
+/// file `read_startup_file` opened, links followed.
+type FileIdentity = (u64, u64);
+
+/// A startup file's contents and which file they are, or `None` unless
+/// `path` leads, links followed, to a regular file that reads as UTF-8 --
+/// followed as rustup follows it: its cleanup visits a name only when
+/// `is_file()` (unix.rs:60, :149), reads it with `fs::read_to_string`
+/// (unix.rs:61, :150; utils/mod.rs:83-88) and rewrites it by opening that
+/// name to truncate and write (unix.rs:69, :158; utils/raw.rs:86-98),
+/// which changes the file the name leads to in place. A name that is not
+/// a regular file is not opened (a named pipe would wait for a writer),
+/// and the identity is the opened file's own (`fstat`), the file whose
+/// bytes were read. Read by `shell_config_leftovers`.
+fn read_startup_file(path: &Path) -> Option<(FileIdentity, String)> {
+    use std::io::Read;
+    use std::os::unix::fs::MetadataExt;
+    if !std::fs::metadata(path).ok()?.is_file() {
+        return None;
+    }
+    let mut file = std::fs::File::open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).ok()?;
+    Some(((meta.dev(), meta.ino()), contents))
+}
+
+/// One `LeavesShellConfigLine` per startup file name (`startup_files`)
+/// that will still speak of the Cargo env file after `rustup self
+/// uninstall`, in that order, `path` spelled by the crate's one rule
 /// (`scan::display_path`: `~/<file>` under the home, the full path
-/// elsewhere), `certain` by tier. The files are read once (read-only:
-/// Canager never edits a startup file, spec §6.8), rustup's visits
-/// (`rustup_rc_visits`) are replayed on the copies, keyed by path -- so
-/// a second visit to the same file sees the first's result, as rustup's
-/// does, and a visit to `$ZDOTDIR/.zshenv` or `$ZDOTDIR/.zprofile` acts
-/// on that file's own copy -- and what is left is classified
-/// (`classify_leftover`). A visit to a file not read (a relative
+/// elsewhere), `certain` by tier. Each name is read once (read-only:
+/// Canager never edits a startup file, spec §6.8), with the identity of
+/// the file it leads to (`read_startup_file`), and the first name read
+/// for a file gives that file its one copy; rustup's visits
+/// (`rustup_rc_visits`) are replayed on the copy of the file the visited
+/// name leads to -- so a second visit to the same file, under the same
+/// name or another (`.bash_profile` a link to `.profile`, a `ZDOTDIR`
+/// that is a link to the home), sees the first's result, as rustup's
+/// does, and a line removed through one name is gone under every other
+/// name of that file, `.zshrc` a link to `.zshenv` included -- and what
+/// is left is classified (`classify_leftover`) and reported under each
+/// name that leads to it. A visit to a name not read (a relative
 /// `$ZDOTDIR`'s) has no copy to act on.
 pub fn shell_config_leftovers(
     home: &Path,
@@ -702,16 +737,19 @@ pub fn shell_config_leftovers(
 ) -> Vec<Warning> {
     let spelled = cargo_home_str(home, cargo_home);
     let ordered = startup_files(home, zdotdir);
-    let mut files: BTreeMap<PathBuf, String> = ordered
-        .iter()
-        .filter_map(|path| {
-            std::fs::read_to_string(path)
-                .ok()
-                .map(|contents| (path.clone(), contents))
-        })
-        .collect();
+    let mut file_of: BTreeMap<PathBuf, FileIdentity> = BTreeMap::new();
+    let mut copies: BTreeMap<FileIdentity, String> = BTreeMap::new();
+    for path in &ordered {
+        if let Some((identity, contents)) = read_startup_file(path) {
+            file_of.insert(path.clone(), identity);
+            copies.entry(identity).or_insert(contents);
+        }
+    }
     for visit in rustup_rc_visits(home, zdotdir, &spelled) {
-        if let Some(contents) = files.get_mut(&visit.file) {
+        if let Some(contents) = file_of
+            .get(&visit.file)
+            .and_then(|identity| copies.get_mut(identity))
+        {
             remove_first_exact_line(contents, &visit.line);
         }
     }
@@ -719,7 +757,7 @@ pub fn shell_config_leftovers(
     ordered
         .iter()
         .filter_map(|path| {
-            let contents = files.get(path)?;
+            let contents = copies.get(file_of.get(path)?)?;
             let tier = classify_leftover(contents, &patterns)?;
             Some(Warning::LeavesShellConfigLine {
                 path: crate::scan::display_path(path, home).display().to_string(),
@@ -1303,8 +1341,9 @@ mod tests {
         // with `ZDOTDIR=$HOME` the same file is visited twice per line,
         // and each visit removes one exact copy. Another ZDOTDIR gets its
         // own visits, to its `.zshenv` and `.zprofile`, which
-        // `shell_config_leftovers` reads as files of their own. An empty
-        // ZDOTDIR is no ZDOTDIR (shell.rs:213).
+        // `shell_config_leftovers` reads under their own names -- one copy
+        // per file, so a ZDOTDIR that is a link to the home shares the
+        // home's. An empty ZDOTDIR is no ZDOTDIR (shell.rs:213).
         let home = Path::new("/Users/someone");
         let visits = rustup_rc_visits(home, Some(home), "$HOME/.cargo");
         let zshenv: Vec<_> = visits
@@ -1837,8 +1876,8 @@ mod tests {
         // visits `$ZDOTDIR/.zshenv` and `$ZDOTDIR/.zprofile` (and `~/.zshenv`
         // once, not twice), zsh reads that folder's `.zshenv`, `.zprofile`
         // and `.zshrc`, and rustup never edits a `.zshrc` -- so each of the
-        // three is read as a file of its own, replayed on, and named by its
-        // own path just before its home namesake. The `source` line rustup
+        // three, a file of its own here, is read, replayed on, and named by
+        // its own path just before its home namesake. The `source` line rustup
         // leaves in `$ZDOTDIR/.zshenv` (it removes that spelling only from
         // the `legacy_paths` files) *will* error whenever zsh reads that
         // file: the line the preview must not stay silent about.
@@ -1896,6 +1935,85 @@ mod tests {
                 path: outside.path().join(".zshrc").display().to_string(),
                 certain: true
             }]
+        );
+    }
+
+    #[test]
+    fn test_shell_config_leftovers_sees_a_line_removed_through_one_name_gone_under_the_others() {
+        // Step E's code review: rustup reads and rewrites a startup file
+        // through whichever name it visits -- `is_file()` and
+        // `read_to_string` follow links, and `raw::write_file`
+        // (src/utils/raw.rs:86-98 at 1.29.1) opens that name to truncate
+        // and write -- so the line it removes through `.zshenv` is gone
+        // from a `.zshrc` that is the same file, although rustup never
+        // visits `.zshrc`.
+        let one_line = format!("{}\n", rc_line());
+        let home = TempHome::new("rustup-rc-alias-link");
+        std::fs::write(home.path().join(".zshenv"), &one_line).expect("write");
+        home.link(".zshrc", Path::new(".zshenv"));
+        assert_eq!(
+            shell_config_leftovers(home.path(), None, &home.path().join(".cargo")),
+            Vec::new(),
+            "a link"
+        );
+        let home = TempHome::new("rustup-rc-alias-hard");
+        std::fs::write(home.path().join(".zshenv"), &one_line).expect("write");
+        std::fs::hard_link(home.path().join(".zshenv"), home.path().join(".zshrc"))
+            .expect("hard link");
+        assert_eq!(
+            shell_config_leftovers(home.path(), None, &home.path().join(".cargo")),
+            Vec::new(),
+            "a hard link"
+        );
+        // What is left is left under every name, each named by its own
+        // path in the order the names are read.
+        let home = TempHome::new("rustup-rc-alias-left");
+        std::fs::write(
+            home.path().join(".zshenv"),
+            format!("{}\n{}\n", rc_line(), rc_line()),
+        )
+        .expect("write");
+        home.link(".zshrc", Path::new(".zshenv"));
+        assert_eq!(
+            shell_config_leftovers(home.path(), None, &home.path().join(".cargo")),
+            vec![
+                Warning::LeavesShellConfigLine {
+                    path: "~/.zshenv".to_string(),
+                    certain: true
+                },
+                Warning::LeavesShellConfigLine {
+                    path: "~/.zshrc".to_string(),
+                    certain: true
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_shell_config_leftovers_counts_visits_through_two_names_of_one_file_against_one_copy() {
+        // Each visit removes one copy from the file its name leads to, so
+        // two names of one file visited once each remove two copies, as
+        // `ZDOTDIR=$HOME` does with one name visited twice.
+        let two_lines = format!("{}\n{}\n", rc_line(), rc_line());
+        // `.bash_profile` a link to `.profile`: rustup visits `.profile`,
+        // then `.bash_profile`.
+        let home = TempHome::new("rustup-rc-alias-two-visits");
+        std::fs::write(home.path().join(".profile"), &two_lines).expect("write");
+        home.link(".bash_profile", Path::new(".profile"));
+        assert_eq!(
+            shell_config_leftovers(home.path(), None, &home.path().join(".cargo")),
+            Vec::new(),
+            ".bash_profile and .profile"
+        );
+        // A `ZDOTDIR` that is a link to the home: `$ZDOTDIR/.zshenv` and
+        // `~/.zshenv`, read under two paths, are one file.
+        let home = TempHome::new("rustup-rc-alias-zdotdir");
+        std::fs::write(home.path().join(".zshenv"), &two_lines).expect("write");
+        let zdotdir = home.link("zdot", home.path());
+        assert_eq!(
+            shell_config_leftovers(home.path(), Some(&zdotdir), &home.path().join(".cargo")),
+            Vec::new(),
+            "a ZDOTDIR linked to the home"
         );
     }
 

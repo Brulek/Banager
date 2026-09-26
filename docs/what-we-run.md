@@ -1062,35 +1062,42 @@ the Cargo home is not `~/.cargo`), from `~/.profile`, `~/.bash_profile`,
 order, and then the two lines rustup wrote before version 1.23 from
 `~/.bash_profile`, `~/.profile`, `$ZDOTDIR/.zprofile` and `~/.zprofile`
 (`shell.rs` and `unix.rs` under `src/cli/self_update/`, tag `1.29.1`). Each
-visit removes the first line that matches byte for byte, newline included;
-when `ZDOTDIR` is your home folder the same file is visited twice and two
-copies go. It never edits `~/.zshrc` or fish's `config.fish`. So before the
-uninstall Canager reads those eight files — `~/.zshenv`, `~/.zprofile`,
-`~/.zshrc`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.profile`,
-`~/.config/fish/config.fish` — and, when `ZDOTDIR` names a folder other
-than your home, that folder's `.zshenv`, `.zprofile` and `.zshrc` as well
-(each named by its own path, `~/.config/zsh/.zshrc` for one), replays
-rustup's removals on copies in memory, and names each file that still
-speaks of Cargo's env file. The preview does not say which shells read
-which file, only what a shell that reads it will meet: "will print an
-error" when what is left is a line in the exact form rustup itself writes
-(a file rustup does not edit, such as `~/.zshrc`; a second copy of its
-line; its line last in the file with no newline after it) and every line
-above it stands alone. Canager reads each of those lines with sh's quoting
-and lets it stand alone only as a whole command that ends on that line:
-no quote, `(`, `{`, `$(` or `${` left open, nor a `)` or `}` that does
-not match the innermost one still open on it; no `(` and `)` with only
-blanks between them, as a function definition has; no `<<` outside
-quotes (a here-document, whose body is the lines below); no `[[` without
-a `]]` after it, nor a `]]` without a `[[` before it; no `\`, `|`, `&&`
-or `|&` at its end, nor `and`, `or`, `not` or `!` as its last word; no
-`\` inside single quotes (sh and fish read it differently); and none of
-`if`, `then`, `elif`, `else`, `fi`, `case`, `esac`, `for`, `select`,
-`while`, `until`, `do`, `done`, `repeat`, `foreach`, `function`,
-`coproc`, `begin`, `end`, `switch`, `return`, `exit`, `logout`, `bye` or
-`exec` as a word anywhere on it, quoted or not — the words of
-conditionals, loops, functions, blocks and coprocesses, and of the
-commands that end the file or the shell. In that check the rest of a
+visit removes the first line that matches byte for byte, newline included,
+by rewriting in place the file the visited name leads to (`utils/raw.rs`,
+lines 86–98); when `ZDOTDIR` is your home folder the same file is visited
+twice and two copies go. It never visits `~/.zshrc` or fish's
+`config.fish`. So before the uninstall Canager reads those eight files —
+`~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.bash_profile`, `~/.bash_login`,
+`~/.bashrc`, `~/.profile`, `~/.config/fish/config.fish` — and, when
+`ZDOTDIR` names a folder other than your home, that folder's `.zshenv`,
+`.zprofile` and `.zshrc` as well (each named by its own path,
+`~/.config/zsh/.zshrc` for one), replays rustup's removals on copies in
+memory — one copy per file, however many of those names lead to it, so
+when two names lead to one file (`~/.zshrc` a link or a hard link to
+`~/.zshenv`, say, or a `ZDOTDIR` that is a link to your home) a line
+removed through one name is gone under the other, and a visit through
+each name removes one copy — and names each file that still speaks of
+Cargo's env file, under every one of those names that leads to it. The
+preview does not say which shells read which file, only what a shell that
+reads it will meet: "will print an error" when what is left is a line in
+the exact form rustup itself writes (in a file rustup does not edit —
+`~/.zshrc`, unless it is another name for a file rustup visits; a second
+copy of its line; its line last in the file with no newline after it) and
+every line above it stands alone. Canager reads each of those lines with
+sh's quoting and lets it stand alone only as a whole command that ends on
+that line: no quote, `(`, `{`, `$(` or `${` left open, nor a `)` or `}`
+that does not match the innermost one still open on it; no `(` and `)`
+with only blanks between them, as a function definition has; no `<<`
+outside quotes (a here-document, whose body is the lines below); no `[[`
+without a `]]` after it, nor a `]]` without a `[[` before it; no `\`,
+`|`, `&&` or `|&` at its end, nor `and`, `or`, `not` or `!` as its last
+word; no `\` inside single quotes (sh and fish read it differently);
+and none of `if`, `then`, `elif`, `else`, `fi`, `case`, `esac`, `for`,
+`select`, `while`, `until`, `do`, `done`, `repeat`, `foreach`,
+`function`, `coproc`, `begin`, `end`, `switch`, `return`, `exit`,
+`logout`, `bye` or `exec` as a word anywhere on it, quoted or not — the
+words of conditionals, loops, functions, blocks and coprocesses, and of
+the commands that end the file or the shell. In that check the rest of a
 line from a `#` that follows a space or tab, outside quotes and outside
 `${…}`, is a comment and is not read. This is a small reader, not a
 shell: it looks only for what is listed here; a line that does not stand
@@ -1226,9 +1233,12 @@ All read-only, none saved anywhere else, none uploaded:
   listings — nothing in them is opened), `~/.cargo/.crates2.json`, whether
   `/opt/homebrew/Cellar/rustup` or `/usr/local/Cellar/rustup` exists, and
   the shell startup files named in its section (eight under your home, and
-  zsh's three under `ZDOTDIR` when that names another folder), each read
-  whole and only searched for a line about Cargo's env file and for
-  whether the lines above it stand alone, as its section says; nothing else under
+  zsh's three under `ZDOTDIR` when that names another folder), each
+  opened only when `stat` says it is a regular file (links followed), its
+  device and inode taken from the open file (`fstat`) so that two names
+  of one file share one copy, read whole, and only searched for a line
+  about Cargo's env file and for whether the lines above it stand alone,
+  as its section says; nothing else under
   `RUSTUP_HOME` is ever read. After an uninstall: whether
   `$CARGO_HOME/bin/rustup` is still there (`lstat`, `realpath`), and
   nothing else — no version is read.

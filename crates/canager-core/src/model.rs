@@ -540,7 +540,9 @@ pub enum Warning {
     /// guarded `[ -f … ] && . …`, an `echo`, another spelling, rustup's
     /// own form inside an `if` or below any line that does not stand
     /// alone), which *may*. Which shells read which file is not decided.
-    /// One per file (`rustup::shell_config_leftovers`).
+    /// One per startup file name: two names of one file (a link, a hard
+    /// link) share what rustup leaves in it, and each is named
+    /// (`rustup::shell_config_leftovers`).
     LeavesShellConfigLine { path: String, certain: bool },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
