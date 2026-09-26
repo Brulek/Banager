@@ -366,18 +366,108 @@ impl<'j> Look<'j> {
 
 /// A kept path that is there, and where it is: `entry` is the path itself
 /// with its folder resolved (a link is not followed), `target` where it
-/// leads with every link followed (`None` for a link to nothing).
+/// leads with every link followed (`None` for a link to nothing), and
+/// `on_the_way` every folder, link and file the system looks up to get
+/// there (`the_way_to`) -- the links between the two ends among them.
 struct Kept {
     spec: &'static KeepSpec,
     path: PathBuf,
     entry: PathBuf,
     target: Option<PathBuf>,
+    on_the_way: Vec<PathBuf>,
+}
+
+/// The most links macOS follows in one lookup (`MAXSYMLINKS`): at one
+/// more, the system gives up as it does on a loop (`ELOOP`), and so does
+/// `the_way_to`.
+const MOST_LINKS: usize = 32;
+
+/// One step `the_way_to` has still to take: back to `/`, up one folder,
+/// or into a name.
+enum Step {
+    Root,
+    Up,
+    Name(std::ffi::OsString),
+}
+
+/// Puts `path`'s steps on `left`, its first step on top.
+fn push_steps(left: &mut Vec<Step>, path: &Path) {
+    use std::path::Component;
+    for component in path.components().rev() {
+        left.push(match component {
+            Component::Prefix(_) | Component::RootDir => Step::Root,
+            Component::CurDir => continue,
+            Component::ParentDir => Step::Up,
+            Component::Normal(name) => Step::Name(name.to_os_string()),
+        });
+    }
+}
+
+/// Every entry the system looks up to reach what `path` leads to, in the
+/// order it looks them up, each placed as the folder it is in, fully
+/// resolved, joined with its own name: `path`'s own folders and name, and
+/// for every link met on the way, the link and then each name its text
+/// gives in turn, from the link's folder or from `/` -- a `..` climbs
+/// from where the lookup has got to, as the system's does. So the links
+/// between a kept path and what it leads to are on it (`~/.claude.json ->
+/// ~/.local/share/claude/settings-link -> ~/settings/claude.json` needs
+/// its middle link as much as its two ends), and so is a linked folder on
+/// the way (`~/.local/share/claude/config -> ~/settings`). A relative
+/// `path` is read from the current folder, as the system reads one. A
+/// name that is not there ends the way where it is: a link to nothing
+/// leads that far. Anything else that stops the lookup -- a name on the
+/// way that is not a folder (a `..` after a file included, which macOS's
+/// `realpath`, and so `canonicalize`, climbs past without looking), more
+/// links than `MOST_LINKS`, a folder Canager may not look into -- is an
+/// error, as the system's own lookup (`stat`) gives one. Read by
+/// `kept_places`.
+fn the_way_to(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut left = Vec::new();
+    push_steps(&mut left, &std::path::absolute(path)?);
+    // Where the lookup has got to: a real folder, never a link.
+    let mut folder = PathBuf::from("/");
+    let mut way = Vec::new();
+    let mut links = 0;
+    while let Some(step) = left.pop() {
+        let name = match step {
+            Step::Root => {
+                folder = PathBuf::from("/");
+                continue;
+            }
+            Step::Up => {
+                folder.pop();
+                continue;
+            }
+            Step::Name(name) => name,
+        };
+        let entry = folder.join(&name);
+        let meta = match std::fs::symlink_metadata(&entry) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error),
+        };
+        way.push(std::fs::canonicalize(&folder)?.join(&name));
+        if meta.file_type().is_symlink() {
+            links += 1;
+            if links > MOST_LINKS {
+                return Err(std::io::Error::from_raw_os_error(libc::ELOOP));
+            }
+            push_steps(&mut left, &std::fs::read_link(&entry)?);
+        } else if meta.is_dir() {
+            folder = entry;
+        } else if !left.is_empty() {
+            return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR));
+        }
+    }
+    Ok(way)
 }
 
 /// The kept paths that exist -- a missing one is neither listed nor
-/// protected (ruling 6) -- each placed. One that is there but cannot be
-/// placed refuses the whole list: Canager could not confirm the moves
-/// leave it alone (`OverlapsKept`).
+/// protected (ruling 6) -- each placed, with the way to what it leads to
+/// (`the_way_to`). One that is there but cannot be placed -- its folder,
+/// what it leads to or the way there cannot be looked up -- refuses the
+/// whole list: Canager could not confirm the moves leave it alone
+/// (`OverlapsKept`).
 fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
     let home = look.job.detected.home.as_path();
     let mut kept = Vec::new();
@@ -400,15 +490,20 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
         };
         let target = match std::fs::canonicalize(&path) {
             Ok(target) => Some(target),
-            // A link to nothing: only the link itself is here to keep.
+            // A link to nothing: nothing at its end to keep -- the link
+            // itself, and the way as far as it goes (`on_the_way`).
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(_) => return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept)),
+        };
+        let Ok(on_the_way) = the_way_to(&path) else {
+            return Err(Refusal::new(&path, UninstallUnsafeReason::OverlapsKept));
         };
         kept.push(Kept {
             spec,
             path,
             entry,
             target,
+            on_the_way,
         });
     }
     Ok(kept)
@@ -418,15 +513,23 @@ fn kept_places(look: &Look<'_>) -> Result<Vec<Kept>, Refusal> {
 /// any (ruling 25). With every link resolved, the item may lie inside a
 /// kept path only where the recipe lists it there -- `~/.claude/downloads`
 /// inside `~/.claude`, a real folder -- and may never be a kept path, hold
-/// one, or hold what one leads to: the preview says those stay. `location`
-/// is where the item itself is (its folders are real folders by then, the
-/// ancestry rule), `rel` how the recipe spells it.
+/// one, hold what one leads to, or be or hold anything on the way from
+/// one to what it leads to (`Kept.on_the_way`: moving
+/// `~/.local/share/claude` would take the middle link of `~/.claude.json
+/// -> ~/.local/share/claude/settings-link -> ~/settings/claude.json` along
+/// and leave `~/.claude.json` dangling): the preview says those stay.
+/// `location` is where the item itself is (its folders are real folders by
+/// then, the ancestry rule), `rel` how the recipe spells it.
 fn disturbed<'k>(kept: &'k [Kept], rel: &Path, location: &Path) -> Option<&'k Kept> {
     kept.iter().find(|kept| {
         let kept_rel = spelled(kept.spec.path);
         let target = kept.target.as_deref();
-        let takes_it =
-            kept.entry.starts_with(location) || target.is_some_and(|t| t.starts_with(location));
+        let takes_it = kept.entry.starts_with(location)
+            || target.is_some_and(|t| t.starts_with(location))
+            || kept
+                .on_the_way
+                .iter()
+                .any(|step| step.starts_with(location));
         let listed_inside =
             rel.starts_with(kept_rel) && rel != kept_rel && target == Some(kept.entry.as_path());
         let inside_it = target.is_some_and(|t| location.starts_with(t)) && !listed_inside;
@@ -1317,6 +1420,180 @@ mod tests {
     }
 
     #[test]
+    fn test_plan_removal_refuses_when_the_way_to_a_kept_path_runs_through_what_it_would_move() {
+        // A kept path needs more than its two ends (the step C code review,
+        // 2026-09-26): `~/.claude.json -> ~/.local/share/claude/settings-link
+        // -> ~/settings/claude.json` ends outside the program folder, but
+        // moving the folder would take the middle link along and leave
+        // `~/.claude.json` dangling. Refused, naming the kept path -- with
+        // the links' texts absolute or relative (`..` included), and for a
+        // linked folder on the way (`~/.local/share/claude/config ->
+        // ~/settings`) alike. The same for a kept link to nothing whose way
+        // runs through the program folder: writing through it would create
+        // `~/settings/claude.json` by way of the middle link.
+        type Make = fn(&TempHome);
+        let cases: [(&str, Make); 4] = [
+            ("removal-kept-way-two-hops", |home| {
+                let settings = home.file("settings/claude.json");
+                let middle = home.link(".local/share/claude/settings-link", &settings);
+                home.link(".claude.json", &middle);
+            }),
+            ("removal-kept-way-relative", |home| {
+                home.file("settings/claude.json");
+                home.link(
+                    ".local/share/claude/settings-link",
+                    Path::new("../../../settings/claude.json"),
+                );
+                home.link(
+                    ".claude.json",
+                    Path::new(".local/share/claude/settings-link"),
+                );
+            }),
+            ("removal-kept-way-linked-folder", |home| {
+                home.file("settings/claude.json");
+                let settings = home.path().join("settings");
+                home.link(".local/share/claude/config", &settings);
+                home.link(
+                    ".claude.json",
+                    &home.path().join(".local/share/claude/config/claude.json"),
+                );
+            }),
+            ("removal-kept-way-to-nothing", |home| {
+                home.dir("settings");
+                let middle = home.link(
+                    ".local/share/claude/settings-link",
+                    &home.path().join("settings/claude.json"),
+                );
+                home.link(".claude.json", &middle);
+            }),
+        ];
+        for (tag, make) in cases {
+            let home = TempHome::new(tag);
+            let layout = claude_layout(&home, "2.1.281");
+            make(&home);
+            let d = detected(home.path());
+
+            let (path, reason) = refused(plan_removal(&claude_job(&d)));
+
+            assert_eq!(
+                (path.as_str(), reason),
+                ("~/.claude.json", UninstallUnsafeReason::OverlapsKept),
+                "{tag}"
+            );
+            assert!(layout.root.is_dir(), "{tag}");
+        }
+    }
+
+    #[test]
+    fn test_plan_removal_goes_on_when_the_way_to_a_kept_path_runs_clear_of_what_it_moves() {
+        // The other side of the same rule: a kept path whose way runs clear
+        // of the listed paths -- its middle link in a dotfiles folder, or in
+        // a folder beside the program folder whose name only begins the
+        // same -- is no reason to refuse. The plan goes on and says the path
+        // stays.
+        for (tag, middle) in [
+            ("removal-kept-way-dotfiles", "dotfiles/claude-link"),
+            (
+                "removal-kept-way-beside",
+                ".local/share/claude-settings/link",
+            ),
+        ] {
+            let home = TempHome::new(tag);
+            let _layout = claude_layout(&home, "2.1.281");
+            let settings = home.file("settings/claude.json");
+            let middle = home.link(middle, &settings);
+            home.link(".claude.json", &middle);
+            let d = detected(home.path());
+
+            let removal = plan_removal(&claude_job(&d)).expect("a plan");
+
+            assert_eq!(
+                removal.warnings,
+                vec![
+                    trash("~/.local/share/claude", RemovedWhat::Program),
+                    trash("~/.local/bin/claude", RemovedWhat::Launcher),
+                    keep("~/.claude.json", KeptWhat::Settings),
+                ],
+                "{tag}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_the_way_to_lists_each_entry_the_lookup_meets_and_fails_where_the_system_would() {
+        // `the_way_to` alone. Each folder, link and file in the order the
+        // lookup meets them, a link's text followed from `/` when absolute
+        // and from the link's own folder when relative (`..` climbing from
+        // there), ending where `canonicalize` ends; a name that is not
+        // there ends the way with what was met; a loop, and a file used as
+        // a folder, are errors, where the system's own lookup (`stat`,
+        // `std::fs::metadata`) fails too -- `..` after a file included,
+        // which `canonicalize` on macOS climbs past. The home's own
+        // folders, met first and again after an absolute text, are left
+        // out of the comparison: `TempHome` is canonical, so they are the
+        // real folders above it.
+        let home = TempHome::new("removal-the-way");
+        let h = home.path();
+        home.file("settings/claude.json");
+        home.link(
+            "share/claude/settings-link",
+            Path::new("../../settings/claude.json"),
+        );
+        let kept = home.link(".claude.json", &h.join("share/claude/settings-link"));
+        let below_home = |way: Vec<PathBuf>| -> Vec<PathBuf> {
+            way.into_iter()
+                .filter(|step| !h.starts_with(step))
+                .collect()
+        };
+
+        let way = the_way_to(&kept).expect("a way");
+
+        assert_eq!(
+            below_home(way.clone()),
+            vec![
+                h.join(".claude.json"),
+                h.join("share"),
+                h.join("share/claude"),
+                h.join("share/claude/settings-link"),
+                h.join("settings"),
+                h.join("settings/claude.json"),
+            ]
+        );
+        assert_eq!(way.last(), Some(&std::fs::canonicalize(&kept).unwrap()));
+
+        let dangling = home.link("gone-link", &h.join("share/claude/nothing/x"));
+        assert_eq!(
+            below_home(the_way_to(&dangling).expect("a way as far as it goes")),
+            vec![h.join("gone-link"), h.join("share"), h.join("share/claude")]
+        );
+
+        home.link("loop-a", &h.join("loop-b"));
+        let looping = home.link("loop-b", &h.join("loop-a"));
+        assert!(the_way_to(&looping).is_err(), "a loop");
+        assert!(std::fs::metadata(&looping).is_err(), "a loop");
+        for through_a_file in [
+            "settings/claude.json/x",
+            "settings/claude.json/../claude.json",
+        ] {
+            let link = home.link("through-a-file", &h.join(through_a_file));
+            assert!(the_way_to(&link).is_err(), "{through_a_file}");
+            assert!(std::fs::metadata(&link).is_err(), "{through_a_file}");
+            std::fs::remove_file(&link).unwrap();
+        }
+        // Pinned so the comments above and on `the_way_to` stay true:
+        // macOS's `realpath` climbs past a `..` after a file, where the
+        // system's lookup fails.
+        #[cfg(target_os = "macos")]
+        {
+            let link = home.link(
+                "up-from-a-file",
+                &h.join("settings/claude.json/../claude.json"),
+            );
+            assert!(std::fs::canonicalize(&link).is_ok());
+        }
+    }
+
+    #[test]
     fn test_plan_removal_accepts_a_home_reached_through_a_symlink() {
         // `HostEnv.home` may be a link to the real home; both sides are
         // resolved before check 1 compares them, and the plan's paths keep
@@ -2088,6 +2365,87 @@ mod tests {
 
         assert_eq!(outcome, path_changed("~/.claude"));
         assert!(mock.calls().is_empty());
+    }
+
+    /// A trasher that, right after moving its first item, rearranges
+    /// `~/.claude.json` as a dotfiles tool might: the settings move to
+    /// `~/settings/claude.json`, a link to them appears in the download
+    /// cache (`~/.claude/downloads/settings-link`), and `~/.claude.json`
+    /// becomes a link to that link -- a change before the next item's
+    /// turn, as one during the pause that follows would be in production.
+    struct RelinkingTrasher {
+        inner: MockTrasher,
+        home: PathBuf,
+        done: StdMutex<bool>,
+    }
+
+    impl Trasher for RelinkingTrasher {
+        fn trash(&self, path: &Path, kind: ItemKind) -> Result<PathBuf, TrashError> {
+            let result = self.inner.trash(path, kind);
+            let mut done = self.done.lock().unwrap();
+            if !*done {
+                *done = true;
+                let kept = self.home.join(".claude.json");
+                let settings = self.home.join("settings/claude.json");
+                let middle = self.home.join(".claude/downloads/settings-link");
+                std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+                std::fs::rename(&kept, &settings).unwrap();
+                std::os::unix::fs::symlink(&settings, &middle).unwrap();
+                std::os::unix::fs::symlink(&middle, &kept).unwrap();
+            }
+            result
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_removal_stops_when_the_way_to_a_kept_path_comes_to_run_through_the_next_item(
+    ) {
+        // The same finding at run time: after the program folder's move,
+        // `~/.claude.json` becomes `-> ~/.claude/downloads/settings-link ->
+        // ~/settings/claude.json`. The cache's turn places the kept paths
+        // afresh, finds that the way to the settings now runs through the
+        // cache (the middle link is in it), and stops before moving it,
+        // naming the kept path: the program folder is in the Trash, the
+        // cache and the launcher stay, and `~/.claude.json` still leads to
+        // the settings.
+        let home = TempHome::new("removal-exec-kept-way");
+        let layout = claude_layout(&home, "2.1.281");
+        home.dir(".claude/downloads");
+        let kept = home.file(".claude.json");
+        let written = std::fs::read(&kept).unwrap();
+        let d = detected(home.path());
+        let job = claude_job(&d);
+        let preview = plan_removal(&job).unwrap();
+        let relinking = Arc::new(RelinkingTrasher {
+            inner: MockTrasher::new(),
+            home: home.path().to_path_buf(),
+            done: StdMutex::new(false),
+        });
+        let trasher: Arc<dyn Trasher> = relinking.clone();
+
+        let (outcome, notes) =
+            run(&job, &preview, &trasher, no_gap(), CancellationToken::new()).await;
+
+        assert_eq!(outcome, path_changed("~/.claude.json"));
+        assert_eq!(relinking.inner.calls(), preview.paths[..1].to_vec());
+        assert_eq!(notes.len(), 1, "the program folder's move was logged");
+        let middle = home.path().join(".claude/downloads/settings-link");
+        assert!(
+            std::fs::symlink_metadata(&middle)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the middle link stays in the cache"
+        );
+        assert_eq!(
+            std::fs::read(&kept).unwrap(),
+            written,
+            "the kept path still leads to the settings"
+        );
+        assert!(std::fs::symlink_metadata(&layout.launcher)
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 
     /// A trasher that, while moving its first item, replaces the cache

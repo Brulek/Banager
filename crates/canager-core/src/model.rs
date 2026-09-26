@@ -347,11 +347,15 @@ pub enum UninstallUnsafeReason {
     /// sentence the user reads (`notWhatInstructionsExpect`) cites no
     /// instructions.
     NotWhatInstructionsExpect,
-    /// With every link resolved, moving the listed paths might take a path
-    /// the preview says is kept: a listed path is a kept path, holds one or
-    /// what one leads to, or lies inside one other than where the recipe
-    /// lists it (`~/.claude -> ~/.local/share/claude`) -- or a kept path
-    /// that is there could not be placed. `path` is the kept path (ruling
+    /// Moving the listed paths might take a path the preview says is kept,
+    /// or part of the way to what one leads to: with every link resolved,
+    /// a listed path is a kept path, holds one or what one leads to, is or
+    /// holds a link or folder on the way from one to what it leads to
+    /// (`~/.claude.json -> ~/.local/share/claude/settings-link ->
+    /// ~/settings/claude.json`), or lies inside one other than where the
+    /// recipe lists it (`~/.claude -> ~/.local/share/claude`) -- or a kept
+    /// path that is there could not be placed, or the way from it to what
+    /// it leads to could not be followed. `path` is the kept path (ruling
     /// 25 of the step C plan).
     OverlapsKept,
 }

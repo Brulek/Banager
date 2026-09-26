@@ -643,9 +643,13 @@ download cache inside it where it is, and the preview says so; the path
 must belong to the user
 Canager runs as; it must be what the list describes — the
 program files and the download cache real folders, the launcher one
-symbolic link straight into `~/.local/share/claude`; and, with every
-link resolved, moving it must not take `~/.claude` or `~/.claude.json`
-along (of `~/.claude`, only `downloads` lies inside it, as listed). If a
+symbolic link straight into `~/.local/share/claude`; and moving it must
+not take `~/.claude` or `~/.claude.json` along (of `~/.claude`, only
+`downloads` lies inside it, as listed), nor — following every link —
+what either leads to, or any link or folder on the way there: a
+`~/.claude.json` that is a link to a link inside
+`~/.local/share/claude`, which leads on to settings kept elsewhere,
+refuses the uninstall. If a
 check fails on a path the list requires, the whole uninstall is refused,
 in the user's language, and nothing is moved; an optional path that is
 there but that Canager cannot confirm is the tool's — the wrong kind of
