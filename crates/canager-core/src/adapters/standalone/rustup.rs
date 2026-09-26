@@ -488,22 +488,24 @@ const DANGLING_WORDS: [&str; 4] = ["and", "or", "not", "!"];
 /// Whether `line` -- one line of a startup file, trimmed, neither blank
 /// nor a comment -- stands alone: read with sh's quoting, it is a whole
 /// command that ends where the line ends, so the line below it is not
-/// part of it or under its control. Not alone: a quote left open (`'…'`,
-/// `"…"`, `$'…'`, `` `…` ``); a `(`, `{`, `$(` or `${` left open, or a
-/// `)` or `}` that does not match the innermost one still open on the
-/// line; a `(` and a `)` with nothing but blanks between them, anywhere
-/// on it, as a function definition has (zsh's body may be the next
-/// line); `<<` outside quotes, a here-document, whose body is the lines
-/// below; a `[[` word with no `]]` word after it, or a `]]` with no `[[`
-/// before it; a `\` last, joining the next line on; a `|`, `&&` or `|&`
-/// last, or one of `DANGLING_WORDS` as the last word; a `\` inside single
-/// quotes, which sh reads as itself and fish as an escape; and any of
-/// `UNSURE_WORDS` as a word. A `#` first on the line or after a space or
-/// tab, outside quotes and outside `${…}`, begins a comment, which is not
-/// read; a `#` anywhere else is read as part of the line. A small reader,
-/// not a shell: it looks for what is listed here, and what a command on
-/// the line does when it runs -- a file it loads, a string it evaluates,
-/// an alias or an option it sets -- is not followed. Read by
+/// part of it or under its control. Not alone, read that way: a quote
+/// left open (`'…'`, `"…"`, `$'…'`, `` `…` ``); a `(`, `{`, `$(` or `${`
+/// left open, or a `)` or `}` that does not match the innermost one still
+/// open on the line; `<<` outside quotes, a here-document, whose body is
+/// the lines below; a `\` last, joining the next line on; a `\` inside
+/// single quotes, which sh reads as itself and fish as an escape. Then,
+/// over the line with its comment dropped and its quote marks and
+/// escaping backslashes left out -- so a quoted `if` is still `if`: a `(`
+/// and a `)` with nothing but blanks between them, as a function
+/// definition has (zsh's body may be the next line); a `[[` word with no
+/// `]]` word after it, or a `]]` with no `[[` before it; a `|`, `&&` or
+/// `|&` at the end, or one of `DANGLING_WORDS` as the last word; and any
+/// of `UNSURE_WORDS` as a word. A `#` first on the line or after a space
+/// or tab, outside quotes and outside `${…}`, begins the comment; a `#`
+/// anywhere else is read as part of the line. A small reader, not a
+/// shell: it looks for what is listed here, and what a command on the
+/// line does when it runs -- a file it loads, a string it evaluates, an
+/// alias or an option it sets -- is not followed. Read by
 /// `classify_leftover`.
 fn stands_alone(line: &str) -> bool {
     /// What is open at a point of the line, innermost last.
@@ -691,12 +693,13 @@ type FileIdentity = (u64, u64);
 /// `path` leads, links followed, to a regular file that reads as UTF-8 --
 /// followed as rustup follows it: its cleanup visits a name only when
 /// `is_file()` (unix.rs:60, :149), reads it with `fs::read_to_string`
-/// (unix.rs:61, :150; utils/mod.rs:83-88) and rewrites it by opening that
-/// name to truncate and write (unix.rs:69, :158; utils/raw.rs:86-98),
-/// which changes the file the name leads to in place. A name that is not
-/// a regular file is not opened (a named pipe would wait for a writer),
-/// and the identity is the opened file's own (`fstat`), the file whose
-/// bytes were read. Read by `shell_config_leftovers`.
+/// (unix.rs:61, :150; utils/mod.rs:83-88) and, when it removes a line,
+/// rewrites it by opening that name to truncate and write (unix.rs:69,
+/// :158; utils/raw.rs:86-98), which changes the file the name leads to in
+/// place. A name that is not a regular file is not opened (a named pipe
+/// would wait for a writer), and the identity is the opened file's own
+/// (`fstat`), the file whose bytes were read. Read by
+/// `shell_config_leftovers`.
 fn read_startup_file(path: &Path) -> Option<(FileIdentity, String)> {
     use std::io::Read;
     use std::os::unix::fs::MetadataExt;

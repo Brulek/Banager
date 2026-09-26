@@ -1086,18 +1086,20 @@ copy of its line; its line last in the file with no newline after it) and
 every line above it stands alone. Canager reads each of those lines with
 sh's quoting and lets it stand alone only as a whole command that ends on
 that line: no quote, `(`, `{`, `$(` or `${` left open, nor a `)` or `}`
-that does not match the innermost one still open on it; no `(` and `)`
-with only blanks between them, as a function definition has; no `<<`
-outside quotes (a here-document, whose body is the lines below); no `[[`
-without a `]]` after it, nor a `]]` without a `[[` before it; no `\`,
-`|`, `&&` or `|&` at its end, nor `and`, `or`, `not` or `!` as its last
-word; no `\` inside single quotes (sh and fish read it differently);
+that does not match the innermost one still open on it; no `<<` outside
+quotes (a here-document, whose body is the lines below); no `\` at its
+end; no `\` inside single quotes (sh and fish read it differently). The
+rest of the check reads the line with its quote marks and escaping
+backslashes left out, so a quoted word counts as the word: no `(` and `)`
+with only blanks between them, as a function definition has; no `[[`
+without a `]]` after it, nor a `]]` without a `[[` before it; no `|`,
+`&&` or `|&` at its end, nor `and`, `or`, `not` or `!` as its last word;
 and none of `if`, `then`, `elif`, `else`, `fi`, `case`, `esac`, `for`,
 `select`, `while`, `until`, `do`, `done`, `repeat`, `foreach`,
 `function`, `coproc`, `begin`, `end`, `switch`, `return`, `exit`,
-`logout`, `bye` or `exec` as a word anywhere on it, quoted or not — the
-words of conditionals, loops, functions, blocks and coprocesses, and of
-the commands that end the file or the shell. In that check the rest of a
+`logout`, `bye` or `exec` as a word anywhere on it — the words of
+conditionals, loops, functions, blocks and coprocesses, and of the
+commands that end the file or the shell. In that check the rest of a
 line from a `#` that follows a space or tab, outside quotes and outside
 `${…}`, is a comment and is not read. This is a small reader, not a
 shell: it looks only for what is listed here; a line that does not stand
