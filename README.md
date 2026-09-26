@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 766 Rust tests (plus 3 more
-> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 370 front-end
+> **Status: pre-release.** The core and the UI work and are covered by 819 Rust tests (plus 3 more
+> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 375 front-end
 > tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
 > rely on.
 
@@ -29,6 +29,8 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | Ollama — models | yes | yes |
 | Claude Code — the native install, via its own installer | yes | updates yes; install no (the installer is Anthropic's, and Canager never runs it); uninstall yes — its program files, download cache and launcher go to the Trash, and your settings and history stay |
 | rustup — the Rust toolchain manager, via its own installer | yes | updates yes (`rustup self update`); install no (the installer is rust-lang's, and Canager never runs it); uninstall yes (`rustup self uninstall -y`), offered only when Rust is in its standard folders (`~/.cargo`, `~/.rustup`) and previewed with everything it removes — permanently, not to the Trash: every toolchain by name, the whole Cargo folder with its settings and saved login, and the programs in its `bin` folder, named where known. Neither can be cancelled once it is running, and the preview says so |
+| Antigravity CLI (`agy`) — Google's terminal agent, via its own installer | yes | updates **no** — it installs its updates itself in the background and its own `agy update` is undocumented, so a newer version is listed with an "Updates itself" badge and a sentence saying to open the tool once (Canager looks the newer version up on Apple silicon only: on an Intel Mac the row reads "Can't check" and nothing is sent); install no (the installer is Google's, and Canager never runs it); uninstall yes — the `agy` program, and any `agy.<time>.old` backup its updater left beside it, go to the Trash; its conversations, history and working files in `~/.gemini/antigravity-cli` stay, and so do its staging folder in `~/.cache` and the `PATH` lines its installer added |
+| Grok Build (`grok`) — xAI's terminal agent, via its own installer | yes | updates yes (`grok update`, offered when grok's own `update --check --json` says a newer version exists; how `grok update` behaves when nothing can answer a prompt is yet to be recorded on CI); install no (the installer is xAI's, and Canager never runs it); uninstall yes — its downloaded versions, its bundled agents and shell completions, any fallback links its installer made in `~/.local/bin`, and the two links in its `bin` folder go to the Trash (the folder itself, which its installer put on your `PATH`, stays); `~/.grok`'s settings, login, sessions and memory stay |
 
 Programs that none of these sources installed — a tool's own installer dropped a binary into
 `~/.local/bin`, an app put a helper into `/usr/local/bin`, a link whose target is gone — are
@@ -51,7 +53,7 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall shows its real argv
-  and whether it needs your password — or, for the one uninstall that runs no command, the exact
+  and whether it needs your password — or, for an uninstall that runs no command, the exact
   paths it will move to the Trash. An uninstall also says what it will affect — an update
   never touches anything else, so it has nothing to report there.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
@@ -60,9 +62,12 @@ This app runs package managers on your behalf, so the boundary matters more than
   its removal as a list of paths. Canager moves those paths, plus its installer's download cache,
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
   back — and Finder's Put Back will likely work too; the preview lists each path it will move and
-  each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). It is the
-  only change Canager makes to a file itself besides saving its own settings, and
-  `docs/what-we-run.md` says how.
+  each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). Antigravity
+  CLI and Grok Build publish no removal instructions at all, so their lists are Canager's own
+  reading of how each was installed, and their paths go to the Trash the same way. Moving files to
+  the Trash is the only change Canager makes to a file itself besides saving its own settings;
+  `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
+  comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never
   directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and never
   through a folder that is a link — yours, what the instructions describe, and clear of what it
@@ -165,14 +170,17 @@ Three kinds of text are shown as-is:
   than translated — with the switch off you see only a short generic sentence instead. There are
   more than a dozen such explanations: a generic one like "npm outdated -g exited with code 1" (or
   "... did not finish", or the tool's own first line of stderr) from any lookup that runs a
-  command; from the five lookups Canager makes over HTTP instead of a command line, that
-  request's own wording — pipx's PyPI lookup ("PyPI request failed: ...", "PyPI returned status
-  503", "could not parse PyPI response: ..."), Cargo's equivalent for crates.io, Ollama's for its
-  own registry, Claude Code's for its release channel, and rustup's for its release file; and the
-  two Claude Code and rustup share about the installed version ("cannot read the installed
-  version now", "cannot compare the installed version ... with the published ..."). They should
-  all become structured payloads like the refusals above, and until they do, what a Chinese user
-  sees there with the switch on is in English.
+  command, Grok Build's own update check among them (which has a few more of its own: an answer
+  that is not grok's JSON, or an error grok itself reported); from the six lookups Canager makes
+  over HTTP instead of a command line, that request's own wording — pipx's PyPI lookup ("PyPI
+  request failed: ...", "PyPI returned status 503", "could not parse PyPI response: ..."), Cargo's
+  equivalent for crates.io, Ollama's for its own registry, Claude Code's for its release channel,
+  rustup's for its release file, and Antigravity CLI's for its manifest (or, on an Intel Mac, why
+  it made no request); and the two about the installed version ("cannot read the installed
+  version now", "cannot compare the installed version ... with the published ...") from the code
+  Claude Code, Antigravity CLI, Grok Build and rustup share. They should all become structured
+  payloads like the refusals above, and until they do, what a Chinese user sees there with the
+  switch on is in English.
 
 ## Design notes
 
@@ -197,8 +205,8 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 764 个 Rust 测试（另有 3 个要连着真实的
-Homebrew 或真实的废纸篓才跑，平时是跳过的）和 370 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 819 个 Rust 测试（另有 3 个要连着真实的
+Homebrew 或真实的废纸篓才跑，平时是跳过的）和 375 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -226,11 +234,13 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
   有十几处：一类是像“npm outdated -g exited with code 1”这样的通用提示（也可能是“... did not
-  finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源；另一类来自另外五个改用
-  HTTP 直接查询的来源——pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的
-  发布通道、rustup 查它的发布文件——各自请求失败、返回状态异常、解析失败时的原文提示；还有 Claude Code
-  与 rustup 共用的两句原文提示：读不到已安装版本、或已安装版本与发布版本无法比较。这些都应该像上面的
-  拒绝理由一样改成结构化数据，在那之前，中文用户在开关打开时看到的，就是英文。
+  finish”，或者工具自己 stderr 的第一行），出自任何要跑命令去检查更新的来源，Grok Build 用它自己的命令检查更新也在其中
+  （它还另有几句：回答不是 grok 该给的 JSON，或者 grok 自己报了错）；另一类来自另外六个改用 HTTP 直接查询的来源——
+  pipx 查 PyPI、Cargo 查 crates.io、Ollama 查它自己的软件源、Claude Code 查它的发布通道、rustup 查它的发布文件、
+  Antigravity CLI 查它的版本清单（在 Intel Mac 上则是它为什么没发请求）——各自请求失败、返回状态异常、
+  解析失败时的原文提示；还有 Claude Code、Antigravity CLI、Grok Build 与 rustup 共用的代码里的两句原文提示：
+  读不到已安装版本、或已安装版本与发布版本无法比较。这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，
+  中文用户在开关打开时看到的，就是英文。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
 点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew

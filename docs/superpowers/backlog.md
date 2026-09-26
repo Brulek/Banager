@@ -241,6 +241,8 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   **修法的形状**：把「上一次移到废纸篓的时刻」放进全进程共享的一处（`Session::new` 交给所有独立安装工具适配器的是同一个
   `Arc<RealTrasher>`），每次移动前补足到 3 秒，而不是只在 `execute_removal` 的循环里停；`MockTrasher` 与测试不受影响。
   **现在不做的理由**：C 只有 Claude Code 一个 path-list 卸载，两次卸载都要各自预览、确认；步骤 D 加入 grok 与 agy 之后再做。
+  （2026-09-26：步骤 D 已加入两者，path-list 卸载现在有 Claude Code、Antigravity CLI、Grok Build 三个，各自只锁自己的实例，
+  所以两个不同工具的卸载可以同时跑；本条按上面的约定到期，仍未做。）
   **同一处记两件没核实的事**：没有人真的点过「放回原处」（spike 只核对了 Finder 的记录；作者合并前在 Finder 启动的构建上
   手动核一次，结果写进 `docs/what-we-run.md` 的「Moving files to the Trash」）；macOS 27.0 以外的版本与 Intel Mac 没跑过
   （`tests/standalone_uninstall_test.rs` 的 `#[ignore]` 冒烟测试在作者的终端与 CI 上覆盖「移得进去」，悬空链接也在内，
@@ -250,20 +252,68 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   `~/.cargo`（`recipe::SHARED_FOLDERS`；`removal::plan_removal` 按解析后的路径查，`recipes::tests` 按配方的写法查），
   拒绝理由是 `SharedFolder`。claude 与 grok 的清单都通过；spec 给 agy 列的 `~/.cache/antigravity`（父目录 `~/.cache`）过不了。
   **步骤 D 要做的决定**：给这一条路径一个有测试的明确例外（只对 optional 的 `Cache`），或者改 spec 的清单——不要悄悄放宽整条规则。
-- **`~/.local/bin` 或 `~/.claude` 整个是链接时，卸载会被拒绝**（2026-09-25，步骤 C，裁定 24）。步骤 C 要求家目录到清单上
-  每条路径之间的每一层都是真目录（`removal::check_item` 的祖先规则），所以用 dotfiles 工具把 `~/.local/bin` 整个链到别处
-  （哪怕仍在家目录里）的用户——以及 `~/.claude` 是链接、里面又有 `downloads` 的用户——Claude Code 这一行照常显示
+  **步骤 D 定案：改清单，不改规则**（步骤 D 计划裁定 1；`314b093`、`13cf03d` 于 2026-09-26 落地，本条关闭）。
+  `~/.cache/antigravity` 不移，列为保留项（新变体 `KeptWhat::InstallerCache`，文案说它是安装器的下载暂存文件夹、通常是空的、
+  Canager 不会移动直接放在 `~/.cache` 里的东西、可以自己删），只在它存在时列出；检查 1 与 `SHARED_FOLDERS` 一字未改。
+  本机它是空的（2026-09-26 录制时 `staging/` 0 项，见 fixture README）；安装脚本先把下载放在这里、校验后才复制到位
+  （agy.md §3a），所以中断的安装可能在里面留下下载到一半的文件（程序本体约 176 MB）；后台更新器是否也在这里暂存没有核实。
+  作者可见的后果：卸载 Antigravity CLI 后 `~/.cache/antigravity` 留在原地，对话框会说；来源不明页不会列它（它不在那一页扫描的
+  bin 文件夹里）。
+- **`~/.local/bin` 整个是链接时，卸载会被拒绝**（2026-09-25，步骤 C，裁定 24；原标题还有「或 `~/.claude`」，那一半
+  2026-09-26 由步骤 D 改掉，见本条末）。步骤 C 要求家目录到清单上每条路径之间的每一层都是真目录（`removal::check_item`
+  的祖先规则），所以用 dotfiles 工具把 `~/.local/bin` 整个链到别处（哪怕仍在家目录里）的用户，Claude Code 这一行照常显示
   （`route::probe` 先解析启动器所在的目录），但卸载在预览时就被拒绝，理由是 `not_what_instructions_expect`（文案说
-  「它本身或它所在的某个文件夹可能链到了别处」）。spec §6.3 的检查 1 原本接受这种链接。
+  「它本身或它所在的某个文件夹可能链到了别处」）。步骤 D 之后 Antigravity CLI 也一样：它的启动器 `~/.local/bin/agy`
+  在同一个文件夹里，也不是 optional。spec §6.3 的检查 1 原本接受这种链接。
   **修法的形状**（真有人碰到再做）：只对启动器所在的那一层，允许它是一个指向家目录之内、又不在 `SHARED_FOLDERS` 里的链接，
   并把它解析后的目录与预览时记下的一起比对（`ItemIdentity` 已经随计划带着），配测试；不要整体放宽祖先规则——
   `~/.claude -> ~/Documents` 这类别名正是它挡住的。**现在不做的理由**：没有观察到这样的安装，放宽需要单独评审。
+  **`~/.claude` 那一半已不成立**（步骤 D，`e15a340`）：清单上 optional 的路径若确认不了是这个工具的——它所在的文件夹是链接
+  也算——就保留并说明（`removal::keeps_instead`，`WillKeep { NotOurs }`），不再拒绝整个卸载。所以 `~/.claude` 是链接、
+  里面又有 `downloads` 时，`~/.claude/downloads` 留在原地、预览说一句，其余照常移走（测试
+  `test_plan_removal_keeps_an_optional_path_whose_folder_leads_elsewhere`）；祖先规则仍然挡住把 `~/Documents/downloads`
+  当成 Claude Code 的缓存移走。每个配方的启动器（`route.launcher`，清单的最后一项）从不是 optional
+  （`recipes::tests` 钉着），所以上面 `~/.local/bin` 那一半照旧。
 - **升级后的读取仍把「看不清」当成「不在了」**（2026-09-25，步骤 C 顺带发现）。B 的 `StandaloneAdapter::reconcile`
-  （升级前后的读取）经 `inventory` 用 `route::probe`，权限错误、循环链接这类「看不清」一律成了 `Absent`：`claude update`
-  退出 0 之后如果恰好读不了 `~/.local/bin`，`run_operation` 会报 `NeedsAttention(GoneAfterUpgrade)`——说升级后不见了，
-  而事实是看不清。步骤 C 只把卸载之后的读取换成了 `route::probe_strict`（裁定 27）。**修法的形状**：`inventory` 改用
-  `probe_strict`，把 `Err` 映成 `AdapterError`（刷新时这个来源计入「部分数据可能不是最新的」横幅，而不是这一行消失），
-  升级前后的读取随之得到 `Err` → `Unconfirmed`；要连同 B 的「探测失败是『没装』，不是『没响应』」这条规则一起评审。
+  （升级前后的读取）经 `look` 用 `route::probe`（`4156e23` 起它不再经 `inventory`，两者共用 `look`），权限错误、
+  循环链接这类「看不清」一律成了 `Absent`：`claude update` 退出 0 之后如果恰好读不了 `~/.local/bin`，`run_operation`
+  会报 `NeedsAttention(GoneAfterUpgrade)`——说升级后不见了，而事实是看不清。步骤 C 只把卸载之后的读取换成了
+  `route::probe_strict`（裁定 27）。**修法的形状**：`look`（`inventory` 与 `reconcile` 都经它读）改用 `probe_strict`，
+  把 `Err` 映成 `AdapterError`，升级前后的读取随之得到 `Err` → `Unconfirmed`（刷新时的 `inventory` 自 `4156e23` 起已经把
+  看不见的启动器当作与 detect 所列不符而拒绝：这个来源计入「部分数据可能不是最新的」横幅，这一行不消失）；要连同 B 的
+  「探测失败是『没装』，不是『没响应』」这条规则一起评审。
+- **grok 回退链接的链接文本未核实**（2026-09-26，步骤 D）。`~/.local/bin/grok`、`~/.local/bin/agent` 只在 `~/.grok/bin`
+  不在 PATH 上时由安装器创建（grok.md §2：它依次试 `~/.local/bin` 与 `/usr/local/bin`，用第一个可写的），本机没有，
+  链接文本指向 `~/.grok/bin/grok` 还是直接指向 `downloads/` 里的文件不知道。配方把这两条列为 optional 且**排在最前**
+  （步骤 D 计划裁定 3）——这是预防，不是纠错：检查 4 对这类路径用 `route::probe`，链接悬空时走 `probe_strict` 的 NotFound
+  分支，按链接自己的文本判定（`one_hop`，只把**已存在**的前缀解析掉），两种文本在 `downloads/` 进废纸篓之后都答
+  `LauncherOnly` 并被接受；排在最前，是让它们在文本可能经过的每个文件夹都还在时就走掉，检查 4 看到的是一条能解析的链接
+  （`Present`：文本与解析结果都得落在 `~/.grok` 里），不只凭文本；中途停下也不会留下一条看起来像别人的悬空
+  `~/.local/bin/grok`。若它不是 grok 的（另一个 CLI 的 `agent`），按 `NotOurs` 保留并说明。`/usr/local/bin` 里的同名路径
+  只在**链接进 `~/.grok`** 时才报「会变成失效链接」（`removal::points_into`；Intel Mac 上它可能是 Homebrew `grok-build`
+  的活链接，步骤 D 计划裁定 6）。**核实办法**：在 CI runner 上让 `~/.grok/bin` 不在 PATH 上装一次（安装器只在这时才建
+  回退链接），再 `readlink` 两个候选位置——可以加进步骤 D 计划「The author's pre-merge verification」的工作流。
+- **grok 的 `~/.grok/bin` 不整目录移动**（2026-09-26，步骤 D 计划裁定 4，与 spec §6.3 的 `~/.grok/bin · Dir` 不同）。
+  安装器把它加进了 PATH，用户自己的脚本可能放在里面；清单列的是安装器放进去的两条链接（`agent`、最后 `grok`），文件夹本身
+  留在被保留的 `~/.grok` 里（用户没往里放东西时是空的；安装器写进 shell 配置文件的 PATH 行照旧指向它，无害）。若日后要连
+  文件夹一起移，形状是「文件夹里只剩清单上的条目才移」的检查，不是放宽启动器最后的不变量。
+- **`grok update` / `claude update` 无交互时的行为待 CI 录制**（2026-09-26，步骤 D，spec §五；本仓库的 GitHub Actions 额度
+  2026-10-01 恢复）。步骤 D 计划「The author's pre-merge verification」一节给了工作流、观察项与每种结果对应的配方改法；
+  在录制到之前，`docs/what-we-run.md` 的 Grok Build 一节照实说还没观察过（「has not been observed by this project」）。
+  **grok 的结果挡合并**（`GROK.upgrade` 是本步新加的）；**claude 的结果不挡本步合并**（B 已经交付了按钮，若会提示或挂起，
+  是发布前要修的回归）——这与 spec §五「步骤 D 之前在 CI runner 上各录一次」不同，步骤 D 计划的偏差 13 记了。若 grok
+  会提示或挂起，计划推荐的形状是新的 `UpdateBlocked::NeedsTerminal`（自己的 copy record：请用户自己在「终端」里跑
+  `grok update`），不是 `SelfUpdatesOnly`（它那句「会在后台自己安装更新」用在 grok 上没有根据：grok 会不会自己装更新没有核实）；
+  另一条路是保留按钮，让 `Failed` 引用 grok 的提示原文。claude 同理。
+- **`grok --version` 是否触发启动时更新器、那个更新器会不会静默安装**（2026-09-26，步骤 D；grok.md §5 开放问题 2）。
+  每次刷新跑两次 `grok --version`（detect、inventory 各一次）和一次 grok 自己的 `update --check --json`。1.0.41 的录制在
+  `--version` 前后各看了一次 `~/.grok/bin` 与 `~/.grok/downloads` 的 `ls -lan`、`readlink ~/.grok/bin/grok` 和
+  `version.json` 的 mtime：都没变，事后 `find ~/.grok -newer` 也说明这次读版本没在 `~/.grok` 里写任何东西（fixture
+  README）。所以 1.0.41 的版本读取没留下碰到启动时路径的痕迹，那个更新器会不会装仍然不知道。以后每录一个
+  `verified_versions` 都照做：链接或 `downloads/` 变了就停，由作者决定版本读取怎么改；只有 mtime 动了，照实写进 fixture
+  README 与 `## Grok Build`。这条没关之前，grok 的 `self_updates` 不能改成 true。另：grok 自己的检查每次刷新都会在
+  `~/.grok` 里写东西（替换 `version.json`、往 `logs/unified.jsonl` 加两行、刷新它自带的用户指南 27 个文件的修改时间），
+  `docs/what-we-run.md` 已写明那是 grok 的写入，不是 Canager 的。
 
 ## 阶段 5（发现页）之前必须处理
 
