@@ -226,7 +226,7 @@
       "sharedFolder": "Canager won't remove {{path}}: it sits directly in your home folder or in a folder other apps share, so moving it could take their files with it. Nothing was changed.",
       "missing": "{{path}} isn't there any more, so Canager stopped. Nothing was changed.",
       "notOwnedByYou": "Canager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed.",
-      "notWhatInstructionsExpect": "Canager won't remove {{path}}: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+      "notWhatInstructionsExpect": "Canager won't remove {{path}}: it couldn't confirm this is what it expects to find there for this tool — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
       "overlapsKept": "Canager won't uninstall this: it couldn't confirm that moving the listed paths leaves {{path}}, which it keeps, where it is — through a link, one of them may be the same thing, hold it, or lie inside it. Nothing was changed."
     }
   },

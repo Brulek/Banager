@@ -70,10 +70,10 @@ This app runs package managers on your behalf, so the boundary matters more than
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never
   directly in it or in a folder other apps share, such as `~/.local` or `~/Library`, and never
-  through a folder that is a link — yours, what the instructions describe, and clear of what it
-  keeps. Canager remembers what each path was when you saw the preview; when you confirm, and
-  again right before each path moves, it checks everything once more, and if anything differs it
-  stops before moving that path, and the operation log lists anything it had already moved.
+  through a folder that is a link — yours, what that tool's uninstall list describes, and clear of
+  what it keeps. Canager remembers what each path was when you saw the preview; when you confirm,
+  and again right before each path moves, it checks everything once more, and if anything differs
+  it stops before moving that path, and the operation log lists anything it had already moved.
 
 ## What it deliberately does not do yet
 
@@ -139,7 +139,7 @@ user cannot read is treated as a bug.
 Rust's refusals are translated too, not just the frames around them. A plan built against a source
 that is read-only, unavailable or gone, an operation Canager can't prepare (a name it won't pass to
 a tool, a program that has gone missing, a path on an uninstall list that is outside your home
-folder, in a folder other apps share, missing, not yours or not what the instructions describe), a
+folder, in a folder other apps share, missing, not yours or not what that list describes), a
 preview that has expired or already been used, a settings change it couldn't save, an operation
 Canager itself couldn't carry out (the program was removed between the check and the run, say, or a
 path changed between the preview and the click), Canager's own remarks in the operation log

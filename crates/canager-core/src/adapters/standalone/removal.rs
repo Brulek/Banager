@@ -448,7 +448,7 @@ fn is_shared_folder(folder: &Path, canonical_home: &Path) -> bool {
 ///   root, which may be the very folder the uninstall keeps
 ///   (`route::leads_to_program`; `NotWhatInstructionsExpect` either way);
 /// - last, the item's own `lstat`: there (`Missing`), the user's own
-///   (check 3, `NotOwnedByYou`), and the kind the instructions describe --
+///   (check 3, `NotOwnedByYou`), and the kind the list describes --
 ///   a real directory for `Dir`, a link for either link kind, a regular
 ///   file for `File`, so the item is a link only where the recipe says so
 ///   (check 4, `NotWhatInstructionsExpect`).
@@ -573,8 +573,8 @@ pub fn plan_removal(job: &Job) -> Result<Removal, AdapterError> {
                     Refusal::new(&item.path, UninstallUnsafeReason::Missing).into_error(home)
                 );
             }
-            // Unreadable (a permission error, a loop): not something the
-            // instructions describe, and not something to move blind -- an
+            // Unreadable (a permission error, a loop): not confirmed to be
+            // what the list describes, and not something to move blind -- an
             // optional one is left where it is and said.
             Err(_) if item.optional => {
                 not_ours.push(Warning::WillKeep {

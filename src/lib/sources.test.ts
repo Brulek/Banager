@@ -510,6 +510,32 @@ describe("planErrorMessage", () => {
     expect(planErrorMessage(fakeT, pathless, "Claude Code")).toBe(pathless);
   });
 
+  it("refuses a path it can't confirm without citing official instructions, which Antigravity CLI and Grok Build don't publish, in both locales", () => {
+    // `not_what_instructions_expect` is what check 4 and the ancestry rule
+    // (`removal::check_item`) answer on every path-list uninstall. Claude
+    // Code's list is built from Anthropic's removal steps, but Antigravity
+    // CLI and Grok Build publish none: their lists are Canager's own
+    // reading of how each was installed (`recipes::AGY`, `recipes::GROK`
+    // and their fixture READMEs). An agy launcher in a `~/.local/bin` that
+    // is a link to a dotfiles folder inside the home folder, or a grok
+    // `~/.grok/downloads` that is a link to another disk, gets this
+    // sentence, so it says what Canager expects rather than what "the
+    // official instructions" describe.
+    const refusal = {
+      en: en.planRefused.uninstallUnsafe.notWhatInstructionsExpect,
+      zhCN: zhCN.planRefused.uninstallUnsafe.notWhatInstructionsExpect,
+    };
+    expect(refusal.en).toContain("it couldn't confirm this is what it expects to find there for this tool");
+    expect(refusal.zhCN).toContain("它无法确认这符合它对这个工具的预期");
+    for (const sentence of [refusal.en, refusal.zhCN]) {
+      expect(sentence).not.toMatch(/official|instructions|官方|说明/);
+    }
+    // What may be wrong is still said (docs/superpowers/backlog.md quotes
+    // the Chinese clause).
+    expect(refusal.en).toContain("it, or a folder it is in, may be a link to somewhere else");
+    expect(refusal.zhCN).toContain("它本身或它所在的某个文件夹可能链到了别处");
+  });
+
   it("localises the submit-time refusal for a source that stopped answering", () => {
     // `submit_operation_error` sends the same payload `plan_operation`
     // does, because `Session::submit` now re-runs the actionability gate

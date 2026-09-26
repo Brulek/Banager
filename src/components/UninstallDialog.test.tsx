@@ -704,7 +704,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Canager won't remove ~/.local/bin/claude: it couldn't confirm this is what the official instructions describe — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
+        "Canager won't remove ~/.local/bin/claude: it couldn't confirm this is what it expects to find there for this tool — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
       ),
     );
     expect(alert.textContent).not.toMatch(/uninstall_unsafe|not_what_instructions_expect|Couldn't check/);

@@ -641,7 +641,7 @@ a link — so a `~/.local/bin` kept as a link to a dotfiles folder
 refuses the uninstall, while a `~/.claude` that is a link leaves the
 download cache inside it where it is, and the preview says so; the path
 must belong to the user
-Canager runs as; it must be what the instructions describe — the
+Canager runs as; it must be what the list describes — the
 program files and the download cache real folders, the launcher one
 symbolic link straight into `~/.local/share/claude`; and, with every
 link resolved, moving it must not take `~/.claude` or `~/.claude.json`
@@ -1393,8 +1393,11 @@ Canager neither chooses nor sees them.
   home folder or in a folder many tools share there (`~/.local`,
   `~/.config`, `~/.cache`, `~/Library`, `~/.cargo`), anything reached
   through a folder that is a link, anything that does not belong to the
-  user, or anything that is not what the tool's uninstall instructions
-  describe; never moves the settings, login and history Claude Code keeps
+  user, or anything that is not what the tool's uninstall list describes
+  (for Claude Code, Anthropic's removal steps plus its installer's
+  download cache; for Antigravity CLI and Grok Build, which publish no
+  removal steps, Canager's own reading of how each was installed);
+  never moves the settings, login and history Claude Code keeps
   in `~/.claude` (of that folder only its download cache,
   `~/.claude/downloads`) or `~/.claude.json`, the login, sessions, memory
   and settings Grok Build keeps in `~/.grok` (of that folder only

@@ -335,12 +335,17 @@ pub enum UninstallUnsafeReason {
     Missing,
     /// Check 3: the path belongs to another user.
     NotOwnedByYou,
-    /// Check 4: the path is not the kind of thing the tool's own uninstall
-    /// instructions describe -- a launcher that is not one link into the
+    /// Check 4: the path is not the kind of thing the tool's uninstall list
+    /// describes (its `Expect`) -- a launcher that is not one link into the
     /// tool's root, a program directory that is a link, a file where a
     /// directory is expected -- or a folder on its way from the home folder
     /// is a link (the ancestry rule, ruling 24 of the step C plan), or it
-    /// could not be examined at all.
+    /// could not be examined at all. The name is from step C, when Claude
+    /// Code's list, built from Anthropic's removal steps, was the only one;
+    /// Antigravity CLI and Grok Build publish no removal steps, so their
+    /// lists are Canager's own reading of how each was installed, and the
+    /// sentence the user reads (`notWhatInstructionsExpect`) cites no
+    /// instructions.
     NotWhatInstructionsExpect,
     /// With every link resolved, moving the listed paths might take a path
     /// the preview says is kept: a listed path is a kept path, holds one or

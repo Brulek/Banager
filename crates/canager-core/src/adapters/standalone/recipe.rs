@@ -240,11 +240,14 @@ pub struct UpgradeCmd {
 /// `Recipe.extra_locks`, on the recipe because the upgrade holds it too).
 #[derive(Debug)]
 pub enum Uninstall {
-    /// No command exists; the vendor's own instructions are a list of
-    /// paths. `removal::execute_removal` moves each of `remove` to the
-    /// Trash in this order -- the launcher last, so a run that stops
-    /// partway leaves the one state a second run finishes (spec §6.2) --
-    /// and `keep` is listed in the preview so the user sees what stays.
+    /// No command exists, so the tool is removed by moving a list of paths:
+    /// for Claude Code, built from Anthropic's removal steps; for
+    /// Antigravity CLI and Grok Build, which publish none, Canager's own
+    /// reading of how each was installed. `removal::execute_removal` moves
+    /// each of `remove` to the Trash in this order -- the launcher last, so
+    /// a run that stops partway leaves the one state a second run finishes
+    /// (spec §6.2) -- and `keep` is listed in the preview so the user sees
+    /// what stays.
     /// Where the list comes from is the recipe constant's doc comment and
     /// the fixture README, not a field: nothing in production would read
     /// it (spec §十三 #8/#36). Read by `removal::plan_removal`,

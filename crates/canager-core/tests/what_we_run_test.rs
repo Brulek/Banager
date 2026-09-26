@@ -13,12 +13,14 @@
 //! check command of a tool asked for its own update check with the words
 //! that it installs nothing, the call Canager makes to move a file to the
 //! Trash with the pause after each such move, that the `PATH` look behind
-//! Claude Code's notice goes on past the first executable `claude`, and
-//! that the never-list's bullet about rustup's own update or uninstall
-//! being under way states the window in which a refresh's version read
-//! can still overlap it. A source, host, variable, limit, path, check or
-//! pause added or changed, or that look shortened, without its line in
-//! the document fails here.
+//! Claude Code's notice goes on past the first executable `claude`, that
+//! the never-list's bullet about rustup's own update or uninstall being
+//! under way states the window in which a refresh's version read can
+//! still overlap it, and that the never-list holds a moved path to the
+//! tool's uninstall list, not to vendor instructions, which Antigravity CLI
+//! and Grok Build do not publish. A source, host, variable, limit, path,
+//! check or pause added or changed, or that look shortened, without its
+//! line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::npm::NpmAdapter;
@@ -241,6 +243,44 @@ fn test_what_we_run_never_list_states_the_window_in_which_a_refresh_can_still_re
     assert!(
         rustup.contains("overlap"),
         "the `## rustup` section of docs/what-we-run.md no longer discloses the overlap the never-list's bullet points at"
+    );
+}
+
+#[test]
+fn test_what_we_run_never_list_holds_a_moved_path_to_the_tools_uninstall_list_not_to_vendor_instructions(
+) {
+    // Check 4 and the ancestry rule (`removal::check_item`) hold every path
+    // a path-list uninstall moves to what the tool's list says is there
+    // (each item's `Expect`). Claude Code's list is built from Anthropic's
+    // removal steps; Antigravity CLI and Grok Build publish none, so their
+    // lists are Canager's own reading of how each was installed
+    // (`recipes::AGY`, `recipes::GROK` and their fixture READMEs). The
+    // bullet saying what Canager never moves used to measure a path against
+    // "the tool's uninstall instructions", which named, for those two
+    // tools, a document that does not exist.
+    let doc = read_doc();
+    let bullets = never_list_bullets(&doc);
+    let never_moves: Vec<&String> = bullets
+        .iter()
+        .filter(|b| b.starts_with("Never moves anything"))
+        .collect();
+    assert_eq!(
+        never_moves.len(),
+        1,
+        "the never-list of docs/what-we-run.md has no single bullet saying what Canager never moves"
+    );
+    let bullet = never_moves[0];
+    assert!(
+        bullet.contains("anything that is not what the tool's uninstall list describes"),
+        "this never-list bullet does not hold a moved path to the tool's uninstall list, which removal::check_item checks every item against: {bullet:?}"
+    );
+    assert!(
+        bullet.contains("Canager's own reading"),
+        "this never-list bullet does not say that the Antigravity CLI and Grok Build lists are Canager's own reading of how each was installed: {bullet:?}"
+    );
+    assert!(
+        !bullet.contains("instructions"),
+        "this never-list bullet cites uninstall instructions, which Antigravity CLI and Grok Build do not publish: {bullet:?}"
     );
 }
 
