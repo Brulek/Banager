@@ -144,9 +144,13 @@ fn parse_crates2(
 /// running in proxy mode (src/cli/proxy_mode.rs:14-59): before it runs
 /// the real cargo it resolves the active toolchain and, with none active
 /// and this switch off, installs one -- a download and a write, which a
-/// refresh must never cause. So every version read of that binary
-/// carries it: `CargoAdapter::detect`'s `cargo --version` here, and the
-/// rustup recipe's own `--version` through its `version.env`
+/// refresh must never cause, and which a confirmed install, upgrade or
+/// uninstall must not begin with: its preview never named one. So every
+/// cargo command Canager runs carries it, through `CargoAdapter::ENV`:
+/// `detect`'s `cargo --version` and the command of every plan `plan`
+/// builds, cargo-binstall's included, so that a `cargo` or `rustc`
+/// cargo-binstall starts inherits it. So does the rustup recipe's own
+/// `--version`, through its `version.env`
 /// (`adapters/standalone/recipes.rs`, `RUSTUP`). A cargo that is not
 /// rustup's ignores the variable.
 pub(crate) const RUSTUP_AUTO_INSTALL_OFF: (&str, &str) = ("RUSTUP_AUTO_INSTALL", "0");
@@ -206,6 +210,15 @@ pub struct CargoAdapter {
 }
 
 impl CargoAdapter {
+    /// The environment every cargo command Canager runs is given, through
+    /// `env_vec`: `detect`'s `cargo --version` and the command of every
+    /// plan `plan` builds, the cargo-binstall ones included. Only
+    /// `RUSTUP_AUTO_INSTALL_OFF`; why is said there.
+    /// `tests/what_we_run_test.rs` checks that the `## Cargo` section of
+    /// `docs/what-we-run.md` says so under this constant's name and shows
+    /// each entry.
+    pub const ENV: [(&'static str, &'static str); 1] = [RUSTUP_AUTO_INSTALL_OFF];
+
     pub fn new(runner: Arc<dyn CommandRunner>, http: Arc<dyn HttpClient>) -> CargoAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/cargo.toml"))
             .expect("adapters/meta/cargo.toml must parse");
@@ -224,6 +237,15 @@ impl CargoAdapter {
     fn with_binstall(self, path: Option<PathBuf>) -> CargoAdapter {
         *self.binstall.lock().unwrap() = path;
         self
+    }
+
+    /// `ENV` as the owned pairs a `CommandSpec` and a
+    /// `PlanAction::Command` hold.
+    fn env_vec(&self) -> Vec<(String, String)> {
+        Self::ENV
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -245,10 +267,7 @@ impl CargoAdapter {
                     args: vec!["--version".to_string()],
                     // The cargo proxy is the rustup binary: never let a
                     // version read install a toolchain (RUSTUP_AUTO_INSTALL_OFF).
-                    env: vec![(
-                        RUSTUP_AUTO_INSTALL_OFF.0.to_string(),
-                        RUSTUP_AUTO_INSTALL_OFF.1.to_string(),
-                    )],
+                    env: self.env_vec(),
                     cwd: None,
                     timeout: Duration::from_secs(30),
                     output_use: OutputUse::Parsed,
@@ -443,7 +462,11 @@ impl CargoAdapter {
                     action: PlanAction::Command {
                         program,
                         args,
-                        env: Vec::new(),
+                        // For either program: `cargo install` must not
+                        // start with a toolchain download, and a `cargo`
+                        // or `rustc` cargo-binstall starts inherits the
+                        // switch (RUSTUP_AUTO_INSTALL_OFF).
+                        env: self.env_vec(),
                     },
                     needs_password: false,
                     locks: vec![lock],
@@ -458,7 +481,9 @@ impl CargoAdapter {
                 action: PlanAction::Command {
                     program: inst.exe_path.clone(),
                     args: vec!["uninstall".to_string(), req.name.clone()],
-                    env: Vec::new(),
+                    // Removing one program must not start with a toolchain
+                    // download (RUSTUP_AUTO_INSTALL_OFF).
+                    env: self.env_vec(),
                 },
                 needs_password: false,
                 locks: vec![lock],
@@ -549,7 +574,7 @@ impl Adapter for CargoAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{command_args, command_program};
+    use crate::testing::{command_args, command_env, command_program};
     use std::path::Path;
 
     #[test]
@@ -758,8 +783,10 @@ mod tests {
     }
 
     /// `MockRunner` keys and records argv only; this records the whole
-    /// `CommandSpec`, so a test can see the environment `detect` gave
-    /// `cargo --version`.
+    /// `CommandSpec`, so a test can see the environment a command was
+    /// given: `detect`'s `cargo --version`, or the command `execute` runs
+    /// for a plan. Every command it is handed exits 0 and prints cargo's
+    /// recorded version line.
     struct EnvRecordingRunner {
         specs: Mutex<Vec<CommandSpec>>,
     }
@@ -1124,6 +1151,88 @@ mod tests {
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
         assert_eq!(command_args(&plan), vec!["uninstall", "hexyl"]);
+    }
+
+    #[tokio::test]
+    async fn test_every_cargo_plan_carries_rustups_auto_install_off() {
+        // On a rustup Mac `cargo` is the rustup binary in proxy mode
+        // (rustup 1.29.1 src/cli/proxy_mode.rs:14-59): before it runs
+        // cargo's own arguments it resolves the active toolchain and, when
+        // that toolchain is not installed, installs it -- unless
+        // `RUSTUP_AUTO_INSTALL=0` or `rustup set auto-install disable`
+        // turned that off (`should_auto_install`, config.rs:435-441). A
+        // confirmed install, upgrade or uninstall must not begin with a
+        // toolchain download its preview never named, so every plan
+        // carries the switch -- the cargo-binstall ones too, so that a
+        // `cargo` or `rustc` cargo-binstall starts inherits it.
+        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        for binstall in [
+            None,
+            Some(PathBuf::from("/Users/brulek/.cargo/bin/cargo-binstall")),
+        ] {
+            let adapter =
+                CargoAdapter::new(Arc::new(MockRunner::new()), Arc::new(MockHttpClient::new()))
+                    .with_binstall(binstall.clone());
+            for kind in [OpKind::Install, OpKind::Upgrade, OpKind::Uninstall] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: inst.id.clone(),
+                    artifact_kind: ArtifactKind::Binary,
+                    name: "hexyl".to_string(),
+                };
+                let plan = CargoAdapter::plan(&adapter, &inst, &req)
+                    .await
+                    .expect("plan");
+                assert_eq!(
+                    command_env(&plan),
+                    [("RUSTUP_AUTO_INSTALL".to_string(), "0".to_string())],
+                    "binstall={binstall:?} {kind:?}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_runs_cargo_uninstall_with_rustups_auto_install_off() {
+        // The plan's environment is what the runner is handed: `execute`
+        // (through `run_plan`) runs `cargo uninstall hexyl` with the
+        // switch, so rustup's proxy cannot install a toolchain first.
+        let runner = Arc::new(EnvRecordingRunner {
+            specs: Mutex::new(Vec::new()),
+        });
+        let adapter =
+            CargoAdapter::new(runner.clone(), Arc::new(MockHttpClient::new())).with_binstall(None);
+        let inst = test_instance(PathBuf::from("/Users/brulek/.cargo"));
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Binary,
+            name: "hexyl".to_string(),
+        };
+        let plan = CargoAdapter::plan(&adapter, &inst, &req)
+            .await
+            .expect("plan");
+        let outcome = CargoAdapter::execute(
+            &adapter,
+            &plan,
+            Arc::new(VecSink::new()),
+            1,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("execute");
+        assert_eq!(outcome, Outcome::Succeeded);
+        let specs = runner.specs.lock().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(
+            specs[0].program,
+            PathBuf::from("/Users/brulek/.cargo/bin/cargo")
+        );
+        assert_eq!(specs[0].args, vec!["uninstall", "hexyl"]);
+        assert_eq!(
+            specs[0].env,
+            vec![("RUSTUP_AUTO_INSTALL".to_string(), "0".to_string())]
+        );
     }
 
     #[tokio::test]

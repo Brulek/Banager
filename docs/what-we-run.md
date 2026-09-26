@@ -10,15 +10,16 @@ it can be checked against `crates/canager-core/src/adapters/` rather than
 believed. `crates/canager-core/tests/what_we_run_test.rs` checks the parts
 a test can: a section per registered source, every host on the https
 allowlist, every environment variable Homebrew's and npm's commands are
-given, the three Homebrew flags this file promises are never passed, that
-the unknown-source scan's section states the two limits the code
-enforces, that the sections of the three tools uninstalled by moving files
-to the Trash (Claude Code, Antigravity CLI, Grok Build) name every path
-those uninstalls move or keep and their time budget, and the never-list
-every path of settings or state they keep, that Grok Build's section
-shows the update check it runs on every refresh and says it installs
-nothing, and that the Trash section names the call and states the pause
-after each move.
+given, that Cargo's section says every Cargo command is given the
+variables in `CargoAdapter::ENV` and shows each one, the three Homebrew
+flags this file promises are never passed, that the unknown-source scan's
+section states the two limits the code enforces, that the sections of the
+three tools uninstalled by moving files to the Trash (Claude Code,
+Antigravity CLI, Grok Build) name every path those uninstalls move or
+keep and their time budget, and the never-list every path of settings or
+state they keep, that Grok Build's section shows the update check it runs
+on every refresh and says it installs nothing, and that the Trash section
+names the call and states the pause after each move.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -380,18 +381,27 @@ Adapter: `CargoAdapter` in `crates/canager-core/src/adapters/cargo.rs`.
 Verified against cargo 1.98.1 (`adapters/meta/cargo.toml`).
 
 **Detect.** `cargo` is the first `cargo` on `PATH`; `<cargo> --version`
-(30 s), with `RUSTUP_AUTO_INSTALL=0` in its environment: on a Mac with
-rustup, `cargo` is rustup's own binary standing in for cargo, and without
-that switch a version read with no Rust toolchain active would install
-one. A cargo that is not rustup's ignores it. That version read is the
-only cargo command Canager adds an environment variable to; the write
-commands below run with none added. Canager also looks for
-`cargo-binstall` on the same `PATH` and remembers the path found for
-plans. `CARGO_HOME` is read as cargo itself reads it: unset or an empty
-value means the default `~/.cargo`; an absolute value is the Cargo home;
-a relative value names a folder relative to cargo's own working
-directory, which Canager cannot know, so Canager then lists no Cargo
-source rather than guess.
+(30 s). Canager also looks for `cargo-binstall` on the same `PATH` and
+remembers the path found for plans. `CARGO_HOME` is read as cargo itself
+reads it: unset or an empty value means the default `~/.cargo`; an
+absolute value is the Cargo home; a relative value names a folder
+relative to cargo's own working directory, which Canager cannot know, so
+Canager then lists no Cargo source rather than guess.
+
+**Environment applied to every invocation** (`CargoAdapter::ENV`),
+including `--version` and every plan, cargo-binstall's among them:
+
+    RUSTUP_AUTO_INSTALL=0
+
+On a Mac with rustup, `cargo` is rustup's own binary standing in for
+cargo. Before it runs cargo it looks up the active Rust toolchain, and
+when that toolchain is not installed it downloads and installs it, unless
+auto-install is off — which is what this switch does. Without it, a
+refresh could start that download, and so could an install, upgrade or
+uninstall whose preview never mentioned it. With it, a `cargo install` or
+`cargo uninstall` whose toolchain is not installed stops with rustup's
+error and is reported as failed. A `cargo` or `rustc` that cargo-binstall
+starts inherits the switch. A cargo that is not rustup's ignores it.
 
 **Read-only reads.** `inventory` runs no command: it reads
 `<CARGO_HOME>/.crates2.json`, the file `cargo install` keeps its records
@@ -1375,7 +1385,8 @@ Canager neither chooses nor sees them.
   overlap the version reads of rustup and cargo that refresh is making
   (rustup's section); its other reads of either source run under that
   source's lock, which the operation holds until it ends. Never lets a
-  version read of rustup or cargo install a toolchain
+  version read of rustup or cargo, or a Cargo install, upgrade or
+  uninstall, set off rustup's automatic install of a missing toolchain
   (`RUSTUP_AUTO_INSTALL=0`).
 - Never asks rustup to uninstall from anywhere but its standard folders,
   `~/.cargo` and `~/.rustup`: rustup deletes both whole, permanently, and

@@ -2,8 +2,10 @@
 //! who does not read Rust can see every command Canager runs and every
 //! host it contacts. Prose cannot be compiled, so these pin the parts of it
 //! the code can vouch for: a section per registered source, every host on
-//! the https allowlist, every environment variable brew and npm set, the
-//! three Homebrew flags the file promises are never passed, and the
+//! the https allowlist, every environment variable brew and npm set, that
+//! the Cargo section says every cargo command is given `CargoAdapter::ENV`
+//! and shows each entry, the three Homebrew flags the file promises are
+//! never passed, and the
 //! unknown-source scan's section with the two limits `ScanBudget::default()`
 //! enforces, the one thing the allowlist refuses that a reader would not
 //! expect (an `https://` `OLLAMA_HOST`), every path each path-list
@@ -23,6 +25,7 @@
 //! line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
+use canager_core::adapters::cargo::CargoAdapter;
 use canager_core::adapters::npm::NpmAdapter;
 use canager_core::adapters::standalone::recipe::{Latest, Uninstall};
 use canager_core::adapters::standalone::recipes::RECIPES;
@@ -151,6 +154,35 @@ fn test_what_we_run_shows_every_environment_variable_brew_and_npm_set() {
         assert!(
             doc.contains(&format!("{name}={value}")),
             "docs/what-we-run.md does not show {name}={value}"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_every_cargo_command_is_given_cargos_environment() {
+    // `CargoAdapter::ENV` goes on every cargo command Canager runs:
+    // `detect`'s `cargo --version` and the command of every plan,
+    // cargo-binstall's included (`env_vec`;
+    // `test_detect_reads_cargos_version_with_rustups_auto_install_off` and
+    // `test_every_cargo_plan_carries_rustups_auto_install_off` in
+    // adapters/cargo.rs keep that true). The `## Cargo` section used to say
+    // the version read was the only cargo command given a variable and the
+    // write commands were given none: it has to say every invocation,
+    // under the constant's name, and show each entry -- in that section,
+    // since `RUSTUP_AUTO_INSTALL=0` appears in rustup's too.
+    let doc = read_doc();
+    let body = section_body(&doc, "Cargo")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## Cargo` section"));
+    // Hard-wrapped prose: compare with the line breaks folded away.
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        folded.contains("**Environment applied to every invocation** (`CargoAdapter::ENV`)"),
+        "the `## Cargo` section of docs/what-we-run.md does not say that every cargo command is given `CargoAdapter::ENV`, which CargoAdapter::detect and CargoAdapter::plan both use"
+    );
+    for (name, value) in CargoAdapter::ENV {
+        assert!(
+            body.contains(&format!("{name}={value}")),
+            "the `## Cargo` section of docs/what-we-run.md does not show {name}={value}, which CargoAdapter::ENV holds"
         );
     }
 }
