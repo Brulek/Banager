@@ -37,6 +37,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import {
+  canSkipVersion,
   isUpdateActionable,
   notHidden,
   updateStateOf,
@@ -930,12 +931,15 @@ export function UpdatesPage() {
         // until the user undoes it in Settings. The one "Ignore" button
         // they replace did not say which of the two it did. Each button's
         // title -- a tooltip on hover, and its accessible description --
-        // says what it does. A row Canager could not check has no version
-        // to skip: its `target` is its installed version, not one the
-        // source offered (`hidingRule`), so it gets only "Never remind me".
+        // says what it does. A row whose `target` does not name one
+        // release gets only "Never remind me" (`canSkipVersion`): one
+        // Canager could not check, whose `target` is its installed
+        // version, and a Homebrew cask declared `version :latest`, every
+        // release of which is offered as "latest", so that a skip of it
+        // would never end.
         secondaryContent={
           <div className="flex shrink-0 flex-col items-end gap-0.5">
-            {candidate.checkable ? (
+            {canSkipVersion(candidate) ? (
               <button
                 type="button"
                 onClick={() => skipVersion(candidate)}

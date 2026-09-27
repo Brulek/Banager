@@ -580,7 +580,7 @@ describe("InstalledPage", () => {
 
   describe("the Update available badge", () => {
     // One snapshot with one package per reason the Updates page may list
-    // an update and not offer it, plus one it does offer. The badge used
+    // an update and not offer it, plus the ones it does offer. The badge used
     // to say "Update available" for every entry in `snapshot.updates`, and
     // then still for a source that did not answer (a stopped Ollama whose
     // update was carried forward), which has no Update button either.
@@ -604,6 +604,9 @@ describe("InstalledPage", () => {
     // print.
     const DIGEST = "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b";
     const skippedModelKey = { instance_id: OLLAMA, kind: "Model", name: "skipped-model" } as const;
+    // A Homebrew cask declared `version :latest`: every release of it is
+    // offered as "latest", so no skip hides it.
+    const latestCaskKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "chromium" } as const;
     const mixed: Snapshot = {
       ...snapshot,
       artifacts: [
@@ -622,6 +625,7 @@ describe("InstalledPage", () => {
           key: { instance_id: OLLAMA, kind: "Model", name: "stopped-model" },
         }),
         artifact("skipped-model", { key: skippedModelKey, version: "5642e97495e1" }),
+        artifact("chromium", { key: latestCaskKey, version: "latest" }),
       ],
       instances: [
         ...snapshot.instances,
@@ -664,6 +668,7 @@ describe("InstalledPage", () => {
           target: DIGEST,
           channel: "Digest",
         }),
+        update("chromium", { key: latestCaskKey, current: "latest", target: "latest" }),
       ],
     };
     const mixedSettings: Settings = {
@@ -671,7 +676,8 @@ describe("InstalledPage", () => {
       ignored_updates: [{ instance_id: "brew:/opt/homebrew", kind: "Formula", name: "ignored" }],
       // `skipped` is skipped at the version its row offers (2.90.0);
       // `skipped-before` at a version its source no longer offers, so its
-      // update is listed again.
+      // update is listed again. `chromium`'s skip of "latest" matches the
+      // version its row offers and hides nothing all the same.
       skipped_versions: [
         {
           key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "skipped" },
@@ -682,6 +688,7 @@ describe("InstalledPage", () => {
           version: "2.89.0",
         },
         { key: skippedModelKey, version: DIGEST },
+        { key: latestCaskKey, version: "latest" },
       ],
     };
 
@@ -691,7 +698,7 @@ describe("InstalledPage", () => {
         if (cmd === "get_settings") return Promise.resolve(mixedSettings);
         return Promise.resolve(undefined);
       });
-      // Fourteen slots of 56px -- three headings and eleven rows -- are
+      // Fifteen slots of 56px -- three headings and twelve rows -- are
       // taller than the 600px viewport the outer `beforeEach` gives the
       // list, and these tests read every row's badge, so the list gets a
       // viewport that holds them all.
@@ -729,6 +736,9 @@ describe("InstalledPage", () => {
       // A model's skipped version is a digest, and no digest is printed.
       expect(badgeOf(container, "skipped-model")).toBe("Newer build skipped");
       expect(container.textContent).not.toContain("sha256");
+      // Not "Skipped latest": a skip of a cask every release of which is
+      // offered as "latest" would never end, so it hides nothing.
+      expect(badgeOf(container, "chromium")).toBe("Update available");
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
@@ -752,10 +762,11 @@ describe("InstalledPage", () => {
       // left out of `offered` for that, not for a missing row.
       expect(updates.queryByText("stopped-model", { selector: "p" })).not.toBeNull();
       // The two skipped at the version they offer are not listed there at
-      // all; the one skipped at an older version is, with its button.
+      // all; the one skipped at an older version is, with its button, and
+      // so is the cask whose skip of "latest" hides nothing.
       expect(updates.queryByText("skipped", { selector: "p" })).toBeNull();
       expect(updates.queryByText("skipped-model", { selector: "p" })).toBeNull();
-      expect(badged).toEqual(["offered", "skipped-before"]);
+      expect(badged).toEqual(["offered", "skipped-before", "chromium"]);
       expect(offered).toEqual(badged);
     });
   });

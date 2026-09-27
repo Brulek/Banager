@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canSkipVersion,
   hidingRule,
   isUpdateActionable,
   notHidden,
@@ -91,6 +92,67 @@ const qwenKey: ArtifactKey = {
   name: "qwen3:8b",
 };
 
+// A Homebrew cask declared `version :latest`. `brew outdated --json=v2
+// --greedy` lists one whenever it takes its download to have changed, and
+// its `current_version` is the cask's version, "latest", for every release
+// (`Cask#outdated_info`).
+const chromiumKey: ArtifactKey = { instance_id: brew.id, kind: "Cask", name: "chromium" };
+
+describe("canSkipVersion", () => {
+  it("offers a skip where the version a row offers names one release", () => {
+    expect(canSkipVersion(candidate())).toBe(true);
+    expect(
+      canSkipVersion(
+        candidate({
+          key: { instance_id: brew.id, kind: "Cask", name: "onyx" },
+          current: "5.0.2",
+          target: "5.1.0",
+        }),
+      ),
+    ).toBe(true);
+    // An Ollama model's newer build is offered by its registry manifest's
+    // config digest, one per build.
+    expect(
+      canSkipVersion(
+        candidate({
+          key: qwenKey,
+          current: "5642e97495e1",
+          target: "sha256:9f1c0b6d2e4a",
+          channel: "Digest",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("offers none on a row Canager could not check", () => {
+    // Its `target` is its installed version, not one any source offered.
+    expect(
+      canSkipVersion(candidate({ current: "2.88.3", target: "2.88.3", checkable: false })),
+    ).toBe(false);
+  });
+
+  it("offers none on a Homebrew cask declared version :latest, every release of which is offered as latest", () => {
+    expect(
+      canSkipVersion(candidate({ key: chromiumKey, current: "latest", target: "latest" })),
+    ).toBe(false);
+    // Had it been installed while its cask still had numbered versions,
+    // Homebrew would name the installed copy by that version and offer
+    // "latest" all the same.
+    expect(
+      canSkipVersion(candidate({ key: chromiumKey, current: "120.0.6099.0", target: "latest" })),
+    ).toBe(false);
+  });
+
+  it("goes by the version offered, not by whether it reads the same as the one installed", () => {
+    // Homebrew also lists an unpinned formula whose installed keg is its
+    // current version but is neither linked nor opt-linked
+    // (`Formula#outdated_kegs`), as 2.90.0 -> 2.90.0. Its next release has
+    // another number, so a skip of 2.90.0 ends there, as the button
+    // promises.
+    expect(canSkipVersion(candidate({ current: "2.90.0", target: "2.90.0" }))).toBe(true);
+  });
+});
+
 describe("hidingRule", () => {
   const formula = candidate();
   const cask = candidate({ key: { instance_id: brew.id, kind: "Cask", name: "glib" } });
@@ -131,6 +193,18 @@ describe("hidingRule", () => {
     );
     expect(
       hiddenBy(candidate({ current: "2.90.0", target: "2.90.0", checkable: false })),
+    ).toBeNull();
+  });
+
+  it("never lets a skip hide a Homebrew cask declared version :latest", () => {
+    // Every release of it is offered as "latest", so a skip of "latest"
+    // would hide each later release as well and never end.
+    const hiddenBy = hidingRule(
+      hiding({ skipped_versions: [{ key: chromiumKey, version: "latest" }] }),
+    );
+    expect(hiddenBy(candidate({ key: chromiumKey, current: "latest", target: "latest" }))).toBeNull();
+    expect(
+      hiddenBy(candidate({ key: chromiumKey, current: "120.0.6099.0", target: "latest" })),
     ).toBeNull();
   });
 

@@ -353,8 +353,9 @@ export type Language = "System" | "En" | "ZhCn";
  * `version`, the `UpdateCandidate.target` its row offered. Mirrors
  * `SkippedVersion` in crates/canager-core/src/settings.rs, whose shape test
  * `types.test.ts` repeats. Hides that update only while the source still
- * offers `version` (`hidingRule` in src/lib/updateState.ts); an Ollama
- * model's `version` is a digest, never shown (`shownSkippedVersion`).
+ * offers `version`, and never on a row whose `target` does not name one
+ * release (`canSkipVersion`, `hidingRule` in src/lib/updateState.ts); an
+ * Ollama model's `version` is a digest, never shown (`shownSkippedVersion`).
  */
 export interface SkippedVersion {
   key: ArtifactKey;

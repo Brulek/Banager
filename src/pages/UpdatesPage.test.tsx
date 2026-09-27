@@ -1432,6 +1432,53 @@ describe("UpdatesPage", () => {
     expect(getAllByRole("button", { name: "Skip this version" })).toHaveLength(1);
   });
 
+  // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2
+  // --greedy` lists one -- Include self-updating apps is what makes Canager
+  // pass `--greedy` -- whenever it takes its download to have changed:
+  // `latest -> latest`, for every release.
+  const chromiumKey: ArtifactKey = {
+    instance_id: "brew:/opt/homebrew",
+    kind: "Cask",
+    name: "chromium",
+  };
+  const latestCask: Snapshot["updates"][number] = {
+    key: chromiumKey,
+    current: "latest",
+    target: "latest",
+    channel: "Native",
+    checkable: true,
+    warnings: [],
+    blocked: null,
+  };
+
+  it("offers Never remind me but no Skip this version on a Homebrew cask declared version :latest", async () => {
+    // A skip of "latest" would hide each later release as well and never
+    // end: Never remind me, behind a hint that promises a reminder when the
+    // next version is out.
+    settings.include_self_updating = true;
+    updates = [snapshot.updates[0], latestCask];
+    const { findByText, getAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    const chromium = (await findByText("chromium")).parentElement?.parentElement as HTMLElement;
+    const glib = (await findByText("glib")).parentElement?.parentElement as HTMLElement;
+    expect(within(chromium).getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(within(chromium).getByRole("button", { name: "Never remind me" })).toBeInTheDocument();
+    expect(within(chromium).queryByRole("button", { name: "Skip this version" })).toBeNull();
+    expect(within(glib).getByRole("button", { name: "Skip this version" })).toBeInTheDocument();
+    expect(getAllByRole("button", { name: "Skip this version" })).toHaveLength(1);
+  });
+
+  it("lists a Homebrew cask declared version :latest even with a skip of latest in its settings", async () => {
+    settings.include_self_updating = true;
+    settings.skipped_versions = [{ key: chromiumKey, version: "latest" }];
+    updates = [snapshot.updates[0], latestCask];
+    const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("chromium");
+    await findByText("2 updates available");
+    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+  });
+
   it("skips an Ollama model's newer build by its digest without ever printing the digest", async () => {
     settings.show_technical_details = true;
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];

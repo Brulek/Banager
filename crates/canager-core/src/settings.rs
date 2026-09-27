@@ -13,6 +13,12 @@ pub enum Language {
 /// version": `key`'s update to `version`, the `UpdateCandidate.target` the
 /// source offered when they did. It hides that update only while the source
 /// still offers `version`; once it offers another, the row is listed again.
+/// So the page offers the button, and lets a stored skip hide a row, only
+/// where the target names one release (`canSkipVersion` in
+/// src/lib/updateState.ts): not on a row Canager could not check, whose
+/// target is its installed version, and not on a Homebrew cask declared
+/// `version :latest`, every release of which is offered as "latest", so
+/// that a skip of it would never end.
 /// For an Ollama model `version` is a registry manifest's config digest (an
 /// `UpdateChannel::Digest` candidate's target), which the front end never
 /// shows.

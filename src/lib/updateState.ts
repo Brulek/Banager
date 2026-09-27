@@ -86,6 +86,45 @@ export function skippedVersionId(skipped: SkippedVersion): string {
 }
 
 /**
+ * Whether "Skip this version" can do on `candidate`'s row what its hint
+ * says -- hide this update until the source offers another version -- and
+ * so whether the Updates page offers it there and `hidingRule` lets a
+ * skip hide the row. It can when `target` names one release. Two kinds of
+ * row have a `target` that does not:
+ *
+ * - One Canager could not check: its `target` is its installed version
+ *   (`uncheckable_candidate` in crates/canager-core/src/adapters/mod.rs),
+ *   not a version any source offered.
+ * - A Homebrew cask declared `version :latest`. The `brew outdated
+ *   --json=v2` Canager runs lists one only when it is greedy about that
+ *   cask -- given `--greedy`, which Canager passes while Settings' Include
+ *   self-updating apps is on, or set to be by Homebrew's own
+ *   HOMEBREW_UPGRADE_GREEDY or HOMEBREW_UPGRADE_GREEDY_CASKS -- and then
+ *   whenever it takes the cask's download to have changed
+ *   (`Cask#outdated_version`). The version it offers is the cask's own,
+ *   "latest", for every release (`Cask#outdated_info`), so a skip of
+ *   "latest" would hide each later release as well and never end: Never
+ *   remind me, behind a hint that promises a reminder. Homebrew tells such
+ *   a version by this same string (`Cask::DSL::Version#latest?`), and so
+ *   does `reconcile` in crates/canager-core/src/adapters/brew/mod.rs. This
+ *   goes by the version offered, not the one installed: a copy installed
+ *   while its cask still had numbered versions is named by that version,
+ *   and is offered "latest" all the same.
+ *
+ * Such a row gets only "Never remind me", which says that it lasts. Nothing
+ * here compares `target` with `current`. Homebrew lists an unpinned formula
+ * whose installed keg is its current version, but neither linked nor
+ * opt-linked, with the two alike (`Formula#outdated_kegs`), and its next
+ * release has another number, so a skip of it ends as promised. An Ollama
+ * model's two are digests from different hash spaces, never to be compared
+ * (`check_one_model` in crates/canager-core/src/adapters/ollama/mod.rs).
+ */
+export function canSkipVersion(candidate: UpdateCandidate): boolean {
+  if (!candidate.checkable) return false;
+  return !(candidate.key.kind === "Cask" && candidate.target === "latest");
+}
+
+/**
  * The rule, in one place: why `settings` hides a candidate, or null when
  * the Updates page lists it. Both pages read it -- the Updates page
  * through `notHidden` for everything it lists, counts or selects (its
@@ -102,10 +141,10 @@ export function skippedVersionId(skipped: SkippedVersion): string {
  * was skipped; once the source offers another, the row is listed again.
  * An Ollama model's `target` is a digest, and so is what its skip stored:
  * both are the registry manifest's config digest, so they compare like
- * with like. A candidate Canager could not check is never hidden by a
- * skip: its `target` is its installed version (`uncheckable_candidate` in
- * crates/canager-core/src/adapters/mod.rs), not a version any source
- * offered, and the Updates page offers no Skip this version on its row.
+ * with like. A skip never hides a row whose `target` does not name one
+ * release -- one Canager could not check, or a Homebrew cask declared
+ * `version :latest` (`canSkipVersion`) -- and the Updates page offers no
+ * Skip this version on such a row.
  */
 export function hidingRule(
   settings: HidingSettings,
@@ -115,7 +154,7 @@ export function hidingRule(
   return (candidate) => {
     if (ignoredIds.has(artifactKeyId(candidate.key))) return "ignored";
     if (
-      candidate.checkable &&
+      canSkipVersion(candidate) &&
       skippedIds.has(skippedVersionId({ key: candidate.key, version: candidate.target }))
     ) {
       return "skipped";
