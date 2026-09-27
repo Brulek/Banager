@@ -256,11 +256,32 @@ describe("OverviewPage", () => {
         settings.ignored_updates = [formula("glib")];
       },
     ],
+    // Homebrew still reads as answering, with no note: `refresh` keeps a
+    // source whose update check failed as it was, and carries its last
+    // candidates forward -- none, here -- with a `SourceError`.
+    [
+      "a check that failed this round",
+      () => {
+        served = snapshotWith({
+          stale: true,
+          errors: [{ instance_id: brew.id, message: "brew outdated exited with code 1" }],
+        });
+      },
+    ],
+    [
+      "a source whose detection failed this round",
+      () => {
+        served = snapshotWith({
+          stale: true,
+          errors: [{ instance_id: "npm", message: "internal error detecting this source" }],
+        });
+      },
+    ],
   ];
 
   it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange) => {
     arrange();
-    const { findByRole, getByText, queryByRole, queryByText, container } = renderWithProviders(
+    const { getByRole, getByText, queryByRole, queryByText, container } = renderWithProviders(
       <>
         <SnapshotStatus showsFirstCheck>
           <OverviewPage />
@@ -269,7 +290,12 @@ describe("OverviewPage", () => {
       </>,
     );
 
-    expect(await findByRole("heading", { level: 2, name: "Nothing to update" })).toBeInTheDocument();
+    // Waited for rather than found once: over a snapshot with errors the
+    // page is drawn again under the "some checks didn't finish" banner,
+    // and the heading found first is not the one that stays.
+    await waitFor(() =>
+      expect(getByRole("heading", { level: 2, name: "Nothing to update" })).toBeInTheDocument(),
+    );
     expect(queryByRole("heading", { name: "Everything is up to date" })).not.toBeInTheDocument();
     // Neither the green ring nor its check: a grey ring with a dash.
     expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");

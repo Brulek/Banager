@@ -233,12 +233,23 @@ function checkedInFull(instance: ManagerInstance): boolean {
 /**
  * Whether every source answered the last check and was checked for
  * updates in full, so that finding no update anywhere means there is
- * none. What the Updates page asks before it says "Everything is up to
- * date" rather than "No updates in the sources Canager could check", and
- * what `updatesSummary` asks before the Overview says it.
+ * none: no call of this round failed, and every instance answered and was
+ * checked in full (`checkedInFull`). What the Updates page asks before it
+ * says "Everything is up to date" rather than "No updates in the sources
+ * Canager could check", and what `updatesSummary` asks before the
+ * Overview says it.
+ *
+ * Any `SourceError` of this round is enough to fail it, whatever it
+ * names. A source whose inventory or update check failed keeps last
+ * round's rows and candidates (crates/canager-core/src/session/refresh.rs)
+ * while its instance still reads as answering -- so `checkedInFull` alone
+ * would call it checked -- and an error that names a bare adapter id
+ * (its `detect` failed) or an instance dropped as a duplicate is about a
+ * source whose tools may not be on screen at all. None of that was
+ * checked this time, so no update listed is no news.
  */
-export function everySourceChecked(instances: ManagerInstance[]): boolean {
-  return instances.every(checkedInFull);
+export function everySourceChecked(instances: ManagerInstance[], errors: SourceError[]): boolean {
+  return errors.length === 0 && instances.every(checkedInFull);
 }
 
 /**
@@ -266,9 +277,10 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  *   "Everything is up to date".
  * - `nothingToUpdate`: none to install, and not that either. Some are
  *   listed that Canager cannot install (pinned, read-only, not checkable,
- *   from a source not answering), the user hid the rest, or a source was
- *   not checked in full. Calling that up to date is the lie the Updates
- *   page stopped telling; the Overview does not start.
+ *   from a source not answering), the user hid the rest, a source was not
+ *   checked in full, or a check failed this round. Calling that up to date
+ *   is the lie the Updates page stopped telling; the Overview does not
+ *   start.
  */
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[] }
@@ -276,12 +288,12 @@ export type UpdatesSummary =
   | { kind: "nothingToUpdate" };
 
 export function updatesSummary(
-  snapshot: Pick<Snapshot, "instances" | "updates">,
+  snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
   settings: HidingSettings,
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
   if (actionable.length > 0) return { kind: "updates", actionable };
-  if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances)) {
+  if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors)) {
     return { kind: "upToDate" };
   }
   return { kind: "nothingToUpdate" };

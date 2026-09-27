@@ -297,23 +297,37 @@ describe("actionableUpdatesOf", () => {
 
 describe("everySourceChecked", () => {
   it("holds when every source answered and none says its updates went unchecked", () => {
-    expect(everySourceChecked([])).toBe(true);
-    expect(everySourceChecked([brew, { ...brew, read_only_reason: "ByDesign" }])).toBe(true);
+    expect(everySourceChecked([], [])).toBe(true);
+    expect(everySourceChecked([brew, { ...brew, read_only_reason: "ByDesign" }], [])).toBe(true);
     // Which copy runs when its name is typed says nothing about the check.
     expect(
-      everySourceChecked([{ ...brew, status: { unavailable: null, notes: ["NotOnPath"] } }]),
+      everySourceChecked([{ ...brew, status: { unavailable: null, notes: ["NotOnPath"] } }], []),
     ).toBe(true);
   });
 
   it("fails for a source that did not answer or was not checked in full", () => {
     expect(
-      everySourceChecked([brew, { ...brew, status: { unavailable: "NotRunning", notes: [] } }]),
+      everySourceChecked([brew, { ...brew, status: { unavailable: "NotRunning", notes: [] } }], []),
     ).toBe(false);
     for (const note of ["IndexMayBeStale", "IndexUpdating", "LauncherOnly"] as const) {
-      expect(everySourceChecked([{ ...brew, status: { unavailable: null, notes: [note] } }])).toBe(
-        false,
-      );
+      expect(
+        everySourceChecked([{ ...brew, status: { unavailable: null, notes: [note] } }], []),
+      ).toBe(false);
     }
+  });
+
+  it("fails when a check failed this round, though every source still reads as answering", () => {
+    // `refresh` keeps a source whose inventory or update check failed as
+    // it was -- answering, no note -- and carries its last rows and
+    // candidates forward with a `SourceError`: nothing in `instances`
+    // says it went unchecked.
+    expect(
+      everySourceChecked([brew], [{ instance_id: brew.id, message: "brew outdated exited 1" }]),
+    ).toBe(false);
+    // A detect that failed names the bare adapter, not an instance.
+    expect(
+      everySourceChecked([brew], [{ instance_id: "npm", message: "internal error detecting this source" }]),
+    ).toBe(false);
   });
 });
 
@@ -324,31 +338,47 @@ describe("updatesSummary", () => {
       key: { instance_id: brew.id, kind: "Formula", name: "jq" },
       blocked: "Pinned",
     });
-    expect(updatesSummary({ instances: [brew], updates: [pinned, glib] }, hiding())).toEqual({
+    expect(updatesSummary({ instances: [brew], updates: [pinned, glib], errors: [] }, hiding())).toEqual({
       kind: "updates",
       actionable: [glib],
     });
   });
 
   it("is up to date only with no update at all and every source checked", () => {
-    expect(updatesSummary({ instances: [brew], updates: [] }, hiding())).toEqual({
+    expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",
     });
     const stopped: ManagerInstance = {
       ...brew,
       status: { unavailable: "NotRunning", notes: [] },
     };
-    expect(updatesSummary({ instances: [stopped], updates: [] }, hiding())).toEqual({
+    expect(updatesSummary({ instances: [stopped], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
     });
     const pinned = candidate({ blocked: "Pinned" });
-    expect(updatesSummary({ instances: [brew], updates: [pinned] }, hiding())).toEqual({
+    expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
     });
     const glib = candidate();
     expect(
-      updatesSummary({ instances: [brew], updates: [glib] }, hiding({ ignored_updates: [glib.key] })),
+      updatesSummary(
+        { instances: [brew], updates: [glib], errors: [] },
+        hiding({ ignored_updates: [glib.key] }),
+      ),
     ).toEqual({ kind: "nothingToUpdate" });
+  });
+
+  it("is not up to date when a check failed this round, even with nothing listed", () => {
+    const failed = { instance_id: brew.id, message: "brew outdated exited 1" };
+    expect(updatesSummary({ instances: [brew], updates: [], errors: [failed] }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+    });
+    // What can be installed still comes first: a failed check elsewhere
+    // does not take the count away.
+    const glib = candidate();
+    expect(
+      updatesSummary({ instances: [brew], updates: [glib], errors: [failed] }, hiding()),
+    ).toEqual({ kind: "updates", actionable: [glib] });
   });
 });
 

@@ -538,18 +538,19 @@ export function UpdatesPage() {
   // stopped Ollama or a Homebrew whose catalogue could not be downloaded is
   // precisely the lie this page used to tell: no candidates is exactly
   // what an unreachable source produces, and the page read that silence as
-  // good news. When a source did not answer, or carries a note that means
-  // its updates were not fully checked (`NOTE_LEAVES_UPDATES_UNCHECKED`),
-  // the sentence drops to what Canager can honestly claim -- nothing to
-  // update *in the sources it managed to check*. Not for every notice: one
-  // that is information only -- which copy runs when you type a tool's
-  // name -- still goes above the sentence, and leaves the sentence alone.
-  // A read-only source is one Canager *can* check. The rule is
-  // `everySourceChecked` in src/lib/updateState.ts, which the Overview's
-  // headline reads too: it may call the Mac up to date only when this page
-  // would.
+  // good news. When a source did not answer, carries a note that means its
+  // updates were not fully checked (`NOTE_LEAVES_UPDATES_UNCHECKED`), or
+  // had a check fail this round (a `SourceError`), the sentence drops to
+  // what Canager can honestly claim -- nothing to update *in the sources it
+  // managed to check*. Not for every notice: one that is information only
+  // -- which copy runs when you type a tool's name -- still goes above the
+  // sentence, and leaves the sentence alone. A read-only source is one
+  // Canager *can* check. The rule is `everySourceChecked` in
+  // src/lib/updateState.ts, which the Overview's headline reads too: it
+  // may call the Mac up to date only when this page would.
   if (visibleUpdates.length === 0) {
-    const upToDate = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances);
+    const upToDate =
+      snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
     const message =
       snapshot.updates.length > 0
         ? t("updates.allHidden")

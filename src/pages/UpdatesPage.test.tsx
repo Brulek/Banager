@@ -144,6 +144,8 @@ let instances: Snapshot["instances"];
 // A row's name and its one line of description come from `artifacts`, so
 // a test about what a row says needs them.
 let artifacts: Snapshot["artifacts"];
+// This round's failed calls; `stale` follows them, as `refresh` sets it.
+let errors: Snapshot["errors"];
 // What `list_operations` answers: the backend lists operations newest first.
 let operations: OpSummary[];
 // Every plan_operation answer carries a fresh server-issued id: a PlanId is
@@ -316,6 +318,7 @@ beforeEach(() => {
   updates = snapshot.updates;
   instances = snapshot.instances;
   artifacts = snapshot.artifacts;
+  errors = snapshot.errors;
   operations = [];
   nextPlanId = 1;
   planFailures = {};
@@ -344,7 +347,14 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
   mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "get_snapshot")
-      return Promise.resolve({ ...snapshot, updates, instances, artifacts });
+      return Promise.resolve({
+        ...snapshot,
+        updates,
+        instances,
+        artifacts,
+        errors,
+        stale: errors.length > 0,
+      });
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "list_operations") return Promise.resolve(operations);
     if (cmd === "set_settings") {
@@ -2206,6 +2216,19 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("Homebrew is updating its software list");
+    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+  });
+
+  it("does not say everything is up to date when a check failed this round", async () => {
+    // Every source still reads as answering, with no note: `refresh` keeps
+    // a source whose inventory or update check failed as it was, carries
+    // its last rows and candidates forward, and says so only in
+    // `errors`. None listed is then no news that there are none.
+    updates = [];
+    errors = [{ instance_id: "brew:/opt/homebrew", message: "brew outdated exited with code 1" }];
+    const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
+
     expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
