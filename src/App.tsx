@@ -1,17 +1,38 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLanguageSync } from "./i18n/useLanguageSync";
 import { PAGE_LABEL_KEYS, Sidebar } from "./components/Sidebar";
-import { PageHeader } from "./components/PageHeader";
+import { CheckAgain, PageHeader } from "./components/PageHeader";
 import { OverviewPage } from "./pages/OverviewPage";
 import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
-import { UnknownPage } from "./pages/UnknownPage";
+import { ScanAgain, UnknownPage } from "./pages/UnknownPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
-import { useUiStore } from "./store/ui";
+import { useUiStore, type Page } from "./store/ui";
+
+/**
+ * What each page's header has on the right: its own way to look again,
+ * or nothing. The pages about the sources check them again; the Unknown
+ * page scans again -- only that, never two refresh buttons stacked; and
+ * Settings looks at nothing. A `switch` with no default, so a page added
+ * to `Page` without an answer here fails `tsc`.
+ */
+function headerActions(page: Page): ReactNode {
+  switch (page) {
+    case "overview":
+    case "updates":
+    case "installed":
+      return <CheckAgain />;
+    case "unknown":
+      return <ScanAgain />;
+    case "settings":
+      return null;
+  }
+}
 
 function App() {
   useLanguageSync();
@@ -33,7 +54,7 @@ function App() {
           {/* Outside `SnapshotStatus`, so the title and Check again stay
               put whatever the page below shows -- "Loading…", a failed
               first check, an empty Mac. */}
-          <PageHeader title={t(PAGE_LABEL_KEYS[page])} />
+          <PageHeader title={t(PAGE_LABEL_KEYS[page])} actions={headerActions(page)} />
           {/* The page's own box. The Installed and Updates pages size
               their lists to its height (`h-full`) and scroll inside them;
               the other pages scroll here. */}

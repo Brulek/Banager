@@ -482,6 +482,13 @@
     "sizeAndDate": "{{size}} · {{date}}",
     "scanAgain": "Scan again",
     "scanning": "Scanning…",
+    "scannedJustNow": "Scanned just now",
+    "scannedMinutesAgo_one": "Scanned {{count}} min ago",
+    "scannedMinutesAgo_other": "Scanned {{count}} min ago",
+    "scannedHoursAgo_one": "Scanned {{count}} hour ago",
+    "scannedHoursAgo_other": "Scanned {{count}} hours ago",
+    "scannedDaysAgo_one": "Scanned {{count}} day ago",
+    "scannedDaysAgo_other": "Scanned {{count}} days ago",
     "scanFailed": "Couldn't scan: {{message}}",
     "empty": "No programs of unknown origin"
   },

@@ -42,12 +42,13 @@ first its record lists — so the other programs of a crate that installs severa
 (`cargo-binstall`'s `detect-targets`) stay on that page until it can report them all.
 
 Canager checks every source when it opens, after each operation, and whenever you press **Check
-again** in the header over every page, which also says how long ago the last check finished. The
-"Try again" of a failed refresh, or of a Homebrew index Canager couldn't update, runs the same
-check, and a Homebrew index update left running in the background starts one on its own when it
-ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). The Unknown page's *Scan
-again* re-runs only that page's scan of your bin folders, against the sources' last known state —
-it does not refresh the sources.
+again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
+last check finished. The "Try again" of a failed refresh, or of a Homebrew index Canager couldn't
+update, runs the same check, and a Homebrew index update left running in the background starts one
+on its own when it ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). The
+Unknown page's header has *Scan again* in its place, with how long ago that page last scanned: it
+re-runs only that page's scan of your bin folders, against the sources' last known state — it does
+not refresh the sources. Settings' header has neither.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -260,11 +261,12 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
 
-Canager 在打开时、每次操作完成后，以及你按下每一页页头的“重新检查”时检查各来源，页头上也写着上次
-检查是多久以前。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；后台运行的
-Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
-`src-tauri/src/lib.rs:31-34`，不需要用户动手）。“来源不明”页上的“重新扫描”只属于那一页：只重新扫描
-那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
+Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”时检查各来源，
+页头上也写着上次检查是多久以前。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
+后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
+`src-tauri/src/lib.rs:31-34`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
+它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
+“设置”页的页头两者都没有。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo
 每个 crate 只报一个程序——与 crate 同名的那个，没有就报记录里的第一个——所以一个 crate 装了好几个程序时，
 其余的（如 `cargo-binstall` 的 `detect-targets`）会留在那一页，直到它能把全部报出来。）

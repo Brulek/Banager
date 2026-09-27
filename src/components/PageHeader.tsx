@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRefresh, useSnapshot } from "../lib/queries";
 import { useRefreshInFlight } from "../lib/events";
@@ -9,18 +9,24 @@ import { RefreshIcon } from "./icons";
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
 
-/** "Checked 3 min ago". A `switch` with no default, so a unit added to `Elapsed` without words here fails `tsc`. */
-function checkedText(t: Translate, elapsed: Elapsed): string {
-  switch (elapsed.unit) {
-    case "justNow":
-      return t("header.checkedJustNow");
-    case "minutes":
-      return t("header.checkedMinutesAgo", { count: elapsed.count });
-    case "hours":
-      return t("header.checkedHoursAgo", { count: elapsed.count });
-    case "days":
-      return t("header.checkedDaysAgo", { count: elapsed.count });
-  }
+/**
+ * The words for each unit of `Elapsed`, for a "… ago" beside a header's
+ * button: "Checked 3 min ago", "Scanned 3 min ago". A `Record` over the
+ * units, so a unit added to `Elapsed` without words here fails `tsc`.
+ */
+export type ElapsedKeys = Record<Elapsed["unit"], string>;
+
+/** "Checked 3 min ago", 「上次检查：3 分钟前」: when the sources were last checked. */
+const CHECKED_KEYS: ElapsedKeys = {
+  justNow: "header.checkedJustNow",
+  minutes: "header.checkedMinutesAgo",
+  hours: "header.checkedHoursAgo",
+  days: "header.checkedDaysAgo",
+};
+
+/** `elapsed` in `keys`' words, with its count where it has one. */
+export function elapsedText(t: Translate, keys: ElapsedKeys, elapsed: Elapsed): string {
+  return elapsed.unit === "justNow" ? t(keys.justNow) : t(keys[elapsed.unit], { count: elapsed.count });
 }
 
 /**
@@ -31,7 +37,7 @@ function checkedText(t: Translate, elapsed: Elapsed): string {
  * is behind the check's own time, which `elapsedSince` reads as "just
  * now" -- as it is.
  */
-function useMinuteClock(since: number | null): number {
+export function useMinuteClock(since: number | null): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -40,13 +46,58 @@ function useMinuteClock(since: number | null): number {
   return now;
 }
 
-export interface PageHeaderProps {
-  title: string;
+/** Where a header's look again stands: its words, and whether they say it failed. */
+export interface HeaderStatus {
+  text: string;
+  failed: boolean;
+}
+
+export interface HeaderActionProps {
+  /**
+   * What stands before the button: "Checked 3 min ago", "Checking…", or
+   * -- in the danger colour, as an alert -- that the last one failed.
+   * Null says nothing.
+   */
+  status: HeaderStatus | null;
+  /** The button's words: "Check again", "Scan again". */
+  label: string;
+  onPress: () => void;
+  /** It is running now, whoever started it: the button is off meanwhile. */
+  busy: boolean;
 }
 
 /**
- * The strip over every page: its title, when Canager last checked, and
- * Check again.
+ * The one look of a header's way to look again, whatever it looks at --
+ * the sources (`CheckAgain`), or the Unknown page's scan -- so that every
+ * page's header reads the same: when, then the button.
+ */
+export function HeaderAction({ status, label, onPress, busy }: HeaderActionProps) {
+  return (
+    <div className="flex shrink-0 items-center gap-3">
+      {status !== null ? (
+        <p
+          role={status.failed ? "alert" : undefined}
+          className={`text-small ${status.failed ? "text-danger" : "text-muted"}`}
+        >
+          {status.text}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onPress}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
+      >
+        <RefreshIcon size={16} />
+        {label}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * When Canager last checked its sources, and Check again: the header of
+ * every page about them -- the Overview, Updates, Installed.
  *
  * Check again is the refresh every other trigger runs -- the one at
  * startup, the one after an operation, the Try again of a failed one --
@@ -61,7 +112,7 @@ export interface PageHeaderProps {
  * check that failed leaves the snapshot as it was, and the time would go
  * on naming the one before it as if nothing had been tried.
  */
-export function PageHeader({ title }: PageHeaderProps) {
+export function CheckAgain() {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const refresh = useRefresh();
@@ -70,37 +121,42 @@ export function PageHeader({ title }: PageHeaderProps) {
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
 
-  let status: { text: string; failed: boolean } | null = null;
+  let status: HeaderStatus | null = null;
   if (refreshing) {
     status = { text: t("common.checking"), failed: false };
   } else if (lastCheckFailed) {
     status = { text: t("header.checkFailed"), failed: true };
   } else if (refreshedAt !== null) {
-    status = { text: checkedText(t, elapsedSince(refreshedAt, now)), failed: false };
+    status = { text: elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now)), failed: false };
   }
 
   return (
+    <HeaderAction status={status} label={t("header.checkAgain")} onPress={() => refresh.mutate()} busy={refreshing} />
+  );
+}
+
+export interface PageHeaderProps {
+  title: string;
+  /**
+   * The page's own way to look again, on the right: left out, the
+   * sources' (`CheckAgain`); the Unknown page's scan, for that page; null
+   * for a page with nothing to look again at, such as Settings. One
+   * control, never two stacked: a page with its own passes it here
+   * rather than drawing it under the header.
+   */
+  actions?: ReactNode;
+}
+
+/**
+ * The strip over every page: its title, and the page's own way to look
+ * again. As tall with nothing on the right as with a button, so the
+ * pages under it start at one height.
+ */
+export function PageHeader({ title, actions }: PageHeaderProps) {
+  return (
     <header className="flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
       <h1 className="min-w-0 truncate text-title text-foreground">{title}</h1>
-      <div className="flex shrink-0 items-center gap-3">
-        {status !== null ? (
-          <p
-            role={status.failed ? "alert" : undefined}
-            className={`text-small ${status.failed ? "text-danger" : "text-muted"}`}
-          >
-            {status.text}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => refresh.mutate()}
-          disabled={refreshing}
-          className="inline-flex items-center gap-1.5 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
-        >
-          <RefreshIcon size={16} />
-          {t("header.checkAgain")}
-        </button>
-      </div>
+      <div className="flex min-h-8 shrink-0 items-center">{actions === undefined ? <CheckAgain /> : actions}</div>
     </header>
   );
 }

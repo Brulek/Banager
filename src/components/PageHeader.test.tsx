@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { PageHeader } from "./PageHeader";
+import { CheckAgain, HeaderAction, PageHeader } from "./PageHeader";
 import { refreshIntoCache } from "../lib/events";
 import { queryKeys } from "../lib/queries";
 import type { Snapshot } from "../lib/types";
@@ -56,6 +56,39 @@ describe("PageHeader", () => {
   it("shows the page's title as its heading", () => {
     const { getByRole } = renderWithProviders(<PageHeader title="Updates" />);
     expect(getByRole("heading", { level: 1, name: "Updates" })).toBeInTheDocument();
+  });
+
+  it("has Check again, the page's own action in its place, or nothing at all on its right", async () => {
+    const checks = renderWithProviders(<PageHeader title="Updates" actions={<CheckAgain />} />);
+    expect(checks.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    expect(await checks.findByText(/^Checked /)).toBeInTheDocument();
+    checks.unmount();
+
+    const own = renderWithProviders(<PageHeader title="Unknown" actions={<button type="button">Scan again</button>} />);
+    expect(own.getAllByRole("button").map((button) => button.textContent)).toEqual(["Scan again"]);
+    expect(own.queryByText(/^Checked /)).toBeNull();
+    own.unmount();
+
+    const none = renderWithProviders(<PageHeader title="Settings" actions={null} />);
+    expect(none.queryByRole("button")).toBeNull();
+    expect(none.queryByText(/^Checked /)).toBeNull();
+    // As tall with nothing on the right as with a button.
+    expect(none.getByRole("heading", { level: 1 }).nextElementSibling?.className).toContain("min-h-8");
+  });
+
+  it("draws any page's look again the one way: when, then the button", () => {
+    const onPress = vi.fn();
+    const { getByRole, getByText, rerender } = renderWithProviders(
+      <HeaderAction status={{ text: "Scanned just now", failed: false }} label="Scan again" onPress={onPress} busy={false} />,
+    );
+    const button = getByRole("button", { name: "Scan again" });
+    expect(getByText("Scanned just now").compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    rerender(<HeaderAction status={{ text: "Couldn't scan", failed: true }} label="Scan again" onPress={onPress} busy />);
+    expect(getByRole("alert")).toHaveTextContent("Couldn't scan");
+    expect(getByRole("button", { name: "Scan again" })).toBeDisabled();
   });
 
   it("says how long ago the last check finished, and moves on every minute", async () => {

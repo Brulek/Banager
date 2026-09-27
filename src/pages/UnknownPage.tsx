@@ -3,8 +3,15 @@ import { useTranslation } from "react-i18next";
 import { ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { SourceNoticeLine } from "../components/SourceNotice";
-import { CheckCircleIcon, RefreshIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
-import { formatBytes } from "../lib/format";
+import {
+  elapsedText,
+  HeaderAction,
+  useMinuteClock,
+  type ElapsedKeys,
+  type HeaderStatus,
+} from "../components/PageHeader";
+import { CheckCircleIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
+import { elapsedSince, formatBytes } from "../lib/format";
 import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
@@ -99,14 +106,57 @@ function ProgramAvatar() {
   );
 }
 
+/** "Scanned 3 min ago", 「上次扫描：3 分钟前」: when this page's scan last answered. */
+const SCANNED_KEYS: ElapsedKeys = {
+  justNow: "unknown.scannedJustNow",
+  minutes: "unknown.scannedMinutesAgo",
+  hours: "unknown.scannedHoursAgo",
+  days: "unknown.scannedDaysAgo",
+};
+
+/**
+ * The Unknown page's own way to look again, for its page header
+ * (`PageHeader`'s `actions`) in place of the sources' Check again: when
+ * its scan last answered, and Scan again. It re-runs only this scan,
+ * never the sources' refresh; the page itself asks for one whenever the
+ * sources' snapshot moves.
+ *
+ * The scan carries no time of its own, so the time is when its answer
+ * arrived (`dataUpdatedAt`). "Scanning…" while one runs, whoever asked
+ * for it, with the button off; nothing before the first answer, nor after
+ * a scan that failed, whose reason the page says.
+ */
+export function ScanAgain() {
+  const { t } = useTranslation();
+  const scan = useUnknownScan();
+  const scannedAt = scan.data === undefined || scan.dataUpdatedAt === 0 ? null : scan.dataUpdatedAt;
+  const now = useMinuteClock(scannedAt);
+
+  let status: HeaderStatus | null = null;
+  if (scan.isFetching) {
+    status = { text: t("unknown.scanning"), failed: false };
+  } else if (!scan.isError && scannedAt !== null) {
+    status = { text: elapsedText(t, SCANNED_KEYS, elapsedSince(scannedAt / 1000, now)), failed: false };
+  }
+
+  return (
+    <HeaderAction
+      status={status}
+      label={t("unknown.scanAgain")}
+      onPress={() => void scan.refetch()}
+      busy={scan.isFetching}
+    />
+  );
+}
+
 /**
  * The command-line programs on this Mac that no source accounts for, as
  * rows like every other list's: a neutral avatar, the name with the path
  * it was found at, a chip for what kind of entry it is -- whose ⓘ says
  * the rest, where there is more to say -- and its size and date where a
  * tool's version would be. Canager only lists them: nothing here runs or
- * removes anything, which the page says once, at its top, beside Scan
- * again and above the folders it looked in.
+ * removes anything, which the page says once, at its top, above the
+ * folders it looked in; Scan again is in the page header (`ScanAgain`).
  */
 export function UnknownPage() {
   const { t, i18n } = useTranslation();
@@ -122,7 +172,8 @@ export function UnknownPage() {
   // in-memory read -- asks once, and every later change to it asks again,
   // which is how a refresh landing after the page opened (the startup
   // refresh, most often) corrects a list judged against an empty
-  // snapshot (ruling 9). The button asks regardless. `refetch` is stable
+  // snapshot (ruling 9). Scan again, in the page header, asks regardless
+  // (`ScanAgain`). `refetch` is stable
   // across renders. In development, StrictMode (src/main.tsx) runs this
   // effect twice on mount and the second `refetch` restarts the first
   // scan: a read that is thrown away, accepted over `cancelRefetch:
@@ -140,24 +191,9 @@ export function UnknownPage() {
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex shrink-0 flex-col gap-1 px-6 pb-3">
-        <div className="flex items-center justify-between gap-4">
-          <p className="min-w-0 text-body text-muted">{t("unknown.intro")}</p>
-          {/* This page's own: it re-runs only this scan, never the sources'
-              refresh, which is the page header's Check again. */}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={scan.isFetching}
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-button border border-border bg-surface px-3 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60 disabled:hover:bg-surface"
-          >
-            {scan.isFetching ? (
-              <SpinnerIcon size={15} className="shrink-0 text-accent-text" />
-            ) : (
-              <RefreshIcon size={15} className="shrink-0" />
-            )}
-            {scan.isFetching ? t("unknown.scanning") : t("unknown.scanAgain")}
-          </button>
-        </div>
+        {/* Scan again is in the page header (`ScanAgain`), where the other
+            pages have Check again. */}
+        <p className="text-body text-muted">{t("unknown.intro")}</p>
         {result ? (
           <p className="break-words text-small text-muted">
             {t("unknown.lookedIn", {

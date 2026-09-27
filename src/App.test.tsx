@@ -142,17 +142,41 @@ describe("App", () => {
     expect(await findByText("jq", { selector: "[data-tool-row] p" })).toBeInTheDocument();
   });
 
-  it("titles every page in one header, with Check again beside it", async () => {
-    const { getByRole, findByText, getAllByRole } = renderWithProviders(<App />);
+  it("titles every page in one header, with that page's own way to look again beside it", async () => {
+    const { getByRole, findByText, getAllByRole, queryAllByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
 
-    for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
+    // The pages about the sources check them again; the Unknown page
+    // scans again, and only that; Settings has nothing to look again at.
+    const actions: Array<[string, string[]]> = [
+      ["Overview", ["Check again"]],
+      ["Updates", ["Check again"]],
+      ["Installed", ["Check again"]],
+      ["Unknown", ["Scan again"]],
+      ["Settings", []],
+    ];
+    for (const [name, expected] of actions) {
       fireEvent.click(getByRole("button", { name }));
       // One page title, and it is this page's.
       const titles = getAllByRole("heading", { level: 1 });
       expect(titles.map((title) => title.textContent)).toEqual([name]);
-      expect(getByRole("button", { name: "Check again" })).toBeInTheDocument();
+      const header = titles[0].closest("header") as HTMLElement;
+      expect(within(header).queryAllByRole("button").map((button) => button.textContent)).toEqual(expected);
+      // Never a second one stacked under the header.
+      expect(queryAllByRole("button", { name: /^(Check|Scan) again$/ })).toHaveLength(expected.length);
     }
+  });
+
+  it("says in the Unknown page's header when its scan answered, and never when the sources were checked", async () => {
+    const { getByRole, findByText, queryByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    expect(queryByText(/^Checked /)).not.toBeNull();
+
+    fireEvent.click(getByRole("button", { name: "Unknown" }));
+
+    expect(await findByText("Scanned just now")).toBeInTheDocument();
+    expect(queryByText(/^Checked /)).toBeNull();
+    expect(getByRole("button", { name: "Scan again" })).toBeEnabled();
   });
 
   it("opens the Updates page from Review updates with every row it can update ticked", async () => {

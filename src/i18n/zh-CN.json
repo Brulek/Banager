@@ -461,6 +461,10 @@
     "sizeAndDate": "{{size}} · {{date}}",
     "scanAgain": "重新扫描",
     "scanning": "正在扫描…",
+    "scannedJustNow": "上次扫描：刚刚",
+    "scannedMinutesAgo_other": "上次扫描：{{count}} 分钟前",
+    "scannedHoursAgo_other": "上次扫描：{{count}} 小时前",
+    "scannedDaysAgo_other": "上次扫描：{{count}} 天前",
     "scanFailed": "没能扫描：{{message}}",
     "empty": "没有来源不明的程序"
   },

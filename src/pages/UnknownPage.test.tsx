@@ -1,8 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { UnknownPage } from "./UnknownPage";
+import { ScanAgain, UnknownPage } from "./UnknownPage";
 import i18n from "../i18n";
 import { formatBytes } from "../lib/format";
 import { queryKeys } from "../lib/queryKeys";
@@ -71,6 +71,9 @@ const snapshot: Snapshot = {
 let settings: Settings;
 let scan: UnknownScan;
 let scanFailure: string | null;
+// With `holdScan`, a scan answers only when the test calls `releaseScan`.
+let holdScan: boolean;
+let releaseScan: () => void;
 
 beforeEach(() => {
   settings = {
@@ -82,10 +85,18 @@ beforeEach(() => {
   };
   scan = baseScan;
   scanFailure = null;
+  holdScan = false;
+  releaseScan = () => {};
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "scan_unknown") {
-      return scanFailure === null ? Promise.resolve(scan) : Promise.reject(scanFailure);
+      if (scanFailure !== null) return Promise.reject(scanFailure);
+      if (holdScan) {
+        return new Promise<UnknownScan>((resolve) => {
+          releaseScan = () => resolve(scan);
+        });
+      }
+      return Promise.resolve(scan);
     }
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "get_snapshot") return Promise.resolve(snapshot);
@@ -262,13 +273,103 @@ describe("UnknownPage", () => {
   });
 
   it("scans again when the button is pressed", async () => {
-    const { findByText, getByRole } = renderWithProviders(<UnknownPage />);
+    // The button is the page header's now (`ScanAgain`), as App puts it.
+    const { findByText, getByRole } = renderWithProviders(
+      <>
+        <ScanAgain />
+        <UnknownPage />
+      </>,
+    );
     await findByText("standalone-tool");
     expect(scanCalls()).toBe(1);
 
     fireEvent.click(getByRole("button", { name: "Scan again" }));
 
     await waitFor(() => expect(scanCalls()).toBe(2));
+  });
+
+  it("draws no Scan again of its own: the page header has it", async () => {
+    const { findByText, getByText, queryByRole } = renderWithProviders(<UnknownPage />);
+    await findByText("standalone-tool");
+
+    expect(queryByRole("button", { name: "Scan again" })).toBeNull();
+    // What it says at its top stays: what the page is, and where it looked.
+    expect(
+      getByText(
+        "Canager can't tell how these command-line programs got here. It only lists them and never runs or deletes them.",
+      ),
+    ).toBeInTheDocument();
+    expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
+  });
+
+  describe("Scan again, in the page header", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("says Scanning… with the button off while a scan runs, then when it answered", async () => {
+      // Only the clock and the header's minute tick are fake.
+      vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 9, 0));
+      holdScan = true;
+      const { findByText, getByRole, getByText, queryByText } = renderWithProviders(
+        <>
+          <ScanAgain />
+          <UnknownPage />
+        </>,
+      );
+
+      expect(await findByText("Scanning…")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Scan again" })).toBeDisabled();
+
+      await act(async () => {
+        releaseScan();
+      });
+      expect(await findByText("Scanned just now")).toBeInTheDocument();
+      expect(queryByText("Scanning…")).toBeNull();
+      expect(getByRole("button", { name: "Scan again" })).toBeEnabled();
+
+      act(() => {
+        vi.advanceTimersByTime(2 * 60_000);
+      });
+      expect(getByText("Scanned 2 min ago")).toBeInTheDocument();
+    });
+
+    it("says nothing before a scan has answered, and nothing about one that failed, whose reason the page says", async () => {
+      const alone = renderWithProviders(<ScanAgain />);
+      // Nothing asked for a scan: no time, and the button ready.
+      expect(alone.getByRole("button", { name: "Scan again" })).toBeEnabled();
+      expect(alone.queryByText(/^Scanned|Scanning…/)).toBeNull();
+      expect(scanCalls()).toBe(0);
+      alone.unmount();
+
+      scanFailure = "boom";
+      const failed = renderWithProviders(
+        <>
+          <ScanAgain />
+          <UnknownPage />
+        </>,
+      );
+      expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan: boom");
+      expect(failed.queryByText(/^Scanned|Scanning…/)).toBeNull();
+      expect(failed.getByRole("button", { name: "Scan again" })).toBeEnabled();
+    });
+
+    it("says when it scanned in Chinese as the header says when it checked", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { findByText, getByRole } = renderWithProviders(
+          <>
+            <ScanAgain />
+            <UnknownPage />
+          </>,
+        );
+        expect(await findByText("上次扫描：刚刚")).toBeInTheDocument();
+        expect(getByRole("button", { name: "重新扫描" })).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
   });
 
   it("scans again when the sources' snapshot moves underneath it", async () => {
