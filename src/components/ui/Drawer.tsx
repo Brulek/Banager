@@ -23,6 +23,18 @@ export interface DrawerProps {
    * for whatever opens next, such as the log drawer.
    */
   onCloseAutoFocus?: (event: Event) => void;
+  /**
+   * Give the focus to the panel itself as it opens, rather than to its
+   * first control -- which is the close button, one Enter from shutting
+   * what was just opened. A screen reader then reads the panel's name. The
+   * log drawer's: it opens by itself when an uninstall starts.
+   */
+  focusPanelOnOpen?: boolean;
+  /**
+   * The body does not scroll as a whole: its child fills it and scrolls
+   * what it chooses -- the log drawer's log, which keeps to its end.
+   */
+  fillBody?: boolean;
   children?: ReactNode;
 }
 
@@ -51,9 +63,12 @@ export function Drawer({
   closeLabel,
   footer,
   onCloseAutoFocus,
+  focusPanelOnOpen = false,
+  fillBody = false,
   children,
 }: DrawerProps) {
   const openerRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (open) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, [open]);
@@ -62,6 +77,14 @@ export function Drawer({
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 bg-[var(--color-overlay)]" />
         <RadixDialog.Content
+          ref={panelRef}
+          onOpenAutoFocus={(event) => {
+            if (!focusPanelOnOpen) return;
+            // Radix's own would pick the first control. The panel is
+            // focusable by script: Radix gives it `tabIndex={-1}`.
+            event.preventDefault();
+            panelRef.current?.focus();
+          }}
           onCloseAutoFocus={(event) => {
             onCloseAutoFocus?.(event);
             const leaveFocus = event.defaultPrevented;
@@ -86,7 +109,7 @@ export function Drawer({
               <CloseIcon size={16} />
             </RadixDialog.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+          <div className={`min-h-0 flex-1 px-5 pb-5 ${fillBody ? "flex flex-col" : "overflow-y-auto"}`}>
             {description !== undefined ? (
               <RadixDialog.Description className="break-words text-body text-foreground">
                 {description}

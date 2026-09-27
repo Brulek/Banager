@@ -1,47 +1,93 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { OperationBar } from "./OperationBar";
 import { useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queryKeys";
+import i18n from "../i18n";
+import type { OpStatus, OpSummary, Outcome, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
+// What `list_operations` answers, newest first as the backend lists them,
+// and what `get_snapshot` answers -- nothing, until a test gives it one:
+// the bar only reads it for the names the rows show.
+let operations: OpSummary[];
+let snapshot: Snapshot | null;
+
+function op(
+  id: number,
+  name: string,
+  status: OpStatus,
+  outcome: Outcome | null = null,
+  extra: Partial<OpSummary> = {},
+): OpSummary {
+  return {
+    id,
+    kind: "Upgrade",
+    instance_id: "brew:/opt/homebrew",
+    artifact_kind: "Formula",
+    name,
+    status,
+    outcome,
+    argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--formula", name],
+    cancel_policy: "KillThenReconcile",
+    ...extra,
+  };
+}
+
 beforeEach(() => {
+  operations = [];
+  snapshot = null;
   mockInvoke.mockReset();
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "list_operations") return Promise.resolve(operations);
+    // Never answered without a snapshot: an answer of nothing would be an
+    // error to the query, which is not what these tests are about.
+    if (cmd === "get_snapshot") return snapshot === null ? new Promise(() => {}) : Promise.resolve(snapshot);
+    return Promise.resolve(undefined);
+  });
   useUiStore.setState({ drawerOpen: false, focusedOpId: null, logs: [] });
 });
 
-describe("OperationBar", () => {
-  it("shows an idle message when nothing is running", async () => {
-    mockInvoke.mockResolvedValue([]);
-    const { findByText } = renderWithProviders(<OperationBar />);
+/** The backend's list has moved on: what a `Status` or `Finished` event makes the bar ask again. */
+async function listNow(queryClient: QueryClient, next: OpSummary[]) {
+  operations = next;
+  await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+}
 
-    await findByText("No operation running");
+describe("OperationBar", () => {
+  it("is not there at all while nothing has run, so the window has its height back", async () => {
+    const { container, queryClient, queryByText } = renderWithProviders(<OperationBar />);
+
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    expect(container).toBeEmptyDOMElement();
+    // Not even the sentence it used to say instead.
+    expect(queryByText("No operation running")).toBeNull();
+  });
+
+  it("appears when an operation starts", async () => {
+    const { container, queryClient, findByText, getByRole } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+    expect(container).toBeEmptyDOMElement();
+
+    await listNow(queryClient, [op(1, "wget", "Running")]);
+
+    await findByText("Update wget: Running");
+    const bar = getByRole("contentinfo", { name: "Operation status" });
+    expect(within(bar).getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(within(bar).getByRole("button", { name: "View log" })).toBeInTheDocument();
+    // Nothing to close while something runs.
+    expect(within(bar).queryByRole("button", { name: "Close" })).toBeNull();
   });
 
   it("shows the running operation and cancels it on click", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 5,
-            kind: "Upgrade",
-            instance_id: "brew:/opt/homebrew",
-            artifact_kind: "Cask",
-            name: "onyx",
-            status: "Running",
-            outcome: null,
-            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
-            cancel_policy: "KillThenReconcile",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [op(5, "onyx", "Running", null, { artifact_kind: "Cask" })];
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("Updating onyx — running");
+    await findByText("Update onyx: Running");
     fireEvent.click(await findByRole("button", { name: "Cancel" }));
 
     // This is the only proof in the plan that Cancel really reaches
@@ -51,35 +97,40 @@ describe("OperationBar", () => {
     );
   });
 
+  it("opens the log of what it is running", async () => {
+    operations = [op(5, "onyx", "Running")];
+
+    const { findByRole } = renderWithProviders(<OperationBar />);
+    fireEvent.click(await findByRole("button", { name: "View log" }));
+
+    expect(useUiStore.getState().focusedOpId).toBe(5);
+    expect(useUiStore.getState().drawerOpen).toBe(true);
+  });
+
   it("shows the wait for a brew update, not just \"running\", while one is in progress", async () => {
     // Item (2) of the loose-ends pass: `LogNote::WaitingForBrewUpdate` used
     // to reach only the log drawer, so this bar -- the only thing on
     // screen before the drawer is opened -- still said "running" while an
     // install waited on Homebrew for up to ten minutes.
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 5,
-            kind: "Upgrade",
-            instance_id: "brew:/opt/homebrew",
-            artifact_kind: "Cask",
-            name: "onyx",
-            status: "Running",
-            outcome: null,
-            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
-            cancel_policy: "KillThenReconcile",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [op(5, "onyx", "Running", null, { artifact_kind: "Cask" })];
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
-    await findByText("Updating onyx — waiting for Homebrew to finish updating");
+    await findByText("Update onyx: Waiting for Homebrew's software list");
     // Cancel must still work: the wait is still part of an active op.
     expect(await findByRole("button", { name: "Cancel" })).toBeEnabled();
+  });
+
+  it("says it in Chinese as the copy table has it: what it does, to what, then where it stands", async () => {
+    operations = [op(5, "ffmpeg", "Running")];
+    useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderWithProviders(<OperationBar />);
+      await findByText("更新 ffmpeg：等 Homebrew 更新软件清单");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("shows cancelling, not the brew-update wait, once Cancel is pressed during the wait", async () => {
@@ -89,82 +140,200 @@ describe("OperationBar", () => {
     // can still be `WaitingForBrewUpdate` even though the op is no longer
     // just waiting. The bar must say "cancelling", not repeat the stale
     // wait note, once status has moved off Running.
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 5,
-            kind: "Upgrade",
-            instance_id: "brew:/opt/homebrew",
-            artifact_kind: "Cask",
-            name: "onyx",
-            status: "CancelRequested",
-            outcome: null,
-            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--cask", "onyx"],
-            cancel_policy: "KillThenReconcile",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [op(5, "onyx", "CancelRequested", null, { artifact_kind: "Cask" })];
     useUiStore.getState().appendLog({ opId: 5, note: { WaitingForBrewUpdate: { minutes: 10 } } });
 
-    const { findByText, queryByText } = renderWithProviders(<OperationBar />);
-    await findByText("Updating onyx — cancelling");
-    expect(queryByText("Updating onyx — waiting for Homebrew to finish updating")).not.toBeInTheDocument();
+    const { findByText, queryByText, getByRole } = renderWithProviders(<OperationBar />);
+    await findByText("Update onyx: Cancelling");
+    expect(queryByText("Update onyx: Waiting for Homebrew's software list")).not.toBeInTheDocument();
+    // A cancel already on its way: the button stays, and cannot be pressed twice.
+    expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("keeps a finished operation visible with its outcome and no Cancel button", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 6,
-            kind: "Install",
-            instance_id: "brew:/opt/homebrew",
-            artifact_kind: "Formula",
-            name: "jqq",
-            status: "Done",
-            outcome: { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"" } },
-            argv_preview: ["/opt/homebrew/bin/brew", "install", "--formula", "jqq"],
-            cancel_policy: "KillThenReconcile",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+  it("keeps a finished operation visible with its outcome in place of its status, and no Cancel button", async () => {
+    operations = [
+      op(6, "jqq", "Done", { Failed: { exit_code: 1, summary: "No available formula with the name \"jqq\"" } }, {
+        kind: "Install",
+      }),
+    ];
 
-    const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
+    const { findByText, queryByRole, getByRole, queryByText } = renderWithProviders(<OperationBar />);
 
-    await findByText('Failed: No available formula with the name "jqq"');
+    await findByText('Install jqq: Failed: No available formula with the name "jqq"');
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    // Never the old "Installing jqq — done" beside how it went.
+    expect(queryByText(/done/i)).toBeNull();
+    // A failure is one to look at: its log, and a way to close the bar.
+    fireEvent.click(getByRole("button", { name: "View log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(6);
+    expect(useUiStore.getState().drawerOpen).toBe(true);
+    expect(getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("says a plain success with a tick and nothing to look at", async () => {
+    operations = [op(7, "git", "Done", "Succeeded")];
+
+    const { findByText, queryByRole, getByRole } = renderWithProviders(<OperationBar />);
+
+    await findByText("Update git: Succeeded");
+    expect(queryByRole("button", { name: "View log" })).toBeNull();
+    expect(queryByRole("img", { name: "Needs attention" })).toBeNull();
+    expect(getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("marks an outcome that needs attention with the shared label, not a 需要留意 prefix, and offers its log", async () => {
+    operations = [op(8, "git", "Done", { NeedsAttention: "UnchangedAfterUpgrade" })];
+
+    const { findByText, getByRole } = renderWithProviders(<OperationBar />);
+
+    await findByText("Update git: Update reported success, but the version didn't change");
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "View log" })).toBeInTheDocument();
+  });
+
+  it("closes with × once everything is done, and comes back for the next operation", async () => {
+    operations = [op(7, "git", "Done", "Succeeded")];
+    const { container, findByText, getByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await findByText("Update git: Succeeded");
+
+    fireEvent.click(getByRole("button", { name: "Close" }));
+    expect(container).toBeEmptyDOMElement();
+
+    // The list asked again, with nothing new in it: still closed.
+    await listNow(queryClient, [op(7, "git", "Done", "Succeeded")]);
+    expect(container).toBeEmptyDOMElement();
+
+    // A new operation brings it back, about the new one alone.
+    await listNow(queryClient, [op(8, "wget", "Running"), op(7, "git", "Done", "Succeeded")]);
+    await findByText("Update wget: Running");
+    expect(container.textContent).not.toContain("git");
+  });
+
+  it("shows a new run's first operation in place of the last run's result", async () => {
+    operations = [op(7, "git", "Done", "Succeeded")];
+    const { findByText, queryClient, queryByText } = renderWithProviders(<OperationBar />);
+    await findByText("Update git: Succeeded");
+
+    await listNow(queryClient, [op(8, "wget", "Running"), op(7, "git", "Done", "Succeeded")]);
+
+    await findByText("Update wget: Running");
+    expect(queryByText("Update git: Succeeded")).toBeNull();
+    // One operation in this run, so no count.
+    expect(queryByText(/Working on/)).toBeNull();
+  });
+
+  it("counts a run of several as it goes, and says what it came to", async () => {
+    // Update all: three operations started together, one after another on
+    // Homebrew's lock.
+    const { findByText, getByText, getByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+
+    await listNow(queryClient, [op(13, "wget", "Queued"), op(12, "jq", "Queued"), op(11, "git", "Running")]);
+    await findByText("Working on 1 of 3");
+    // The one doing something, and its Cancel.
+    expect(getByText("Update git: Running")).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 11 }));
+
+    await listNow(queryClient, [
+      op(13, "wget", "Queued"),
+      op(12, "jq", "Running"),
+      op(11, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Working on 2 of 3");
+    expect(getByText("Update jq: Running")).toBeInTheDocument();
+
+    await listNow(queryClient, [
+      op(13, "wget", "Done", "Succeeded"),
+      op(12, "jq", "Done", { Failed: { exit_code: 1, summary: "Error: jq is pinned" } }),
+      op(11, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("1 of 3 needs attention");
+    expect(queryByRole("button", { name: "Cancel" })).toBeNull();
+    // Its log is the one that needs it.
+    fireEvent.click(getByRole("button", { name: "View log" }));
+    expect(useUiStore.getState().focusedOpId).toBe(12);
+  });
+
+  it("says a run of several all succeeded, or how many were cancelled, with nothing to look at", async () => {
+    const { findByText, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+
+    await listNow(queryClient, [op(2, "jq", "Running"), op(1, "git", "Running")]);
+    await listNow(queryClient, [op(2, "jq", "Done", "Succeeded"), op(1, "git", "Done", "Succeeded")]);
+    await findByText("All 2 succeeded");
+    expect(queryByRole("button", { name: "View log" })).toBeNull();
+
+    // A new run: one cancelled, one updated.
+    await listNow(queryClient, [
+      op(4, "wget", "Queued"),
+      op(3, "gh", "Running"),
+      op(2, "jq", "Done", "Succeeded"),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("Working on 1 of 2");
+    await listNow(queryClient, [
+      op(4, "wget", "Done", "Cancelled"),
+      op(3, "gh", "Done", "Succeeded"),
+      op(2, "jq", "Done", "Succeeded"),
+      op(1, "git", "Done", "Succeeded"),
+    ]);
+    await findByText("1 succeeded, 1 cancelled");
+    expect(queryByRole("button", { name: "View log" })).toBeNull();
+  });
+
+  it("calls what it acts on by the name its row shows, and keeps it once the row is gone", async () => {
+    // A tool with its own installer: the operation carries its key's name,
+    // `claude`; the row says Claude Code, and leaves the snapshot once the
+    // uninstall has finished.
+    const claude = { instance_id: "standalone-claude", kind: "Binary" as const, name: "claude" };
+    const listed: Snapshot = {
+      generation: 1,
+      detect: "Found",
+      instances: [],
+      artifacts: [
+        {
+          key: claude,
+          display_name: "Claude Code",
+          version: "2.1.2",
+          reason: "Requested",
+          description: null,
+          homepage: null,
+          size_bytes: null,
+          installed_at: null,
+          path: null,
+          auto_updates: true,
+          uninstall_blocked: null,
+        },
+      ],
+      updates: [],
+      refreshed_at: 1_789_700_000,
+      stale: false,
+      errors: [],
+    };
+    snapshot = listed;
+    const uninstall = { kind: "Uninstall" as const, instance_id: "standalone-claude", artifact_kind: "Binary" as const };
+    operations = [op(3, "claude", "Running", null, uninstall)];
+    const { findByText, queryClient } = renderWithProviders(<OperationBar />);
+    await findByText("Uninstall Claude Code: Running");
+
+    act(() => {
+      queryClient.setQueryData<Snapshot>(queryKeys.snapshot, { ...listed, generation: 2, artifacts: [] });
+    });
+    await listNow(queryClient, [op(3, "claude", "Done", "Succeeded", uninstall)]);
+
+    await findByText("Uninstall Claude Code: Succeeded");
   });
 
   it("disables Cancel while the finished command's result is being verified", async () => {
     // `OperationManager::cancel` (ops/mod.rs) answers `NotPending` for a
     // Verifying op and the IPC turns that into a silent Ok, so an enabled
     // button here would do nothing when clicked.
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 8,
-            kind: "Upgrade",
-            instance_id: "brew:/opt/homebrew",
-            artifact_kind: "Formula",
-            name: "jq",
-            status: "Verifying",
-            outcome: null,
-            argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "--formula", "jq"],
-            cancel_policy: "KillThenReconcile",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [op(8, "jq", "Verifying")];
 
-    const { findByRole } = renderWithProviders(<OperationBar />);
+    const { findByRole, getByText } = renderWithProviders(<OperationBar />);
     expect(await findByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(getByText("Update jq: Checking the result")).toBeInTheDocument();
   });
 
   it("offers no Cancel button for a running rustup self update, whose plan says NoCancel", async () => {
@@ -175,28 +344,18 @@ describe("OperationBar", () => {
     // standalone/recipes.rs): the first unlinks and re-copies the binary
     // every Rust proxy runs, the second removes Rust directory by
     // directory.
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 7,
-            kind: "Upgrade",
-            instance_id: "standalone-rustup",
-            artifact_kind: "Binary",
-            name: "rustup",
-            status: "Running",
-            outcome: null,
-            argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
-            cancel_policy: "NoCancel",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [
+      op(7, "rustup", "Running", null, {
+        instance_id: "standalone-rustup",
+        artifact_kind: "Binary",
+        argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
+        cancel_policy: "NoCancel",
+      }),
+    ];
 
     const { findByText, queryByRole } = renderWithProviders(<OperationBar />);
 
-    await findByText("Updating rustup — running");
+    await findByText("Update rustup: Running");
     expect(queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
@@ -207,28 +366,18 @@ describe("OperationBar", () => {
     // Without the button the user could not drop a NoCancel op stuck
     // behind another op's lock -- rustup's plans also hold the cargo
     // instance's lock, so one queued behind a cargo install is real.
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "list_operations") {
-        return Promise.resolve([
-          {
-            id: 8,
-            kind: "Upgrade",
-            instance_id: "standalone-rustup",
-            artifact_kind: "Binary",
-            name: "rustup",
-            status: "Queued",
-            outcome: null,
-            argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
-            cancel_policy: "NoCancel",
-          },
-        ]);
-      }
-      return Promise.resolve(undefined);
-    });
+    operations = [
+      op(8, "rustup", "Queued", null, {
+        instance_id: "standalone-rustup",
+        artifact_kind: "Binary",
+        argv_preview: ["/Users/me/.cargo/bin/rustup", "self", "update"],
+        cancel_policy: "NoCancel",
+      }),
+    ];
 
     const { findByRole, findByText } = renderWithProviders(<OperationBar />);
 
-    await findByText("Updating rustup — queued");
+    await findByText("Update rustup: Queued");
     const cancel = await findByRole("button", { name: "Cancel" });
     expect(cancel).toBeEnabled();
     fireEvent.click(cancel);

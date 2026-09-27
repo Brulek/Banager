@@ -23,6 +23,7 @@
     "loading": "Loading…",
     "cancel": "Cancel",
     "close": "Close",
+    "viewLog": "View log",
     "checking": "Checking…",
     "retry": "Try again",
     "details": "Details",
@@ -171,7 +172,6 @@
       "failed": "Failed",
       "cancelled": "Cancelled",
       "check": "Check",
-      "viewLog": "View log",
       "viewLogLabel": "View log: {{name}}"
     },
     "confirmTitleNamed": "Update {{name}}?",
@@ -327,55 +327,73 @@
     }
   },
   "operations": {
-    "idle": "No operation running",
-    "current": "{{kind}} {{name}} — {{status}}",
-    "cancel": "Cancel",
+    "current": "{{kind}} {{name}}: {{status}}",
+    "title": "{{kind}} {{name}}",
     "noCancelHint": "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
     "noCancelHintDetail": "Stopping it partway leaves the tool unusable.",
     "logDrawerTitle": "Operation log",
+    "batch": {
+      "running": "Working on {{current}} of {{total}}",
+      "allSucceeded_one": "{{count}} succeeded",
+      "allSucceeded_other": "All {{count}} succeeded",
+      "needsAttention_one": "{{count}} of {{total}} needs attention",
+      "needsAttention_other": "{{count}} of {{total}} need attention",
+      "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled"
+    },
+    "cancelKind": {
+      "Install": "Cancel install",
+      "Uninstall": "Cancel uninstall",
+      "Upgrade": "Cancel update"
+    },
     "logNote": {
-      "waitingForBrewUpdate": "Homebrew is still downloading its latest list of software, so Canager is waiting for that to finish before it starts. This usually takes a few minutes; Canager waits up to {{minutes}}. If you'd rather not wait, press Cancel — nothing has been changed yet.",
-      "readFailedStdout": "Canager couldn't read any more of this command's output ({{error}}), so its output ends here.",
-      "readFailedStderr": "Canager couldn't read any more of this command's error messages ({{error}}), so they end here.",
-      "movedToTrash": "Moved {{path}} to the Trash (now at {{trashedTo}}).",
-      "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped here. Your Mac gave this reason: {{error}}",
-      "outOfTime": "The {{seconds}} seconds Canager allows this uninstall ran out, so it stopped before moving {{path}}. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest.",
-      "backAfterUninstall": "{{path}} came back after everything on the list had gone to the Trash. Canager left it where it is."
+      "waitingForBrewUpdate": "Homebrew is updating its software list; this starts when it's done, waiting up to {{minutes}} minutes. Cancelling now changes nothing.",
+      "readFailedStdout": "Couldn't read any more output: {{error}}",
+      "readFailedStderr": "Couldn't read any more error messages: {{error}}",
+      "movedToTrash": "Moved {{path}} to the Trash: {{trashedTo}}",
+      "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped: {{error}}",
+      "outOfTime": "Time ran out after {{seconds}} seconds, so Canager stopped before moving {{path}}. What it moved is in the Trash; uninstall again to move the rest.",
+      "backAfterUninstall": "Found {{path}} at the final check and left it where it is."
     },
     "kind": {
-      "Install": "Installing",
-      "Uninstall": "Uninstalling",
-      "Upgrade": "Updating"
+      "Install": "Install",
+      "Uninstall": "Uninstall",
+      "Upgrade": "Update"
     },
     "status": {
-      "Queued": "queued",
-      "Running": "running",
-      "CancelRequested": "cancelling",
-      "Cancelling": "cancelling",
-      "Verifying": "verifying",
-      "Done": "done",
-      "waitingForBrewUpdate": "waiting for Homebrew to finish updating"
+      "Queued": "Queued",
+      "Running": "Running",
+      "CancelRequested": "Cancelling",
+      "Cancelling": "Cancelling",
+      "Verifying": "Checking the result",
+      "waitingForBrewUpdate": "Waiting for Homebrew's software list"
     },
     "outcome": {
       "Succeeded": "Succeeded",
-      "Cancelled": "You cancelled this",
+      "Cancelled": "Cancelled",
       "Unconfirmed": "Result unconfirmed",
+      "UnconfirmedDetail": "Check the list to see whether anything changed.",
       "NeedsAttention": {
-        "NotInstalledAfterInstall": "Needs attention: the install reported success, but it isn't installed",
-        "StillInstalledAfterUninstall": "Needs attention: the uninstall seemed to succeed, but it's still installed",
-        "GoneAfterUpgrade": "Needs attention: the update reported success, but it's no longer installed",
-        "UnchangedAfterUpgrade": "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why.",
-        "BackAfterUninstall": "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself."
+        "NotInstalledAfterInstall": "Reported installed, but it isn't there",
+        "StillInstalledAfterUninstall": "Reported removed, but it's still there",
+        "GoneAfterUpgrade": "Update reported success, but it's gone",
+        "UnchangedAfterUpgrade": "Update reported success, but the version didn't change",
+        "UnchangedAfterUpgradeDetail": "The operation log shows what it printed.",
+        "BackAfterUninstall": "Files showed up again after the uninstall",
+        "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself."
       },
       "Failed": "Failed: {{summary}}",
-      "FailedSilent": "Failed. The program didn't say why — the operation log may show more.",
+      "FailedSilent": "Failed, and the program didn't say why",
+      "FailedSilentDetail": "The operation log shows its output.",
       "CanagerFailed": {
-        "Panicked": "Failed: something went wrong inside Canager while it was doing this. Check the list to see whether anything changed.",
-        "ProgramMissing": "Failed: Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
-        "SpawnFailed": "Failed: Canager couldn't start the program, so nothing was changed. Your Mac gave this reason: {{detail}}",
-        "HomebrewStillUpdating": "Failed: Canager waited {{minutes}} minutes and Homebrew was still downloading its latest list of software, so it didn't start this. Nothing was changed. Your internet connection may be slow or interrupted — try again in a little while.",
-        "PathChanged": "Failed: {{path}} changed between the preview and now (a tool that updates itself can do that), so Canager stopped and left it as it is. If anything was moved to the Trash before that, the operation log lists it. Look at the preview again.",
-        "Internal": "Failed: something on Canager's side didn't add up, so it didn't start and nothing was changed. This is a problem in Canager, not on your Mac."
+        "Panicked": "Failed: something went wrong inside Canager",
+        "PanickedDetail": "Check the list to see whether anything changed.",
+        "ProgramMissing": "Failed: couldn't find {{program}}. Nothing changed",
+        "SpawnFailed": "Failed: the program couldn't start. Nothing changed. macOS said: {{detail}}",
+        "HomebrewStillUpdating": "Failed: Homebrew was still updating its software list after {{minutes}} minutes, so nothing started",
+        "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
+        "PathChanged": "Stopped: {{path}} changed after the confirmation opened",
+        "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
+        "Internal": "Failed: something went wrong inside Canager. Nothing changed"
       }
     }
   },

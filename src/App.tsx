@@ -61,12 +61,8 @@ function App() {
             )}
           </div>
         </main>
-        <footer
-          aria-label={t("app.operationBarRegion")}
-          className="h-12 shrink-0 border-t border-[var(--color-border)]"
-        >
-          <OperationBar />
-        </footer>
+        {/* Its own footer, and none at all until something has run. */}
+        <OperationBar />
       </div>
       <LogDrawer />
     </div>

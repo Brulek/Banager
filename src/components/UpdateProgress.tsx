@@ -127,7 +127,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
       aria-label={t("updates.progress.viewLogLabel", { name })}
       className="rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
     >
-      {t("updates.progress.viewLog")}
+      {t("common.viewLog")}
     </button>
   );
   switch (progress.kind) {

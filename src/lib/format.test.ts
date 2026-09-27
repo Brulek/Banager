@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeKey } from "./format";
+import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeDetailKey, outcomeKey } from "./format";
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -63,23 +63,29 @@ describe("outcomeKey", () => {
     const cancelled: Outcome = "Cancelled";
     expect(outcomeKey(cancelled)).toBe("Cancelled");
     expect(outcomeArgs(cancelled)).toEqual({});
-    expect(en.operations.outcome.Cancelled).toBe("You cancelled this");
-    expect(zhCN.operations.outcome.Cancelled).toBe("你已取消");
+    expect(en.operations.outcome.Cancelled).toBe("Cancelled");
+    expect(zhCN.operations.outcome.Cancelled).toBe("已取消");
+    // Nothing to add in the drawer: the log shows what it had done.
+    expect(outcomeDetailKey(cancelled)).toBeNull();
   });
 
-  it("words each NeedsAttention from the locale files, not from Rust's English", () => {
+  it("words each NeedsAttention from the locale files, not from Rust's English, and with no prefix of its own", () => {
     // It used to carry Rust's own sentence ("package disappeared after
     // upgrade") and the drawer and the operation bar printed it inside the
-    // translated frame, so a Chinese user read English there.
+    // translated frame, so a Chinese user read English there. Each used to
+    // open with 「需要留意：」 too; the warning sign stands for that now
+    // (`OutcomeIcon`, the copy table's C2).
     const gone: Outcome = { NeedsAttention: "GoneAfterUpgrade" };
     expect(outcomeKey(gone)).toBe("NeedsAttention.GoneAfterUpgrade");
     expect(outcomeArgs(gone)).toEqual({});
-    expect(en.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe(
-      "Needs attention: the update reported success, but it's no longer installed",
-    );
-    expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe(
-      "需要留意：更新命令显示成功，但更新后它已不见了",
-    );
+    expect(en.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe("Update reported success, but it's gone");
+    expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe("更新显示成功，但它不见了");
+    for (const sentence of Object.values(zhCN.operations.outcome.NeedsAttention)) {
+      expect(sentence).not.toContain("需要留意");
+    }
+    for (const sentence of Object.values(en.operations.outcome.NeedsAttention)) {
+      expect(sentence).not.toMatch(/needs attention/i);
+    }
   });
 
   it("says an uninstall seemed to succeed, naming no command, since a path-list uninstall runs none", () => {
@@ -95,11 +101,9 @@ describe("outcomeKey", () => {
     expect(outcomeKey(still)).toBe("NeedsAttention.StillInstalledAfterUninstall");
     expect(outcomeArgs(still)).toEqual({});
     expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe(
-      "Needs attention: the uninstall seemed to succeed, but it's still installed",
+      "Reported removed, but it's still there",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe(
-      "需要留意：卸载看似成功，但实际仍未移除",
-    );
+    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe("显示卸载了，但它还在");
     expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).not.toMatch(
       /command/i,
     );
@@ -115,23 +119,26 @@ describe("outcomeKey", () => {
     // to a panic may have run its command (`Fault::Panicked`,
     // crates/canager-core/src/model.rs). The refusals that stop before
     // anything runs may say nothing changed, and do; these two may not --
-    // nor the row's own word for a cancelled update.
+    // nor what the drawer says next about a crash, nor the row's own word
+    // for a cancelled update.
     const claimsNothingChanged = /nothing (was |has been )?changed|changed nothing|no changes were made|没有改动|未做任何改动/i;
     const panicked: Outcome = { CanagerFailed: "Panicked" };
     expect(outcomeKey("Cancelled")).toBe("Cancelled");
     expect(outcomeKey(panicked)).toBe("CanagerFailed.Panicked");
+    expect(outcomeDetailKey(panicked)).toBe("operations.outcome.CanagerFailed.PanickedDetail");
     for (const locale of [en, zhCN]) {
       for (const sentence of [
         locale.operations.outcome.Cancelled,
         locale.operations.outcome.CanagerFailed.Panicked,
+        locale.operations.outcome.CanagerFailed.PanickedDetail,
         locale.updates.progress.cancelled,
       ]) {
         expect(sentence).not.toMatch(claimsNothingChanged);
       }
     }
-    // What a crash says instead: look at the list.
-    expect(en.operations.outcome.CanagerFailed.Panicked).toContain("Check the list to see whether anything changed.");
-    expect(zhCN.operations.outcome.CanagerFailed.Panicked).toContain("请看一下列表，确认有没有发生变化。");
+    // What a crash says instead, in the drawer: look at the list.
+    expect(en.operations.outcome.CanagerFailed.PanickedDetail).toBe("Check the list to see whether anything changed.");
+    expect(zhCN.operations.outcome.CanagerFailed.PanickedDetail).toBe("请看列表，确认有没有变化。");
     // The guard itself: it does catch the claim the refusals make.
     expect(en.planRefused.refused).toMatch(claimsNothingChanged);
     expect(zhCN.planRefused.refused).toMatch(claimsNothingChanged);
@@ -141,36 +148,93 @@ describe("outcomeKey", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after
     // (`run_operation` in crates/canager-core/src/ops/mod.rs). It used to
-    // arrive as plain "Succeeded".
+    // arrive as plain "Succeeded". The bar says what happened; the drawer
+    // says where to look.
     const unchanged: Outcome = { NeedsAttention: "UnchangedAfterUpgrade" };
     expect(outcomeKey(unchanged)).toBe("NeedsAttention.UnchangedAfterUpgrade");
     expect(outcomeArgs(unchanged)).toEqual({});
     expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe(
-      "Needs attention: the update reported success, but it's still at the same version as before. The program didn't update it — the operation log may say why.",
+      "Update reported success, but the version didn't change",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe(
-      "需要留意：更新命令显示成功，但版本和更新前一样，程序并没有更新它。操作日志里也许能看到原因。",
+    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe("更新显示成功，但版本没变");
+    expect(outcomeDetailKey(unchanged)).toBe("operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail");
+    expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
+      "The operation log shows what it printed.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
+      "可以在操作日志里看它输出了什么。",
     );
   });
 
-  it("says part of a path-list uninstall came back, that the log names it, and what to do", () => {
+  it("says files showed up again after a path-list uninstall, that the log names them, and what to do", () => {
     // `execute_removal` (crates/canager-core/src/adapters/standalone/removal.rs)
     // sends this itself when, after the pause that follows its last move,
-    // part of what its list names is there: a copy of the tool still
-    // running can put its program folder or its cache back, and with the
-    // launcher gone no row shows it. Each such path gets a log line of its
-    // own (`operations.logNote.backAfterUninstall`), carrying the path.
+    // part of what its list names is there. Each such path gets a log line
+    // of its own (`operations.logNote.backAfterUninstall`), carrying the
+    // path; that line says only what the last look found, since a path
+    // there need not be the same thing it moved.
     const back: Outcome = { NeedsAttention: "BackAfterUninstall" };
     expect(outcomeKey(back)).toBe("NeedsAttention.BackAfterUninstall");
     expect(outcomeArgs(back)).toEqual({});
     expect(en.operations.outcome.NeedsAttention.BackAfterUninstall).toBe(
-      "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself.",
+      "Files showed up again after the uninstall",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstall).toBe(
-      "需要留意：清单上的东西都已移到废纸篓，但之后有一部分又回来了（还在运行的这个工具就可能这样）。操作日志里写着回来的是什么。请先退出这个工具；如果列表里还有它，就再卸载一次，否则请自己把回来的东西移到废纸篓。",
+    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstall).toBe("移完后，原处又出现了文件");
+    expect(outcomeDetailKey(back)).toBe("operations.outcome.NeedsAttention.BackAfterUninstallDetail");
+    expect(en.operations.outcome.NeedsAttention.BackAfterUninstallDetail).toBe(
+      "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
+    );
+    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstallDetail).toBe(
+      "先退出这个工具。列表里还有它就再卸载一次，否则把日志里列出的文件自己移到废纸篓。",
     );
     expect(en.operations.logNote.backAfterUninstall).toContain("{{path}}");
     expect(zhCN.operations.logNote.backAfterUninstall).toContain("{{path}}");
+    expect(en.operations.logNote.backAfterUninstall).not.toMatch(/came back/);
+    expect(zhCN.operations.logNote.backAfterUninstall).not.toContain("又回来");
+  });
+
+  it("gives the drawer a next step only where one follows, and every one exists in both languages", () => {
+    const outcomes: Outcome[] = [
+      "Succeeded",
+      "Cancelled",
+      "Unconfirmed",
+      { NeedsAttention: "NotInstalledAfterInstall" },
+      { NeedsAttention: "StillInstalledAfterUninstall" },
+      { NeedsAttention: "GoneAfterUpgrade" },
+      { NeedsAttention: "UnchangedAfterUpgrade" },
+      { NeedsAttention: "BackAfterUninstall" },
+      { Failed: { exit_code: 1, summary: "Error: No such keg" } },
+      { Failed: { exit_code: 1, summary: " " } },
+      { CanagerFailed: "Panicked" },
+      { CanagerFailed: { ProgramMissing: { program: "/x/brew" } } },
+      { CanagerFailed: { SpawnFailed: { detail: "EACCES" } } },
+      { CanagerFailed: { HomebrewStillUpdating: { minutes: 10 } } },
+      { CanagerFailed: { PathChanged: { path: "~/.local/bin/claude" } } },
+      { CanagerFailed: "Internal" },
+    ];
+    const lookup = (locale: unknown, key: string): unknown =>
+      key.split(".").reduce<unknown>(
+        (node, part) => (node && typeof node === "object" ? (node as Record<string, unknown>)[part] : undefined),
+        locale,
+      );
+    const withStep = outcomes
+      .map((outcome) => [outcomeKey(outcome), outcomeDetailKey(outcome)] as const)
+      .filter(([, detail]) => detail !== null);
+    expect(withStep).toEqual([
+      ["Unconfirmed", "operations.outcome.UnconfirmedDetail"],
+      ["NeedsAttention.UnchangedAfterUpgrade", "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail"],
+      ["NeedsAttention.BackAfterUninstall", "operations.outcome.NeedsAttention.BackAfterUninstallDetail"],
+      ["FailedSilent", "operations.outcome.FailedSilentDetail"],
+      ["CanagerFailed.Panicked", "operations.outcome.CanagerFailed.PanickedDetail"],
+      ["CanagerFailed.HomebrewStillUpdating", "operations.outcome.CanagerFailed.HomebrewStillUpdatingDetail"],
+      ["CanagerFailed.PathChanged", "operations.outcome.CanagerFailed.PathChangedDetail"],
+      // The same words as the refusal that says Canager itself went wrong.
+      ["CanagerFailed.Internal", "common.canagerFaultDetail"],
+    ]);
+    for (const [, detail] of withStep) {
+      expect(typeof lookup(en, detail as string), detail as string).toBe("string");
+      expect(typeof lookup(zhCN, detail as string), detail as string).toBe("string");
+    }
   });
 });
 

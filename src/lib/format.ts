@@ -60,6 +60,72 @@ function attentionKey(attention: Attention): string {
   }
 }
 
+/**
+ * The key of what to do next about an outcome, or null when its sentence
+ * says it all: the copy table's 〔抽屉〕 halves. The operation bar says how
+ * an operation ended in a few words (`outcomeKey`); the log drawer, where
+ * the log is, adds this under them. Every key spelled out, so the
+ * reachability test finds each one, and a switch with no default at every
+ * level, so a new variant fails `tsc` here until it is sorted.
+ */
+export function outcomeDetailKey(outcome: Outcome): string | null {
+  if (typeof outcome === "string") {
+    switch (outcome) {
+      case "Succeeded":
+      case "Cancelled":
+        return null;
+      case "Unconfirmed":
+        return "operations.outcome.UnconfirmedDetail";
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
+    }
+  }
+  if ("NeedsAttention" in outcome) {
+    switch (outcome.NeedsAttention) {
+      case "UnchangedAfterUpgrade":
+        return "operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail";
+      case "BackAfterUninstall":
+        return "operations.outcome.NeedsAttention.BackAfterUninstallDetail";
+      case "NotInstalledAfterInstall":
+      case "StillInstalledAfterUninstall":
+      case "GoneAfterUpgrade":
+        return null;
+      default: {
+        const unhandled: never = outcome.NeedsAttention;
+        return unhandled;
+      }
+    }
+  }
+  // The tool's own words are the sentence; a tool that said nothing gets
+  // pointed at its output.
+  if ("Failed" in outcome) return outcome.Failed.summary.trim() ? null : "operations.outcome.FailedSilentDetail";
+  if ("CanagerFailed" in outcome) {
+    const fault = outcome.CanagerFailed;
+    if (typeof fault === "string") {
+      switch (fault) {
+        case "Panicked":
+          return "operations.outcome.CanagerFailed.PanickedDetail";
+        // Shared with the refusal that says the same (`planRefused.refused`).
+        case "Internal":
+          return "common.canagerFaultDetail";
+        default: {
+          const unhandled: never = fault;
+          return unhandled;
+        }
+      }
+    }
+    if ("HomebrewStillUpdating" in fault) return "operations.outcome.CanagerFailed.HomebrewStillUpdatingDetail";
+    if ("PathChanged" in fault) return "operations.outcome.CanagerFailed.PathChangedDetail";
+    if ("ProgramMissing" in fault || "SpawnFailed" in fault) return null;
+    const unhandled: never = fault;
+    return unhandled;
+  }
+  const unhandled: never = outcome;
+  return unhandled;
+}
+
 /** Interpolation values for `operations.outcome.<outcomeKey(outcome)>`. */
 export function outcomeArgs(outcome: Outcome): Record<string, unknown> {
   if (typeof outcome === "string") return {};

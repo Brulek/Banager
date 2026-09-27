@@ -1,11 +1,56 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useOperations, useCancelOperation } from "../lib/queries";
-import { outcomeArgs, outcomeKey } from "../lib/format";
+import { useCancelOperation, useOperations } from "../lib/queries";
+import {
+  OP_KIND_KEYS,
+  cancelState,
+  currentOf,
+  isActive,
+  outcomeSentence,
+  outcomeTone,
+  statusKey,
+  trackRun,
+  useOperationName,
+  type OperationRun,
+  type OutcomeTone,
+} from "../lib/operations";
 import { useUiStore } from "../store/ui";
-import type { OpStatus } from "../lib/types";
+import type { OpSummary } from "../lib/types";
+import { OutcomeIcon } from "./OutcomeIcon";
+import { CloseIcon, SpinnerIcon } from "./icons";
 
-const ACTIVE_STATUSES: OpStatus[] = ["Queued", "Running", "CancelRequested", "Cancelling", "Verifying"];
+const LINK_BUTTON =
+  "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
+const CANCEL_BUTTON =
+  "h-7 shrink-0 rounded-button border border-border bg-surface px-3 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface";
+const DISMISS_BUTTON =
+  "-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-button text-muted outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent";
 
+/** Whether an ending is one to look at: its log is offered beside it. */
+function needsALook(tone: OutcomeTone): boolean {
+  return tone === "attention" || tone === "failure";
+}
+
+/**
+ * The strip at the foot of the window that says what Canager is doing, in
+ * the manner of 360's download manager. Nothing at all until something
+ * has run: the window has that height back. While something runs, a
+ * spinner and 「更新 ffmpeg：进行中」 -- what it does, what it does it to,
+ * where it stands -- with Cancel where Cancel can still do something, and
+ * the way to its log; with several, how far along the run is: 「正在处理
+ * 3 个中的第 2 个」. Once everything is done, how it went in place of where
+ * it stood: 「更新 ffmpeg：已成功」, or the outcome with a warning sign and
+ * its log when it needs a look -- and a close button. Closed, it stays away
+ * until the next operation starts.
+ *
+ * Its operations are a run (`trackRun`): the ones started while others
+ * were still under way belong together, and a new one started after
+ * everything had finished replaces the last run's result. The one a run
+ * names while under way is the oldest actually working (`currentOf`),
+ * whose Cancel it offers; with a single operation that is it, and once a
+ * run of one is done, that one -- so an update that finished while the
+ * user was looking elsewhere is still on screen, with how it went.
+ */
 export function OperationBar() {
   const { t } = useTranslation();
   const { data: operations } = useOperations();
@@ -13,105 +58,144 @@ export function OperationBar() {
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const logs = useUiStore((s) => s.logs);
+  const nameOf = useOperationName(operations);
+  const [run, setRun] = useState<OperationRun | null>(null);
+  // The newest operation when the bar was closed: it comes back for the
+  // first one after it.
+  const [dismissedThrough, setDismissedThrough] = useState(-1);
 
-  // The backend lists operations newest first (Task 3). Showing the newest
-  // one — not only an *active* one — is what lets the user see the outcome
-  // of an update that finished while they were looking elsewhere; the bar
-  // only goes back to idle once the list itself is empty.
-  const current = operations?.[0];
+  // Kept up to date while rendering, not in an effect, which would draw
+  // the last run's count under a new run's first operation for a frame.
+  // `trackRun` hands `run` back when nothing changed, so this settles.
+  const tracked = operations === undefined ? run : trackRun(run, operations);
+  if (tracked !== run) setRun(tracked);
 
-  if (!current) {
-    return (
-      <div className="flex h-full items-center px-4 text-sm text-[var(--color-muted)]">
-        {t("operations.idle")}
-      </div>
+  const newest = (operations ?? []).reduce((highest, op) => Math.max(highest, op.id), -1);
+  if (operations === undefined || tracked === null || newest < 0 || newest <= dismissedThrough) {
+    return null;
+  }
+
+  const inRun = operations.filter((op) => op.id > tracked.floor);
+  const total = inRun.length;
+  const active = inRun.filter(isActive);
+  const titleOf = (op: OpSummary) => ({ kind: t(OP_KIND_KEYS[op.kind]), name: nameOf(op) });
+  const openLog = (op: OpSummary) => {
+    setFocusedOpId(op.id);
+    setDrawerOpen(true);
+  };
+  const viewLog = (op: OpSummary) => (
+    <button type="button" onClick={() => openLog(op)} className={LINK_BUTTON}>
+      {t("common.viewLog")}
+    </button>
+  );
+
+  let body;
+  const current = currentOf(active);
+  if (current !== undefined) {
+    const done = total - active.length;
+    const status = statusKey(current, logs);
+    const line = t("operations.current", { ...titleOf(current), status: status === null ? "" : t(status) });
+    const cancel = cancelState(current);
+    body = (
+      <>
+        <SpinnerIcon size={14} className="shrink-0 text-accent-text" />
+        <p aria-live="polite" className="flex min-w-0 flex-1 items-baseline gap-2">
+          {total > 1 ? (
+            <>
+              <span className="shrink-0 font-medium text-foreground">
+                {t("operations.batch.running", { current: Math.min(done + 1, total), total })}
+              </span>
+              <span title={line} className="min-w-0 truncate text-muted">
+                {line}
+              </span>
+            </>
+          ) : (
+            <span title={line} className="min-w-0 truncate text-foreground">
+              {line}
+            </span>
+          )}
+        </p>
+        {total > 1 ? (
+          // How much of the run is done, beside the words that say it.
+          <span aria-hidden="true" className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-hover">
+            <span
+              className="block h-full rounded-full bg-accent transition-[width] duration-300"
+              style={{ width: `${(done / total) * 100}%` }}
+            />
+          </span>
+        ) : null}
+        {viewLog(current)}
+        {cancel !== "none" ? (
+          <button
+            type="button"
+            onClick={() => cancelMutation.mutate(current.id)}
+            disabled={cancel === "disabled"}
+            className={CANCEL_BUTTON}
+          >
+            {t("common.cancel")}
+          </button>
+        ) : null}
+      </>
+    );
+  } else {
+    // Done: one operation's own outcome, or what the run's came to.
+    const tones = inRun.map((op) => outcomeTone(op.outcome));
+    const toLook = inRun.filter((_, index) => needsALook(tones[index]));
+    const newestToLook = toLook.reduce<OpSummary | undefined>(
+      (found, op) => (found === undefined || op.id > found.id ? op : found),
+      undefined,
+    );
+    let tone: OutcomeTone;
+    let words: string;
+    let logOf: OpSummary | undefined;
+    if (total === 1) {
+      const [op] = inRun;
+      tone = tones[0];
+      words = t("operations.current", { ...titleOf(op), status: outcomeSentence(t, op.outcome) });
+      // The log of anything but a plain success: to see what went wrong,
+      // or -- after a cancel -- what had already happened.
+      logOf = tone === "success" ? undefined : op;
+    } else if (newestToLook !== undefined) {
+      tone = tones.includes("failure") ? "failure" : "attention";
+      words = t("operations.batch.needsAttention", { count: toLook.length, total });
+      logOf = newestToLook;
+    } else if (tones.every((each) => each === "success")) {
+      tone = "success";
+      words = t("operations.batch.allSucceeded", { count: total });
+    } else {
+      tone = "cancelled";
+      words = t("operations.batch.finished", {
+        succeeded: tones.filter((each) => each === "success").length,
+        cancelled: tones.filter((each) => each === "cancelled").length,
+      });
+    }
+    body = (
+      <>
+        <OutcomeIcon tone={tone} size={15} />
+        <p aria-live="polite" className="flex min-w-0 flex-1">
+          <span title={words} className="min-w-0 truncate text-foreground">
+            {words}
+          </span>
+        </p>
+        {logOf !== undefined ? viewLog(logOf) : null}
+        <button
+          type="button"
+          aria-label={t("common.close")}
+          onClick={() => setDismissedThrough(newest)}
+          className={DISMISS_BUTTON}
+        >
+          <CloseIcon size={14} />
+        </button>
+      </>
     );
   }
 
-  const isActive = ACTIVE_STATUSES.includes(current.status);
-  // `OperationManager::cancel` (ops/mod.rs) refuses a `NoCancel` op once
-  // it is Running, so a Cancel button for one would promise something the
-  // backend will not do. While it is still Queued nothing has started and
-  // the backend accepts the cancel, so the button stays: without it the
-  // user could not drop a NoCancel op waiting behind another op's lock.
-  // rustup's `self update` and `self uninstall` produce `NoCancel`
-  // (crates/canager-core/src/adapters/standalone/recipes.rs); the preview
-  // said so under the command, before the click.
-  const cancellable = current.cancel_policy !== "NoCancel" || current.status === "Queued";
-
-  // "Running" alone used to be the only thing on screen while an install,
-  // upgrade or uninstall waits for a `brew update` a refresh left running
-  // (`BrewAdapter::wait_for_update`, up to `OP_UPDATE_WAIT`): the log
-  // drawer said so (`LogNote::WaitingForBrewUpdate`), but this bar did
-  // not, and it is the only thing visible before the drawer is opened.
-  // There is no separate `OpStatus` for this -- `set_status` in
-  // `ops/mod.rs` leaves the record's status at `Running` for the whole of
-  // `execute`, including any time it spends inside `wait_for_update` --
-  // so this reads the same log the drawer already renders
-  // (`useUiStore().logs`) instead of adding one: the note this
-  // operation's log most recently carried is the wait starting, and
-  // nothing (no further `Log` or `Note` event) has arrived since to say
-  // it ended.
-  //
-  // Gated on `current.status === "Running"`, not on `isActive`: `cancel()`
-  // (`ops/mod.rs`) sets the record's status straight to `CancelRequested`
-  // as soon as the user presses Cancel, independent of and before
-  // `execute`/`wait_for_update` notice the cancellation, so a cancel
-  // pressed during the wait leaves this operation `CancelRequested` (then
-  // briefly `Cancelling`) while the last log line is still the same
-  // `WaitingForBrewUpdate` note. Without this guard that combination read
-  // as "waiting for Homebrew to finish updating" even though the op was
-  // no longer just waiting -- it had a cancel in flight -- which told the
-  // user their Cancel click had not registered.
-  const opLogs = logs.filter((l) => l.opId === current.id);
-  const lastOpLog = opLogs[opLogs.length - 1];
-  const waitingForBrewUpdate =
-    current.status === "Running" &&
-    lastOpLog !== undefined &&
-    "note" in lastOpLog &&
-    "WaitingForBrewUpdate" in lastOpLog.note;
-
   return (
-    <div className="flex h-full items-center justify-between gap-4 px-4">
-      <button
-        type="button"
-        onClick={() => {
-          setFocusedOpId(current.id);
-          setDrawerOpen(true);
-        }}
-        className="flex min-w-0 flex-1 gap-2 truncate text-left text-sm text-[var(--color-foreground)]"
-      >
-        <span>
-          {t("operations.current", {
-            kind: t(`operations.kind.${current.kind}`),
-            name: current.name,
-            status: waitingForBrewUpdate
-              ? t("operations.status.waitingForBrewUpdate")
-              : t(`operations.status.${current.status}`),
-          })}
-        </span>
-        {current.status === "Done" && current.outcome ? (
-          <span className="text-[var(--color-muted)]">
-            {t(`operations.outcome.${outcomeKey(current.outcome)}`, outcomeArgs(current.outcome))}
-          </span>
-        ) : null}
-      </button>
-      {isActive && cancellable ? (
-        <button
-          type="button"
-          onClick={() => cancelMutation.mutate(current.id)}
-          // Verifying: the command has already ended and `cancel()` answers
-          // `NotPending`, which the IPC reports as a silent Ok.
-          disabled={
-            current.status === "CancelRequested" ||
-            current.status === "Cancelling" ||
-            current.status === "Verifying"
-          }
-          className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
-        >
-          {t("operations.cancel")}
-        </button>
-      ) : null}
-    </div>
+    <footer
+      aria-label={t("app.operationBarRegion")}
+      className="flex h-10 shrink-0 items-center gap-3 border-t border-border bg-surface px-4 text-body motion-safe:animate-fade-in"
+    >
+      {body}
+    </footer>
   );
 }

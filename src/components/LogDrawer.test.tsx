@@ -1,11 +1,12 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { act } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
+import type { OpSummary } from "../lib/types";
 
 /// The drawer as it actually appears: something opened it, and there is
 /// page behind it. Both matter for the keyboard, which is why the focus
@@ -25,7 +26,7 @@ function DrawerInPage() {
 
 const mockInvoke = vi.mocked(invoke);
 
-const runningOp = {
+const runningOp: OpSummary = {
   id: 1,
   kind: "Install",
   instance_id: "brew:/opt/homebrew",
@@ -37,9 +38,19 @@ const runningOp = {
   cancel_policy: "KillThenReconcile",
 };
 
+// What `list_operations` answers. `get_snapshot` is never answered: the
+// drawer reads it only for the source's avatar and the row's name, and
+// falls back to the operation's own without it.
+let operations: OpSummary[];
+
 beforeEach(() => {
+  operations = [runningOp];
   mockInvoke.mockReset();
-  mockInvoke.mockResolvedValue([runningOp]);
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "list_operations") return Promise.resolve(operations);
+    if (cmd === "get_snapshot") return new Promise(() => {});
+    return Promise.resolve(undefined);
+  });
   useUiStore.setState({ logs: [], drawerOpen: true, focusedOpId: 1 });
 });
 
@@ -59,6 +70,8 @@ describe("LogDrawer", () => {
     // "in order" means the DOM order, not merely that each line exists.
     const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
     expect(lines).toEqual(["Fetching jq", "Installing jq", "warning: cask deprecated"]);
+    // The tool's own words in a typewriter face, the way it printed them.
+    expect(getByRole("log").className).toContain("font-mono");
   });
 
   it("renders Canager's own notes in the user's language, in place among the tool's lines", async () => {
@@ -79,12 +92,15 @@ describe("LogDrawer", () => {
       });
 
       await findByText("==> Pouring jq");
-      const lines = Array.from(getByRole("log").querySelectorAll("p")).map((p) => p.textContent);
-      expect(lines).toEqual([
-        "Homebrew 还在下载最新的软件目录，Canager 要等它下载完再开始。通常要几分钟，最多等 10 分钟。不想等的话可以点“取消”，现在还什么都没有改动。",
+      const lines = Array.from(getByRole("log").querySelectorAll("p"));
+      expect(lines.map((p) => p.textContent)).toEqual([
+        "Homebrew 正在更新软件清单，完成后开始，最多等 10 分钟。现在取消不会有任何改动。",
         "==> Pouring jq",
-        "Canager 无法继续读取该命令的错误信息（Input/output error (os error 5)），错误信息到此为止。",
+        "读不到后续错误信息了：Input/output error (os error 5)",
       ]);
+      // A sentence in the window's own type, not the tool's.
+      expect(lines[0].className).toContain("font-sans");
+      expect(lines[1].className).not.toContain("font-sans");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -100,9 +116,7 @@ describe("LogDrawer", () => {
       });
     });
 
-    await findByText(
-      "Canager couldn't read any more of this command's output (EIO), so its output ends here.",
-    );
+    await findByText("Couldn't read any more output: EIO");
   });
 
   it("words each path a path-list uninstall moved, and the one macOS refused", async () => {
@@ -121,9 +135,9 @@ describe("LogDrawer", () => {
       });
     });
 
-    await findByText("Moved ~/.local/share/claude to the Trash (now at ~/.Trash/claude).");
+    await findByText("Moved ~/.local/share/claude to the Trash: ~/.Trash/claude");
     await findByText(
-      "Couldn't move ~/.local/bin/claude to the Trash, so the uninstall stopped here. Your Mac gave this reason: Operation not permitted",
+      "Couldn't move ~/.local/bin/claude to the Trash, so the uninstall stopped: Operation not permitted",
     );
   });
 
@@ -141,19 +155,17 @@ describe("LogDrawer", () => {
     });
 
     await findByText(
-      "The 120 seconds Canager allows this uninstall ran out, so it stopped before moving ~/.local/bin/claude. Anything it already moved is in the Trash; it hasn't touched anything else. You can uninstall again to finish the rest.",
+      "Time ran out after 120 seconds, so Canager stopped before moving ~/.local/bin/claude. What it moved is in the Trash; uninstall again to move the rest.",
     );
   });
 
-  it("names what came back after a path-list uninstall moved everything, under the outcome that says so", async () => {
+  it("names what it found after a path-list uninstall moved everything, under the outcome and what to do", async () => {
     // The run's own last look, once the pause after its last move is
     // over: one line per path it found there, and the outcome pointing at
     // those lines -- with the launcher gone, nothing else on screen shows
-    // them.
-    mockInvoke.mockResolvedValue([
-      { ...runningOp, status: "Done", outcome: { NeedsAttention: "BackAfterUninstall" } },
-    ]);
-    const { findByText } = renderWithProviders(<LogDrawer />);
+    // them. What to do is the drawer's to say, under the outcome.
+    operations = [{ ...runningOp, kind: "Uninstall", status: "Done", outcome: { NeedsAttention: "BackAfterUninstall" } }];
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
 
     act(() => {
       useUiStore.getState().appendLog({
@@ -162,11 +174,11 @@ describe("LogDrawer", () => {
       });
     });
 
+    await findByText("Found ~/.local/share/claude at the final check and left it where it is.");
+    await findByText("Files showed up again after the uninstall");
+    expect(getByRole("img", { name: "Needs attention" })).toBeInTheDocument();
     await findByText(
-      "~/.local/share/claude came back after everything on the list had gone to the Trash. Canager left it where it is.",
-    );
-    await findByText(
-      "Needs attention: everything on the list went to the Trash, but part of it came back afterwards — a copy of the tool that was still running can do that. The operation log names what came back. Quit the tool, then uninstall it again if it's still listed, or move what came back to the Trash yourself.",
+      "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
     );
   });
 
@@ -182,31 +194,81 @@ describe("LogDrawer", () => {
     expect(queryByText("for op 2")).not.toBeInTheDocument();
   });
 
-  it("shows the terminal outcome once the operation finishes", async () => {
-    mockInvoke.mockResolvedValue([{ ...runningOp, status: "Done", outcome: "Succeeded" }]);
+  it("titles itself with what the operation does and to what, and says where it stands", async () => {
+    const { findByRole, getByText } = renderWithProviders(<LogDrawer />);
+
+    const drawer = await findByRole("dialog", { name: "Install jq" });
+    expect(getByText("Running")).toBeInTheDocument();
+    // The log itself keeps the drawer's old name.
+    expect(within(drawer).getByRole("log", { name: "Operation log" })).toBeInTheDocument();
+  });
+
+  it("is simply the operation log until the list of operations has it", async () => {
+    operations = [];
+    const { findByRole } = renderWithProviders(<LogDrawer />);
+
+    expect(await findByRole("dialog", { name: "Operation log" })).toBeInTheDocument();
+  });
+
+  it("shows the terminal outcome in place of where it stood once the operation finishes", async () => {
+    operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
+
+    const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
+
+    await findByText("Succeeded");
+    expect(queryByText("Running")).toBeNull();
+  });
+
+  it("offers Cancel while the operation runs, named for what it stops, and it reaches cancel_operation", async () => {
+    // The page under the drawer, the operation bar's Cancel with it, is
+    // out of reach while it is open.
+    const { findByRole } = renderWithProviders(<LogDrawer />);
+
+    fireEvent.click(await findByRole("button", { name: "Cancel install" }));
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 1 }));
+  });
+
+  it("offers no Cancel once the operation is done, nor for a running one that cannot be stopped", async () => {
+    operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
+    const done = renderWithProviders(<LogDrawer />);
+    await done.findByText("Succeeded");
+    expect(done.queryByRole("button", { name: "Cancel install" })).toBeNull();
+    done.unmount();
+
+    operations = [{ ...runningOp, kind: "Upgrade", name: "rustup", cancel_policy: "NoCancel" }];
+    const noCancel = renderWithProviders(<LogDrawer />);
+    await noCancel.findByRole("dialog", { name: "Update rustup" });
+    expect(noCancel.queryByRole("button", { name: "Cancel update" })).toBeNull();
+  });
+
+  it("says what to do next under an outcome that leaves the user a step", async () => {
+    // A crash may have run the command (T9): the next step is to look,
+    // never "nothing changed".
+    operations = [{ ...runningOp, status: "Done", outcome: { CanagerFailed: "Panicked" } }];
 
     const { findByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Succeeded");
+    await findByText("Failed: something went wrong inside Canager");
+    await findByText("Check the list to see whether anything changed.");
   });
 
   it("words Canager's own failure in the user's language, quoting only the path", async () => {
     // This used to arrive as `Failed` with Rust's English in its summary
     // ("runner: program not found: /opt/homebrew/bin/brew"), printed inside
     // the translated "失败：" frame.
-    mockInvoke.mockResolvedValue([
+    operations = [
       {
         ...runningOp,
         status: "Done",
         outcome: { CanagerFailed: { ProgramMissing: { program: "/opt/homebrew/bin/brew" } } },
       },
-    ]);
+    ];
     await i18n.changeLanguage("zh-CN");
     try {
-      const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
-      await findByText(
-        "失败：Canager 找不到 /opt/homebrew/bin/brew，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
-      );
+      const { findByText, queryByText, findByRole } = renderWithProviders(<LogDrawer />);
+      await findByRole("dialog", { name: "安装 jq" });
+      await findByText("失败：找不到 /opt/homebrew/bin/brew，没有改动");
       expect(queryByText(/program not found/)).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
@@ -229,11 +291,12 @@ describe("LogDrawer", () => {
     const opener = getByRole("button", { name: "show the log" });
 
     await user.click(opener);
+    // The panel itself, not its close button, one Enter from shutting it.
     expect(getByRole("dialog")).toHaveFocus();
 
     await user.keyboard("{Escape}");
     expect(useUiStore.getState().drawerOpen).toBe(false);
-    expect(opener).toHaveFocus();
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 
   it("closes on Escape from a control inside it, not just from the panel", async () => {
@@ -249,12 +312,14 @@ describe("LogDrawer", () => {
 
   it("keeps Tab inside the drawer instead of letting it wander behind", async () => {
     // The drawer sits over the page. Tabbing out of it puts the cursor on
-    // controls the user can neither see nor tell they are on.
+    // controls the user can neither see nor tell they are on. (The page
+    // behind is hidden from assistive technology while the drawer is
+    // open, which is why its buttons are found with `hidden: true`.)
     const user = userEvent.setup();
     const { getByRole } = renderWithProviders(<DrawerInPage />);
     const dialog = getByRole("dialog");
-    const behind = getByRole("button", { name: "behind the drawer" });
-    const opener = getByRole("button", { name: "show the log" });
+    const behind = getByRole("button", { name: "behind the drawer", hidden: true });
+    const opener = getByRole("button", { name: "show the log", hidden: true });
 
     for (let i = 0; i < 6; i += 1) {
       await user.tab();

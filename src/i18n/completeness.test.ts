@@ -182,18 +182,14 @@ function occursAsToken(
  * other way, because `expr` in each call site is a Rust-enum-shaped value,
  * which static analysis of this file cannot enumerate on its own. (The
  * sidebar's `t(\`nav.${p}\`)` over its list of pages used to be one; it
- * spells each page's key out now, in `PAGE_LABEL_KEYS`.)
+ * spells each page's key out now, in `PAGE_LABEL_KEYS`. So do the
+ * operation's kind and status, which the operation bar used to compose:
+ * `OP_KIND_KEYS` and `OP_STATUS_KEYS` in src/lib/operations.ts.)
  */
 const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
-  // src/components/OperationBar.tsx: `t(\`operations.kind.${current.kind}\`)`
-  // over `OpKind` (src/lib/types.ts).
-  "operations.kind": ["Install", "Uninstall", "Upgrade"],
-  // src/components/OperationBar.tsx: `t(\`operations.status.${current.status}\`)`
-  // over `OpStatus` (src/lib/types.ts).
-  "operations.status": ["Queued", "Running", "CancelRequested", "Cancelling", "Verifying", "Done"],
-  // src/components/OperationBar.tsx and src/components/LogDrawer.tsx:
-  // `t(\`operations.outcome.${outcomeKey(...)}\`)` over every string
-  // `outcomeKey()` can return (src/lib/format.ts), which in turn mirrors
+  // `outcomeSentence` in src/lib/operations.ts, for the operation bar and
+  // the log drawer: `t(\`operations.outcome.${outcomeKey(...)}\`)` over
+  // every string `outcomeKey()` can return (src/lib/format.ts), which in turn mirrors
   // `Outcome`'s variant names, `Attention`'s and `Fault`'s
   // (src/lib/types.ts), plus `FailedSilent` for a tool that failed without
   // a word on stderr.
@@ -279,15 +275,22 @@ describe("the reachability guard itself", () => {
   });
 
   /**
-   * OperationBar.tsx interpolates `operations.kind.${current.kind}` over
-   * `OpKind`, which has exactly three variants. Before this table
-   * existed, the mere presence of `operations.kind.${` in the source was
-   * read as clearing *every* key under `operations.kind.*` -- including
-   * one no Rust variant can ever produce.
+   * `outcomeSentence` interpolates `operations.outcome.${outcomeKey(...)}`
+   * over what `outcomeKey` can return. Before this table existed, the
+   * mere presence of `operations.outcome.${` in the source was read as
+   * clearing *every* key under `operations.outcome.*` -- including one no
+   * Rust variant can ever produce. (A next step, such as
+   * `operations.outcome.UnconfirmedDetail`, is not a tail the table lists:
+   * it counts only because `outcomeDetailKey` spells it out.)
    */
   it("does not let an interpolated head claim tails the code cannot produce", () => {
-    expect(isReferenced("operations.kind.Install")).toBe(true); // a real OpKind variant
-    expect(isReferenced("operations.kind.Bogus")).toBe(false); // not a variant of OpKind
+    expect(isReferenced("operations.outcome.Succeeded")).toBe(true); // a real Outcome variant
+    expect(isReferenced("operations.outcome.Bogus")).toBe(false); // not an Outcome variant
+    expect(isReferenced("operations.outcome.UnconfirmedDetail")).toBe(true); // spelled out
+    expect(isReferenced("operations.outcome.SucceededDetail")).toBe(false); // spelled nowhere
+    // The kind is spelled out now, and only real kinds are.
+    expect(isReferenced("operations.kind.Install")).toBe(true);
+    expect(isReferenced("operations.kind.Bogus")).toBe(false);
   });
 
   /**

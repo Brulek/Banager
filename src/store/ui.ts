@@ -65,6 +65,14 @@ export interface UiState {
   // version it no longer offers, whose row gets its Update button back.
   updateTargets: Record<number, string>;
   rememberUpdateTarget(opId: number, target: string): void;
+  // The name the lists showed for what each operation acts on, by
+  // operation id (`useOperationName`): an operation carries only its key's
+  // name -- `claude`, `visual-studio-code` -- and an uninstalled row, which
+  // had the name the user knows, is gone from the snapshot once the
+  // uninstall has finished. Kept so the operation bar and the log drawer go
+  // on calling it what they called it while it ran.
+  opNames: Record<number, string>;
+  rememberOpNames(names: Record<number, string>): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
 }
@@ -141,6 +149,8 @@ export const useUiStore = create<UiState>((set) => ({
   updateTargets: {},
   rememberUpdateTarget: (opId, target) =>
     set((s) => ({ updateTargets: { ...s.updateTargets, [opId]: target } })),
+  opNames: {},
+  rememberOpNames: (names) => set((s) => ({ opNames: { ...s.opNames, ...names } })),
   startupRefreshError: null,
   setStartupRefreshError: (message) => set({ startupRefreshError: message }),
 }));
