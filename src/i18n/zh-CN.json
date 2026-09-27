@@ -162,6 +162,11 @@
       "check": "请查看",
       "viewLogLabel": "查看日志：{{name}}"
     },
+    "justUpdated": {
+      "title": "刚更新的",
+      "clear": "清除",
+      "clearLabel": "清除刚更新的列表"
+    },
     "confirmTitleNamed": "更新 {{name}}？",
     "confirmTitle_other": "更新 {{count}} 个工具？",
     "preparing": "正在准备…",

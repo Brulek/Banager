@@ -2,10 +2,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
+import { useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
+  adapterIdOf,
+  adapterLabel,
   settingsSaveErrorMessage,
   sourceNoticesFor,
   toolDescription,
@@ -13,6 +15,8 @@ import {
 } from "../lib/sources";
 import { warningMessage } from "../lib/warnings";
 import { useCopyCommand } from "../lib/clipboard";
+import { useOperationName } from "../lib/operations";
+import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
@@ -46,11 +50,13 @@ import {
 import type { UpdateState } from "../lib/updateState";
 
 // The virtualizer's first guesses: a row, the "Can't update here" toggle
-// and the line under it. Each slot then measures itself through
-// `measureElement`.
+// and the line under it, and "Just updated" -- its heading, then a line a
+// tool. Each slot then measures itself through `measureElement`.
 const ROW_ESTIMATE = 60;
 const SECTION_ESTIMATE = 48;
 const SUMMARY_ESTIMATE = 36;
+const JUST_UPDATED_ESTIMATE = 52;
+const JUST_UPDATED_LINE_ESTIMATE = 36;
 
 /**
  * One slot in the virtualized list. The page is one flat list, sorted by
@@ -58,9 +64,11 @@ const SUMMARY_ESTIMATE = 36;
  * toggle for the rows it cannot ("Can't update here (5)"), folded until
  * pressed. Each row carries its source -- the avatar's colour and a small
  * chip -- in place of the per-source headings the list used to be grouped
- * under.
+ * under. Above them all, while there is anything in it, "Just updated"
+ * (`JustUpdated`): one slot, which scrolls away with the list.
  */
 type ListItem =
+  | { type: "justUpdated"; count: number }
   | { type: "update"; candidate: UpdateCandidate }
   | { type: "section"; count: number; expanded: boolean }
   | { type: "summary"; count: number };
@@ -75,10 +83,12 @@ type ListItem =
  * been, was placed as if it were that row. A moved node is not measured
  * again (its ref does not change, and a ResizeObserver sees no resize), so
  * nothing corrected it. An artifact key id has a `|` in it and the other
- * two do not, so they cannot collide.
+ * three do not, so they cannot collide.
  */
 function listItemKey(item: ListItem): string {
   switch (item.type) {
+    case "justUpdated":
+      return "section:just-updated";
     case "update":
       return artifactKeyId(item.candidate.key);
     case "section":
@@ -125,6 +135,12 @@ export function UpdatesPage() {
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
+  const { data: operations } = useOperations();
+  const opName = useOperationName(operations);
+  const updateTargets = useUiStore((s) => s.updateTargets);
+  const opFinishedAt = useUiStore((s) => s.opFinishedAt);
+  const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
+  const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
 
   const listRef = useRef<HTMLDivElement>(null);
   // "Can't update here (N)": folded until pressed.
@@ -257,6 +273,52 @@ export function UpdatesPage() {
     [actionableRows, selectedUpdates],
   );
 
+  // "Just updated": this session's updates that worked, once their rows
+  // have gone (`justUpdatedOps`). Out of every count, and of Select all:
+  // nothing in it has a checkbox or a button.
+  //
+  // The version is the one the snapshot now lists for the tool -- what is
+  // installed, read back after the update -- or, where it lists none, the
+  // one the update was for. A model's is a digest, and is not shown.
+  const justUpdated = useMemo((): JustUpdatedEntry[] => {
+    const shownInRows = new Set<number>();
+    for (const candidate of visibleUpdates) {
+      const op = operationFor(candidate);
+      if (op !== null) shownInRows.add(op.id);
+    }
+    const ops = justUpdatedOps(operations ?? [], {
+      shownInRows,
+      cleared: clearedJustUpdated,
+      finishedAt: opFinishedAt,
+    });
+    return ops.map((op) => {
+      const key = { instance_id: op.instance_id, kind: op.artifact_kind, name: op.name };
+      const adapterId = instancesById.get(op.instance_id)?.adapter_id ?? adapterIdOf(op.instance_id);
+      const installed = artifactsById.get(artifactKeyId(key))?.version;
+      return {
+        opId: op.id,
+        key,
+        adapterId,
+        sourceLabel: adapterLabel(t, adapterId),
+        name: opName(op),
+        version: op.artifact_kind === "Model" ? null : installed || updateTargets[op.id] || null,
+        finishedAt: opFinishedAt[op.id] ?? null,
+      };
+    });
+  }, [
+    visibleUpdates,
+    operationFor,
+    operations,
+    clearedJustUpdated,
+    opFinishedAt,
+    instancesById,
+    artifactsById,
+    opName,
+    updateTargets,
+    t,
+  ]);
+  const clearJustUpdatedList = () => clearJustUpdated(justUpdated.map((entry) => entry.opId));
+
   // What each source has to say about this check, one compact line each
   // at the top of the page: not running, not answering, a list it could
   // not download, another copy that runs when its name is typed. What a
@@ -299,6 +361,7 @@ export function UpdatesPage() {
 
   const items = useMemo<ListItem[]>(
     () => [
+      ...(justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : []),
       ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate })),
       ...(otherRows.length > 0
         ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
@@ -310,7 +373,7 @@ export function UpdatesPage() {
         ? otherRows.map((candidate): ListItem => ({ type: "update", candidate }))
         : []),
     ],
-    [actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
+    [justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
   );
 
   const viewLog = (opId: number) => {
@@ -509,6 +572,7 @@ export function UpdatesPage() {
     getScrollElement: () => listRef.current,
     estimateSize: (index) => {
       const item = items[index];
+      if (item?.type === "justUpdated") return JUST_UPDATED_ESTIMATE + item.count * JUST_UPDATED_LINE_ESTIMATE;
       if (item?.type === "section") return SECTION_ESTIMATE;
       if (item?.type === "summary") return SUMMARY_ESTIMATE;
       return ROW_ESTIMATE;
@@ -529,6 +593,9 @@ export function UpdatesPage() {
         <SourceNotices notices={notices} layout="line" />
       </div>
     ) : null;
+
+  const justUpdatedSection =
+    justUpdated.length > 0 ? <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} /> : null;
 
   // Two different kinds of empty: the backend found no updates, or it found
   // some and the user has hidden every one (skipped the version it offers,
@@ -558,9 +625,13 @@ export function UpdatesPage() {
         : upToDate
           ? t("updates.upToDate")
           : t("updates.noneCheckable");
+    // The last update to go leaves this: what was just updated, over the
+    // sentence that says nothing is left. Taller than the window, the page
+    // scrolls in its box (`App`).
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-full flex-col">
         {noticeLines}
+        {justUpdatedSection !== null ? <div className="px-3 pb-3">{justUpdatedSection}</div> : null}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
           {upToDate ? (
             <CheckCircleIcon size={44} className="text-success" />
@@ -776,7 +847,9 @@ export function UpdatesPage() {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                {item.type === "section" ? (
+                {item.type === "justUpdated" ? (
+                  <div className="pb-3">{justUpdatedSection}</div>
+                ) : item.type === "section" ? (
                   <div className="pt-4">
                     <button
                       type="button"

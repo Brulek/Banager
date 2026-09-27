@@ -2181,6 +2181,214 @@ describe("UpdatesPage", () => {
     });
   });
 
+  describe("Just updated", () => {
+    // As `useUpdateConfirm` records it when it submits one.
+    function started(opId: number, target: string) {
+      useUiStore.setState({ updateTargets: { ...useUiStore.getState().updateTargets, [opId]: target } });
+    }
+
+    function installed(key: ArtifactKey, version: string): Snapshot["artifacts"][number] {
+      return {
+        key,
+        display_name: key.name === "onyx" ? "OnyX" : key.name,
+        version,
+        reason: "Requested",
+        description: null,
+        homepage: null,
+        size_bytes: null,
+        installed_at: null,
+        path: null,
+        auto_updates: false,
+        uninstall_blocked: null,
+      };
+    }
+
+    function justUpdated(): HTMLElement | null {
+      return screen.queryByRole("region", { name: "Just updated" });
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("takes over a finished update's tick once its row is gone, with the version it has now and when it finished", async () => {
+      // Only the clock is fake: 14:40, and glib's update finished at 14:32.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 14, 40));
+      const finishedAt = new Date(2026, 8, 28, 14, 32).getTime();
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      useUiStore.setState({ opFinishedAt: { 7: finishedAt } });
+      artifacts = [installed(glibKey, "2.88.3"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderWithProviders(<UpdatesPage />);
+
+      // Until the check after it lands, the tick is the row's, and only the row's.
+      expect(await within(await findRow("glib")).findByText("Updated")).toBeInTheDocument();
+      expect(justUpdated()).toBeNull();
+
+      // The check after it: glib is at 2.90.0, with nothing left to update.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...snapshot,
+          generation: snapshot.generation + 1,
+          instances,
+          artifacts: [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")],
+          updates: [snapshot.updates[1]],
+        });
+      });
+
+      const section = await screen.findByRole("region", { name: "Just updated" });
+      await waitFor(() => expect(rowNames()).toEqual(["OnyX"]));
+      const [line, ...more] = within(section).getAllByRole("listitem");
+      expect(more).toEqual([]);
+      expect(within(line).getByText("glib")).toBeInTheDocument();
+      expect(within(line).getByText("2.90.0")).toBeInTheDocument();
+      expect(within(line).getByText("Updated")).toBeInTheDocument();
+      expect(line.querySelector("svg")).not.toBeNull();
+      const time = within(line).getByText(new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(finishedAt));
+      expect(time.tagName).toBe("TIME");
+      expect(time).toHaveAttribute("dateTime", new Date(finishedAt).toISOString());
+      // Above the list, and no row of it.
+      expect(section.compareDocumentPosition(rowOf("OnyX")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(section.closest("[data-tool-row]")).toBeNull();
+    });
+
+    it("lists the newest first, one line a tool, and says the date of one that finished on another day", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 8, 28, 9, 0));
+      const yesterday = new Date(2026, 8, 27, 18, 5).getTime();
+      const thisMorning = new Date(2026, 8, 28, 8, 55).getTime();
+      operations = [
+        operation(onyxKey, { id: 9, status: "Done", outcome: "Succeeded" }),
+        operation(glibKey, { id: 8, status: "Done", outcome: "Succeeded" }),
+        // glib's earlier update: the newer one stands for it.
+        operation(glibKey, { id: 3, status: "Done", outcome: "Succeeded" }),
+      ];
+      started(9, "5.1.0");
+      started(8, "2.90.0");
+      started(3, "2.89.0");
+      useUiStore.setState({ opFinishedAt: { 9: yesterday, 8: thisMorning, 3: yesterday - 60_000 } });
+      updates = [];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
+      renderWithProviders(<UpdatesPage />);
+
+      const section = await screen.findByRole("region", { name: "Just updated" });
+      const lines = within(section).getAllByRole("listitem");
+      expect(lines.map((line) => line.querySelector("span[title]")?.textContent)).toEqual(["glib", "OnyX"]);
+      expect(within(lines[0]).getByText(new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(thisMorning))).toBeInTheDocument();
+      expect(
+        within(lines[1]).getByText(new Intl.DateTimeFormat("en", { month: "numeric", day: "numeric" }).format(yesterday)),
+      ).toBeInTheDocument();
+      // Nothing is left to update: the section stands over the sentence that says so.
+      expect(await screen.findByText("Everything is up to date")).toBeInTheDocument();
+    });
+
+    it("lists no update that failed, was cancelled or asks to be checked: those keep their rows", async () => {
+      operations = [
+        operation(glibKey, { id: 9, status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle" } } }),
+        operation(onyxKey, { id: 10, status: "Done", outcome: { NeedsAttention: "UnchangedAfterUpgrade" } }),
+        // Two whose rows are gone: still nothing to list.
+        operation({ ...glibKey, name: "wget" }, { id: 11, status: "Done", outcome: "Cancelled" }),
+        operation({ ...glibKey, name: "jq" }, { id: 12, status: "Done", outcome: "Unconfirmed" }),
+      ];
+      started(9, "2.90.0");
+      started(10, "5.1.0");
+      started(11, "1.1.0");
+      started(12, "1.1.0");
+      renderWithProviders(<UpdatesPage />);
+
+      expect(await within(await findRow("glib")).findByText("Failed")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Check")).toBeInTheDocument();
+      expect(justUpdated()).toBeNull();
+    });
+
+    it("lists no tool uninstalled since its update, and no update still under way", async () => {
+      operations = [
+        operation(glibKey, { id: 9, kind: "Uninstall", status: "Done", outcome: "Succeeded" }),
+        operation(glibKey, { id: 8, status: "Done", outcome: "Succeeded" }),
+        operation(onyxKey, { id: 10, status: "Running" }),
+      ];
+      started(8, "2.90.0");
+      started(10, "5.1.0");
+      updates = [snapshot.updates[1]];
+      renderWithProviders(<UpdatesPage />);
+
+      expect(await within(await findRow("onyx")).findByText("Updating…")).toBeInTheDocument();
+      expect(justUpdated()).toBeNull();
+    });
+
+    it("stays out of the count, Select all and Update all", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const { findByText, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+      const section = await screen.findByRole("region", { name: "Just updated" });
+      expect(await findByText("1 update")).toBeInTheDocument();
+      expect(within(section).queryByRole("checkbox")).toBeNull();
+      expect(within(section).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+        "Clear the Just updated list",
+      ]);
+
+      fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+      expect(getByRole("button", { name: "Update selected (1)" })).toBeEnabled();
+
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      await findByRole("dialog", { name: "Update OnyX?" });
+      expect(plannedNames()).toEqual(["onyx"]);
+    });
+
+    it("hides itself on Clear, until the next update succeeds", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      updates = [snapshot.updates[1]];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.0.2")];
+      const { queryClient } = renderWithProviders(<UpdatesPage />);
+
+      const section = await screen.findByRole("region", { name: "Just updated" });
+      fireEvent.click(within(section).getByRole("button", { name: "Clear the Just updated list" }));
+      await waitFor(() => expect(justUpdated()).toBeNull());
+      expect(useUiStore.getState().clearedJustUpdated).toEqual([7]);
+      expect(rowNames()).toEqual(["OnyX"]);
+
+      // onyx's update succeeds and its row goes: the section is back, with onyx alone.
+      operations = [operation(onyxKey, { id: 8, status: "Done", outcome: "Succeeded" }), ...operations];
+      started(8, "5.1.0");
+      updates = [];
+      artifacts = [installed(glibKey, "2.90.0"), installed(onyxKey, "5.1.0")];
+      await act(async () => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+      });
+
+      const again = await screen.findByRole("region", { name: "Just updated" });
+      const lines = within(again).getAllByRole("listitem");
+      expect(lines).toHaveLength(1);
+      expect(within(lines[0]).getByText("OnyX")).toBeInTheDocument();
+      expect(within(lines[0]).getByText("5.1.0")).toBeInTheDocument();
+    });
+
+    it("never shows a model's digest as its new version", async () => {
+      instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+      operations = [operation(qwenKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b");
+      artifacts = [installed(qwenKey, "5642e97495e1")];
+      const { container } = renderWithProviders(<UpdatesPage />);
+
+      const section = await screen.findByRole("region", { name: "Just updated" });
+      expect(within(section).getByText("qwen3:8b")).toBeInTheDocument();
+      expect(container.textContent).not.toMatch(/sha256|5642e974/);
+    });
+
+    it("calls itself 刚更新的 in Chinese, with 清除 and 已更新", () => {
+      expect(zhCN.updates.justUpdated.title).toBe("刚更新的");
+      expect(zhCN.updates.justUpdated.clear).toBe("清除");
+      expect(zhCN.updates.progress.succeeded).toBe("已更新");
+    });
+  });
+
   it("says every update is hidden — not that everything is up to date — once each is skipped or never reminded about", async () => {
     settings.ignored_updates = [glibKey];
     settings.skipped_versions = [{ key: onyxKey, version: "5.1.0" }];

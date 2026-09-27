@@ -175,6 +175,11 @@
       "check": "Check",
       "viewLogLabel": "View log: {{name}}"
     },
+    "justUpdated": {
+      "title": "Just updated",
+      "clear": "Clear",
+      "clearLabel": "Clear the Just updated list"
+    },
     "confirmTitleNamed": "Update {{name}}?",
     "confirmTitle_one": "Update {{count}} tool?",
     "confirmTitle_other": "Update {{count}} tools?",

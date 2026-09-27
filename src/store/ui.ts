@@ -73,6 +73,18 @@ export interface UiState {
   // on calling it what they called it while it ran.
   opNames: Record<number, string>;
   rememberOpNames(names: Record<number, string>): void;
+  // When each operation finished, by operation id, in milliseconds: when
+  // this window heard its `Finished` event (`useOperationEvents`). An
+  // operation carries no time of its own (`OpSummary`); the Updates page's
+  // "Just updated" says when each update finished, and says no time for
+  // one that finished before this window was opened.
+  opFinishedAt: Record<number, number>;
+  rememberOpFinished(opId: number, at: number): void;
+  // The updates "Clear" took off the Updates page's "Just updated", by
+  // operation id: the section is hidden until an update not among them
+  // succeeds.
+  clearedJustUpdated: number[];
+  clearJustUpdated(opIds: number[]): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
 }
@@ -151,6 +163,13 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => ({ updateTargets: { ...s.updateTargets, [opId]: target } })),
   opNames: {},
   rememberOpNames: (names) => set((s) => ({ opNames: { ...s.opNames, ...names } })),
+  opFinishedAt: {},
+  // The first time heard stands: an operation finishes once.
+  rememberOpFinished: (opId, at) =>
+    set((s) => (opId in s.opFinishedAt ? s : { opFinishedAt: { ...s.opFinishedAt, [opId]: at } })),
+  clearedJustUpdated: [],
+  clearJustUpdated: (opIds) =>
+    set((s) => ({ clearedJustUpdated: [...new Set([...s.clearedJustUpdated, ...opIds])] })),
   startupRefreshError: null,
   setStartupRefreshError: (message) => set({ startupRefreshError: message }),
 }));

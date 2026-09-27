@@ -203,7 +203,8 @@ export function useStartupRefresh(): void {
  * React state: `Operation.Log` and `Operation.Note` events are appended to
  * the Zustand log ring buffer, `Operation.Status`/`Operation.Finished`
  * invalidate the operations query, and `SnapshotChanged` invalidates the snapshot query. A `Finished`
- * event additionally triggers a `refresh`: that is the only way the
+ * event is also when the operation finished (`rememberOpFinished`), and
+ * triggers a `refresh`: that is the only way the
  * installed/updates lists learn that an uninstall or update changed
  * anything, because nothing on the backend refreshes on its own. Not part of
  * the skeleton's Core Interfaces — introduced here because `events.ts` needs
@@ -238,6 +239,9 @@ export function useOperationEvents(): void {
         } else {
           queryClient.invalidateQueries({ queryKey: queryKeys.operations });
           if ("Finished" in opEvent) {
+            // When it finished, which the operation itself does not carry:
+            // the Updates page's "Just updated" says it.
+            useUiStore.getState().rememberOpFinished(opEvent.Finished.op_id, Date.now());
             refreshIntoCache(queryClient, "post-operation").catch(() => {});
           }
         }

@@ -129,6 +129,43 @@ describe("useOperationEvents", () => {
     );
   });
 
+  it("remembers when each operation finished, as it hears so, and only the first time", async () => {
+    let capturedChannel = null as InstanceType<typeof Channel> | null;
+    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "subscribe_events") {
+        capturedChannel = (args as { channel: InstanceType<typeof Channel> }).channel;
+      }
+      if (cmd === "refresh") return Promise.resolve(refreshedSnapshot);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    const refreshCalls = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+    // Only the clock is fake.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(1_790_000_000_000);
+      renderHook(() => useOperationEvents(), { wrapper: wrapper(queryClient) });
+
+      await waitFor(() => expect(capturedChannel).not.toBeNull());
+      capturedChannel!.onmessage({ Operation: { Status: { op_id: 4, status: "Running" } } });
+      expect(useUiStore.getState().opFinishedAt).toEqual({});
+
+      capturedChannel!.onmessage({ Operation: { Finished: { op_id: 4, outcome: "Succeeded" } } });
+      expect(useUiStore.getState().opFinishedAt).toEqual({ 4: 1_790_000_000_000 });
+
+      vi.setSystemTime(1_790_000_060_000);
+      capturedChannel!.onmessage({ Operation: { Finished: { op_id: 4, outcome: "Succeeded" } } });
+      expect(useUiStore.getState().opFinishedAt).toEqual({ 4: 1_790_000_000_000 });
+
+      // Both finishes asked for a refresh, the second folded into one
+      // follow-up: settled here, so neither reaches the next test.
+      await waitFor(() => expect(refreshCalls()).toBe(2));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores events that arrive after unmount while the subscription is still pending", async () => {
     let capturedChannel = null as InstanceType<typeof Channel> | null;
     let resolveSubscribe: () => void = () => {};

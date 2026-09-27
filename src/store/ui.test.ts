@@ -148,4 +148,19 @@ describe("useUiStore", () => {
       artifactKeyId(key),
     ]);
   });
+
+  it("remembers when an operation finished the first time it hears so", () => {
+    expect(useUiStore.getInitialState().opFinishedAt).toEqual({});
+    useUiStore.getState().rememberOpFinished(3, 1000);
+    useUiStore.getState().rememberOpFinished(4, 2000);
+    useUiStore.getState().rememberOpFinished(3, 5000);
+    expect(useUiStore.getState().opFinishedAt).toEqual({ 3: 1000, 4: 2000 });
+  });
+
+  it("keeps what Clear took off Just updated, each once", () => {
+    expect(useUiStore.getInitialState().clearedJustUpdated).toEqual([]);
+    useUiStore.getState().clearJustUpdated([7, 8]);
+    useUiStore.getState().clearJustUpdated([8, 9]);
+    expect(useUiStore.getState().clearedJustUpdated).toEqual([7, 8, 9]);
+  });
 });
