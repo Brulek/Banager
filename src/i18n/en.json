@@ -26,7 +26,11 @@
     "checking": "Checking…",
     "retry": "Try again",
     "details": "Details",
-    "detailsLabel": "Details: {{title}}"
+    "detailsLabel": "Details: {{title}}",
+    "copyCommand": "Copy command",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy",
+    "moreActions": "More actions for {{name}}"
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -79,34 +83,42 @@
     "standalone-grok": "Grok Build"
   },
   "installed": {
-    "filterLabel": "Filter installed items",
-    "filterPlaceholder": "Search installed items",
+    "filterLabel": "Search installed items",
+    "filterPlaceholder": "Search",
+    "filterBySource": "Filter by source",
+    "all": "All",
+    "sortLabel": "Sort by",
+    "sortByName": "Name",
+    "sortBySource": "Source",
+    "noMatches": "Nothing matches “{{query}}”",
     "uninstall": "Uninstall",
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
-    "updateIgnored": "Update reminders off",
+    "updateIgnored": "Reminders off",
     "updateSkipped": "Skipped {{version}}",
     "updateSkippedNewBuild": "Newer build skipped",
-    "updateSourceUnavailable": "Newer version, can't update now",
-    "nameWithVersion": "{{name}} · {{version}}",
-    "showDependencies_one": "{{count}} component installed by other software",
-    "showDependencies_other": "{{count}} components installed by other software",
-    "hideDependencies_one": "Hide the {{count}} component installed by other software",
-    "hideDependencies_other": "Hide the {{count}} components installed by other software",
-    "unverifiedVersion": "Unverified version ({{version}})",
+    "updateSourceUnavailable": "Can't update now",
+    "showDependencies_one": "{{count}} more component came with other software",
+    "showDependencies_other": "{{count}} more components came with other software",
+    "hideDependencies_one": "Hide {{count}} component",
+    "hideDependencies_other": "Hide {{count}} components",
+    "unverifiedVersion": "{{source}} {{version}} not tested",
+    "unverifiedVersionDetail": "Canager hasn't tested this version.",
+    "version": "Version",
+    "newVersion": "Newer version",
+    "location": "Location",
     "blocked": {
       "Pinned": {
-        "description": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run {{command}} in Terminal to release the pin; Canager will offer to uninstall it the next time it checks, which at the latest is the next time you start Canager.",
-        "descriptionSourceUnavailable": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run {{command}} in Terminal to release the pin; after that, Canager will offer to uninstall it the next time it checks and {{source}} answers.",
-        "refused": "This has been pinned in {{source}}, and {{source}} won't remove a pinned package, so Canager didn't uninstall it. Nothing has been changed. To uninstall it, first run {{command}} in Terminal to release the pin."
+        "description": "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",
+        "refused": "It's pinned in {{source}}, so Canager didn't uninstall or change anything. Run {{command}} in Terminal to unpin it first."
       },
       "NoSafeMethod": {
-        "badge": "Can't uninstall here",
-        "description": "{{source}} has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. {{source}}'s official documentation explains how to uninstall it.",
-        "refused": "Canager can't uninstall {{source}} yet, so it didn't. Nothing has been changed.",
+        "badge": "Uninstall manually",
+        "description": "{{source}} has no uninstall command, and Canager can't yet remove its files safely. Follow {{source}}'s official documentation to uninstall it.",
+        "refused": "Canager can't uninstall {{source}} yet. Nothing changed.",
         "standalone-rustup": {
-          "description": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of those folders, or something directly inside one, is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
-          "refused": "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else, so it didn't. Nothing has been changed."
+          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. rustup's documentation explains rustup self uninstall.",
+          "refused": "Rust isn't entirely in ~/.cargo and ~/.rustup, so Canager didn't uninstall or change anything."
         }
       }
     }
@@ -128,14 +140,10 @@
     "updateAll": "Update all",
     "update": "Update",
     "selectRow": "Select {{name}} for update",
-    "moreActions": "More actions for {{name}}",
     "skipVersion": "Skip this version",
     "skipVersionHint": "You'll be reminded again when its next version is out.",
     "neverRemind": "Never remind me about this software",
     "neverRemindHint": "You won't be reminded about any update of this again. You can undo this in Settings.",
-    "copyCommand": "Copy command",
-    "copied": "Copied",
-    "copyFailed": "Couldn't copy",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "New version",
@@ -231,11 +239,9 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "title": "View only",
       "description": "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here."
     },
     "prefixNotWritable": {
-      "title": "View only",
       "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."
     },
     "unreachable": {

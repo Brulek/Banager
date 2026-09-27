@@ -128,15 +128,15 @@ const TILE =
  * the startup placeholder is not an answer (`isStartupSnapshot`).
  *
  * Below it, quietly, two panels. "Your tools": a tile for each source
- * with something installed and how much, and one for the programs the
- * Unknown page's last scan could not place, once a scan has found some
- * (nothing starts one here). "Needs attention": one line for each source
- * that needs it -- the title of its first notice about what Canager found
- * this time (`axis: "state"`: not running, not answering, a list it could
- * not download, another copy that runs instead). What a source lets
- * Canager do at all, pip being read-only, is not news here; the Updates
- * page says it on each of its rows. Each line is a title only; the
- * explanation stays with the source on those pages.
+ * with something installed and how much, which opens the Installed page on
+ * that source's tools, and one for the programs the Unknown page's last
+ * scan could not place, once a scan has found some (nothing starts one
+ * here). "Needs attention": one line for each source that needs it -- the
+ * title of its first notice (`sourceNoticesFor`: not running, not
+ * answering, a list it could not download, another copy that runs
+ * instead). What a source lets Canager do at all, pip being read-only, is
+ * not news here; both lists say it on each of its rows. Each line is a
+ * title only; the explanation stays with the source on those pages.
  */
 export function OverviewPage() {
   const { t } = useTranslation();
@@ -144,6 +144,7 @@ export function OverviewPage() {
   const { data: settings } = useSettings();
   const { data: scan } = useUnknownScan();
   const setPage = useUiStore((s) => s.setPage);
+  const openInstalled = useUiStore((s) => s.openInstalled);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const toolsHeadingId = useId();
   const attentionHeadingId = useId();
@@ -180,11 +181,7 @@ export function OverviewPage() {
   });
 
   const attention: SourceNoticeSpec[] = snapshot.instances.flatMap((instance) => {
-    const notice = sourceNoticesFor(
-      instance,
-      labelOf(instance),
-      installedByInstance.get(instance.id) ?? 0,
-    ).find((spec) => spec.axis === "state");
+    const [notice] = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
     return notice === undefined ? [] : [notice];
   });
 
@@ -226,9 +223,9 @@ export function OverviewPage() {
             >
               {tiles.map((tile) => (
                 <li key={tile.instanceId}>
-                  {/* The Installed page has no filter by source yet, so a
-                      tile opens it whole. */}
-                  <button type="button" onClick={() => setPage("installed")} className={TILE}>
+                  {/* Opens the Installed page on this source's tools: the
+                      ones its count counted. */}
+                  <button type="button" onClick={() => openInstalled(tile.instanceId)} className={TILE}>
                     <SourceAvatar adapterId={tile.adapterId} label={tile.label} size="md" />
                     <span className="min-w-0">
                       <span className="block truncate text-body font-semibold text-foreground">

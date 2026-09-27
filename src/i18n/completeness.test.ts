@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import * as ts from "typescript";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
-import { READ_ONLY_NOTICE_KEYS } from "../lib/sources";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -219,40 +218,19 @@ const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
 };
 
 /**
- * `${prefix}.title` / `${prefix}.description` (src/lib/sources.ts:127-128)
- * and `${READ_ONLY_NOTICE_KEYS[reason.read_only]}.description`
- * (src/lib/sources.ts:298) -- the mirror image of `INTERPOLATED_SUBTREES`
- * above: here the *tail* is static and the *head* is interpolated. `prefix`
- * is only ever one of `READ_ONLY_NOTICE_KEYS`'s values, so those values --
- * imported from src/lib/sources.ts, not copied here, so this cannot drift
- * from the map that actually drives the interpolation -- are the complete
- * set of heads this pattern can produce. The old rule accepted *any* string
- * literal anywhere in the tree as a stand-in head, which let unrelated page
- * names ("updates", "settings", "installed" -- string literals elsewhere,
- * for `nav.*`) pair with this file's `}.title`/`}.description` call sites
- * and pass phantom keys like `updates.description` as referenced.
- */
-const READ_ONLY_NOTICE_HEADS: readonly string[] = Object.values(READ_ONLY_NOTICE_KEYS);
-const INTERPOLATED_HEAD_TAILS = ["title", "description"] as const;
-
-/**
  * Whether anything that ships still looks this key up.
  *
- * Most call sites spell the key out, so the first check finds them. Two
- * shapes compose one at runtime and both are in use here:
- *
- * - a static head and an interpolated tail --
- *   `t(\`operations.kind.${current.kind}\`)`. Checked against
- *   `INTERPOLATED_SUBTREES` above: the head's call site must still exist
- *   *and* the tail must be one of the named, enumerated values -- not
- *   "any key under this head", which is as far as a head match alone can
- *   tell you.
- * - an interpolated head and a static tail -- `t(\`${prefix}.description\`)`
- *   over a lookup table (`READ_ONLY_NOTICE_KEYS`). Checked against
- *   `READ_ONLY_NOTICE_HEADS` above: the tail must be one of the two this
- *   codebase actually interpolates *and* the head must be one of the
- *   values `prefix` can hold -- not "any string literal anywhere", which
- *   is as far as a bare-literal match alone can tell you.
+ * Most call sites spell the key out, so the first check finds them. One
+ * shape composes a key at runtime: a static head and an interpolated tail
+ * -- `t(\`operations.kind.${current.kind}\`)`. Checked against
+ * `INTERPOLATED_SUBTREES` above: the head's call site must still exist
+ * *and* the tail must be one of the named, enumerated values -- not "any
+ * key under this head", which is as far as a head match alone can tell
+ * you. Nothing composes a key's *head* any more: the read-only sentences
+ * used to be `${prefix}.description` over a table of prefixes, and are
+ * named whole now (`READ_ONLY_DETAIL_KEYS` in src/lib/sources.ts). A key
+ * built that way again would read as an orphan here -- the safe way for
+ * this to be wrong.
  */
 function isReferenced(key: string, haystack: string = source): boolean {
   if (occursAsToken(haystack, key)) return true;
@@ -261,14 +239,6 @@ function isReferenced(key: string, haystack: string = source): boolean {
     if (!key.startsWith(`${head}.`)) continue;
     const tail = key.slice(head.length + 1);
     if (tails.includes(tail) && haystack.includes(`${head}.\${`)) return true;
-  }
-
-  for (const tail of INTERPOLATED_HEAD_TAILS) {
-    if (!key.endsWith(`.${tail}`)) continue;
-    const head = key.slice(0, key.length - tail.length - 1);
-    if (READ_ONLY_NOTICE_HEADS.includes(head) && occursAsToken(haystack, `}.${tail}`, { before: false })) {
-      return true;
-    }
   }
   return false;
 }
@@ -370,30 +340,26 @@ describe("the reachability guard itself", () => {
   });
 
   /**
-   * `${prefix}.title` / `${prefix}.description` (src/lib/sources.ts) is the
-   * only place this codebase interpolates an i18n key's *head*. The old
-   * rule accepted any string literal anywhere as a stand-in for `prefix` --
-   * so the page names `"updates"`, `"settings"`, `"installed"` (string
-   * literals elsewhere, for `nav.*`) paired with this file's unrelated
-   * `}.title`/`}.description` call sites and cleared keys nothing defines
-   * or reads. None of the five exist in en.json; this checks the guard
-   * against the real tree, the shape that would have let them slip in
-   * silently as new keys.
+   * The read-only sentences used to be looked up as `${prefix}.description`,
+   * and the guard for that shape once accepted any string literal anywhere
+   * as a stand-in for `prefix` -- so the page names `"updates"`,
+   * `"settings"`, `"installed"` (string literals elsewhere, for `nav.*`)
+   * paired with an unrelated `}.title`/`}.description` and cleared keys
+   * nothing defines or reads. The sentences are named whole now; none of
+   * the five phantoms passes, and the two real sentences pass by name.
    */
-  it("does not let an interpolated head claim a static tail from an unrelated call site", () => {
+  it("does not let an unrelated call site's `.title` or `.description` stand in for a key", () => {
     for (const phantom of [
       "updates.description",
       "updates.title",
       "settings.description",
       "installed.title",
       "installed.description",
+      "sourceNotice.pipReadOnly.title",
     ]) {
       expect(isReferenced(phantom)).toBe(false);
     }
-    // the real call site's own heads still pass
-    expect(isReferenced("sourceNotice.pipReadOnly.title")).toBe(true);
     expect(isReferenced("sourceNotice.pipReadOnly.description")).toBe(true);
-    expect(isReferenced("sourceNotice.prefixNotWritable.title")).toBe(true);
     expect(isReferenced("sourceNotice.prefixNotWritable.description")).toBe(true);
   });
 

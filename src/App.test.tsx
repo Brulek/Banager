@@ -97,12 +97,48 @@ describe("App", () => {
     await findByText("Everything is up to date");
 
     fireEvent.click(getByRole("button", { name: "Installed" }));
-    await findByLabelText("Filter installed items");
+    await findByLabelText("Search installed items");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Updates" }));
 
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
+  });
+
+  it("opens Installed on one source from an Overview tile, and on everything from the sidebar", async () => {
+    // The Installed list is virtualized: the virtualizer needs a viewport
+    // and row heights, which jsdom does not lay out.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.getAttribute("data-index") === null ? 600 : 56;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    const brew = snapshot.instances[0];
+    mockBackend({
+      ...snapshot,
+      instances: [brew, { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" }],
+      artifacts: [
+        ...snapshot.artifacts,
+        {
+          ...snapshot.artifacts[0],
+          key: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "typescript" },
+          display_name: "typescript",
+        },
+      ],
+    });
+    const { findByRole, getByRole, queryByText, findByText } = renderWithProviders(<App />);
+
+    // The tile's count is what the page then shows.
+    fireEvent.click(await findByRole("button", { name: "npm 1 item" }));
+    expect(await findByRole("button", { name: "npm 1", pressed: true })).toBeInTheDocument();
+    expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();
+
+    // The sidebar's count is of everything installed.
+    fireEvent.click(getByRole("button", { name: "Installed" }));
+    expect(await findByRole("button", { name: "All 2", pressed: true })).toBeInTheDocument();
+    expect(await findByText("jq", { selector: "[data-tool-row] p" })).toBeInTheDocument();
   });
 
   it("titles every page in one header, with Check again beside it", async () => {

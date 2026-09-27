@@ -8,12 +8,12 @@ import { Popover } from "./ui/Popover";
 export interface SourceNoticesProps {
   notices: SourceNoticeSpec[];
   /**
-   * `banner`: the title, the description and the button in a box of its
-   * own (the Installed page). `line`: one compact line each -- icon,
-   * title, a "Details" popover with the description, and the button --
-   * for the top of the Updates page.
+   * `line`: one compact line each -- icon, title, a "Details" popover
+   * with the description, and the button -- for the top of a list.
+   * `block`: the title with the description under it, where there is room
+   * to explain -- a tool's detail drawer.
    */
-  layout?: "banner" | "line";
+  layout?: "line" | "block";
 }
 
 /**
@@ -22,14 +22,14 @@ export interface SourceNoticesProps {
  *
  * The split is deliberate: `sourceNoticesFor` (src/lib/sources.ts) decides
  * *what* to say from the instance alone and is pure, this decides how to
- * say it, and `SourceNotice` (or `SourceNoticeLine`) draws one. Both the
+ * say it, and `SourceNoticeLine` (or `SourceNotice`) draws one. Both the
  * Installed and the Updates page render this same component -- the whole
  * point of the rule being one function is that the two pages cannot end up
  * disagreeing about whether a source has something to say, which is how
  * the Updates page came to announce "Everything is up to date" for a
  * source it had never reached.
  */
-export function SourceNotices({ notices, layout = "banner" }: SourceNoticesProps) {
+export function SourceNotices({ notices, layout = "line" }: SourceNoticesProps) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
   const refresh = useRefresh();

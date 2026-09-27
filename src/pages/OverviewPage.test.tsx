@@ -292,7 +292,7 @@ describe("OverviewPage", () => {
     expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
   });
 
-  it("shows each source with something installed and how much, and a tile opens Installed", async () => {
+  it("shows each source with something installed and how much, and a tile opens Installed on that source", async () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
     useUiStore.setState({ page: "overview" });
     const { findByRole, getByRole, queryByRole } = renderOverview();
@@ -304,6 +304,8 @@ describe("OverviewPage", () => {
 
     fireEvent.click(homebrew);
     expect(useUiStore.getState().page).toBe("installed");
+    // The three its count counted.
+    expect(useUiStore.getState().installedFilter).toBe(brew.id);
   });
 
   it("gives the programs the last scan could not place a tile of their own, which opens the Unknown page", async () => {

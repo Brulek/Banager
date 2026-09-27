@@ -23,7 +23,11 @@
     "checking": "正在检查…",
     "retry": "重试",
     "details": "详情",
-    "detailsLabel": "详情：{{title}}"
+    "detailsLabel": "详情：{{title}}",
+    "copyCommand": "复制命令",
+    "copied": "已复制",
+    "copyFailed": "没能复制",
+    "moreActions": "{{name}} 的更多操作"
   },
   "header": {
     "checkedJustNow": "上次检查：刚刚",
@@ -70,32 +74,40 @@
     "standalone-grok": "Grok Build"
   },
   "installed": {
-    "filterLabel": "筛选已安装项目",
-    "filterPlaceholder": "搜索已安装项目",
+    "filterLabel": "搜索已安装的内容",
+    "filterPlaceholder": "搜索",
+    "filterBySource": "按来源筛选",
+    "all": "全部",
+    "sortLabel": "排序",
+    "sortByName": "名称",
+    "sortBySource": "来源",
+    "noMatches": "没有找到“{{query}}”",
     "uninstall": "卸载",
     "upToDate": "已是最新",
-    "updateAvailable": "有可用更新",
-    "updateIgnored": "不再提醒更新",
+    "updateAvailable": "可更新",
+    "updateIgnored": "不再提醒",
     "updateSkipped": "已跳过 {{version}}",
     "updateSkippedNewBuild": "已跳过新版本",
-    "updateSourceUnavailable": "有新版本，暂时无法更新",
-    "nameWithVersion": "{{name}} · {{version}}",
-    "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",
-    "hideDependencies_other": "收起这 {{count}} 个由其他软件附带安装的组件",
-    "unverifiedVersion": "未验证版本（{{version}}）",
+    "updateSourceUnavailable": "暂时不能更新",
+    "showDependencies_other": "另有 {{count}} 个被其它软件带来的组件",
+    "hideDependencies_other": "收起 {{count}} 个组件",
+    "unverifiedVersion": "{{source}} {{version}} 版未经测试",
+    "unverifiedVersionDetail": "Canager 还没在这个版本上测试过。",
+    "version": "版本",
+    "newVersion": "新版本",
+    "location": "位置",
     "blocked": {
       "Pinned": {
-        "description": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，Canager 下次检查时就会提供卸载，最晚在你下次启动 Canager 的时候。",
-        "descriptionSourceUnavailable": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 不提供卸载。想卸载的话，先在「终端」里运行 {{command}} 解除固定，之后 Canager 检查时只要 {{source}} 有应答，就会提供卸载。",
-        "refused": "它在 {{source}} 里被固定（pin）了，{{source}} 不会删除被固定的软件，所以 Canager 没有卸载它，什么都没有改动。想卸载的话，先在「终端」里运行 {{command}} 解除固定。"
+        "description": "它在 {{source}} 里固定了版本。要卸载，先在终端运行 {{command}}。",
+        "refused": "它在 {{source}} 里固定了版本，所以没有卸载，也没有改动。先在终端运行 {{command}} 解除固定。"
       },
       "NoSafeMethod": {
-        "badge": "无法在这里卸载",
-        "description": "{{source}} 没有卸载命令，Canager 也还不能把它的文件安全地移到废纸篓，所以不提供卸载。{{source}} 官方文档里说明了怎么卸载。",
-        "refused": "Canager 还不能卸载 {{source}}，所以没有动。什么都没有改动。",
+        "badge": "需手动卸载",
+        "description": "{{source}} 没有卸载命令，Canager 也还不能安全地移除它的文件。请按 {{source}} 官方文档卸载。",
+        "refused": "Canager 还不能卸载 {{source}}，没有改动。",
         "standalone-rustup": {
-          "description": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者这两个文件夹之一、或它们里面第一层的某一项是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
-          "refused": "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处，所以没有卸载。什么都没有改动。"
+          "description": "这台 Mac 上的 Rust 不全在 ~/.cargo 和 ~/.rustup 里，Canager 只卸载这两个位置的 Rust。请按 rustup 官方文档运行 rustup self uninstall。",
+          "refused": "Rust 不全在 ~/.cargo 和 ~/.rustup 里，所以没有卸载，也没有改动。"
         }
       }
     }
@@ -116,14 +128,10 @@
     "updateAll": "全部更新",
     "update": "更新",
     "selectRow": "选择要更新的 {{name}}",
-    "moreActions": "{{name}} 的更多操作",
     "skipVersion": "跳过这个版本",
     "skipVersionHint": "你会在它出下一个版本时再看到提醒。",
     "neverRemind": "不再提醒这个软件",
     "neverRemindHint": "以后不再提醒这个软件的任何更新，可在设置里撤销。",
-    "copyCommand": "复制命令",
-    "copied": "已复制",
-    "copyFailed": "没能复制",
     "saveChoiceFailed": "没能保存这个选择：{{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "有新版本",
@@ -216,11 +224,9 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "title": "只能查看",
       "description": "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。"
     },
     "prefixNotWritable": {
-      "title": "只能查看",
       "description": "npm 把它们装在你的账户改不了的文件夹里，所以只能查看。用 Homebrew 装 Node 后，再用它装的 npm 包就能在这里管理。"
     },
     "unreachable": {

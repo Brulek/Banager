@@ -133,7 +133,7 @@ export function UpdatesPage() {
 
   // Every update the user has not hidden, with "Never remind me" or "Skip
   // this version": `notHidden`, the rule in src/lib/updateState.ts that
-  // the Installed page's badge reads too. Everything below that lists,
+  // the Installed page's chips read too. Everything below that lists,
   // counts or selects a row starts from this list.
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
@@ -209,7 +209,7 @@ export function UpdatesPage() {
   // has an Update button and a checkbox. `actionableUpdatesOf` is
   // `visibleUpdates` filtered by `isUpdateActionable` -- read-only source,
   // could not be checked, blocked, source not answering: `updateStateOf`
-  // in src/lib/updateState.ts, which the Installed page's badge reads too,
+  // in src/lib/updateState.ts, which the Installed page's chips read too,
   // so the two pages cannot disagree about whether a package can be
   // updated -- and it is kept there because the sidebar's count on this
   // page's entry and the Overview's are this list's length, which must
@@ -259,11 +259,11 @@ export function UpdatesPage() {
   // What each source has to say about this check, one compact line each
   // at the top of the page: not running, not answering, a list it could
   // not download, another copy that runs when its name is typed. What a
-  // source lets Canager do at all -- pip being read-only -- is not a line
-  // here: every row of such a source says it with its own "Read-only"
+  // source lets Canager do at all -- pip being read-only -- is not a
+  // notice: every row of such a source says it with its own "Read-only"
   // chip. How many rows a source has is part of what its notice says: a
-  // silent source's "what's listed here is last time's" is true only over
-  // rows it actually has.
+  // silent source's "what's listed for it is last time's" is true only
+  // over rows it actually has.
   //
   // Iterates `snapshot.instances`, which is every source any candidate can
   // come from: `refresh` builds `updates` only from instances it also puts
@@ -275,11 +275,7 @@ export function UpdatesPage() {
       rowsByInstance.set(id, (rowsByInstance.get(id) ?? 0) + 1);
     }
     return (snapshot?.instances ?? []).flatMap((instance) =>
-      sourceNoticesFor(
-        instance,
-        sourceLabelFor(instance.id),
-        rowsByInstance.get(instance.id) ?? 0,
-      ).filter((notice) => notice.axis === "state"),
+      sourceNoticesFor(instance, sourceLabelFor(instance.id), rowsByInstance.get(instance.id) ?? 0),
     );
   }, [snapshot, visibleUpdates, sourceLabelFor]);
 
@@ -496,7 +492,7 @@ export function UpdatesPage() {
     });
     if (settings?.show_technical_details && state.kind === "blocked") {
       const command = UPDATE_BLOCKED_KEYS[state.reason].command(candidate.key, instance);
-      items.push({ id: "copy", label: t("updates.copyCommand"), onSelect: () => copyCommand(command) });
+      items.push({ id: "copy", label: t("common.copyCommand"), onSelect: () => copyCommand(command) });
     }
     return items;
   };
@@ -643,7 +639,7 @@ export function UpdatesPage() {
         }
         menu={
           <Menu
-            label={t("updates.moreActions", { name })}
+            label={t("common.moreActions", { name })}
             items={menuItems(candidate, state, instance)}
           />
         }
@@ -667,9 +663,9 @@ export function UpdatesPage() {
           </p>
           <p role="status" className="text-small text-muted">
             {copyStatus === "copied"
-              ? t("updates.copied")
+              ? t("common.copied")
               : copyStatus === "failed"
-                ? t("updates.copyFailed")
+                ? t("common.copyFailed")
                 : null}
           </p>
         </div>

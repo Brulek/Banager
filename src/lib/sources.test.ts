@@ -58,23 +58,19 @@ describe("sourceNoticesFor", () => {
     expect(isAvailable(instance())).toBe(true);
   });
 
-  it("gives each read-only reason its own copy", () => {
-    const [pip] = sourceNoticesFor(
-      instance({ adapter_id: "pip", read_only_reason: "ByDesign" }),
-      "pip",
-    );
-    expect(pip.axis).toBe("capability");
-    expect(pip.variant).toBe("info");
-    expect(pip.titleKey).toBe("sourceNotice.pipReadOnly.title");
-
-    const [npm] = sourceNoticesFor(
-      instance({ adapter_id: "npm", read_only_reason: "PrefixNotWritable" }),
-      "npm",
-    );
-    // Not pip's advice. Telling someone whose npm prefix is root-owned to
-    // install a Python tool is worse than saying nothing.
-    expect(npm.titleKey).toBe("sourceNotice.prefixNotWritable.title");
-    expect(npm.descriptionKey).toBe("sourceNotice.prefixNotWritable.description");
+  it("has no notice for what a source lets Canager do: a read-only source's rows say it themselves", () => {
+    // pip, or an npm whose folder the account cannot write, being
+    // read-only is what it always is, not something Canager found out this
+    // time: each of its rows carries a "Read-only" chip, on both lists,
+    // with its own way out (`READ_ONLY_DETAIL_KEYS`). A notice line for it
+    // at the top of a list that mixes sources would not say which rows it
+    // is about.
+    for (const reason of ["ByDesign", "PrefixNotWritable"] as const) {
+      const readOnly = instance({ adapter_id: reason === "ByDesign" ? "pip" : "npm", read_only_reason: reason });
+      expect(sourceNoticesFor(readOnly, "pip")).toEqual([]);
+      expect(hasSourceNotice(readOnly)).toBe(false);
+      expect(canWrite(readOnly)).toBe(false);
+    }
   });
 
   it("offers to start Ollama, and only Ollama, when a source is not running", () => {
@@ -87,7 +83,6 @@ describe("sourceNoticesFor", () => {
       instance({ adapter_id: "ollama", status: { unavailable: "NotRunning", notes: [] } }),
       "Ollama",
     );
-    expect(ollama.axis).toBe("state");
     expect(ollama.variant).toBe("warning");
     expect(ollama.titleKey).toBe("sourceNotice.notRunning.title");
     expect(ollama.descriptionKey).toBe("sourceNotice.notRunning.description");
@@ -127,7 +122,6 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: "RefusesAsRoot", notes: [] } }),
       "Homebrew",
     );
-    expect(notice.axis).toBe("state");
     expect(notice.variant).toBe("warning");
     expect(notice.titleKey).toBe("sourceNotice.refusesAsRoot.title");
     expect(notice.descriptionKey).toBe("sourceNotice.refusesAsRoot.description");
@@ -143,7 +137,6 @@ describe("sourceNoticesFor", () => {
       "Homebrew",
       4,
     );
-    expect(notice.axis).toBe("state");
     expect(notice.titleKey).toBe("sourceNotice.unreachable.title");
     expect(notice.descriptionKey).toBe("sourceNotice.unreachable.descriptionWithRows");
     expect(notice.values).toEqual({ source: "Homebrew" });
@@ -175,7 +168,6 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
       "Homebrew",
     );
-    expect(note.axis).toBe("state");
     expect(note.titleKey).toBe("sourceNotice.indexMayBeStale.title");
     expect(note.action?.id).toBe("retry");
   });
@@ -188,16 +180,15 @@ describe("sourceNoticesFor", () => {
       instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }),
       "Homebrew",
     );
-    expect(note.axis).toBe("state");
     expect(note.variant).toBe("info");
     expect(note.titleKey).toBe("sourceNotice.indexUpdating.title");
     expect(note.descriptionKey).toBe("sourceNotice.indexUpdating.description");
     expect(note.action).toBeUndefined();
   });
 
-  it("carries both axes at once, capability first", () => {
-    // Independent axes: a source can be read-only *and* silent, and each
-    // half is something different for the user to do.
+  it("says what a read-only source found out this time, as for any source", () => {
+    // Read-only and silent at once: the silence is news, and a note about
+    // its list is too; being read-only is its rows' chip.
     const notices = sourceNoticesFor(
       instance({
         adapter_id: "pip",
@@ -206,13 +197,16 @@ describe("sourceNoticesFor", () => {
       }),
       "pip",
     );
-    expect(notices.map((n) => n.axis)).toEqual(["capability", "state", "state"]);
-    expect(new Set(notices.map((n) => n.id)).size).toBe(3);
+    expect(notices.map((n) => n.titleKey)).toEqual([
+      "sourceNotice.unreachable.title",
+      "sourceNotice.indexMayBeStale.title",
+    ]);
+    expect(new Set(notices.map((n) => n.id)).size).toBe(2);
   });
 
   it("is the one rule hasSourceNotice answers from", () => {
-    // SnapshotStatus's "Nothing installed yet" gate and the pages' group
-    // headers must never disagree about which sources have something to
+    // SnapshotStatus's "Canager found nothing installed" gate and the
+    // pages' notice lines must never disagree about which sources have something to
     // say: a Mac whose only source is a stopped Ollama would otherwise see
     // the empty state and no way to start it.
     for (const inst of [
@@ -261,7 +255,6 @@ describe("sourceNoticesFor", () => {
       expect(notices).toEqual([
         {
           id: `standalone-claude:${id}`,
-          axis: "state",
           variant: "info",
           titleKey: `${key}.title`,
           descriptionKey: `${key}.description`,
@@ -283,7 +276,6 @@ describe("sourceNoticesFor", () => {
     expect(notices).toEqual([
       {
         id: "standalone-claude:launcher-only",
-        axis: "state",
         variant: "warning",
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
@@ -1036,14 +1028,29 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
   it("names the source and the command in both locales' sentences", () => {
     for (const copy of [
       en.installed.blocked.Pinned.description,
-      en.installed.blocked.Pinned.descriptionSourceUnavailable,
       en.installed.blocked.Pinned.refused,
       zhCN.installed.blocked.Pinned.description,
-      zhCN.installed.blocked.Pinned.descriptionSourceUnavailable,
       zhCN.installed.blocked.Pinned.refused,
     ]) {
       expect(copy).toContain("{{source}}");
       expect(copy.split("{{command}}")).toHaveLength(2);
+    }
+  });
+
+  it("promises nothing in a pin's detail about when Uninstall comes back, so one sentence holds for a source that did not answer", () => {
+    // A row carried forward from a Homebrew that did not answer has no
+    // Uninstall button until Homebrew answers a check again, pinned or
+    // not, so "the next time it checks, at the latest the next time you
+    // start Canager" did not hold there, and needed a second sentence.
+    // The detail says what stands in the way and what removes it.
+    expect(en.installed.blocked.Pinned.description).toBe(
+      "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",
+    );
+    expect(zhCN.installed.blocked.Pinned.description).toBe(
+      "它在 {{source}} 里固定了版本。要卸载，先在终端运行 {{command}}。",
+    );
+    for (const locale of [en, zhCN]) {
+      expect(locale.installed.blocked.Pinned.description).not.toMatch(/next time|at the latest|下次|最晚|pin\)/);
     }
   });
 
@@ -1061,11 +1068,8 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, claude)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, undefined)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge).toBe("installed.blocked.NoSafeMethod.badge");
-    // Nothing about "when the button comes back" to say differently for a
-    // silent source, so one sentence serves both.
-    expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.descriptionSourceUnavailable).toBe(
-      UNINSTALL_BLOCKED_KEYS.NoSafeMethod.description,
-    );
+    expect(en.installed.blocked.NoSafeMethod.badge).toBe("Uninstall manually");
+    expect(zhCN.installed.blocked.NoSafeMethod.badge).toBe("需手动卸载");
   });
 
   it("names the source and never a command in the no-safe-method sentences, in both locales", () => {
@@ -1278,18 +1282,18 @@ describe("uninstallBlockedCopy", () => {
     const rustup = uninstallBlockedCopy("NoSafeMethod", "standalone-rustup");
     expect(rustup.badge).toBe(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge);
     expect(rustup.description).toBe("installed.blocked.NoSafeMethod.standalone-rustup.description");
-    expect(rustup.descriptionSourceUnavailable).toBe(
-      "installed.blocked.NoSafeMethod.standalone-rustup.description",
-    );
     expect(rustup.refused).toBe("installed.blocked.NoSafeMethod.standalone-rustup.refused");
     expect(
       rustup.command({ instance_id: "standalone-rustup", kind: "Binary", name: "rustup" }, undefined),
     ).toBe("");
+    // "Isn't entirely in", not "keeps it somewhere else": the gate also
+    // refuses when only a part is elsewhere -- a link at the top of either
+    // folder -- and the variables' names are not this audience's words.
     expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager only removes Rust from its standard folders, ~/.cargo and ~/.rustup, and this Mac keeps it, or part of it, somewhere else (CARGO_HOME or RUSTUP_HOME is set, or one of those folders, or something directly inside one, is a link), so it doesn't offer to. rustup's official documentation explains rustup self uninstall.",
+      "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. rustup's documentation explains rustup self uninstall.",
     );
     expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Canager 只会从标准位置（~/.cargo 和 ~/.rustup）删除 Rust，而这台 Mac 把它的全部或一部分放在了别处（设置了 CARGO_HOME 或 RUSTUP_HOME，或者这两个文件夹之一、或它们里面第一层的某一项是链接），所以这里不提供卸载。rustup 的官方文档说明了怎么用 rustup self uninstall 卸载。",
+      "这台 Mac 上的 Rust 不全在 ~/.cargo 和 ~/.rustup 里，Canager 只卸载这两个位置的 Rust。请按 rustup 官方文档运行 rustup self uninstall。",
     );
     // Everyone else: B's copy, whatever the adapter.
     expect(uninstallBlockedCopy("NoSafeMethod", "standalone-claude")).toBe(

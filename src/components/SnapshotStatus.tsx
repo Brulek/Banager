@@ -160,15 +160,14 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
   }
 
   // Nothing installed *and* nothing any source wants to say. This branch
-  // replaces `children` outright, so the second half is load-bearing:
-  // `InstalledPage` deliberately renders a group header and a `SourceNotice`
-  // for a source that needs one even with no artifacts under it -- an Ollama
-  // that is installed but not running being the case it was written for.
-  // Judging only the global artifact count hid exactly that: on a Mac whose
-  // only source is a stopped Ollama, the user saw "Nothing installed yet"
-  // and the "Open Ollama" button was unreachable. `hasSourceNotice` lives in
-  // lib/sources.ts so this gate and the page it gates cannot disagree about
-  // which sources have something to show.
+  // replaces `children` outright, so the second half is load-bearing: the
+  // pages show a source's notice line even with nothing of it installed --
+  // an Ollama that is installed but not running being the case it was
+  // written for. Judging only the global artifact count hid exactly that:
+  // on a Mac whose only source is a stopped Ollama, the user saw "Nothing
+  // installed yet" and the "Open Ollama" button was unreachable.
+  // `hasSourceNotice` lives in lib/sources.ts so this gate and the pages it
+  // gates cannot disagree about which sources have something to show.
   if (
     snapshot.artifacts.length === 0 &&
     !snapshot.instances.some((instance) => hasSourceNotice(instance))

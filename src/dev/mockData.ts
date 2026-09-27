@@ -52,7 +52,7 @@ export const IDS = {
 
 /**
  * Each source's `verified_versions` (adapters/meta/*.toml): a version
- * outside it is flagged on the Installed page's group header.
+ * outside it is flagged in a line at the top of the Installed page.
  */
 const VERIFIED_VERSIONS: Record<string, string> = {
   brew: "7.0.3",
@@ -594,7 +594,7 @@ export function buildWorld(state: ScenarioState): World {
  * Settings at startup: the scenario's language and technical-details
  * switch, one package the user asked never to be reminded about and one
  * version they skipped (both Homebrew rows above, so both are hidden from
- * the Updates page and badged on the Installed page).
+ * the Updates page and marked with a chip on the Installed page).
  */
 export function initialSettings(scenario: Scenario): Settings {
   return {

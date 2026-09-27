@@ -34,9 +34,25 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().page).toBe("unknown");
   });
 
-  it("setQuery changes the filter text", () => {
+  it("setQuery changes the search text", () => {
     useUiStore.getState().setQuery("jq");
     expect(useUiStore.getState().query).toBe("jq");
+  });
+
+  it("opens the Installed page on one source, or on all of them, and keeps its sort", () => {
+    // Every source, sorted by name, until something asks otherwise.
+    expect(useUiStore.getInitialState().installedFilter).toBeNull();
+    expect(useUiStore.getInitialState().installedSort).toBe("name");
+
+    useUiStore.getState().setPage("overview");
+    useUiStore.getState().openInstalled("brew:/opt/homebrew");
+    expect(useUiStore.getState().page).toBe("installed");
+    expect(useUiStore.getState().installedFilter).toBe("brew:/opt/homebrew");
+
+    useUiStore.getState().setInstalledSort("source");
+    useUiStore.getState().openInstalled(null);
+    expect(useUiStore.getState().installedFilter).toBeNull();
+    expect(useUiStore.getState().installedSort).toBe("source");
   });
 
   it("toggleDependencies expands one source at a time", () => {

@@ -1,73 +1,48 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSnapshot, useSettings } from "../lib/queries";
-import { useUiStore, artifactKeyId } from "../store/ui";
-import { ArtifactRow } from "../components/ArtifactRow";
-import { SourceNotices } from "../components/SourceNotices";
-import { UninstallDialog } from "../components/UninstallDialog";
+import { useSettings, useSnapshot } from "../lib/queries";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   canWrite,
   isAvailable,
   sourceNoticesFor,
-  standaloneSummaryKey,
   toolDescription,
   uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import { hidingRule, shownSkippedVersion, updateStateOf } from "../lib/updateState";
-import type { HiddenBy, UpdateState } from "../lib/updateState";
-import type { BadgeVariant } from "../components/ArtifactRow";
-import type { SourceNoticeSpec } from "../lib/sources";
+import { hidingRule, shownSkippedVersion, updateStateOf, upToDateIsKnown } from "../lib/updateState";
+import type { HiddenBy } from "../lib/updateState";
+import { useCopyCommand } from "../lib/clipboard";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
+import { ToolRow } from "../components/ToolRow";
+import { StatusChip } from "../components/StatusChip";
+import { Menu, type MenuItem } from "../components/ui/Menu";
+import { Drawer } from "../components/ui/Drawer";
+import { SourceNotices } from "../components/SourceNotices";
+import { SourceNoticeLine } from "../components/SourceNotice";
+import { SourceAvatar } from "../components/SourceAvatar";
+import { UninstallDialog } from "../components/UninstallDialog";
+import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
+import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import {
+  blockedDetail,
+  cannotCheckDetail,
+  detailLines,
+  readOnlyDetail,
+  unavailableDetail,
+} from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
+import { CheckIcon, ChevronIcon, SearchIcon } from "../components/icons";
 
-// A group header on its own is one line. A group header that also carries a
-// SourceNotice (a read-only source's explanation, a silent source's
-// can't-reach-it warning) is a title plus a banner -- a title line, a
-// description line and, for Ollama, a button.
-// Both numbers are only the virtualizer's first guess: every row reports its
-// real height through `measureElement` as soon as it is in the DOM.
-const ROW_ESTIMATE = 56;
-const NOTICE_GROUP_ESTIMATE = 120;
-
-type ListItem =
-  | {
-      type: "group";
-      instanceId: string;
-      label: string;
-      // Everything this source has to say, decided once while the list is
-      // built by the one rule both pages share (`sourceNoticesFor`).
-      // Carried on the item rather than re-derived at render time because
-      // the virtualizer's `estimateSize` needs to know whether this group
-      // has a banner and has only the `ListItem` to ask -- recomputing the
-      // rule there is how the two would drift.
-      notices: SourceNoticeSpec[];
-      // Task 4's unverified-version badge. Kept here deliberately: this
-      // task edits Task 4's file rather than replacing it.
-      unverifiedVersion: string | null;
-    }
-  | {
-      type: "artifact";
-      artifact: InstalledArtifact;
-      // Whether this row may offer Uninstall: writable *and* answering.
-      // Both halves, because they are independent -- a stopped Ollama is
-      // perfectly writable, and its rows are on screen only because
-      // `refresh` carried them forward from the last time it answered.
-      // `Session::issue_plan` enforces the same conjunction in Rust (spec
-      // §2.5); this is what stops the button being offered in the first
-      // place.
-      actionable: boolean;
-      // The source this row belongs to, and its name in the user's
-      // language: a row the tool will not uninstall
-      // (`uninstall_blocked`) says so in a sentence that names the source
-      // and gives the command built from this instance's `exe_path`.
-      instance: ManagerInstance;
-      sourceLabel: string;
-    }
-  | { type: "toggle"; instanceId: string; hiddenCount: number; expanded: boolean };
+// The virtualizer's first guesses: a row, a source's heading (sorted by
+// source), and a "N more components" line. Each slot then measures itself
+// through `measureElement`.
+const ROW_ESTIMATE = 60;
+const HEADING_ESTIMATE = 44;
+const FOLD_ESTIMATE = 40;
 
 /** An update the user hid on the Updates page, and how (`hidingRule`). */
 interface HiddenUpdate {
@@ -75,32 +50,204 @@ interface HiddenUpdate {
   candidate: UpdateCandidate;
 }
 
+/**
+ * One of a row's chips: its word, the why behind its ⓘ (on the row) or
+ * under it (in the drawer), and how it looks -- grey for what the row is
+ * and why it can't do something, the accent for an update to be had, and
+ * a quiet tick for up to date.
+ */
+interface RowChip {
+  id: string;
+  label: string;
+  detail?: ReactNode;
+  /** What the drawer says under the chip when the row's ⓘ says nothing: a model's newer build. */
+  drawerDetail?: ReactNode;
+  tone: "neutral" | "accent" | "upToDate";
+}
+
+/**
+ * One slot in the virtualized list: a tool's row; a source's heading, only
+ * when the list is sorted by source and shows every source; and a
+ * source's "N more components came with other software" line, which
+ * unfolds its components under it.
+ */
+type ListItem =
+  | { type: "heading"; instance: ManagerInstance; label: string; count: number }
+  | { type: "row"; artifact: InstalledArtifact; instance: ManagerInstance; label: string }
+  | { type: "fold"; instance: ManagerInstance; label: string; count: number; expanded: boolean };
+
+/**
+ * A slot's identity: its React key, and the key the virtualizer files the
+ * slot's measured height under -- the same string, so a height stays with
+ * the row it was measured from when a row above it goes (the Updates
+ * page's `listItemKey` has the story). An artifact key id has a `|` in it,
+ * and neither of the other two does.
+ */
+function listItemKey(item: ListItem): string {
+  switch (item.type) {
+    case "heading":
+      return `heading:${item.instance.id}`;
+    case "fold":
+      return `fold:${item.instance.id}`;
+    case "row":
+      return artifactKeyId(item.artifact.key);
+  }
+}
+
+/**
+ * The version a row shows: the installed one, technical details on or
+ * off, as the Updates page's rows show theirs. Not an Ollama model's: its
+ * `version` is the local manifest digest /api/tags reports, not a version
+ * number, and no hash goes in front of this audience. Nothing where the
+ * source reported none.
+ */
+function versionOf(artifact: InstalledArtifact): string | null {
+  if (artifact.key.kind === "Model" || artifact.version === "") return null;
+  return artifact.version;
+}
+
+/** A chip on a row, or its word in the drawer. */
+function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean }) {
+  if (chip.tone === "upToDate") {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-small text-muted">
+        <CheckIcon size={13} className="shrink-0 text-success" />
+        {chip.label}
+      </span>
+    );
+  }
+  return (
+    <StatusChip label={chip.label} detail={withDetail ? chip.detail : undefined} tone={chip.tone} />
+  );
+}
+
+const ROW_BUTTON =
+  "h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent";
+
+/**
+ * 已安装: everything the sources list, to find and to uninstall
+ * (docs/superpowers/2026-09-27-ui-redesign.md, 已安装页).
+ *
+ * At the top a search box and the sort, and a row of filters: 「全部」 and
+ * one per source with something installed, each with how much -- an
+ * Overview tile opens the page on its own (`openInstalled`). Under them,
+ * one line per thing a source had to say this time (`SourceNoticeLine`,
+ * as on the Updates page).
+ *
+ * Then one list. By name, it is one flat list, each row naming its source
+ * with the avatar and, where the list mixes sources, a chip: a tool is
+ * found by its name, and at the window's default 800×600 a heading per
+ * source would take the room of a row each for nothing the avatars do not
+ * already say. By source, it is grouped under a heading per source -- only
+ * while every source is shown; one source's list needs none. Either way,
+ * what other software brought in is folded into one line per source,
+ * 「另有 14 个被其它软件带来的组件」, which unfolds them under it.
+ *
+ * Each row: what it is, its version, its chips -- the why behind an ⓘ --
+ * Uninstall where the source and the tool allow it, and a ⋯ menu.
+ * Pressing the row itself opens its details in a drawer from the right:
+ * everything a row has no room for, and its Update.
+ */
 export function InstalledPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
+  const filter = useUiStore((s) => s.installedFilter);
+  const setFilter = useUiStore((s) => s.setInstalledFilter);
+  const sort = useUiStore((s) => s.installedSort);
+  const setSort = useUiStore((s) => s.setInstalledSort);
   const expandedDependencies = useUiStore((s) => s.expandedDependencies);
   const toggleDependencies = useUiStore((s) => s.toggleDependencies);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
-  const parentRef = useRef<HTMLDivElement>(null);
+  const operationFor = useUpdateOperationFor();
+  const { status: copyStatus, copy: copyCommand } = useCopyCommand();
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Uninstall is destructive, so the row's button only *targets* an artifact;
-  // UninstallDialog is what plans it, shows the exact command and what would
-  // break, and submits (Global Constraints, spec §6).
+  // Uninstall is destructive, so a button only *targets* an artifact;
+  // UninstallDialog is what plans it, shows the exact command and what
+  // would break, and submits (Global Constraints, spec §6).
   const [uninstallTarget, setUninstallTarget] = useState<{
     request: OpRequest;
     displayName: string;
   } | null>(null);
+  // The row whose details are open, by artifact key id; looked up in the
+  // snapshot each time, so the drawer shows what the last check found.
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  // Set when the drawer closes for the log drawer to open: the focus goes
+  // there, not back to the row.
+  const leaveFocusOnClose = useRef(false);
+
+  const showTechnicalDetails = settings?.show_technical_details ?? false;
+
+  const instancesById = useMemo(() => {
+    const byId = new Map<string, ManagerInstance>();
+    for (const instance of snapshot?.instances ?? []) byId.set(instance.id, instance);
+    return byId;
+  }, [snapshot]);
+
+  const artifactsById = useMemo(() => {
+    const byId = new Map<string, InstalledArtifact>();
+    for (const artifact of snapshot?.artifacts ?? []) byId.set(artifactKeyId(artifact.key), artifact);
+    return byId;
+  }, [snapshot]);
+  // A tool that is gone -- uninstalled, or no longer listed -- closes its
+  // drawer for good, so the same name listed again later does not open it.
+  useEffect(() => {
+    if (snapshot && detailsId !== null && !artifactsById.has(detailsId)) setDetailsId(null);
+  }, [snapshot, detailsId, artifactsById]);
+
+  // The source's name in the user's language: the filters, the rows'
+  // chips and avatars, the `{{source}}` in a sentence.
+  const labelOf = useCallback(
+    (instance: ManagerInstance): string => {
+      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+      return labelKey ? t(labelKey) : instance.adapter_id;
+    },
+    [t],
+  );
+  const sourceLabelFor = useCallback(
+    (instanceId: string): string => {
+      const instance = instancesById.get(instanceId);
+      return instance ? labelOf(instance) : instanceId;
+    },
+    [instancesById, labelOf],
+  );
+
+  // By name, as the user reads it: case and accents aside, and "node@22"
+  // after "node@9"; the key breaks a tie, so the order never depends on
+  // the snapshot's. The Updates page sorts the same way.
+  const collator = useMemo(
+    () => new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" }),
+    [i18n.language],
+  );
+  const compareArtifacts = useCallback(
+    (a: InstalledArtifact, b: InstalledArtifact) =>
+      collator.compare(a.display_name, b.display_name) ||
+      collator.compare(artifactKeyId(a.key), artifactKeyId(b.key)),
+    [collator],
+  );
+  const nameOf = useCallback(
+    (candidate: UpdateCandidate): string =>
+      artifactsById.get(artifactKeyId(candidate.key))?.display_name || candidate.key.name,
+    [artifactsById],
+  );
+  const compareCandidates = useCallback(
+    (a: UpdateCandidate, b: UpdateCandidate) => collator.compare(nameOf(a), nameOf(b)),
+    [collator, nameOf],
+  );
+
+  // The Updates page's own confirmation, for the drawer's Update: the same
+  // plan, command, warnings and submission (`useUpdateConfirm`).
+  const confirm = useUpdateConfirm({ nameOf, compare: compareCandidates, sourceLabelFor });
 
   // Every update in the snapshot, split by the rule the Updates page lists
   // by (`hidingRule`, src/lib/updateState.ts): the ones it lists, and the
-  // ones the user hid there, with how. This used to be every entry in
-  // `snapshot.updates`, so a pinned package, one Canager could not check
-  // and one the user had ignored were all "Update available" here while
-  // the Updates page offered none of them.
+  // ones the user hid there, with how. So a pinned package, one Canager
+  // could not check and one the user ignored are never "Update available"
+  // here while the Updates page offers none of them.
   const { listedUpdates, hiddenUpdates } = useMemo(() => {
     const hiddenBy = hidingRule(settings ?? { ignored_updates: [], skipped_versions: [] });
     const listed = new Map<string, UpdateCandidate>();
@@ -113,203 +260,133 @@ export function InstalledPage() {
     return { listedUpdates: listed, hiddenUpdates: hidden };
   }, [snapshot, settings]);
 
-  // The badge of a package the Updates page lists. It follows the same
-  // `updateStateOf` (src/lib/updateState.ts) that decides the Updates
-  // page's button and badge there. "Update available" is returned for
-  // `actionable` alone, which is exactly `isUpdateActionable`, the
-  // predicate that gives a row its Update button on the Updates page; so
-  // "Update available" here means an Update button there, and nothing else
-  // does. A `switch` with no default in a function that must return, so a
-  // new `UpdateState` without a badge here fails `tsc`.
-  function listedBadge(state: UpdateState): { text: string; variant: BadgeVariant } {
-    switch (state.kind) {
-      case "actionable":
-        return { text: t("installed.updateAvailable"), variant: "info" };
-      case "blocked":
-        return { text: t(UPDATE_BLOCKED_KEYS[state.reason].badge), variant: "neutral" };
-      case "readOnly":
-        return { text: t("updates.readOnly"), variant: "neutral" };
-      case "cannotCheck":
-        return { text: t("updates.cannotCheck"), variant: "neutral" };
-      case "sourceUnavailable":
-        // The source did not answer the last refresh, so the Updates page
-        // has no Update button for this row (`isUpdateActionable`). The
-        // newer version is one an earlier refresh found, carried forward
-        // (session/refresh.rs); the group's notice says Canager cannot
-        // reach the source now.
-        return { text: t("installed.updateSourceUnavailable"), variant: "neutral" };
+  // How much each source has installed: its filter's count, the number an
+  // Overview tile shows for it.
+  const countByInstance = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const artifact of snapshot?.artifacts ?? []) {
+      const id = artifact.key.instance_id;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
     }
-  }
+    return counts;
+  }, [snapshot]);
 
-  // The badge of a package whose update the user hid on the Updates page:
-  // how it was hidden, where "Update available" would promise an update
-  // that page no longer lists. A `switch` with no default, like
-  // `listedBadge`, so a new `HiddenBy` without a badge here fails `tsc`.
-  //
-  // A skip names the version skipped, with technical details off too, as
-  // the update confirmation names the version jump: the skip is about
-  // that one version, and "Skipped" alone would not say what brings the
-  // reminder back. An Ollama model's skipped version is a digest, and is
-  // never shown (`shownSkippedVersion`).
-  function hiddenBadge({ by, candidate }: HiddenUpdate): { text: string; variant: BadgeVariant } {
-    switch (by) {
-      case "ignored":
-        return { text: t("installed.updateIgnored"), variant: "neutral" };
-      case "skipped": {
-        const version = shownSkippedVersion({ key: candidate.key, version: candidate.target });
-        return {
-          text:
-            version === null
-              ? t("installed.updateSkippedNewBuild")
-              : t("installed.updateSkipped", { version }),
-          variant: "neutral",
-        };
-      }
-    }
-  }
+  // One filter per source with something installed, in the snapshot's
+  // order -- the Overview's tiles' order.
+  const filterSources = useMemo(
+    () => (snapshot?.instances ?? []).filter((instance) => (countByInstance.get(instance.id) ?? 0) > 0),
+    [snapshot, countByInstance],
+  );
+  // A filter that names a source with nothing installed any more shows
+  // everything -- and is dropped, so a source that gets something again
+  // does not filter the page by surprise.
+  const activeFilter = filter !== null && (countByInstance.get(filter) ?? 0) > 0 ? filter : null;
+  useEffect(() => {
+    if (snapshot && filter !== null && activeFilter === null) setFilter(null);
+  }, [snapshot, filter, activeFilter, setFilter]);
+  // Headings only while the list is sorted by source and shows every
+  // source; a row names its source with a chip only where the list mixes
+  // sources and has no heading saying it.
+  const grouped = sort === "source" && activeFilter === null;
+  const mixed = activeFilter === null && !grouped;
 
-  // The row's badge.
-  function installedBadge(
-    artifact: InstalledArtifact,
-    instance: ManagerInstance,
-  ): { text: string; variant: BadgeVariant } {
-    const id = artifactKeyId(artifact.key);
-    const candidate = listedUpdates.get(id);
-    if (candidate !== undefined) return listedBadge(updateStateOf(candidate, instance));
-    // Pinned in Homebrew with no update listed: still pinned, which is
-    // why the row has no Uninstall button (`uninstall_blocked`).
-    if (artifact.uninstall_blocked !== null) {
-      return {
-        text: t(uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id).badge),
-        variant: "neutral",
-      };
-    }
-    const hidden = hiddenUpdates.get(id);
-    if (hidden !== undefined) return hiddenBadge(hidden);
-    return { text: t("installed.upToDate"), variant: "neutral" };
-  }
+  // What the search box asks for, by the name a row shows or the
+  // package's own name ("visual-studio-code" finds "Microsoft Visual
+  // Studio Code").
+  const needle = query.trim().toLowerCase();
 
-  // The row's description. A standalone tool's artifact carries no blurb
-  // (a bare string cannot be localised), so its row reads one by adapter
-  // id (`toolDescription`, which the Updates page's rows read too) and
-  // shows it beside any refusal: what the tool is still needs saying on a
-  // row that cannot be uninstalled here. A row whose source gave no
-  // description says what its source says it is.
-  // Any other row the tool will not uninstall says why in place of its
-  // blurb: it is the one thing the user has to read to understand why
-  // there is no Uninstall button.
-  // A row of a source that did not answer promises Uninstall only once it
-  // answers (`descriptionSourceUnavailable`).
-  function installedDescription(
-    artifact: InstalledArtifact,
-    instance: ManagerInstance,
-    sourceLabel: string,
-  ): ReactNode {
-    const summaryKey = standaloneSummaryKey(instance.adapter_id);
-    const blurb = toolDescription(
-      t,
-      { description: artifact.description, kind: artifact.key.kind, path: artifact.path },
-      instance.adapter_id,
-      sourceLabel,
-    );
-    if (artifact.uninstall_blocked !== null) {
-      const copy = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id);
-      const refusal = withCommand(
-        t(isAvailable(instance) ? copy.description : copy.descriptionSourceUnavailable, {
-          command: COMMAND_SLOT,
-          source: sourceLabel,
-        }),
-        copy.command(artifact.key, instance),
-      );
-      return summaryKey === null ? refusal : (
-        <>
-          <span>{blurb}</span>{" "}<span>{refusal}</span>
-        </>
-      );
-    }
-    return blurb;
-  }
-
-  const items = useMemo<ListItem[]>(() => {
-    if (!snapshot) return [];
-    const needle = query.trim().toLowerCase();
-    const filtered = needle
-      ? snapshot.artifacts.filter((a) => a.display_name.toLowerCase().includes(needle))
-      : snapshot.artifacts;
+  // The rows the search matches, by source.
+  const matchingByInstance = useMemo(() => {
     const byInstance = new Map<string, InstalledArtifact[]>();
-    for (const artifact of filtered) {
+    for (const artifact of snapshot?.artifacts ?? []) {
+      const matches =
+        needle === "" ||
+        artifact.display_name.toLowerCase().includes(needle) ||
+        artifact.key.name.toLowerCase().includes(needle);
+      if (!matches) continue;
       const list = byInstance.get(artifact.key.instance_id) ?? [];
       list.push(artifact);
       byInstance.set(artifact.key.instance_id, list);
     }
+    return byInstance;
+  }, [snapshot, needle]);
+
+  // The sources in view: the filter's, or every one.
+  const instancesInView = useMemo(
+    () => (snapshot?.instances ?? []).filter((instance) => activeFilter === null || instance.id === activeFilter),
+    [snapshot, activeFilter],
+  );
+
+  const items = useMemo<ListItem[]>(() => {
     const result: ListItem[] = [];
-    for (const instance of snapshot.instances) {
-      const artifacts = byInstance.get(instance.id) ?? [];
-      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-      const label = labelKey ? t(labelKey) : instance.adapter_id;
-      // A source can need a notice (a read-only source's explanation, a
-      // source Canager could not reach) even with nothing installed to
-      // list under it -- most visibly an Ollama daemon that is not
-      // running and has never been inventoried, whose notice is then the
-      // only thing its group has to show.
-      //
-      // How many rows this group is about to draw is part of what the
-      // notice says: "what's listed here is last time's data" is a lie
-      // over an empty group, and an empty group is exactly what a silent
-      // source has on the first refresh after every launch, because the
-      // snapshot is never persisted. The count is the filtered one on
-      // purpose -- it describes what is on screen, which is what the
-      // sentence is about.
-      const notices = sourceNoticesFor(instance, label, artifacts.length);
-      if (artifacts.length === 0 && notices.length === 0) continue;
-      const actionable = canWrite(instance) && isAvailable(instance);
-      result.push({
-        type: "group",
-        instanceId: instance.id,
-        label,
-        notices,
-        unverifiedVersion: instance.unverified_version,
-      });
+    const rows: ListItem[] = [];
+    const folds: ListItem[] = [];
+    for (const instance of instancesInView) {
+      const artifacts = matchingByInstance.get(instance.id) ?? [];
+      if (artifacts.length === 0) continue;
+      const label = labelOf(instance);
+      const row = (artifact: InstalledArtifact): ListItem => ({ type: "row", artifact, instance, label });
       // `!== "Dependency"`, not `=== "Requested"`: pip can only ever report
       // Unknown or Dependency (its `--not-required` marks a leaf, which is
       // not the same as "the user asked for it"), so keying off "Requested"
-      // would collapse every pip package behind "Show N dependencies" and
-      // render the pip group as a header and a notice with no visible rows.
-      const primary = artifacts.filter((a) => a.reason !== "Dependency");
-      const dependencies = artifacts.filter((a) => a.reason === "Dependency");
-      for (const artifact of primary) {
-        result.push({ type: "artifact", artifact, actionable, instance, sourceLabel: label });
-      }
-      if (dependencies.length > 0) {
-        // The toggle row is pushed in *both* states, not only while the
-        // group is folded: it used to disappear on expand, which left no
-        // way to fold a group back up short of relaunching the app.
-        const expanded = expandedDependencies.includes(instance.id);
-        if (expanded) {
-          for (const artifact of dependencies) {
-            result.push({ type: "artifact", artifact, actionable, instance, sourceLabel: label });
-          }
-        }
-        result.push({
-          type: "toggle",
-          instanceId: instance.id,
-          hiddenCount: dependencies.length,
-          expanded,
-        });
+      // would fold every pip package away.
+      const primary = artifacts.filter((a) => a.reason !== "Dependency").sort(compareArtifacts);
+      const dependencies = artifacts.filter((a) => a.reason === "Dependency").sort(compareArtifacts);
+      // The fold line stays in both states, so a source's components fold
+      // back up the way they unfolded.
+      const expanded = expandedDependencies.includes(instance.id);
+      const fold: ListItem[] =
+        dependencies.length === 0
+          ? []
+          : [
+              { type: "fold", instance, label, count: dependencies.length, expanded },
+              ...(expanded ? dependencies.map(row) : []),
+            ];
+      if (grouped) {
+        result.push({ type: "heading", instance, label, count: artifacts.length }, ...primary.map(row), ...fold);
+      } else {
+        rows.push(...primary.map(row));
+        folds.push(...fold);
       }
     }
+    if (!grouped) {
+      const byName = (a: ListItem, b: ListItem) =>
+        a.type === "row" && b.type === "row" ? compareArtifacts(a.artifact, b.artifact) : 0;
+      result.push(...rows.sort(byName), ...folds);
+    }
     return result;
-  }, [snapshot, query, expandedDependencies, t]);
+  }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped]);
 
+  // What each source in view has to say about this check, a line each
+  // (`sourceNoticesFor`, the rule the Updates page and the Overview read):
+  // not running, not answering, a list it could not download, another
+  // copy that runs instead. Whether a silent source has rows here is part
+  // of what its notice says -- "what's listed for uv is from the last time
+  // it answered" over rows it has, "can't show what it has installed" over
+  // none -- and a search that hides its rows does not make it have none.
+  // Then a source whose version Canager has not been tested with.
+  const notices = useMemo(
+    () =>
+      instancesInView.flatMap((instance) =>
+        sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
+      ),
+    [instancesInView, labelOf, countByInstance],
+  );
+  const untested = instancesInView.filter(
+    (instance) => instance.unverified_version !== null && (countByInstance.get(instance.id) ?? 0) > 0,
+  );
+
+  const getItemKey = useCallback((index: number) => listItemKey(items[index]), [items]);
   const virtualizer = useVirtualizer({
     count: items.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => listRef.current,
     estimateSize: (index) => {
       const item = items[index];
-      return item?.type === "group" && item.notices.length > 0
-        ? NOTICE_GROUP_ESTIMATE
-        : ROW_ESTIMATE;
+      if (item?.type === "heading") return HEADING_ESTIMATE;
+      if (item?.type === "fold") return FOLD_ESTIMATE;
+      return ROW_ESTIMATE;
     },
+    getItemKey,
   });
 
   if (isLoading) {
@@ -319,123 +396,528 @@ export function InstalledPage() {
     return null;
   }
 
+  // Uninstall where both the source and the tool allow it: a source that
+  // is read-only, or did not answer the last check -- its rows are last
+  // time's, carried forward -- offers none, nor does a package the tool
+  // refuses to remove (`uninstall_blocked`). `Session::issue_plan` refuses
+  // all three in Rust whatever this page shows (spec §2.5).
+  const canUninstall = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
+    canWrite(instance) && isAvailable(instance) && artifact.uninstall_blocked === null;
+
+  const uninstall = (artifact: InstalledArtifact) =>
+    setUninstallTarget({
+      request: {
+        kind: "Uninstall",
+        instance_id: artifact.key.instance_id,
+        artifact_kind: artifact.key.kind,
+        name: artifact.key.name,
+      },
+      displayName: artifact.display_name,
+    });
+
+  const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): string =>
+    toolDescription(
+      t,
+      { description: artifact.description, kind: artifact.key.kind, path: artifact.path },
+      instance.adapter_id,
+      label,
+    );
+
+  // How an update the user hid on the Updates page reads here: how it was
+  // hidden, where "Update available" would promise one that page no
+  // longer lists. A skip names the version skipped -- the skip is about
+  // that one -- except an Ollama model's, a digest, never shown
+  // (`shownSkippedVersion`). A `switch` with no default, so a new
+  // `HiddenBy` without a chip here fails `tsc`.
+  const hiddenChip = ({ by, candidate }: HiddenUpdate): RowChip => {
+    switch (by) {
+      case "ignored":
+        return {
+          id: "hidden",
+          label: t("installed.updateIgnored"),
+          detail: detailLines([t("updates.neverRemindHint")]),
+          tone: "neutral",
+        };
+      case "skipped": {
+        const version = shownSkippedVersion({ key: candidate.key, version: candidate.target });
+        return {
+          id: "hidden",
+          label:
+            version === null
+              ? t("installed.updateSkippedNewBuild")
+              : t("installed.updateSkipped", { version }),
+          detail: detailLines([t("updates.skipVersionHint")]),
+          tone: "neutral",
+        };
+      }
+    }
+  };
+
+  /**
+   * A row's chips, each with its why: what its source lets Canager do,
+   * the tool's own refusal to remove it, and where its update stands --
+   * by `updateStateOf` for an update the Updates page lists, the way that
+   * page's row reads, so "Update available" here is exactly an Update
+   * button there. With no update listed, 「已是最新」 only where this round's
+   * check reached its source in full and nothing about it failed
+   * (`upToDateIsKnown`): a source that did not answer, one whose check
+   * failed, a Homebrew still updating its list or one that could not,
+   * leave last round's rows and updates, which no one checked this time.
+   * Such a row says nothing about updates; its source's notice says why.
+   */
+  const chipsOf = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): RowChip[] => {
+    const chips: RowChip[] = [];
+    const id = artifactKeyId(artifact.key);
+    const listed = listedUpdates.get(id);
+    const hidden = hiddenUpdates.get(id);
+    const cannotCheck = (candidate: UpdateCandidate): RowChip => ({
+      id: "cannot-check",
+      label: t("updates.cannotCheck"),
+      detail: cannotCheckDetail(t, candidate, showTechnicalDetails),
+      tone: "neutral",
+    });
+    // Read-only: the fact that no button ever appears on this row,
+    // whatever the next check finds.
+    if (!canWrite(instance)) {
+      chips.push({ id: "read-only", label: t("updates.readOnly"), detail: readOnlyDetail(t, instance), tone: "neutral" });
+    }
+    if (artifact.uninstall_blocked !== null) {
+      const copy = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id);
+      chips.push({
+        id: "uninstall-blocked",
+        label: t(copy.badge),
+        detail: detailLines([
+          withCommand(t(copy.description, { command: COMMAND_SLOT, source: label }), copy.command(artifact.key, instance)),
+        ]),
+        tone: "neutral",
+      });
+    }
+    if (listed !== undefined) {
+      // A `switch` with no default, so a state added to `UpdateState`
+      // without a chip here fails `tsc`.
+      const state = updateStateOf(listed, instance);
+      switch (state.kind) {
+        case "actionable":
+          chips.push({
+            id: "update",
+            label: t("installed.updateAvailable"),
+            // The drawer's facts give the version it moves to, except a
+            // model's, which has no version to give: "a newer build".
+            drawerDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
+            tone: "accent",
+          });
+          break;
+        case "readOnly":
+          // "Read-only" is said above; that this check found nothing is
+          // its own news.
+          if (!listed.checkable) chips.push(cannotCheck(listed));
+          break;
+        case "cannotCheck":
+          chips.push(cannotCheck(listed));
+          break;
+        case "blocked":
+          // A pinned package that is also pinned against its update says
+          // "Pinned" once, with the unpin command, above.
+          if (!(state.reason === "Pinned" && artifact.uninstall_blocked === "Pinned")) {
+            chips.push({
+              id: "update-blocked",
+              label: t(UPDATE_BLOCKED_KEYS[state.reason].badge),
+              detail: blockedDetail(t, listed, state.reason, instance, label, showTechnicalDetails),
+              tone: "neutral",
+            });
+          }
+          break;
+        case "sourceUnavailable":
+          // The newer version is one an earlier check found, carried
+          // forward; the source's notice says it did not answer.
+          chips.push({
+            id: "update-unavailable",
+            label: t("installed.updateSourceUnavailable"),
+            detail: unavailableDetail(t, instance, label),
+            tone: "neutral",
+          });
+          break;
+      }
+    } else if (hidden !== undefined) {
+      chips.push(hiddenChip(hidden));
+    } else if (upToDateIsKnown(instance, snapshot.errors)) {
+      chips.push({ id: "up-to-date", label: t("installed.upToDate"), tone: "upToDate" });
+    }
+    return chips;
+  };
+
+  // The command a row's chips talk about, known without asking for a
+  // plan: the unpin command of a pinned package, or the launcher of a tool
+  // that updates itself. An uninstall's own command needs a plan, which
+  // its dialog shows, so a row has none to copy.
+  const commandOf = (artifact: InstalledArtifact, instance: ManagerInstance): string | null => {
+    if (artifact.uninstall_blocked !== null) {
+      const command = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id).command(
+        artifact.key,
+        instance,
+      );
+      if (command !== "") return command;
+    }
+    const listed = listedUpdates.get(artifactKeyId(artifact.key));
+    if (listed === undefined) return null;
+    const state = updateStateOf(listed, instance);
+    return state.kind === "blocked" ? UPDATE_BLOCKED_KEYS[state.reason].command(listed.key, instance) : null;
+  };
+
+  // The ⋯ menu: the details, and -- with technical details on -- the
+  // command a chip talks about.
+  const menuItems = (artifact: InstalledArtifact, instance: ManagerInstance): MenuItem[] => {
+    const items: MenuItem[] = [
+      { id: "details", label: t("common.details"), onSelect: () => setDetailsId(artifactKeyId(artifact.key)) },
+    ];
+    const command = commandOf(artifact, instance);
+    if (showTechnicalDetails && command !== null) {
+      items.push({ id: "copy", label: t("common.copyCommand"), onSelect: () => copyCommand(command) });
+    }
+    return items;
+  };
+
+  const toolRow = (artifact: InstalledArtifact, instance: ManagerInstance, label: string) => {
+    const name = artifact.display_name;
+    const chips = chipsOf(artifact, instance, label);
+    return (
+      <ToolRow
+        adapterId={instance.adapter_id}
+        sourceLabel={label}
+        name={name}
+        // A tool with its own installer is its own source: the chip would
+        // only say its name again.
+        nameChip={mixed && label !== name ? label : undefined}
+        description={describe(artifact, instance, label)}
+        status={
+          chips.length > 0
+            ? chips.map((chip) => <RowChipView key={chip.id} chip={chip} withDetail />)
+            : undefined
+        }
+        version={versionOf(artifact)}
+        action={
+          canUninstall(artifact, instance) ? (
+            <button type="button" onClick={() => uninstall(artifact)} className={ROW_BUTTON}>
+              {t("installed.uninstall")}
+            </button>
+          ) : null
+        }
+        menu={<Menu label={t("common.moreActions", { name })} items={menuItems(artifact, instance)} />}
+        onOpen={() => setDetailsId(artifactKeyId(artifact.key))}
+        openLabel={t("common.detailsLabel", { title: name })}
+      />
+    );
+  };
+
+  // The log drawer at the foot of the window, for an operation just
+  // started or finished. The details drawer, a modal over the page, closes
+  // first: the log drawer is not inside it, and would be out of reach.
+  const openLog = (opId: number) => {
+    if (detailsId !== null) {
+      leaveFocusOnClose.current = true;
+      setDetailsId(null);
+    }
+    setFocusedOpId(opId);
+    setDrawerOpen(true);
+  };
+
+  const details = detailsId === null ? undefined : artifactsById.get(detailsId);
+  const detailsInstance = details === undefined ? undefined : instancesById.get(details.key.instance_id);
+
+  /**
+   * A row's details: all of its description, its version and the one an
+   * update would bring, where it is (with technical details on), every
+   * chip with its why in full, what its source had to say this time, and
+   * what can be done -- Uninstall, and Update where the Updates page
+   * offers one, through that page's own confirmation; while that update
+   * runs, its progress where the button was.
+   */
+  const detailsDrawer = (artifact: InstalledArtifact, instance: ManagerInstance) => {
+    const label = labelOf(instance);
+    const name = artifact.display_name;
+    const chips = chipsOf(artifact, instance, label);
+    const id = artifactKeyId(artifact.key);
+    const listed = listedUpdates.get(id);
+    const candidate = listed ?? hiddenUpdates.get(id)?.candidate;
+    const updatable = listed !== undefined && updateStateOf(listed, instance).kind === "actionable";
+    const op = listed !== undefined && updatable ? operationFor(listed) : null;
+    const version = versionOf(artifact);
+    // The version a listed or hidden update would bring: said in numbers
+    // only where it is one -- not a model's digest, not the installed
+    // version a row Canager could not check carries as its target.
+    const newer =
+      candidate !== undefined &&
+      candidate.checkable &&
+      candidate.channel !== "Digest" &&
+      candidate.target !== "" &&
+      candidate.target !== artifact.version
+        ? candidate.target
+        : null;
+    const facts: Array<{ term: string; value: ReactNode }> = [];
+    if (version !== null) facts.push({ term: t("installed.version"), value: version });
+    if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer });
+    // Where it is, only while technical details are on, and only where the
+    // source said: an app's bundle, a program's file, a tool's own folder.
+    if (showTechnicalDetails && artifact.path !== null) {
+      facts.push({
+        term: t("installed.location"),
+        value: <code className="break-all font-mono text-small">{artifact.path}</code>,
+      });
+    }
+    const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
+    const removable = canUninstall(artifact, instance);
+    const footer =
+      removable || updatable ? (
+        <>
+          {removable ? (
+            <button
+              type="button"
+              onClick={() => uninstall(artifact)}
+              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-danger outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {t("installed.uninstall")}
+            </button>
+          ) : null}
+          {updatable && listed !== undefined ? (
+            op !== null ? (
+              <UpdateProgress progress={progressOf(op)} name={name} onViewLog={openLog} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => void confirm.openConfirm([listed])}
+                disabled={confirm.dialogOpen}
+                className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50"
+              >
+                {t("updates.update")}
+              </button>
+            )
+          ) : null}
+        </>
+      ) : undefined;
+    return (
+      <Drawer
+        open
+        onOpenChange={(open) => {
+          if (!open) setDetailsId(null);
+        }}
+        title={name}
+        subtitle={label === name ? undefined : label}
+        leading={<SourceAvatar adapterId={instance.adapter_id} label={label} size="md" />}
+        description={describe(artifact, instance, label)}
+        closeLabel={t("common.close")}
+        onCloseAutoFocus={(event) => {
+          if (leaveFocusOnClose.current) {
+            leaveFocusOnClose.current = false;
+            event.preventDefault();
+          }
+        }}
+        footer={footer}
+      >
+        {facts.length > 0 ? (
+          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-body">
+            {facts.map((fact) => (
+              <div key={fact.term} className="contents">
+                <dt className="text-muted">{fact.term}</dt>
+                <dd className="min-w-0 tabular-nums text-foreground">{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+        {chips.length > 0 ? (
+          <ul className="mt-5 flex flex-col gap-3">
+            {chips.map((chip) => (
+              <li key={chip.id} className="flex flex-col items-start gap-1">
+                <RowChipView chip={chip} withDetail={false} />
+                {chip.detail !== undefined ? (
+                  <div className="text-body text-foreground">{chip.detail}</div>
+                ) : chip.drawerDetail !== undefined ? (
+                  <p className="break-words text-body text-foreground">{chip.drawerDetail}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {sourceNotices.length > 0 ? (
+          <div className="mt-5 flex flex-col gap-2">
+            <SourceNotices notices={sourceNotices} layout="block" />
+          </div>
+        ) : null}
+        {confirm.pageErrors.map((item) => (
+          <p key={artifactKeyId(item.candidate.key)} role="alert" className="mt-4 text-body text-danger">
+            {t("updates.planFailed", { message: item.planError })}
+          </p>
+        ))}
+      </Drawer>
+    );
+  };
+
+  const filterChip = (key: string, label: ReactNode, count: number, pressed: boolean, onPress: () => void) => (
+    <button
+      key={key}
+      type="button"
+      aria-pressed={pressed}
+      onClick={onPress}
+      className={`inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-small font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
+        pressed
+          ? "border-accent bg-accent text-accent-foreground"
+          : "border-border bg-surface text-foreground hover:bg-hover"
+      }`}
+    >
+      {label}{" "}
+      <span className={`font-normal tabular-nums ${pressed ? "text-accent-foreground/80" : "text-muted"}`}>{count}</span>
+    </button>
+  );
+
   return (
     <div className="flex h-full flex-col">
-      <div className="p-4">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("installed.filterPlaceholder")}
-          aria-label={t("installed.filterLabel")}
-          className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm"
-        />
+      <div className="flex shrink-0 flex-col gap-2.5 px-6 pb-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="relative min-w-40 max-w-sm flex-1">
+            <SearchIcon
+              size={15}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("installed.filterPlaceholder")}
+              aria-label={t("installed.filterLabel")}
+              className="h-8 w-full rounded-button border border-border bg-surface pl-8 pr-2.5 text-body text-foreground outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent"
+            />
+          </div>
+          <p role="status" className="text-small text-muted">
+            {copyStatus === "copied"
+              ? t("common.copied")
+              : copyStatus === "failed"
+                ? t("common.copyFailed")
+                : null}
+          </p>
+          <div role="group" aria-label={t("installed.sortLabel")} className="ml-auto flex items-center gap-2">
+            <span aria-hidden="true" className="text-small text-muted">
+              {t("installed.sortLabel")}
+            </span>
+            <div className="flex rounded-button bg-hover p-0.5">
+              {(["name", "source"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={sort === option}
+                  onClick={() => setSort(option)}
+                  className="rounded-[6px] px-2.5 py-1 text-small font-medium text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
+                >
+                  {t(option === "name" ? "installed.sortByName" : "installed.sortBySource")}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {filterSources.length > 0 ? (
+          <div role="group" aria-label={t("installed.filterBySource")} className="flex flex-wrap gap-1">
+            {filterChip("all", t("installed.all"), snapshot.artifacts.length, activeFilter === null, () =>
+              setFilter(null),
+            )}
+            {filterSources.map((instance) =>
+              filterChip(
+                instance.id,
+                <>
+                  <SourceAvatar adapterId={instance.adapter_id} label={labelOf(instance)} size="xs" />
+                  {labelOf(instance)}
+                </>,
+                countByInstance.get(instance.id) ?? 0,
+                activeFilter === instance.id,
+                () => setFilter(instance.id),
+              ),
+            )}
+          </div>
+        ) : null}
       </div>
-      <div ref={parentRef} className="flex-1 overflow-y-auto">
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const item = items[virtualRow.index];
+      {notices.length > 0 || untested.length > 0 ? (
+        <div className="flex shrink-0 flex-col gap-1.5 px-6 pb-3">
+          <SourceNotices notices={notices} layout="line" />
+          {untested.map((instance) => {
+            const title = t("installed.unverifiedVersion", {
+              source: labelOf(instance),
+              version: instance.unverified_version ?? "",
+            });
             return (
-              // The row reports its own height back to the virtualizer, and
-              // carries no fixed one. A group header plus a SourceNotice is
-              // far taller than a plain row, so a fixed height would let the
-              // banner overflow its slot -- and the next row, later in DOM
-              // order and therefore painted on top, would cover its tail,
-              // including the Ollama notice's "Open Ollama" button.
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                {item.type === "group" ? (
-                  <div className="px-4 py-2">
-                    <p className="text-xs font-semibold uppercase text-[var(--color-muted)]">
-                      {item.label}
-                      {item.unverifiedVersion ? (
-                        <span className="ml-2 normal-case text-[var(--color-danger)]">
-                          {t("installed.unverifiedVersion", { version: item.unverifiedVersion })}
-                        </span>
-                      ) : null}
-                    </p>
-                    {/* Every banner this source needs, in one place and
-                        from one rule, so the Installed and the Updates
-                        page cannot disagree about what a source has to
-                        say: which read-only reason applies (pip's advice
-                        is not npm's), whether it answered at all, and
-                        whether its answer can be trusted. */}
-                    <SourceNotices notices={item.notices} />
-                  </div>
-                ) : item.type === "toggle" ? (
-                  <button
-                    type="button"
-                    onClick={() => toggleDependencies(item.instanceId)}
-                    aria-expanded={item.expanded}
-                    className="px-4 py-2 text-left text-sm text-[var(--color-accent-text)]"
-                  >
-                    {t(
-                      item.expanded ? "installed.hideDependencies" : "installed.showDependencies",
-                      { count: item.hiddenCount },
-                    )}
-                  </button>
-                ) : (
-                  <ArtifactRow
-                    name={
-                      // A Model's `version` is the local manifest digest
-                      // Ollama's /api/tags reported, not a version number:
-                      // appending it rendered every model as
-                      // "qwen3:8b · 5642e97495e1a0888838…". No hash goes in
-                      // front of this audience, so the suffix is suppressed
-                      // for models whatever the setting says; every other
-                      // kind still carries its real version.
-                      settings?.show_technical_details && item.artifact.key.kind !== "Model"
-                        ? t("installed.nameWithVersion", {
-                            name: item.artifact.display_name,
-                            version: item.artifact.version,
-                          })
-                        : item.artifact.display_name
-                    }
-                    // Standalone rows show what the tool is alongside
-                    // the refusal explaining why Uninstall is absent.
-                    description={installedDescription(item.artifact, item.instance, item.sourceLabel)}
-                    wrapDescription={item.artifact.uninstall_blocked !== null}
-                    badgeText={installedBadge(item.artifact, item.instance).text}
-                    badgeVariant={installedBadge(item.artifact, item.instance).variant}
-                    // The source's verdict and the package's own: a pinned
-                    // Homebrew package is refused by `brew uninstall`
-                    // (`UninstallBlocked::Pinned`), and `Session::issue_plan`
-                    // refuses it in Rust whatever this page shows.
-                    primaryActionLabel={
-                      item.actionable && item.artifact.uninstall_blocked === null
-                        ? t("installed.uninstall")
-                        : undefined
-                    }
-                    onPrimaryAction={
-                      !item.actionable || item.artifact.uninstall_blocked !== null
-                        ? undefined
-                        : () =>
-                            setUninstallTarget({
-                              request: {
-                                kind: "Uninstall",
-                                instance_id: item.artifact.key.instance_id,
-                                artifact_kind: item.artifact.key.kind,
-                                name: item.artifact.key.name,
-                              },
-                              displayName: item.artifact.display_name,
-                            })
-                    }
-                  />
-                )}
-              </div>
+              <SourceNoticeLine
+                key={`${instance.id}:untested`}
+                variant="info"
+                title={title}
+                description={t("installed.unverifiedVersionDetail")}
+                detailsLabel={t("common.details")}
+                detailsAriaLabel={t("common.detailsLabel", { title })}
+              />
             );
           })}
         </div>
+      ) : null}
+      {/* Virtualized: a Mac with Homebrew's components unfolded lists
+          hundreds of rows. */}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {items.length === 0 ? (
+          <p className="px-3 py-10 text-center text-body text-muted">
+            {needle !== ""
+              ? t("installed.noMatches", { query: query.trim() })
+              : t("emptyStates.nothingInstalled.title")}
+          </p>
+        ) : (
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const item = items[virtualRow.index];
+              return (
+                // No fixed height on the slot: each reports its real
+                // height back through `measureElement` instead.
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  data-list-slot=""
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {item.type === "heading" ? (
+                    <h2 className="flex items-center gap-2 px-3 pb-1.5 pt-4 text-body font-semibold text-foreground">
+                      <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
+                      {item.label}{" "}
+                      <span className="font-normal tabular-nums text-muted">{item.count}</span>
+                    </h2>
+                  ) : item.type === "fold" ? (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        aria-expanded={item.expanded}
+                        onClick={() => toggleDependencies(item.instance.id)}
+                        className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        <ChevronIcon
+                          size={14}
+                          className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
+                        />
+                        {t(item.expanded ? "installed.hideDependencies" : "installed.showDependencies", {
+                          count: item.count,
+                        })}{" "}
+                        {mixed ? (
+                          <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted">
+                            {item.label}
+                          </span>
+                        ) : null}
+                      </button>
+                    </div>
+                  ) : (
+                    toolRow(item.artifact, item.instance, item.label)
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       {uninstallTarget ? (
         <UninstallDialog
@@ -447,11 +929,12 @@ export function InstalledPage() {
           displayName={uninstallTarget.displayName}
           onSubmitted={(opId) => {
             setUninstallTarget(null);
-            setFocusedOpId(opId);
-            setDrawerOpen(true);
+            openLog(opId);
           }}
         />
       ) : null}
+      <UpdateConfirmDialog confirm={confirm} />
+      {details !== undefined && detailsInstance !== undefined ? detailsDrawer(details, detailsInstance) : null}
     </div>
   );
 }

@@ -23,10 +23,13 @@ export const SOURCE_AVATAR_CLASSES: Record<string, string> = {
 const UNKNOWN_SOURCE_CLASSES = "bg-muted text-white";
 
 /**
- * `sm`, 24px: a tile's or a list's small mark. `md`, 32px: a tool's row
- * (`ToolRow`) and the Overview's tiles. Whole class names, for Tailwind.
+ * `xs`, 16px: a source's mark inside a chip, such as the Installed page's
+ * filters. `sm`, 24px: a tile's or a list's small mark. `md`, 32px: a
+ * tool's row (`ToolRow`) and the Overview's tiles. Whole class names, for
+ * Tailwind.
  */
 const SIZE_CLASSES = {
+  xs: "h-4 w-4 rounded-[5px] text-[10px] leading-none",
   sm: "h-6 w-6 rounded-[7px] text-small",
   md: "h-8 w-8 rounded-[9px] text-body",
 } as const;

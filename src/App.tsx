@@ -18,12 +18,16 @@ function App() {
   const { t } = useTranslation();
   const page = useUiStore((s) => s.page);
   const setPage = useUiStore((s) => s.setPage);
+  const openInstalled = useUiStore((s) => s.openInstalled);
   useOperationEvents();
   useStartupRefresh();
 
   return (
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
-      <Sidebar page={page} onSelectPage={setPage} />
+      {/* The sidebar's Installed opens the page on everything installed,
+          which is what its count counts; an Overview tile opens it on one
+          source (`openInstalled`). */}
+      <Sidebar page={page} onSelectPage={(p) => (p === "installed" ? openInstalled(null) : setPage(p))} />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex min-h-0 flex-1 flex-col">
           {/* Outside `SnapshotStatus`, so the title and Check again stay

@@ -1,13 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
+import { useUiStore } from "../store/ui";
+import i18n from "../i18n";
 import type {
   InstalledArtifact,
+  ManagerInstance,
   OpRequest,
+  OpSummary,
   Settings,
   Snapshot,
   UpdateCandidate,
@@ -15,22 +19,22 @@ import type {
 
 const mockInvoke = vi.mocked(invoke);
 
+const brew: ManagerInstance = {
+  id: "brew:/opt/homebrew",
+  adapter_id: "brew",
+  exe_path: "/opt/homebrew/bin/brew",
+  prefix: "/opt/homebrew",
+  scope: "User",
+  version: "7.0.3",
+  status: { unavailable: null, notes: [] },
+  unverified_version: null,
+  read_only_reason: null,
+};
+
 const snapshot: Snapshot = {
   generation: 1,
   detect: "Found",
-  instances: [
-    {
-      id: "brew:/opt/homebrew",
-      adapter_id: "brew",
-      exe_path: "/opt/homebrew/bin/brew",
-      prefix: "/opt/homebrew",
-      scope: "User",
-      version: "7.0.3",
-      status: { unavailable: null, notes: [] },
-      unverified_version: null,
-      read_only_reason: null,
-    },
-  ],
+  instances: [brew],
   artifacts: [
     {
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
@@ -83,24 +87,23 @@ const settings: Settings = {
   include_self_updating: false,
 };
 
-// One pip instance with one package: row 0 is the group header plus the
-// read-only SourceNotice, row 1 is the package.
+const pip: ManagerInstance = {
+  id: "pip:/usr/bin/python3",
+  adapter_id: "pip",
+  exe_path: "/usr/bin/python3",
+  prefix: "/usr",
+  scope: "User",
+  version: "26.2.1",
+  status: { unavailable: null, notes: [] },
+  unverified_version: null,
+  read_only_reason: "ByDesign",
+};
+
+// One pip instance with one package.
 const pipSnapshot: Snapshot = {
   generation: 1,
   detect: "Found",
-  instances: [
-    {
-      id: "pip:/usr/bin/python3",
-      adapter_id: "pip",
-      exe_path: "/usr/bin/python3",
-      prefix: "/usr",
-      scope: "User",
-      version: "26.2.1",
-      status: { unavailable: null, notes: [] },
-      unverified_version: null,
-      read_only_reason: "ByDesign",
-    },
-  ],
+  instances: [pip],
   artifacts: [
     {
       key: { instance_id: "pip:/usr/bin/python3", kind: "Package", name: "requests" },
@@ -126,46 +129,125 @@ const pipSnapshot: Snapshot = {
   errors: [],
 };
 
-// Heights a row reports to the virtualizer. `rowHeights` lets one test make a
-// single row taller than the rest, which is how the SourceNotice case is
-// exercised; every other row falls back to DEFAULT_ROW_HEIGHT.
+const claudeInstance: ManagerInstance = {
+  id: "standalone-claude",
+  adapter_id: "standalone-claude",
+  exe_path: "/Users/someone/.local/bin/claude",
+  prefix: "/Users/someone/.local/share/claude",
+  scope: "User",
+  version: "2.1.281",
+  status: { unavailable: null, notes: [] },
+  unverified_version: null,
+  read_only_reason: null,
+};
+
+const claudeArtifact: InstalledArtifact = {
+  key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
+  display_name: "Claude Code",
+  version: "2.1.281",
+  reason: "Requested",
+  description: null,
+  homepage: "https://code.claude.com/docs/en/setup",
+  size_bytes: null,
+  installed_at: null,
+  path: "/Users/someone/.local/share/claude/versions/2.1.281",
+  auto_updates: true,
+  uninstall_blocked: null,
+};
+
+const OLLAMA = "ollama:http://127.0.0.1:11434";
+const ollama: ManagerInstance = {
+  id: OLLAMA,
+  adapter_id: "ollama",
+  exe_path: "/usr/local/bin/ollama",
+  prefix: "/usr/local",
+  scope: "User",
+  version: "0.34.1",
+  status: { unavailable: null, notes: [] },
+  unverified_version: null,
+  read_only_reason: null,
+};
+
+/** A Homebrew formula named `name`, with `over`'s fields. */
+function formula(name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact {
+  return {
+    ...snapshot.artifacts[0],
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
+    display_name: name,
+    description: `${name} blurb`,
+    ...over,
+  };
+}
+
+// What the backend answers. Each test sets what it needs; `plan_operation`
+// issues a plan for whatever it is asked, and `submit_operation` starts
+// operation 7.
+let served: Snapshot;
+let servedSettings: Settings;
+let operations: OpSummary[];
+
+// Heights a slot reports to the virtualizer. `rowHeights` lets one test
+// make a single slot taller than the rest; every other one falls back to
+// DEFAULT_ROW_HEIGHT, and the scroll container is VIEWPORT tall.
 const DEFAULT_ROW_HEIGHT = 56;
 let rowHeights: Record<number, number> = {};
+let viewport = 600;
+
+function issuedPlan(request: OpRequest, affected: string[] = []) {
+  return {
+    id: "1",
+    plan: {
+      request,
+      action: {
+        Command: {
+          program: "/opt/homebrew/bin/brew",
+          args: [request.kind === "Uninstall" ? "uninstall" : "upgrade", "--formula", request.name],
+          env: [],
+        },
+      },
+      needs_password: false,
+      locks: ["brew:/opt/homebrew"],
+      cancel_policy: "KillThenReconcile",
+      warnings: [],
+      affected,
+      timeout_secs: 1800,
+    },
+    issued_at: 1758000000,
+  };
+}
+
+let planAffected: string[];
 
 beforeEach(() => {
   mockInvoke.mockReset();
+  served = snapshot;
+  servedSettings = settings;
+  operations = [];
   rowHeights = {};
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    width: 800,
-    height: 600,
-    top: 0,
-    left: 0,
-    bottom: 600,
-    right: 800,
-    x: 0,
-    y: 0,
-    toJSON: () => {},
-  } as DOMRect);
-  // @tanstack/react-virtual measures both its scroll container (virtual-core's
-  // `getRect`) and each individual row (`measureElement`) through offsetWidth /
-  // offsetHeight, not getBoundingClientRect. jsdom hardcodes both offset
-  // properties to 0 with no layout engine behind them, so without this the
-  // virtualizer sees a zero-size viewport and renders no rows at all,
-  // regardless of the getBoundingClientRect stub above. Deviation from the
-  // brief's transcribed test, recorded in the task report. The rows are the
+  viewport = 600;
+  planAffected = [];
+  // @tanstack/react-virtual measures both its scroll container and each
+  // slot through offsetWidth / offsetHeight, which jsdom hardcodes to 0
+  // with no layout engine behind them; without these the virtualizer sees
+  // a zero-size viewport and renders no rows at all. The slots are the
   // elements carrying `data-index`; everything else, the scroll container
-  // included, gets the viewport height.
+  // included, gets the viewport's height.
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
     const index = this.getAttribute("data-index");
-    if (index === null) return 600;
+    if (index === null) return viewport;
     return rowHeights[Number(index)] ?? DEFAULT_ROW_HEIGHT;
   });
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
-  mockInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "get_snapshot") return Promise.resolve(snapshot);
-    if (cmd === "get_settings") return Promise.resolve(settings);
+  mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+    if (cmd === "get_snapshot") return Promise.resolve(served);
+    if (cmd === "get_settings") return Promise.resolve(servedSettings);
+    if (cmd === "list_operations") return Promise.resolve(operations);
+    if (cmd === "plan_operation") {
+      return Promise.resolve(issuedPlan((args as { request: OpRequest }).request, planAffected));
+    }
+    if (cmd === "submit_operation") return Promise.resolve(7);
     return Promise.resolve(undefined);
   });
 });
@@ -174,78 +256,120 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// The list's row for `name` -- the name as the row shows it.
+function rowOf(name: string): HTMLElement {
+  const rows = screen
+    .getAllByText(name, { selector: "[data-tool-row] p" })
+    .map((element) => element.closest("[data-tool-row]"));
+  if (rows.length !== 1 || !(rows[0] instanceof HTMLElement)) {
+    throw new Error(`expected one row named ${name}, found ${rows.length}`);
+  }
+  return rows[0];
+}
+
+async function findRow(name: string): Promise<HTMLElement> {
+  await screen.findByText(name, { selector: "[data-tool-row] p" });
+  return rowOf(name);
+}
+
+// The names of the rows, top to bottom.
+function rowNames(): string[] {
+  return [...document.querySelectorAll("[data-tool-row]")].map(
+    (row) => row.querySelector("p")?.textContent ?? "",
+  );
+}
+
+// The words of a row's chips, in order.
+function chipsOf(row: HTMLElement): string[] {
+  const status = row.querySelector("[data-status]");
+  return status === null ? [] : [...status.children].map((chip) => chip.textContent ?? "");
+}
+
+// Opens the chip called `label` on `row`, and returns what it shows.
+function chipDetail(row: HTMLElement, label: string): HTMLElement {
+  const chip = within(row).getByRole("button", { name: label });
+  fireEvent.click(chip);
+  const panel = document.getElementById(chip.getAttribute("aria-controls") ?? "");
+  if (panel === null) throw new Error(`the ${label} chip opened nothing`);
+  return panel;
+}
+
+// A paragraph whose whole text, across the `<code>` a command is set in,
+// is `text`.
+function wholeSentence(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "P" && element.textContent === text;
+}
+
+// Presses `name`'s row itself, and returns the drawer that opens.
+async function openDetails(name: string): Promise<HTMLElement> {
+  const row = await findRow(name);
+  fireEvent.click(within(row).getByRole("button", { name: `Details: ${name}` }));
+  return screen.findByRole("dialog", { name });
+}
+
 describe("InstalledPage", () => {
-  it("shows the requested artifact and collapses the dependency behind a toggle", async () => {
+  it("shows the requested artifact and folds the one other software brought in into a line", async () => {
     const { findByText, queryByText, getByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
     expect(queryByText("glib")).not.toBeInTheDocument();
-    expect(
-      getByRole("button", { name: "1 component installed by other software" }),
-    ).toBeInTheDocument();
+    expect(getByRole("button", { name: /^1 more component came with other software/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
-  it("reveals the dependency once the toggle is clicked", async () => {
-    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
+  it("unfolds the component under its line, and folds it back", async () => {
+    const { findByText, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    fireEvent.click(getByRole("button", { name: "1 component installed by other software" }));
-
+    fireEvent.click(getByRole("button", { name: /^1 more component came with other software/ }));
     await findByText("glib");
+    // Under its line, which stays to fold it back up.
+    const fold = getByRole("button", { name: /^Hide 1 component/ });
+    expect(fold).toHaveAttribute("aria-expanded", "true");
+    expect(rowNames()).toEqual(["jq", "glib"]);
+    expect(
+      fold.compareDocumentPosition(rowOf("glib")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(fold);
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
   });
 
-  it("filters rows by the query box", async () => {
-    const { findByText, queryByText, getByLabelText } = renderWithProviders(<InstalledPage />);
+  it("filters rows by the search box, by the name a row shows or the package's own, and says when nothing matches", async () => {
+    served = {
+      ...snapshot,
+      artifacts: [
+        ...snapshot.artifacts,
+        formula("visual-studio-code", {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "visual-studio-code" },
+          display_name: "Microsoft Visual Studio Code",
+        }),
+      ],
+    };
+    const { findByText, queryByText, getByRole, getByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    fireEvent.change(getByLabelText("Filter installed items"), {
-      target: { value: "nonexistent" },
-    });
+    const search = getByRole("searchbox", { name: "Search installed items" });
+    expect(search).toHaveAttribute("placeholder", "Search");
 
-    // Controller's binding note: interactions that assert on DOM changes use
-    // fireEvent + findBy/waitFor, never a synchronous assertion right after
-    // the interaction. The state path (Zustand setQuery -> synchronous
-    // re-render) makes this unlikely to flake today, but wrapping it in
-    // waitFor keeps the test robust if the query update ever becomes async
-    // (e.g. a debounced filter).
+    fireEvent.change(search, { target: { value: "VISUAL-studio" } });
+    await waitFor(() => expect(rowNames()).toEqual(["Microsoft Visual Studio Code"]));
+
+    fireEvent.change(search, { target: { value: "nonexistent" } });
     await waitFor(() => expect(queryByText("jq")).not.toBeInTheDocument());
+    expect(getByText("Nothing matches “nonexistent”")).toBeInTheDocument();
   });
 
-  it("opens the uninstall dialog and plans it when the row's primary button is clicked", async () => {
-    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "get_snapshot") return Promise.resolve(snapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      if (cmd === "plan_operation") {
-        return Promise.resolve({
-          id: 1,
-          plan: {
-            request: (args as { request: OpRequest }).request,
-            action: {
-              Command: {
-                program: "/opt/homebrew/bin/brew",
-                args: ["uninstall", "--formula", "jq"],
-                env: [],
-              },
-            },
-            needs_password: false,
-            locks: ["brew:/opt/homebrew"],
-            cancel_policy: "KillThenReconcile",
-            warnings: [],
-            affected: [],
-            timeout_secs: 1800,
-          },
-          issued_at: 1758000000,
-        });
-      }
-      return Promise.resolve(undefined);
-    });
+  it("opens the uninstall dialog and plans it when the row's Uninstall is pressed", async () => {
+    const { findByRole } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
+    const jq = await findRow("jq");
+    fireEvent.click(within(jq).getByRole("button", { name: "Uninstall" }));
 
-    await findByText("jq");
-    fireEvent.click(getByRole("button", { name: "Uninstall" }));
-
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("dialog", { name: "Uninstall jq?" });
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Uninstall",
@@ -255,267 +379,142 @@ describe("InstalledPage", () => {
       },
     });
     await within(dialog).findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    // The row's button, not the row: no details drawer under the dialog.
+    expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull();
   });
 
   it("disables the dialog's confirm button when the plan reports dependents", async () => {
-    mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "get_snapshot") return Promise.resolve(snapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      if (cmd === "plan_operation") {
-        return Promise.resolve({
-          id: 1,
-          plan: {
-            request: (args as { request: OpRequest }).request,
-            action: {
-              Command: {
-                program: "/opt/homebrew/bin/brew",
-                args: ["uninstall", "--formula", "jq"],
-                env: [],
-              },
-            },
-            needs_password: false,
-            locks: ["brew:/opt/homebrew"],
-            cancel_policy: "KillThenReconcile",
-            warnings: [],
-            affected: ["jq-cli-wrapper"],
-            timeout_secs: 1800,
-          },
-          issued_at: 1758000000,
-        });
-      }
-      return Promise.resolve(undefined);
-    });
+    planAffected = ["jq-cli-wrapper"];
+    const { findByRole } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getByRole, findByRole } = renderWithProviders(<InstalledPage />);
+    fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "Uninstall" }));
 
-    await findByText("jq");
-    fireEvent.click(getByRole("button", { name: "Uninstall" }));
-
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("dialog", { name: "Uninstall jq?" });
     await within(dialog).findByText("jq-cli-wrapper");
     expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("shows an unverified-version badge next to a source whose detected version is not verified", async () => {
-    const unverifiedSnapshot: Snapshot = {
-      ...snapshot,
-      instances: [{ ...snapshot.instances[0], unverified_version: "99.9.9" }],
-    };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(unverifiedSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
-
-    const { findByText } = renderWithProviders(<InstalledPage />);
+  it("says in a line that a source's version has not been tested, with why behind Details", async () => {
+    served = { ...snapshot, instances: [{ ...brew, unverified_version: "99.9.9" }] };
+    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    await findByText("Unverified version (99.9.9)");
+    // Named: the list is not grouped by source, so the line says whose.
+    await findByText("Homebrew 99.9.9 not tested");
+    const details = getByRole("button", { name: "Details: Homebrew 99.9.9 not tested" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Canager hasn't tested this version.",
+    );
   });
 
-  it("offers no Uninstall on a pinned package, and says how to release the pin", async () => {
+  it("offers no Uninstall on a pinned package, keeps its description, and says how to release the pin behind its chip", async () => {
     // `brew uninstall jq` refuses a pinned formula without `--force` and
     // still exits 0 (`UninstallBlocked::Pinned` in
     // crates/canager-core/src/model.rs), so the row must not offer it. jq
     // is up to date: the pin comes from the inventory, not from an update.
     // The cask shows the `--cask` form; the unpinned formula keeps its button.
-    const pinnedSnapshot: Snapshot = {
+    served = {
       ...snapshot,
       artifacts: [
         { ...snapshot.artifacts[0], uninstall_blocked: "Pinned" },
-        {
-          ...snapshot.artifacts[0],
+        formula("onyx", {
           key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" },
           display_name: "OnyX",
           description: "Verify system files structure",
           uninstall_blocked: "Pinned",
-        },
-        {
-          ...snapshot.artifacts[0],
-          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "wget" },
-          display_name: "wget",
-          description: "Internet file retriever",
-        },
+        }),
+        formula("wget", { description: "Internet file retriever" }),
       ],
       updates: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(pinnedSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { getAllByRole } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getAllByRole, getByText, queryByText } = renderWithProviders(
-      <InstalledPage />,
-    );
-
-    await findByText("wget");
+    await findRow("wget");
     // Only wget's.
     expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(within(rowOf("wget")).getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
+    const jq = rowOf("jq");
+    // The reason is behind the chip; the row keeps saying what jq is.
+    expect(within(jq).getByText("Lightweight and flexible command-line JSON processor")).toBeInTheDocument();
+    const detail = chipDetail(jq, "Pinned");
     expect(
-      getByText(
-        (_content, element) =>
-          element?.tagName === "P" &&
-          element.textContent ===
-            "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal to release the pin; Canager will offer to uninstall it the next time it checks, which at the latest is the next time you start Canager.",
+      within(detail).getByText(
+        wholeSentence("It's pinned in Homebrew. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal."),
       ),
     ).toBeInTheDocument();
-    expect(getByText("/opt/homebrew/bin/brew unpin jq").tagName).toBe("CODE");
-    expect(getByText("/opt/homebrew/bin/brew unpin --cask onyx").tagName).toBe("CODE");
-    // The explanation replaces the blurb; the unpinned row keeps its own.
-    expect(queryByText("Lightweight and flexible command-line JSON processor")).toBeNull();
-    expect(getByText("Internet file retriever")).toBeInTheDocument();
+    expect(within(detail).getByText("/opt/homebrew/bin/brew unpin jq").tagName).toBe("CODE");
+    expect(
+      within(chipDetail(rowOf("OnyX"), "Pinned")).getByText("/opt/homebrew/bin/brew unpin --cask onyx").tagName,
+    ).toBe("CODE");
+    expect(within(rowOf("wget")).getByText("Internet file retriever")).toBeInTheDocument();
   });
 
-  it("promises Uninstall back on a silent source's pinned row only once the source answers", async () => {
+  it("promises nothing about when Uninstall comes back on a silent source's pinned row", async () => {
     // A row carried forward from a Homebrew that did not answer has no
     // Uninstall button until Homebrew answers a check again, pinned or
-    // not (`actionable` needs `isAvailable`). "The next time it checks,
-    // which at the latest is the next time you start Canager" would not
-    // hold while Homebrew stays silent.
-    const silentSnapshot: Snapshot = {
+    // not. So the pin's sentence says what stands in the way and what
+    // removes it, and nothing about when the button returns.
+    served = {
       ...snapshot,
-      instances: [
-        { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
-      ],
+      instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }],
       artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }],
       updates: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(silentSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { queryAllByRole } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getByText, queryAllByRole, queryByText } = renderWithProviders(
-      <InstalledPage />,
-    );
-
-    await findByText("jq");
+    const jq = await findRow("jq");
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
-    expect(
-      getByText(
-        (_content, element) =>
-          element?.tagName === "P" &&
-          element.textContent ===
-            "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager doesn't offer to uninstall it. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal to release the pin; after that, Canager will offer to uninstall it the next time it checks and Homebrew answers.",
-      ),
-    ).toBeInTheDocument();
-    expect(getByText("/opt/homebrew/bin/brew unpin jq").tagName).toBe("CODE");
-    expect(queryByText(/next time you start Canager/)).toBeNull();
+    const detail = chipDetail(jq, "Pinned");
+    expect(detail).toHaveTextContent(
+      "It's pinned in Homebrew. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal.",
+    );
+    expect(detail.textContent).not.toMatch(/next time|at the latest|answers/);
   });
 
-  it("offers no Uninstall on a tool with no safe uninstall method, and says so without a command", async () => {
+  it("offers no Uninstall on a tool with no safe uninstall method, and says so behind its chip without a command", async () => {
     // `UninstallBlocked::NoSafeMethod` (phase 4): the tool has no
     // uninstall command and Canager has no safe way yet to remove its
-    // files, so the row explains itself in place of its blurb and hides
-    // the button -- and, unlike a pin, sets no command as code, because
-    // there is nothing to run first. `Session::issue_plan` refuses it in
-    // Rust too.
-    const claudeSnapshot: Snapshot = {
+    // files, so the row hides the button and its chip says why -- and,
+    // unlike a pin, sets no command as code, because there is nothing to
+    // run first. `Session::issue_plan` refuses it in Rust too.
+    served = {
       ...snapshot,
-      instances: [
-        {
-          id: "standalone-claude",
-          adapter_id: "standalone-claude",
-          exe_path: "/Users/someone/.local/bin/claude",
-          prefix: "/Users/someone/.local/share/claude",
-          scope: "User",
-          version: "2.1.281",
-          status: { unavailable: null, notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
-      artifacts: [
-        {
-          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
-          display_name: "Claude Code",
-          version: "2.1.281",
-          reason: "Requested",
-          description: null,
-          homepage: "https://code.claude.com/docs/en/setup",
-          size_bytes: null,
-          installed_at: null,
-          path: "/Users/someone/.local/share/claude/versions/2.1.281",
-          auto_updates: true,
-          uninstall_blocked: "NoSafeMethod",
-        },
-      ],
+      instances: [claudeInstance],
+      artifacts: [{ ...claudeArtifact, uninstall_blocked: "NoSafeMethod" }],
       updates: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(claudeSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getByText, queryAllByRole, container } = renderWithProviders(
-      <InstalledPage />,
-    );
-
-    await findByText("Can't uninstall here");
+    const claude = await findRow("Claude Code");
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
-    expect(
-      getByText(
-        "Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.",
-      ),
-    ).toBeInTheDocument();
+    expect(chipDetail(claude, "Uninstall manually")).toHaveTextContent(
+      "Claude Code has no uninstall command, and Canager can't yet remove its files safely. Follow Claude Code's official documentation to uninstall it.",
+    );
     expect(container.querySelector("code")).toBeNull();
   });
 
-  it("shows the standalone summary alongside its real uninstall refusal", async () => {
+  it("shows the standalone summary beside its chip, and a Homebrew package with no description what Homebrew says it is", async () => {
     // A standalone artifact carries `description: null` (the line has to
     // be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a
-    // Homebrew package with no blurb says what Homebrew says it is.
-    const mixed: Snapshot = {
+    // Homebrew package with no description says what Homebrew says it is.
+    served = {
       ...snapshot,
-      instances: [
-        snapshot.instances[0],
-        {
-          id: "standalone-claude",
-          adapter_id: "standalone-claude",
-          exe_path: "/Users/someone/.local/bin/claude",
-          prefix: "/Users/someone/.local/share/claude",
-          scope: "User",
-          version: "2.1.281",
-          status: { unavailable: null, notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+      instances: [brew, claudeInstance],
       artifacts: [
         { ...snapshot.artifacts[0], description: null },
-        {
-          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
-          display_name: "Claude Code",
-          version: "2.1.281",
-          reason: "Requested",
-          description: null,
-          homepage: "https://code.claude.com/docs/en/setup",
-          size_bytes: null,
-          installed_at: null,
-          path: "/Users/someone/.local/share/claude/versions/2.1.281",
-          auto_updates: true,
-          uninstall_blocked: "NoSafeMethod",
-        },
+        { ...claudeArtifact, uninstall_blocked: "NoSafeMethod" },
       ],
       updates: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(mixed);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { queryAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, getByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
-
-    expect(await findByText("Anthropic's AI coding assistant")).toBeInTheDocument();
-    expect(getByText("Homebrew package")).toBeInTheDocument();
-    expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.")).toBeInTheDocument();
-    // Only the Homebrew artifact may offer Uninstall: this Claude artifact
-    // is marked NoSafeMethod, as a recipe without an uninstall method's
-    // is, and must still show both sentences.
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
+    expect(chipsOf(claude)).toContain("Uninstall manually");
+    expect(within(rowOf("jq")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(queryByText(/No description/)).toBeNull();
+    // Only the Homebrew artifact may offer Uninstall.
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
   });
 
@@ -525,69 +524,78 @@ describe("InstalledPage", () => {
     // summary and an Uninstall button like any other package's, and
     // `Session::issue_plan` lets the plan through (`blocked_uninstall` in
     // session/plans.rs refuses only an artifact that carries one).
-    const claudeSnapshot: Snapshot = {
+    served = { ...snapshot, instances: [claudeInstance], artifacts: [claudeArtifact], updates: [] };
+    const { getAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
+
+    const claude = await findRow("Claude Code");
+    expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
+    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(queryByText("Uninstall manually")).toBeNull();
+  });
+
+  it("says what each row's source says it is when the source gave none, in both languages", async () => {
+    // npm's and Ollama's inventories never carry a description, and some
+    // casks have none: each row says what its source says it is -- an
+    // app's cask is an app, a font's is not called one -- never "No
+    // description".
+    served = {
       ...snapshot,
-      instances: [
-        {
-          id: "standalone-claude",
-          adapter_id: "standalone-claude",
-          exe_path: "/Users/someone/.local/bin/claude",
-          prefix: "/Users/someone/.local/share/claude",
-          scope: "User",
-          version: "2.1.281",
-          status: { unavailable: null, notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+      instances: [brew, { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" }, ollama],
       artifacts: [
-        {
-          key: { instance_id: "standalone-claude", kind: "Binary", name: "claude" },
-          display_name: "Claude Code",
-          version: "2.1.281",
-          reason: "Requested",
+        formula("iterm2", {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" },
+          display_name: "iTerm2",
           description: null,
-          homepage: "https://code.claude.com/docs/en/setup",
-          size_bytes: null,
-          installed_at: null,
-          path: "/Users/someone/.local/share/claude/versions/2.1.281",
-          auto_updates: true,
-          uninstall_blocked: null,
-        },
+          path: "/Applications/iTerm.app",
+        }),
+        formula("font-jetbrains-mono", {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "font-jetbrains-mono" },
+          display_name: "JetBrains Mono",
+          description: null,
+        }),
+        formula("prettier", {
+          key: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "prettier" },
+          description: null,
+        }),
+        formula("llama3.2:3b", {
+          key: { instance_id: OLLAMA, kind: "Model", name: "llama3.2:3b" },
+          description: null,
+        }),
       ],
       updates: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(claudeSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
+    const { queryByText } = renderWithProviders(<InstalledPage />);
+
+    expect(within(await findRow("iTerm2")).getByText("App installed with Homebrew")).toBeInTheDocument();
+    expect(within(rowOf("JetBrains Mono")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
+    expect(within(rowOf("llama3.2:3b")).getByText("Ollama model")).toBeInTheDocument();
+    expect(queryByText("No description")).toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
     });
-
-    const { findByText, getAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
-
-    expect(await findByText("Anthropic's AI coding assistant")).toBeInTheDocument();
-    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
-    expect(queryByText("Can't uninstall here")).toBeNull();
+    try {
+      expect(within(rowOf("iTerm2")).getByText("用 Homebrew 安装的 App")).toBeInTheDocument();
+      expect(within(rowOf("prettier")).getByText("npm 软件包")).toBeInTheDocument();
+      expect(within(rowOf("llama3.2:3b")).getByText("Ollama 模型")).toBeInTheDocument();
+      expect(queryByText("暂无简介")).toBeNull();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
   });
 
-  describe("the Update available badge", () => {
+  describe("the update chips", () => {
     // One snapshot with one package per reason the Updates page may list
-    // an update and not offer it, plus the ones it does offer. The badge used
-    // to say "Update available" for every entry in `snapshot.updates`, and
-    // then still for a source that did not answer (a stopped Ollama whose
-    // update was carried forward), which has no Update button either.
-    const OLLAMA = "ollama:http://127.0.0.1:11434";
-    const artifact = (name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact => ({
-      ...snapshot.artifacts[0],
-      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
-      display_name: name,
-      description: `${name} blurb`,
-      ...over,
-    });
-    const update = (
-      name: string,
-      over: Partial<UpdateCandidate> = {},
-    ): UpdateCandidate => ({
+    // an update and not offer it, plus the ones it does offer. The row
+    // used to say "Update available" for every entry in `snapshot.updates`,
+    // and then still for a source that did not answer (a stopped Ollama
+    // whose update was carried forward), which has no Update button either.
+    const artifact = (name: string, over: Partial<InstalledArtifact> = {}): InstalledArtifact =>
+      formula(name, over);
+    const update = (name: string, over: Partial<UpdateCandidate> = {}): UpdateCandidate => ({
       ...snapshot.updates[0],
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
       ...over,
@@ -620,23 +628,9 @@ describe("InstalledPage", () => {
         artifact("chromium", { key: latestCaskKey, version: "latest" }),
       ],
       instances: [
-        ...snapshot.instances,
-        {
-          ...snapshot.instances[0],
-          id: "pipx",
-          adapter_id: "pipx",
-          exe_path: "/opt/homebrew/bin/pipx",
-          prefix: "/Users/a/.local",
-        },
-        {
-          ...snapshot.instances[0],
-          id: OLLAMA,
-          adapter_id: "ollama",
-          exe_path: "/usr/local/bin/ollama",
-          prefix: "/Users/a/.ollama",
-          version: "0.13.0",
-          status: { unavailable: "NotRunning", notes: [] },
-        },
+        brew,
+        { ...brew, id: "pipx", adapter_id: "pipx", exe_path: "/opt/homebrew/bin/pipx", prefix: "/Users/a/.local" },
+        { ...ollama, status: { unavailable: "NotRunning", notes: [] } },
       ],
       updates: [
         update("offered"),
@@ -685,60 +679,54 @@ describe("InstalledPage", () => {
     };
 
     beforeEach(() => {
-      mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === "get_snapshot") return Promise.resolve(mixed);
-        if (cmd === "get_settings") return Promise.resolve(mixedSettings);
-        return Promise.resolve(undefined);
-      });
-      // Fifteen slots of 56px -- three headings and twelve rows -- are
-      // taller than the 600px viewport the outer `beforeEach` gives the
-      // list, and these tests read every row's badge, so the list gets a
-      // viewport that holds them all.
-      vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
-        this: HTMLElement,
-      ) {
-        return this.getAttribute("data-index") === null ? 1200 : DEFAULT_ROW_HEIGHT;
-      });
+      served = mixed;
+      servedSettings = mixedSettings;
+      // Twelve rows of 56px are taller than a 600px viewport, and these
+      // tests read every row's chips.
+      viewport = 1200;
     });
 
-    /** The badge on `name`'s row: the row is the name's grandparent. */
-    function badgeOf(container: HTMLElement, name: string): string | null | undefined {
-      const nameEl = within(container).getByText(name, { selector: "p" });
-      return nameEl.parentElement?.parentElement?.querySelector("span.rounded-full")?.textContent;
-    }
+    it("says Update available only for an update the Updates page offers, and why every other row has none", async () => {
+      const { container } = renderWithProviders(<InstalledPage />);
+      await findRow("current");
 
-    it("says Update available only for an update the Updates page offers", async () => {
-      const { container, findByText } = renderWithProviders(<InstalledPage />);
-      await findByText("current");
-
-      expect(badgeOf(container, "offered")).toBe("Update available");
-      expect(badgeOf(container, "pinned-outdated")).toBe("Pinned");
-      expect(badgeOf(container, "pipx-pinned")).toBe("Pinned");
-      expect(badgeOf(container, "unchecked")).toBe("Can't check");
-      expect(badgeOf(container, "ignored")).toBe("Update reminders off");
+      expect(chipsOf(rowOf("offered"))).toEqual(["Update available"]);
+      expect(chipsOf(rowOf("pinned-outdated"))).toEqual(["Pinned"]);
+      expect(chipsOf(rowOf("pipx-pinned"))).toEqual(["Pinned"]);
+      expect(chipsOf(rowOf("unchecked"))).toEqual(["Can't check"]);
+      expect(chipsOf(rowOf("ignored"))).toEqual(["Reminders off"]);
       // The version the skip is about, which is what brings the reminder
       // back once the source offers another.
-      expect(badgeOf(container, "skipped")).toBe("Skipped 2.90.0");
-      expect(badgeOf(container, "skipped-before")).toBe("Update available");
+      expect(chipsOf(rowOf("skipped"))).toEqual(["Skipped 2.90.0"]);
+      expect(chipsOf(rowOf("skipped-before"))).toEqual(["Update available"]);
       // Pinned in Homebrew and up to date: still pinned, from the inventory.
-      expect(badgeOf(container, "pinned-current")).toBe("Pinned");
-      expect(badgeOf(container, "current")).toBe("Up to date");
+      expect(chipsOf(rowOf("pinned-current"))).toEqual(["Pinned", "Up to date"]);
+      expect(chipsOf(rowOf("current"))).toEqual(["Up to date"]);
       // Its source is not running, so there is no Update button for it.
-      expect(badgeOf(container, "stopped-model")).toBe("Newer version, can't update now");
+      expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't update now"]);
       // A model's skipped version is a digest, and no digest is printed.
-      expect(badgeOf(container, "skipped-model")).toBe("Newer build skipped");
+      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Newer build skipped"]);
       expect(container.textContent).not.toContain("sha256");
       // Not "Skipped latest": a skip of a cask every release of which is
       // offered as "latest" would never end, so it hides nothing.
-      expect(badgeOf(container, "chromium")).toBe("Update available");
+      expect(chipsOf(rowOf("chromium"))).toEqual(["Update available"]);
+      // Each "why" behind its chip.
+      expect(chipDetail(rowOf("stopped-model"), "Can't update now")).toHaveTextContent(
+        "Ollama isn't running. Start it, then check again.",
+      );
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      expect(chipDetail(rowOf("ignored"), "Reminders off")).toHaveTextContent(
+        "You won't be reminded about any update of this again. You can undo this in Settings.",
+      );
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
       const installed = renderWithProviders(<InstalledPage />);
-      await installed.findByText("current");
+      await findRow("current");
       const badged = mixed.artifacts
         .map((a) => a.display_name)
-        .filter((name) => badgeOf(installed.container, name) === "Update available");
+        .filter((name) => chipsOf(rowOf(name)).includes("Update available"))
+        .sort();
       installed.unmount();
 
       const updates = renderWithProviders(<UpdatesPage />);
@@ -766,277 +754,261 @@ describe("InstalledPage", () => {
       // so is the cask whose skip of "latest" hides nothing.
       expect(rowNamed("skipped")).toBeNull();
       expect(rowNamed("skipped-model")).toBeNull();
-      expect(badged).toEqual(["offered", "skipped-before", "chromium"]);
-      expect(offered).toEqual(badged);
+      expect(badged).toEqual(["chromium", "offered", "skipped-before"]);
+      expect(offered.sort()).toEqual(badged);
     });
   });
 
-  it("hides the uninstall button and shows a read-only note for pip rows", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(pipSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
+  describe("up to date (T1)", () => {
+    // 「已是最新」 says this check found no newer version. A source that did
+    // not answer, one whose check failed, and a Homebrew still updating its
+    // list or unable to have kept last round's rows and updates, which
+    // nobody checked this time: saying up to date over those is the lie
+    // the Updates page stopped telling.
+    const pipx: ManagerInstance = {
+      ...brew,
+      id: "pipx",
+      adapter_id: "pipx",
+      exe_path: "/opt/homebrew/bin/pipx",
+      prefix: "/opt/homebrew/bin",
+    };
+    const cargo: ManagerInstance = {
+      ...brew,
+      id: "cargo:/Users/a/.cargo",
+      adapter_id: "cargo",
+      exe_path: "/Users/a/.cargo/bin/cargo",
+      prefix: "/Users/a/.cargo",
+    };
+    const on = (instance: ManagerInstance, name: string): InstalledArtifact =>
+      formula(name, { key: { instance_id: instance.id, kind: "Tool", name } });
+
+    it("says it only where the row's source answered this check in full", async () => {
+      served = {
+        ...snapshot,
+        instances: [
+          brew,
+          { ...pipx, status: { unavailable: "NotResponding", notes: [] } },
+          cargo,
+          { ...ollama, status: { unavailable: "NotRunning", notes: [] } },
+        ],
+        artifacts: [on(brew, "answered"), on(pipx, "silent"), on(cargo, "failed"), on(ollama, "stopped")],
+        updates: [],
+        stale: true,
+        // Cargo answered, but reading what it has installed failed this
+        // round: its rows are last round's.
+        errors: [{ instance_id: cargo.id, message: "could not read ~/.cargo/.crates2.json" }],
+      };
+      renderWithProviders(<InstalledPage />);
+
+      expect(chipsOf(await findRow("answered"))).toEqual(["Up to date"]);
+      for (const name of ["silent", "failed", "stopped"]) {
+        expect(chipsOf(rowOf(name)), name).toEqual([]);
+      }
+      // The two that did not answer say so in their own line.
+      expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
+      expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });
 
-    const { findByText, queryByRole } = renderWithProviders(<InstalledPage />);
+    it.each([
+      ["IndexUpdating", "Homebrew is updating its software list"],
+      ["IndexMayBeStale", "Couldn't update Homebrew's software list"],
+    ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line) => {
+      served = { ...snapshot, instances: [{ ...brew, status: { unavailable: null, notes: [note] } }], updates: [] };
+      const { queryByText } = renderWithProviders(<InstalledPage />);
 
-    await findByText("requests");
+      expect(chipsOf(await findRow("jq"))).toEqual([]);
+      expect(queryByText("Up to date")).toBeNull();
+      expect(screen.getByText(line)).toBeInTheDocument();
+    });
+
+    it("says nothing about updates for a launcher left without its program: there was no version to check", async () => {
+      served = {
+        ...snapshot,
+        instances: [{ ...claudeInstance, status: { unavailable: null, notes: ["LauncherOnly"] } }],
+        artifacts: [{ ...claudeArtifact, version: "", path: null }],
+        updates: [],
+      };
+      renderWithProviders(<InstalledPage />);
+
+      expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
+      expect(screen.getByText("Claude Code's program files are missing")).toBeInTheDocument();
+    });
+  });
+
+  it("marks a read-only source's rows Read-only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {
+    served = pipSnapshot;
+    const { queryByRole, queryByText } = renderWithProviders(<InstalledPage />);
+
+    const requests = await findRow("requests");
     expect(queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
-    expect(await findByText("View only")).toBeInTheDocument();
+    expect(chipsOf(requests)).toEqual(["Read-only", "Up to date"]);
+    expect(chipDetail(requests, "Read-only")).toHaveTextContent(
+      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
+    );
+    // Its row says it; no line of its own at the top.
+    expect(queryByText("View only")).toBeNull();
   });
 
-  it("lets each row measure itself so a source notice cannot be overlapped by the row below it", async () => {
-    // A group header that carries a SourceNotice is a title line plus a
-    // banner -- taller than the flat estimate every row used to be pinned to.
-    // jsdom has no layout engine, so the height comes from the mock above;
-    // what this test checks is that the virtualizer *reads* it. Two things
-    // have to hold: the next row's offset follows the measured size, and no
-    // row carries a fixed inline height. With a fixed height the banner
-    // overflows its slot and the following row -- later in DOM order, so
-    // painted on top -- covers its tail, which for the Ollama notice is the
-    // "Open Ollama" button.
+  it("gives a root-owned npm prefix's rows npm's own way out, and no Uninstall", async () => {
+    // Read-only, like pip, but for a reason pip's copy would misdescribe:
+    // the tool can install and uninstall perfectly well, it just cannot
+    // write where this machine put it. The fix is a Node from Homebrew,
+    // and only for what is installed with it (T5); telling this user about
+    // pipx or uv is noise.
+    served = {
+      ...snapshot,
+      instances: [
+        {
+          ...brew,
+          id: "npm:/usr/local",
+          adapter_id: "npm",
+          exe_path: "/usr/local/bin/npm",
+          prefix: "/usr/local",
+          version: "12.0.2",
+          read_only_reason: "PrefixNotWritable",
+        },
+      ],
+      artifacts: [
+        formula("typescript", {
+          key: { instance_id: "npm:/usr/local", kind: "Package", name: "typescript" },
+          description: "TypeScript is a language for application scale JavaScript development",
+        }),
+      ],
+      updates: [],
+    };
+    const { queryAllByRole } = renderWithProviders(<InstalledPage />);
+
+    const detail = chipDetail(await findRow("typescript"), "Read-only");
+    expect(detail).toHaveTextContent(
+      "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
+    );
+    expect(detail.textContent).not.toMatch(/pipx|uv/);
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+  });
+
+  it("lets each slot measure itself, so a heading or a row is never overlapped by the one below it", async () => {
+    // A slot's real height is only known once it is drawn: a heading, a
+    // row, a row whose chip wraps. jsdom has no layout engine, so the
+    // height comes from the mock above; what this test checks is that the
+    // virtualizer *reads* it. The next slot's offset follows the measured
+    // size, and no slot carries a fixed inline height -- with one, a taller
+    // slot would overflow and the next one, later in DOM order and so
+    // painted on top, would cover its tail.
     rowHeights[0] = 128;
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(pipSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { container } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, container } = renderWithProviders(<InstalledPage />);
+    await findRow("jq");
+    const slotAt = (index: number) => container.querySelector<HTMLElement>(`[data-index="${index}"]`);
 
-    await findByText("View only");
-    const rowAt = (index: number) =>
-      container.querySelector<HTMLElement>(`[data-index="${index}"]`);
-
-    await waitFor(() => expect(rowAt(1)?.style.transform).toBe("translateY(128px)"));
-    expect(rowAt(0)?.style.height).toBe("");
-    expect(rowAt(1)?.style.height).toBe("");
+    await waitFor(() => expect(slotAt(1)?.style.transform).toBe("translateY(128px)"));
+    expect(slotAt(0)?.style.height).toBe("");
+    expect(slotAt(1)?.style.height).toBe("");
   });
 
-  it("names a silent source and says Canager cannot reach it, instead of dropping its group", async () => {
+  it("names a silent source in a line at the top, and says it can't show what it has when it has no rows", async () => {
     // brew, npm, uv, pipx and cargo can all report `NotResponding`,
     // and it means the same thing for all five: the CLI is on PATH but
     // Canager could not talk to it. The backend keeps such an instance in
     // `snapshot.instances` precisely so the UI can say so -- it pushes no
-    // error, so this notice is the only place the user can learn that their
+    // error, so this line is the only place the user can learn that their
     // global npm packages are missing from the list rather than gone.
-    const silentNpmSnapshot: Snapshot = {
+    served = {
       ...snapshot,
       instances: [
-        ...snapshot.instances,
+        brew,
         {
+          ...brew,
           id: "npm:/opt/homebrew/lib",
           adapter_id: "npm",
           exe_path: "/opt/homebrew/bin/npm",
           prefix: "/opt/homebrew/lib",
-          scope: "User",
           version: "11.2.0",
           status: { unavailable: "NotResponding", notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
         },
       ],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(silentNpmSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
-
-    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
+    const { findByText, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    expect(await findByText("npm isn't responding")).toBeInTheDocument();
+    const line = await findByText("npm isn't responding");
+    // Above the list, not in it.
+    expect(line.closest("[data-index]")).toBeNull();
+    const details = getByRole("button", { name: "Details: npm isn't responding" });
+    fireEvent.click(details);
     // Nothing was carried forward for npm -- and nothing ever is on the
     // first refresh after a launch, because the snapshot is in memory
-    // only (`Session::new` starts from `Snapshot::empty()`). The notice
-    // used to say "Below is what Canager saw last time" over an empty
-    // group, which for a source whose CLI simply fails is every launch,
-    // forever.
-    expect(
-      await findByText("npm didn't respond, so Canager can't show what it has installed."),
-    ).toBeInTheDocument();
+    // only (`Session::new` starts from `Snapshot::empty()`).
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "npm didn't respond, so Canager can't show what it has installed.",
+    );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
     expect(queryByText(/Reopening Canager/)).not.toBeInTheDocument();
   });
 
-  it("says what is listed is last time's answer when a silent source did carry rows forward", async () => {
-    // The other half of the same sentence. `refresh` keeps an unavailable
-    // source's last known artifacts, so once there has been a good
-    // refresh these rows are real and the user needs telling how old they
-    // are.
-    const silentBrewSnapshot: Snapshot = {
+  it("says what is listed for a silent source is from the last time it answered, when it has rows, a search or not", async () => {
+    // `refresh` keeps an unavailable source's last known artifacts, so
+    // once there has been a good refresh these rows are real and the user
+    // needs telling how old they are. A search that hides them does not
+    // make the source have none.
+    served = {
       ...snapshot,
-      instances: [
-        { ...snapshot.instances[0], status: { unavailable: "NotResponding", notes: [] } },
-      ],
+      instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(silentBrewSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
+    const { getByRole } = renderWithProviders(<InstalledPage />);
+
+    await findRow("jq");
+    fireEvent.change(getByRole("searchbox", { name: "Search installed items" }), {
+      target: { value: "nothing-like-it" },
     });
-
-    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
-
-    await findByText("jq");
-    expect(
-      await findByText(
-        "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
-      ),
-    ).toBeInTheDocument();
-    expect(queryByText(/can't show what it has installed/)).not.toBeInTheDocument();
+    const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
+    );
   });
 
-  it("gives a root-owned npm prefix its own notice and no Uninstall button", async () => {
-    // Read-only, like pip, but for a reason pip's copy would misdescribe:
-    // the tool can install and uninstall perfectly well, it just cannot
-    // write where this machine put it. The fix is to reinstall Node with
-    // Homebrew, and telling this user about pipx or uv is noise.
-    const readOnlyNpmSnapshot: Snapshot = {
-      generation: 1,
-      detect: "Found",
-      instances: [
-        {
-          id: "npm:/usr/local",
-          adapter_id: "npm",
-          exe_path: "/usr/local/bin/npm",
-          prefix: "/usr/local",
-          scope: "User",
-          version: "12.0.2",
-          status: { unavailable: null, notes: [] },
-          unverified_version: null,
-          read_only_reason: "PrefixNotWritable",
-        },
-      ],
-      artifacts: [
-        {
-          key: { instance_id: "npm:/usr/local", kind: "Package", name: "typescript" },
-          display_name: "typescript",
-          version: "5.6.2",
-          reason: "Requested",
-          description: "TypeScript is a language for application scale JavaScript development",
-          homepage: null,
-          size_bytes: null,
-          installed_at: null,
-          path: null,
-          auto_updates: false,
-          uninstall_blocked: null,
-        },
-      ],
-      updates: [],
-      refreshed_at: 1789700000,
-      stale: false,
-      errors: [],
-    };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(readOnlyNpmSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
-
-    const { findByText, queryByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
-
-    await findByText("typescript");
-    expect(await findByText("View only")).toBeInTheDocument();
-    // npm's way out, not pip's.
-    expect(
-      await findByText(
-        "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
-      ),
-    ).toBeInTheDocument();
-    expect(queryByText(/pipx or uv/)).not.toBeInTheDocument();
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
-  });
-
-  it("never appends a digest to a model's name, while other sources still show their version", async () => {
+  it("shows every row's version, and never a model's digest, technical details on or off", async () => {
     // An Ollama model's `version` is the local manifest digest, not a
     // version number. Printing it turned every model row into
     // "qwen3:8b · 5642e97495e1a0888838…", a 64-hex string shown to someone
-    // who does not write code. The Formula below shares the setting and
-    // must still get its version, so the suppression stays on ArtifactKind.
-    const modelSnapshot: Snapshot = {
+    // who does not write code. Every other row shows its version now, as
+    // the Updates page's rows do.
+    served = {
       ...snapshot,
-      instances: [
-        ...snapshot.instances,
-        {
-          id: "ollama:http://127.0.0.1:11434",
-          adapter_id: "ollama",
-          exe_path: "/usr/local/bin/ollama",
-          prefix: "/usr/local",
-          scope: "User",
-          version: null,
-          status: { unavailable: null, notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+      instances: [brew, ollama],
       artifacts: [
         ...snapshot.artifacts,
-        {
-          key: { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model", name: "qwen3:8b" },
-          display_name: "qwen3:8b",
+        formula("qwen3:8b", {
+          key: { instance_id: OLLAMA, kind: "Model", name: "qwen3:8b" },
           version: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
-          reason: "Requested",
           description: null,
-          homepage: null,
-          size_bytes: null,
-          installed_at: null,
-          path: null,
-          auto_updates: false,
-          uninstall_blocked: null,
-        },
+        }),
       ],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(modelSnapshot);
-      if (cmd === "get_settings")
-        return Promise.resolve({ ...settings, show_technical_details: true });
-      return Promise.resolve(undefined);
-    });
+    for (const technical of [false, true]) {
+      servedSettings = { ...settings, show_technical_details: technical };
+      const { unmount, queryByText } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
-
-    await findByText("qwen3:8b");
-    expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
-    expect(await findByText("jq · 1.8.2")).toBeInTheDocument();
+      const jq = await findRow("jq");
+      expect(within(jq).getByText("1.8.2").className).toContain("tabular-nums");
+      await findRow("qwen3:8b");
+      expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   // Rendered through SnapshotStatus, exactly as App.tsx does. Rendering
   // InstalledPage on its own would bypass the gate the real app always goes
   // through, and this snapshot -- a stopped Ollama and nothing installed
   // anywhere -- is precisely the one that gate used to swallow.
-  it("shows a not-running notice with an Open Ollama button when the daemon is not running", async () => {
-    const ollamaSnapshot: Snapshot = {
-      generation: 1,
-      detect: "Found",
-      instances: [
-        {
-          id: "ollama:http://127.0.0.1:11434",
-          adapter_id: "ollama",
-          exe_path: "/usr/local/bin/ollama",
-          prefix: "/usr/local",
-          scope: "User",
-          version: null,
-          status: { unavailable: "NotRunning", notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+  it("shows a not-running line with an Open Ollama button when the daemon is not running", async () => {
+    served = {
+      ...snapshot,
+      instances: [{ ...ollama, version: null, status: { unavailable: "NotRunning", notes: [] } }],
       artifacts: [],
       updates: [],
-      refreshed_at: 1789700000,
-      stale: false,
-      errors: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(ollamaSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      if (cmd === "open_ollama_app") return Promise.resolve(undefined);
-      return Promise.resolve(undefined);
-    });
-
     const { findByText, getByRole } = renderWithProviders(
       <SnapshotStatus>
         <InstalledPage />
@@ -1044,6 +1016,8 @@ describe("InstalledPage", () => {
     );
 
     await findByText("Ollama isn't running");
+    // Nothing is installed anywhere else, and the page says so under it.
+    expect(await findByText("Canager found nothing installed")).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Open Ollama" }));
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
@@ -1055,30 +1029,14 @@ describe("InstalledPage", () => {
     // rejection had nothing on this side to turn it into words. A snapshot
     // taken before the app was removed still shows the button, so this is
     // the path a real person can reach.
-    const ollamaSnapshot: Snapshot = {
-      generation: 1,
-      detect: "Found",
-      instances: [
-        {
-          id: "ollama:http://127.0.0.1:11434",
-          adapter_id: "ollama",
-          exe_path: "/usr/local/bin/ollama",
-          prefix: "/usr/local",
-          scope: "User",
-          version: null,
-          status: { unavailable: "NotRunning", notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+    served = {
+      ...snapshot,
+      instances: [{ ...ollama, version: null, status: { unavailable: "NotRunning", notes: [] } }],
       artifacts: [],
       updates: [],
-      refreshed_at: 1789700000,
-      stale: false,
-      errors: [],
     };
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(ollamaSnapshot);
+      if (cmd === "get_snapshot") return Promise.resolve(served);
       if (cmd === "get_settings") return Promise.resolve(settings);
       if (cmd === "open_ollama_app")
         return Promise.reject('{"kind":"ollama_open_failed","reason":"not_installed"}');
@@ -1104,56 +1062,29 @@ describe("InstalledPage", () => {
     );
     expect(queryByText(/ollama_open_failed/)).not.toBeInTheDocument();
   });
+
   it("keeps a stopped source's rows on screen but offers no Uninstall on them", async () => {
     // `refresh` carries an unavailable source's last known artifacts
-    // forward, which is what makes the notice's "below is what Canager saw
-    // last time" true instead of a sentence above an empty group. Every
-    // one of those rows would otherwise carry an Uninstall button, and
-    // `ollama rm` against a daemon that is not listening cannot succeed --
-    // spec §2.5's conjunction, on the button rather than only in the
-    // backend's refusal.
-    const stoppedOllamaSnapshot: Snapshot = {
+    // forward, which is what makes the line's "what's listed for Ollama is
+    // from the last time it answered" true instead of a sentence over no
+    // rows. Every one of those rows would otherwise carry an Uninstall
+    // button, and `ollama rm` against a daemon that is not listening
+    // cannot succeed -- spec §2.5's conjunction, on the button rather than
+    // only in the backend's refusal.
+    served = {
+      ...snapshot,
       generation: 4,
-      detect: "Found",
-      instances: [
-        {
-          id: "ollama:http://127.0.0.1:11434",
-          adapter_id: "ollama",
-          exe_path: "/usr/local/bin/ollama",
-          prefix: "/usr/local",
-          scope: "User",
-          version: "0.34.1",
-          status: { unavailable: "NotRunning", notes: [] },
-          unverified_version: null,
-          read_only_reason: null,
-        },
-      ],
+      instances: [{ ...ollama, status: { unavailable: "NotRunning", notes: [] } }],
       artifacts: [
-        {
-          key: { instance_id: "ollama:http://127.0.0.1:11434", kind: "Model", name: "qwen3:8b" },
-          display_name: "qwen3:8b",
+        formula("qwen3:8b", {
+          key: { instance_id: OLLAMA, kind: "Model", name: "qwen3:8b" },
           version: "5642e97495e1",
-          reason: "Requested",
           description: null,
-          homepage: null,
-          size_bytes: null,
-          installed_at: null,
-          path: null,
-          auto_updates: false,
-          uninstall_blocked: null,
-        },
+        }),
       ],
       updates: [],
-      refreshed_at: 1789700000,
       stale: true,
-      errors: [],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(stoppedOllamaSnapshot);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
-
     const { findByText, queryByRole } = renderWithProviders(
       <SnapshotStatus>
         <InstalledPage />
@@ -1164,59 +1095,335 @@ describe("InstalledPage", () => {
     expect(await findByText("qwen3:8b")).toBeInTheDocument();
     expect(queryByRole("button", { name: "Uninstall" })).toBeNull();
   });
-  it("expands one source's dependencies without expanding another's", async () => {
-    // One global flag meant clicking pip's "N components installed by other
-    // software" also unfolded Homebrew's, on any Mac that has both. The
-    // toggle is per source now, and it can be folded back up again.
-    const twoSources: Snapshot = {
+
+  it("unfolds one source's components without unfolding another's, each line naming its source", async () => {
+    // One global flag meant clicking pip's "N components" also unfolded
+    // Homebrew's, on any Mac that has both. The line is per source, names
+    // it where the list mixes sources, and folds back up again.
+    served = {
       ...snapshot,
-      instances: [...snapshot.instances, ...pipSnapshot.instances],
+      instances: [brew, pip],
       artifacts: [
         ...snapshot.artifacts,
         ...pipSnapshot.artifacts,
         {
+          ...pipSnapshot.artifacts[0],
           key: { instance_id: "pip:/usr/bin/python3", kind: "Package", name: "charset-normalizer" },
           display_name: "charset-normalizer",
           version: "3.4.0",
           reason: "Dependency",
           description: "The Real First Universal Charset Detector.",
-          homepage: null,
-          size_bytes: null,
-          installed_at: null,
-          path: null,
-          auto_updates: false,
-          uninstall_blocked: null,
         },
       ],
     };
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_snapshot") return Promise.resolve(twoSources);
-      if (cmd === "get_settings") return Promise.resolve(settings);
-      return Promise.resolve(undefined);
-    });
+    const { findByRole, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
 
-    const { findByText, findByRole, queryByText } = renderWithProviders(<InstalledPage />);
-
-    await findByText("requests");
+    await findRow("requests");
     expect(queryByText("glib")).not.toBeInTheDocument();
     expect(queryByText("charset-normalizer")).not.toBeInTheDocument();
 
-    // Both groups hide exactly one dependency, so the two toggles carry the
-    // same label; the one inside pip's group is the one to click.
-    const toggles = await screen.findAllByRole("button", {
-      name: "1 component installed by other software",
-    });
-    expect(toggles).toHaveLength(2);
-    fireEvent.click(toggles[1]);
+    const pipFold = getByRole("button", { name: "1 more component came with other software pip" });
+    expect(getByRole("button", { name: "1 more component came with other software Homebrew" })).toBeInTheDocument();
+    fireEvent.click(pipFold);
 
-    await findByText("charset-normalizer");
+    await findRow("charset-normalizer");
     expect(queryByText("glib")).not.toBeInTheDocument();
 
-    // And it folds back up, which a toggle that vanishes on expand cannot.
-    const collapse = await findByRole("button", {
-      name: "Hide the 1 component installed by other software",
-    });
-    fireEvent.click(collapse);
+    fireEvent.click(await findByRole("button", { name: "Hide 1 component pip" }));
     await waitFor(() => expect(queryByText("charset-normalizer")).not.toBeInTheDocument());
+  });
+
+  describe("filters", () => {
+    const twoSources = (): Snapshot => ({
+      ...snapshot,
+      // A stopped Ollama with nothing installed: its line, but no filter.
+      instances: [brew, pip, { ...ollama, status: { unavailable: "NotRunning", notes: [] } }],
+      artifacts: [...snapshot.artifacts, ...pipSnapshot.artifacts],
+    });
+
+    it("offers All and one filter per source with something installed, each with how much, and shows one source at a time", async () => {
+      served = twoSources();
+      const { getByRole, queryByRole, findByRole } = renderWithProviders(<InstalledPage />);
+
+      await findRow("requests");
+      const group = getByRole("group", { name: "Filter by source" });
+      // Named by their words and counts; the avatar's letter is decoration.
+      const [all, homebrew, pipChip, ...rest] = within(group).getAllByRole("button");
+      expect(rest).toEqual([]);
+      expect(all).toBe(within(group).getByRole("button", { name: "All 3" }));
+      expect(homebrew).toBe(within(group).getByRole("button", { name: "Homebrew 2" }));
+      expect(pipChip).toBe(within(group).getByRole("button", { name: "pip 1" }));
+      expect(within(group).getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
+      expect(queryByRole("button", { name: /^Ollama/ })).toBeNull();
+      // Every source's rows, each naming its source where it is not its own.
+      expect(rowNames()).toEqual(["jq", "requests"]);
+      expect(within(rowOf("jq")).getByText("Homebrew")).toBeInTheDocument();
+
+      fireEvent.click(within(group).getByRole("button", { name: "pip 1" }));
+      await waitFor(() => expect(rowNames()).toEqual(["requests"]));
+      expect(within(group).getByRole("button", { name: "pip 1" })).toHaveAttribute("aria-pressed", "true");
+      expect(useUiStore.getState().installedFilter).toBe(pip.id);
+      // One source: no chip on its rows, and only its own lines.
+      expect(within(rowOf("requests")).queryByText("pip", { selector: "span" })).toBeNull();
+      expect(screen.queryByText("Ollama isn't running")).toBeNull();
+
+      fireEvent.click(within(group).getByRole("button", { name: "All 3" }));
+      await waitFor(() => expect(rowNames()).toEqual(["jq", "requests"]));
+      expect(await findByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
+    });
+
+    it("opens on the source whatever opened the page asked for, as an Overview tile does", async () => {
+      served = twoSources();
+      useUiStore.getState().openInstalled(brew.id);
+      const { getByRole } = renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      expect(rowNames()).toEqual(["jq"]);
+      expect(getByRole("button", { name: "Homebrew 2" })).toHaveAttribute("aria-pressed", "true");
+      expect(useUiStore.getState().page).toBe("installed");
+    });
+
+    it("shows everything, and drops the filter, when its source has nothing installed any more", async () => {
+      served = twoSources();
+      useUiStore.setState({ installedFilter: OLLAMA });
+      const { getByRole } = renderWithProviders(<InstalledPage />);
+
+      await findRow("requests");
+      expect(rowNames()).toEqual(["jq", "requests"]);
+      expect(getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
+      await waitFor(() => expect(useUiStore.getState().installedFilter).toBeNull());
+    });
+  });
+
+  it("sorts by name across sources, and by source under a heading for each", async () => {
+    served = {
+      ...snapshot,
+      instances: [brew, pip],
+      artifacts: [
+        formula("Zstd"),
+        formula("wget"),
+        ...pipSnapshot.artifacts,
+        formula("aria2"),
+        { ...pipSnapshot.artifacts[0], key: { ...pipSnapshot.artifacts[0].key, name: "black" }, display_name: "black" },
+      ],
+    };
+    const { getByRole, queryAllByRole } = renderWithProviders(<InstalledPage />);
+
+    await findRow("aria2");
+    const sortBy = getByRole("group", { name: "Sort by" });
+    expect(within(sortBy).getByRole("button", { name: "Name" })).toHaveAttribute("aria-pressed", "true");
+    // By name, case aside, whichever source a row is from; no headings.
+    expect(rowNames()).toEqual(["aria2", "black", "requests", "wget", "Zstd"]);
+    expect(queryAllByRole("heading", { level: 2 })).toHaveLength(0);
+
+    fireEvent.click(within(sortBy).getByRole("button", { name: "Source" }));
+    await waitFor(() => expect(rowNames()).toEqual(["aria2", "wget", "Zstd", "black", "requests"]));
+    expect(within(sortBy).getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true");
+    const [homebrewHeading, pipHeading, ...more] = queryAllByRole("heading", { level: 2 });
+    expect(more).toEqual([]);
+    expect(homebrewHeading).toBe(getByRole("heading", { level: 2, name: "Homebrew 3" }));
+    expect(pipHeading).toBe(getByRole("heading", { level: 2, name: "pip 2" }));
+    // A heading says the source, so the rows under it do not.
+    expect(within(rowOf("wget")).queryByText("Homebrew")).toBeNull();
+    expect(useUiStore.getState().installedSort).toBe("source");
+  });
+
+  describe("the details drawer", () => {
+    it("opens from the row itself, not from its buttons, with all the row had no room for", async () => {
+      served = {
+        ...snapshot,
+        artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }],
+        updates: [{ ...snapshot.updates[0], key: snapshot.artifacts[0].key, current: "1.8.2", target: "1.8.3", blocked: "Pinned" }],
+      };
+      renderWithProviders(<InstalledPage />);
+
+      const jq = await findRow("jq");
+      // The chip opens its own detail, not the drawer.
+      chipDetail(jq, "Pinned");
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      const drawer = await openDetails("jq");
+      expect(within(drawer).getByText("Homebrew")).toBeInTheDocument();
+      expect(within(drawer).getByText("Lightweight and flexible command-line JSON processor")).toBeInTheDocument();
+      expect(within(drawer).getByText("Version").nextElementSibling).toHaveTextContent("1.8.2");
+      expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("1.8.3");
+      // The chip's why, in full, with the command set as code.
+      expect(
+        within(drawer).getByText(
+          wholeSentence("It's pinned in Homebrew. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal."),
+        ),
+      ).toBeInTheDocument();
+      // Pinned against its update too: said once.
+      expect(within(drawer).getAllByText("Pinned")).toHaveLength(1);
+      // Neither uninstalled nor updated from here.
+      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+    });
+
+    it("closes with Escape and with its close button, giving the focus back to the row", async () => {
+      renderWithProviders(<InstalledPage />);
+
+      const jq = await findRow("jq");
+      const rowButton = within(jq).getByRole("button", { name: "Details: jq" });
+      let drawer = await openDetails("jq");
+      await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true));
+
+      fireEvent.keyDown(document.activeElement ?? drawer, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+
+      drawer = await openDetails("jq");
+      fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+    });
+
+    it("keeps Tab inside itself while it is open", async () => {
+      renderWithProviders(<InstalledPage />);
+
+      const drawer = await openDetails("jq");
+      const close = within(drawer).getByRole("button", { name: "Close" });
+      const uninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+      await waitFor(() => expect(document.activeElement).toBe(close));
+      // The page under it is out of reach.
+      expect(screen.queryByRole("searchbox")).toBeNull();
+
+      uninstall.focus();
+      fireEvent.keyDown(uninstall, { key: "Tab" });
+      expect(document.activeElement).toBe(close);
+      fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(uninstall);
+    });
+
+    it("updates through the Updates page's own confirmation, where that page would, and shows the progress there", async () => {
+      renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const drawer = await openDetails("glib");
+      expect(within(drawer).getByText("Update available")).toBeInTheDocument();
+      expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("2.90.0");
+
+      fireEvent.click(within(drawer).getByRole("button", { name: "Update" }));
+      const confirm = await screen.findByRole("dialog", { name: "Confirm update" });
+      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+        request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
+      });
+      expect(await within(confirm).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
+      expect(within(confirm).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+
+      operations = [
+        {
+          id: 7,
+          kind: "Upgrade",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "glib",
+          status: "Running",
+          outcome: null,
+          argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "glib"],
+          cancel_policy: "KillThenReconcile",
+        },
+      ];
+      fireEvent.click(within(confirm).getByRole("button", { name: "Confirm" }));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm update" })).toBeNull());
+      // Where the button was, as on the Updates page's row.
+      const open = screen.getByRole("dialog", { name: "glib" });
+      expect(await within(open).findByText("Updating…")).toBeInTheDocument();
+      expect(within(open).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(useUiStore.getState().updateTargets).toEqual({ 7: "2.90.0" });
+    });
+
+    it("offers no Update for an update the Updates page does not offer", async () => {
+      served = {
+        ...snapshot,
+        instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }],
+      };
+      renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const drawer = await openDetails("glib");
+      expect(within(drawer).getByText("Can't update now")).toBeInTheDocument();
+      expect(within(drawer).getByText("Homebrew isn't responding. Check again later.")).toBeInTheDocument();
+      // Its source's own line, whole.
+      expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
+      expect(
+        within(drawer).getByText("What's listed for Homebrew is from the last time it answered. Later changes aren't shown."),
+      ).toBeInTheDocument();
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+    });
+
+    it("uninstalls through the row's own dialog, then gives way to the log", async () => {
+      renderWithProviders(<InstalledPage />);
+
+      const drawer = await openDetails("jq");
+      fireEvent.click(within(drawer).getByRole("button", { name: "Uninstall" }));
+      const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+      await within(dialog).findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
+      // The drawer closes for the log drawer, which it would otherwise
+      // keep out of reach.
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(useUiStore.getState().drawerOpen).toBe(true);
+      expect(useUiStore.getState().focusedOpId).toBe(7);
+    });
+
+    it("says where a tool is only with technical details on", async () => {
+      served = { ...snapshot, instances: [claudeInstance], artifacts: [claudeArtifact], updates: [] };
+      const first = renderWithProviders(<InstalledPage />);
+      let drawer = await openDetails("Claude Code");
+      expect(within(drawer).queryByText("Location")).toBeNull();
+      first.unmount();
+
+      servedSettings = { ...settings, show_technical_details: true };
+      renderWithProviders(<InstalledPage />);
+      drawer = await openDetails("Claude Code");
+      expect(within(drawer).getByText("Location").nextElementSibling).toHaveTextContent(
+        "/Users/someone/.local/share/claude/versions/2.1.281",
+      );
+    });
+  });
+
+  describe("the ⋯ menu", () => {
+    it("opens the details, and copies the command a chip talks about only with technical details on", async () => {
+      const writeText = vi.fn(() => Promise.resolve());
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      try {
+        served = {
+          ...snapshot,
+          artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }, formula("wget")],
+          updates: [],
+        };
+        const first = renderWithProviders(<InstalledPage />);
+        fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "More actions for jq" }));
+        let menu = screen.getByRole("menu");
+        expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Details"]);
+        fireEvent.click(within(menu).getByRole("menuitem", { name: "Details" }));
+        expect(await screen.findByRole("dialog", { name: "jq" })).toBeInTheDocument();
+        first.unmount();
+
+        servedSettings = { ...settings, show_technical_details: true };
+        renderWithProviders(<InstalledPage />);
+        // A plain row has no command it could copy without a plan.
+        fireEvent.click(within(await findRow("wget")).getByRole("button", { name: "More actions for wget" }));
+        expect(within(screen.getByRole("menu")).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+          "Details",
+        ]);
+        fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+        fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "More actions for jq" }));
+        menu = screen.getByRole("menu");
+        fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy command" }));
+        expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin jq");
+        expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+      } finally {
+        Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+      }
+    });
   });
 });

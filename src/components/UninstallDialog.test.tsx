@@ -644,7 +644,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "This has been pinned in Homebrew, and Homebrew won't remove a pinned package, so Canager didn't uninstall it. Nothing has been changed. To uninstall it, first run /usr/local/bin/brew unpin --cask onyx in Terminal to release the pin.",
+        "It's pinned in Homebrew, so Canager didn't uninstall or change anything. Run /usr/local/bin/brew unpin --cask onyx in Terminal to unpin it first.",
       ),
     );
     // The owning brew's own path, not whichever `brew` Terminal finds.

@@ -3,6 +3,9 @@ import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
 export type Page = "overview" | "updates" | "installed" | "unknown" | "settings";
 
+/** How the Installed page orders its list: by the tools' names, or by source first. */
+export type InstalledSort = "name" | "source";
+
 // One entry in an operation's log: either a line the tool wrote, shown
 // verbatim, or a note of Canager's own, which the drawer localises.
 export type LogEntry =
@@ -13,8 +16,20 @@ export type LogLine = LogEntry & { seq: number };
 export interface UiState {
   page: Page;
   setPage(p: Page): void;
+  // The Installed page's search text.
   query: string;
   setQuery(q: string): void;
+  // Which source the Installed page shows: an instance id, or null for
+  // all of them (「全部」). Kept here, not in the page, so whatever opens
+  // the page can open it on one source (`openInstalled`).
+  installedFilter: string | null;
+  setInstalledFilter(instanceId: string | null): void;
+  installedSort: InstalledSort;
+  setInstalledSort(sort: InstalledSort): void;
+  // Opens the Installed page showing one source's tools -- an Overview
+  // tile's -- or, with null, all of them: the sidebar's entry, whose count
+  // is of everything installed.
+  openInstalled(instanceId: string | null): void;
   // The ids of the sources whose dependencies are unfolded. This used to
   // be one boolean for the whole page, so unfolding pip's "N components
   // installed by other software" unfolded Homebrew's and npm's too --
@@ -41,13 +56,13 @@ export interface UiState {
   // Removes the id of every key given that is selected, and adds the id of
   // every one that is not.
   invertUpdateSelection(keys: ArtifactKey[]): void;
-  // The version each update the Updates page started was for, by
-  // operation id: the `target` of the row it was started from. An
-  // operation carries no version (`OpSummary`), and a finished one stays
-  // in the backend's list, so this is how a row tells an outcome that is
-  // still about the version it offers -- "Updated", "Failed" -- from one
-  // about a version it no longer offers, whose row gets its Update button
-  // back.
+  // The version each update Canager started was for, by operation id:
+  // the `target` of the candidate it was started from (`useUpdateConfirm`,
+  // on the Updates page or in the Installed page's detail). An operation
+  // carries no version (`OpSummary`), and a finished one stays in the
+  // backend's list, so this is how a row tells an outcome that is still
+  // about the version it offers -- "Updated", "Failed" -- from one about a
+  // version it no longer offers, whose row gets its Update button back.
   updateTargets: Record<number, string>;
   rememberUpdateTarget(opId: number, target: string): void;
   startupRefreshError: string | null;
@@ -72,6 +87,11 @@ export const useUiStore = create<UiState>((set) => ({
   setPage: (p) => set({ page: p }),
   query: "",
   setQuery: (q) => set({ query: q }),
+  installedFilter: null,
+  setInstalledFilter: (instanceId) => set({ installedFilter: instanceId }),
+  installedSort: "name",
+  setInstalledSort: (sort) => set({ installedSort: sort }),
+  openInstalled: (instanceId) => set({ page: "installed", installedFilter: instanceId }),
   expandedDependencies: [],
   toggleDependencies: (instanceId) =>
     set((s) => ({

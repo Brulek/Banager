@@ -1,7 +1,7 @@
 /**
  * What Canager can do about one update candidate, and whether the user
  * has hidden it, decided in one place so the Updates page and the
- * Installed page cannot disagree. The Installed page's badge used to call
+ * Installed page cannot disagree. The Installed page's rows used to call
  * every entry in `snapshot.updates` "Update available" -- a pinned
  * package, a package Canager could not check, one the user had ignored --
  * and so promised updates the Updates page, which applied four more
@@ -13,6 +13,7 @@ import type {
   Settings,
   SkippedVersion,
   Snapshot,
+  SourceError,
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
@@ -132,7 +133,7 @@ export function canSkipVersion(candidate: UpdateCandidate): boolean {
  * the Updates page lists it. Both pages read it -- the Updates page
  * through `notHidden` for everything it lists, counts or selects (its
  * rows, its headline and second line, Select all, Invert selection and
- * Update selected), the Installed page's badge directly -- so neither can
+ * Update selected), the Installed page's chips directly -- so neither can
  * offer an update the other hides. It builds its two lookups once and
  * returns the check to run per candidate, so a long list is not rescanned
  * for each row.
@@ -217,19 +218,42 @@ const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
 };
 
 /**
+ * Whether `instance` answered the last check and was checked for updates
+ * in full: it answered (`isAvailable`), and no note says its updates went
+ * unchecked (`NOTE_LEAVES_UPDATES_UNCHECKED`). A read-only source is one
+ * Canager *can* check.
+ */
+function checkedInFull(instance: ManagerInstance): boolean {
+  return (
+    isAvailable(instance) &&
+    !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note])
+  );
+}
+
+/**
  * Whether every source answered the last check and was checked for
  * updates in full, so that finding no update anywhere means there is
  * none. What the Updates page asks before it says "Everything is up to
  * date" rather than "No updates in the sources Canager could check", and
- * what `updatesSummary` asks before the Overview says it. A read-only
- * source is one Canager *can* check.
+ * what `updatesSummary` asks before the Overview says it.
  */
 export function everySourceChecked(instances: ManagerInstance[]): boolean {
-  return instances.every(
-    (instance) =>
-      isAvailable(instance) &&
-      !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]),
-  );
+  return instances.every(checkedInFull);
+}
+
+/**
+ * Whether a row of `instance` with no update listed may say it is up to
+ * date (the Installed page's 「已是最新」): this round's check reached its
+ * source in full (`checkedInFull`) and none of its calls failed this
+ * round -- `errors` names the instance when its inventory or its update
+ * check failed, and `refresh` then carries the last round's rows and
+ * candidates forward (crates/canager-core/src/session/refresh.rs), so no
+ * update listed is no news. Where this is false the row says nothing
+ * about updates, and the source's own notice, or the page's "some checks
+ * didn't finish", says why.
+ */
+export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]): boolean {
+  return checkedInFull(instance) && !errors.some((error) => error.instance_id === instance.id);
 }
 
 /**

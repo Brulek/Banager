@@ -179,3 +179,22 @@ export function SpinnerIcon({ size = 18, className }: IconProps) {
     </svg>
   );
 }
+
+/** Close: a cross. */
+export function CloseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 6.5L17.5 17.5M17.5 6.5L6.5 17.5" />
+    </Icon>
+  );
+}
+
+/** Search: a magnifying glass. */
+export function SearchIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16L20 20" />
+    </Icon>
+  );
+}

@@ -89,4 +89,49 @@ describe("ToolRow", () => {
     rerender(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="Core application library for C" />);
     expect(columns()).toBe(withEverything - 4);
   });
+
+  it("is a button itself when it opens something, under its own controls, and takes the focus when pressed", () => {
+    const onOpen = vi.fn();
+    const onUninstall = vi.fn();
+    const { getByRole } = renderWithProviders(
+      <ToolRow
+        adapterId="brew"
+        sourceLabel="Homebrew"
+        name="jq"
+        description="Lightweight and flexible command-line JSON processor"
+        status={<span>Pinned</span>}
+        action={
+          <button type="button" onClick={onUninstall}>
+            Uninstall
+          </button>
+        }
+        onOpen={onOpen}
+        openLabel="Details: jq"
+      />,
+    );
+
+    const open = getByRole("button", { name: "Details: jq" });
+    // First in the row, so Tab reaches it before the row's own buttons,
+    // and under them: they sit on a layer above it.
+    expect(open.parentElement?.firstElementChild).toBe(open);
+    expect(getByRole("button", { name: "Uninstall" }).parentElement?.className).toContain("z-10");
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // WebKit leaves a clicked button unfocused; this one takes the focus,
+    // so what it opens can give it back.
+    expect(document.activeElement).toBe(open);
+
+    fireEvent.click(getByRole("button", { name: "Uninstall" }));
+    expect(onUninstall).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the source's chip give way to the name on a narrow row, where the avatar still says it", () => {
+    const { container, getByText } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" nameChip="Homebrew" description="A JSON processor" />,
+    );
+    // A container query: the row measures itself, not the window.
+    expect((container.querySelector("[data-tool-row]") as HTMLElement).className).toContain("@container");
+    expect(getByText("Homebrew", { selector: "span" }).className).toContain("@max-2xl:hidden");
+  });
 });

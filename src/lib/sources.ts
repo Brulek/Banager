@@ -147,23 +147,6 @@ export function toolDescription(
 }
 
 /**
- * The `sourceNotice.*` key prefix whose `.title` and `.description` explain
- * each read-only reason.
- *
- * The two reasons need genuinely different copy and the difference matters:
- * pip cannot be driven at all, so the way out is to install Python tools
- * with pipx or uv; an npm whose prefix is root-owned works fine, so the way
- * out is to reinstall Node with Homebrew. Telling the npm user about pipx
- * -- which the Updates page did for every read-only row before the wire
- * carried a reason -- sends someone who does not write code to install a
- * Python tool to fix their JavaScript packages.
- */
-export const READ_ONLY_NOTICE_KEYS: Record<ReadOnlyReason, string> = {
-  ByDesign: "sourceNotice.pipReadOnly",
-  PrefixNotWritable: "sourceNotice.prefixNotWritable",
-};
-
-/**
  * Whether Canager may offer operations on this source. The front-end
  * mirror of `ManagerInstance::writable()`; `Session::issue_plan` refuses
  * anything this would have hidden, so a stale snapshot can only ever cost
@@ -188,9 +171,6 @@ export function isAvailable(instance: ManagerInstance): boolean {
   return instance.status.unavailable === null;
 }
 
-/** Which axis a notice speaks for: what Canager may do, or what it knows. */
-export type SourceNoticeAxis = "capability" | "state";
-
 /**
  * Something the notice offers to do about itself. An id, not a callback:
  * this module stays pure so both pages can call it, and each page wires
@@ -199,18 +179,23 @@ export type SourceNoticeAxis = "capability" | "state";
 export type SourceNoticeActionId = "openOllama" | "retry";
 
 /**
- * One banner a source needs rendered, as data: which i18n keys say it,
+ * One notice a source needs rendered, as data: which i18n keys say it,
  * what to interpolate into them, and what (if anything) the user can do
  * about it. No `t()` and no JSX, so the rule can be tested directly and,
- * more to the point, so both pages answer from the same rule -- the two
- * pages' notices used to be different code, which is how the Updates page
- * came to say
- * "Everything is up to date" for a source it had not managed to ask.
+ * more to the point, so every page answers from the same rule -- the two
+ * list pages' notices used to be different code, which is how the Updates
+ * page came to say "Everything is up to date" for a source it had not
+ * managed to ask.
+ *
+ * Only what Canager found out about the source this time: not running,
+ * not answering, a list it could not download, another copy that runs
+ * instead. What a source lets Canager do at all -- pip, or an npm whose
+ * folder the account cannot write, being read-only -- is each of its
+ * rows' "Read-only" chip, on both lists (`READ_ONLY_DETAIL_KEYS`).
  */
 export interface SourceNoticeSpec {
   /** Stable React key: one instance can need more than one notice. */
   id: string;
-  axis: SourceNoticeAxis;
   variant: "info" | "warning";
   titleKey: string;
   descriptionKey: string;
@@ -234,13 +219,10 @@ function commandNameOf(instance: ManagerInstance): string {
 
 /**
  * Every notice `instance` needs, in the order they should be rendered:
- * capability first (what Canager may do at all), then state (what it
- * managed to find out). `sourceLabel` is the source's name as the user
- * reads it -- resolved by the caller through `ADAPTER_LABEL_KEYS`, because
- * keeping `t()` out of here is what makes this testable and shareable.
- *
- * The two axes are independent and both can apply at once: a read-only pip
- * whose interpreter has gone missing is read-only *and* silent.
+ * whether it answered, then what it said about itself. `sourceLabel` is
+ * the source's name as the user reads it -- resolved by the caller
+ * through `ADAPTER_LABEL_KEYS`, because keeping `t()` out of here is what
+ * makes this testable and shareable.
  *
  * `rowsOnScreen` is how many rows for this source the caller is about to
  * draw underneath the notice, and it changes one sentence: a source that
@@ -260,17 +242,6 @@ export function sourceNoticesFor(
 ): SourceNoticeSpec[] {
   const notices: SourceNoticeSpec[] = [];
 
-  if (instance.read_only_reason !== null) {
-    const prefix = READ_ONLY_NOTICE_KEYS[instance.read_only_reason];
-    notices.push({
-      id: `${instance.id}:read-only`,
-      axis: "capability",
-      variant: "info",
-      titleKey: `${prefix}.title`,
-      descriptionKey: `${prefix}.description`,
-    });
-  }
-
   const unavailable = instance.status.unavailable;
   if (unavailable === "NotRunning") {
     // One state, one sentence, named through `sourceLabel` so it reads in
@@ -285,7 +256,6 @@ export function sourceNoticesFor(
     // button is the only part that actually differs.
     notices.push({
       id: `${instance.id}:not-running`,
-      axis: "state",
       variant: "warning",
       titleKey: "sourceNotice.notRunning.title",
       descriptionKey: "sourceNotice.notRunning.description",
@@ -297,7 +267,6 @@ export function sourceNoticesFor(
   } else if (unavailable === "NotResponding") {
     notices.push({
       id: `${instance.id}:unreachable`,
-      axis: "state",
       variant: "warning",
       titleKey: "sourceNotice.unreachable.title",
       // Two sentences for one state, chosen by what is actually on screen.
@@ -320,7 +289,6 @@ export function sourceNoticesFor(
     // cannot is the pattern this phase exists to remove.
     notices.push({
       id: `${instance.id}:refuses-as-root`,
-      axis: "state",
       variant: "warning",
       titleKey: "sourceNotice.refusesAsRoot.title",
       descriptionKey: "sourceNotice.refusesAsRoot.description",
@@ -332,7 +300,6 @@ export function sourceNoticesFor(
     if (note === "IndexMayBeStale") {
       notices.push({
         id: `${instance.id}:index-may-be-stale`,
-        axis: "state",
         variant: "warning",
         titleKey: "sourceNotice.indexMayBeStale.title",
         descriptionKey: "sourceNotice.indexMayBeStale.description",
@@ -346,7 +313,6 @@ export function sourceNoticesFor(
       // which is what clears this.
       notices.push({
         id: `${instance.id}:index-updating`,
-        axis: "state",
         variant: "info",
         titleKey: "sourceNotice.indexUpdating.title",
         descriptionKey: "sourceNotice.indexUpdating.description",
@@ -363,7 +329,6 @@ export function sourceNoticesFor(
       // renders `t(key, values)`, never `withCommand`.
       notices.push({
         id: `${instance.id}:not-on-path`,
-        axis: "state",
         variant: "info",
         titleKey: "sourceNotice.notOnPath.title",
         descriptionKey: "sourceNotice.notOnPath.description",
@@ -372,7 +337,6 @@ export function sourceNoticesFor(
     } else if (note === "ShadowedByHomebrew") {
       notices.push({
         id: `${instance.id}:shadowed-by-homebrew`,
-        axis: "state",
         variant: "info",
         titleKey: "sourceNotice.shadowedByHomebrew.title",
         descriptionKey: "sourceNotice.shadowedByHomebrew.description",
@@ -381,7 +345,6 @@ export function sourceNoticesFor(
     } else if (note === "ShadowedByNpm") {
       notices.push({
         id: `${instance.id}:shadowed-by-npm`,
-        axis: "state",
         variant: "info",
         titleKey: "sourceNotice.shadowedByNpm.title",
         descriptionKey: "sourceNotice.shadowedByNpm.description",
@@ -390,7 +353,6 @@ export function sourceNoticesFor(
     } else if (note === "ShadowedByOther") {
       notices.push({
         id: `${instance.id}:shadowed-by-other`,
-        axis: "state",
         variant: "info",
         titleKey: "sourceNotice.shadowedByOther.title",
         descriptionKey: "sourceNotice.shadowedByOther.description",
@@ -403,7 +365,6 @@ export function sourceNoticesFor(
       // and moves the link (spec §3.3, §6.2).
       notices.push({
         id: `${instance.id}:launcher-only`,
-        axis: "state",
         variant: "warning",
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
@@ -419,14 +380,16 @@ export function sourceNoticesFor(
 }
 
 /**
- * Whether this source has anything to say at all -- exactly
+ * Whether this source has a notice for the pages to show -- exactly
  * `sourceNoticesFor(...).length > 0`, expressed that way so the two can
  * never drift.
  *
- * `SnapshotStatus` asks this as well as the pages do: its zero-artifact
- * empty state replaces `children` outright, so without it a Mac whose only
- * source is a stopped Ollama shows "Canager found nothing installed" and
- * the Open Ollama button is unreachable. One rule, one place.
+ * `SnapshotStatus` asks this: its zero-artifact empty state replaces
+ * `children` outright, so without it a Mac whose only source is a stopped
+ * Ollama shows "Canager found nothing installed" and the Open Ollama
+ * button is unreachable. A read-only source with nothing installed has
+ * nothing to show -- its notice is its rows' chip -- so it gets the empty
+ * state like any other. One rule, one place.
  */
 export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
@@ -573,14 +536,18 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
 };
 
 /**
- * A read-only source's rows, in the detail of their "Read-only" chip:
- * two short sentences, different for each reason for the same reason
- * `READ_ONLY_NOTICE_KEYS` is -- pipx or uv is the way out for pip, and
- * nonsense for an npm whose folder the account cannot write. The very
- * sentences a refusal for that source says (`notActionableMessage`), so
- * the chip and the refusal cannot disagree: npm's promises to manage only
- * the npm packages installed with a Node from Homebrew, since the ones in
- * the old folder do not move over.
+ * A read-only source's rows, in the detail of their "Read-only" chip on
+ * both lists: two short sentences, different for each reason, and the
+ * difference matters -- pip cannot be driven at all, so the way out is to
+ * install Python tools with pipx or uv; an npm whose prefix is root-owned
+ * works fine, so the way out is a Node installed with Homebrew. Telling
+ * the npm user about pipx -- which the Updates page did for every
+ * read-only row before the wire carried a reason -- sends someone who
+ * does not write code to install a Python tool to fix their JavaScript
+ * packages. The very sentences a refusal for that source says
+ * (`notActionableMessage`), so the chip and the refusal cannot disagree:
+ * npm's promises to manage only the npm packages installed with a Node
+ * from Homebrew, since the ones in the old folder do not move over.
  */
 export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
   ByDesign: "sourceNotice.pipReadOnly.description",
@@ -616,22 +583,19 @@ export function parseUpdateBlocked(message: string): UpdateBlocked | null {
 
 /** What `UNINSTALL_BLOCKED_KEYS` holds for one reason. */
 interface UninstallBlockedCopy {
-  /** The Installed page row's badge when no listed update speaks for the
-   *  package (`installedBadge` in src/pages/InstalledPage.tsx). */
+  /** The Installed page row's chip: 「已固定」, 「需手动卸载」. */
   badge: string;
-  /** The Installed page row's description in place of the package's blurb:
-   *  why there is no Uninstall button, and what the user can do about it.
-   *  The page fills `{{source}}` with the owning source's label and
-   *  `{{command}}` with `command` below, rendered as code
-   *  (`withCommand` in src/components/withCommand.tsx). */
-  description: string;
-  /** `description` for a row whose source did not answer the last refresh
-   *  (`isAvailable` false; the row was carried forward). Such a row gets no
+  /** The chip's detail, and what the row's drawer says under it: why
+   *  there is no Uninstall button, and what the user can do about it, in
+   *  at most two sentences. The page fills `{{source}}` with the owning
+   *  source's label and `{{command}}` with `command` below, rendered as
+   *  code (`withCommand` in src/components/withCommand.tsx). It promises
+   *  nothing about when a button will be offered, so it holds as well for
+   *  a row whose source did not answer the last check -- which gets no
    *  Uninstall button until the source answers again, whatever the user
-   *  does about the reason, so it may not promise one sooner. Filled the
-   *  same way as `description`. */
-  descriptionSourceUnavailable: string;
-  /** The command both sentences' `{{command}}` stands for. */
+   *  does about the reason. */
+  description: string;
+  /** The command the sentences' `{{command}}` stands for. */
   command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
   /** The uninstall dialog's sentence for the gate's `uninstall_blocked`
    *  refusal, which only a stale Installed page can reach. Filled the same
@@ -650,19 +614,11 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     // The same word the Updates page's pinned row uses, so a package that
     // is pinned reads "Pinned" on both pages.
     badge: "updates.blocked.Pinned.badge",
-    // The promise that Uninstall comes back "the next time it checks, at
-    // the latest the next time you start Canager" rests on every refresh
-    // reading the inventory again (`adapter.inventory` in `refresh_round`,
-    // crates/canager-core/src/session/refresh.rs), on `parse_info_installed`
-    // reading `pinned` afresh each time, and on the refresh every start
-    // runs (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts).
-    // It also rests on Homebrew answering that refresh: a row whose source
-    // did not answer is carried forward with no Uninstall button
-    // (`actionable` in src/pages/InstalledPage.tsx needs `isAvailable`), so
-    // it gets `descriptionSourceUnavailable`, which promises Uninstall only
-    // once a check finds Homebrew answering.
+    // "It's pinned in {{source}}. To uninstall it, first run {{command}}
+    // in Terminal." What stands in the way and what removes it, and
+    // nothing about when Uninstall comes back: that needs a check that
+    // finds Homebrew answering, which a pin's sentence cannot promise.
     description: "installed.blocked.Pinned.description",
-    descriptionSourceUnavailable: "installed.blocked.Pinned.descriptionSourceUnavailable",
     // `UninstallBlocked::Pinned`'s only producer is brew
     // (`parse_info_installed`), so this is always `brew unpin`, built from
     // the owning instance's `exe_path`, `--cask` for a cask.
@@ -673,11 +629,8 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
     badge: "installed.blocked.NoSafeMethod.badge",
     // No command: unlike a pin there is nothing the user can run to make
     // Canager able to uninstall it, so the sentence has no `{{command}}`
-    // slot and `withCommand` returns it as plain text. It promises
-    // nothing about when a button returns, so a silent source gets the
-    // same sentence rather than a second key with the same words.
+    // slot and `withCommand` returns it as plain text.
     description: "installed.blocked.NoSafeMethod.description",
-    descriptionSourceUnavailable: "installed.blocked.NoSafeMethod.description",
     command: () => "",
     refused: "installed.blocked.NoSafeMethod.refused",
   },
@@ -699,7 +652,6 @@ const UNINSTALL_BLOCKED_OVERRIDES: Partial<
     NoSafeMethod: {
       badge: "installed.blocked.NoSafeMethod.badge",
       description: "installed.blocked.NoSafeMethod.standalone-rustup.description",
-      descriptionSourceUnavailable: "installed.blocked.NoSafeMethod.standalone-rustup.description",
       command: () => "",
       refused: "installed.blocked.NoSafeMethod.standalone-rustup.refused",
     },
@@ -833,17 +785,16 @@ export function parseNotActionable(message: string): NotActionableReason | null 
 type Translate = (key: string, options?: Record<string, string>) => string;
 
 /**
- * `parseNotActionable`'s result, in the exact copy the source's own
- * notice already uses for each reason (`READ_ONLY_NOTICE_KEYS`,
+ * `parseNotActionable`'s result, in the exact copy the source's rows and
+ * notice already use for each reason (`READ_ONLY_DETAIL_KEYS`,
  * `sourceNotice.notRunning`, `sourceNotice.unreachable`,
  * `sourceNotice.refusesAsRoot`) -- so this refusal never reads as a raw
  * Rust enum. `sourceLabel` is the adapter's
  * name in the user's language, exactly as `sourceNoticesFor` takes it.
  *
- * Both axes can be set at once (a read-only source can also be silent),
- * so both parts are joined when present, same as `sourceNoticesFor`
- * pushing more than one notice for one instance. The read-only copy needs
- * no source name (spec §7's wording is self-contained); the state copy
+ * Both halves can be set at once (a read-only source can also be silent),
+ * so both parts are joined when present. The read-only copy needs no
+ * source name (spec §7's wording is self-contained); the state copy
  * always names one, same as `sourceNoticesFor`.
  */
 export function notActionableMessage(
@@ -853,7 +804,7 @@ export function notActionableMessage(
 ): string {
   const parts: string[] = [];
   if (reason.read_only !== null) {
-    parts.push(t(`${READ_ONLY_NOTICE_KEYS[reason.read_only]}.description`));
+    parts.push(t(READ_ONLY_DETAIL_KEYS[reason.read_only]));
   }
   if (reason.unavailable === "NotRunning") {
     parts.push(t("sourceNotice.notRunning.description", { source: sourceLabel }));

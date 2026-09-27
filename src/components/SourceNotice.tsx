@@ -27,45 +27,50 @@ export interface SourceNoticeProps {
   error?: ReactNode;
 }
 
-const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
-  info: "bg-[var(--color-hover)] text-[var(--color-foreground)]",
-  warning: "bg-[var(--color-danger)]/10 text-[var(--color-danger)]",
-};
+/** The notice's icon: a warning, or information. */
+function NoticeIcon({ variant }: { variant: SourceNoticeVariant }) {
+  return variant === "warning" ? (
+    <WarningIcon size={16} className="mt-px shrink-0 text-warning" />
+  ) : (
+    <InfoIcon size={16} className="mt-px shrink-0 text-muted" />
+  );
+}
 
 /**
- * One banner about one source: pip's read-only note, or Ollama's "not
- * running" notice with a button to start it. The Installed page renders
- * these under the source's own heading, directly above that source's rows
- * and no one else's; the Updates page puts the same notices at its top, a
- * line each (`SourceNoticeLine`). `SourceNotices` maps `sourceNoticesFor`'s
- * specs onto either.
+ * One notice, whole: its title, its description under it and its button
+ * -- Ollama's "not running" with Open Ollama. Where there is room for the
+ * explanation, next to what it explains: a tool's detail drawer on the
+ * Installed page, and the Unknown page's "the scan stopped early". The
+ * lists put their sources' notices at their top, a line each
+ * (`SourceNoticeLine`), with the description behind "Details".
+ * `SourceNotices` maps `sourceNoticesFor`'s specs onto either.
  *
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.
  */
 export function SourceNotice({ variant, title, description, action, error }: SourceNoticeProps) {
   return (
-    <div
-      className={`mb-2 mt-1 flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm ${VARIANT_CLASSES[variant]}`}
-    >
-      <div className="min-w-0">
-        <p className="font-medium">{title}</p>
-        {description ? <p className="mt-0.5 text-xs opacity-80">{description}</p> : null}
+    <div className="flex gap-2.5 rounded-row bg-hover/60 px-3 py-2.5 text-body">
+      <NoticeIcon variant={variant} />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-foreground">{title}</p>
+        {description ? <p className="mt-0.5 text-muted">{description}</p> : null}
+        {action ? (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="mt-2 rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {action.label}
+          </button>
+        ) : null}
+        {/* A <div>: the error's own "Details" panel is one. */}
         {error ? (
-          <div role="alert" className="mt-1 text-xs font-medium">
+          <div role="alert" className="mt-1.5 text-small font-medium text-danger">
             {error}
           </div>
         ) : null}
       </div>
-      {action ? (
-        <button
-          type="button"
-          onClick={action.onClick}
-          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-xs font-medium text-[var(--color-accent-foreground)]"
-        >
-          {action.label}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -78,11 +83,11 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
 }
 
 /**
- * The same notice as one compact line, for the top of the Updates page:
- * an icon, the short title, and "Details" -- a popover with the
- * description -- then the notice's own button, if it has one (Open
- * Ollama, Try again), which stays in the line rather than behind the
- * popover. A failed press says so under the line.
+ * The same notice as one compact line, for the top of a list -- the
+ * Updates page's and the Installed page's: an icon, the short title, and
+ * "Details" -- a popover with the description -- then the notice's own
+ * button, if it has one (Open Ollama, Try again), which stays in the line
+ * rather than behind the popover. A failed press says so under the line.
  */
 export function SourceNoticeLine({
   variant,

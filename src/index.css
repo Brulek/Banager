@@ -86,6 +86,15 @@
   --color-source-claude: #c96442;
   --color-source-grok: #2b2b2b;
   --color-source-agy: #6b5bff;
+
+  /* A drawer (`Drawer`) comes in from the right, once, when it opens. */
+  --animate-drawer-in: drawer-in 180ms ease-out;
+  @keyframes drawer-in {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
 }
 
 :root {

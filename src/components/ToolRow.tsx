@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { SourceAvatar } from "./SourceAvatar";
 
 export interface ToolRowSelectable {
@@ -36,6 +36,14 @@ export interface ToolRowProps {
   action?: ReactNode;
   /** The ⋯ menu (`Menu`). */
   menu?: ReactNode;
+  /**
+   * What pressing the row itself does -- anywhere but its own controls:
+   * the Installed page opens the row's details. The row is then a button
+   * under its controls, reached with Tab before them.
+   */
+  onOpen?: () => void;
+  /** That button's accessible name: 「详情：jq」/"Details: jq". */
+  openLabel?: string;
 }
 
 /**
@@ -50,7 +58,12 @@ export interface ToolRowProps {
  *
  * No borders between rows but a hairline, which gives way to the hover
  * background; `data-tool-row` marks the row for anything that needs to
- * find it from a name inside it.
+ * find it from a name inside it, and `data-status` its chips.
+ *
+ * With `onOpen`, the whole row is a button: one that covers it, under its
+ * checkbox, chips, action and menu, which each stay their own control. It
+ * takes the focus when pressed -- WebKit leaves a clicked button unfocused
+ * -- so whatever it opens can hand the focus back to it.
  */
 export function ToolRow({
   adapterId,
@@ -63,19 +76,33 @@ export function ToolRow({
   version,
   action,
   menu,
+  onOpen,
+  openLabel,
 }: ToolRowProps) {
+  const open = (event: MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.focus();
+    onOpen?.();
+  };
   return (
     <div
       data-tool-row=""
-      className="group relative flex min-h-[60px] items-center gap-3 rounded-row px-3 py-2 transition-colors hover:bg-hover"
+      className="@container group relative flex min-h-[60px] items-center gap-3 rounded-row px-3 py-2 transition-colors hover:bg-hover"
     >
+      {onOpen ? (
+        <button
+          type="button"
+          aria-label={openLabel}
+          onClick={open}
+          className="absolute inset-0 rounded-row outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+        />
+      ) : null}
       {selectable ? (
         <input
           type="checkbox"
           aria-label={selectable.ariaLabel}
           checked={selectable.checked}
           onChange={selectable.onToggle}
-          className="h-4 w-4 shrink-0 cursor-pointer"
+          className="relative z-10 h-4 w-4 shrink-0 cursor-pointer"
         />
       ) : null}
       <SourceAvatar adapterId={adapterId} label={sourceLabel} size="md" />
@@ -84,8 +111,10 @@ export function ToolRow({
           <p title={name} className="truncate text-name font-semibold text-foreground">
             {name}
           </p>
+          {/* Gives way to the name on a narrow row -- the window's
+              default 800px -- where the avatar still says the source. */}
           {nameChip ? (
-            <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted">
+            <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted @max-2xl:hidden">
               {nameChip}
             </span>
           ) : null}
@@ -95,17 +124,19 @@ export function ToolRow({
         </p>
       </div>
       {status !== undefined ? (
-        <div className="flex shrink-0 items-center gap-1.5">{status}</div>
+        <div data-status="" className="relative z-10 flex shrink-0 items-center gap-1.5">
+          {status}
+        </div>
       ) : null}
       {version !== undefined ? (
-        <div className="min-w-24 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
+        <div className="min-w-16 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted @2xl:min-w-24">
           {version}
         </div>
       ) : null}
       {action !== undefined ? (
-        <div className="flex w-[5.75rem] shrink-0 justify-end">{action}</div>
+        <div className="relative z-10 flex w-[5.75rem] shrink-0 justify-end">{action}</div>
       ) : null}
-      {menu !== undefined ? <div className="flex w-7 shrink-0 justify-end">{menu}</div> : null}
+      {menu !== undefined ? <div className="relative z-10 flex w-7 shrink-0 justify-end">{menu}</div> : null}
       {/* The hairline under the row, from where its text starts. */}
       <span
         aria-hidden="true"
