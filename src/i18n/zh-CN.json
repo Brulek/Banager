@@ -164,6 +164,7 @@
     },
     "confirmTitleNamed": "更新 {{name}}？",
     "confirmTitle_other": "更新 {{count}} 个工具？",
+    "preparing": "正在准备…",
     "warningsTitle": "请注意",
     "started": "已开始",
     "planFailed": "没能准备这次更新：{{message}}",

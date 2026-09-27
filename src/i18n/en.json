@@ -178,6 +178,7 @@
     "confirmTitleNamed": "Update {{name}}?",
     "confirmTitle_one": "Update {{count}} tool?",
     "confirmTitle_other": "Update {{count}} tools?",
+    "preparing": "Preparing…",
     "warningsTitle": "Before you continue",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",

@@ -1,14 +1,15 @@
 /**
  * What the two confirmation sheets are made of (src/components/ui/Dialog.tsx):
- * the tools a sheet is about, its notes in named groups, and a refusal
- * with its why. One set, so the update and the uninstall confirmation read
- * alike.
+ * the tools a sheet is about, the line it shows while it is still finding
+ * out what to say, its notes in named groups, and a refusal with its why.
+ * One set, so the update and the uninstall confirmation read alike.
  */
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import type { WarningLine } from "../lib/warnings";
 import { InfoDetail } from "./InfoDetail";
+import { SpinnerIcon } from "./icons";
 import { ToolAvatar } from "./ToolAvatar";
 
 export interface SheetToolProps {
@@ -49,6 +50,26 @@ export function SheetTool({ adapterId, sourceLabel, iconKey, name, aside, childr
         {children}
       </div>
     </li>
+  );
+}
+
+/**
+ * What a sheet says in place of its notes while it is still finding them
+ * out -- 「正在检查影响…」 over an uninstall, 「正在准备…」 over an update --
+ * with a spinner, in the quiet colour. One look for both sheets: each is
+ * up at once with the tools it is about, and this line stands where what
+ * it has to say will go. Under a list longer than the sheet -- Update all
+ * over ten tools -- it stays in sight at the foot of the sheet's body,
+ * which scrolls under it, rather than below the fold.
+ */
+export function SheetPending({ text }: { text: string }) {
+  return (
+    // `-bottom-6`: the body's own padding (`Dialog`'s `pb-6`), so that it
+    // stays at the very foot of what shows, with nothing scrolling below it.
+    <p className="sticky -bottom-6 mt-2 flex items-center gap-2 bg-surface py-2 text-body text-muted">
+      <SpinnerIcon size={14} className="shrink-0" />
+      {text}
+    </p>
   );
 }
 

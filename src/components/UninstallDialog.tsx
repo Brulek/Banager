@@ -13,8 +13,8 @@ import {
 import type { OpRequest } from "../lib/types";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
-import { SheetLines, Refusal, SheetSection, SheetTool } from "./SheetParts";
-import { SpinnerIcon, WarningIcon } from "./icons";
+import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
+import { WarningIcon } from "./icons";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
 
@@ -254,12 +254,7 @@ export function UninstallDialog({
         />
       </ul>
 
-      {planMutation.isPending ? (
-        <p className="mt-4 flex items-center gap-2 text-body text-muted">
-          <SpinnerIcon size={14} className="shrink-0" />
-          {t("uninstall.checking")}
-        </p>
-      ) : null}
+      {planMutation.isPending ? <SheetPending text={t("uninstall.checking")} /> : null}
 
       {planMutation.isError ? (
         <div className="mt-4">{refusal(planMutation.error.message, "uninstall.planError")}</div>

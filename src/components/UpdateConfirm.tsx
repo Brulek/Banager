@@ -6,7 +6,7 @@ import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
-import { SheetLines, Refusal, SheetSection, SheetTool } from "./SheetParts";
+import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
 import { CheckIcon, WarningIcon } from "./icons";
 import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
 
@@ -57,13 +57,17 @@ export interface BatchItem {
  *
  *   planning ─(every plan settled)─▶ ready ─(Confirm)─▶ submitting ─▶ done
  *
- * The dialog opens at `ready` if at least one plan was issued; when every
- * plan failed the batch goes straight to `done` with the dialog shut and
- * the reasons shown on the page. `done` is reached after submitting only
- * when something failed — a batch whose every item started closes the
- * dialog instead. `id` is compared with `batchIdRef` before any async
- * callback writes back, so a superseded batch's late reply can neither
- * overwrite a newer preview nor close a newer dialog.
+ * The dialog opens at `planning`, the moment Update is pressed: the tools
+ * and their versions are known from the rows, and only what to know
+ * before going on, and the commands, wait for the plans. It stays open at
+ * `ready` if at least one plan was issued; when every plan failed the
+ * batch goes straight to `done`, the dialog shuts and the reasons are
+ * shown on the page. `done` is reached after submitting only when
+ * something failed — a batch whose every item started closes the dialog
+ * instead. `id` is compared with `batchIdRef` before any async callback
+ * writes back, so the late reply of a batch that was superseded -- or
+ * closed while it was still planning -- can neither overwrite a newer
+ * preview, nor open or close a dialog.
  */
 export interface Batch {
   id: number;
@@ -99,8 +103,8 @@ export interface UpdateConfirmOptions {
 /** What `useUpdateConfirm` hands the page, and `UpdateConfirmDialog` draws. */
 export interface UpdateConfirm {
   /**
-   * Plans every one of `chosen` and, once one plan is back, opens the
-   * confirmation. `opener` is what was pressed -- a row's Update, Update
+   * Opens the confirmation on `chosen` at once, preparing, and plans every
+   * one of them. `opener` is what was pressed -- a row's Update, Update
    * selected, Update all, a drawer's Update -- which gets the focus back
    * when the confirmation closes; without it, what has the focus now.
    * Passed rather than read when the sheet opens, because by then the
@@ -110,7 +114,10 @@ export interface UpdateConfirm {
   openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null): Promise<void>;
   /** What the confirmation gives the focus back to (`openConfirm`'s `opener`). */
   returnFocusTo: RefObject<HTMLElement | null>;
-  /** The confirmation is on screen: the Update buttons that open it are off meanwhile. */
+  /**
+   * The confirmation is on screen, preparing or ready: the Update buttons
+   * that open it are off meanwhile.
+   */
   dialogOpen: boolean;
   /**
    * Every plan failed, so there is nothing to confirm: the reasons, for the
@@ -160,10 +167,11 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   }
 
   async function openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null) {
-    // A new id retires whatever batch was still planning. Planning has no
-    // side effect beyond issuing PlanIds that expire on their own, so the
-    // newest click wins and the older batch's late replies are dropped by
-    // `isCurrent`. Submitting is different — see the lock in the dialog.
+    // A new id retires whatever batch was still planning (`close` retires
+    // one too). Planning has no side effect beyond issuing PlanIds that
+    // expire on their own, so the newest batch wins and an older one's
+    // late replies are dropped by `isCurrent`. Submitting is different —
+    // see the lock in the dialog.
     const id = batchIdRef.current + 1;
     batchIdRef.current = id;
     openerRef.current =
@@ -180,10 +188,15 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       submitError: null,
       submitErrorDetail: null,
     });
+    // The sheet is up from here, preparing: the tools and their versions
+    // are the rows', and nothing waits on the backend to show them.
     setBatch({ id, phase: "planning", items: candidates.map(blank) });
 
     // allSettled, not all: one rejected plan must not hide the others, and
-    // each item keeps its own backend message verbatim.
+    // each item keeps its own backend message verbatim. The notes and the
+    // commands arrive together, once every plan has settled, and so does
+    // Update: nothing of a batch can be confirmed before all of it is on
+    // the sheet.
     const results = await Promise.allSettled(
       candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
     );
@@ -199,8 +212,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
         planErrorDetail: planErrorDetail(t, raw),
       };
     });
-    // Nothing to confirm when no plan came back: the dialog stays shut and
-    // the reasons are rendered on the page (see `pageErrors` below).
+    // Nothing to confirm when no plan came back: the dialog shuts and the
+    // reasons are rendered on the page (see `pageErrors` below).
     setBatch({ id, phase: items.some((item) => item.issued !== null) ? "ready" : "done", items });
   }
 
@@ -257,7 +270,18 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     setBatch(anyFailed ? { id, phase: "done", items } : null);
   }
 
-  const dialogOpen = batch !== null && batch.phase !== "planning" && hasIssuedPlan(batch);
+  function close() {
+    // A batch closed while it is still planning is retired, so that its
+    // plans, arriving after, open nothing. A submitting one is never
+    // closed -- the dialog refuses to (its lock) -- and ready or done, it
+    // has nothing left to arrive.
+    if (batch?.phase === "planning") batchIdRef.current += 1;
+    setBatch(null);
+  }
+
+  // Up from the press: preparing, then with what there is to confirm. Shut
+  // when every plan failed, whose reasons are then the page's.
+  const dialogOpen = batch !== null && (batch.phase === "planning" || hasIssuedPlan(batch));
   const submitting = batch?.phase === "submitting";
   // Every plan failed: there is nothing to confirm, so the reasons go on the
   // page rather than into an empty dialog. Cleared by the next batch.
@@ -274,7 +298,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     batch,
     submitting,
     confirmAndSubmit,
-    close: () => setBatch(null),
+    close,
   };
 }
 
@@ -287,6 +311,13 @@ export interface UpdateConfirmDialogProps {
  * -- 「更新 ffmpeg？」 for one -- the tools with their avatars and the
  * version each moves to, what to know before going on, then Cancel and
  * Update. Once submitted, what started and what did not, under each tool.
+ *
+ * It is up the moment Update is pressed, with the tools and versions the
+ * rows had and 「正在准备…」 where the notes will go -- the uninstall
+ * sheet's 「正在检查影响…」, in the same look (`SheetPending`) -- and
+ * Update off, with the sheet itself holding the focus, until every plan
+ * is back. Then the notes and the commands, Update on, and the focus on
+ * it, unless the user has put it somewhere else meanwhile.
  *
  * The notes are grouped under 「请注意」, a tool's own under its name where
  * the sheet lists several: its warnings, that it cannot be stopped once it
@@ -334,9 +365,20 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // A batch that did not all start stays open to say which did not, with
   // Close in place of Cancel and Update -- where the focus goes, rather
   // than with the Update button it was on.
+  //
+  // Ready, Update takes the focus the sheet held for it while it was off
+  // (`Dialog`'s `initialFocus`) -- only from the sheet itself: a focus the
+  // user moved to Cancel or into the sheet's body while it was preparing
+  // stays where they put it, so that a key pressed there is never taken
+  // by Update instead.
   const phase = batch?.phase;
   useEffect(() => {
     if (phase === "done") closeRef.current?.focus();
+    if (phase === "ready") {
+      const update = updateRef.current;
+      const sheet = update?.closest('[role="dialog"]');
+      if (update && sheet && document.activeElement === sheet) update.focus();
+    }
   }, [phase]);
 
   const notesOf = (item: BatchItem & { issued: IssuedPlan }): WarningLine[] => {
@@ -360,10 +402,13 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     .map((item) => ({ item, notes: notesOf(item) }))
     .filter(({ notes }) => notes.length > 0);
 
+  // While it prepares, it asks about everything chosen; then about what
+  // can be confirmed of it.
+  const asked = phase === "planning" ? items : issued;
   const title =
-    issued.length === 1
-      ? t("updates.confirmTitleNamed", { name: issued[0].name })
-      : t("updates.confirmTitle", { count: issued.length });
+    asked.length === 1
+      ? t("updates.confirmTitleNamed", { name: asked[0].name })
+      : t("updates.confirmTitle", { count: asked.length });
 
   return (
     <Dialog
@@ -447,6 +492,8 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           );
         })}
       </ul>
+
+      {phase === "planning" ? <SheetPending text={t("updates.preparing")} /> : null}
 
       {noted.length > 0 ? (
         <SheetSection

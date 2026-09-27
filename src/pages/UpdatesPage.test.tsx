@@ -381,7 +381,12 @@ beforeEach(() => {
     if (cmd === "plan_operation") {
       const request = (args as { request: OpRequest }).request;
       const failure = planFailures[request.name];
-      if (failure !== undefined) return Promise.reject(failure);
+      if (failure !== undefined) {
+        if (!holdPlans.has(request.name)) return Promise.reject(failure);
+        return new Promise((_resolve, reject) => {
+          releasePlan[request.name] = () => reject(failure);
+        });
+      }
       const issued = issuedPlanFor(request, nextPlanId);
       nextPlanId += 1;
       if (holdPlans.has(request.name)) {
@@ -1481,12 +1486,17 @@ describe("UpdatesPage", () => {
     const updateAll = getByRole("button", { name: "Update all" });
     const updateButtons = await findAllByRole("button", { name: "Update" });
 
-    // Batch 1 (glib) is still planning when batch 2 (onyx) opens the dialog.
-    // Planning has no side effect beyond issuing a PlanId that expires on
-    // its own, so the newer click supersedes the older batch.
+    // Batch 1 (glib) is still planning when it is closed and batch 2 (onyx)
+    // opens the dialog. Planning has no side effect beyond issuing a PlanId
+    // that expires on its own, so the newer batch supersedes the older one.
+    // The sheet is up from the first press, over the page, so the second
+    // press comes after Cancel.
     fireEvent.click(updateButtons[0]);
+    const first = await findByRole("dialog", { name: "Update glib?" });
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
     fireEvent.click(updateButtons[1]);
-    const dialog = await findByRole("dialog");
+    const dialog = await findByRole("dialog", { name: "Update onyx?" });
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     await waitFor(() => expect(releasePlan.glib).toBeDefined());
@@ -2643,6 +2653,141 @@ describe("UpdatesPage", () => {
 
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(updateSelected));
+    });
+  });
+
+  describe("the confirmation sheet, while its plans are on their way", () => {
+    // Hands `name`'s held plan back, and lets what it sets off settle.
+    async function release(name: string) {
+      await waitFor(() => expect(releasePlan[name]).toBeDefined());
+      await act(async () => {
+        releasePlan[name]();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    it("is up the moment Update selected is pressed, preparing, and offers Update once every plan is back", async () => {
+      holdPlans.add("glib");
+      holdPlans.add("onyx");
+      needsPassword.add("onyx");
+      const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+      const checkboxes = await findAllByRole("checkbox");
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+      fireEvent.click(getByRole("button", { name: "Update selected (2)" }));
+
+      // No plan is back yet: the tools, with their avatars and versions,
+      // are the rows'.
+      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      expect(plannedNames().sort()).toEqual(["glib", "onyx"]);
+      const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
+      expect(tools.map((tool) => within(tool).getAllByText(/./, { selector: "p" })[0].textContent)).toEqual([
+        "glib",
+        "onyx",
+      ]);
+      expect(within(tools[0]).getByText("H")).toHaveAttribute("aria-hidden", "true");
+      expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+      expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+      // Preparing, where the notes and the commands will go, and Update off.
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /^Show the command/ })).toBeNull();
+      const update = within(dialog).getByRole("button", { name: "Update" });
+      expect(update).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
+
+      // One plan back is not the batch: still preparing, still off.
+      await release("glib");
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      expect(update).toBeDisabled();
+      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
+
+      // Every plan back: the notes and the commands, and Update on.
+      await release("onyx");
+      await waitFor(() => expect(update).toBeEnabled());
+      expect(within(dialog).queryByText("Preparing…")).toBeNull();
+      expect(within(dialog).getByRole("region", { name: "Before you continue" })).toHaveTextContent(
+        "Some apps ask for your Mac password at this step.",
+      );
+      showCommands(dialog);
+      expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
+      expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
+      expect(submittedPlanIds()).toEqual([]);
+
+      fireEvent.click(update);
+      await waitFor(() => expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]));
+    });
+
+    it("is up at once for a row's own Update too, holding the focus itself until Update can take it", async () => {
+      holdPlans.add("glib");
+      const { findByRole } = renderWithProviders(<UpdatesPage />);
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      expect(within(dialog).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+      const update = within(dialog).getByRole("button", { name: "Update" });
+      expect(update).toBeDisabled();
+      // One confirmation at a time: the row's Update is off behind it.
+      expect(rowUpdate).toBeDisabled();
+      // Not the disabled Update, and not the button under the dimmed page.
+      await waitFor(() => expect(document.activeElement).toBe(dialog));
+
+      await release("glib");
+      await waitFor(() => expect(update).toBeEnabled());
+      expect(document.activeElement).toBe(update);
+      expect(within(dialog).queryByText("Preparing…")).toBeNull();
+    });
+
+    it("leaves the focus where the user put it while it was preparing", async () => {
+      holdPlans.add("glib");
+      const { findByRole } = renderWithProviders(<UpdatesPage />);
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+      cancel.focus();
+
+      await release("glib");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      // A key meant for Cancel is never taken by Update.
+      expect(document.activeElement).toBe(cancel);
+    });
+
+    it("stays shut when the plans of a sheet closed while preparing arrive, and says nothing on the page", async () => {
+      holdPlans.add("glib");
+      const { findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
+
+      await release("glib");
+      expect(queryByRole("dialog")).toBeNull();
+      expect(queryByRole("alert")).toBeNull();
+      expect(rowUpdate).toBeEnabled();
+      expect(submittedPlanIds()).toEqual([]);
+    });
+
+    it("shuts when every plan is refused, and says why on the page, with the focus back on the row's Update", async () => {
+      planFailures.glib = "glib is pinned";
+      holdPlans.add("glib");
+      const { findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      fireEvent.click(rowUpdate);
+      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
+
+      await release("glib");
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update: glib is pinned");
+      expect(queryByRole("dialog")).toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
     });
   });
 

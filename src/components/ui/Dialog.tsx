@@ -16,7 +16,12 @@ export interface DialogProps {
    * the focus as the sheet opened.
    */
   returnFocusTo?: RefObject<HTMLElement | null>;
-  /** What has the focus as it opens, in place of its first control. */
+  /**
+   * What has the focus as it opens, in place of its first control. While
+   * that cannot take it -- Update, off until its plan has arrived -- the
+   * sheet itself has the focus, so that nothing is pressed by a key meant
+   * for something else, and it stays inside the sheet.
+   */
   initialFocus?: RefObject<HTMLElement | null>;
   /** Called once it has closed and handed the focus back. */
   onClosed?: () => void;
@@ -82,6 +87,10 @@ export function Dialog({
             if (target) {
               event.preventDefault();
               target.focus();
+              // A disabled button takes no focus: the sheet has it instead
+              // (Radix's content is focusable for this), rather than the
+              // button that opened it, under the dimmed page.
+              if (document.activeElement !== target) contentRef.current?.focus();
             }
           }}
           onEscapeKeyDown={(event) => {
