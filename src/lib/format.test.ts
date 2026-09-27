@@ -108,6 +108,35 @@ describe("outcomeKey", () => {
     );
   });
 
+  it("never says a cancelled or crashed operation changed nothing, in either language (T9)", () => {
+    // A path-list uninstall cancelled between two of its items has moved
+    // the first to the Trash and still ends `Cancelled`
+    // (crates/canager-core/src/events.rs), and an operation Canager lost
+    // to a panic may have run its command (`Fault::Panicked`,
+    // crates/canager-core/src/model.rs). The refusals that stop before
+    // anything runs may say nothing changed, and do; these two may not --
+    // nor the row's own word for a cancelled update.
+    const claimsNothingChanged = /nothing (was |has been )?changed|changed nothing|no changes were made|没有改动|未做任何改动/i;
+    const panicked: Outcome = { CanagerFailed: "Panicked" };
+    expect(outcomeKey("Cancelled")).toBe("Cancelled");
+    expect(outcomeKey(panicked)).toBe("CanagerFailed.Panicked");
+    for (const locale of [en, zhCN]) {
+      for (const sentence of [
+        locale.operations.outcome.Cancelled,
+        locale.operations.outcome.CanagerFailed.Panicked,
+        locale.updates.progress.cancelled,
+      ]) {
+        expect(sentence).not.toMatch(claimsNothingChanged);
+      }
+    }
+    // What a crash says instead: look at the list.
+    expect(en.operations.outcome.CanagerFailed.Panicked).toContain("Check the list to see whether anything changed.");
+    expect(zhCN.operations.outcome.CanagerFailed.Panicked).toContain("请看一下列表，确认有没有发生变化。");
+    // The guard itself: it does catch the claim the refusals make.
+    expect(en.planRefused.refused).toMatch(claimsNothingChanged);
+    expect(zhCN.planRefused.refused).toMatch(claimsNothingChanged);
+  });
+
   it("says an update that changed nothing changed nothing, and points to the log", () => {
     // Rust sends this when the tool exited 0 and the installed version
     // read before the update equals the one read after
