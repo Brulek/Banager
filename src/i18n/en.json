@@ -79,7 +79,7 @@
     "update": "Update",
     "skipVersion": "Skip this version",
     "skipVersionHint": "You'll be reminded again when its next version is out.",
-    "neverRemind": "Never remind me",
+    "neverRemind": "Never remind me about this software",
     "neverRemindHint": "You won't be reminded about any update of this again. You can undo this in Settings.",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
     "available": "Update",

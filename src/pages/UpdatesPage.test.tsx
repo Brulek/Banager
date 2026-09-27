@@ -1335,7 +1335,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
 
     await findByText("glib");
-    fireEvent.click((await findAllByRole("button", { name: "Never remind me" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: "Never remind me about this software" }))[0]);
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     expect(savedSettings().ignored_updates).toEqual([glibKey]);
@@ -1426,7 +1426,7 @@ describe("UpdatesPage", () => {
 
     const myFork = (await findByText("my-fork")).parentElement?.parentElement as HTMLElement;
     const glib = (await findByText("glib")).parentElement?.parentElement as HTMLElement;
-    expect(within(myFork).getByRole("button", { name: "Never remind me" })).toBeInTheDocument();
+    expect(within(myFork).getByRole("button", { name: "Never remind me about this software" })).toBeInTheDocument();
     expect(within(myFork).queryByRole("button", { name: "Skip this version" })).toBeNull();
     expect(within(glib).getByRole("button", { name: "Skip this version" })).toBeInTheDocument();
     expect(getAllByRole("button", { name: "Skip this version" })).toHaveLength(1);
@@ -1462,7 +1462,7 @@ describe("UpdatesPage", () => {
     const chromium = (await findByText("chromium")).parentElement?.parentElement as HTMLElement;
     const glib = (await findByText("glib")).parentElement?.parentElement as HTMLElement;
     expect(within(chromium).getByRole("button", { name: "Update" })).toBeInTheDocument();
-    expect(within(chromium).getByRole("button", { name: "Never remind me" })).toBeInTheDocument();
+    expect(within(chromium).getByRole("button", { name: "Never remind me about this software" })).toBeInTheDocument();
     expect(within(chromium).queryByRole("button", { name: "Skip this version" })).toBeNull();
     expect(within(glib).getByRole("button", { name: "Skip this version" })).toBeInTheDocument();
     expect(getAllByRole("button", { name: "Skip this version" })).toHaveLength(1);
@@ -1510,7 +1510,7 @@ describe("UpdatesPage", () => {
     const { findAllByRole } = renderWithProviders(<UpdatesPage />);
 
     const skip = (await findAllByRole("button", { name: "Skip this version" }))[0];
-    const never = (await findAllByRole("button", { name: "Never remind me" }))[0];
+    const never = (await findAllByRole("button", { name: "Never remind me about this software" }))[0];
     expect(skip).toHaveAccessibleDescription(
       "You'll be reminded again when its next version is out.",
     );
@@ -1522,7 +1522,7 @@ describe("UpdatesPage", () => {
   it("calls them 跳过这个版本 and 不再提醒 in Chinese, and says what each does", () => {
     expect(zhCN.updates.skipVersion).toBe("跳过这个版本");
     expect(zhCN.updates.skipVersionHint).toBe("你会在它出下一个版本时再看到提醒。");
-    expect(zhCN.updates.neverRemind).toBe("不再提醒");
+    expect(zhCN.updates.neverRemind).toBe("不再提醒这个软件");
     expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个软件的任何更新，可在设置里撤销。");
   });
 
@@ -1532,7 +1532,7 @@ describe("UpdatesPage", () => {
 
     await findByText("glib");
     const skipButtons = await findAllByRole("button", { name: "Skip this version" });
-    const neverButtons = await findAllByRole("button", { name: "Never remind me" });
+    const neverButtons = await findAllByRole("button", { name: "Never remind me about this software" });
     fireEvent.click(skipButtons[0]);
 
     // Every button locks until the first save settles. A second click now

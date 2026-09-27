@@ -74,7 +74,7 @@
     "update": "更新",
     "skipVersion": "跳过这个版本",
     "skipVersionHint": "你会在它出下一个版本时再看到提醒。",
-    "neverRemind": "不再提醒",
+    "neverRemind": "不再提醒这个软件",
     "neverRemindHint": "以后不再提醒这个软件的任何更新，可在设置里撤销。",
     "saveChoiceFailed": "没能保存这个选择：{{message}}",
     "available": "更新",

@@ -230,6 +230,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   结转下来的）写「有新版本，暂时无法更新」。最后这一种起初仍写「有可用更新」，更新页却没有按钮，与上面那句不符，
   同日改掉：已安装页只在 `updateStateOf` 为 `actionable` 时写「有可用更新」，这正是更新页给按钮的
   `isUpdateActionable`。有测试把两页逐行对照，其中包括一个没在运行的 Ollama。
+  更新页一处可见变化：来源没响应的行，徽标仍写「更新」，但颜色从 `info` 改成 `neutral`，与其余没有按钮的行一致。
   2026-09-27 起（分支 feat/updates-page-feedback）：更新页的「忽略」拆成「跳过这个版本」和「不再提醒」，
   `notIgnored` 换成同一文件里的 `hidingRule`（更新页经 `notHidden` 读它）：键在 `Settings.ignored_updates`
   里的、或（键，目标版本）在 `Settings.skipped_versions` 里且能跳过的（`canSkipVersion`），都不列出。已安装页
@@ -239,7 +240,6 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   `--greedy`，Homebrew 自己的 HOMEBREW_UPGRADE_GREEDY、HOMEBREW_UPGRADE_GREEDY_CASKS 也能让它贪婪），下载一变
   就把它列出来，目标版本却永远是 latest，跳过 latest 等于永不提醒，按钮说的「你会在它出下一个版本时再看到提醒」
   做不到。这两种行只给「不再提醒」，已存下的跳过也不隐藏它们。
-  更新页一处可见变化：来源没响应的行，徽标仍写「更新」，但颜色从 `info` 改成 `neutral`，与其余没有按钮的行一致。
 
 ## 阶段 4 之前
 
