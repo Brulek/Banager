@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import App from "./App";
-import type { Settings, Snapshot, UnknownScan } from "./lib/types";
+import type { InvokeArgs } from "@tauri-apps/api/core";
+import type { OpRequest, Settings, Snapshot, UnknownScan } from "./lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -186,6 +187,57 @@ describe("App", () => {
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
     expect(getByRole("button", { name: "Update selected (2)" })).toBeEnabled();
+  });
+
+  it("hands the focus from an uninstall's confirmation to its log, and back to the row's Uninstall when the log closes", async () => {
+    // The log drawer gives the focus back to what had it as it opened.
+    // The Installed page opens it only once the confirmation has closed and
+    // given the focus back to the row's Uninstall, so that is where the
+    // user lands when the log closes -- not at the top of the window.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.getAttribute("data-index") === null ? 600 : 56;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    const answer = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "plan_operation") {
+        return Promise.resolve({
+          id: "1",
+          plan: {
+            request: (args as { request: OpRequest }).request,
+            action: { Command: { program: "/opt/homebrew/bin/brew", args: ["uninstall", "--formula", "jq"], env: [] } },
+            needs_password: false,
+            locks: ["brew:/opt/homebrew"],
+            cancel_policy: "KillThenReconcile",
+            warnings: [],
+            affected: [],
+            timeout_secs: 1800,
+          },
+          issued_at: 1758000000,
+        });
+      }
+      if (cmd === "submit_operation") return Promise.resolve(7);
+      return answer === undefined ? Promise.resolve(undefined) : answer(cmd, args);
+    });
+    const { getByRole, findByRole, findByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    fireEvent.click(getByRole("button", { name: "Installed" }));
+
+    const row = (await findByText("jq", { selector: "[data-tool-row] p" })).closest("[data-tool-row]");
+    const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall" });
+    fireEvent.click(uninstall);
+    const sheet = await findByRole("dialog", { name: "Uninstall jq?" });
+    const confirm = within(sheet).getByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    const log = await findByRole("dialog", { name: "Operation log" });
+    await waitFor(() => expect(document.activeElement).toBe(log));
+    fireEvent.keyDown(log, { key: "Escape" });
+
+    await waitFor(() => expect(document.activeElement).toBe(uninstall));
   });
 
   it("keeps Settings reachable when no source is installed", async () => {

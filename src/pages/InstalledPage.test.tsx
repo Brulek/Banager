@@ -301,6 +301,12 @@ function wholeSentence(text: string) {
     element?.tagName === "P" && element.textContent === text;
 }
 
+// Opens a confirmation's "Show the command": it is one press away.
+function showCommand(dialog: HTMLElement) {
+  const disclosure = within(dialog).getByRole("button", { name: /^Show the command/ });
+  if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
+}
+
 // Presses `name`'s row itself, and returns the drawer that opens.
 async function openDetails(name: string): Promise<HTMLElement> {
   const row = await findRow(name);
@@ -378,9 +384,44 @@ describe("InstalledPage", () => {
         name: "jq",
       },
     });
-    await within(dialog).findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    await within(dialog).findByRole("button", { name: "Show the command" });
+    showCommand(dialog);
+    expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
     // The row's button, not the row: no details drawer under the dialog.
     expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull();
+  });
+
+  it("gives the focus back to the row's Uninstall when its confirmation is cancelled", async () => {
+    renderWithProviders(<InstalledPage />);
+
+    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    fireEvent.click(uninstall);
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" })));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(uninstall));
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(0);
+  });
+
+  it("opens the log once an uninstall has started and the focus is back on the row's Uninstall", async () => {
+    // The log drawer gives the focus back to what had it as it opened: so
+    // it opens after the sheet has handed the focus back, and closing it
+    // lands on the row's Uninstall, where the user began.
+    renderWithProviders(<InstalledPage />);
+
+    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    fireEvent.click(uninstall);
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+    const confirm = within(dialog).getByRole("button", { name: "Uninstall" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
+    expect(useUiStore.getState().focusedOpId).toBe(7);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(uninstall);
   });
 
   it("disables the dialog's confirm button when the plan reports dependents", async () => {
@@ -1305,10 +1346,11 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("2.90.0");
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Update" }));
-      const confirm = await screen.findByRole("dialog", { name: "Confirm update" });
+      const confirm = await screen.findByRole("dialog", { name: "Update glib?" });
       expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
+      showCommand(confirm);
       expect(await within(confirm).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
       expect(within(confirm).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
 
@@ -1325,9 +1367,9 @@ describe("InstalledPage", () => {
           cancel_policy: "KillThenReconcile",
         },
       ];
-      fireEvent.click(within(confirm).getByRole("button", { name: "Confirm" }));
+      fireEvent.click(within(confirm).getByRole("button", { name: "Update" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirm update" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update glib?" })).toBeNull());
       // Where the button was, as on the Updates page's row.
       const open = screen.getByRole("dialog", { name: "glib" });
       expect(await within(open).findByText("Updating…")).toBeInTheDocument();
@@ -1359,18 +1401,48 @@ describe("InstalledPage", () => {
     it("uninstalls through the row's own dialog, then gives way to the log", async () => {
       renderWithProviders(<InstalledPage />);
 
+      const rowButton = within(await findRow("jq")).getByRole("button", { name: "Details: jq" });
       const drawer = await openDetails("jq");
       fireEvent.click(within(drawer).getByRole("button", { name: "Uninstall" }));
       const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
-      await within(dialog).findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+      await within(dialog).findByRole("button", { name: "Show the command" });
+      showCommand(dialog);
+      expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
       // The drawer closes for the log drawer, which it would otherwise
       // keep out of reach.
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      expect(useUiStore.getState().drawerOpen).toBe(true);
+      await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
       expect(useUiStore.getState().focusedOpId).toBe(7);
+      // What the log drawer will give the focus back to when it closes: the
+      // row that opened the details, not a button that went with them.
+      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+    });
+
+    it("gives the focus back to its own Uninstall and Update when their confirmations are dismissed", async () => {
+      renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const drawer = await openDetails("glib");
+      const uninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+      const update = within(drawer).getByRole("button", { name: "Update" });
+
+      fireEvent.click(uninstall);
+      await screen.findByRole("dialog", { name: "Uninstall glib?" });
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Uninstall glib?" })).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(uninstall));
+      // The drawer stays: only the question went.
+      expect(screen.getByRole("dialog", { name: "glib" })).toBe(drawer);
+
+      fireEvent.click(update);
+      const confirm = await screen.findByRole("dialog", { name: "Update glib?" });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update glib?" })).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(update));
     });
 
     it("says where a tool is only with technical details on", async () => {

@@ -95,6 +95,23 @@
       opacity: 0;
     }
   }
+
+  /* A confirmation sheet (`Dialog`) settles into place as it opens, over a
+     page that dims in under it. `transform`, not `translate`: the sheet's
+     own centring is a `translate`, which this leaves alone. */
+  --animate-sheet-in: sheet-in 160ms ease-out;
+  @keyframes sheet-in {
+    from {
+      transform: translateY(-8px);
+      opacity: 0;
+    }
+  }
+  --animate-fade-in: fade-in 160ms ease-out;
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 :root {

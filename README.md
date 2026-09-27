@@ -60,10 +60,12 @@ This app runs package managers on your behalf, so the boundary matters more than
 - **The window cannot ask for a command.** The UI sends an operation kind and a single-use,
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
-- **You see the exact command before it runs.** Every update and uninstall shows its real argv
-  and whether it needs your password — or, for an uninstall that runs no command, the exact
-  paths it will move to the Trash. An uninstall also says what it will affect — an update
-  never touches anything else, so it has nothing to report there.
+- **You see the exact command before it runs.** Every update and uninstall lets you see the exact
+  command before it runs — one press on "Show the command" in its confirmation, or open from the
+  start with Settings' "Show technical details" on — and says whether it may ask for your
+  password; an uninstall that runs no command lists instead the exact paths it will move to the
+  Trash. An uninstall also says what it will affect — an update never touches anything else, so it
+  has nothing to report there.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language.
 - **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
@@ -212,6 +214,9 @@ default, so please don't build on it yet — and I can't accept contributions un
 卸载又要换一条。大多数人两件都不做，这些东西就在那儿慢慢烂掉。
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
+
+每次更新和卸载，都能在它运行之前看到确切的命令：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
+让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 861 个 Rust 测试（另有 3 个要连着真实的
 Homebrew 或真实的废纸篓才跑，平时是跳过的）和 565 个前端测试，但还没有可下载的版本，v0.1 正在

@@ -234,6 +234,29 @@ describe("SettingsPage", () => {
     expect(lastSaved().skipped_versions).toEqual([{ key: glibKey, version: "2.89.0" }]);
   });
 
+  it("says what Show technical details shows, and nothing it does not", async () => {
+    // Every reader of `show_technical_details`, and nothing else (T2 of the
+    // copy table): a tool's own error text behind a row's "Can't check"
+    // (updateDetails.tsx), a tool's location in its drawer and where an
+    // Unknown-page link points, the command a chip talks about and Copy
+    // command, and a confirmation's command, open from the start
+    // (CommandPreview.tsx). Version numbers are on every row, on or off.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByRole("switch", { name: "Show technical details" })).toHaveAccessibleDescription(
+      "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start.",
+    );
+    expect(zhCN.settings.showTechnicalDetails.description).toBe(
+      "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。",
+    );
+    expect(zhCN.settings.showTechnicalDetails.description).not.toMatch(/版本号/);
+  });
+
   it("calls the two lists 已跳过的版本 and 不再提醒的软件 in Chinese, as they were asked for", () => {
     expect(zhCN.settings.skippedVersions.title).toBe("已跳过的版本");
     expect(zhCN.settings.ignoredUpdates.title).toBe("不再提醒的软件");

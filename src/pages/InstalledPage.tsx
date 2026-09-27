@@ -35,6 +35,7 @@ import {
   unavailableDetail,
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
+import { Refusal } from "../components/SheetParts";
 import { CheckIcon, ChevronIcon, SearchIcon } from "../components/icons";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
@@ -167,15 +168,26 @@ export function InstalledPage() {
   const listRef = useRef<HTMLDivElement>(null);
 
   // Uninstall is destructive, so a button only *targets* an artifact;
-  // UninstallDialog is what plans it, shows the exact command and what
-  // would break, and submits (Global Constraints, spec §6).
+  // UninstallDialog is what plans it, shows what it would change and what
+  // would break, with the exact command a click away, and submits (Global
+  // Constraints, spec §6).
   const [uninstallTarget, setUninstallTarget] = useState<{
     request: OpRequest;
     displayName: string;
   } | null>(null);
+  // What opened the uninstall dialog -- a row's Uninstall, or the
+  // drawer's -- which gets the focus back when it closes.
+  const uninstallOpener = useRef<HTMLElement | null>(null);
+  // The operation an uninstall just started. Its log opens once the dialog
+  // has closed and given the focus back to what opened it, so that the log
+  // drawer, which hands the focus back to what had it as it opened, hands
+  // it back there too.
+  const startedUninstall = useRef<number | null>(null);
   // The row whose details are open, by artifact key id; looked up in the
   // snapshot each time, so the drawer shows what the last check found.
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  // What opened those details: the row itself, or its ⋯ menu's button.
+  const detailsOpener = useRef<HTMLElement | null>(null);
   // Set when the drawer closes for the log drawer to open: the focus goes
   // there, not back to the row.
   const leaveFocusOnClose = useRef(false);
@@ -404,7 +416,10 @@ export function InstalledPage() {
   const canUninstall = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
     canWrite(instance) && isAvailable(instance) && artifact.uninstall_blocked === null;
 
-  const uninstall = (artifact: InstalledArtifact) =>
+  // `opener` is the button pressed, passed rather than read off the focus:
+  // a click in WebKit does not focus a button.
+  const uninstall = (artifact: InstalledArtifact, opener: HTMLElement) => {
+    uninstallOpener.current = opener;
     setUninstallTarget({
       request: {
         kind: "Uninstall",
@@ -414,6 +429,14 @@ export function InstalledPage() {
       },
       displayName: artifact.display_name,
     });
+  };
+
+  // The row itself and its ⋯ menu's Details both put the focus on what
+  // was pressed before they get here (`ToolRow`, `Menu`).
+  const openDetails = (artifact: InstalledArtifact) => {
+    detailsOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDetailsId(artifactKeyId(artifact.key));
+  };
 
   const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): string =>
     toolDescription(
@@ -568,7 +591,7 @@ export function InstalledPage() {
   // command a chip talks about.
   const menuItems = (artifact: InstalledArtifact, instance: ManagerInstance): MenuItem[] => {
     const items: MenuItem[] = [
-      { id: "details", label: t("common.details"), onSelect: () => setDetailsId(artifactKeyId(artifact.key)) },
+      { id: "details", label: t("common.details"), onSelect: () => openDetails(artifact) },
     ];
     const command = commandOf(artifact, instance);
     if (showTechnicalDetails && command !== null) {
@@ -597,13 +620,13 @@ export function InstalledPage() {
         version={versionOf(artifact)}
         action={
           canUninstall(artifact, instance) ? (
-            <button type="button" onClick={() => uninstall(artifact)} className={ROW_BUTTON}>
+            <button type="button" onClick={(event) => uninstall(artifact, event.currentTarget)} className={ROW_BUTTON}>
               {t("installed.uninstall")}
             </button>
           ) : null
         }
         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(artifact, instance)} />}
-        onOpen={() => setDetailsId(artifactKeyId(artifact.key))}
+        onOpen={() => openDetails(artifact)}
         openLabel={t("common.detailsLabel", { title: name })}
       />
     );
@@ -611,10 +634,16 @@ export function InstalledPage() {
 
   // The log drawer at the foot of the window, for an operation just
   // started or finished. The details drawer, a modal over the page, closes
-  // first: the log drawer is not inside it, and would be out of reach.
+  // first: the log drawer is not inside it, and would be out of reach. The
+  // row that opened the details takes the focus on the way, where the
+  // details drawer lets it -- after an uninstall's dialog has closed over
+  // it -- so that the log drawer gives it back to the row, not to a button
+  // that went with the details. From inside the details, the drawer keeps
+  // the focus to itself until it closes.
   const openLog = (opId: number) => {
     if (detailsId !== null) {
       leaveFocusOnClose.current = true;
+      if (detailsOpener.current?.isConnected) detailsOpener.current.focus();
       setDetailsId(null);
     }
     setFocusedOpId(opId);
@@ -672,7 +701,7 @@ export function InstalledPage() {
           {removable ? (
             <button
               type="button"
-              onClick={() => uninstall(artifact)}
+              onClick={(event) => uninstall(artifact, event.currentTarget)}
               className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-danger outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
             >
               {t("installed.uninstall")}
@@ -684,7 +713,7 @@ export function InstalledPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => void confirm.openConfirm([listed])}
+                onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
                 disabled={confirm.dialogOpen}
                 className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50"
               >
@@ -742,11 +771,18 @@ export function InstalledPage() {
             <SourceNotices notices={sourceNotices} layout="block" />
           </div>
         ) : null}
-        {confirm.pageErrors.map((item) => (
-          <p key={artifactKeyId(item.candidate.key)} role="alert" className="mt-4 text-body text-danger">
-            {t("updates.planFailed", { message: item.planError })}
-          </p>
-        ))}
+        {confirm.pageErrors.map((item) => {
+          const text = t("updates.planFailed", { message: item.planError });
+          return (
+            <Refusal
+              key={artifactKeyId(item.candidate.key)}
+              text={text}
+              detail={item.planErrorDetail}
+              detailTitle={text}
+              className="mt-4"
+            />
+          );
+        })}
       </Drawer>
     );
   };
@@ -927,9 +963,15 @@ export function InstalledPage() {
           }}
           request={uninstallTarget.request}
           displayName={uninstallTarget.displayName}
+          returnFocusTo={uninstallOpener}
           onSubmitted={(opId) => {
+            startedUninstall.current = opId;
             setUninstallTarget(null);
-            openLog(opId);
+          }}
+          onClosed={() => {
+            const opId = startedUninstall.current;
+            startedUninstall.current = null;
+            if (opId !== null) openLog(opId);
           }}
         />
       ) : null}

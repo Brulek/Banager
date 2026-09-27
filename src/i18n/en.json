@@ -30,7 +30,8 @@
     "copyCommand": "Copy command",
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
-    "moreActions": "More actions for {{name}}"
+    "moreActions": "More actions for {{name}}",
+    "canagerFaultDetail": "This is a problem in Canager, not on your Mac."
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -173,8 +174,10 @@
       "viewLog": "View log",
       "viewLogLabel": "View log: {{name}}"
     },
-    "confirmTitle": "Confirm update",
-    "confirmUpdate": "Confirm",
+    "confirmTitleNamed": "Update {{name}}?",
+    "confirmTitle_one": "Update {{count}} tool?",
+    "confirmTitle_other": "Update {{count}} tools?",
+    "warningsTitle": "Before you continue",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Could not start the update: {{message}}",
@@ -192,42 +195,53 @@
     }
   },
   "commandPreview": {
-    "label": "This will run:",
-    "trashLabel": "What Canager will do:",
-    "needsPassword": "This will ask for your Mac password."
+    "show_one": "Show the command",
+    "show_other": "Show the commands",
+    "trashLabel": "Moves to the Trash",
+    "needsPassword": "Some apps ask for your Mac password at this step."
   },
   "warnings": {
-    "dependentsUnknown": "Canager couldn't check what depends on this, so removing it might break other software.",
-    "wouldBreak_one": "This will break {{names}}.",
-    "wouldBreak_other": "This will break {{count}} other things: {{names}}.",
-    "compilesLocally": "This will compile locally and can take several minutes.",
+    "dependentsUnknown": "Couldn't check what else needs this. Make sure nothing does before you uninstall.",
+    "wouldBreak_one": "{{names}} still needs this.",
+    "wouldBreak_other": "{{count}} others still need this: {{names}}.",
+    "compilesLocally": "This compiles on your Mac and takes a while.",
     "nonRegistrySource": "It wasn't installed from crates.io.",
-    "thirdPartyRegistry": "This model is downloaded from {{host}}, not from Ollama's own model library. Only continue if you trust {{host}}.",
+    "thirdPartyRegistry": "This model downloads from {{host}}, not Ollama's own library. Continue only if you trust it.",
     "willTrash": {
-      "Launcher": "Moves to the Trash: {{path}} (the command itself)",
-      "Program": "Moves to the Trash: {{path}} (the program's files)",
-      "Cache": "Moves to the Trash: {{path}} (downloaded files it can re-create)",
-      "Backups": "Moves to the Trash: {{path}} (an old copy the updater left behind)"
+      "Launcher": "The command: {{path}}",
+      "Program": "Program files: {{path}}",
+      "Cache": "Cache it can download again: {{path}}",
+      "Backups": "Old copy left by an update: {{path}}"
     },
     "willKeep": {
-      "Settings": "Keeps: {{path}} (your settings)",
-      "SettingsAndHistory": "Keeps: {{path}} (your settings, login, history and working files — other apps may use it too)",
-      "ToolState": "Keeps: {{path}} (its conversations, history and working files; some of the program's own files are in there too)",
-      "ShellConfigLines": "Keeps: {{path}} (any lines its installer added there — harmless, and Canager never edits that file)",
-      "OutsideHome": "Keeps: {{path}} (outside your home folder, so Canager won't touch it; after uninstalling it's a dead link you can delete yourself)",
-      "NotOurs": "Keeps: {{path}} (Canager couldn't confirm it's part of this install — something else may have put it there — so it stays)",
-      "InstallerCache": "Keeps: {{path}} (the installer's download staging folder, usually empty — Canager moves nothing that sits directly in ~/.cache; you can delete it yourself)"
+      "Settings": "Your settings: {{path}}",
+      "SettingsAndHistory": "Settings, login and history: {{path}}",
+      "ToolState": "Conversations and history: {{path}}",
+      "ToolStateDetail": "Some program files are in there too, so Canager keeps it whole.",
+      "ShellConfigLines": "Terminal settings file: {{path}}",
+      "ShellConfigLinesDetail": "Canager never edits this file; lines the installer added are harmless.",
+      "OutsideHome": "Link that will stop working: {{path}}",
+      "OutsideHomeDetail": "It's outside your home folder, so Canager leaves it. You can delete it after uninstalling.",
+      "NotOurs": "Couldn't confirm: {{path}}",
+      "NotOursDetail": "Canager couldn't confirm it belongs to this tool, so it stays.",
+      "InstallerCache": "Installer's staging folder: {{path}}",
+      "InstallerCacheDetail": "It's in ~/.cache, which many tools share, so Canager leaves it. You can delete it yourself."
     },
-    "alreadyGone": "Already gone: {{path}} (nothing left to move)",
-    "removesToolchains": "This deletes {{path}} permanently — not to the Trash — with every toolchain in it ({{names}}) and everything rustup downloaded. Projects that need Rust will stop building until you install it again. Any other rustup that uses this folder loses its toolchains too.",
-    "removesToolchainsUnlisted": "This deletes {{path}} permanently — not to the Trash — with every toolchain in it and everything rustup downloaded. Projects that need Rust will stop building until you install it again. Any other rustup that uses this folder loses its toolchains too.",
-    "deletesCargoHome": "This deletes {{path}} permanently — not to the Trash: Cargo's downloaded packages, its record of what cargo install installed, Cargo's own settings and saved login (config.toml, credentials.toml), and anything else kept there.",
-    "removesCargoInstalled_one": "{{names}}, in the Cargo folder's bin folder, is deleted too. If cargo install put it there, cargo install can put it back after you reinstall Rust.",
-    "removesCargoInstalled_other": "{{count}} programs in the Cargo folder's bin folder are deleted too: {{names}}. The ones cargo install put there, cargo install can put back after you reinstall Rust.",
-    "homebrewRustupLosesToolchains": "Homebrew's rustup is installed too (brew install rustup). It uses the same folders, so it loses its toolchains as well.",
-    "editsShellConfig": "rustup will edit your shell settings files to remove the line it added.",
-    "leavesShellConfigLine": "After this, {{path}} still has a line that loads Cargo's env file, which will be gone, so a shell that reads that file will print an error each time it starts, until you remove that line yourself.",
-    "leavesShellConfigLineMaybe": "After this, {{path}} still mentions Cargo's env file on a line rustup won't remove. If that line loads the file, a shell that reads that file may print an error when it starts, until you change that line yourself."
+    "alreadyGone": "Already gone: {{path}}",
+    "removesToolchains": "Permanently deletes {{path}}: toolchains {{names}} and everything rustup downloaded.",
+    "removesToolchainsUnlisted": "Permanently deletes {{path}}: every toolchain and everything rustup downloaded.",
+    "removesToolchainsDetail": "Nothing goes to the Trash. Projects that need Rust won't build until you reinstall it.",
+    "deletesCargoHome": "Permanently deletes {{path}}: Cargo's cache, settings and saved login.",
+    "deletesCargoHomeDetail": "Nothing goes to the Trash, and everything else in the folder goes too.",
+    "removesCargoInstalled_one": "Also permanently deletes {{names}} from the Cargo folder.",
+    "removesCargoInstalled_other": "Also permanently deletes {{count}} programs from the Cargo folder: {{names}}.",
+    "removesCargoInstalledDetail": "After you reinstall Rust, cargo install can put back the ones it installed.",
+    "homebrewRustupLosesToolchains": "Homebrew's rustup shares these folders, so its toolchains go too.",
+    "editsShellConfig": "rustup removes the line it added to your Terminal settings files.",
+    "leavesShellConfigLine": "{{path}} keeps a line that loads Cargo, so a terminal that reads this file shows an error each time it starts.",
+    "leavesShellConfigLineDetail": "Delete that line to fix it.",
+    "leavesShellConfigLineMaybe": "{{path}} has a line that mentions Cargo, which rustup won't remove.",
+    "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it."
   },
   "standalone": {
     "summary": {
@@ -293,29 +307,31 @@
     }
   },
   "planRefused": {
-    "sourceGone": "Canager can't find that source on this Mac any more, so it didn't start this. It may have been removed since you opened this.",
-    "expired": "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
-    "unknown": "Canager already acted on this preview, or it's no longer available. Close this and start the action again.",
-    "invalidName": "“{{name}}” doesn't look like a name Canager can safely hand to {{source}}, so it stopped before changing anything.",
-    "programMissing": "Canager couldn't find {{program}}. It may have been removed since Canager last looked. Nothing was changed.",
-    "spawnFailed": "Canager couldn't start {{source}}, so nothing was changed. Your Mac gave this reason: {{detail}}",
-    "outputTooLarge": "{{source}} replied with far more than Canager will read, so it stopped before changing anything.",
-    "indexUpdating": "Homebrew is busy right now, updating or downloading something, and until it finishes the list of what depends on this could be incomplete. Nothing has been changed. Close this and try again in a minute or two.",
-    "refused": "Canager stopped before changing anything, because something on its side didn't add up. This is a problem in Canager, not on your Mac.",
+    "sourceGone": "Canager can't find the tool that manages this, so nothing started. Press Check again.",
+    "expired": "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+    "unknown": "This confirmation is no longer valid. Close it and start again.",
+    "invalidName": "Canager can't pass “{{name}}” to {{source}}, so it stopped. Nothing changed.",
+    "programMissing": "Couldn't find {{program}}. Nothing changed. Press Check again.",
+    "spawnFailed": "{{source}} couldn't start. Nothing changed. macOS said: {{detail}}",
+    "outputTooLarge": "{{source}} returned too much output, so Canager stopped. Nothing changed.",
+    "indexUpdating": "Homebrew is updating its software list, so Canager can't check dependencies reliably now. Nothing changed. Try again in a minute or two.",
+    "refused": "Something went wrong inside Canager, so it stopped. Nothing changed.",
     "uninstallUnsafe": {
-      "outsideHome": "Canager won't remove {{path}}: the folder it is in leads outside your home folder. Nothing was changed.",
-      "sharedFolder": "Canager won't remove {{path}}: it sits directly in your home folder or in a folder other apps share, so moving it could take their files with it. Nothing was changed.",
-      "missing": "{{path}} isn't there any more, so Canager stopped. Nothing was changed.",
-      "notOwnedByYou": "Canager won't remove {{path}}: it belongs to another user on this Mac. Nothing was changed.",
-      "notWhatInstructionsExpect": "Canager won't remove {{path}}: it couldn't confirm this is what it expects to find there for this tool — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
-      "overlapsKept": "Canager won't uninstall this: it couldn't confirm that moving the listed paths leaves {{path}}, which it keeps, where it is — through a link, one of them may be the same thing, hold it, or lie inside it. Nothing was changed."
+      "outsideHome": "The folder holding {{path}} leads outside your home folder, so Canager won't move it. Nothing changed.",
+      "sharedFolder": "{{path}} is in a folder other apps share, so Canager won't move it. Nothing changed.",
+      "missing": "{{path}} is gone, so Canager stopped. Nothing changed.",
+      "notOwnedByYou": "{{path}} belongs to another user, so Canager won't move it. Nothing changed.",
+      "notWhatInstructionsExpect": "{{path}} isn't what Canager expected, so it won't move it. Nothing changed.",
+      "notWhatInstructionsExpectDetail": "It, or a folder it's in, links somewhere else, or it's the wrong kind of file or can't be read.",
+      "overlapsKept": "Canager couldn't confirm that removing the files leaves {{path}}, which it keeps, untouched, so it didn't uninstall or change anything."
     }
   },
   "operations": {
     "idle": "No operation running",
     "current": "{{kind}} {{name}} — {{status}}",
     "cancel": "Cancel",
-    "noCancelHint": "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
+    "noCancelHint": "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
+    "noCancelHintDetail": "Stopping it partway leaves the tool unusable.",
     "logDrawerTitle": "Operation log",
     "logNote": {
       "waitingForBrewUpdate": "Homebrew is still downloading its latest list of software, so Canager is waiting for that to finish before it starts. This usually takes a few minutes; Canager waits up to {{minutes}}. If you'd rather not wait, press Cancel — nothing has been changed yet.",
@@ -365,25 +381,24 @@
   },
   "uninstall": {
     "title": "Uninstall {{name}}?",
-    "description": "Review what this will do before you continue.",
-    "checking": "Checking what this would affect…",
-    "planError": "Couldn't check what this would affect: {{message}}",
+    "checking": "Checking what this affects…",
+    "planError": "Couldn't check what this affects: {{message}}",
     "submitError": "Couldn't start the uninstall: {{message}}",
-    "reissued": "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview.",
-    "reissuedConfirmAgain": "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview. Look it over, then confirm once more.",
-    "warningsTitle": "Before you continue:",
-    "affectedTitle": "These will stop working if you remove it:",
+    "reissued": "Nothing started, so Canager checked again.",
+    "reissuedConfirmAgain": "Nothing started, so Canager checked again. Confirm once more.",
+    "warningsTitle": "Before you continue",
+    "keepListTitle": "Stays where it is",
+    "affectedTitle": "These still need it",
     "confirm": "Uninstall",
-    "cancel": "Cancel",
-    "affectedBlocksConfirm": "Canager won't remove {{name}} while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave {{name}} where it is.",
-    "trashPreview_one": "Canager moves the {{count}} item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
-    "trashPreview_other": "Canager moves the {{count}} items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too."
+    "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
+    "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
+    "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out."
   },
   "settings": {
     "loading": "Loading settings…",
     "showTechnicalDetails": {
       "label": "Show technical details",
-      "description": "Reveal version numbers, file paths, and the exact commands Canager runs."
+      "description": "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start."
     },
     "includeSelfUpdating": {
       "label": "Include self-updating apps",

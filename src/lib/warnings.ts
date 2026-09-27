@@ -1,9 +1,9 @@
 /**
  * How `Plan.warnings` and `UpdateCandidate.warnings` become text in the
- * user's language. Same split as `outcomeKey`/`outcomeArgs` in
- * `src/lib/format.ts`: no `t()` and no JSX here, so both the uninstall
- * dialog and the updates page share one rule and it is testable without
- * rendering anything.
+ * user's language, and where each goes in a confirmation. Same split as
+ * `outcomeKey`/`outcomeArgs` in `src/lib/format.ts`: no JSX here, and `t`
+ * only as a parameter, so both confirmations and the updates page share
+ * one rule and it is testable without rendering anything.
  */
 import type { KeptWhat, RemovedWhat, Warning } from "./types";
 
@@ -25,6 +25,22 @@ const KEPT_WHAT_KEYS: Record<KeptWhat, string> = {
   OutsideHome: "warnings.willKeep.OutsideHome",
   NotOurs: "warnings.willKeep.NotOurs",
   InstallerCache: "warnings.willKeep.InstallerCache",
+};
+
+/**
+ * Why each kind of kept path stays, where the line itself does not say
+ * it: behind the line's ⓘ. The first two need none -- your settings stay
+ * because they are yours. A `Record` over `KeptWhat`, so a kind added
+ * without an answer here fails `tsc`.
+ */
+const KEPT_WHAT_DETAIL_KEYS: Record<KeptWhat, string | null> = {
+  Settings: null,
+  SettingsAndHistory: null,
+  ToolState: "warnings.willKeep.ToolStateDetail",
+  ShellConfigLines: "warnings.willKeep.ShellConfigLinesDetail",
+  OutsideHome: "warnings.willKeep.OutsideHomeDetail",
+  NotOurs: "warnings.willKeep.NotOursDetail",
+  InstallerCache: "warnings.willKeep.InstallerCacheDetail",
 };
 
 /**
@@ -142,7 +158,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * for a fixed warning, `warningMessage(warning)` for a `Message`. The
  * convenience wrapper every call site actually wants; `warningKey`/
  * `warningArgs`/`warningMessage` stay exported and `t()`-free for testing.
- * The return type keeps `null` for `warningTexts`'s filter; with
+ * The return type keeps `null` for `warningLines`'s filter; with
  * `warningKey` exhaustive, a fixed warning always has a key and a
  * `Message` always has its text, so it is never actually `null`.
  */
@@ -151,9 +167,112 @@ export function warningText(t: Translate, warning: Warning): string | null {
   return key ? t(key, warningArgs(warning)) : warningMessage(warning);
 }
 
-/** `warnings`, rendered in order. */
-export function warningTexts(t: Translate, warnings: Warning[]): string[] {
-  return warnings
-    .map((warning) => warningText(t, warning))
-    .filter((text): text is string => text !== null);
+/**
+ * The key of a warning's longer why, which a confirmation puts behind the
+ * line's ⓘ (the copy table's `<key>Detail`), or null when the line says
+ * all there is: what a kept path is and why it stays, and what rustup's
+ * permanent deletions and the line it leaves in a startup file mean for
+ * you. The line keeps what decides whether to go on -- "permanently
+ * deletes", the path, what goes with it; the ⓘ has the rest.
+ *
+ * Every payload variant is named, so one added to `Warning` fails `tsc`
+ * here; at run time, a variant this build does not know has nothing
+ * behind its ⓘ. Every bare-string variant is one sentence already.
+ */
+export function warningDetailKey(warning: Warning): string | null {
+  if (typeof warning === "string") return null;
+  if ("WillKeep" in warning) return KEPT_WHAT_DETAIL_KEYS[warning.WillKeep.what];
+  // The listed and the unlisted sentence share one why.
+  if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
+  if ("DeletesCargoHome" in warning) return "warnings.deletesCargoHomeDetail";
+  if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
+  if ("LeavesShellConfigLine" in warning) {
+    return warning.LeavesShellConfigLine.certain
+      ? "warnings.leavesShellConfigLineDetail"
+      : "warnings.leavesShellConfigLineMaybeDetail";
+  }
+  if (
+    "WouldBreak" in warning ||
+    "ThirdPartyRegistry" in warning ||
+    "WillTrash" in warning ||
+    "AlreadyGone" in warning ||
+    "Message" in warning
+  ) {
+    return null;
+  }
+  const unhandled: never = warning;
+  void unhandled;
+  return null;
+}
+
+/**
+ * Where a warning goes in a confirmation (the copy table's C4 premise):
+ * `trash`, what a path-list uninstall moves to the Trash, and what it
+ * found already gone from there; `keep`, what it leaves where it is; and
+ * `note`, everything else -- what to know before you continue, from a
+ * dependency Canager could not check to rustup deleting a folder for good.
+ *
+ * Every payload variant is named, so one added to `Warning` fails `tsc`
+ * here; at run time, a variant this build does not know is a `note`, the
+ * group no one skims past. So is every bare-string variant.
+ */
+export type WarningGroup = "trash" | "keep" | "note";
+
+export function warningGroup(warning: Warning): WarningGroup {
+  if (typeof warning === "string") return "note";
+  if ("WillTrash" in warning || "AlreadyGone" in warning) return "trash";
+  if ("WillKeep" in warning) return "keep";
+  if (
+    "WouldBreak" in warning ||
+    "ThirdPartyRegistry" in warning ||
+    "RemovesToolchains" in warning ||
+    "DeletesCargoHome" in warning ||
+    "RemovesCargoInstalled" in warning ||
+    "LeavesShellConfigLine" in warning ||
+    "Message" in warning
+  ) {
+    return "note";
+  }
+  const unhandled: never = warning;
+  void unhandled;
+  return "note";
+}
+
+/** One line of a confirmation: its sentence, and its longer why for an ⓘ, if it has one. */
+export interface WarningLine {
+  text: string;
+  detail: string | null;
+}
+
+/** `warning`'s line, or null only for what `warningText` gives none. */
+export function warningLine(t: Translate, warning: Warning): WarningLine | null {
+  const text = warningText(t, warning);
+  if (text === null) return null;
+  const detailKey = warningDetailKey(warning);
+  return { text, detail: detailKey === null ? null : t(detailKey) };
+}
+
+/** A plan's warnings as lines, each in its group, in the plan's order. */
+export type WarningLines = Record<WarningGroup, WarningLine[]>;
+
+/**
+ * `warnings`, rendered and grouped (`warningGroup`), in order. With
+ * `affected`, the plan's own list of what still needs the package -- which
+ * the uninstall confirmation shows once, as its own list -- a `WouldBreak`
+ * naming the same packages is left out rather than said a second time:
+ * Homebrew's preview fills both from one `brew uses`
+ * (crates/canager-core/src/adapters/brew/mod.rs).
+ */
+export function warningLines(
+  t: Translate,
+  warnings: Warning[],
+  affected: string[] = [],
+): WarningLines {
+  const lines: WarningLines = { trash: [], keep: [], note: [] };
+  for (const warning of warnings) {
+    if (affected.length > 0 && typeof warning !== "string" && "WouldBreak" in warning) continue;
+    const line = warningLine(t, warning);
+    if (line !== null) lines[warningGroup(warning)].push(line);
+  }
+  return lines;
 }

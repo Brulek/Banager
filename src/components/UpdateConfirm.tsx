@@ -1,12 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { usePlanOperation, useSubmitOperation } from "../lib/queries";
-import { planErrorMessage } from "../lib/sources";
-import { warningTexts } from "../lib/warnings";
+import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
+import { adapterIdOf, adapterLabel, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
-import { Dialog } from "./ui/Dialog";
+import { SheetLines, Refusal, SheetSection, SheetTool } from "./SheetParts";
+import { CheckIcon, WarningIcon } from "./icons";
+import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -38,8 +40,12 @@ export interface BatchItem {
   name: string;
   issued: IssuedPlan | null;
   planError: string | null;
+  /** `planError`'s longer why, for its ⓘ (`planErrorDetail`), or null. */
+  planErrorDetail: string | null;
   submittedOpId: number | null;
   submitError: string | null;
+  /** `submitError`'s longer why, for its ⓘ, or null. */
+  submitErrorDetail: string | null;
 }
 
 /**
@@ -92,8 +98,18 @@ export interface UpdateConfirmOptions {
 
 /** What `useUpdateConfirm` hands the page, and `UpdateConfirmDialog` draws. */
 export interface UpdateConfirm {
-  /** Plans every one of `chosen` and, once one plan is back, opens the confirmation. */
-  openConfirm(chosen: UpdateCandidate[]): Promise<void>;
+  /**
+   * Plans every one of `chosen` and, once one plan is back, opens the
+   * confirmation. `opener` is what was pressed -- a row's Update, Update
+   * selected, Update all, a drawer's Update -- which gets the focus back
+   * when the confirmation closes; without it, what has the focus now.
+   * Passed rather than read when the sheet opens, because by then the
+   * button is disabled (`dialogOpen`), and a click in WebKit does not
+   * focus a button at all.
+   */
+  openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null): Promise<void>;
+  /** What the confirmation gives the focus back to (`openConfirm`'s `opener`). */
+  returnFocusTo: RefObject<HTMLElement | null>;
   /** The confirmation is on screen: the Update buttons that open it are off meanwhile. */
   dialogOpen: boolean;
   /**
@@ -110,10 +126,10 @@ export interface UpdateConfirm {
 /**
  * The update confirmation, one flow for every page that offers Update:
  * the Updates page's rows, Update selected and Update all, and the
- * Installed page's detail. Plans each update, shows the exact command,
- * the version it moves to and every warning, then submits one after the
- * other and remembers which version each operation is for
- * (`rememberUpdateTarget`), so the row's progress
+ * Installed page's detail. Plans each update, shows the version it moves
+ * to and every warning, with the exact command one click away, then
+ * submits one after the other and remembers which version each operation
+ * is for (`rememberUpdateTarget`), so the row's progress
  * (`useUpdateOperationFor`) can tell its outcome from a later version's.
  */
 export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConfirmOptions): UpdateConfirm {
@@ -127,6 +143,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   // Monotonic. The batch whose id equals this is the only one allowed to
   // write state; every async continuation checks `isCurrent` after `await`.
   const batchIdRef = useRef(0);
+  // What opened the newest batch (`openConfirm`'s `opener`).
+  const openerRef = useRef<HTMLElement | null>(null);
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -141,13 +159,15 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     }
   }
 
-  async function openConfirm(chosen: UpdateCandidate[]) {
+  async function openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null) {
     // A new id retires whatever batch was still planning. Planning has no
     // side effect beyond issuing PlanIds that expire on their own, so the
     // newest click wins and the older batch's late replies are dropped by
     // `isCurrent`. Submitting is different — see the lock in the dialog.
     const id = batchIdRef.current + 1;
     batchIdRef.current = id;
+    openerRef.current =
+      opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     // In the list's own order, so the confirmation reads as the rows did.
     const candidates = [...chosen].sort(compare);
     const blank = (c: UpdateCandidate): BatchItem => ({
@@ -155,8 +175,10 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       name: nameOf(c),
       issued: null,
       planError: null,
+      planErrorDetail: null,
       submittedOpId: null,
       submitError: null,
+      submitErrorDetail: null,
     });
     setBatch({ id, phase: "planning", items: candidates.map(blank) });
 
@@ -169,13 +191,12 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
 
     const items = candidates.map((c, i): BatchItem => {
       const result = results[i];
+      if (result.status === "fulfilled") return { ...blank(c), issued: result.value };
+      const raw = errorMessage(result.reason);
       return {
         ...blank(c),
-        issued: result.status === "fulfilled" ? result.value : null,
-        planError:
-          result.status === "rejected"
-            ? planErrorMessage(t, errorMessage(result.reason), sourceLabelFor(c.key.instance_id))
-            : null,
+        planError: planErrorMessage(t, raw, sourceLabelFor(c.key.instance_id)),
+        planErrorDetail: planErrorDetail(t, raw),
       };
     });
     // Nothing to confirm when no plan came back: the dialog stays shut and
@@ -218,13 +239,11 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
         // the current snapshot, so "that source stopped answering while
         // you were reading this" is a refusal this path can produce, and
         // it must not arrive as JSON or as a Rust enum.
+        const raw = errorMessage(e);
         items[i] = {
           ...item,
-          submitError: planErrorMessage(
-            t,
-            errorMessage(e),
-            sourceLabelFor(item.candidate.key.instance_id),
-          ),
+          submitError: planErrorMessage(t, raw, sourceLabelFor(item.candidate.key.instance_id)),
+          submitErrorDetail: planErrorDetail(t, raw),
         };
       }
       if (!isCurrent(id)) return;
@@ -249,6 +268,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
 
   return {
     openConfirm,
+    returnFocusTo: openerRef,
     dialogOpen,
     pageErrors,
     batch,
@@ -263,30 +283,87 @@ export interface UpdateConfirmDialogProps {
 }
 
 /**
- * The confirmation `useUpdateConfirm` drives: each item's name, the
- * version it moves to, the exact command, whether it can be cancelled,
- * its warnings and whether it asks for a password -- then, once
- * submitted, what started and what did not.
+ * The confirmation `useUpdateConfirm` drives, as a sheet: 「更新 3 个工具？」
+ * -- 「更新 ffmpeg？」 for one -- the tools with their avatars and the
+ * version each moves to, what to know before going on, then Cancel and
+ * Update. Once submitted, what started and what did not, under each tool.
+ *
+ * The notes are grouped under 「请注意」, a tool's own under its name where
+ * the sheet lists several: its warnings, that it cannot be stopped once it
+ * starts, that it may ask for the Mac's password. A batch can mix a rustup
+ * self update with Homebrew upgrades, and Casks with formulae, so each
+ * note stays with the tool it is true of. A line's longer why is behind
+ * its ⓘ. The commands are one click away (`CommandPreview`), each under
+ * its tool's name, open from the start with technical details on.
  */
 export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const { t } = useTranslation();
+  const { data: snapshot } = useSnapshot();
   const { batch, dialogOpen, submitting } = confirm;
+  const updateRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const items = batch?.items ?? [];
+  const issued = items.filter(
+    (item): item is BatchItem & { issued: IssuedPlan } => item.issued !== null,
+  );
+  // More than one tool on the sheet: each note and command says whose it is.
+  const several = items.length > 1;
 
   /**
-   * The version jump for the confirmation dialog, or null when there is no
-   * honest one to show: a `Digest` candidate says a newer build of the
-   * model is available, never two digests -- they are from different hash
-   * spaces (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
+   * The version jump for the confirmation, or null when there is no honest
+   * one to show: a `Digest` candidate says a newer build of the model is
+   * available, never two digests -- they are from different hash spaces
+   * (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
    * rather than a dangling arrow, when a source could name only one side.
    * Not behind "Show technical details": spec §6 asks this screen to show
-   * the version jump, and a confirmation that names the command but not the
-   * change is not a confirmation.
+   * the version jump, and a confirmation that names the command but not
+   * the change is not a confirmation.
    */
-  const dialogVersionJump = (candidate: UpdateCandidate): string | null => {
+  const versionJump = (candidate: UpdateCandidate): string | null => {
     if (candidate.channel === "Digest") return t("updates.newBuild");
     if (candidate.current === "" || candidate.target === "") return null;
     return t("updates.versionChange", { current: candidate.current, target: candidate.target });
   };
+
+  // The avatar and the source's name go by its adapter: its instance's,
+  // or -- for an instance the snapshot has lost -- the one the id names.
+  const adapterFor = (instanceId: string): string =>
+    snapshot?.instances.find((instance) => instance.id === instanceId)?.adapter_id ??
+    adapterIdOf(instanceId);
+
+  // A batch that did not all start stays open to say which did not, with
+  // Close in place of Cancel and Update -- where the focus goes, rather
+  // than with the Update button it was on.
+  const phase = batch?.phase;
+  useEffect(() => {
+    if (phase === "done") closeRef.current?.focus();
+  }, [phase]);
+
+  const notesOf = (item: BatchItem & { issued: IssuedPlan }): WarningLine[] => {
+    const { plan } = item.issued;
+    const lines = warningLines(t, plan.warnings);
+    return [
+      ...lines.trash,
+      ...lines.keep,
+      ...lines.note,
+      // Once Running, `OperationBar` offers no Cancel for a NoCancel
+      // operation (`OperationManager::cancel`, crates/canager-core/src/ops).
+      ...(plan.cancel_policy === "NoCancel"
+        ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail") }]
+        : []),
+      // The brew adapter marks every Cask, though not every app then asks
+      // (the copy table's T3). Spec §6: a password is never a surprise.
+      ...(plan.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null }] : []),
+    ];
+  };
+  const noted = issued
+    .map((item) => ({ item, notes: notesOf(item) }))
+    .filter(({ notes }) => notes.length > 0);
+
+  const title =
+    issued.length === 1
+      ? t("updates.confirmTitleNamed", { name: issued[0].name })
+      : t("updates.confirmTitle", { count: issued.length });
 
   return (
     <Dialog
@@ -299,85 +376,102 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         // same rule: Cancel is disabled while submitting.
         if (!open && !submitting) confirm.close();
       }}
-      title={t("updates.confirmTitle")}
+      title={title}
+      initialFocus={batch?.phase === "done" ? closeRef : updateRef}
+      returnFocusTo={confirm.returnFocusTo}
       footer={
         batch?.phase === "done" ? (
-          <button type="button" onClick={confirm.close} className="rounded-md px-3 py-1 text-sm">
+          <button ref={closeRef} type="button" onClick={confirm.close} className={SHEET_BUTTON.secondary}>
             {t("common.close")}
           </button>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={confirm.close}
-              disabled={submitting}
-              className="rounded-md px-3 py-1 text-sm disabled:opacity-50"
-            >
+            <button type="button" onClick={confirm.close} disabled={submitting} className={SHEET_BUTTON.secondary}>
               {t("common.cancel")}
             </button>
             <button
+              ref={updateRef}
               type="button"
               onClick={confirm.confirmAndSubmit}
               disabled={batch?.phase !== "ready"}
-              className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+              className={SHEET_BUTTON.primary}
             >
-              {t("updates.confirmUpdate")}
+              {t("updates.update")}
             </button>
           </>
         )
       }
     >
-      <div className="flex flex-col gap-4">
-        {(batch?.items ?? []).map((item) => {
-          const itemWarnings = item.issued ? warningTexts(t, item.issued.plan.warnings) : [];
-          const jump = dialogVersionJump(item.candidate);
+      <ul className="flex flex-col">
+        {items.map((item) => {
+          const { key } = item.candidate;
+          const jump = versionJump(item.candidate);
+          const digest = item.candidate.channel === "Digest";
+          const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
+          const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
+          const adapterId = adapterFor(key.instance_id);
           return (
-            <div key={artifactKeyId(item.candidate.key)} className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-[var(--color-foreground)]">{item.name}</p>
-              {/* What you are moving to, spelled out (`dialogVersionJump`). */}
-              {jump !== null ? <p className="text-sm text-[var(--color-muted)]">{jump}</p> : null}
+            <SheetTool
+              key={artifactKeyId(key)}
+              adapterId={adapterId}
+              sourceLabel={adapterLabel(t, adapterId)}
+              name={item.name}
+              // A model's "newer build" is a sentence, not a number: under the name.
+              aside={digest ? null : jump}
+            >
+              {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
               {item.planError !== null ? (
-                <p role="alert" className="text-sm text-[var(--color-danger)]">
-                  {t("updates.planFailed", { message: item.planError })}
-                </p>
-              ) : null}
-              {item.issued !== null ? <CommandPreview action={item.issued.plan.action} /> : null}
-              {item.issued?.plan.cancel_policy === "NoCancel" ? (
-                // Per item, next to the command it is true of (a batch
-                // can mix a rustup self update with Homebrew upgrades):
-                // once Running, `OperationBar` offers no Cancel for it.
-                <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {t("operations.noCancelHint")}
-                </p>
-              ) : null}
-              {itemWarnings.length > 0 ? (
-                <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                  {itemWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {item.issued?.plan.needs_password ? (
-                // Per item, not per batch: a batch can mix Casks (which the
-                // brew adapter marks) and formulae (which it does not), so
-                // the notice belongs next to the command that will trigger
-                // the prompt. Spec §6: a password is never a surprise.
-                <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {t("commandPreview.needsPassword")}
-                </p>
+                <Refusal
+                  text={planFailed}
+                  detail={item.planErrorDetail}
+                  detailTitle={planFailed}
+                  className="mt-1"
+                />
               ) : null}
               {item.submittedOpId !== null ? (
-                <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
-              ) : null}
-              {item.submitError !== null ? (
-                <p role="alert" className="text-sm text-[var(--color-danger)]">
-                  {t("updates.submitFailed", { message: item.submitError })}
+                <p className="mt-1 flex items-center gap-1 text-small font-medium text-success">
+                  <CheckIcon size={13} className="shrink-0" />
+                  {t("updates.started")}
                 </p>
               ) : null}
-            </div>
+              {item.submitError !== null ? (
+                <Refusal
+                  text={submitFailed}
+                  detail={item.submitErrorDetail}
+                  detailTitle={submitFailed}
+                  className="mt-1"
+                />
+              ) : null}
+            </SheetTool>
           );
         })}
-      </div>
+      </ul>
+
+      {noted.length > 0 ? (
+        <SheetSection
+          title={t("updates.warningsTitle")}
+          icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
+        >
+          <div className="flex flex-col gap-3">
+            {noted.map(({ item, notes }) => (
+              // A `<div>` per tool, holding its name and its notes and no
+              // other tool's.
+              <div key={artifactKeyId(item.candidate.key)}>
+                {several ? <p className="mb-1 text-body font-medium text-foreground">{item.name}</p> : null}
+                <SheetLines lines={notes} />
+              </div>
+            ))}
+          </div>
+        </SheetSection>
+      ) : null}
+
+      <CommandPreview
+        plans={issued.map((item) => ({
+          id: item.issued.id,
+          name: several ? item.name : undefined,
+          action: item.issued.plan.action,
+        }))}
+      />
     </Dialog>
   );
 }

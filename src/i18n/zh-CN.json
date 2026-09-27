@@ -27,7 +27,8 @@
     "copyCommand": "复制命令",
     "copied": "已复制",
     "copyFailed": "没能复制",
-    "moreActions": "{{name}} 的更多操作"
+    "moreActions": "{{name}} 的更多操作",
+    "canagerFaultDetail": "这是 Canager 的问题，不是你的 Mac 的问题。"
   },
   "header": {
     "checkedJustNow": "上次检查：刚刚",
@@ -160,8 +161,9 @@
       "viewLog": "查看日志",
       "viewLogLabel": "查看日志：{{name}}"
     },
-    "confirmTitle": "确认更新",
-    "confirmUpdate": "确认",
+    "confirmTitleNamed": "更新 {{name}}？",
+    "confirmTitle_other": "更新 {{count}} 个工具？",
+    "warningsTitle": "请注意",
     "started": "已开始",
     "planFailed": "没能准备这次更新：{{message}}",
     "submitFailed": "没能开始更新：{{message}}",
@@ -179,40 +181,50 @@
     }
   },
   "commandPreview": {
-    "label": "将执行：",
-    "trashLabel": "将执行：",
-    "needsPassword": "这一步会要求你输入 Mac 密码。"
+    "show_other": "查看将执行的命令",
+    "trashLabel": "移到废纸篓",
+    "needsPassword": "部分 App 在这一步会要求输入 Mac 密码。"
   },
   "warnings": {
-    "dependentsUnknown": "Canager 无法确定有什么依赖它，卸载可能会影响其他软件。",
-    "wouldBreak_other": "卸载后会影响 {{count}} 项：{{names}}。",
-    "compilesLocally": "这将在本机编译，可能需要几分钟。",
+    "dependentsUnknown": "没能查到哪些软件还要用它，卸载前请自己确认。",
+    "wouldBreak_other": "还有 {{count}} 个软件要用它：{{names}}。",
+    "compilesLocally": "需要在这台 Mac 上编译，会花一些时间。",
     "nonRegistrySource": "它不是从 crates.io 安装的。",
-    "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。",
+    "thirdPartyRegistry": "这个模型从 {{host}} 下载，不是 Ollama 官方库。信任它再继续。",
     "willTrash": {
-      "Launcher": "移到废纸篓：{{path}}（命令本身）",
-      "Program": "移到废纸篓：{{path}}（程序文件）",
-      "Cache": "移到废纸篓：{{path}}（可重新下载的缓存）",
-      "Backups": "移到废纸篓：{{path}}（更新程序留下的旧副本）"
+      "Launcher": "命令本身：{{path}}",
+      "Program": "程序文件：{{path}}",
+      "Cache": "可重新下载的缓存：{{path}}",
+      "Backups": "更新留下的旧副本：{{path}}"
     },
     "willKeep": {
-      "Settings": "保留：{{path}}（你的设置）",
-      "SettingsAndHistory": "保留：{{path}}（你的设置、登录信息、历史记录和工作文件，其它应用也可能在用）",
-      "ToolState": "保留：{{path}}（它的对话、历史和工作文件；程序自己的一些文件也在里面）",
-      "ShellConfigLines": "保留：{{path}}（安装程序加进去的那几行，如果有的话——无害；Canager 从不改这个文件）",
-      "OutsideHome": "保留：{{path}}（不在你的个人文件夹里，Canager 不会碰它；卸载后它是个失效的链接，你可以自己删）",
-      "NotOurs": "保留：{{path}}（Canager 无法确认它属于这次安装——可能是别的东西放在那里的——所以不动它）",
-      "InstallerCache": "保留：{{path}}（安装器的下载暂存文件夹，通常是空的——Canager 不会移动直接放在 ~/.cache 里的东西，你可以自己删）"
+      "Settings": "你的设置：{{path}}",
+      "SettingsAndHistory": "设置、登录和历史记录：{{path}}",
+      "ToolState": "对话和历史记录：{{path}}",
+      "ToolStateDetail": "里面也有部分程序文件，所以整个保留。",
+      "ShellConfigLines": "终端配置文件：{{path}}",
+      "ShellConfigLinesDetail": "Canager 不改这个文件，安装器加过的行留着也无害。",
+      "OutsideHome": "会失效的链接：{{path}}",
+      "OutsideHomeDetail": "它在个人文件夹之外，Canager 不动它。卸载后可以自己删掉。",
+      "NotOurs": "无法确认归属：{{path}}",
+      "NotOursDetail": "Canager 确认不了它属于这个工具，所以不动它。",
+      "InstallerCache": "安装器暂存文件夹：{{path}}",
+      "InstallerCacheDetail": "它在多个工具共用的 ~/.cache 里，Canager 不动它，可以自己删。"
     },
-    "alreadyGone": "已经不在了：{{path}}（没有东西要移）",
-    "removesToolchains": "这会把 {{path}} 永久删除（不是移到废纸篓），里面的所有工具链（{{names}}）以及 rustup 下载的全部内容一起消失。需要 Rust 的项目要等重新安装后才能再编译。其它用这个文件夹的 rustup 也会失去它们的工具链。",
-    "removesToolchainsUnlisted": "这会把 {{path}} 永久删除（不是移到废纸篓），里面的所有工具链以及 rustup 下载的全部内容一起消失。需要 Rust 的项目要等重新安装后才能再编译。其它用这个文件夹的 rustup 也会失去它们的工具链。",
-    "deletesCargoHome": "这会把 {{path}} 永久删除（不是移到废纸篓）：Cargo 下载的包、cargo install 的安装记录、Cargo 自己的设置和保存的登录信息（config.toml、credentials.toml），以及放在里面的其它所有东西。",
-    "removesCargoInstalled_other": "Cargo 文件夹的 bin 文件夹里的 {{count}} 个程序也会被删掉：{{names}}。其中用 cargo install 装的，重新安装 Rust 之后可以再用 cargo install 装回来。",
-    "homebrewRustupLosesToolchains": "这台 Mac 上还装了 Homebrew 的 rustup（brew install rustup）。它用的是同一组文件夹，所以它的工具链也会一起没了。",
-    "editsShellConfig": "rustup 会修改你的 shell 设置文件，删掉它当初加的那一行。",
-    "leavesShellConfigLine": "卸载后 {{path}} 里还有一行会去加载 Cargo 的 env 文件，而那个文件已经被删掉了，所以凡是读这个文件的 shell，每次启动都会报一句错，直到你自己把那一行删掉。",
-    "leavesShellConfigLineMaybe": "卸载后 {{path}} 里还有一行提到 Cargo 的 env 文件，rustup 不会删它。如果那一行会去加载这个文件，读这个文件的 shell 启动时可能会报一句错，直到你自己改掉那一行。"
+    "alreadyGone": "已不在：{{path}}",
+    "removesToolchains": "永久删除 {{path}}：工具链 {{names}} 和 rustup 下载的所有内容。",
+    "removesToolchainsUnlisted": "永久删除 {{path}}：所有工具链和 rustup 下载的内容。",
+    "removesToolchainsDetail": "不进废纸篓。重装 Rust 之前，需要 Rust 的项目无法编译。",
+    "deletesCargoHome": "永久删除 {{path}}：Cargo 的缓存、设置和登录信息。",
+    "deletesCargoHomeDetail": "不进废纸篓，文件夹里的其它文件也一起删掉。",
+    "removesCargoInstalled_other": "也会永久删除 Cargo 里的 {{count}} 个程序：{{names}}。",
+    "removesCargoInstalledDetail": "用 cargo install 装的，重装 Rust 后可以再装回来。",
+    "homebrewRustupLosesToolchains": "Homebrew 装的 rustup 共用这些文件夹，它的工具链也会删除。",
+    "editsShellConfig": "rustup 会从终端配置文件里删掉它加的那一行。",
+    "leavesShellConfigLine": "{{path}} 里会留下加载 Cargo 的一行，读这个文件的终端每次启动都会报错。",
+    "leavesShellConfigLineDetail": "删掉那一行即可。",
+    "leavesShellConfigLineMaybe": "{{path}} 里有一行提到 Cargo，rustup 不会删它。",
+    "leavesShellConfigLineMaybeDetail": "卸载后检查这一行，终端启动报错就删掉它。"
   },
   "standalone": {
     "summary": {
@@ -278,29 +290,31 @@
     }
   },
   "planRefused": {
-    "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。它可能在你打开这个窗口之后被卸载了。",
-    "expired": "这份预览已经超过 10 分钟，Canager 没有执行它。请重新查看一次预览，再确认一遍。",
-    "unknown": "Canager 已经处理过这份预览，或者它已经失效。请关闭后重新开始这个操作。",
-    "invalidName": "“{{name}}”不像是 Canager 能放心交给 {{source}} 的名字，所以它在改动任何东西之前停了下来。",
-    "programMissing": "Canager 找不到 {{program}}，它可能在 Canager 上次检查之后被删掉了。什么都没有改动。",
-    "spawnFailed": "Canager 没能启动 {{source}}，什么都没有改动。系统给出的原因是：{{detail}}",
-    "outputTooLarge": "{{source}} 的回复太长，超出了 Canager 愿意读取的范围，所以它在改动任何东西之前停了下来。",
-    "indexUpdating": "Homebrew 正在忙着更新或下载东西，完成之前，它列出的依赖可能不全。什么都没有改动。请关闭后过一两分钟再试。",
-    "refused": "Canager 发现自己这边有些地方对不上，所以在改动任何东西之前停了下来。这是 Canager 的问题，不是你的 Mac 的问题。",
+    "sourceGone": "找不到管理它的工具了，没有开始。请点「重新检查」。",
+    "expired": "确认窗口已超过 10 分钟，没有执行。请重新打开再确认。",
+    "unknown": "这个确认已失效。请关闭后重新开始。",
+    "invalidName": "“{{name}}”不能交给 {{source}}，已停下，没有改动。",
+    "programMissing": "找不到 {{program}}，没有改动。请点「重新检查」。",
+    "spawnFailed": "{{source}} 没能启动，没有改动。系统提示：{{detail}}",
+    "outputTooLarge": "{{source}} 返回的内容太多，已停下，没有改动。",
+    "indexUpdating": "Homebrew 正在更新软件清单，现在查不准依赖。没有改动，过一两分钟再试。",
+    "refused": "Canager 内部出错，已停下，没有改动。",
     "uninstallUnsafe": {
-      "outsideHome": "Canager 不会移除 {{path}}：它所在的文件夹通向你的个人文件夹之外。什么都没有改动。",
-      "sharedFolder": "Canager 不会移除 {{path}}：它直接放在你的个人文件夹里，或者放在其它应用共用的文件夹里，移走它可能连带别的应用的文件。什么都没有改动。",
-      "missing": "{{path}} 已经不在了，Canager 停下了。什么都没有改动。",
-      "notOwnedByYou": "Canager 不会移除 {{path}}：它属于这台 Mac 上的另一个用户。什么都没有改动。",
-      "notWhatInstructionsExpect": "Canager 不会移除 {{path}}：它无法确认这符合它对这个工具的预期（它本身或它所在的某个文件夹可能链到了别处，或者它不是同一类文件），移除可能误伤别的东西。什么都没有改动。",
-      "overlapsKept": "Canager 不会卸载：它无法确认移走清单上的路径不会动到它要保留的 {{path}}——通过链接，其中某一条可能就是它、装着它，或者在它里面。什么都没有改动。"
+      "outsideHome": "{{path}} 所在的文件夹通向个人文件夹以外，Canager 不移动它，没有改动。",
+      "sharedFolder": "{{path}} 在多个 App 共用的文件夹里，Canager 不移动它，没有改动。",
+      "missing": "{{path}} 已不在，已停下，没有改动。",
+      "notOwnedByYou": "{{path}} 属于另一个用户，Canager 不移动它，没有改动。",
+      "notWhatInstructionsExpect": "{{path}} 和预期的不一样，Canager 不移动它，没有改动。",
+      "notWhatInstructionsExpectDetail": "它或它所在的文件夹链接到了别处，或者类型不对、读不到。",
+      "overlapsKept": "Canager 无法确认移走文件时不碰到要保留的 {{path}}，所以没有卸载，也没有改动。"
     }
   },
   "operations": {
     "idle": "当前没有正在进行的操作",
     "current": "{{kind}} {{name}}({{status}})",
     "cancel": "取消",
-    "noCancelHint": "运行期间请不要关闭 Canager 或 Mac。中途停止会留下损坏的安装，所以这个操作一旦开始就不能取消。",
+    "noCancelHint": "开始后不能取消，完成前请别关 Canager 或 Mac。",
+    "noCancelHintDetail": "中途停下会让这个工具无法使用。",
     "logDrawerTitle": "操作日志",
     "logNote": {
       "waitingForBrewUpdate": "Homebrew 还在下载最新的软件目录，Canager 要等它下载完再开始。通常要几分钟，最多等 {{minutes}} 分钟。不想等的话可以点“取消”，现在还什么都没有改动。",
@@ -350,24 +364,23 @@
   },
   "uninstall": {
     "title": "卸载 {{name}}？",
-    "description": "继续之前，先看看会发生什么。",
-    "checking": "正在检查会有什么影响…",
-    "planError": "没能检查清楚会有什么影响：{{message}}",
+    "checking": "正在检查影响…",
+    "planError": "没能检查影响：{{message}}",
     "submitError": "没能开始卸载：{{message}}",
-    "reissued": "刚才确认时没有开始任何操作，Canager 重新检查了一遍，这是新的预览。",
-    "reissuedConfirmAgain": "刚才确认时没有开始任何操作，Canager 重新检查了一遍，这是新的预览。请再看一遍，然后再确认一次。",
-    "warningsTitle": "继续之前请注意：",
-    "affectedTitle": "删除后这些会受影响：",
+    "reissued": "刚才没有开始，已重新检查。",
+    "reissuedConfirmAgain": "刚才没有开始，已重新检查。请再确认一次。",
+    "warningsTitle": "请注意",
+    "keepListTitle": "保留不动",
+    "affectedTitle": "这些软件还要用它",
     "confirm": "卸载",
-    "cancel": "取消",
-    "affectedBlocksConfirm": "上面这些还需要 {{name}}，Canager 不会把它卸载掉。如果想把它们一起删掉，请先到“已安装”列表里把这些卸载；不想的话，让 {{name}} 留着就行。",
-    "trashPreview_other": "Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。"
+    "affectedBlocksConfirm": "先卸载上面这些，才能卸载 {{name}}。",
+    "trashPreview_other": "这 {{count}} 项会移到废纸篓，可以从那里拖回来。"
   },
   "settings": {
     "loading": "正在加载设置…",
     "showTechnicalDetails": {
       "label": "显示技术细节",
-      "description": "显示版本号、文件路径，以及 Canager 实际执行的命令。"
+      "description": "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。"
     },
     "includeSelfUpdating": {
       "label": "包含自更新的应用",

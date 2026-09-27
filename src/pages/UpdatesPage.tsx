@@ -18,6 +18,7 @@ import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
+import { Refusal } from "../components/SheetParts";
 import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import {
   blockedDetail,
@@ -630,7 +631,7 @@ export function UpdatesPage() {
           ) : actionable ? (
             <button
               type="button"
-              onClick={() => openConfirm([candidate])}
+              onClick={(event) => void openConfirm([candidate], event.currentTarget)}
               disabled={dialogOpen}
               className="h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text"
             >
@@ -704,7 +705,7 @@ export function UpdatesPage() {
           <button
             type="button"
             disabled={selectedVisible.length === 0 || dialogOpen}
-            onClick={() => openConfirm(selectedVisible)}
+            onClick={(event) => void openConfirm(selectedVisible, event.currentTarget)}
             className="ml-2 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
           >
             {selectedVisible.length === 0
@@ -716,9 +717,9 @@ export function UpdatesPage() {
           <button
             type="button"
             disabled={actionableCount === 0 || dialogOpen}
-            onClick={() => {
+            onClick={(event) => {
               selectUpdates(actionableUpdates.map((u) => u.key));
-              void openConfirm(actionableUpdates);
+              void openConfirm(actionableUpdates, event.currentTarget);
             }}
             className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content disabled:opacity-50 disabled:hover:bg-accent"
           >
@@ -727,15 +728,18 @@ export function UpdatesPage() {
         </div>
       </div>
       {noticeLines}
-      {pageErrors.map((item) => (
-        <p
-          key={artifactKeyId(item.candidate.key)}
-          role="alert"
-          className="px-6 pb-2 text-body text-danger"
-        >
-          {t("updates.planFailed", { message: item.planError })}
-        </p>
-      ))}
+      {pageErrors.map((item) => {
+        const text = t("updates.planFailed", { message: item.planError });
+        return (
+          <Refusal
+            key={artifactKeyId(item.candidate.key)}
+            text={text}
+            detail={item.planErrorDetail}
+            detailTitle={text}
+            className="px-6 pb-2"
+          />
+        );
+      })}
       {saveSettings.isError ? (
         <p role="alert" className="px-6 pb-2 text-body text-danger">
           {t("updates.saveChoiceFailed", {

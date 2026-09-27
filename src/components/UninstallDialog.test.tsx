@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UninstallDialog } from "./UninstallDialog";
-import type { IssuedPlan, OpRequest, Plan } from "../lib/types";
+import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot } from "../lib/types";
 
 const request: OpRequest = {
   kind: "Uninstall",
@@ -36,12 +36,63 @@ function issuedPlanFor(overrides: Partial<Plan> = {}): IssuedPlan {
   };
 }
 
+function brewInstance(over: Partial<ManagerInstance> = {}): ManagerInstance {
+  return {
+    id: "brew:/opt/homebrew",
+    adapter_id: "brew",
+    exe_path: "/opt/homebrew/bin/brew",
+    prefix: "/opt/homebrew",
+    scope: "User",
+    version: "7.0.3",
+    status: { unavailable: null, notes: [] },
+    unverified_version: null,
+    read_only_reason: null,
+    ...over,
+  };
+}
+
+function snapshotWith(instances: ManagerInstance[], artifacts: InstalledArtifact[] = []): Snapshot {
+  return {
+    generation: 1,
+    detect: "Found",
+    instances,
+    artifacts,
+    updates: [],
+    refreshed_at: 1,
+    stale: false,
+    errors: [],
+  };
+}
+
+const JQ_COMMAND = "/opt/homebrew/bin/brew uninstall --formula jq";
+
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
 });
 
 function submitCalls() {
   return vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "submit_operation");
+}
+
+/**
+ * Waits for the plan to land -- its command's disclosure is there once it
+ * has -- and opens it: the command is one press away, not on the sheet.
+ */
+async function showCommand() {
+  const disclosure = await screen.findByRole("button", { name: "Show the command" });
+  if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
+}
+
+/** The group headed `title` (the copy table's C4). */
+function group(title: string): HTMLElement {
+  return screen.getByRole("region", { name: title });
+}
+
+/** The lines of the group headed `title`, top to bottom (an ⓘ adds no words). */
+function linesOf(title: string): string[] {
+  return within(group(title))
+    .queryAllByRole("listitem")
+    .map((item) => (item.textContent ?? "").trim());
 }
 
 describe("UninstallDialog", () => {
@@ -55,22 +106,67 @@ describe("UninstallDialog", () => {
     // `planMutation.mutate()` runs in an effect and TanStack Query v5 pushes
     // the `isPending` transition to React through a setTimeout(0) scheduler,
     // so right after render the component is still idle: wait for it.
-    expect(await screen.findByText("Checking what this would affect…")).toBeInTheDocument();
+    expect(await screen.findByText("Checking what this affects…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("warns before the sudo prompt when the plan needs a password, and stays quiet when it does not", async () => {
+  it("asks the question as its title and names the tool under it, with its source and the version it has", async () => {
+    const jq: InstalledArtifact = {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+      display_name: "jq",
+      version: "1.8.1",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+    };
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshotWith([brewInstance()], [jq]);
+      if (cmd === "plan_operation") return issuedPlanFor();
+      return undefined;
+    });
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+    const tool = await within(dialog).findByText("1.8.1");
+    const item = tool.closest("[data-sheet-tool]");
+    expect(item).not.toBeNull();
+    expect(within(item as HTMLElement).getByText("jq")).toBeInTheDocument();
+    expect(within(item as HTMLElement).getByText("Homebrew")).toBeInTheDocument();
+    // The avatar a row has: the source's initial.
+    expect(within(item as HTMLElement).getByText("H")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("puts the focus on Cancel as it opens, and gives Uninstall the danger colour", async () => {
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor());
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    const uninstall = screen.getByRole("button", { name: "Uninstall" });
+    expect(uninstall.className).toMatch(/\bbg-danger\b/);
+    expect(cancel.className).not.toMatch(/\bbg-danger\b/);
+  });
+
+  it("says some apps ask for the Mac's password when the plan may need it, and stays quiet when it does not", async () => {
     // Every Cask uninstall sets `needs_password` (crates/canager-core/src/
-    // adapters/brew/mod.rs), so removing a GUI app pops a system password
-    // dialog. Spec §6: an operation that needs a password is marked in the
-    // preview — a password is never a surprise.
+    // adapters/brew/mod.rs), though not every app then asks for it: T3 of
+    // the copy table. Spec §6: an operation that needs a password is
+    // marked in the preview -- a password is never a surprise.
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ needs_password: true }));
 
     const { unmount } = renderWithProviders(
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(await screen.findByText("This will ask for your Mac password.")).toBeInTheDocument();
+    expect(await screen.findByText("Some apps ask for your Mac password at this step.")).toBeInTheDocument();
+    expect(linesOf("Before you continue")).toEqual(["Some apps ask for your Mac password at this step."]);
 
     unmount();
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ needs_password: false }));
@@ -80,8 +176,9 @@ describe("UninstallDialog", () => {
     );
 
     // Wait for the plan to land, so absence means "not rendered", not "not yet".
-    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
-    expect(screen.queryByText("This will ask for your Mac password.")).not.toBeInTheDocument();
+    await showCommand();
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.queryByText(/password/)).not.toBeInTheDocument();
   });
 
   it("disables confirm and explains what would break when something depends on it", async () => {
@@ -94,19 +191,31 @@ describe("UninstallDialog", () => {
     await waitFor(() => expect(screen.getByText("jq-cli-wrapper")).toBeInTheDocument());
     const confirmButton = screen.getByRole("button", { name: "Uninstall" });
     expect(confirmButton).toBeDisabled();
-    expect(
-      screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq"),
-    ).toBeInTheDocument();
+    within(group("Before you continue")).getByText("These still need it");
+    await showCommand();
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     // The reason Confirm is disabled, and what to do about it, is plain text
     // in the dialog body -- not a `title` on a disabled button, which a
     // disabled button never actually shows: it takes no pointer events (no
     // hover) and drops out of the tab order (no keyboard/VoiceOver focus).
     expect(confirmButton).not.toHaveAttribute("title");
-    expect(
-      screen.getByText(
-        "Canager won't remove jq while the items above still need it. Uninstall those first, from the Installed list, if you want them gone too — otherwise leave jq where it is.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Uninstall these first to remove jq.")).toBeInTheDocument();
+  });
+
+  it("names what still needs it once, not again as a warning", async () => {
+    // Homebrew's preview fills `WouldBreak` and `affected` from the same
+    // `brew uses` (crates/canager-core/src/adapters/brew/mod.rs); the list
+    // says it, and the sentence would say it a second time.
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({ affected: ["wget", "git"], warnings: [{ WouldBreak: { names: ["wget", "git"] } }] }),
+    );
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="gettext" />);
+
+    await screen.findByText("wget");
+    expect(screen.getAllByText("wget")).toHaveLength(1);
+    expect(screen.queryByText(/still need this/)).not.toBeInTheDocument();
+    expect(linesOf("Before you continue")).toEqual(["wget", "git"]);
   });
 
   it("localises the plan's warnings instead of showing the Rust side's English", async () => {
@@ -123,10 +232,11 @@ describe("UninstallDialog", () => {
 
     expect(
       await screen.findByText(
-        "Canager couldn't check what depends on this, so removing it might break other software.",
+        "Couldn't check what else needs this. Make sure nothing does before you uninstall.",
       ),
     ).toBeInTheDocument();
-    expect(await screen.findByText("This will break python@3.13.")).toBeInTheDocument();
+    // No `affected` list on this plan, so the sentence is where the name is said.
+    expect(await screen.findByText("python@3.13 still needs this.")).toBeInTheDocument();
   });
 
   it("pluralises WouldBreak's copy and interpolates every name", async () => {
@@ -138,14 +248,15 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(await screen.findByText("This will break 2 other things: a, b.")).toBeInTheDocument();
+    expect(await screen.findByText("2 others still need this: a, b.")).toBeInTheDocument();
   });
 
-  it("lists what a path-list uninstall moves, keeps and finds gone, and says Canager does the moving", async () => {
-    // Spec §6.6, the Claude Code dialog: every item is a sentence in the
-    // user's language, in the order the paths will be moved, the kept
-    // paths after them; the preview below is one sentence with the
-    // count, since no command runs.
+  it("groups what a path-list uninstall moves and keeps, and says only what is sure of the Trash", async () => {
+    // Spec §6.6, the Claude Code dialog, in the copy table's groups (C4):
+    // what moves, in the order the paths will be moved, then what stays.
+    // The Trash's sentence stands where a command would be, since no
+    // command runs -- and it promises dragging back out of the Trash, not
+    // Finder's Put Back, which works as often as not (T4).
     const claudeRequest: OpRequest = {
       ...request,
       instance_id: "standalone-claude",
@@ -176,24 +287,29 @@ describe("UninstallDialog", () => {
       }),
     );
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <UninstallDialog open onOpenChange={() => {}} request={claudeRequest} displayName="Claude Code" />,
     );
 
-    expect(await screen.findByText("Before you continue:")).toBeInTheDocument();
-    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toEqual([
-      "Moves to the Trash: ~/.local/share/claude (the program's files)",
-      "Moves to the Trash: ~/.claude/downloads (downloaded files it can re-create)",
-      "Moves to the Trash: ~/.local/bin/claude (the command itself)",
-      "Keeps: ~/.claude (your settings, login, history and working files — other apps may use it too)",
-      "Keeps: ~/.claude.json (your settings)",
+    await screen.findByRole("region", { name: "Moves to the Trash" });
+    expect(linesOf("Moves to the Trash")).toEqual([
+      "Program files: ~/.local/share/claude",
+      "Cache it can download again: ~/.claude/downloads",
+      "The command: ~/.local/bin/claude",
     ]);
     expect(
-      screen.getByText(
-        "Canager moves the 3 items listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag them back out, and Finder's Put Back will likely work too.",
+      within(group("Moves to the Trash")).getByText(
+        "These 3 items go to the Trash, where you can drag them back out.",
       ),
     ).toBeInTheDocument();
+    expect(linesOf("Stays where it is")).toEqual([
+      "Settings, login and history: ~/.claude",
+      "Your settings: ~/.claude.json",
+    ]);
+    expect(screen.queryByRole("region", { name: "Before you continue" })).toBeNull();
+    // Nothing to show behind "Show the command": no command runs.
+    expect(screen.queryByRole("button", { name: /^Show the command/ })).toBeNull();
+    expect(container.ownerDocument.body.textContent).not.toMatch(/Put Back/);
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
   });
 
@@ -214,14 +330,85 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="Claude Code" />,
     );
 
+    await screen.findByText("Already gone: ~/.local/share/claude");
+    expect(linesOf("Moves to the Trash")).toEqual([
+      "Already gone: ~/.local/share/claude",
+      "The command: ~/.local/bin/claude",
+    ]);
     expect(
-      await screen.findByText("Already gone: ~/.local/share/claude (nothing left to move)"),
+      screen.getByText("This item goes to the Trash, where you can drag it back out."),
     ).toBeInTheDocument();
+  });
+
+  it("keeps each line's longer why behind its ⓘ, and says rustup's permanent deletions out loud", async () => {
+    // The copy table's `<key>Detail`s: the line keeps what decides whether
+    // to go on -- "permanently deletes", the path, what goes with it --
+    // and the ⓘ has the rest.
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        action: { Command: { program: "/Users/someone/.cargo/bin/rustup", args: ["self", "uninstall", "-y"], env: [] } },
+        cancel_policy: "NoCancel",
+        warnings: [
+          { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
+          { DeletesCargoHome: { path: "~/.cargo" } },
+          { RemovesCargoInstalled: { names: ["tokei"] } },
+          "HomebrewRustupLosesToolchains",
+          { LeavesShellConfigLine: { path: "~/.zprofile", certain: false } },
+          { WillKeep: { path: "~/.gemini/antigravity-cli", what: "ToolState" } },
+        ],
+      }),
+    );
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="rustup" />);
+
+    await screen.findByRole("region", { name: "Before you continue" });
+    expect(linesOf("Before you continue")).toEqual([
+      "Permanently deletes ~/.rustup: toolchains stable-aarch64-apple-darwin and everything rustup downloaded.",
+      "Permanently deletes ~/.cargo: Cargo's cache, settings and saved login.",
+      "Also permanently deletes tokei from the Cargo folder.",
+      "Homebrew's rustup shares these folders, so its toolchains go too.",
+      "~/.zprofile has a line that mentions Cargo, which rustup won't remove.",
+      "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
+    ]);
+    expect(linesOf("Stays where it is")).toEqual(["Conversations and history: ~/.gemini/antigravity-cli"]);
+
+    const whys: Array<[string, string]> = [
+      [
+        "Permanently deletes ~/.rustup: toolchains stable-aarch64-apple-darwin and everything rustup downloaded.",
+        "Nothing goes to the Trash. Projects that need Rust won't build until you reinstall it.",
+      ],
+      [
+        "Permanently deletes ~/.cargo: Cargo's cache, settings and saved login.",
+        "Nothing goes to the Trash, and everything else in the folder goes too.",
+      ],
+      [
+        "Also permanently deletes tokei from the Cargo folder.",
+        "After you reinstall Rust, cargo install can put back the ones it installed.",
+      ],
+      [
+        "~/.zprofile has a line that mentions Cargo, which rustup won't remove.",
+        "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
+      ],
+      [
+        "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
+        "Stopping it partway leaves the tool unusable.",
+      ],
+      [
+        "Conversations and history: ~/.gemini/antigravity-cli",
+        "Some program files are in there too, so Canager keeps it whole.",
+      ],
+    ];
+    for (const [line, why] of whys) {
+      expect(screen.queryByText(why)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: `Details: ${line}` }));
+      expect(screen.getByText(why)).toBeInTheDocument();
+    }
+    // A line that says it all has no ⓘ.
     expect(
-      screen.getByText(
-        "Canager moves the 1 item listed above to the Trash itself — no command runs, and nothing is deleted: until you empty the Trash you can drag it back out, and Finder's Put Back will likely work too.",
-      ),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", {
+        name: "Details: Homebrew's rustup shares these folders, so its toolchains go too.",
+      }),
+    ).toBeNull();
   });
 
   it("renders a warning variant the mirror lacks as its raw key rather than dropping it", async () => {
@@ -241,8 +428,40 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
     );
 
-    expect(await screen.findByText("Before you continue:")).toBeInTheDocument();
-    expect(screen.getByText("SomeFutureVariant")).toBeInTheDocument();
+    await screen.findByRole("region", { name: "Before you continue" });
+    expect(linesOf("Before you continue")).toEqual(["SomeFutureVariant"]);
+  });
+
+  it("keeps the command one press away, and open from the start with technical details on", async () => {
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor());
+    const { unmount } = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+    );
+
+    const disclosure = await screen.findByRole("button", { name: "Show the command" });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(JQ_COMMAND)).toBeNull();
+    fireEvent.click(disclosure);
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return {
+          language: "System",
+          show_technical_details: true,
+          ignored_updates: [],
+          skipped_versions: [],
+          include_self_updating: false,
+        };
+      }
+      if (cmd === "plan_operation") return issuedPlanFor();
+      return undefined;
+    });
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    expect(await screen.findByText(JQ_COMMAND)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the command" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("submits the plan id and reports the new op id when nothing would break", async () => {
@@ -250,7 +469,7 @@ describe("UninstallDialog", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") return issued;
       if (cmd === "submit_operation") return 7;
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
     const onSubmitted = vi.fn();
     const onOpenChange = vi.fn();
@@ -267,9 +486,10 @@ describe("UninstallDialog", () => {
 
     const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
-    // The exact command is on screen, and nothing has been submitted, before
-    // the user is allowed to confirm.
-    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    // The exact command is a press away, and nothing has been submitted,
+    // before the user is allowed to confirm.
+    await showCommand();
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     expect(submitCalls()).toHaveLength(0);
     fireEvent.click(confirmButton);
 
@@ -286,7 +506,7 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={onOpenChange} request={request} displayName="jq" />,
     );
 
-    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
+    await showCommand();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -323,7 +543,7 @@ describe("UninstallDialog", () => {
         }
         return 7;
       }
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
     const onSubmitted = vi.fn();
 
@@ -342,7 +562,7 @@ describe("UninstallDialog", () => {
     fireEvent.click(confirmButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This preview is more than 10 minutes old, so Canager didn't start it. Look at the preview again, then confirm it once more.",
+      "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
     await waitFor(() => expect(planCalls).toBe(2));
     releaseReplan();
@@ -350,7 +570,8 @@ describe("UninstallDialog", () => {
     // on screen, but the fresh id has not been sent — the dead id is still
     // the only submit so far, and nothing was reported as started.
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
-    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    await showCommand();
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }]);
     expect(onSubmitted).not.toHaveBeenCalled();
 
@@ -376,7 +597,7 @@ describe("UninstallDialog", () => {
         if (submitAttempts > 1) throw '{"kind":"unknown"}';
         return 7;
       }
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
     const onSubmitted = vi.fn();
 
@@ -420,7 +641,7 @@ describe("UninstallDialog", () => {
         });
       }
       if (cmd === "submit_operation") throw '{"kind":"expired"}';
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
 
     renderWithProviders(
@@ -432,19 +653,20 @@ describe("UninstallDialog", () => {
     fireEvent.click(confirmButton);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't start the uninstall: This preview is more than 10 minutes old",
+      "Couldn't start the uninstall: This confirmation is more than 10 minutes old",
     );
-    expect(screen.getByText("Checking what this would affect…")).toBeInTheDocument();
+    expect(screen.getByText("Checking what this affects…")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     await waitFor(() => expect(planCalls).toBe(2));
 
     releaseReplan();
 
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
-    expect(screen.getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
+    await showCommand();
+    expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview. Look it over, then confirm once more.",
+      "Nothing started, so Canager checked again. Confirm once more.",
     );
 
     // Acting on the fresh preview retires the note; the (again expired)
@@ -468,7 +690,7 @@ describe("UninstallDialog", () => {
           : { ...issuedPlanFor({ affected: ["jq-cli-wrapper"] }), id: "2" };
       }
       if (cmd === "submit_operation") throw '{"kind":"expired"}';
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
 
     renderWithProviders(
@@ -482,10 +704,8 @@ describe("UninstallDialog", () => {
     expect(await screen.findByText("jq-cli-wrapper")).toBeInTheDocument();
     expect(confirmButton).toBeDisabled();
     const note = await screen.findByRole("status");
-    expect(note).toHaveTextContent(
-      "Nothing was started when you confirmed, so Canager checked again — this is a fresh preview.",
-    );
-    expect(note).not.toHaveTextContent("confirm once more");
+    expect(note).toHaveTextContent("Nothing started, so Canager checked again.");
+    expect(note).not.toHaveTextContent("Confirm once more");
   });
 
   it("keeps only the plan error when the re-issued plan fails as well", async () => {
@@ -497,28 +717,7 @@ describe("UninstallDialog", () => {
     // is noise. No note either: there is no fresh preview to explain.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
-        return {
-          generation: 2,
-          detect: "Found",
-          instances: [
-            {
-              id: "brew:/opt/homebrew",
-              adapter_id: "brew",
-              exe_path: "/opt/homebrew/bin/brew",
-              prefix: "/opt/homebrew",
-              scope: "User",
-              version: "7.0.3",
-              status: { unavailable: "NotResponding", notes: [] },
-              unverified_version: null,
-              read_only_reason: null,
-            },
-          ],
-          artifacts: [],
-          updates: [],
-          refreshed_at: 1,
-          stale: false,
-          errors: [],
-        };
+        return snapshotWith([brewInstance({ status: { unavailable: "NotResponding", notes: [] } })]);
       }
       if (cmd === "plan_operation") {
         if (submitCalls().length === 0) return issuedPlanFor();
@@ -538,7 +737,7 @@ describe("UninstallDialog", () => {
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     fireEvent.click(confirmButton);
 
-    await screen.findByText(/Couldn't check what this would affect: Homebrew didn't respond/);
+    await screen.findByText(/Couldn't check what this affects: Homebrew didn't respond/);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.queryByText(/Couldn't start the uninstall/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -553,28 +752,7 @@ describe("UninstallDialog", () => {
     // it on the wire as JSON, not English -- it must never show up raw.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
-        return {
-          generation: 1,
-          detect: "Found",
-          instances: [
-            {
-              id: "brew:/opt/homebrew",
-              adapter_id: "brew",
-              exe_path: "/opt/homebrew/bin/brew",
-              prefix: "/opt/homebrew",
-              scope: "User",
-              version: "7.0.3",
-              status: { unavailable: "NotRunning", notes: [] },
-              unverified_version: null,
-              read_only_reason: null,
-            },
-          ],
-          artifacts: [],
-          updates: [],
-          refreshed_at: 1,
-          stale: false,
-          errors: [],
-        };
+        return snapshotWith([brewInstance({ status: { unavailable: "NotRunning", notes: [] } })]);
       }
       if (cmd === "plan_operation") {
         throw '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}';
@@ -589,7 +767,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Couldn't check what this would affect: Open Homebrew to see what it has and check for updates.",
+        "Couldn't check what this affects: Open Homebrew to see what it has and check for updates.",
       ),
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);
@@ -600,31 +778,12 @@ describe("UninstallDialog", () => {
     // since the last refresh; `Session::issue_plan` refuses it
     // (`blocked_uninstall` in crates/canager-core/src/session/plans.rs)
     // and `uninstall_blocked_json` in src-tauri/src/ipc.rs sends this.
-    // It is not "couldn't check what this would affect": Canager did.
+    // It is not "couldn't check what this affects": Canager did.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
-        return {
-          generation: 1,
-          detect: "Found",
-          instances: [
-            {
-              id: "brew:/usr/local",
-              adapter_id: "brew",
-              exe_path: "/usr/local/bin/brew",
-              prefix: "/usr/local",
-              scope: "User",
-              version: "7.0.6",
-              status: { unavailable: null, notes: [] },
-              unverified_version: null,
-              read_only_reason: null,
-            },
-          ],
-          artifacts: [],
-          updates: [],
-          refreshed_at: 1,
-          stale: false,
-          errors: [],
-        };
+        return snapshotWith([
+          brewInstance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local", version: "7.0.6" }),
+        ]);
       }
       if (cmd === "plan_operation") {
         throw '{"kind":"uninstall_blocked","reason":"Pinned"}';
@@ -653,38 +812,25 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("words a refused path-list preview with the path and the reason, never the payload", async () => {
+  it("words a refused path-list preview with the path and the reason, never the payload, and keeps the why behind its ⓘ", async () => {
     // One of the checks a path-list uninstall runs at preview time refused
     // a path (`removal::plan_removal` in
     // crates/canager-core/src/adapters/standalone/removal.rs);
     // `plan_operation_error` in src-tauri/src/ipc.rs sends the path and
     // the reason as data, and the dialog words them. Canager did check,
     // so the sentence is shown on its own, not inside "Couldn't check
-    // what this would affect" -- the same reason the pin above skips it.
+    // what this affects" -- the same reason the pin above skips it.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
-        return {
-          generation: 1,
-          detect: "Found",
-          instances: [
-            {
-              id: "standalone-claude",
-              adapter_id: "standalone-claude",
-              exe_path: "/Users/someone/.local/bin/claude",
-              prefix: "/Users/someone/.local/share/claude",
-              scope: "User",
-              version: "2.1.281",
-              status: { unavailable: null, notes: [] },
-              unverified_version: null,
-              read_only_reason: null,
-            },
-          ],
-          artifacts: [],
-          updates: [],
-          refreshed_at: 1,
-          stale: false,
-          errors: [],
-        };
+        return snapshotWith([
+          brewInstance({
+            id: "standalone-claude",
+            adapter_id: "standalone-claude",
+            exe_path: "/Users/someone/.local/bin/claude",
+            prefix: "/Users/someone/.local/share/claude",
+            version: "2.1.281",
+          }),
+        ]);
       }
       if (cmd === "plan_operation") {
         throw '{"kind":"uninstall_unsafe","path":"~/.local/bin/claude","reason":"not_what_instructions_expect"}';
@@ -701,14 +847,33 @@ describe("UninstallDialog", () => {
       />,
     );
 
+    const refusal = "~/.local/bin/claude isn't what Canager expected, so it won't move it. Nothing changed.";
     const alert = await screen.findByRole("alert");
-    await waitFor(() =>
-      expect(alert).toHaveTextContent(
-        "Canager won't remove ~/.local/bin/claude: it couldn't confirm this is what it expects to find there for this tool — it, or a folder it is in, may be a link to somewhere else, or it may be a different kind of file — so removing it could hit the wrong thing. Nothing was changed.",
-      ),
-    );
+    await waitFor(() => expect(alert).toHaveTextContent(refusal));
     expect(alert.textContent).not.toMatch(/uninstall_unsafe|not_what_instructions_expect|Couldn't check/);
+    fireEvent.click(within(alert).getByRole("button", { name: `Details: ${refusal}` }));
+    expect(
+      within(alert).getByText(
+        "It, or a folder it's in, links somewhere else, or it's the wrong kind of file or can't be read.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  });
+
+  it("says Canager's own refusal was Canager's problem, behind its ⓘ", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") throw '{"kind":"refused"}';
+      return undefined;
+    });
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    const alert = await screen.findByRole("alert");
+    const text =
+      "Couldn't check what this affects: Something went wrong inside Canager, so it stopped. Nothing changed.";
+    await waitFor(() => expect(alert).toHaveTextContent(text));
+    fireEvent.click(within(alert).getByRole("button", { name: `Details: ${text}` }));
+    expect(within(alert).getByText("This is a problem in Canager, not on your Mac.")).toBeInTheDocument();
   });
 
   it("localises the same refusal when it comes back from submit, not from plan", async () => {
@@ -726,28 +891,7 @@ describe("UninstallDialog", () => {
     let planCalls = 0;
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") {
-        return {
-          generation: 2,
-          detect: "Found",
-          instances: [
-            {
-              id: "brew:/opt/homebrew",
-              adapter_id: "brew",
-              exe_path: "/opt/homebrew/bin/brew",
-              prefix: "/opt/homebrew",
-              scope: "User",
-              version: "7.0.3",
-              status: { unavailable: "NotResponding", notes: [] },
-              unverified_version: null,
-              read_only_reason: null,
-            },
-          ],
-          artifacts: [],
-          updates: [],
-          refreshed_at: 1,
-          stale: false,
-          errors: [],
-        };
+        return snapshotWith([brewInstance({ status: { unavailable: "NotResponding", notes: [] } })]);
       }
       if (cmd === "plan_operation") {
         planCalls += 1;
@@ -807,7 +951,7 @@ describe("UninstallDialog", () => {
           resolveSubmit = resolve;
         });
       }
-      throw new Error(`unexpected command ${cmd}`);
+      return undefined;
     });
     const onSubmitted = vi.fn();
     const onOpenChange = vi.fn();
@@ -836,6 +980,8 @@ describe("UninstallDialog", () => {
         onSubmitted={onSubmitted}
       />,
     );
+    await screen.findByRole("dialog", { name: "Uninstall yq?" });
+    await showCommand();
     await screen.findByText("/opt/homebrew/bin/brew uninstall --formula yq");
 
     resolveSubmit(7);
@@ -852,18 +998,18 @@ describe("UninstallDialog", () => {
     // rustup's `self uninstall` (crates/canager-core/src/adapters/
     // standalone/recipes.rs): `OperationBar` will offer no Cancel once it
     // is Running, so the preview says so before the click (spec §五,
-    // §6.6's last line).
+    // §6.6's last line), with why behind its ⓘ.
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ cancel_policy: "NoCancel" }));
 
     const { unmount } = renderWithProviders(
       <UninstallDialog open onOpenChange={() => {}} request={request} displayName="rustup" />,
     );
 
-    expect(
-      await screen.findByText(
-        "Don't close Canager or your Mac while this runs. Stopping it partway leaves a broken installation, so this can't be cancelled once it starts.",
-      ),
-    ).toBeInTheDocument();
+    const hint = "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.";
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(linesOf("Before you continue")).toEqual([hint]);
+    fireEvent.click(screen.getByRole("button", { name: `Details: ${hint}` }));
+    expect(screen.getByText("Stopping it partway leaves the tool unusable.")).toBeInTheDocument();
 
     unmount();
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ cancel_policy: "KillThenReconcile" }));
@@ -873,7 +1019,7 @@ describe("UninstallDialog", () => {
     );
 
     // Wait for the plan to land, so absence means "not rendered", not "not yet".
-    await screen.findByText("/opt/homebrew/bin/brew uninstall --formula jq");
-    expect(screen.queryByText(/can't be cancelled once it starts/)).not.toBeInTheDocument();
+    await showCommand();
+    expect(screen.queryByText(/can't cancel this once it starts/)).not.toBeInTheDocument();
   });
 });

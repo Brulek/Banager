@@ -785,6 +785,23 @@ export function parseNotActionable(message: string): NotActionableReason | null 
 type Translate = (key: string, options?: Record<string, string>) => string;
 
 /**
+ * The adapter an instance id names: its adapter's id, alone or before a
+ * `:` and where the instance is (`instance_id` in
+ * crates/canager-core/src/model.rs). For naming a source the snapshot has
+ * lost.
+ */
+export function adapterIdOf(instanceId: string): string {
+  return instanceId.split(":")[0];
+}
+
+/** A source's name in the user's language, by its adapter id; the id itself for one this build has no name for. */
+export function adapterLabel(t: Translate, adapterId: string): string {
+  return Object.prototype.hasOwnProperty.call(ADAPTER_LABEL_KEYS, adapterId)
+    ? t(ADAPTER_LABEL_KEYS[adapterId])
+    : adapterId;
+}
+
+/**
  * `parseNotActionable`'s result, in the exact copy the source's rows and
  * notice already use for each reason (`READ_ONLY_DETAIL_KEYS`,
  * `sourceNotice.notRunning`, `sourceNotice.unreachable`,
@@ -842,6 +859,23 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
   if (isExpired(raw)) return t("planRefused.expired");
   if (isUnknownPlan(raw)) return t("planRefused.unknown");
   return planFailureMessage(t, raw, sourceLabel) ?? raw;
+}
+
+/**
+ * What `planErrorMessage`'s sentence leaves for its ⓘ, or null when it has
+ * nothing more to say: that Canager's own refusal (`refused`) is a problem
+ * in Canager and not on this Mac, and which of its checks a path-list
+ * uninstall's `not_what_instructions_expect` covers. The sentence stands
+ * alone without it.
+ */
+export function planErrorDetail(t: Translate, raw: string): string | null {
+  const p = parseErrorPayload(raw);
+  if (p === null) return null;
+  if (p.kind === "refused") return t("common.canagerFaultDetail");
+  if (parseUninstallUnsafe(raw)?.reason === "not_what_instructions_expect") {
+    return t("planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail");
+  }
+  return null;
 }
 
 /**

@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
 import {
-  ADAPTER_LABEL_KEYS,
+  adapterIdOf,
+  adapterLabel,
   parseUninstallBlocked,
   parseUninstallUnsafe,
+  planErrorDetail,
   planErrorMessage,
   uninstallBlockedCopy,
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
-import { warningTexts } from "../lib/warnings";
+import { warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
+import { SheetLines, Refusal, SheetSection, SheetTool } from "./SheetParts";
+import { SpinnerIcon, WarningIcon } from "./icons";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
-import { Dialog } from "./ui/Dialog";
+import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
 
 export interface UninstallDialogProps {
   open: boolean;
@@ -20,16 +24,31 @@ export interface UninstallDialogProps {
   request: OpRequest;
   displayName: string;
   onSubmitted?: (opId: number) => void;
+  /** What opened it -- a row's Uninstall, a drawer's -- which gets the focus back when it closes. */
+  returnFocusTo?: RefObject<HTMLElement | null>;
+  /** Called once it has closed and handed the focus back. */
+  onClosed?: () => void;
 }
 
 /**
- * The uninstall confirmation. It plans the operation itself, so the exact
- * command and everything that would break are on screen before anything can
- * be submitted (spec §6), and confirm stays disabled while the plan says
- * something depends on the artifact -- with why, and what to do about it,
- * printed in the dialog body next to the list of what would break, not
- * hidden in a `title` on the disabled button itself. The command preview is
- * unconditional: it is not subject to the "show technical details" setting.
+ * The uninstall confirmation, as a sheet: 「卸载 Claude Code？」, the tool
+ * with its avatar, what the uninstall does in three groups, then Cancel
+ * and a red Uninstall.
+ *
+ * It plans the operation itself, so everything that would change is on
+ * screen before anything can be submitted (spec §6), in the copy table's
+ * three groups (C4): 「移到废纸篓」, what a path-list uninstall moves --
+ * with what it found already gone -- and the one sentence it has in place
+ * of a command; 「保留不动」, what it leaves where it is; and 「请注意」,
+ * everything else: what still needs the package, rustup deleting folders
+ * for good, a dependency check that did not finish, that it cannot be
+ * stopped once it starts, a password. A line's longer why is behind its
+ * ⓘ. The command itself is one click away (`CommandPreview`), open from
+ * the start with technical details on.
+ *
+ * Uninstall stays disabled while the plan says something still needs the
+ * package -- with why, and what to do about it, in the sheet's body next
+ * to the list of what needs it, not in a `title` on the disabled button.
  */
 export function UninstallDialog({
   open,
@@ -37,19 +56,32 @@ export function UninstallDialog({
   request,
   displayName,
   onSubmitted,
+  returnFocusTo,
+  onClosed,
 }: UninstallDialogProps) {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
+  const cancelRef = useRef<HTMLButtonElement>(null);
   // For the refusals that can reach a real person verbatim otherwise
   // (`planErrorMessage`'s NotActionable case, from either `plan_operation`
   // or `submit_operation`): the instance's adapter, and therefore its
   // label, does not change out from under a stale snapshot even when its
-  // read-only/unavailable state does.
+  // read-only/unavailable state does. The avatar goes by the same.
   const instance = snapshot?.instances?.find((i) => i.id === request.instance_id);
-  const labelKey = instance ? ADAPTER_LABEL_KEYS[instance.adapter_id] : undefined;
-  const sourceLabel = labelKey ? t(labelKey) : (instance?.adapter_id ?? request.instance_id);
+  // A snapshot that lost the instance still names the source, by the id.
+  const adapterId = instance?.adapter_id ?? adapterIdOf(request.instance_id);
+  const sourceLabel = adapterLabel(t, adapterId);
+  // The version the tool's row shows: never a model's digest.
+  const artifact = snapshot?.artifacts?.find(
+    (a) =>
+      a.key.instance_id === request.instance_id &&
+      a.key.kind === request.artifact_kind &&
+      a.key.name === request.name,
+  );
+  const version =
+    artifact === undefined || artifact.key.kind === "Model" || artifact.version === "" ? null : artifact.version;
   // Monotonic id for "the dialog as it is open right now, for this artifact".
   // Opening, closing or retargeting the dialog retires the previous session,
   // and every callback that runs after an `await` compares the session it was
@@ -85,15 +117,31 @@ export function UninstallDialog({
 
   const issued = planMutation.data;
   const plan = issued?.plan;
-  const hasAffected = (plan?.affected.length ?? 0) > 0;
-  // Rendered here, once, rather than as text per `<li>`, so the heading
-  // above the list is decided by the same list it heads: `warningTexts`
-  // is the one rule for turning `plan.warnings` into sentences, and
-  // `plan.warnings.length > 0` would be a second one.
-  const planWarnings = warningTexts(t, plan?.warnings ?? []);
+  const affected = plan?.affected ?? [];
+  const hasAffected = affected.length > 0;
+  // `warningLines` is the one rule for turning `plan.warnings` into lines
+  // and groups; with the plan's `affected` list shown once below, a
+  // `WouldBreak` naming the same packages is not said a second time.
+  const lines = warningLines(t, plan?.warnings ?? [], affected);
+  const trashPlan = plan !== undefined && "TrashPaths" in plan.action;
+  // What to know before going on, after the lines the plan carries: that
+  // it cannot be stopped once it starts -- the one policy the operation
+  // bar offers no Cancel for once the command is Running
+  // (`OperationManager::cancel`, crates/canager-core/src/ops/mod.rs):
+  // rustup's own uninstall, which removes Rust directory by directory --
+  // and that it may ask for the Mac's password. Every Cask uninstall sets
+  // `needs_password`, though not every app then asks (the copy table's
+  // T3). Spec §6: a password is never a surprise.
+  const notes: WarningLine[] = [
+    ...lines.note,
+    ...(plan?.cancel_policy === "NoCancel"
+      ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail") }]
+      : []),
+    ...(plan?.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null }] : []),
+  ];
 
   // Two refusals are shown as sentences of their own rather than inside
-  // `uninstall.planError`'s "Couldn't check what this would affect", because
+  // `uninstall.planError`'s "Couldn't check what this affects", because
   // Canager did check: the tool will not uninstall this package (a pinned
   // Homebrew formula or cask, `uninstall_blocked` in
   // crates/canager-core/src/session/plans.rs), which only a stale Installed
@@ -102,21 +150,28 @@ export function UninstallDialog({
   // preview refused one of its paths (`uninstall_unsafe`,
   // `removal::plan_removal`), whose sentence names the path and already
   // says nothing was changed.
-  function refusalText(raw: string, frame: "uninstall.planError" | "uninstall.submitError") {
+  function refusal(raw: string, frame: "uninstall.planError" | "uninstall.submitError") {
+    const detail = planErrorDetail(t, raw);
     if (parseUninstallUnsafe(raw) !== null) {
-      return planErrorMessage(t, raw, sourceLabel);
+      const text = planErrorMessage(t, raw, sourceLabel);
+      return <Refusal text={text} detail={detail} detailTitle={text} />;
     }
     const blocked = parseUninstallBlocked(raw);
     if (blocked === null) {
-      return t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
+      const text = t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
+      return <Refusal text={text} detail={detail} detailTitle={text} />;
     }
     const copy = uninstallBlockedCopy(blocked, instance?.adapter_id);
-    return withCommand(
-      t(copy.refused, { command: COMMAND_SLOT, source: sourceLabel }),
-      copy.command(
-        { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name },
-        instance,
-      ),
+    const command = copy.command(
+      { instance_id: request.instance_id, kind: request.artifact_kind, name: request.name },
+      instance,
+    );
+    return (
+      <Refusal
+        text={withCommand(t(copy.refused, { command: COMMAND_SLOT, source: sourceLabel }), command)}
+        detail={null}
+        detailTitle=""
+      />
     );
   }
 
@@ -169,117 +224,111 @@ export function UninstallDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("uninstall.title", { name: displayName })}
+      // Cancel first: nothing here should be one keypress from removing.
+      initialFocus={cancelRef}
+      returnFocusTo={returnFocusTo}
+      onClosed={onClosed}
       footer={
         <>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded-md px-3 py-1 text-sm"
-          >
-            {t("uninstall.cancel")}
+          <button ref={cancelRef} type="button" onClick={() => onOpenChange(false)} className={SHEET_BUTTON.secondary}>
+            {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={!plan || hasAffected || submitMutation.isPending}
-            className="rounded-md bg-[var(--color-danger)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+            className={SHEET_BUTTON.danger}
           >
             {t("uninstall.confirm")}
           </button>
         </>
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-[var(--color-foreground)]">{t("uninstall.description")}</p>
+      <ul>
+        <SheetTool adapterId={adapterId} sourceLabel={sourceLabel} name={displayName} aside={version} />
+      </ul>
 
-        {planMutation.isPending && (
-          <p className="text-sm text-[var(--color-muted)]">{t("uninstall.checking")}</p>
-        )}
+      {planMutation.isPending ? (
+        <p className="mt-4 flex items-center gap-2 text-body text-muted">
+          <SpinnerIcon size={14} className="shrink-0" />
+          {t("uninstall.checking")}
+        </p>
+      ) : null}
 
-        {planMutation.isError && (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {refusalText(planMutation.error.message, "uninstall.planError")}
-          </p>
-        )}
+      {planMutation.isError ? (
+        <div className="mt-4">{refusal(planMutation.error.message, "uninstall.planError")}</div>
+      ) : null}
 
-        {submitMutation.isError && (
-          <p role="alert" className="text-sm text-[var(--color-danger)]">
-            {refusalText(submitMutation.error.message, "uninstall.submitError")}
-          </p>
-        )}
+      {submitMutation.isError ? (
+        <div className="mt-4">{refusal(submitMutation.error.message, "uninstall.submitError")}</div>
+      ) : null}
 
-        {reissued && plan && (
-          // `status`, not `alert`: nothing is wrong with the fresh preview,
-          // the user only needs to know the last confirm did not start it.
-          <p role="status" className="text-sm text-[var(--color-muted)]">
-            {/* No "confirm once more" when the fresh preview lists affected
-                packages: that disables Uninstall below, and the body says why. */}
-            {hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")}
-          </p>
-        )}
+      {reissued && plan ? (
+        // `status`, not `alert`: nothing is wrong with the fresh preview,
+        // the user only needs to know the last confirm did not start it.
+        <p role="status" className="mt-4 text-body text-muted">
+          {/* No "confirm once more" when the fresh preview lists affected
+              packages: that disables Uninstall below, and the body says why. */}
+          {hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")}
+        </p>
+      ) : null}
 
-        {plan && (
-          <div className="flex flex-col gap-3">
-            {planWarnings.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {t("uninstall.warningsTitle")}
-                </p>
-                <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                  {planWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      {plan && issued ? (
+        <>
+          {lines.trash.length > 0 || trashPlan ? (
+            <SheetSection title={t("commandPreview.trashLabel")}>
+              <SheetLines lines={lines.trash} />
+              {trashPlan ? (
+                <div className="mt-2">
+                  <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />
+                </div>
+              ) : null}
+            </SheetSection>
+          ) : null}
 
-            {hasAffected && (
-              <div>
-                <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {t("uninstall.affectedTitle")}
-                </p>
-                <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                  {plan.affected.map((name) => (
-                    <li key={name}>{name}</li>
-                  ))}
-                </ul>
-                {/* Why Confirm below is disabled, said in the dialog body rather
-                    than only in a `title` on that disabled button: a disabled
-                    button takes no pointer events and drops out of the tab
-                    order, so neither a mouse hover nor a keyboard/VoiceOver
-                    user ever reached that tooltip. This paragraph is plain
-                    text in the flow, reachable by everyone who reached the
-                    list above it. */}
-                <p className="text-sm text-[var(--color-danger)]">
-                  {t("uninstall.affectedBlocksConfirm", { name: displayName })}
-                </p>
-              </div>
-            )}
+          {lines.keep.length > 0 ? (
+            <SheetSection title={t("uninstall.keepListTitle")}>
+              <SheetLines lines={lines.keep} />
+            </SheetSection>
+          ) : null}
 
-            <CommandPreview action={plan.action} />
+          {hasAffected || notes.length > 0 ? (
+            <SheetSection
+              title={t("uninstall.warningsTitle")}
+              icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
+            >
+              {hasAffected ? (
+                <div className={notes.length > 0 ? "mb-3" : undefined}>
+                  <p className="text-body font-medium text-foreground">{t("uninstall.affectedTitle")}</p>
+                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                    {affected.map((name) => (
+                      <li
+                        key={name}
+                        className="rounded-full bg-[var(--color-hover)] px-2 py-0.5 text-small font-medium text-foreground"
+                      >
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                  {/* Why Uninstall below is disabled, said in the body rather
+                      than only in a `title` on that disabled button: a
+                      disabled button takes no pointer events and drops out
+                      of the tab order, so neither a mouse hover nor a
+                      keyboard/VoiceOver user ever reached that tooltip.
+                      This line is plain text in the flow, reachable by
+                      everyone who reached the list above it. */}
+                  <p className="mt-1.5 text-body text-danger">
+                    {t("uninstall.affectedBlocksConfirm", { name: displayName })}
+                  </p>
+                </div>
+              ) : null}
+              <SheetLines lines={notes} />
+            </SheetSection>
+          ) : null}
 
-            {plan.cancel_policy === "NoCancel" && (
-              // The one policy the operation bar will offer no Cancel for
-              // once the command is Running (`OperationManager::cancel`,
-              // crates/canager-core/src/ops/mod.rs): rustup's own uninstall,
-              // which removes Rust directory by directory. Said here, before
-              // the click, as the preview's password notice is.
-              <p className="text-sm font-medium text-[var(--color-foreground)]">
-                {t("operations.noCancelHint")}
-              </p>
-            )}
-
-            {plan.needs_password && (
-              // Every Cask uninstall sets `needs_password`, so removing a GUI
-              // app pops a system password dialog. Spec §6 requires that to be
-              // marked in the preview: a password is never a surprise.
-              <p className="text-sm font-medium text-[var(--color-foreground)]">
-                {t("commandPreview.needsPassword")}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+          {trashPlan ? null : <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />}
+        </>
+      ) : null}
     </Dialog>
   );
 }

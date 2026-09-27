@@ -115,7 +115,9 @@ asks for a password.
 **An operation** is previewed first: `plan` builds the exact argv — or,
 for an uninstall that runs no command, the exact list of paths it will
 move to the Trash (the Claude Code, Antigravity CLI and Grok Build
-sections) — and the front end shows it (`plan_operation` in
+sections) — and the front end shows it: the paths in the confirmation,
+the argv one press away there ("Show the command"), open from the start
+with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
 minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),

@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { warningArgs, warningKey, warningMessage, warningText, warningTexts } from "./warnings";
-import type { Warning } from "./types";
+import {
+  warningArgs,
+  warningDetailKey,
+  warningGroup,
+  warningKey,
+  warningLines,
+  warningMessage,
+  warningText,
+} from "./warnings";
+import type { KeptWhat, Warning } from "./types";
+import en from "../i18n/en.json";
+import zhCN from "../i18n/zh-CN.json";
 
 /** A stub `t`: returns the key with its interpolations inlined, which is
  *  enough to prove `warningText` looked the right key up with the right
@@ -220,21 +230,189 @@ describe("warningText", () => {
   });
 });
 
-describe("warningTexts", () => {
-  it("renders every warning in order, Message included", () => {
-    const warnings: Warning[] = [
-      "DependentsUnknown",
-      { Message: "boom" },
-      { WouldBreak: { names: ["a"] } },
+/** Every variant of `Warning` once, for the checks that go over them all. */
+const EVERY_VARIANT: Warning[] = [
+  "DependentsUnknown",
+  "CompilesLocally",
+  "NonRegistrySource",
+  "HomebrewRustupLosesToolchains",
+  "EditsShellConfig",
+  { WouldBreak: { names: ["a"] } },
+  { ThirdPartyRegistry: { host: "modelscope.cn" } },
+  { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+  { WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } },
+  { AlreadyGone: { path: "~/.local/share/claude" } },
+  { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
+  { DeletesCargoHome: { path: "~/.cargo" } },
+  { RemovesCargoInstalled: { names: ["hexyl"] } },
+  { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+  { Message: "boom" },
+];
+
+/** A key's text in one locale, or undefined when it has none. */
+function lookUp(resource: unknown, key: string): unknown {
+  return key.split(".").reduce<unknown>(
+    (node, part) => (typeof node === "object" && node !== null ? (node as Record<string, unknown>)[part] : undefined),
+    resource,
+  );
+}
+
+describe("warningGroup", () => {
+  it("puts what moves to the Trash, and what was already gone from there, in the Trash group", () => {
+    expect(warningGroup({ WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } })).toBe("trash");
+    expect(warningGroup({ AlreadyGone: { path: "~/.local/share/claude" } })).toBe("trash");
+  });
+
+  it("puts every kind of kept path in the kept group", () => {
+    const kinds: KeptWhat[] = [
+      "Settings",
+      "SettingsAndHistory",
+      "ToolState",
+      "ShellConfigLines",
+      "OutsideHome",
+      "NotOurs",
+      "InstallerCache",
     ];
-    expect(warningTexts(fakeT, warnings)).toEqual([
+    for (const what of kinds) {
+      expect(warningGroup({ WillKeep: { path: "~/x", what } })).toBe("keep");
+    }
+  });
+
+  it("puts everything else under what to know before going on", () => {
+    const notes = EVERY_VARIANT.filter(
+      (warning) =>
+        typeof warning === "string" ||
+        !("WillTrash" in warning || "AlreadyGone" in warning || "WillKeep" in warning),
+    );
+    expect(notes).toHaveLength(12);
+    for (const warning of notes) expect(warningGroup(warning)).toBe("note");
+  });
+
+  it("makes a variant this build does not know something to note, not something to drop", () => {
+    expect(warningGroup("SomeFutureVariant" as unknown as Warning)).toBe("note");
+    expect(warningGroup({ SomeFutureVariant: {} } as unknown as Warning)).toBe("note");
+  });
+});
+
+describe("warningDetailKey", () => {
+  it("keeps the why of a kept path behind the line, except for your own settings", () => {
+    expect(warningDetailKey({ WillKeep: { path: "~/.claude.json", what: "Settings" } })).toBeNull();
+    expect(warningDetailKey({ WillKeep: { path: "~/.claude", what: "SettingsAndHistory" } })).toBeNull();
+    expect(warningDetailKey({ WillKeep: { path: "~/.gemini/antigravity-cli", what: "ToolState" } })).toBe(
+      "warnings.willKeep.ToolStateDetail",
+    );
+    expect(warningDetailKey({ WillKeep: { path: "~/.zshrc", what: "ShellConfigLines" } })).toBe(
+      "warnings.willKeep.ShellConfigLinesDetail",
+    );
+    expect(warningDetailKey({ WillKeep: { path: "/usr/local/bin/grok", what: "OutsideHome" } })).toBe(
+      "warnings.willKeep.OutsideHomeDetail",
+    );
+    expect(warningDetailKey({ WillKeep: { path: "~/.local/bin/agent", what: "NotOurs" } })).toBe(
+      "warnings.willKeep.NotOursDetail",
+    );
+    expect(warningDetailKey({ WillKeep: { path: "~/.cache/antigravity", what: "InstallerCache" } })).toBe(
+      "warnings.willKeep.InstallerCacheDetail",
+    );
+  });
+
+  it("keeps what rustup's deletions mean behind the line, one why for both toolchain sentences", () => {
+    expect(warningDetailKey({ RemovesToolchains: { path: "~/.rustup", names: ["stable"] } })).toBe(
+      "warnings.removesToolchainsDetail",
+    );
+    expect(warningDetailKey({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(
+      "warnings.removesToolchainsDetail",
+    );
+    expect(warningDetailKey({ DeletesCargoHome: { path: "~/.cargo" } })).toBe("warnings.deletesCargoHomeDetail");
+    expect(warningDetailKey({ RemovesCargoInstalled: { names: ["hexyl"] } })).toBe(
+      "warnings.removesCargoInstalledDetail",
+    );
+    expect(warningDetailKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: true } })).toBe(
+      "warnings.leavesShellConfigLineDetail",
+    );
+    expect(warningDetailKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toBe(
+      "warnings.leavesShellConfigLineMaybeDetail",
+    );
+  });
+
+  it("has nothing behind a line that already says it all", () => {
+    for (const warning of [
+      "DependentsUnknown",
+      "CompilesLocally",
+      "NonRegistrySource",
+      "HomebrewRustupLosesToolchains",
+      "EditsShellConfig",
+      { WouldBreak: { names: ["a"] } },
+      { ThirdPartyRegistry: { host: "modelscope.cn" } },
+      { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+      { AlreadyGone: { path: "~/.local/share/claude" } },
+      { Message: "boom" },
+    ] as Warning[]) {
+      expect(warningDetailKey(warning)).toBeNull();
+    }
+  });
+
+  it("names only keys both languages have", () => {
+    const keys = [
+      ...EVERY_VARIANT,
+      ...(["ToolState", "ShellConfigLines", "OutsideHome", "NotOurs", "InstallerCache"] as KeptWhat[]).map(
+        (what): Warning => ({ WillKeep: { path: "~/x", what } }),
+      ),
+      { LeavesShellConfigLine: { path: "~/.zshrc", certain: false } },
+    ]
+      .map(warningDetailKey)
+      .filter((key): key is string => key !== null);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(typeof lookUp(en, key), `en: ${key}`).toBe("string");
+      expect(typeof lookUp(zhCN, key), `zh-CN: ${key}`).toBe("string");
+    }
+  });
+});
+
+describe("warningLines", () => {
+  it("renders every warning in order, in its group, with its why where it has one", () => {
+    const lines = warningLines(fakeT, [
+      { WillTrash: { path: "~/.local/share/claude", what: "Program" } },
+      { WillKeep: { path: "~/.zshrc", what: "ShellConfigLines" } },
+      "DependentsUnknown",
+      { AlreadyGone: { path: "~/.grok/downloads" } },
+      { Message: "boom" },
+      { WillKeep: { path: "~/.claude.json", what: "Settings" } },
+    ]);
+    expect(lines).toEqual({
+      trash: [
+        { text: 'warnings.willTrash.Program({"path":"~/.local/share/claude"})', detail: null },
+        { text: 'warnings.alreadyGone({"path":"~/.grok/downloads"})', detail: null },
+      ],
+      keep: [
+        {
+          text: 'warnings.willKeep.ShellConfigLines({"path":"~/.zshrc"})',
+          detail: "warnings.willKeep.ShellConfigLinesDetail",
+        },
+        { text: 'warnings.willKeep.Settings({"path":"~/.claude.json"})', detail: null },
+      ],
+      note: [
+        { text: "warnings.dependentsUnknown", detail: null },
+        { text: "boom", detail: null },
+      ],
+    });
+  });
+
+  it("does not say again what the plan's own list of what still needs it says", () => {
+    // Homebrew's preview fills `WouldBreak` and `affected` from one
+    // `brew uses`; the confirmation shows `affected` as its own list.
+    const warnings: Warning[] = ["DependentsUnknown", { WouldBreak: { names: ["wget"] } }];
+    expect(warningLines(fakeT, warnings, ["wget"]).note).toEqual([
+      { text: "warnings.dependentsUnknown", detail: null },
+    ]);
+    // Without that list, it is the only place the names are said.
+    expect(warningLines(fakeT, warnings).note.map((line) => line.text)).toEqual([
       "warnings.dependentsUnknown",
-      "boom",
-      'warnings.wouldBreak({"count":1,"names":"a"})',
+      'warnings.wouldBreak({"count":1,"names":"wget"})',
     ]);
   });
 
   it("is empty for an empty list", () => {
-    expect(warningTexts(fakeT, [])).toEqual([]);
+    expect(warningLines(fakeT, [])).toEqual({ trash: [], keep: [], note: [] });
   });
 });

@@ -306,7 +306,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   2026-09-26 由步骤 D 改掉，见本条末）。步骤 C 要求家目录到清单上每条路径之间的每一层都是真目录（`removal::check_item`
   的祖先规则），所以用 dotfiles 工具把 `~/.local/bin` 整个链到别处（哪怕仍在家目录里）的用户，Claude Code 这一行照常显示
   （`route::probe` 先解析启动器所在的目录），但卸载在预览时就被拒绝，理由是 `not_what_instructions_expect`（文案说
-  「它本身或它所在的某个文件夹可能链到了别处」）。步骤 D 之后 Antigravity CLI 也一样：它的启动器 `~/.local/bin/agy`
+  「和预期的不一样」，ⓘ 里说「它或它所在的文件夹链接到了别处」）。步骤 D 之后 Antigravity CLI 也一样：它的启动器 `~/.local/bin/agy`
   在同一个文件夹里，也不是 optional。spec §6.3 的检查 1 原本接受这种链接。
   **修法的形状**（真有人碰到再做）：只对启动器所在的那一层，允许它是一个指向家目录之内、又不在 `SHARED_FOLDERS` 里的链接，
   并把它解析后的目录与预览时记下的一起比对（`ItemIdentity` 已经随计划带着），配测试；不要整体放宽祖先规则——

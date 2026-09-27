@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ADAPTER_LABEL_KEYS,
+  adapterIdOf,
+  adapterLabel,
   canWrite,
   failedSourceCount,
   hasSourceNotice,
@@ -12,6 +14,7 @@ import {
   parseOpenOllamaFailure,
   parseUninstallBlocked,
   parseUninstallUnsafe,
+  planErrorDetail,
   planErrorMessage,
   READ_ONLY_DETAIL_KEYS,
   settingsSaveErrorMessage,
@@ -606,15 +609,25 @@ describe("planErrorMessage", () => {
       en: en.planRefused.uninstallUnsafe.notWhatInstructionsExpect,
       zhCN: zhCN.planRefused.uninstallUnsafe.notWhatInstructionsExpect,
     };
-    expect(refusal.en).toContain("it couldn't confirm this is what it expects to find there for this tool");
-    expect(refusal.zhCN).toContain("它无法确认这符合它对这个工具的预期");
-    for (const sentence of [refusal.en, refusal.zhCN]) {
+    const detail = {
+      en: en.planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail,
+      zhCN: zhCN.planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail,
+    };
+    expect(refusal.en).toContain("isn't what Canager expected");
+    expect(refusal.zhCN).toContain("和预期的不一样");
+    for (const sentence of [refusal.en, refusal.zhCN, detail.en, detail.zhCN]) {
       expect(sentence).not.toMatch(/official|instructions|官方|说明/);
     }
-    // What may be wrong is still said (docs/superpowers/backlog.md quotes
-    // the Chinese clause).
-    expect(refusal.en).toContain("it, or a folder it is in, may be a link to somewhere else");
-    expect(refusal.zhCN).toContain("它本身或它所在的某个文件夹可能链到了别处");
+    // What may be wrong is still said, behind the sentence's ⓘ
+    // (`planErrorDetail`; docs/superpowers/backlog.md quotes the Chinese).
+    expect(detail.en).toContain("It, or a folder it's in, links somewhere else");
+    expect(detail.zhCN).toContain("它或它所在的文件夹链接到了别处");
+    expect(
+      planErrorDetail(
+        fakeT,
+        '{"kind":"uninstall_unsafe","path":"~/.local/bin/agy","reason":"not_what_instructions_expect"}',
+      ),
+    ).toBe("planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail");
   });
 
   it("localises the submit-time refusal for a source that stopped answering", () => {
@@ -663,6 +676,49 @@ describe("planErrorMessage", () => {
 
   it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
     expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew")).toBe("planRefused.unknown");
+  });
+});
+
+describe("adapterIdOf and adapterLabel", () => {
+  it("names a source by the adapter its instance id names, even when the snapshot has lost the instance", () => {
+    expect(adapterIdOf("brew:/opt/homebrew")).toBe("brew");
+    expect(adapterIdOf("ollama:http://127.0.0.1:11434")).toBe("ollama");
+    // A tool with its own installer has one instance, named by its adapter alone.
+    expect(adapterIdOf("standalone-claude")).toBe("standalone-claude");
+    expect(adapterLabel(fakeT, "brew")).toBe("adapters.brew");
+    expect(adapterLabel(fakeT, "standalone-claude")).toBe("adapters.standalone-claude");
+  });
+
+  it("gives an adapter this build has no name for its id, and never a key off the prototype", () => {
+    expect(adapterLabel(fakeT, "winget")).toBe("winget");
+    expect(adapterLabel(fakeT, "toString")).toBe("toString");
+  });
+});
+
+describe("planErrorDetail", () => {
+  it("keeps whose problem Canager's own refusal is behind its ⓘ", () => {
+    expect(planErrorMessage(fakeT, '{"kind":"refused"}', "Homebrew")).toBe(
+      'planRefused.refused({"source":"Homebrew"})',
+    );
+    expect(planErrorDetail(fakeT, '{"kind":"refused"}')).toBe("common.canagerFaultDetail");
+    expect(en.planRefused.refused).toBe("Something went wrong inside Canager, so it stopped. Nothing changed.");
+    expect(en.common.canagerFaultDetail).toBe("This is a problem in Canager, not on your Mac.");
+    expect(zhCN.planRefused.refused).toBe("Canager 内部出错，已停下，没有改动。");
+    expect(zhCN.common.canagerFaultDetail).toBe("这是 Canager 的问题，不是你的 Mac 的问题。");
+  });
+
+  it("has nothing more to say about every other refusal, or about text that is not one", () => {
+    for (const raw of [
+      '{"kind":"expired"}',
+      '{"kind":"source_gone"}',
+      '{"kind":"not_actionable","read_only":"ByDesign","unavailable":null}',
+      '{"kind":"uninstall_unsafe","path":"~/.local/bin/claude","reason":"shared_folder"}',
+      '{"kind":"uninstall_blocked","reason":"Pinned"}',
+      "unknown instance fake:1",
+      '{"kind":"toString"}',
+    ]) {
+      expect(planErrorDetail(fakeT, raw), raw).toBeNull();
+    }
   });
 });
 
