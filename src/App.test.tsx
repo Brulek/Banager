@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
@@ -77,15 +77,28 @@ beforeEach(() => {
   mockBackend(snapshot);
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("App", () => {
-  it("shows the Installed page's filter box by default", async () => {
-    const { findByLabelText } = renderWithProviders(<App />);
-    await findByLabelText("Filter installed items");
+  it("opens on the Overview", async () => {
+    const { findByRole, getByRole } = renderWithProviders(<App />);
+
+    expect(
+      await findByRole("heading", { level: 2, name: "Everything is up to date" }),
+    ).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   });
 
   it("switches the content area when a sidebar link is clicked", async () => {
-    const { getByRole, findByLabelText, findByText } = renderWithProviders(<App />);
+    const { getByRole, findByLabelText, findByText, queryByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    fireEvent.click(getByRole("button", { name: "Installed" }));
     await findByLabelText("Filter installed items");
+    expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Updates" }));
 
@@ -93,16 +106,50 @@ describe("App", () => {
   });
 
   it("titles every page in one header, with Check again beside it", async () => {
-    const { getByRole, findByLabelText, getAllByRole } = renderWithProviders(<App />);
-    await findByLabelText("Filter installed items");
+    const { getByRole, findByText, getAllByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
 
-    for (const name of ["Installed", "Updates", "Unknown", "Settings"]) {
-      if (name !== "Installed") fireEvent.click(getByRole("button", { name }));
+    for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
+      fireEvent.click(getByRole("button", { name }));
       // One page title, and it is this page's.
       const titles = getAllByRole("heading", { level: 1 });
       expect(titles.map((title) => title.textContent)).toEqual([name]);
       expect(getByRole("button", { name: "Check again" })).toBeInTheDocument();
     }
+  });
+
+  it("opens the Updates page from Review updates with every row it can update ticked", async () => {
+    // Two updates the Updates page offers, and one it lists without a
+    // checkbox (pinned). Rows need a height to be drawn in jsdom.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.getAttribute("data-index") === null ? 600 : 56;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    const brew = snapshot.instances[0];
+    const update = (name: string, blocked: "Pinned" | null = null) => ({
+      key: { instance_id: brew.id, kind: "Formula" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Native" as const,
+      checkable: true,
+      warnings: [],
+      blocked,
+    });
+    mockBackend({
+      ...snapshot,
+      updates: [update("glib"), update("jq", "Pinned"), update("wget")],
+    });
+    const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
+
+    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+
+    expect(await findByText("2 updates available")).toBeInTheDocument();
+    expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
+    expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
+    expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
+    expect(getByRole("button", { name: "Update selected" })).toBeEnabled();
   });
 
   it("keeps Settings reachable when no source is installed", async () => {

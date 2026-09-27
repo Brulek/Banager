@@ -164,18 +164,21 @@ describe("Sidebar", () => {
       <Sidebar page="installed" onSelectPage={onSelectPage} />,
     );
 
+    const overviewButton = getByRole("button", { name: "Overview" });
     const installedButton = getByRole("button", { name: "Installed" });
     const updatesButton = getByRole("button", { name: "Updates" });
     const unknownButton = getByRole("button", { name: "Unknown" });
     const settingsButton = getByRole("button", { name: "Settings" });
 
     expect(installedButton).toHaveAttribute("aria-current", "page");
+    expect(overviewButton).not.toHaveAttribute("aria-current");
     expect(updatesButton).not.toHaveAttribute("aria-current");
     expect(unknownButton).not.toHaveAttribute("aria-current");
     expect(settingsButton).not.toHaveAttribute("aria-current");
-    // The pages about the machine first, Updates leading; Settings last,
-    // apart from them.
+    // The Overview first, then the pages about the machine, Updates
+    // leading; Settings last, apart from them.
     expect(getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Overview",
       "Updates",
       "Installed",
       "Unknown",
@@ -197,6 +200,9 @@ describe("Sidebar", () => {
 
     getByRole("button", { name: "Settings" }).click();
     expect(onSelectPage).toHaveBeenCalledWith("settings");
+
+    getByRole("button", { name: "Overview" }).click();
+    expect(onSelectPage).toHaveBeenCalledWith("overview");
   });
 
   it("counts on Updates exactly the updates the Updates page says it can install", async () => {
@@ -275,7 +281,7 @@ describe("Sidebar", () => {
     });
 
     await waitFor(() => {
-      for (const name of ["Updates", "Installed", "Unknown", "Settings"]) {
+      for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
         const button = getByRole("button", { name });
         expect(button.textContent).toBe(name);
         expect(button).not.toHaveAttribute("aria-describedby");

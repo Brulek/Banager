@@ -23,6 +23,10 @@ describe("useUiStore", () => {
     expect(artifactKeyId(key)).toBe("brew:/opt/homebrew|Formula|jq");
   });
 
+  it("starts on the Overview", () => {
+    expect(useUiStore.getInitialState().page).toBe("overview");
+  });
+
   it("setPage changes the active page", () => {
     useUiStore.getState().setPage("updates");
     expect(useUiStore.getState().page).toBe("updates");

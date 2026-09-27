@@ -8,6 +8,7 @@
  * conditions, did not offer.
  */
 import type {
+  InstanceNote,
   ManagerInstance,
   Settings,
   SkippedVersion,
@@ -189,6 +190,76 @@ export function actionableUpdatesOf(
   return notHidden(snapshot.updates, settings).filter((candidate) =>
     isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id)),
   );
+}
+
+/**
+ * Whether each note means Canager could not fully check this source for
+ * updates this time, so finding none there is not news that there are
+ * none: Homebrew's list of software could not be downloaded
+ * (`IndexMayBeStale`), so its updates were checked against a copy of that
+ * list that may be out of date; it is still downloading (`IndexUpdating`),
+ * so they were not checked this time at all; or the launcher is left
+ * without its program (`LauncherOnly`), so there is no installed version
+ * to check. The four PATH notes are about what runs when the tool's name
+ * is typed in Terminal, not about the check. Read by
+ * `everySourceChecked`. A `Record`, so a note added to `InstanceNote`
+ * without an answer here fails `tsc`.
+ */
+const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
+  IndexMayBeStale: true,
+  IndexUpdating: true,
+  NotOnPath: false,
+  ShadowedByHomebrew: false,
+  ShadowedByNpm: false,
+  ShadowedByOther: false,
+  LauncherOnly: true,
+};
+
+/**
+ * Whether every source answered the last check and was checked for
+ * updates in full, so that finding no update anywhere means there is
+ * none. What the Updates page asks before it says "Everything is up to
+ * date" rather than "No updates in the sources Canager could check", and
+ * what `updatesSummary` asks before the Overview says it. A read-only
+ * source is one Canager *can* check.
+ */
+export function everySourceChecked(instances: ManagerInstance[]): boolean {
+  return instances.every(
+    (instance) =>
+      isAvailable(instance) &&
+      !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]),
+  );
+}
+
+/**
+ * The Overview's headline, as the Updates page would put it:
+ *
+ * - `updates`: there are updates it offers to install
+ *   (`actionableUpdatesOf`) -- the rows "Review updates" selects.
+ * - `upToDate`: no update listed at all and every source checked in full
+ *   (`everySourceChecked`) -- exactly when the Updates page says
+ *   "Everything is up to date".
+ * - `nothingToUpdate`: none to install, and not that either. Some are
+ *   listed that Canager cannot install (pinned, read-only, not checkable,
+ *   from a source not answering), the user hid the rest, or a source was
+ *   not checked in full. Calling that up to date is the lie the Updates
+ *   page stopped telling; the Overview does not start.
+ */
+export type UpdatesSummary =
+  | { kind: "updates"; actionable: UpdateCandidate[] }
+  | { kind: "upToDate" }
+  | { kind: "nothingToUpdate" };
+
+export function updatesSummary(
+  snapshot: Pick<Snapshot, "instances" | "updates">,
+  settings: HidingSettings,
+): UpdatesSummary {
+  const actionable = actionableUpdatesOf(snapshot, settings);
+  if (actionable.length > 0) return { kind: "updates", actionable };
+  if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances)) {
+    return { kind: "upToDate" };
+  }
+  return { kind: "nothingToUpdate" };
 }
 
 /**

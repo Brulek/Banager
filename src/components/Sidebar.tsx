@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
 import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import { actionableUpdatesOf } from "../lib/updateState";
-import { InstalledIcon, SettingsIcon, UnknownIcon, UpdatesIcon } from "./icons";
+import { InstalledIcon, OverviewIcon, SettingsIcon, UnknownIcon, UpdatesIcon } from "./icons";
 
 interface SidebarProps {
   page: Page;
@@ -13,6 +13,7 @@ interface SidebarProps {
 
 /** Each page's name: its entry here, and the title over it (`PageHeader`). */
 export const PAGE_LABEL_KEYS: Record<Page, string> = {
+  overview: "nav.overview",
   updates: "nav.updates",
   installed: "nav.installed",
   unknown: "nav.unknown",
@@ -20,6 +21,7 @@ export const PAGE_LABEL_KEYS: Record<Page, string> = {
 };
 
 const PAGE_ICONS: Record<Page, ComponentType<{ className?: string }>> = {
+  overview: OverviewIcon,
   updates: UpdatesIcon,
   installed: InstalledIcon,
   unknown: UnknownIcon,
@@ -27,7 +29,7 @@ const PAGE_ICONS: Record<Page, ComponentType<{ className?: string }>> = {
 };
 
 /** The entries at the top, in order. Settings sits apart, at the bottom. */
-const MAIN_PAGES: Page[] = ["updates", "installed", "unknown"];
+const MAIN_PAGES: Page[] = ["overview", "updates", "installed", "unknown"];
 
 /**
  * What an entry's count means, as a screen reader says it after the

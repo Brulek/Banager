@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   actionableUpdatesOf,
   canSkipVersion,
+  everySourceChecked,
   hidingRule,
   isUpdateActionable,
   notHidden,
   shownSkippedVersion,
+  updatesSummary,
   updateStateOf,
   withSkippedVersion,
 } from "./updateState";
@@ -290,6 +292,63 @@ describe("actionableUpdatesOf", () => {
     );
 
     expect(offered).toEqual([glib, wget]);
+  });
+});
+
+describe("everySourceChecked", () => {
+  it("holds when every source answered and none says its updates went unchecked", () => {
+    expect(everySourceChecked([])).toBe(true);
+    expect(everySourceChecked([brew, { ...brew, read_only_reason: "ByDesign" }])).toBe(true);
+    // Which copy runs when its name is typed says nothing about the check.
+    expect(
+      everySourceChecked([{ ...brew, status: { unavailable: null, notes: ["NotOnPath"] } }]),
+    ).toBe(true);
+  });
+
+  it("fails for a source that did not answer or was not checked in full", () => {
+    expect(
+      everySourceChecked([brew, { ...brew, status: { unavailable: "NotRunning", notes: [] } }]),
+    ).toBe(false);
+    for (const note of ["IndexMayBeStale", "IndexUpdating", "LauncherOnly"] as const) {
+      expect(everySourceChecked([{ ...brew, status: { unavailable: null, notes: [note] } }])).toBe(
+        false,
+      );
+    }
+  });
+});
+
+describe("updatesSummary", () => {
+  it("counts what can be installed, before anything else", () => {
+    const glib = candidate();
+    const pinned = candidate({
+      key: { instance_id: brew.id, kind: "Formula", name: "jq" },
+      blocked: "Pinned",
+    });
+    expect(updatesSummary({ instances: [brew], updates: [pinned, glib] }, hiding())).toEqual({
+      kind: "updates",
+      actionable: [glib],
+    });
+  });
+
+  it("is up to date only with no update at all and every source checked", () => {
+    expect(updatesSummary({ instances: [brew], updates: [] }, hiding())).toEqual({
+      kind: "upToDate",
+    });
+    const stopped: ManagerInstance = {
+      ...brew,
+      status: { unavailable: "NotRunning", notes: [] },
+    };
+    expect(updatesSummary({ instances: [stopped], updates: [] }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+    });
+    const pinned = candidate({ blocked: "Pinned" });
+    expect(updatesSummary({ instances: [brew], updates: [pinned] }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+    });
+    const glib = candidate();
+    expect(
+      updatesSummary({ instances: [brew], updates: [glib] }, hiding({ ignored_updates: [glib.key] })),
+    ).toEqual({ kind: "nothingToUpdate" });
   });
 });
 

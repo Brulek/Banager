@@ -5,6 +5,7 @@
   },
   "nav": {
     "label": "Sections",
+    "overview": "Overview",
     "updates": "Updates",
     "installed": "Installed",
     "unknown": "Unknown",
@@ -34,6 +35,20 @@
     "checkedDaysAgo_other": "Checked {{count}} days ago",
     "checkFailed": "Couldn't check",
     "checkAgain": "Check again"
+  },
+  "overview": {
+    "updatesAvailable_one": "{{count}} tool can be updated",
+    "updatesAvailable_other": "{{count}} tools can be updated",
+    "reviewUpdates": "Review updates",
+    "upToDate": "Everything is up to date",
+    "nothingToUpdate": "Nothing to update",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "unknownCount_one": "{{count}} program Canager can't place",
+    "unknownCount_other": "{{count}} programs Canager can't place",
+    "viewUnknown": "View",
+    "viewUnknownLabel": "View the programs Canager can't place",
+    "attentionLabel": "Needs attention"
   },
   "adapters": {
     "brew": "Homebrew",

@@ -5,6 +5,7 @@
   },
   "nav": {
     "label": "导航",
+    "overview": "概览",
     "updates": "更新",
     "installed": "已安装",
     "unknown": "来源不明",
@@ -28,6 +29,17 @@
     "checkedDaysAgo_other": "上次检查：{{count}} 天前",
     "checkFailed": "没能检查",
     "checkAgain": "重新检查"
+  },
+  "overview": {
+    "updatesAvailable_other": "有 {{count}} 个工具可以更新",
+    "reviewUpdates": "查看更新",
+    "upToDate": "所有工具都是最新的",
+    "nothingToUpdate": "没有要更新的工具",
+    "itemCount_other": "{{count}} 个",
+    "unknownCount_other": "{{count}} 个说不清来源的程序",
+    "viewUnknown": "查看",
+    "viewUnknownLabel": "查看说不清来源的程序",
+    "attentionLabel": "需要留意"
   },
   "adapters": {
     "brew": "Homebrew",

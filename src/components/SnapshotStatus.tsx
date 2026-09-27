@@ -1,15 +1,22 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRefresh, useSnapshot } from "../lib/queries";
+import { isStartupSnapshot } from "../lib/events";
 import { failedSourceCount, hasSourceNotice } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { EmptyState } from "./EmptyState";
 
 export interface SnapshotStatusProps {
   children: ReactNode;
+  /**
+   * The page says "Checking…" itself while the first check runs -- the
+   * Overview's headline -- so `children` are rendered then in place of
+   * "Loading…". Every other branch below applies to it as to any page.
+   */
+  showsFirstCheck?: boolean;
 }
 
-export function SnapshotStatus({ children }: SnapshotStatusProps) {
+export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
   const refreshMutation = useRefresh();
@@ -65,32 +72,17 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     );
   }
 
-  if (
-    snapshot.generation === 0 &&
-    snapshot.detect === "Missing" &&
-    snapshot.refreshed_at === null
-  ) {
+  if (isStartupSnapshot(snapshot)) {
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
-    // yet, so this is still Snapshot::empty() — generation 0, no
-    // `refreshed_at`, no errors, and `detect` at its placeholder `Missing`.
-    // Judging it here would flash "Nothing for Canager to manage yet" at
-    // every launch.
-    //
-    // `detect === "Missing"` is what makes this the *placeholder* rather
-    // than a real answer: only a completed refresh can report `Found`, so
-    // that is never "still loading" no matter what the timestamp says.
-    //
-    // `generation === 0` and `refreshed_at === null` are both needed.
-    // `commit()` (crates/canager-core/src/session/refresh.rs) bumps
-    // `generation` only when the refresh's *content* differs from the
-    // previous snapshot, so a Mac with no package manager at all refreshes
-    // successfully and stays at generation 0 forever — only the stamped
-    // `refreshed_at` separates "checked, found nothing" from "not checked
-    // yet". `refresh()` stamps that timestamp whenever it ran, whatever
-    // the sources said, so `Snapshot::empty()` is now the only snapshot
-    // that can carry a null one: together the two still mean exactly what
-    // this branch needs, nothing committed *and* nothing checked.
-    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
+    // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
+    // why its three fields, and only they, mean that). Judging it here
+    // would flash "Nothing for Canager to manage yet" at every launch. A
+    // page that says "Checking…" itself is shown instead of "Loading…".
+    return showsFirstCheck ? (
+      <>{children}</>
+    ) : (
+      <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>
+    );
   }
 
   if (snapshot.detect === "Missing") {

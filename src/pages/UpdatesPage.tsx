@@ -39,6 +39,7 @@ import type {
 import {
   actionableUpdatesOf,
   canSkipVersion,
+  everySourceChecked,
   isUpdateActionable,
   notHidden,
   updateStateOf,
@@ -165,30 +166,6 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   ShadowedByHomebrew: true,
   ShadowedByNpm: true,
   ShadowedByOther: true,
-  LauncherOnly: true,
-};
-
-/**
- * Whether each note means Canager could not fully check this source for
- * updates this time, so finding none there is not news that there are
- * none: Homebrew's list of software could not be downloaded
- * (`IndexMayBeStale`), so its updates were checked against a copy of that
- * list that may be out of date; it is still downloading (`IndexUpdating`),
- * so they were not checked this time at all; or the launcher is left
- * without its program (`LauncherOnly`), so there is no installed version
- * to check. The four PATH notes are about what runs when the tool's name
- * is typed in Terminal, not about the check. Read by
- * `everySourceChecked`, which chooses the sentence the page shows when
- * there are no updates at all. A `Record`, so a note added to
- * `InstanceNote` without an answer here fails `tsc`.
- */
-const NOTE_LEAVES_UPDATES_UNCHECKED: Record<InstanceNote, boolean> = {
-  IndexMayBeStale: true,
-  IndexUpdating: true,
-  NotOnPath: false,
-  ShadowedByHomebrew: false,
-  ShadowedByNpm: false,
-  ShadowedByOther: false,
   LauncherOnly: true,
 };
 
@@ -812,18 +789,17 @@ export function UpdatesPage() {
   // check*. Not for every notice: one that is information only -- which
   // copy runs when you type a tool's name -- still goes above the
   // sentence, and leaves the sentence alone. A read-only source is one
-  // Canager *can* check.
+  // Canager *can* check. The rule is `everySourceChecked` in
+  // src/lib/updateState.ts, which the Overview's headline reads too: it
+  // may call the Mac up to date only when this page would.
   if (snapshot.updates.length === 0) {
-    const everySourceChecked = snapshot.instances.every(
-      (instance) =>
-        isAvailable(instance) &&
-        !instance.status.notes.some((note) => NOTE_LEAVES_UPDATES_UNCHECKED[note]),
-    );
     return (
       <div className="p-4">
         <SourceNotices notices={instanceNotices} />
         <p className="text-sm text-[var(--color-muted)]">
-          {everySourceChecked ? t("updates.upToDate") : t("updates.noneCheckable")}
+          {everySourceChecked(snapshot.instances)
+            ? t("updates.upToDate")
+            : t("updates.noneCheckable")}
         </p>
       </div>
     );

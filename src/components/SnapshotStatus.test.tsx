@@ -136,6 +136,38 @@ describe("SnapshotStatus", () => {
     ).toBeInTheDocument();
   });
 
+  it("lets a page that says Checking… itself show through while the first refresh runs", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus showsFirstCheck>
+        <p>overview</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("overview")).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
+  it("still judges a finished check for a page that says Checking… itself", async () => {
+    // Checked, and nothing is there: not the first check any more, so the
+    // page gets the same empty state as any other.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: 1700000000 }),
+    );
+
+    renderWithProviders(
+      <SnapshotStatus showsFirstCheck>
+        <p>overview</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Nothing for Canager to manage yet")).toBeInTheDocument();
+    expect(screen.queryByText("overview")).not.toBeInTheDocument();
+  });
+
   it("shows the load-failure surface instead of Loading… when the startup refresh has failed", async () => {
     // get_snapshot itself succeeded with the empty startup snapshot, but the
     // startup refresh() IPC call rejected — refreshed_at will never be set.

@@ -55,7 +55,7 @@ export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 export const SCENARIO_SCANS = ["found", "stopped", "empty", "error"] as const;
 export type ScenarioScan = (typeof SCENARIO_SCANS)[number];
 
-const PAGES: readonly Page[] = ["installed", "updates", "unknown", "settings"];
+const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
 const LANGUAGES: Record<string, Language> = {

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ArtifactKey, LogNote, Stream } from "../lib/types";
 
-export type Page = "installed" | "updates" | "unknown" | "settings";
+export type Page = "overview" | "updates" | "installed" | "unknown" | "settings";
 
 // One entry in an operation's log: either a line the tool wrote, shown
 // verbatim, or a note of Canager's own, which the drawer localises.
@@ -58,7 +58,8 @@ export function artifactKeyId(key: ArtifactKey): string {
 let logSeq = 0;
 
 export const useUiStore = create<UiState>((set) => ({
-  page: "installed",
+  // The Overview: what the Mac looks like at a glance, before any list.
+  page: "overview",
   setPage: (p) => set({ page: p }),
   query: "",
   setQuery: (q) => set({ query: q }),

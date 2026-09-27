@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useLanguageSync } from "./i18n/useLanguageSync";
 import { PAGE_LABEL_KEYS, Sidebar } from "./components/Sidebar";
 import { PageHeader } from "./components/PageHeader";
+import { OverviewPage } from "./pages/OverviewPage";
 import { InstalledPage } from "./pages/InstalledPage";
 import { UpdatesPage } from "./pages/UpdatesPage";
 import { UnknownPage } from "./pages/UnknownPage";
@@ -43,6 +44,12 @@ function App() {
               <SettingsPage />
             ) : page === "unknown" ? (
               <UnknownPage />
+            ) : page === "overview" ? (
+              // The Overview says "Checking…" itself while the first check
+              // runs; every other state is the snapshot's, as on any page.
+              <SnapshotStatus showsFirstCheck>
+                <OverviewPage />
+              </SnapshotStatus>
             ) : (
               <SnapshotStatus>
                 {page === "installed" ? <InstalledPage /> : <UpdatesPage />}

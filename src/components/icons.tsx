@@ -31,6 +31,18 @@ function Icon({ size = 18, className, children }: IconProps & { children: ReactN
   );
 }
 
+/** Overview: four tiles, two by two. */
+export function OverviewIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
+    </Icon>
+  );
+}
+
 /** Updates: an arrow up, in a circle. */
 export function UpdatesIcon(props: IconProps) {
   return (
@@ -76,6 +88,16 @@ export function RefreshIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M17.36 7.5A7 7 0 1 1 10.78 5.11M8.75 3.17L11.38 5L9.54 7.62" />
+    </Icon>
+  );
+}
+
+/** Up to date: a check mark, in a circle. */
+export function CheckCircleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12.4L10.8 15.2L16.2 9.4" />
     </Icon>
   );
 }

@@ -270,6 +270,14 @@ describe("the preview's URL switches", () => {
     });
   });
 
+  it("opens on any page, the Overview included", () => {
+    for (const page of ["overview", "updates", "installed", "unknown", "settings"] as const) {
+      const { scenario, problems } = parseScenario(`?page=${page}`);
+      expect(problems).toEqual([]);
+      expect(scenario.page).toBe(page);
+    }
+  });
+
   it("falls back to the default for a value it does not know, and says so", () => {
     const { scenario, problems } = parseScenario("?state=bogus&lang=fr");
     expect(scenario).toEqual(DEFAULT_SCENARIO);

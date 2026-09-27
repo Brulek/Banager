@@ -36,6 +36,34 @@ export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined
 }
 
 /**
+ * Whether `snapshot` is the placeholder the backend starts from,
+ * `Snapshot::empty()`, before the startup refresh (`useStartupRefresh`)
+ * has answered: not an answer, and never to be judged as one --
+ * `SnapshotStatus` would flash "Nothing for Canager to manage yet" at
+ * every launch, and the Overview would say there is nothing to update.
+ *
+ * `detect === "Missing"` is what makes this the *placeholder* rather than
+ * a real answer: only a completed refresh can report `Found`, so that is
+ * never "still loading" no matter what the timestamp says.
+ *
+ * `generation === 0` and `refreshed_at === null` are both needed.
+ * `commit()` (crates/canager-core/src/session/refresh.rs) bumps
+ * `generation` only when the refresh's *content* differs from the
+ * previous snapshot, so a Mac with no package manager at all refreshes
+ * successfully and stays at generation 0 forever -- only the stamped
+ * `refreshed_at` separates "checked, found nothing" from "not checked
+ * yet". `refresh()` stamps that timestamp whenever it ran, whatever the
+ * sources said, so `Snapshot::empty()` is the only snapshot that can
+ * carry a null one: together the two mean nothing committed *and*
+ * nothing checked.
+ */
+export function isStartupSnapshot(snapshot: Snapshot): boolean {
+  return (
+    snapshot.generation === 0 && snapshot.detect === "Missing" && snapshot.refreshed_at === null
+  );
+}
+
+/**
  * The only way anything writes the snapshot cache: `isNewerSnapshot`
  * decides, inside the updater so that the read and the write cannot be
  * split by a reply arriving in between.

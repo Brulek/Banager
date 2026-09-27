@@ -69,7 +69,9 @@ Paths are under a generic home folder, `/Users/you`.
 ## What it does
 
 - A refresh takes about a second; the first one runs at startup, as in the
-  app, so the page shows "Loading…" for a moment.
+  app, so the page header and the Overview say "Checking…" (the other
+  pages "Loading…") for a moment. Check again in the header runs one at
+  any time.
 - Update and Uninstall show the preview the real adapter would build
   (command, warnings, what would break, password and "can't cancel"
   notices), then run for about five seconds with the same event sequence
@@ -106,6 +108,6 @@ value falls back to the default and logs a warning in the console.
 | | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
-| `page` | `installed` (default), `updates`, `unknown`, `settings` | The page the window opens on. |
+| `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `canager` | How every operation ends. Only `succeeded` changes anything. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Unknown page's scan returns. |
