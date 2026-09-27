@@ -6,6 +6,7 @@
   "packageManager": "pnpm@12.4.2",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

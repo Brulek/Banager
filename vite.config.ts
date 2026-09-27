@@ -4,36 +4,66 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 const host = process.env.TAURI_DEV_HOST;
 
-// https://vite.dev/config/
-export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+// `vite --mode mock` (`pnpm dev:mock`): the UI in a plain browser with a
+// mock backend and no Tauri, for screenshots (docs/ui-preview.md). Only
+// that mode aliases "@tauri-apps/api/core" to src/dev/mockTauri.ts and
+// serves on its own port; every other mode -- `pnpm dev` under
+// `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, vitest's
+// `test` -- resolves exactly the config it did before the mode existed.
+const MOCK_MODE = "mock";
+const MOCK_PORT = 1430;
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
-  clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
-  server: {
-    port: 1420,
-    strictPort: true,
-    host: host || false,
-    hmr: host
+// https://vite.dev/config/
+export default defineConfig(({ mode }) => {
+  const mock = mode === MOCK_MODE;
+  return {
+    plugins: [react(), tailwindcss()],
+
+    ...(mock
       ? {
-          protocol: "ws",
-          host,
-          port: 1421,
+          resolve: {
+            alias: [
+              {
+                find: /^@tauri-apps\/api\/core$/,
+                replacement: fileURLToPath(new URL("./src/dev/mockTauri.ts", import.meta.url)),
+              },
+            ],
+          },
         }
-      : undefined,
-    watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      : {}),
+
+    // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+    //
+    // 1. prevent Vite from obscuring rust errors
+    clearScreen: false,
+    // 2. tauri expects a fixed port, fail if that port is not available
+    server: {
+      port: mock ? MOCK_PORT : 1420,
+      strictPort: true,
+      // The preview is a page in this Mac's browser, never a Tauri mobile
+      // target: TAURI_DEV_HOST stays `tauri dev`'s, and its HMR port 1421
+      // stays free for it.
+      host: mock ? false : host || false,
+      hmr:
+        host && !mock
+          ? {
+              protocol: "ws",
+              host,
+              port: 1421,
+            }
+          : undefined,
+      watch: {
+        // 3. tell Vite to ignore watching `src-tauri`
+        ignored: ["**/src-tauri/**"],
+      },
     },
-  },
-  test: {
-    environment: "jsdom",
-    setupFiles: ["src/test/setup.ts"],
-    css: false,
-  },
-}));
+    test: {
+      environment: "jsdom",
+      setupFiles: ["src/test/setup.ts"],
+      css: false,
+    },
+  };
+});
