@@ -3,7 +3,8 @@ import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSaveSettings } from "../lib/queries";
 import { settingsSaveErrorMessage } from "../lib/sources";
-import type { Settings, Language } from "../lib/types";
+import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
+import type { Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 
@@ -65,6 +66,15 @@ export function SettingsPage() {
       ...current,
       ignored_updates: current.ignored_updates.filter(
         (k) => artifactKeyId(k) !== artifactKeyId(key),
+      ),
+    });
+  };
+
+  const unskip = (skipped: SkippedVersion) => {
+    persist({
+      ...current,
+      skipped_versions: current.skipped_versions.filter(
+        (s) => skippedVersionId(s) !== skippedVersionId(skipped),
       ),
     });
   };
@@ -159,8 +169,69 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div>
-        <p className="mb-2 font-medium">{t("settings.ignoredUpdates.title")}</p>
+      {/* The two ways the Updates page hides an update, each in its own
+          list, because they end differently: a skip stops hiding anything
+          by itself once its source offers another version, while a package
+          never to be reminded about stays hidden until it is removed here.
+
+          Every stored skip is listed, including one whose version its
+          source has since moved past: such an entry hides nothing any more
+          (`hidingRule` matches only the version a row offers), and it is
+          shown rather than dropped. This page does not read the snapshot,
+          and every other change saved here writes the list back as it is,
+          so an entry leaves it only when the user presses Stop skipping on
+          it, or skips that package's next version on the Updates page,
+          which replaces it (`withSkippedVersion`). */}
+      <section aria-labelledby="settings-skipped-versions-title">
+        <h2 id="settings-skipped-versions-title" className="mb-2 font-medium">
+          {t("settings.skippedVersions.title")}
+        </h2>
+        {current.skipped_versions.length === 0 ? (
+          <p>{t("settings.skippedVersions.empty")}</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {current.skipped_versions.map((skipped) => {
+              // An Ollama model's skipped version is a digest, never shown.
+              const version = shownSkippedVersion(skipped);
+              return (
+                <li
+                  key={skippedVersionId(skipped)}
+                  className="flex items-center justify-between gap-4"
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span>{skipped.key.name}</span>
+                    <span className="text-sm text-[var(--color-muted-foreground)]">
+                      {version ?? t("settings.skippedVersions.newBuild")}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={
+                      version === null
+                        ? t("settings.skippedVersions.unskipNewBuildAriaLabel", {
+                            name: skipped.key.name,
+                          })
+                        : t("settings.skippedVersions.unskipAriaLabel", {
+                            name: skipped.key.name,
+                            version,
+                          })
+                    }
+                    onClick={() => unskip(skipped)}
+                    className="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1 text-sm hover:bg-[var(--color-hover)]"
+                  >
+                    {t("settings.skippedVersions.unskip")}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="settings-ignored-updates-title">
+        <h2 id="settings-ignored-updates-title" className="mb-2 font-medium">
+          {t("settings.ignoredUpdates.title")}
+        </h2>
         {current.ignored_updates.length === 0 ? (
           <p>{t("settings.ignoredUpdates.empty")}</p>
         ) : (
@@ -182,7 +253,7 @@ export function SettingsPage() {
             ))}
           </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }

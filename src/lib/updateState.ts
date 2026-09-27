@@ -79,8 +79,9 @@ export type HiddenBy = "ignored" | "skipped";
 /** The two lists in `Settings` that hide an update. */
 export type HidingSettings = Pick<Settings, "ignored_updates" | "skipped_versions">;
 
-/** One string per skipped version of one package. */
-function skippedVersionId(skipped: SkippedVersion): string {
+/** One string per skipped version of one package: the Settings page's list
+ *  keys and removes entries by it, and `hidingRule` looks skips up by it. */
+export function skippedVersionId(skipped: SkippedVersion): string {
   return `${artifactKeyId(skipped.key)}|${skipped.version}`;
 }
 

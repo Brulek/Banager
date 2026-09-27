@@ -1,9 +1,22 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SettingsPage } from "./SettingsPage";
-import type { Settings } from "../lib/types";
+import zhCN from "../i18n/zh-CN.json";
+import type { ArtifactKey, Settings } from "../lib/types";
+
+const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
+const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
+const onyxKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "onyx" };
+const qwenKey: ArtifactKey = { instance_id: "ollama:127.0.0.1:11434", kind: "Model", name: "qwen3:8b" };
+
+// The saved settings of the last `set_settings` call.
+function lastSaved(): Settings {
+  const saves = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings");
+  expect(saves.length).toBeGreaterThan(0);
+  return (saves[saves.length - 1][1] as { settings: Settings }).settings;
+}
 
 function baseSettings(overrides: Partial<Settings> = {}): Settings {
   return {
@@ -65,7 +78,7 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
-  it("removes an item from the ignored list and saves the shorter list", async () => {
+  it("removes an item from the never-remind list and saves the shorter list", async () => {
     // `args?: unknown`, as in Tasks 11/12/14: `invoke`'s second parameter is
     // `InvokeArgs` (a union that includes `ArrayBuffer`), and under
     // `strictFunctionTypes` a `Record<string, unknown>` parameter does not
@@ -73,8 +86,83 @@ describe("SettingsPage", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
       if (cmd === "get_settings") {
         return baseSettings({
-          ignored_updates: [
-            { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+          ignored_updates: [jqKey],
+          skipped_versions: [{ key: glibKey, version: "2.90.0" }],
+        });
+      }
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const remindButton = await screen.findByRole("button", { name: "Remind me again about jq" });
+    fireEvent.click(remindButton);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("You haven't turned off reminders for any software."),
+      ).toBeInTheDocument(),
+    );
+    // The optimistic draft shows the empty list before the save resolves, so
+    // the line above alone cannot tell a correct payload from a wrong one.
+    expect(lastSaved().ignored_updates).toEqual([]);
+    expect(lastSaved().skipped_versions).toEqual([{ key: glibKey, version: "2.90.0" }]);
+  });
+
+  it("lists skipped versions and the software never to be reminded about separately, under their own headings", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          ignored_updates: [jqKey],
+          skipped_versions: [{ key: glibKey, version: "2.90.0" }],
+        });
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    const never = screen.getByRole("region", { name: "Never remind me about" });
+    // A skip names the version it hides; that version is what the entry is.
+    expect(within(skipped).getByText("glib")).toBeInTheDocument();
+    expect(within(skipped).getByText("2.90.0")).toBeInTheDocument();
+    expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toHaveTextContent(
+      "Stop skipping",
+    );
+    expect(within(skipped).queryByText("jq")).toBeNull();
+    expect(within(never).getByText("jq")).toBeInTheDocument();
+    expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toHaveTextContent(
+      "Remind me again",
+    );
+    expect(within(never).queryByText("glib")).toBeNull();
+  });
+
+  it("says each list is empty on its own", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    const never = screen.getByRole("region", { name: "Never remind me about" });
+    expect(within(skipped).getByText("You haven't skipped any versions.")).toBeInTheDocument();
+    expect(
+      within(never).getByText("You haven't turned off reminders for any software."),
+    ).toBeInTheDocument();
+  });
+
+  it("removes one skipped version and saves the shorter list, leaving every other entry alone", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          ignored_updates: [jqKey],
+          skipped_versions: [
+            { key: glibKey, version: "2.90.0" },
+            { key: onyxKey, version: "5.1.0" },
           ],
         });
       }
@@ -84,17 +172,71 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const unignoreButton = await screen.findByRole("button", { name: "Stop ignoring jq" });
-    fireEvent.click(unignoreButton);
-
-    await waitFor(() =>
-      expect(screen.getByText("You haven't ignored any updates.")).toBeInTheDocument(),
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop skipping 2.90.0 of glib" }),
     );
-    // The optimistic draft shows the empty list before the save resolves, so
-    // the line above alone cannot tell a correct payload from a wrong one.
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
-      settings: expect.objectContaining({ ignored_updates: [] }),
+
+    await waitFor(() => expect(screen.queryByText("glib")).not.toBeInTheDocument());
+    expect(lastSaved().skipped_versions).toEqual([{ key: onyxKey, version: "5.1.0" }]);
+    expect(lastSaved().ignored_updates).toEqual([jqKey]);
+    expect(screen.getByText("onyx")).toBeInTheDocument();
+  });
+
+  it("names a model's skipped build without printing its digest", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          skipped_versions: [
+            {
+              key: qwenKey,
+              version: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected command ${cmd}`);
     });
+
+    const { container } = renderWithProviders(<SettingsPage />);
+
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    expect(within(skipped).getByText("qwen3:8b")).toBeInTheDocument();
+    expect(within(skipped).getByText("A newer build")).toBeInTheDocument();
+    expect(
+      within(skipped).getByRole("button", { name: "Stop skipping the newer build of qwen3:8b" }),
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toContain("sha256");
+  });
+
+  it("keeps listing a skipped version its source no longer offers, and keeps it through a save of anything else", async () => {
+    // Say glib 2.89.0 was skipped and its source has since moved on to
+    // 2.90.0: the skip hides nothing any more (`hidingRule` matches only the
+    // version a row offers). This page does not read the snapshot -- the
+    // mock below answers nothing else -- so what a source offers now cannot
+    // make it drop an entry. The skip is still listed, and a save of
+    // another setting writes it back unchanged: nothing is pruned behind
+    // the user's back.
+    vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
+      if (cmd === "get_settings") {
+        return baseSettings({ skipped_versions: [{ key: glibKey, version: "2.89.0" }] });
+      }
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    expect(within(skipped).getByText("2.89.0")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Show technical details" }));
+    await waitFor(() => expect(lastSaved().show_technical_details).toBe(true));
+    expect(lastSaved().skipped_versions).toEqual([{ key: glibKey, version: "2.89.0" }]);
+  });
+
+  it("calls the two lists 已跳过的版本 and 不再提醒的软件 in Chinese, as they were asked for", () => {
+    expect(zhCN.settings.skippedVersions.title).toBe("已跳过的版本");
+    expect(zhCN.settings.ignoredUpdates.title).toBe("不再提醒的软件");
   });
 
   it("round-trips the include-self-updating toggle through set_settings and re-checks for updates", async () => {
@@ -203,11 +345,12 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(chinese).toHaveAttribute("aria-checked", "true"));
   });
 
-  it("styles the stop-ignoring button so it reads as a control", async () => {
+  it("styles the Remind me again and Stop skipping buttons so they read as controls", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {
         return baseSettings({
-          ignored_updates: [{ instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" }],
+          ignored_updates: [jqKey],
+          skipped_versions: [{ key: glibKey, version: "2.90.0" }],
         });
       }
       throw new Error(`unexpected command ${cmd}`);
@@ -215,7 +358,9 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const button = await screen.findByRole("button", { name: "Stop ignoring jq" });
-    expect(button.className).not.toBe("");
+    const remind = await screen.findByRole("button", { name: "Remind me again about jq" });
+    const unskip = screen.getByRole("button", { name: "Stop skipping 2.90.0 of glib" });
+    expect(remind.className).not.toBe("");
+    expect(unskip.className).toBe(remind.className);
   });
 });

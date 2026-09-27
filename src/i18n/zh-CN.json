@@ -315,11 +315,19 @@
       "english": "English",
       "chinese": "简体中文"
     },
+    "skippedVersions": {
+      "title": "已跳过的版本",
+      "empty": "还没有跳过的版本。",
+      "newBuild": "新版本",
+      "unskip": "取消跳过",
+      "unskipAriaLabel": "取消跳过 {{name}} 的 {{version}}",
+      "unskipNewBuildAriaLabel": "取消跳过 {{name}} 的新版本"
+    },
     "ignoredUpdates": {
-      "title": "已忽略的更新",
-      "empty": "你还没有忽略任何更新。",
-      "unignore": "取消忽略",
-      "unignoreAriaLabel": "取消忽略 {{name}}"
+      "title": "不再提醒的软件",
+      "empty": "还没有设为不再提醒的软件。",
+      "unignore": "恢复提醒",
+      "unignoreAriaLabel": "恢复 {{name}} 的更新提醒"
     },
     "saveError": "保存失败（{{message}}），已恢复原来的设置。"
   },
