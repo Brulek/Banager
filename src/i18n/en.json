@@ -37,7 +37,17 @@
     "checkAgain": "Check again"
   },
   "toolRow": {
-    "noDescription": "No description"
+    "fallback": {
+      "homebrewPackage": "Homebrew package",
+      "homebrewApp": "App installed with Homebrew",
+      "npmPackage": "npm package",
+      "pythonPackage": "Python package",
+      "pipxTool": "Python tool installed with pipx",
+      "uvTool": "Python tool installed with uv",
+      "cargoProgram": "Program installed with Cargo",
+      "ollamaModel": "Ollama model",
+      "other": "Installed with {{source}}"
+    }
   },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
@@ -75,7 +85,6 @@
     "updateSkipped": "Skipped {{version}}",
     "updateSkippedNewBuild": "Newer build skipped",
     "updateSourceUnavailable": "Newer version, can't update now",
-    "noDescription": "No description available",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_one": "{{count}} component installed by other software",
     "showDependencies_other": "{{count}} components installed by other software",
@@ -215,10 +224,10 @@
   },
   "standalone": {
     "summary": {
-      "standalone-claude": "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
-      "standalone-rustup": "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo.",
-      "standalone-agy": "Google's Antigravity coding assistant for the terminal. Installed with its own installer.",
-      "standalone-grok": "xAI's Grok coding assistant for the terminal. Installed with its own installer."
+      "standalone-claude": "Anthropic's AI coding assistant",
+      "standalone-rustup": "Installs and updates Rust",
+      "standalone-agy": "Google's AI coding assistant",
+      "standalone-grok": "xAI's AI coding assistant"
     }
   },
   "sourceNotice": {

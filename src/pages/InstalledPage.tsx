@@ -9,11 +9,11 @@ import { SourceNotices } from "../components/SourceNotices";
 import { UninstallDialog } from "../components/UninstallDialog";
 import {
   ADAPTER_LABEL_KEYS,
-  artifactBlurb,
   canWrite,
   isAvailable,
   sourceNoticesFor,
   standaloneSummaryKey,
+  toolDescription,
   uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
@@ -191,9 +191,10 @@ export function InstalledPage() {
 
   // The row's description. A standalone tool's artifact carries no blurb
   // (a bare string cannot be localised), so its row reads one by adapter
-  // id (`artifactBlurb`, which the Updates page's rows read too) and shows
-  // it beside any refusal: what the tool is still needs saying on a row
-  // that cannot be uninstalled here.
+  // id (`toolDescription`, which the Updates page's rows read too) and
+  // shows it beside any refusal: what the tool is still needs saying on a
+  // row that cannot be uninstalled here. A row whose source gave no
+  // description says what its source says it is.
   // Any other row the tool will not uninstall says why in place of its
   // blurb: it is the one thing the user has to read to understand why
   // there is no Uninstall button.
@@ -205,7 +206,12 @@ export function InstalledPage() {
     sourceLabel: string,
   ): ReactNode {
     const summaryKey = standaloneSummaryKey(instance.adapter_id);
-    const blurb = artifactBlurb(t, artifact.description, instance.adapter_id);
+    const blurb = toolDescription(
+      t,
+      { description: artifact.description, kind: artifact.key.kind, path: artifact.path },
+      instance.adapter_id,
+      sourceLabel,
+    );
     if (artifact.uninstall_blocked !== null) {
       const copy = uninstallBlockedCopy(artifact.uninstall_blocked, instance.adapter_id);
       const refusal = withCommand(
@@ -221,7 +227,7 @@ export function InstalledPage() {
         </>
       );
     }
-    return blurb ?? t("installed.noDescription");
+    return blurb;
   }
 
   const items = useMemo<ListItem[]>(() => {

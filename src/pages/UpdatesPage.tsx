@@ -6,9 +6,9 @@ import { useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
-  artifactBlurb,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  toolDescription,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import { warningMessage } from "../lib/warnings";
@@ -597,18 +597,24 @@ export function UpdatesPage() {
     const source = sourceLabelFor(candidate.key.instance_id);
     const op = operationFor(candidate);
     const chips = statusChips(candidate, state, instance);
+    const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
+    const artifact = artifactsById.get(artifactKeyId(candidate.key));
     return (
       <ToolRow
-        adapterId={instance?.adapter_id ?? candidate.key.instance_id.split(":")[0]}
+        adapterId={adapterId}
         sourceLabel={source}
         name={name}
         // A tool with its own installer is its own source: the chip would
         // only say its name again.
         nameChip={source === name ? undefined : source}
-        description={artifactBlurb(
+        // The same line the Installed page's row has (`toolDescription`):
+        // the source's description, a standalone tool's summary, or what
+        // its source says it is.
+        description={toolDescription(
           t,
-          artifactsById.get(artifactKeyId(candidate.key))?.description,
-          instance?.adapter_id,
+          { description: artifact?.description, kind: candidate.key.kind, path: artifact?.path },
+          adapterId,
+          source,
         )}
         selectable={
           actionable

@@ -31,7 +31,17 @@
     "checkAgain": "重新检查"
   },
   "toolRow": {
-    "noDescription": "暂无简介"
+    "fallback": {
+      "homebrewPackage": "Homebrew 软件包",
+      "homebrewApp": "用 Homebrew 安装的 App",
+      "npmPackage": "npm 软件包",
+      "pythonPackage": "Python 软件包",
+      "pipxTool": "用 pipx 安装的 Python 工具",
+      "uvTool": "用 uv 安装的 Python 工具",
+      "cargoProgram": "用 Cargo 安装的程序",
+      "ollamaModel": "Ollama 模型",
+      "other": "用 {{source}} 安装"
+    }
   },
   "overview": {
     "updatesAvailable_other": "有 {{count}} 个工具可以更新",
@@ -66,7 +76,6 @@
     "updateSkipped": "已跳过 {{version}}",
     "updateSkippedNewBuild": "已跳过新版本",
     "updateSourceUnavailable": "有新版本，暂时无法更新",
-    "noDescription": "暂无描述",
     "nameWithVersion": "{{name}} · {{version}}",
     "showDependencies_other": "{{count}} 个由其他软件附带安装的组件",
     "hideDependencies_other": "收起这 {{count}} 个由其他软件附带安装的组件",
@@ -200,10 +209,10 @@
   },
   "standalone": {
     "summary": {
-      "standalone-claude": "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
-      "standalone-rustup": "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。",
-      "standalone-agy": "Google 的 Antigravity 终端编程助手。用它自己的安装器装的。",
-      "standalone-grok": "xAI 的 Grok 终端编程助手。用它自己的安装器装的。"
+      "standalone-claude": "Anthropic 的 AI 编程助手",
+      "standalone-rustup": "安装和更新 Rust 的工具",
+      "standalone-agy": "Google 的 AI 编程助手",
+      "standalone-grok": "xAI 的 AI 编程助手"
     }
   },
   "sourceNotice": {

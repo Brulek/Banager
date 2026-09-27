@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ADAPTER_LABEL_KEYS,
-  artifactBlurb,
   canWrite,
   failedSourceCount,
   hasSourceNotice,
@@ -17,11 +16,13 @@ import {
   settingsSaveErrorMessage,
   sourceNoticesFor,
   standaloneSummaryKey,
+  toolDescription,
   UNAVAILABLE_DETAIL_KEYS,
   UNINSTALL_BLOCKED_KEYS,
   uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
+import type { DescribedTool } from "./sources";
 import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -1066,9 +1067,9 @@ describe("parseUninstallUnsafe", () => {
 describe("STANDALONE_SUMMARY_KEYS", () => {
   it("gives each standalone tool a sentence and every other source none", () => {
     // A standalone artifact's `description` is `null` on the wire (a bare
-    // string could not be localised), so the Installed page finds the
-    // sentence's key here by adapter id, and every package manager keeps
-    // `installed.noDescription` for an unblocked package with no blurb.
+    // string could not be localised), so both pages find the line's key
+    // here by adapter id; every package manager's row with no description
+    // gets its source's line instead (`toolDescription`).
     expect(standaloneSummaryKey("standalone-claude")).toBe("standalone.summary.standalone-claude");
     expect(standaloneSummaryKey("standalone-agy")).toBe("standalone.summary.standalone-agy");
     expect(standaloneSummaryKey("standalone-grok")).toBe("standalone.summary.standalone-grok");
@@ -1077,24 +1078,25 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     }
   });
 
-  it("has the sentence in both locales, naming the installer route", () => {
-    expect(en.standalone.summary["standalone-claude"]).toBe(
-      "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
-    );
-    expect(zhCN.standalone.summary["standalone-claude"]).toBe(
-      "Anthropic 的终端编程助手。用它自己的安装器装的，不是 Homebrew 或 npm。",
-    );
+  it("says in one line what each tool is, in both locales, and nothing about how it was installed", () => {
+    // The row's avatar and name are the tool's own -- a tool with its own
+    // installer is its own source -- so "installed with its own
+    // installer, not with Homebrew or npm" said again what the row shows,
+    // and took a second sentence to do it
+    // (docs/superpowers/2026-09-27-ui-redesign.md, 原则 1).
+    expect(en.standalone.summary["standalone-claude"]).toBe("Anthropic's AI coding assistant");
+    expect(zhCN.standalone.summary["standalone-claude"]).toBe("Anthropic 的 AI 编程助手");
+    for (const summary of [...Object.values(en.standalone.summary), ...Object.values(zhCN.standalone.summary)]) {
+      expect(summary).not.toMatch(/installer|Homebrew|npm|安装器|[.。]/);
+    }
   });
 
   it("gives rustup its sentence and its label, in both locales", () => {
     expect(standaloneSummaryKey("standalone-rustup")).toBe("standalone.summary.standalone-rustup");
     expect(ADAPTER_LABEL_KEYS["standalone-rustup"]).toBe("adapters.standalone-rustup");
-    expect(en.standalone.summary["standalone-rustup"]).toBe(
-      "Rust's toolchain manager: it installs and updates the Rust compiler and Cargo.",
-    );
-    expect(zhCN.standalone.summary["standalone-rustup"]).toBe(
-      "Rust 的工具链管理器：负责安装和更新 Rust 编译器与 Cargo。",
-    );
+    // What it does, without "toolchain manager".
+    expect(en.standalone.summary["standalone-rustup"]).toBe("Installs and updates Rust");
+    expect(zhCN.standalone.summary["standalone-rustup"]).toBe("安装和更新 Rust 的工具");
     expect(en.adapters["standalone-rustup"]).toBe("rustup");
     expect(zhCN.adapters["standalone-rustup"]).toBe("rustup");
   });
@@ -1118,39 +1120,88 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     expect(ADAPTER_LABEL_KEYS["standalone-grok"]).toBe("adapters.standalone-grok");
   });
 
-  it("has the two AI CLIs' sentences in both locales, naming the publisher and the installer route", () => {
-    expect(en.standalone.summary["standalone-agy"]).toBe(
-      "Google's Antigravity coding assistant for the terminal. Installed with its own installer.",
-    );
-    expect(zhCN.standalone.summary["standalone-agy"]).toBe(
-      "Google 的 Antigravity 终端编程助手。用它自己的安装器装的。",
-    );
-    expect(en.standalone.summary["standalone-grok"]).toBe(
-      "xAI's Grok coding assistant for the terminal. Installed with its own installer.",
-    );
-    expect(zhCN.standalone.summary["standalone-grok"]).toBe(
-      "xAI 的 Grok 终端编程助手。用它自己的安装器装的。",
-    );
+  it("has the two AI CLIs' lines in both locales, naming the publisher", () => {
+    expect(en.standalone.summary["standalone-agy"]).toBe("Google's AI coding assistant");
+    expect(zhCN.standalone.summary["standalone-agy"]).toBe("Google 的 AI 编程助手");
+    expect(en.standalone.summary["standalone-grok"]).toBe("xAI's AI coding assistant");
+    expect(zhCN.standalone.summary["standalone-grok"]).toBe("xAI 的 AI 编程助手");
   });
 });
 
-describe("artifactBlurb", () => {
-  it("gives the artifact's own description first, then a standalone tool's summary, else nothing", () => {
+describe("toolDescription", () => {
+  const tool = (over: Partial<DescribedTool> = {}): DescribedTool => ({
+    description: null,
+    kind: "Formula",
+    path: null,
+    ...over,
+  });
+
+  it("gives the source's own description first, then a standalone tool's summary", () => {
     // The one lookup both pages' rows read, so the Updates row of a tool
     // with no description of its own says what its Installed row says.
-    expect(artifactBlurb(fakeT, "Verify system files structure", "brew")).toBe(
+    expect(toolDescription(fakeT, tool({ description: "Verify system files structure" }), "brew", "Homebrew")).toBe(
       "Verify system files structure",
     );
-    expect(artifactBlurb(fakeT, null, "standalone-grok")).toBe(
+    expect(toolDescription(fakeT, tool({ kind: "Binary" }), "standalone-grok", "Grok Build")).toBe(
       "standalone.summary.standalone-grok",
     );
-    expect(artifactBlurb(fakeT, undefined, "standalone-rustup")).toBe(
-      "standalone.summary.standalone-rustup",
+    expect(
+      toolDescription(fakeT, tool({ kind: "Binary", description: undefined }), "standalone-rustup", "rustup"),
+    ).toBe("standalone.summary.standalone-rustup");
+  });
+
+  it("says what the source says a tool is when the source gave no description, never that there is none", () => {
+    // npm's, pip's, pipx's, uv's, Cargo's and Ollama's inventories never
+    // carry a description, and some of Homebrew's casks have none: every
+    // one of those rows used to read 「暂无简介」/"No description".
+    const cases: Array<[string, DescribedTool, string]> = [
+      ["brew", tool({ kind: "Formula" }), "toolRow.fallback.homebrewPackage"],
+      // A cask with an app is an app...
+      ["brew", tool({ kind: "Cask", path: "/Applications/iTerm.app" }), "toolRow.fallback.homebrewApp"],
+      // ...and one without (a font, a driver) is not called one.
+      ["brew", tool({ kind: "Cask", path: null }), "toolRow.fallback.homebrewPackage"],
+      ["npm", tool({ kind: "Package" }), "toolRow.fallback.npmPackage"],
+      ["pip", tool({ kind: "Package" }), "toolRow.fallback.pythonPackage"],
+      ["pipx", tool({ kind: "Tool" }), "toolRow.fallback.pipxTool"],
+      ["uv", tool({ kind: "Tool" }), "toolRow.fallback.uvTool"],
+      ["cargo", tool({ kind: "Binary", path: "/Users/you/.cargo/bin/tokei" }), "toolRow.fallback.cargoProgram"],
+      ["ollama", tool({ kind: "Model" }), "toolRow.fallback.ollamaModel"],
+      // An empty description is none.
+      ["npm", tool({ kind: "Package", description: "" }), "toolRow.fallback.npmPackage"],
+    ];
+    for (const [adapterId, described, key] of cases) {
+      expect(toolDescription(fakeT, described, adapterId, "label"), adapterId).toBe(key);
+    }
+    // A source this build has no line for says who installed it; a
+    // prototype property is not a key.
+    expect(toolDescription(fakeT, tool({ kind: "Package" }), "gem", "RubyGems")).toBe(
+      'toolRow.fallback.other({"source":"RubyGems"})',
     );
-    // A package manager's row with no blurb, and a row whose instance is
-    // not in the snapshot: nothing, so the page says it has no description.
-    expect(artifactBlurb(fakeT, null, "npm")).toBeNull();
-    expect(artifactBlurb(fakeT, null, undefined)).toBeNull();
+    expect(toolDescription(fakeT, tool(), "toString", "toString")).toBe(
+      'toolRow.fallback.other({"source":"toString"})',
+    );
+  });
+
+  it("only says of a source what holds for everything it lists, in both locales", () => {
+    // npm lists npm and corepack, which come with Node, and packages with
+    // no command at all; pip lists what came with Python; Ollama lists
+    // cloud models. So none of those lines says "installed with", "command
+    // line" or "local"; the three whose sources list only what they
+    // installed themselves say so.
+    for (const locale of [en, zhCN]) {
+      const lines = locale.toolRow.fallback;
+      for (const key of ["homebrewPackage", "npmPackage", "pythonPackage", "ollamaModel"] as const) {
+        expect(lines[key]).not.toMatch(/installed with|command|local|安装|命令行|本地/i);
+      }
+      for (const key of ["pipxTool", "uvTool", "cargoProgram", "homebrewApp"] as const) {
+        expect(lines[key]).toMatch(/installed with|用 .* 安装/);
+      }
+      expect(lines.other).toContain("{{source}}");
+    }
+    expect(en.toolRow.fallback.ollamaModel).toBe("Ollama model");
+    expect(zhCN.toolRow.fallback.ollamaModel).toBe("Ollama 模型");
+    expect(zhCN.toolRow.fallback.homebrewApp).toBe("用 Homebrew 安装的 App");
+    expect(zhCN.toolRow.fallback.cargoProgram).toBe("用 Cargo 安装的程序");
   });
 });
 

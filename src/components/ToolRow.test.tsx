@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
-import i18n from "../i18n";
 import { renderWithProviders } from "../test/setup";
 import { ToolRow } from "./ToolRow";
 
@@ -30,24 +29,6 @@ describe("ToolRow", () => {
     expect(blurb).toHaveAttribute("title", "Lightweight and flexible command-line JSON processor");
   });
 
-  it("says there is no description only when there is none", async () => {
-    const { getByText, rerender } = renderWithProviders(
-      <ToolRow adapterId="npm" sourceLabel="npm" name="prettier" description={null} />,
-    );
-    expect(getByText("No description")).toBeInTheDocument();
-
-    rerender(<ToolRow adapterId="npm" sourceLabel="npm" name="prettier" description="" />);
-    expect(getByText("No description")).toBeInTheDocument();
-
-    await i18n.changeLanguage("zh-CN");
-    try {
-      rerender(<ToolRow adapterId="npm" sourceLabel="npm" name="prettier" description={null} />);
-      expect(getByText("暂无简介")).toBeInTheDocument();
-    } finally {
-      await i18n.changeLanguage("en");
-    }
-  });
-
   it("ticks its checkbox through onToggle, named for what it selects", () => {
     const onToggle = vi.fn();
     const { getByRole } = renderWithProviders(
@@ -55,7 +36,7 @@ describe("ToolRow", () => {
         adapterId="brew"
         sourceLabel="Homebrew"
         name="glib"
-        description={null}
+        description="Core application library for C"
         selectable={{ checked: false, onToggle, ariaLabel: "Select glib for update" }}
       />,
     );
@@ -72,7 +53,7 @@ describe("ToolRow", () => {
         adapterId="brew"
         sourceLabel="Homebrew"
         name="glib"
-        description={null}
+        description="Core application library for C"
         status={<span>Pinned</span>}
         version="2.88.3 → 2.90.0"
         action={<button type="button">Update</button>}
@@ -95,7 +76,7 @@ describe("ToolRow", () => {
         adapterId="brew"
         sourceLabel="Homebrew"
         name="glib"
-        description={null}
+        description="Core application library for C"
         status={<span>Pinned</span>}
         version="2.88.3 → 2.90.0"
         action={null}
@@ -105,7 +86,7 @@ describe("ToolRow", () => {
     expect(columns()).toBe(withEverything);
 
     // Left out: no column at all.
-    rerender(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description={null} />);
+    rerender(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="Core application library for C" />);
     expect(columns()).toBe(withEverything - 4);
   });
 });

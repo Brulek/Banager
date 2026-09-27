@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { SourceAvatar } from "./SourceAvatar";
 
 export interface ToolRowSelectable {
@@ -22,11 +21,11 @@ export interface ToolRowProps {
    */
   nameChip?: string;
   /**
-   * One line about what it is. `null` (or empty) only when there is truly
-   * none: the row then says 「暂无简介」/"No description" rather than
-   * leaving a gap.
+   * One line about what it is: the source's description, or what the
+   * source says it is when it gave none (`toolDescription` in
+   * src/lib/sources.ts), so a row never reads "No description".
    */
-  description: string | null;
+  description: string;
   /** A checkbox before the avatar, for a list that acts on several rows. */
   selectable?: ToolRowSelectable;
   /** Status chips (`StatusChip`), just before the version. */
@@ -65,8 +64,6 @@ export function ToolRow({
   action,
   menu,
 }: ToolRowProps) {
-  const { t } = useTranslation();
-  const blurb = description === null || description === "" ? t("toolRow.noDescription") : description;
   return (
     <div
       data-tool-row=""
@@ -93,8 +90,8 @@ export function ToolRow({
             </span>
           ) : null}
         </div>
-        <p title={blurb} className="truncate text-small text-muted">
-          {blurb}
+        <p title={description} className="truncate text-small text-muted">
+          {description}
         </p>
       </div>
       {status !== undefined ? (

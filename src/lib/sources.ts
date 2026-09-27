@@ -5,6 +5,7 @@
  */
 import type {
   ArtifactKey,
+  ArtifactKind,
   ManagerInstance,
   ReadOnlyReason,
   SourceError,
@@ -42,13 +43,14 @@ export type StandaloneAdapterId =
   | "standalone-grok";
 
 /**
- * One sentence per standalone tool, for the description slot of its rows
- * on the Installed and Updates pages (`artifactBlurb`): what the tool is
- * and that its own installer put it there.
+ * One line per standalone tool, for the description slot of its rows on
+ * the Installed and Updates pages (`toolDescription`): what the tool is.
+ * Where it came from needs no saying: the row's avatar and name are the
+ * tool's own, since a tool with its own installer is its own source.
  * `InstalledArtifact.description` is a bare string that cannot be
  * localised, so the standalone adapter's inventory leaves it `null` and
- * the sentence's i18n key is kept here by adapter id, with its text in
- * both locale files.
+ * the line's i18n key is kept here by adapter id, with its text in both
+ * locale files.
  */
 export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
   "standalone-claude": "standalone.summary.standalone-claude",
@@ -59,9 +61,7 @@ export const STANDALONE_SUMMARY_KEYS: Record<StandaloneAdapterId, string> = {
 
 /**
  * The summary key for `adapterId`, or `null` for a source that is not a
- * standalone tool (or one this build has no sentence for): such a row
- * keeps its own blurb, `installed.noDescription` or its uninstall refusal
- * (`installedDescription` in src/pages/InstalledPage.tsx).
+ * standalone tool (or one this build has no line for).
  * `hasOwnProperty`, not truthiness: an id like "toString" finds a
  * function on the prototype, not a key.
  */
@@ -72,24 +72,78 @@ export function standaloneSummaryKey(adapterId: string): string | null {
 }
 
 /**
- * A row's blurb: the artifact's own `description`, or, for a standalone
- * tool, whose artifact carries none, its summary sentence
- * (`standaloneSummaryKey`); `null` when there is neither. The one lookup
- * both pages' rows use -- `installedDescription` in
- * src/pages/InstalledPage.tsx and `updateRow` in src/pages/UpdatesPage.tsx
- * -- so a tool's Updates row cannot say "No description" while its
- * Installed row has a sentence.
- * `adapterId` is `undefined` for a row whose instance is not in the
- * snapshot, which leaves only the description to go on.
+ * What a row says a tool is when its source gave no description, by the
+ * source that lists it -- so no row reads 「暂无简介」/"No description".
+ * Most sources never give one: npm's, pip's, pipx's, uv's, Cargo's and
+ * Ollama's inventories leave `description` null, and so do some of
+ * Homebrew's casks. Each line holds for everything its source can list:
+ *
+ * - Homebrew: a formula, or a cask that is not an app (a font, a driver),
+ *   is a Homebrew package; a cask with an app is an app installed with
+ *   Homebrew (`homebrewApp`, below).
+ * - npm: whatever `npm ls -g` lists is an npm package -- not always a
+ *   command-line tool, and not always installed with npm (npm itself and
+ *   corepack come with Node).
+ * - pip: a Python package, not "installed with pip": the packages that
+ *   come with Python are listed too.
+ * - pipx and uv: each lists only the tools it installed, and installs
+ *   only a package with commands to run.
+ * - Cargo: `.crates2.json` records what `cargo install` put in its `bin`
+ *   folder, programs.
+ * - Ollama: a model -- not "local": a cloud model is listed too.
+ *
+ * A source this build has no line for says who installed it.
  */
-export function artifactBlurb(
+const FALLBACK_DESCRIPTION_KEYS: Record<string, string> = {
+  brew: "toolRow.fallback.homebrewPackage",
+  npm: "toolRow.fallback.npmPackage",
+  pip: "toolRow.fallback.pythonPackage",
+  pipx: "toolRow.fallback.pipxTool",
+  uv: "toolRow.fallback.uvTool",
+  cargo: "toolRow.fallback.cargoProgram",
+  ollama: "toolRow.fallback.ollamaModel",
+};
+
+/** What `toolDescription` needs to know about the tool on a row. */
+export interface DescribedTool {
+  /** The source's own sentence, when it gave one. */
+  description: string | null | undefined;
+  kind: ArtifactKind;
+  /**
+   * For a Homebrew cask, where its app is: set only for a cask with an
+   * app (`parse_info_installed` in crates/canager-core/src/adapters/brew/
+   * parse.rs).
+   */
+  path: string | null | undefined;
+}
+
+/**
+ * A row's one line about what it is, on the Installed and the Updates
+ * page alike, so a tool reads the same on both: the source's own
+ * description; else, for a standalone tool, its summary
+ * (`standaloneSummaryKey`); else a line from its source
+ * (`FALLBACK_DESCRIPTION_KEYS`). Never empty. `adapterId` is the
+ * instance's, or the part of the key's `instance_id` before any `:` when
+ * the snapshot lacks the instance (the id starts with its adapter's);
+ * `sourceLabel` is the source's name in the user's language.
+ */
+export function toolDescription(
   t: Translate,
-  description: string | null | undefined,
-  adapterId: string | undefined,
-): string | null {
-  if (description !== null && description !== undefined) return description;
-  const summaryKey = adapterId === undefined ? null : standaloneSummaryKey(adapterId);
-  return summaryKey === null ? null : t(summaryKey);
+  tool: DescribedTool,
+  adapterId: string,
+  sourceLabel: string,
+): string {
+  if (tool.description !== null && tool.description !== undefined && tool.description !== "") {
+    return tool.description;
+  }
+  const summaryKey = standaloneSummaryKey(adapterId);
+  if (summaryKey !== null) return t(summaryKey);
+  if (adapterId === "brew" && tool.kind === "Cask" && tool.path !== null && tool.path !== undefined) {
+    return t("toolRow.fallback.homebrewApp");
+  }
+  return Object.prototype.hasOwnProperty.call(FALLBACK_DESCRIPTION_KEYS, adapterId)
+    ? t(FALLBACK_DESCRIPTION_KEYS[adapterId])
+    : t("toolRow.fallback.other", { source: sourceLabel });
 }
 
 /**

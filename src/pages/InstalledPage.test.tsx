@@ -465,9 +465,9 @@ describe("InstalledPage", () => {
   });
 
   it("shows the standalone summary alongside its real uninstall refusal", async () => {
-    // A standalone artifact carries `description: null` (the sentence has
-    // to be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a
-    // Homebrew package with no blurb keeps "No description available".
+    // A standalone artifact carries `description: null` (the line has to
+    // be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a
+    // Homebrew package with no blurb says what Homebrew says it is.
     const mixed: Snapshot = {
       ...snapshot,
       instances: [
@@ -510,12 +510,8 @@ describe("InstalledPage", () => {
 
     const { findByText, getByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
 
-    expect(
-      await findByText(
-        "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
-      ),
-    ).toBeInTheDocument();
-    expect(getByText("No description available")).toBeInTheDocument();
+    expect(await findByText("Anthropic's AI coding assistant")).toBeInTheDocument();
+    expect(getByText("Homebrew package")).toBeInTheDocument();
     expect(getByText("Claude Code has no uninstall command, and Canager can't yet move its files to the Trash safely, so it doesn't offer to. Claude Code's official documentation explains how to uninstall it.")).toBeInTheDocument();
     // Only the Homebrew artifact may offer Uninstall: this Claude artifact
     // is marked NoSafeMethod, as a recipe without an uninstall method's
@@ -569,11 +565,7 @@ describe("InstalledPage", () => {
 
     const { findByText, getAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
 
-    expect(
-      await findByText(
-        "Anthropic's coding assistant for the terminal. Installed with its own installer, not with Homebrew or npm.",
-      ),
-    ).toBeInTheDocument();
+    expect(await findByText("Anthropic's AI coding assistant")).toBeInTheDocument();
     expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
     expect(queryByText("Can't uninstall here")).toBeNull();
   });

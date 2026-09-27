@@ -482,8 +482,9 @@ describe("UpdatesPage", () => {
     expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
     expect(within(onyx).getByRole("checkbox")).toHaveAccessibleName("Select OnyX for update");
     expect(within(rowOf("glib")).getByText("Homebrew")).toBeInTheDocument();
-    // "No description" only where there truly is none.
-    expect(within(rowOf("glib")).getByText("No description")).toBeInTheDocument();
+    // A package the snapshot has no description for says what its source
+    // says it is, never "No description".
+    expect(within(rowOf("glib")).getByText("Homebrew package")).toBeInTheDocument();
     const claude = rowOf("Claude Code");
     expect(within(claude).getAllByText("Claude Code")).toHaveLength(1);
     expect(rowNames()).toEqual(["Claude Code", "glib", "OnyX"]);
@@ -2555,8 +2556,8 @@ describe("UpdatesPage", () => {
 
   it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
     // A standalone artifact's `description` is `null` on the wire (a bare
-    // string cannot be localised), so its sentence is looked up by adapter
-    // id, on this page as on the Installed page (`artifactBlurb`). Grok
+    // string cannot be localised), so its line is looked up by adapter
+    // id, on this page as on the Installed page (`toolDescription`). Grok
     // Build is not called self-updating (`auto_updates: false`: whether it
     // installs updates on its own is unverified), so its row gets no chip.
     const grokKey: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
@@ -2603,14 +2604,63 @@ describe("UpdatesPage", () => {
     const { queryByText, getAllByRole } = renderWithProviders(<UpdatesPage />);
 
     const grok = await findRow("Grok Build");
-    expect(
-      within(grok).getByText(
-        "xAI's Grok coding assistant for the terminal. Installed with its own installer.",
-      ),
-    ).toBeInTheDocument();
+    expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
     expect(within(grok).queryByRole("button", { name: "Updates itself" })).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+  });
+
+  it("says what each row's source says it is when the source gave no description, in both languages", async () => {
+    // Cargo's inventory never carries a description, and some of
+    // Homebrew's casks have none: each such row says what its source says
+    // it is -- an app's cask is an app, a font's is not called one -- and
+    // never "No description".
+    const fontKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "font-jetbrains-mono" };
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const bare = (key: ArtifactKey, displayName: string, path: string | null): Snapshot["artifacts"][number] => ({
+      key,
+      display_name: displayName,
+      version: "1.0.0",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path,
+      auto_updates: false,
+      uninstall_blocked: null,
+    });
+    artifacts = [
+      bare(onyxKey, "OnyX", "/Applications/OnyX.app"),
+      bare(fontKey, "JetBrains Mono", null),
+      bare(tokeiKey, "tokei", "/Users/brulek/.cargo/bin/tokei"),
+    ];
+    updates = [
+      ...snapshot.updates,
+      { ...brewCandidate("font-jetbrains-mono"), key: fontKey },
+      { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" },
+    ];
+    const { queryByText } = renderWithProviders(<UpdatesPage />);
+
+    expect(within(await findRow("OnyX")).getByText("App installed with Homebrew")).toBeInTheDocument();
+    expect(within(rowOf("JetBrains Mono")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+    expect(within(rowOf("glib")).getByText("Homebrew package")).toBeInTheDocument();
+    expect(queryByText("No description")).toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(within(rowOf("OnyX")).getByText("用 Homebrew 安装的 App")).toBeInTheDocument();
+      expect(within(rowOf("JetBrains Mono")).getByText("Homebrew 软件包")).toBeInTheDocument();
+      expect(within(rowOf("tokei")).getByText("用 Cargo 安装的程序")).toBeInTheDocument();
+      expect(queryByText("暂无简介")).toBeNull();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
   });
 
   it("gives a standalone row that cannot be checked its reason, not the self-updating chip", async () => {
