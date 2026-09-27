@@ -1,7 +1,53 @@
+import type { MouseEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
-import { ToolRow } from "./ToolRow";
+import { RowAction, ToolRow } from "./ToolRow";
+
+/** The classes a class list holds with no state prefix: how it looks at rest. */
+function atRest(className: string): string[] {
+  return className.split(/\s+/).filter((name) => name !== "" && !name.includes(":"));
+}
+
+describe("RowAction", () => {
+  it("gives Update the accent, the look of what the row recommends", () => {
+    const { getByRole } = renderWithProviders(
+      <RowAction tone="accent" onClick={() => {}}>
+        Update
+      </RowAction>,
+    );
+
+    const update = getByRole("button", { name: "Update" });
+    expect(update).toHaveAttribute("data-tone", "accent");
+    expect(atRest(update.className)).toEqual(expect.arrayContaining(["bg-accent/10", "text-accent-text"]));
+  });
+
+  it("gives Uninstall a quiet outline, and the danger colour only under the pointer or the keyboard's focus", () => {
+    // What the page gets: the button itself, to give the focus back to.
+    const pressed: Array<EventTarget | null> = [];
+    const onClick = vi.fn((event: MouseEvent<HTMLButtonElement>) => pressed.push(event.currentTarget));
+    const { getByRole } = renderWithProviders(
+      <RowAction tone="quiet" onClick={onClick}>
+        Uninstall
+      </RowAction>,
+    );
+
+    const uninstall = getByRole("button", { name: "Uninstall" });
+    expect(uninstall).toHaveAttribute("data-tone", "quiet");
+    // At rest: an outline, muted text, no fill, and nothing red or accent.
+    const rest = atRest(uninstall.className);
+    expect(rest).toEqual(expect.arrayContaining(["border", "border-border", "text-muted"]));
+    expect(rest.filter((name) => /danger|accent/.test(name))).toEqual([]);
+    expect(rest.filter((name) => name.startsWith("bg-"))).toEqual([]);
+    // Under the pointer or the focus, and only there, the danger colour.
+    expect(uninstall.className).toMatch(/\bhover:text-danger\b/);
+    expect(uninstall.className).toMatch(/\bfocus-visible:text-danger\b/);
+
+    fireEvent.click(uninstall);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(pressed).toEqual([uninstall]);
+  });
+});
 
 describe("ToolRow", () => {
   it("shows the source's avatar, the name with its source chip, and one line about it", () => {

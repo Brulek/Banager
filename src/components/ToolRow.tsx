@@ -1,6 +1,39 @@
 import type { MouseEvent, ReactNode } from "react";
 import { SourceAvatar } from "./SourceAvatar";
 
+/**
+ * How a row's own button looks: `accent` for what the row recommends --
+ * Update, 360's one obvious button -- and `quiet` for what it only offers:
+ * Uninstall, an outline in the muted colour that takes the danger colour
+ * only under the pointer or the keyboard's focus, so that removing
+ * something never looks like the thing to do.
+ */
+export type RowActionTone = "accent" | "quiet";
+
+const ROW_ACTION_CLASSES: Record<RowActionTone, string> = {
+  accent:
+    "h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text",
+  quiet:
+    "h-7 rounded-button border border-border px-3.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50",
+};
+
+export interface RowActionProps {
+  tone: RowActionTone;
+  /** Handed the event, so what it opens can hand the focus back to the button. */
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  children: ReactNode;
+}
+
+/** A row's own button, for `ToolRow`'s `action`: Update or Uninstall. `data-tone` says which look it has. */
+export function RowAction({ tone, onClick, disabled, children }: RowActionProps) {
+  return (
+    <button type="button" data-tone={tone} onClick={onClick} disabled={disabled} className={ROW_ACTION_CLASSES[tone]}>
+      {children}
+    </button>
+  );
+}
+
 export interface ToolRowSelectable {
   checked: boolean;
   onToggle: () => void;
@@ -32,7 +65,7 @@ export interface ToolRowProps {
   status?: ReactNode;
   /** The version column: "7.1 → 7.2", or a word where a version would mean nothing. */
   version?: ReactNode;
-  /** The primary action -- a button -- or what stands in for it, such as an update's progress. */
+  /** The row's own button (`RowAction`), or what stands in for it, such as an update's progress. */
   action?: ReactNode;
   /** The ⋯ menu (`Menu`). */
   menu?: ReactNode;

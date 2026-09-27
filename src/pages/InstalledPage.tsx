@@ -17,7 +17,7 @@ import { hidingRule, shownSkippedVersion, updateStateOf, upToDateIsKnown } from 
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
-import { ToolRow } from "../components/ToolRow";
+import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { Drawer } from "../components/ui/Drawer";
@@ -121,9 +121,6 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
     <StatusChip label={chip.label} detail={withDetail ? chip.detail : undefined} tone={chip.tone} />
   );
 }
-
-const ROW_BUTTON =
-  "h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent";
 
 /**
  * 已安装: everything the sources list, to find and to uninstall
@@ -620,9 +617,10 @@ export function InstalledPage() {
         version={versionOf(artifact)}
         action={
           canUninstall(artifact, instance) ? (
-            <button type="button" onClick={(event) => uninstall(artifact, event.currentTarget)} className={ROW_BUTTON}>
+            // Offered, not recommended: the quiet look (`RowAction`).
+            <RowAction tone="quiet" onClick={(event) => uninstall(artifact, event.currentTarget)}>
               {t("installed.uninstall")}
-            </button>
+            </RowAction>
           ) : null
         }
         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(artifact, instance)} />}
@@ -699,10 +697,12 @@ export function InstalledPage() {
       removable || updatable ? (
         <>
           {removable ? (
+            // As quiet as the row's, beside the accent of Update.
             <button
               type="button"
+              data-tone="quiet"
               onClick={(event) => uninstall(artifact, event.currentTarget)}
-              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-danger outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40"
             >
               {t("installed.uninstall")}
             </button>

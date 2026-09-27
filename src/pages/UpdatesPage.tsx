@@ -13,7 +13,7 @@ import {
 } from "../lib/sources";
 import { warningMessage } from "../lib/warnings";
 import { useCopyCommand } from "../lib/clipboard";
-import { ToolRow } from "../components/ToolRow";
+import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
@@ -629,14 +629,13 @@ export function UpdatesPage() {
           op !== null ? (
             <UpdateProgress progress={progressOf(op)} name={name} onViewLog={viewLog} />
           ) : actionable ? (
-            <button
-              type="button"
+            <RowAction
+              tone="accent"
               onClick={(event) => void openConfirm([candidate], event.currentTarget)}
               disabled={dialogOpen}
-              className="h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text"
             >
               {t("updates.update")}
-            </button>
+            </RowAction>
           ) : null
         }
         menu={

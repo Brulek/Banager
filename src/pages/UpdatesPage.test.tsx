@@ -2578,6 +2578,13 @@ describe("UpdatesPage", () => {
       ]);
     });
 
+    it("keeps a row's Update the accent: the thing this page recommends", async () => {
+      renderWithProviders(<UpdatesPage />);
+
+      const update = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      expect(update).toHaveAttribute("data-tone", "accent");
+    });
+
     it("puts the focus on Update as it opens, and gives it back to the row's Update when cancelled", async () => {
       const { findAllByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 

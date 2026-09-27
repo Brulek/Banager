@@ -391,6 +391,24 @@ describe("InstalledPage", () => {
     expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull();
   });
 
+  it("offers Uninstall quietly, on the row and in the drawer, where Update is the accent", async () => {
+    // Uninstall must not look like the thing to do: an outline in the
+    // muted colour, red only under the pointer or the focus (`RowAction`).
+    renderWithProviders(<InstalledPage />);
+
+    const rowUninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    expect(rowUninstall).toHaveAttribute("data-tone", "quiet");
+    expect(rowUninstall.className).toMatch(/(^|\s)text-muted(\s|$)/);
+    expect(rowUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger|bg-accent\S*|text-accent-text)(\s|$)/);
+
+    fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+    const drawer = await openDetails("glib");
+    const drawerUninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+    expect(drawerUninstall).toHaveAttribute("data-tone", "quiet");
+    expect(drawerUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger)(\s|$)/);
+    expect(within(drawer).getByRole("button", { name: "Update" }).className).toMatch(/(^|\s)bg-accent(\s|$)/);
+  });
+
   it("gives the focus back to the row's Uninstall when its confirmation is cancelled", async () => {
     renderWithProviders(<InstalledPage />);
 
