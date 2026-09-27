@@ -1,52 +1,37 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  useSnapshot,
-  useSettings,
-  useSaveSettings,
-  usePlanOperation,
-  useSubmitOperation,
-  useOperations,
-} from "../lib/queries";
+import { useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   artifactBlurb,
-  planErrorMessage,
-  READ_ONLY_DETAIL_KEYS,
   settingsSaveErrorMessage,
   sourceNoticesFor,
-  UNAVAILABLE_DETAIL_KEYS,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import { warningMessage, warningText, warningTexts } from "../lib/warnings";
+import { warningMessage } from "../lib/warnings";
+import { useCopyCommand } from "../lib/clipboard";
 import { ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
-import { CommandPreview } from "../components/CommandPreview";
-import { COMMAND_SLOT, withCommand } from "../components/withCommand";
-import { Dialog } from "../components/ui/Dialog";
+import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
+import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import {
-  CheckCircleIcon,
-  CheckIcon,
-  ChevronIcon,
-  InfoIcon,
-  SpinnerIcon,
-} from "../components/icons";
+  blockedDetail,
+  cannotCheckDetail,
+  detailLines,
+  readOnlyDetail,
+  unavailableDetail,
+} from "../components/updateDetails";
+import { CheckCircleIcon, ChevronIcon, InfoIcon } from "../components/icons";
 import type {
-  ArtifactKey,
-  InstalledArtifact,
   InstanceNote,
-  IssuedPlan,
+  InstalledArtifact,
   ManagerInstance,
-  OpRequest,
-  OpSummary,
-  Outcome,
   Settings,
-  UpdateBlocked,
   UpdateCandidate,
 } from "../lib/types";
 import {
@@ -102,79 +87,6 @@ function listItemKey(item: ListItem): string {
   }
 }
 
-function toRequest(candidate: UpdateCandidate): OpRequest {
-  return {
-    kind: "Upgrade",
-    instance_id: candidate.key.instance_id,
-    artifact_kind: candidate.key.kind,
-    name: candidate.key.name,
-  };
-}
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-/**
- * One selected row's journey through a batch. Exactly one of `issued` /
- * `planError` is set once its plan settles; exactly one of `submittedOpId` /
- * `submitError` once its submit settles. A row whose plan failed is listed
- * in the dialog with its reason and is never submitted.
- */
-interface BatchItem {
-  // The whole candidate, not just its key: the confirmation has to say
-  // what version you are moving to, and `current`/`target`/`channel` live
-  // here and nowhere else once the dialog is open. Captured when the batch
-  // is built, so a refresh landing behind the dialog cannot change the
-  // numbers under the command the user is reading.
-  candidate: UpdateCandidate;
-  /** The row's name, as the list showed it when the batch was built. */
-  name: string;
-  issued: IssuedPlan | null;
-  planError: string | null;
-  submittedOpId: number | null;
-  submitError: string | null;
-}
-
-/**
- * The confirmation flow's whole state, kept explicitly instead of being read
- * off `usePlanOperation`/`useSubmitOperation`'s observer flags: an observer
- * only ever reflects its *last* call, so a batch of N `mutateAsync` calls
- * would report one result and lose the other N−1 (A fails, B succeeds: the
- * page would show B's success and swallow A's error).
- *
- *   planning ─(every plan settled)─▶ ready ─(Confirm)─▶ submitting ─▶ done
- *
- * The dialog opens at `ready` if at least one plan was issued; when every
- * plan failed the batch goes straight to `done` with the dialog shut and
- * the reasons shown on the page. `done` is reached after submitting only
- * when something failed — a batch whose every item started closes the
- * dialog instead. `id` is compared with `batchIdRef` before any async
- * callback writes back, so a superseded batch's late reply can neither
- * overwrite a newer preview nor close a newer dialog.
- */
-interface Batch {
-  id: number;
-  phase: "planning" | "ready" | "submitting" | "done";
-  items: BatchItem[];
-}
-
-function hasIssuedPlan(batch: Batch): boolean {
-  return batch.items.some((item) => item.issued !== null);
-}
-
-/**
- * Narrows a `BatchItem` to the branch where its plan failed. `issued` and
- * `planError` are set as a pair in `openConfirm` -- a fulfilled `mutateAsync`
- * sets `issued` and leaves `planError` null, a rejected one does the
- * reverse -- so this is never false for an item already known to have no
- * `issued` plan (see `pageErrors` below), but the compiler has no way to see
- * that invariant across the two fields on its own.
- */
-function hasPlanError(item: BatchItem): item is BatchItem & { planError: string } {
-  return item.planError !== null;
-}
-
 /**
  * Whether each note says that typing the tool's name in Terminal may not
  * run this instance's copy: this copy is not on the PATH Canager sees, so
@@ -197,143 +109,6 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   LauncherOnly: true,
 };
 
-/**
- * What a row shows in place of its Update button while an update of it is
- * under way or has just finished (`UpdateProgress`). `failed` and `check`
- * keep the operation's id, for the log they offer.
- */
-type RowProgress =
-  | { kind: "queued" }
-  | { kind: "running" }
-  | { kind: "cancelling" }
-  | { kind: "succeeded" }
-  | { kind: "cancelled" }
-  | { kind: "failed"; opId: number }
-  | { kind: "check"; opId: number };
-
-/**
- * How a finished update ended, for its row. "Check" -- look at the log --
- * for every outcome that is neither a plain success nor a plain failure:
- * the tool said it worked and Canager could not confirm it (`Unconfirmed`)
- * or found the opposite (`NeedsAttention`). A finished operation with no
- * outcome, which the backend never sends, claims nothing either way.
- */
-function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
-  if (outcome === null) return { kind: "check", opId };
-  if (typeof outcome === "string") {
-    switch (outcome) {
-      case "Succeeded":
-        return { kind: "succeeded" };
-      case "Cancelled":
-        return { kind: "cancelled" };
-      case "Unconfirmed":
-        return { kind: "check", opId };
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
-    }
-  }
-  if ("NeedsAttention" in outcome) return { kind: "check", opId };
-  if ("Failed" in outcome || "CanagerFailed" in outcome) return { kind: "failed", opId };
-  const unhandled: never = outcome;
-  return unhandled;
-}
-
-/** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
-function progressOf(op: OpSummary): RowProgress {
-  switch (op.status) {
-    case "Queued":
-      return { kind: "queued" };
-    // Verifying is the update's own last step: the command has ended and
-    // Canager is reading the result back.
-    case "Running":
-    case "Verifying":
-      return { kind: "running" };
-    case "CancelRequested":
-    case "Cancelling":
-      return { kind: "cancelling" };
-    case "Done":
-      return outcomeProgress(op.outcome, op.id);
-  }
-}
-
-interface UpdateProgressProps {
-  progress: RowProgress;
-  /** The row's name, for "View log"'s accessible name. */
-  name: string;
-  onViewLog: (opId: number) => void;
-}
-
-/**
- * The row's own progress, where its Update button was: 360's "the progress
- * is in the row". Waiting, updating with a spinner, a tick when it is
- * done; a failure, or an outcome to check, with the way to its log.
- */
-function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProps) {
-  const { t } = useTranslation();
-  const viewLog = (opId: number) => (
-    <button
-      type="button"
-      onClick={() => onViewLog(opId)}
-      aria-label={t("updates.progress.viewLogLabel", { name })}
-      className="rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
-    >
-      {t("updates.progress.viewLog")}
-    </button>
-  );
-  switch (progress.kind) {
-    case "queued":
-      return <span className="text-small text-muted">{t("updates.progress.queued")}</span>;
-    case "running":
-      return (
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small font-medium text-accent-text">
-          <SpinnerIcon size={14} />
-          {t("updates.progress.running")}
-        </span>
-      );
-    case "cancelling":
-      return (
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
-          <SpinnerIcon size={14} />
-          {t("updates.progress.cancelling")}
-        </span>
-      );
-    case "succeeded":
-      return (
-        <span className="inline-flex items-center gap-1 whitespace-nowrap text-small font-medium text-success">
-          <CheckIcon size={15} />
-          {t("updates.progress.succeeded")}
-        </span>
-      );
-    case "cancelled":
-      return <span className="text-small text-muted">{t("updates.progress.cancelled")}</span>;
-    case "failed":
-      return (
-        <span className="flex flex-col items-end leading-tight">
-          <span className="text-small font-medium text-danger">{t("updates.progress.failed")}</span>
-          {viewLog(progress.opId)}
-        </span>
-      );
-    case "check":
-      return (
-        <span className="flex flex-col items-end leading-tight">
-          <span className="text-small font-medium text-warning">{t("updates.progress.check")}</span>
-          {viewLog(progress.opId)}
-        </span>
-      );
-  }
-}
-
-/** A chip's detail, a sentence to a line; the lines after the first are the quieter kind. */
-function detailLines(lines: ReactNode[]): ReactNode {
-  return lines.map((line, index) => (
-    <p key={index} className={index === 0 ? "break-words" : "mt-1.5 break-words text-muted"}>
-      {line}
-    </p>
-  ));
-}
-
 const HEADER_TEXT_BUTTON =
   "rounded-button px-2.5 py-1.5 text-body font-medium text-accent-text outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent";
 
@@ -341,32 +116,20 @@ export function UpdatesPage() {
   const { t, i18n } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
-  const { data: operations } = useOperations();
   const saveSettings = useSaveSettings();
-  // Used only for their promise-returning `mutateAsync` — which keeps
-  // `useSubmitOperation`'s operations-query invalidation — never for their
-  // `isPending`/`isError`/`error`; every flag the UI needs comes from `batch`.
-  const planMutation = usePlanOperation();
-  const submitMutation = useSubmitOperation();
   const selectedUpdates = useUiStore((s) => s.selectedUpdates);
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const invertUpdateSelection = useUiStore((s) => s.invertUpdateSelection);
-  const updateTargets = useUiStore((s) => s.updateTargets);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  const operationFor = useUpdateOperationFor();
 
   const listRef = useRef<HTMLDivElement>(null);
-  const [batch, setBatch] = useState<Batch | null>(null);
-  // Monotonic. The batch whose id equals this is the only one allowed to
-  // write state; every async continuation checks `isCurrent` after `await`.
-  const batchIdRef = useRef(0);
   // "Can't update here (N)": folded until pressed.
   const [showCantUpdate, setShowCantUpdate] = useState(false);
   // What the last "Copy command" did, said for a moment in the header.
-  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
-  const copyTimerRef = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(copyTimerRef.current), []);
+  const { status: copyStatus, copy: copyCommand } = useCopyCommand();
 
   // Every update the user has not hidden, with "Never remind me" or "Skip
   // this version": `notHidden`, the rule in src/lib/updateState.ts that
@@ -432,6 +195,12 @@ export function UpdatesPage() {
       collator.compare(nameOf(a), nameOf(b)) ||
       collator.compare(artifactKeyId(a.key), artifactKeyId(b.key));
   }, [i18n.language, nameOf]);
+
+  // The confirmation every Update on this page opens -- a row's own,
+  // Update selected and Update all: one batch flow, shared with the
+  // Installed page's detail (`useUpdateConfirm`).
+  const confirm = useUpdateConfirm({ nameOf, compare: compareRows, sourceLabelFor });
+  const { openConfirm, dialogOpen, pageErrors } = confirm;
 
   const stateOf = (candidate: UpdateCandidate): UpdateState =>
     updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
@@ -547,38 +316,6 @@ export function UpdatesPage() {
     [actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
   );
 
-  // The newest update operation of each package. The backend keeps a
-  // finished operation in its list, so an operation is matched to a row
-  // by its key -- instance, kind and name -- and, once it has finished, by
-  // the version the row offers too (`operationFor`).
-  const latestUpdateOp = useMemo(() => {
-    const byKey = new Map<string, OpSummary>();
-    for (const op of operations ?? []) {
-      if (op.kind !== "Upgrade") continue;
-      const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
-      const seen = byKey.get(id);
-      if (seen === undefined || op.id > seen.id) byKey.set(id, op);
-    }
-    return byKey;
-  }, [operations]);
-
-  /**
-   * The operation a row shows in place of its Update button, or null.
-   * One still under way, always: a second click could only queue the same
-   * update behind it. A finished one only while the row still offers the
-   * version it was started for (`updateTargets`, remembered when this page
-   * submitted it): "Updated" or "Failed" is about that version, and a
-   * newer one the source offers later gets its button back. An operation
-   * this page has no record of -- one from before the window was reloaded
-   * -- is not shown once it has finished.
-   */
-  const operationFor = (candidate: UpdateCandidate): OpSummary | null => {
-    const op = latestUpdateOp.get(artifactKeyId(candidate.key));
-    if (op === undefined) return null;
-    if (op.status !== "Done") return op;
-    return updateTargets[op.id] === candidate.target ? op : null;
-  };
-
   const viewLog = (opId: number) => {
     setFocusedOpId(opId);
     setDrawerOpen(true);
@@ -607,49 +344,6 @@ export function UpdatesPage() {
     !instance.status.notes.some((note) => NAME_MAY_NOT_RUN_THIS_COPY[note]);
 
   /**
-   * Why a row could not be checked, for its "Can't check" chip: that it
-   * could not, then its reason. A warning with a key of its own
-   * (`NonRegistrySource`) was written for this audience and is always
-   * given. A `Message` is raw text off the wire -- a tool's stderr, an
-   * HTTP error -- kept verbatim on purpose, and it is behind "Show
-   * technical details", which is exactly what spec §6 says the right
-   * shape is. Distinct, so a row carrying the same reason twice says it
-   * once.
-   */
-  const cannotCheckDetail = (candidate: UpdateCandidate): ReactNode => {
-    const reasons = new Set<string>();
-    for (const warning of candidate.warnings) {
-      const raw = warningMessage(warning);
-      const text = raw === null ? warningText(t, warning) : settings?.show_technical_details ? raw : null;
-      if (text !== null && text !== "") reasons.add(text);
-    }
-    return detailLines([t("updates.cannotCheckShort"), ...reasons]);
-  };
-
-  // A blocked row's chip and its detail: why the tool will not update it,
-  // and what the user can do instead -- the unpin command, set as code in
-  // the sentence, or "open it once", with the command that opens it under
-  // it while technical details are on.
-  const blockedDetail = (
-    candidate: UpdateCandidate,
-    reason: UpdateBlocked,
-    instance: ManagerInstance | undefined,
-  ): ReactNode => {
-    const copy = UPDATE_BLOCKED_KEYS[reason];
-    const source = sourceLabelFor(candidate.key.instance_id);
-    const command = copy.command(candidate.key, instance);
-    if (copy.commandInDetail) {
-      return detailLines([withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command)]);
-    }
-    return detailLines([
-      t(copy.detail, { source }),
-      ...(settings?.show_technical_details
-        ? [withCommand(t("updates.runInTerminal", { command: COMMAND_SLOT }), command)]
-        : []),
-    ]);
-  };
-
-  /**
    * The row's status chips, one per `UpdateState`, each with its why
    * behind an ⓘ. A `switch` with no default, so a state added to
    * `UpdateState` without a chip here fails `tsc`. A read-only source's
@@ -662,8 +356,14 @@ export function UpdatesPage() {
     state: UpdateState,
     instance: ManagerInstance | undefined,
   ): ReactNode[] => {
+    const showTechnicalDetails = settings?.show_technical_details ?? false;
+    const source = sourceLabelFor(candidate.key.instance_id);
     const cannotCheck = (
-      <StatusChip key="cannot-check" label={t("updates.cannotCheck")} detail={cannotCheckDetail(candidate)} />
+      <StatusChip
+        key="cannot-check"
+        label={t("updates.cannotCheck")}
+        detail={cannotCheckDetail(t, candidate, showTechnicalDetails)}
+      />
     );
     switch (state.kind) {
       case "actionable":
@@ -676,17 +376,11 @@ export function UpdatesPage() {
               />,
             ]
           : [];
-      case "readOnly": {
-        const reason = instance?.read_only_reason ?? null;
+      case "readOnly":
         return [
-          <StatusChip
-            key="read-only"
-            label={t("updates.readOnly")}
-            detail={reason === null ? undefined : detailLines([t(READ_ONLY_DETAIL_KEYS[reason])])}
-          />,
+          <StatusChip key="read-only" label={t("updates.readOnly")} detail={readOnlyDetail(t, instance)} />,
           ...(candidate.checkable ? [] : [cannotCheck]),
         ];
-      }
       case "cannotCheck":
         return [cannotCheck];
       case "blocked":
@@ -694,21 +388,15 @@ export function UpdatesPage() {
           <StatusChip
             key="blocked"
             label={t(UPDATE_BLOCKED_KEYS[state.reason].badge)}
-            detail={blockedDetail(candidate, state.reason, instance)}
+            detail={blockedDetail(t, candidate, state.reason, instance, source, showTechnicalDetails)}
           />,
         ];
       case "sourceUnavailable":
-        // An instance missing from the snapshot, which `refresh` never
-        // produces, reads as one that did not answer.
         return [
           <StatusChip
             key="unavailable"
             label={t("updates.sourceUnavailable")}
-            detail={detailLines([
-              t(UNAVAILABLE_DETAIL_KEYS[instance?.status.unavailable ?? "NotResponding"], {
-                source: sourceLabelFor(candidate.key.instance_id),
-              }),
-            ])}
+            detail={unavailableDetail(t, instance, source)}
           />,
         ];
     }
@@ -740,130 +428,6 @@ export function UpdatesPage() {
     return target !== "" ? target : current !== "" ? current : null;
   };
 
-  /**
-   * The version jump for the confirmation dialog, or null when there is no
-   * honest one to show: `versionOf`'s rule in the dialog's own words -- a
-   * `Digest` candidate says a newer build of the model is available, never
-   * two digests -- and nothing, rather than a dangling arrow, when a source
-   * could name only one side. Not behind "Show technical details": spec §6
-   * asks this screen to show the version jump, and a confirmation that
-   * names the command but not the change is not a confirmation.
-   */
-  const dialogVersionJump = (candidate: UpdateCandidate): string | null => {
-    if (candidate.channel === "Digest") return t("updates.newBuild");
-    if (candidate.current === "" || candidate.target === "") return null;
-    return t("updates.versionChange", { current: candidate.current, target: candidate.target });
-  };
-
-  function isCurrent(id: number): boolean {
-    return batchIdRef.current === id;
-  }
-
-  function deselect(key: ArtifactKey) {
-    // Read the store directly: this runs after an `await`, when the
-    // `selectedUpdates` captured by this render may already be stale.
-    const store = useUiStore.getState();
-    if (store.selectedUpdates.includes(artifactKeyId(key))) {
-      store.toggleUpdate(key);
-    }
-  }
-
-  async function openConfirm(chosen: UpdateCandidate[]) {
-    // A new id retires whatever batch was still planning. Planning has no
-    // side effect beyond issuing PlanIds that expire on their own, so the
-    // newest click wins and the older batch's late replies are dropped by
-    // `isCurrent`. Submitting is different — see the lock in the dialog.
-    const id = batchIdRef.current + 1;
-    batchIdRef.current = id;
-    // In the list's own order, so the confirmation reads as the rows did.
-    const candidates = [...chosen].sort(compareRows);
-    const blank = (c: UpdateCandidate): BatchItem => ({
-      candidate: c,
-      name: nameOf(c),
-      issued: null,
-      planError: null,
-      submittedOpId: null,
-      submitError: null,
-    });
-    setBatch({ id, phase: "planning", items: candidates.map(blank) });
-
-    // allSettled, not all: one rejected plan must not hide the others, and
-    // each item keeps its own backend message verbatim.
-    const results = await Promise.allSettled(
-      candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
-    );
-    if (!isCurrent(id)) return;
-
-    const items = candidates.map((c, i): BatchItem => {
-      const result = results[i];
-      return {
-        ...blank(c),
-        issued: result.status === "fulfilled" ? result.value : null,
-        planError:
-          result.status === "rejected"
-            ? planErrorMessage(t, errorMessage(result.reason), sourceLabelFor(c.key.instance_id))
-            : null,
-      };
-    });
-    // Nothing to confirm when no plan came back: the dialog stays shut and
-    // the reasons are rendered on the page (see `pageErrors` below).
-    setBatch({ id, phase: items.some((item) => item.issued !== null) ? "ready" : "done", items });
-  }
-
-  async function confirmAndSubmit() {
-    if (!batch || batch.phase !== "ready") return;
-    const { id } = batch;
-    const items = [...batch.items];
-    setBatch({ id, phase: "submitting", items });
-
-    // Sequential, not concurrent: each item's result is recorded before the
-    // next is sent, so a failure part-way leaves an exact record of what did
-    // start. A started item leaves the selection at once, so a retry after a
-    // partial failure re-plans only what never started — a single-use PlanId
-    // cannot stop the same item being re-queued under a fresh id, only the
-    // selection can.
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (!item.issued) continue;
-      try {
-        const opId = await submitMutation.mutateAsync(item.issued.id);
-        items[i] = { ...item, submittedOpId: opId };
-        // Which version this operation is for, so its row can tell its
-        // outcome from a later version's (`operationFor`). Recorded
-        // whether or not this batch is still current: the operation runs.
-        useUiStore.getState().rememberUpdateTarget(opId, item.candidate.target);
-        // Guarded like every other post-await write: `deselect` mutates the
-        // shared selection store, so a superseded batch must not reach it.
-        if (isCurrent(id)) deselect(item.candidate.key);
-      } catch (e) {
-        // A PlanId is single-use and expires after 10 minutes. Whatever the
-        // backend said (`Expired`, `Unknown`, anything else), this id is
-        // spent: record the reason and carry on with the next item.
-        // Through `planErrorMessage` like the planning failure above, for
-        // the same reason: `submit` re-runs the actionability gate against
-        // the current snapshot, so "that source stopped answering while
-        // you were reading this" is a refusal this path can produce, and
-        // it must not arrive as JSON or as a Rust enum.
-        items[i] = {
-          ...item,
-          submitError: planErrorMessage(
-            t,
-            errorMessage(e),
-            sourceLabelFor(item.candidate.key.instance_id),
-          ),
-        };
-      }
-      if (!isCurrent(id)) return;
-      setBatch({ id, phase: "submitting", items: [...items] });
-    }
-    if (!isCurrent(id)) return;
-
-    const anyFailed = items.some((item) => item.planError !== null || item.submitError !== null);
-    // Only a clean sweep closes the dialog; otherwise it stays open and
-    // says, per item, what started and what did not, and why.
-    setBatch(anyFailed ? { id, phase: "done", items } : null);
-  }
-
   // What a row's two hiding items share: `next` builds the settings to
   // save from the ones on screen.
   function hide(candidate: UpdateCandidate, next: (current: Settings) => Settings) {
@@ -892,25 +456,6 @@ export function UpdatesPage() {
       ...current,
       ignored_updates: [...current.ignored_updates, candidate.key],
     }));
-
-  // "Copy command", and a word in the header about whether it worked:
-  // the clipboard can refuse, and a menu item that did nothing must not
-  // look as if it had.
-  function copyCommand(command: string) {
-    const say = (status: "copied" | "failed") => {
-      setCopyStatus(status);
-      window.clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2500);
-    };
-    if (navigator.clipboard === undefined) {
-      say("failed");
-      return;
-    }
-    navigator.clipboard.writeText(command).then(
-      () => say("copied"),
-      () => say("failed"),
-    );
-  }
 
   /**
    * The row's ⋯ menu: the two ways to stop seeing this update, the lighter
@@ -1035,15 +580,6 @@ export function UpdatesPage() {
       </div>
     );
   }
-
-  const dialogOpen = batch !== null && batch.phase !== "planning" && hasIssuedPlan(batch);
-  const submitting = batch?.phase === "submitting";
-  // Every plan failed: there is nothing to confirm, so the reasons go on the
-  // page rather than into an empty dialog. Cleared by the next batch.
-  const pageErrors =
-    batch !== null && batch.phase === "done" && !hasIssuedPlan(batch)
-      ? batch.items.filter(hasPlanError)
-      : [];
 
   // One row. Its checkbox and Update button come with an Update button's
   // state and no other (`actionable`); `checkable: false` in particular
@@ -1262,107 +798,7 @@ export function UpdatesPage() {
           })}
         </div>
       </div>
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          // Escape and overlay clicks arrive here. A submitting batch runs to
-          // completion no matter what — closing early would leave the old
-          // loop running against a dialog the user might reopen — so the
-          // request is ignored until it has settled. The footer follows the
-          // same rule: Cancel is disabled while submitting.
-          if (!open && !submitting) setBatch(null);
-        }}
-        title={t("updates.confirmTitle")}
-        footer={
-          batch?.phase === "done" ? (
-            <button
-              type="button"
-              onClick={() => setBatch(null)}
-              className="rounded-md px-3 py-1 text-sm"
-            >
-              {t("common.close")}
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setBatch(null)}
-                disabled={submitting}
-                className="rounded-md px-3 py-1 text-sm disabled:opacity-50"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={confirmAndSubmit}
-                disabled={batch?.phase !== "ready"}
-                className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
-              >
-                {t("updates.confirmUpdate")}
-              </button>
-            </>
-          )
-        }
-      >
-        <div className="flex flex-col gap-4">
-          {(batch?.items ?? []).map((item) => {
-            const itemWarnings = item.issued ? warningTexts(t, item.issued.plan.warnings) : [];
-            const jump = dialogVersionJump(item.candidate);
-            return (
-              <div
-                key={artifactKeyId(item.candidate.key)}
-                className="flex flex-col gap-1"
-              >
-                <p className="text-sm font-medium text-[var(--color-foreground)]">{item.name}</p>
-                {/* What you are moving to, spelled out (`dialogVersionJump`). */}
-                {jump !== null ? (
-                  <p className="text-sm text-[var(--color-muted)]">{jump}</p>
-                ) : null}
-                {item.planError !== null ? (
-                  <p role="alert" className="text-sm text-[var(--color-danger)]">
-                    {t("updates.planFailed", { message: item.planError })}
-                  </p>
-                ) : null}
-                {item.issued !== null ? (
-                  <CommandPreview action={item.issued.plan.action} />
-                ) : null}
-                {item.issued?.plan.cancel_policy === "NoCancel" ? (
-                  // Per item, next to the command it is true of (a batch
-                  // can mix a rustup self update with Homebrew upgrades):
-                  // once Running, `OperationBar` offers no Cancel for it.
-                  <p className="text-sm font-medium text-[var(--color-foreground)]">
-                    {t("operations.noCancelHint")}
-                  </p>
-                ) : null}
-                {itemWarnings.length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-[var(--color-foreground)]">
-                    {itemWarnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                {item.issued?.plan.needs_password ? (
-                  // Per item, not per batch: a batch can mix Casks (which the
-                  // brew adapter marks) and formulae (which it does not), so
-                  // the notice belongs next to the command that will trigger
-                  // the prompt. Spec §6: a password is never a surprise.
-                  <p className="text-sm font-medium text-[var(--color-foreground)]">
-                    {t("commandPreview.needsPassword")}
-                  </p>
-                ) : null}
-                {item.submittedOpId !== null ? (
-                  <p className="text-sm text-[var(--color-muted)]">{t("updates.started")}</p>
-                ) : null}
-                {item.submitError !== null ? (
-                  <p role="alert" className="text-sm text-[var(--color-danger)]">
-                    {t("updates.submitFailed", { message: item.submitError })}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </Dialog>
+      <UpdateConfirmDialog confirm={confirm} />
     </div>
   );
 }
