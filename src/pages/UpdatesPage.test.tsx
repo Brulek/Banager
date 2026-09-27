@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
 import { artifactKeyId, useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queries";
 import zhCN from "../i18n/zh-CN.json";
 import type {
   ArtifactKey,
@@ -2378,5 +2379,58 @@ describe("UpdatesPage", () => {
       expect(zhCN.updates.selectAll).toBe("全选");
       expect(zhCN.updates.invertSelection).toBe("反选");
     });
+  });
+});
+
+describe("UpdatesPage's virtualized list", () => {
+  it("keeps each slot's measured height with that slot when an update removes the group above it", async () => {
+    // Heights by what a slot holds, as a browser would measure them:
+    // Homebrew's heading is one short line, pip's carries its read-only
+    // notice and is far taller, a row is in between.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.getAttribute("data-index") === null) return 600;
+      if (this.textContent?.includes("Read-only: pip packages")) return 120;
+      if (this.textContent === "Homebrew") return 32;
+      return ROW_HEIGHT;
+    });
+    const urllib3 = {
+      key: urllib3Key,
+      current: "2.5.0",
+      target: "2.6.0",
+      channel: "Registry" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    };
+    updates = [snapshot.updates[0], urllib3];
+    const { findByText, getByText, queryByText, queryClient } = renderWithProviders(
+      <UpdatesPage />,
+    );
+    const slotTop = (text: string) =>
+      (getByText(text).closest("[data-index]") as HTMLElement).style.transform;
+
+    await findByText("urllib3");
+    // Homebrew's heading, glib, pip's heading with its notice, urllib3.
+    expect(slotTop("urllib3")).toBe(`translateY(${32 + ROW_HEIGHT + 120}px)`);
+
+    // glib finishes updating: the refresh after it leaves Homebrew with
+    // nothing to list, so its heading goes too and pip's moves to the top.
+    act(() => {
+      queryClient.setQueryData(queryKeys.snapshot, {
+        ...snapshot,
+        generation: snapshot.generation + 1,
+        updates: [urllib3],
+        instances,
+        artifacts,
+      });
+    });
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+
+    // pip's heading keeps its own 120px. Keyed by position, the slot at
+    // the top kept Homebrew's 32px, and urllib3 was drawn over the notice.
+    expect(slotTop("Read-only: pip packages")).toBe("translateY(0px)");
+    expect(slotTop("urllib3")).toBe("translateY(120px)");
   });
 });

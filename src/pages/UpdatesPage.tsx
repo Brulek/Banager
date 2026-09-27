@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -76,6 +76,22 @@ type ListItem =
       notices: SourceNoticeSpec[];
     }
   | { type: "update"; candidate: UpdateCandidate };
+
+/**
+ * A slot's identity: its React key, and the key the virtualizer files the
+ * slot's measured height under -- the same string, so a height stays with
+ * the heading or row it was measured from. Left to its default, the
+ * virtualizer keys by position: once an update removed a source's last row
+ * and so its heading, every slot below moved up while its React key kept
+ * its DOM node, and the heights stayed where they were -- pip's tall
+ * heading, now first, was placed as if it were Homebrew's one-line one,
+ * and the row under it was drawn over its notice. A moved node is not
+ * measured again (its ref does not change, and a ResizeObserver sees no
+ * resize), so nothing corrected it.
+ */
+function listItemKey(item: ListItem): string {
+  return item.type === "group" ? `group:${item.instanceId}` : artifactKeyId(item.candidate.key);
+}
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -755,6 +771,10 @@ export function UpdatesPage() {
 
   // Above every early return: hooks cannot be called conditionally, and
   // three of the returns below are reached before the list is drawn.
+  //
+  // `getItemKey` changes with `items`, which is what tells the virtualizer
+  // to lay the list out again from its measured heights under the new keys.
+  const getItemKey = useCallback((index: number) => listItemKey(items[index]), [items]);
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => listRef.current,
@@ -764,6 +784,7 @@ export function UpdatesPage() {
         ? NOTICE_GROUP_ESTIMATE
         : ROW_ESTIMATE;
     },
+    getItemKey,
   });
 
   if (isLoading) {
@@ -1071,11 +1092,9 @@ export function UpdatesPage() {
               // top -- cover the tail of the sentence this one exists to
               // say, or the Ollama banner's button.
               <div
-                key={
-                  item.type === "group"
-                    ? `group:${item.instanceId}`
-                    : artifactKeyId(item.candidate.key)
-                }
+                // `listItemKey`, through the virtualizer: the key its
+                // measured height is filed under.
+                key={virtualRow.key}
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
                 style={{
