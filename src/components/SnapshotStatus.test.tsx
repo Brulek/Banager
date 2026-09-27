@@ -107,7 +107,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some data might be out of date")).toBeInTheDocument();
+    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
@@ -115,9 +115,9 @@ describe("SnapshotStatus", () => {
   it("counts one broken source once, not twice, when its inventory and update check both failed", async () => {
     // session/refresh.rs pushes one SourceError from the inventory fetch
     // and a second from check_updates for the very same instance -- that
-    // is two failed *calls* against one failed *source*. The banner's
-    // copy says "sources"; the count must agree with it rather than with
-    // errors.length.
+    // is two failed *calls* against one failed *source*. The banner
+    // counts checks, a source's each; the count must agree with it rather
+    // than with errors.length.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
         generation: 412,
@@ -137,9 +137,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(
-      await screen.findByText(
-        "The last refresh couldn't finish for 1 source, so what you see below may be stale.",
-      ),
+      await screen.findByText("1 check didn't finish, so Canager couldn't refresh everything."),
     ).toBeInTheDocument();
   });
 
@@ -216,7 +214,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some data might be out of date")).toBeInTheDocument();
+    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load what's installed")).not.toBeInTheDocument();
   });
@@ -255,7 +253,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some data might be out of date")).toBeInTheDocument();
+    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
@@ -345,9 +343,9 @@ describe("SnapshotStatus", () => {
     // failed refresh (`refresh()` leaves `stale` false for it), and it
     // already says so itself, in its own words and with its own button,
     // through the notice InstalledPage renders for it. A second, vaguer
-    // "some data might be out of date" over the top would say the same
+    // "some checks didn't finish" over the top would say the same
     // thing worse.
-    expect(screen.queryByText("Some data might be out of date")).not.toBeInTheDocument();
+    expect(screen.queryByText("Some checks didn't finish")).not.toBeInTheDocument();
   });
 
   it("renders children unchanged once something is installed", async () => {

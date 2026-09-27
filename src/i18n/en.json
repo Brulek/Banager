@@ -186,7 +186,7 @@
       "Pinned": {
         "badge": "Pinned",
         "detail": "It's pinned in {{source}}. To update it, first run {{command}} in Terminal.",
-        "refused": "This package has been pinned in {{source}}, so Canager didn't update it. Nothing has been changed."
+        "refused": "It's pinned in {{source}}, so Canager didn't update or change anything."
       },
       "SelfUpdatesOnly": {
         "badge": "Updates itself",
@@ -482,16 +482,16 @@
   "emptyStates": {
     "loadFailed": {
       "title": "Couldn't load what's installed",
-      "description": "The last attempt failed with: {{message}}"
+      "description": "Reason: {{message}}"
     },
     "noSources": {
       "title": "Canager found nothing it can manage",
       "description": "Homebrew is a good place to start."
     },
     "refreshFailed": {
-      "title": "Some data might be out of date",
-      "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",
-      "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
+      "title": "Some checks didn't finish",
+      "description_one": "{{count}} check didn't finish, so Canager couldn't refresh everything.",
+      "description_other": "{{count}} checks didn't finish, so Canager couldn't refresh everything.",
       "retryFailed": "Trying again didn't work: {{message}}"
     },
     "nothingInstalled": {

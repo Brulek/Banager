@@ -172,7 +172,7 @@
       "Pinned": {
         "badge": "已固定",
         "detail": "它在 {{source}} 里固定了版本。要更新，先在终端运行 {{command}}。",
-        "refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Canager 没有更新它。什么都没有改动。"
+        "refused": "它在 {{source}} 里被固定了，所以没有更新，也没有改动。"
       },
       "SelfUpdatesOnly": {
         "badge": "自动更新",
@@ -461,16 +461,16 @@
   "emptyStates": {
     "loadFailed": {
       "title": "没能读取已安装的内容",
-      "description": "上次尝试失败，原因：{{message}}"
+      "description": "原因：{{message}}"
     },
     "noSources": {
       "title": "没有找到可管理的工具",
       "description": "建议先装 Homebrew。"
     },
     "refreshFailed": {
-      "title": "部分数据可能不是最新的",
-      "description_other": "上次刷新有 {{count}} 个来源没能完成，下面显示的内容可能不是最新的。",
-      "retryFailed": "重试没有成功：{{message}}"
+      "title": "部分检查没完成",
+      "description_other": "{{count}} 项没完成，相关内容没有更新。",
+      "retryFailed": "重试失败：{{message}}"
     },
     "nothingInstalled": {
       "title": "没有找到已安装的工具",

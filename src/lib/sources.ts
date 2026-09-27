@@ -1090,8 +1090,9 @@ export function settingsSaveErrorMessage(t: Translate, raw: string): string {
 }
 
 /**
- * How many distinct sources a refresh failed for -- the count the stale
- * banner's "couldn't finish for {{count}} sources" copy promises.
+ * How many distinct sources a refresh failed for -- the count of checks
+ * the stale banner's "{{count}} checks didn't finish" copy promises, one
+ * check a source.
  * `Snapshot.errors` is not that count: `refresh()`
  * (`session/refresh.rs`) can push more than one `SourceError` for the
  * same instance in one round -- inventory and check-updates fail

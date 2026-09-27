@@ -9,10 +9,10 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 861 Rust tests (plus 3 more
-> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 630 front-end
-> tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
-> rely on.
+> **Status: pre-release.** The core and the UI work and are covered by 876 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 668
+> front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
+> ready to rely on.
 
 <!-- A screenshot belongs here before the first release. -->
 
@@ -126,17 +126,19 @@ WebView is a type error; `tsconfig.test.json` checks the vitest files with `@typ
 `src/i18n/completeness.test.ts` and `src/i18n/no-literal-strings.test.ts` need to read the source tree
 through `node:fs`. `pnpm build` runs the same two programs before `vite build`.
 
-`cargo test --workspace` has three `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
+`cargo test --workspace` has four `#[ignore]`d tests, all skipped by a plain `cargo test`. Two are
 in `crates/canager-core/tests/brew_live.rs`: one only reads the real Homebrew on the machine
 running it, the other installs and removes the `hello` formula. The third, in
 `crates/canager-core/tests/standalone_uninstall_test.rs`, moves five throwaway items it creates
 (named `canager-trash-smoke-…`) into the real Trash of the Mac running it and leaves them there.
-The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI runs all
-three; run them yourself with:
+The fourth, in `crates/canager-core/src/icon/real.rs`, has AppKit draw Calculator's icon and
+only reads. The two that change the machine refuse to touch anything without `CANAGER_LIVE=1`. CI
+runs the first three; run them yourself with:
 
 ```bash
 CANAGER_LIVE=1 cargo test -p canager-core --test brew_live -- --ignored
 CANAGER_LIVE=1 cargo test -p canager-core --test standalone_uninstall_test -- --ignored
+cargo test -p canager-core --lib icon::real -- --ignored
 ```
 
 ## Language
@@ -170,8 +172,8 @@ Three kinds of text are shown as-is:
   every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
   notice. A source that Canager could still reach, but whose software list or update check failed,
-  is not: it only adds to the count in the "Some data might be out of date" banner, which never
-  says which source it was.
+  is not: it only adds to the count in the "Some checks didn't finish" banner, which never says
+  which source it was.
 - **A number of technical details that are still Canager's own**, which appear in English inside an
   otherwise translated sentence. This is a known gap, not a design choice, and it is not just the
   one case the wording used to name: with "Show technical details" turned on, whenever a package
@@ -218,8 +220,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 861 个 Rust 测试（另有 3 个要连着真实的
-Homebrew 或真实的废纸篓才跑，平时是跳过的）和 630 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 876 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 668 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -242,7 +244,7 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   自己的文字会原样显示在重试按钮旁边。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
   运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
-  检查失败了，就没有自己的提示——只会计入“部分数据可能不是最新的”横幅里的数字，横幅不会说是哪个来源。
+  检查失败了，就没有自己的提示——只会计入“部分检查没完成”横幅里的数字，横幅不会说是哪个来源。
 - **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因

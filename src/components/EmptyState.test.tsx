@@ -46,8 +46,8 @@ describe("EmptyState", () => {
   it("renders as a status banner when variant is 'banner'", () => {
     renderWithProviders(
       <EmptyState
-        title="Some data might be out of date"
-        description="The last refresh couldn't finish for 1 source, so what you see below may be stale."
+        title="Some checks didn't finish"
+        description="1 check didn't finish, so Canager couldn't refresh everything."
         variant="banner"
       />,
     );
