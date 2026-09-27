@@ -10,9 +10,11 @@ import {
   useSubmitOperation,
   useOpenOllamaApp,
   useUnknownScan,
+  useArtifactIcon,
+  ARTIFACT_ICON_STALE_MS,
 } from "./queries";
 import { refreshIntoCache } from "./events";
-import type { IssuedPlan, ManagerInstance, Snapshot, UnknownScan } from "./types";
+import type { ArtifactKey, IssuedPlan, ManagerInstance, Snapshot, UnknownScan } from "./types";
 
 function ollamaInstance(running: boolean): ManagerInstance {
   return {
@@ -262,5 +264,87 @@ describe("queries", () => {
     expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
     expect(result.current.data).toEqual(scan);
     expect(queryClient.getQueryData(["unknown"])).toEqual(scan);
+  });
+
+  describe("useArtifactIcon", () => {
+    const cask: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" };
+    const icon = "data:image/png;base64,iVBORw0KGgo=";
+
+    it("asks for a cask's icon by its key and keeps the answer", async () => {
+      mockInvoke.mockResolvedValue(icon as never);
+      const queryClient = newClient();
+      const { result, unmount } = renderHook(() => useArtifactIcon(cask, true), {
+        wrapper: wrapper(queryClient),
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toBe(icon);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
+      expect(mockInvoke).toHaveBeenCalledWith("artifact_icon", { key: cask });
+
+      // A row scrolled away and back, well inside the hour: the icon is
+      // still there and nothing is asked again.
+      unmount();
+      const again = renderHook(() => useArtifactIcon(cask, true), { wrapper: wrapper(queryClient) });
+      expect(again.result.current.data).toBe(icon);
+      expect(again.result.current.isStale).toBe(false);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
+    });
+
+    it("asks for nothing but a cask's, and nothing while not enabled", async () => {
+      mockInvoke.mockResolvedValue(icon as never);
+      const queryClient = newClient();
+      const kinds = ["Formula", "Package", "Tool", "Model", "Binary"] as const;
+      for (const kind of kinds) {
+        const { result } = renderHook(() => useArtifactIcon({ ...cask, kind }, true), {
+          wrapper: wrapper(queryClient),
+        });
+        expect(result.current.fetchStatus).toBe("idle");
+        expect(result.current.data).toBeUndefined();
+      }
+      const { result } = renderHook(() => useArtifactIcon(cask, false), { wrapper: wrapper(queryClient) });
+      expect(result.current.fetchStatus).toBe("idle");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it("takes no icon as an answer, and does not retry a failure", async () => {
+      const queryClient = new QueryClient();
+      mockInvoke.mockResolvedValueOnce(null as never);
+      const none = renderHook(() => useArtifactIcon(cask, true), { wrapper: wrapper(queryClient) });
+      await waitFor(() => expect(none.result.current.isSuccess).toBe(true));
+      expect(none.result.current.data).toBeNull();
+
+      // The client's default would retry three times; the hook says not to.
+      mockInvoke.mockRejectedValueOnce("task 9 panicked" as never);
+      const other: ArtifactKey = { ...cask, name: "visual-studio-code" };
+      const failed = renderHook(() => useArtifactIcon(other, true), { wrapper: wrapper(queryClient) });
+      await waitFor(() => expect(failed.result.current.isError).toBe(true));
+      expect(failed.result.current.error?.message).toBe("task 9 panicked");
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
+    });
+
+    it("trusts an icon for an hour, and keeps it cached that long after its row goes", async () => {
+      mockInvoke.mockResolvedValue(icon as never);
+      const queryClient = newClient();
+      const { result, rerender } = renderHook(() => useArtifactIcon(cask, true), {
+        wrapper: wrapper(queryClient),
+      });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      const fetchedAt = result.current.dataUpdatedAt;
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(fetchedAt + ARTIFACT_ICON_STALE_MS - 1_000);
+        rerender();
+        expect(result.current.isStale).toBe(false);
+        now.mockReturnValue(fetchedAt + ARTIFACT_ICON_STALE_MS + 1_000);
+        rerender();
+        expect(result.current.isStale).toBe(true);
+      } finally {
+        now.mockRestore();
+      }
+      const query = queryClient.getQueryCache().find({ queryKey: ["artifactIcon", cask.instance_id, "Cask", "iterm2"] });
+      expect(query?.gcTime).toBe(ARTIFACT_ICON_STALE_MS);
+    });
   });
 });

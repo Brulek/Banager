@@ -24,6 +24,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // The cask icons `ipc::artifact_icon` hands the window, drawn by
+        // macOS once per app folder and kept in memory until Canager quits.
+        // Managed beside `AppState`, not in it: nothing but that command
+        // reads it.
+        .manage(std::sync::Arc::new(canager_core::icon::AppIcons::real()))
         .setup(|app| {
             let settings_path = app.path().app_data_dir()?.join("settings.json");
             let channel_sink = events::ChannelSink::new();
@@ -46,6 +51,7 @@ pub fn run() {
             ipc::subscribe_events,
             ipc::open_ollama_app,
             ipc::scan_unknown,
+            ipc::artifact_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

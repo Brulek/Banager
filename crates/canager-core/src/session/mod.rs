@@ -6,6 +6,7 @@
 //! (detection and the inventory/updates fetch) and `plans.rs`
 //! (preview-then-confirm); no behaviour changed in the split itself.
 
+mod icon;
 mod plans;
 mod refresh;
 mod scan;

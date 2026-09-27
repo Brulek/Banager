@@ -30,7 +30,8 @@ lives in the page's memory and nowhere else.
   under `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, and
   vitest -- the config resolves exactly as it did before this mode existed.
 - Nothing outside `src/dev/` imports anything in it, so a production
-  build never contains it. Every page of the preview logs a line starting
+  build never contains it; `src/dev/mockBackend.test.ts` checks that for
+  every module under `src/`. Every page of the preview logs a line starting
   with `[canager-ui-preview-mock]` to the console; to check a build, run
   `pnpm build` and then `grep -r canager-ui-preview-mock dist`, which
   finds nothing.
@@ -40,8 +41,9 @@ lives in the page's memory and nowhere else.
   and that an operation runs the way the real backend reports one.
 
 The files: `mockTauri.ts` (the stand-in module), `mockBackend.ts` (the
-commands), `mockData.ts` (the pretend Mac), `mockPlans.ts` (what each
-operation would run and print), `scenario.ts` (the URL switches).
+commands), `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps'
+icons), `mockPlans.ts` (what each operation would run and print),
+`scenario.ts` (the URL switches).
 
 ## What the pretend Mac has
 
@@ -51,7 +53,11 @@ Paths are under a generic home folder, `/Users/you`.
   dependencies, and 4 casks, one of which (Visual Studio Code) updates
   itself. Updates: two formulae and one cask to update, a pinned formula,
   one update the user asked never to be reminded about (ffmpeg) and one
-  version they skipped (gh 2.102.0).
+  version they skipped (gh 2.102.0). Two of the casks are apps (iTerm2
+  and Visual Studio Code): asked for their icon (`artifact_icon`), the
+  preview answers with a generated one -- a coloured square with the
+  app's initial -- where the app answers with the icon macOS draws; the
+  font and the cask with no app have none.
 - **npm**: 4 global packages, one update. **pipx**: 2 tools, one update.
   **uv**: 2 tools, but uv did not answer, so its rows and its one update
   are last time's. **pip**: read-only, 5 packages, one update listed.

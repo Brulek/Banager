@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ArtifactKey,
   IssuedPlan,
   OperationEvent,
   OpRequest,
@@ -251,6 +252,60 @@ describe("the browser preview's mock backend", () => {
     const refusal = expect(error.invoke("get_snapshot")).rejects.toEqual(expect.any(String));
     await vi.runOnlyPendingTimersAsync();
     await refusal;
+  });
+
+  it("draws an icon for a cask's app from the committed snapshot, and for nothing else", async () => {
+    const { backend } = backendFor();
+    const iterm: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" };
+    // Before the first refresh the snapshot has no rows to draw for.
+    expect(await answer(backend.invoke("artifact_icon", { key: iterm }))).toBeNull();
+
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const drawn: string[] = [];
+    for (const row of snapshot.artifacts) {
+      const icon = await answer<string | null>(backend.invoke("artifact_icon", { key: row.key }));
+      if (icon !== null) drawn.push(`${row.key.kind} ${row.key.name}`);
+    }
+    // The two casks with an app; not the font, not the one with no app.
+    expect(drawn.sort()).toEqual(["Cask iterm2", "Cask visual-studio-code"]);
+
+    const icon = await answer<string>(backend.invoke("artifact_icon", { key: iterm }));
+    expect(icon.startsWith("data:image/svg+xml;charset=utf-8,")).toBe(true);
+    const svg = decodeURIComponent(icon.slice(icon.indexOf(",") + 1));
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
+    expect(svg).toContain(">I</text>");
+    // A key that names a path is a key with no row: nothing is drawn.
+    for (const name of ["/Applications/iTerm.app", "iTerm.app"]) {
+      expect(await answer(backend.invoke("artifact_icon", { key: { ...iterm, name } }))).toBeNull();
+    }
+  });
+});
+
+describe("the preview stays out of the app", () => {
+  /** Every relative module specifier in `source`: static imports, re-exports, dynamic imports. */
+  function relativeImports(source: string): string[] {
+    const found = source.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)["'](\.[^"']*)["']/g);
+    return [...found].map((match) => match[1]);
+  }
+
+  it("is imported by nothing outside src/dev", () => {
+    // The mock backend, its pretend Mac and its generated icons reach a
+    // page only through vite.config.ts's `--mode mock` alias; a module
+    // outside src/dev that imported any of them would put them in the app.
+    const src = path.resolve(__dirname, "..");
+    const dev = path.resolve(__dirname);
+    const files = readdirSync(src, { recursive: true, encoding: "utf-8" })
+      .filter((file) => /\.(ts|tsx)$/.test(file))
+      .map((file) => path.resolve(src, file))
+      .filter((file) => !file.startsWith(dev + path.sep));
+    expect(files.length).toBeGreaterThan(0);
+    const offenders = files.flatMap((file) =>
+      relativeImports(readFileSync(file, "utf-8"))
+        .map((specifier) => path.resolve(path.dirname(file), specifier))
+        .filter((target) => target === dev || target.startsWith(dev + path.sep))
+        .map((target) => `${path.relative(src, file)} imports ${path.relative(src, target)}`),
+    );
+    expect(offenders).toEqual([]);
   });
 });
 

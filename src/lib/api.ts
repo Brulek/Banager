@@ -1,5 +1,6 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import type {
+  ArtifactKey,
   IssuedPlan,
   OpRequest,
   PlanId,
@@ -90,4 +91,16 @@ export function openOllamaApp(): Promise<void> {
  */
 export function scanUnknown(): Promise<UnknownScan> {
   return call<UnknownScan>("scan_unknown");
+}
+
+/**
+ * The icon Finder shows for the app a Homebrew cask installed, as a
+ * `data:image/png;base64,...` URL an `<img>` can show (the window's CSP
+ * allows `data:` images), or null: not a cask, no app, or no icon. Only
+ * the key is sent -- the Rust side finds the row in its own snapshot and
+ * draws the `.app` Homebrew reported for it, never a path from here.
+ * `useArtifactIcon` is the caller.
+ */
+export function artifactIcon(key: ArtifactKey): Promise<string | null> {
+  return call<string | null>("artifact_icon", { key });
 }
