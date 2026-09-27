@@ -196,6 +196,8 @@ export function UpdatesPage() {
   const submitMutation = useSubmitOperation();
   const selectedUpdates = useUiStore((s) => s.selectedUpdates);
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
+  const selectUpdates = useUiStore((s) => s.selectUpdates);
+  const invertUpdateSelection = useUiStore((s) => s.invertUpdateSelection);
 
   const listRef = useRef<HTMLDivElement>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
@@ -349,7 +351,12 @@ export function UpdatesPage() {
   // all. A row from a source that is not answering counts as unmanageable
   // too: it is listed, it is real, and Canager cannot act on it right now
   // either.
-  const actionableCount = visibleUpdates.filter(isActionable).length;
+  //
+  // `actionableUpdates` is also every row that shows a checkbox, and it is
+  // what Select all and Invert selection hand to the store, so neither
+  // button can tick a row the user could not tick by hand.
+  const actionableUpdates = visibleUpdates.filter(isActionable);
+  const actionableCount = actionableUpdates.length;
   const unmanageableCount = visibleUpdates.length - actionableCount;
 
   // Only rows that are selected, still visible *and* still actionable
@@ -926,7 +933,7 @@ export function UpdatesPage() {
           })}
         </p>
       ) : null}
-      <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
+      <div className="flex items-center justify-between gap-4 border-b border-[var(--color-border)] p-4">
         <div className="text-sm text-[var(--color-muted)]">
           {/* Two-part, always: the headline counts what Canager can act on,
               the second line counts what it cannot. "0 updates available" is
@@ -956,14 +963,45 @@ export function UpdatesPage() {
             </p>
           ) : null}
         </div>
-        <button
-          type="button"
-          disabled={selectedVisible.length === 0 || dialogOpen}
-          onClick={() => openConfirm(selectedVisible)}
-          className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
-        >
-          {t("updates.updateSelected")}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Select all and Invert selection act on the rows that show a
+              checkbox (`actionableUpdates`) and on no others. A row in any
+              other `UpdateState` -- read-only, could not be checked,
+              blocked, its source not answering -- has no checkbox, and an
+              ignored row is not listed at all, so neither button selects
+              one. `selectUpdates` and `invertUpdateSelection` change only
+              the ids they are handed, so a row selected before a refresh
+              took its checkbox away keeps its id in `selectedUpdates`,
+              where `selectedVisible` already leaves it out. The words on
+              the buttons are short; their accessible names also say which
+              rows they act on. */}
+          <button
+            type="button"
+            disabled={actionableUpdates.length === 0}
+            onClick={() => selectUpdates(actionableUpdates.map((u) => u.key))}
+            aria-label={t("updates.selectAllLabel")}
+            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+          >
+            {t("updates.selectAll")}
+          </button>
+          <button
+            type="button"
+            disabled={actionableUpdates.length === 0}
+            onClick={() => invertUpdateSelection(actionableUpdates.map((u) => u.key))}
+            aria-label={t("updates.invertSelectionLabel")}
+            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+          >
+            {t("updates.invertSelection")}
+          </button>
+          <button
+            type="button"
+            disabled={selectedVisible.length === 0 || dialogOpen}
+            onClick={() => openConfirm(selectedVisible)}
+            className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+          >
+            {t("updates.updateSelected")}
+          </button>
+        </div>
       </div>
       {/* Outside the scrolling list, so it stays in view however far down
           the rows it describes run. */}

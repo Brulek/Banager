@@ -84,4 +84,48 @@ describe("useUiStore", () => {
     useUiStore.getState().toggleUpdate(key);
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
+
+  it("selectUpdates adds each key's id once and keeps every id already selected", () => {
+    const glib: ArtifactKey = { ...key, name: "glib" };
+    const wget: ArtifactKey = { ...key, name: "wget" };
+    useUiStore.getState().toggleUpdate(wget);
+    useUiStore.getState().toggleUpdate(key);
+
+    useUiStore.getState().selectUpdates([glib, key, glib]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([
+      artifactKeyId(wget),
+      artifactKeyId(key),
+      artifactKeyId(glib),
+    ]);
+
+    // Nothing left to add: the selection is unchanged.
+    useUiStore.getState().selectUpdates([glib, key]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([
+      artifactKeyId(wget),
+      artifactKeyId(key),
+      artifactKeyId(glib),
+    ]);
+  });
+
+  it("invertUpdateSelection flips each key it is given and leaves every other id alone", () => {
+    // wget is selected and not handed over: the Updates page passes only
+    // the rows that show a checkbox, and a row without one keeps whatever
+    // selection it had.
+    const glib: ArtifactKey = { ...key, name: "glib" };
+    const wget: ArtifactKey = { ...key, name: "wget" };
+    useUiStore.getState().toggleUpdate(wget);
+    useUiStore.getState().toggleUpdate(key);
+
+    useUiStore.getState().invertUpdateSelection([key, glib]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([
+      artifactKeyId(wget),
+      artifactKeyId(glib),
+    ]);
+
+    useUiStore.getState().invertUpdateSelection([key, glib]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([
+      artifactKeyId(wget),
+      artifactKeyId(key),
+    ]);
+  });
 });

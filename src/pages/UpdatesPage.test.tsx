@@ -3,7 +3,7 @@ import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
-import { useUiStore } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import zhCN from "../i18n/zh-CN.json";
 import type {
   ArtifactKey,
@@ -2001,5 +2001,178 @@ describe("UpdatesPage", () => {
     expect(hints).toHaveLength(1);
     expect(hints[0].closest("div")?.textContent).toContain("onyx");
     expect(hints[0].closest("div")?.textContent).not.toContain("glib");
+  });
+
+  describe("Select all and Invert selection", () => {
+    // Each button's accessible name starts with the words on it ("Select
+    // all", "Invert selection") and goes on to say which rows it acts on.
+    const SELECT_ALL = "Select all items that can be updated here";
+    const INVERT = "Invert selection among the items that can be updated here";
+
+    const jq = brewCandidate("jq");
+    const wget: Snapshot["updates"][number] = { ...brewCandidate("wget"), blocked: "Pinned" };
+    const tree = brewCandidate("tree");
+
+    // A row in each of the five `UpdateState`s, and an ignored row the page
+    // does not list. Only glib, onyx and jq have a checkbox: wget is
+    // pinned, my-fork could not be checked, urllib3 is pip's (read-only),
+    // qwen3:8b's Ollama is not running, and tree is ignored.
+    function listEveryKindOfRow() {
+      instances = [...snapshot.instances, stoppedOllama];
+      updates = [
+        ...snapshot.updates,
+        jq,
+        wget,
+        tree,
+        {
+          key: myForkKey,
+          current: "0.1.0",
+          target: "0.1.0",
+          channel: "Registry",
+          checkable: false,
+          warnings: ["NonRegistrySource"],
+          blocked: null,
+        },
+        {
+          key: urllib3Key,
+          current: "2.2.1",
+          target: "2.3.0",
+          channel: "Registry",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+        {
+          key: qwenKey,
+          current: "5642e97495e1",
+          target: "a1b2c3d4e5f6",
+          channel: "Digest",
+          checkable: true,
+          warnings: [],
+          blocked: null,
+        },
+      ];
+      settings.ignored_updates = [tree.key];
+    }
+
+    // The selection as a sorted list of ids: these tests are about which
+    // rows are ticked, not the order the store keeps them in.
+    function selectedIds(): string[] {
+      return [...useUiStore.getState().selectedUpdates].sort();
+    }
+
+    function ids(...keys: ArtifactKey[]): string[] {
+      return keys.map(artifactKeyId).sort();
+    }
+
+    function plannedNames(): string[] {
+      return calls("plan_operation")
+        .map(([, args]) => (args as { request: OpRequest }).request.name)
+        .sort();
+    }
+
+    it("Select all ticks every row that has a checkbox and nothing else, and Update selected plans exactly those", async () => {
+      listEveryKindOfRow();
+      const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+      const checkboxes = await findAllByRole("checkbox");
+      expect(checkboxes).toHaveLength(3);
+      const selectAll = getByRole("button", { name: SELECT_ALL });
+      expect(selectAll.textContent).toBe("Select all");
+      expect(getByRole("button", { name: INVERT }).textContent).toBe("Invert selection");
+      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+
+      fireEvent.click(selectAll);
+
+      for (const checkbox of checkboxes) expect(checkbox).toBeChecked();
+      expect(selectedIds()).toEqual(ids(glibKey, onyxKey, jq.key));
+
+      fireEvent.click(getByRole("button", { name: "Update selected" }));
+      await findByRole("dialog");
+      expect(plannedNames()).toEqual(["glib", "jq", "onyx"]);
+    });
+
+    it("Invert selection unticks the ticked rows that have a checkbox and ticks the unticked ones", async () => {
+      listEveryKindOfRow();
+      const { findByRole, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      const glib = await findByRole("checkbox", { name: "Select glib for update" });
+      const onyx = getByRole("checkbox", { name: "Select onyx for update" });
+      const jqBox = getByRole("checkbox", { name: "Select jq for update" });
+      fireEvent.click(glib);
+
+      fireEvent.click(getByRole("button", { name: INVERT }));
+      expect(glib).not.toBeChecked();
+      expect(onyx).toBeChecked();
+      expect(jqBox).toBeChecked();
+      expect(selectedIds()).toEqual(ids(onyxKey, jq.key));
+
+      fireEvent.click(getByRole("button", { name: INVERT }));
+      expect(glib).toBeChecked();
+      expect(onyx).not.toBeChecked();
+      expect(jqBox).not.toBeChecked();
+      expect(selectedIds()).toEqual(ids(glibKey));
+
+      // Inverting a full selection empties it, and Update selected follows.
+      fireEvent.click(getByRole("button", { name: SELECT_ALL }));
+      expect(getByRole("button", { name: "Update selected" })).toBeEnabled();
+      fireEvent.click(getByRole("button", { name: INVERT }));
+      expect(selectedIds()).toEqual([]);
+      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+    });
+
+    it("never selects an ignored row, and leaves a pinned row's earlier selection as it was", async () => {
+      // wget was selected while it could still be updated; a refresh since
+      // says it is pinned, so it has no checkbox. Neither button may take it
+      // out of the selection or put the ignored tree into it: they act on
+      // the rows with a checkbox and nothing else. Update selected still
+      // leaves wget out of the batch (`isActionable`).
+      listEveryKindOfRow();
+      act(() => {
+        useUiStore.getState().toggleUpdate(wget.key);
+      });
+      const { findAllByRole, getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+      await findAllByRole("checkbox");
+
+      fireEvent.click(getByRole("button", { name: SELECT_ALL }));
+      expect(selectedIds()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
+
+      fireEvent.click(getByRole("button", { name: INVERT }));
+      expect(selectedIds()).toEqual(ids(wget.key));
+      // A row with no checkbox is all that is left selected: nothing to update.
+      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+
+      fireEvent.click(getByRole("button", { name: INVERT }));
+      expect(selectedIds()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
+
+      fireEvent.click(getByRole("button", { name: "Update selected" }));
+      await findByRole("dialog");
+      expect(plannedNames()).toEqual(["glib", "jq", "onyx"]);
+    });
+
+    it("disables both when no listed row has a checkbox", async () => {
+      // tree could be updated but is ignored, so it is not listed; every
+      // row that is listed is one Canager cannot update.
+      listEveryKindOfRow();
+      const withCheckbox = ids(glibKey, onyxKey, jq.key);
+      updates = updates.filter((u) => !withCheckbox.includes(artifactKeyId(u.key)));
+      const { findByText, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
+
+      await findByText("Nothing here can be updated by Canager");
+      expect(queryByRole("checkbox")).toBeNull();
+      const selectAll = getByRole("button", { name: SELECT_ALL });
+      const invert = getByRole("button", { name: INVERT });
+      expect(selectAll).toBeDisabled();
+      expect(invert).toBeDisabled();
+
+      fireEvent.click(selectAll);
+      fireEvent.click(invert);
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+    });
+
+    it("calls them 全选 and 反选 in Chinese, as they were asked for", () => {
+      expect(zhCN.updates.selectAll).toBe("全选");
+      expect(zhCN.updates.invertSelection).toBe("反选");
+    });
   });
 });

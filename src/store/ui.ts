@@ -30,6 +30,17 @@ export interface UiState {
   appendLog(l: LogEntry): void;
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;
+  // What the Updates page's Select all and Invert selection call, with the
+  // keys of the rows that show a checkbox. Each changes the ids of the keys
+  // it is given and no others: an id already in `selectedUpdates` for any
+  // other key -- a row selected before a refresh took its checkbox away --
+  // stays exactly as it was.
+  //
+  // Adds the id of every key given that is not selected yet.
+  selectUpdates(keys: ArtifactKey[]): void;
+  // Removes the id of every key given that is selected, and adds the id of
+  // every one that is not.
+  invertUpdateSelection(keys: ArtifactKey[]): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
 }
@@ -78,6 +89,23 @@ export const useUiStore = create<UiState>((set) => ({
         selectedUpdates: s.selectedUpdates.includes(id)
           ? s.selectedUpdates.filter((x) => x !== id)
           : [...s.selectedUpdates, id],
+      };
+    }),
+  selectUpdates: (keys) =>
+    set((s) => ({
+      // A `Set` keeps each id once, in the order it was first added: the
+      // ids already selected, then the new ones in the order given.
+      selectedUpdates: [...new Set([...s.selectedUpdates, ...keys.map(artifactKeyId)])],
+    })),
+  invertUpdateSelection: (keys) =>
+    set((s) => {
+      const given = new Set(keys.map(artifactKeyId));
+      const selected = new Set(s.selectedUpdates);
+      return {
+        selectedUpdates: [
+          ...s.selectedUpdates.filter((id) => !given.has(id)),
+          ...[...given].filter((id) => !selected.has(id)),
+        ],
       };
     }),
   startupRefreshError: null,
