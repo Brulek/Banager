@@ -27,7 +27,7 @@ export function EmptyState({
       role={isBanner ? "status" : undefined}
       className={
         isBanner
-          ? "flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar-bg)] px-6 py-3"
+          ? "flex items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3"
           : "flex h-full flex-col items-center justify-center gap-3 p-12 text-center"
       }
     >

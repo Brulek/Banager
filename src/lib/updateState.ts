@@ -11,6 +11,7 @@ import type {
   ManagerInstance,
   Settings,
   SkippedVersion,
+  Snapshot,
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
@@ -170,6 +171,24 @@ export function notHidden(
 ): UpdateCandidate[] {
   const hiddenBy = hidingRule(settings);
   return updates.filter((u) => hiddenBy(u) === null);
+}
+
+/**
+ * The updates Canager can install from the Updates page right now: every
+ * one it lists (`notHidden`) whose row has an Update button and a checkbox
+ * (`isUpdateActionable`, against the instance its key names). This is the
+ * Updates page's "N updates available", the rows its Select all ticks, and
+ * the count on the sidebar's Updates entry -- one function, so the badge
+ * cannot promise a row the page does not offer.
+ */
+export function actionableUpdatesOf(
+  snapshot: Pick<Snapshot, "instances" | "updates">,
+  settings: HidingSettings,
+): UpdateCandidate[] {
+  const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]));
+  return notHidden(snapshot.updates, settings).filter((candidate) =>
+    isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id)),
+  );
 }
 
 /**

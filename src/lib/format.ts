@@ -109,6 +109,29 @@ function faultArgs(fault: Fault): Record<string, unknown> {
 }
 
 /**
+ * How long ago something happened, in the one unit the page header says
+ * it in: under a minute is "just now", then whole minutes, whole hours,
+ * whole days, each rounded down. A time after `nowMs` -- a check that
+ * finished after the clock the caller holds last ticked -- is "just now"
+ * too, never a negative count.
+ */
+export type Elapsed =
+  | { unit: "justNow" }
+  | { unit: "minutes"; count: number }
+  | { unit: "hours"; count: number }
+  | { unit: "days"; count: number };
+
+export function elapsedSince(thenSeconds: number, nowMs: number): Elapsed {
+  const seconds = Math.floor(nowMs / 1000 - thenSeconds);
+  if (seconds < 60) return { unit: "justNow" };
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return { unit: "minutes", count: minutes };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { unit: "hours", count: hours };
+  return { unit: "days", count: Math.floor(hours / 24) };
+}
+
+/**
  * A byte count as the user reads it in Finder: 1000-based units, at most
  * one decimal, no trailing ".0". Units are symbols, not words, so they
  * are the same in both locales and this needs no `t()`.

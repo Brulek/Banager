@@ -180,13 +180,12 @@ function occursAsToken(
  * literally enumerated below, against the runtime type or list that
  * drives the interpolation. Each entry names its source so the two can be
  * checked against each other by hand; there is no way to check it any
- * other way, because `expr` in each call site is a Rust-enum-shaped value
- * or an array of route names, neither of which static analysis of this
- * file can enumerate on its own.
+ * other way, because `expr` in each call site is a Rust-enum-shaped value,
+ * which static analysis of this file cannot enumerate on its own. (The
+ * sidebar's `t(\`nav.${p}\`)` over its list of pages used to be one; it
+ * spells each page's key out now, in `PAGE_LABEL_KEYS`.)
  */
 const INTERPOLATED_SUBTREES: Record<string, readonly string[]> = {
-  // src/components/Sidebar.tsx: `t(\`nav.${p}\`)` over `PAGES`.
-  nav: ["installed", "updates", "unknown", "settings"],
   // src/components/OperationBar.tsx: `t(\`operations.kind.${current.kind}\`)`
   // over `OpKind` (src/lib/types.ts).
   "operations.kind": ["Install", "Uninstall", "Upgrade"],
@@ -242,7 +241,7 @@ const INTERPOLATED_HEAD_TAILS = ["title", "description"] as const;
  * Most call sites spell the key out, so the first check finds them. Two
  * shapes compose one at runtime and both are in use here:
  *
- * - a static head and an interpolated tail -- `t(\`nav.${p}\`)`,
+ * - a static head and an interpolated tail --
  *   `t(\`operations.kind.${current.kind}\`)`. Checked against
  *   `INTERPOLATED_SUBTREES` above: the head's call site must still exist
  *   *and* the tail must be one of the named, enumerated values -- not

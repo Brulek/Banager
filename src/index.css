@@ -1,37 +1,118 @@
 @import "tailwindcss";
 
-:root {
-  --color-background: #ffffff;
-  --color-foreground: #1d1d1f;
-  --color-sidebar-bg: #f5f5f7;
-  --color-border: #d2d2d7;
-  --color-accent: #0071e3;
-  --color-accent-foreground: #ffffff;
-  --color-hover: #e8e8ed;
-  --color-muted: #6e6e73;
-  --color-muted-foreground: #6b7280;
-  --color-danger: #d70015;
+/*
+ * Design tokens (docs/superpowers/2026-09-27-ui-redesign.md, 视觉): the
+ * light values here, the dark ones under `prefers-color-scheme` below, so
+ * the app follows the system as it always has.
+ *
+ * `static`: Tailwind v4 emits a theme variable only when one of its own
+ * utilities uses it, and the components written before the redesign read
+ * these as `var(--color-…)` inside arbitrary values, which it does not
+ * count. The names those components already use -- `--color-foreground`,
+ * `--color-muted`, `--color-border`, `--color-accent`, `--color-hover`,
+ * `--color-background` and the rest -- carry the new palette, so every
+ * page picks it up without being edited.
+ */
+@theme static {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
+    sans-serif;
+
+  /* Type scale: `text-title` and friends. `headline` is the Overview's one
+     big sentence. */
+  --text-headline: 28px;
+  --text-headline--line-height: 34px;
+  --text-headline--font-weight: 600;
+  --text-title: 22px;
+  --text-title--line-height: 28px;
+  --text-title--font-weight: 600;
+  --text-section: 15px;
+  --text-section--line-height: 20px;
+  --text-section--font-weight: 600;
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+
+  /* Radii: a window panel, a row, a button; a chip is `rounded-full`. */
+  --radius-panel: 14px;
+  --radius-row: 10px;
+  --radius-button: 8px;
+
+  /* The sidebar is dark in both appearances. */
+  --color-sidebar-top: #16182d;
+  --color-sidebar-bottom: #1e2240;
+  --color-sidebar-text: #c9cce8;
+  --color-sidebar-muted: #8a8fb5;
+  --color-sidebar-active: rgb(255 255 255 / 0.1);
+
+  /* The content area, and what sits on it: a dialog, the log drawer, a
+     text field. `background` is the name the older components use for
+     `surface`. */
+  --color-content: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-background: var(--color-surface);
+  --color-border: #e6e8f0;
+  --color-foreground: #1b1d2a;
+  --color-muted: #6b7089;
+  --color-muted-foreground: var(--color-muted);
+  /* A quiet fill: a neutral badge, a code block, a hovered row. */
+  --color-hover: #ebedf4;
   --color-overlay: rgb(0 0 0 / 0.4);
+
+  --color-accent: #4f5bd5;
+  --color-accent-hover: #4752c0;
+  --color-accent-foreground: #ffffff;
+  /* The accent as the colour of text on the content or a surface. The
+     same as the accent in light mode; lighter in dark mode, where the
+     accent itself reads at 3:1. */
+  --color-accent-text: var(--color-accent);
+  --color-success: #1fa971;
+  --color-warning: #e8a33d;
+  --color-danger: #e5484d;
+
+  /* Each source's colour, for its small avatar and nowhere else, and the
+     colour of the initial on it where white would not read. */
+  --color-source-homebrew: #f2a93b;
+  --color-source-homebrew-ink: #1b1d2a;
+  --color-source-npm: #cb3837;
+  --color-source-python: #3776ab;
+  --color-source-rust: #ce422b;
+  --color-source-ollama: #2a2a2a;
+  --color-source-ollama-ink: #ffffff;
+  --color-source-claude: #c96442;
+  --color-source-grok: #2b2b2b;
+  --color-source-agy: #6b5bff;
 }
 
+:root {
+  color-scheme: light dark;
+}
+
+/* Unlayered, so these win over the `@layer theme` block Tailwind emits
+   for the light values above. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: #1e1e1e;
-    --color-foreground: #f5f5f7;
-    --color-sidebar-bg: #252526;
-    --color-border: #3a3a3c;
-    --color-accent: #0a84ff;
-    --color-accent-foreground: #ffffff;
-    --color-hover: #3a3a3c;
-    --color-muted: #98989d;
-    --color-muted-foreground: #9ca3af;
-    --color-danger: #ff453a;
+    --color-content: #111320;
+    --color-surface: #181b2b;
+    --color-border: #262a40;
+    --color-foreground: #e7e9f5;
+    --color-muted: #9096b3;
+    --color-hover: #22263a;
     --color-overlay: rgb(0 0 0 / 0.6);
+    --color-accent-text: #8f97ee;
+    --color-source-ollama: #e5e5e5;
+    --color-source-ollama-ink: #1b1d2a;
   }
 }
 
 body {
   margin: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  color: var(--color-foreground);
+  background: var(--color-content);
+  accent-color: var(--color-accent);
+  -webkit-font-smoothing: antialiased;
 }

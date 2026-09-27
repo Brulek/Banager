@@ -80,9 +80,8 @@ export function SettingsPage() {
   };
 
   return (
+    // No title of its own: the page header over it says "Settings".
     <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-lg font-semibold">{t("settings.title")}</h1>
-
       {saveMutation.isError && (
         <p role="alert">
           {t("settings.saveError", {

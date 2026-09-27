@@ -371,7 +371,7 @@ export function InstalledPage() {
                     type="button"
                     onClick={() => toggleDependencies(item.instanceId)}
                     aria-expanded={item.expanded}
-                    className="px-4 py-2 text-left text-sm text-[var(--color-accent)]"
+                    className="px-4 py-2 text-left text-sm text-[var(--color-accent-text)]"
                   >
                     {t(
                       item.expanded ? "installed.hideDependencies" : "installed.showDependencies",

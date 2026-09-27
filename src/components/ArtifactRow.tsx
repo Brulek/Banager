@@ -47,7 +47,7 @@ export interface ArtifactRowProps {
 
 const BADGE_CLASSES: Record<BadgeVariant, string> = {
   neutral: "bg-[var(--color-hover)] text-[var(--color-muted)]",
-  info: "bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
+  info: "bg-[var(--color-accent)]/10 text-[var(--color-accent-text)]",
 };
 
 export function ArtifactRow({

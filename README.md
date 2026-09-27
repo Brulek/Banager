@@ -10,7 +10,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 861 Rust tests (plus 3 more
-> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 433 front-end
+> that touch a real Homebrew or the real Trash and only run with `--ignored`) and 449 front-end
 > tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is ready to
 > rely on.
 
@@ -40,6 +40,14 @@ path for is listed there too (uv's own `uvx`, for one): the gap is the source's,
 says what it sees. Cargo reports one program per crate — the one named after the crate, else the
 first its record lists — so the other programs of a crate that installs several
 (`cargo-binstall`'s `detect-targets`) stay on that page until it can report them all.
+
+Canager checks every source when it opens, after each operation, and whenever you press **Check
+again** in the header over every page, which also says how long ago the last check finished. The
+"Try again" of a failed refresh, or of a Homebrew index Canager couldn't update, runs the same
+check, and a Homebrew index update left running in the background starts one on its own when it
+ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). The Unknown page's *Scan
+again* re-runs only that page's scan of your bin folders, against the sources' last known state —
+it does not refresh the sources.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -83,13 +91,6 @@ Being honest about this is part of the point:
 
 - **No search and no catalogue, and no way to install something new.** You can manage what you
   already have; you cannot yet discover or add new things through Canager.
-- **No on-demand refresh.** Canager checks at launch, after each operation, when a "Try again"
-  button is pressed for something that already needs one — a failed refresh, or a Homebrew index
-  Canager couldn't update — and on its own when a Homebrew index update left running in the
-  background finishes (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). None
-  of that is a standalone control you can press at any time. The Unknown page's *Scan again*
-  button is the one exception, and it is scoped to that page: it re-runs only that page's scan of
-  your bin folders, against the sources' last known state — it does not refresh the sources.
 - **macOS only.** The core crate is portable and the architecture is cross-platform, but
   everything below the trait boundary assumes Unix today, and only macOS is tested. Windows and
   Linux are roadmap, not "nearly working".
@@ -213,7 +214,7 @@ default, so please don't build on it yet — and I can't accept contributions un
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 861 个 Rust 测试（另有 3 个要连着真实的
-Homebrew 或真实的废纸篓才跑，平时是跳过的）和 433 个前端测试，但还没有可下载的版本，v0.1 正在
+Homebrew 或真实的废纸篓才跑，平时是跳过的）和 449 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -250,11 +251,13 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   Antigravity CLI 与 rustup，因为 Grok Build 的检查直接采信 grok 自己的回答，不比较版本。
   这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，中文用户在开关打开时看到的，就是英文。
 
-尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。按需刷新也还没有——刷新只在启动、操作完成、
-点了“重试”按钮（刷新失败，或者 Homebrew 的索引过期了，才会出现这个按钮），以及后台运行的 Homebrew
-索引更新自行结束时（`ipc::refresh_on_background_change`，`src-tauri/src/lib.rs:31-34`，不需要用户
-动手）这四种情况下发生，不是随时可按的独立刷新控件。唯一的例外是“来源不明”页上的“重新扫描”，
-它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
+尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
+
+Canager 在打开时、每次操作完成后，以及你按下每一页页头的“重新检查”时检查各来源，页头上也写着上次
+检查是多久以前。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；后台运行的
+Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
+`src-tauri/src/lib.rs:31-34`，不需要用户动手）。“来源不明”页上的“重新扫描”只属于那一页：只重新扫描
+那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo
 每个 crate 只报一个程序——与 crate 同名的那个，没有就报记录里的第一个——所以一个 crate 装了好几个程序时，
 其余的（如 `cargo-binstall` 的 `detect-targets`）会留在那一页，直到它能把全部报出来。）

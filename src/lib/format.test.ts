@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayToken, formatBytes, outcomeArgs, outcomeKey } from "./format";
+import { displayToken, elapsedSince, formatBytes, outcomeArgs, outcomeKey } from "./format";
 import type { Fault, Outcome } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
@@ -233,5 +233,27 @@ describe("outcomeKey for Canager's own failures", () => {
     });
     expect(outcomeKey({ Failed: { exit_code: 1, summary: "  \n" } })).toBe("FailedSilent");
     expect(zhCN.operations.outcome.FailedSilent).not.toContain("{{");
+  });
+});
+
+describe("elapsedSince", () => {
+  const then = 1790586000;
+  const at = (seconds: number) => (then + seconds) * 1000;
+
+  it("says just now for under a minute, and for a time after the clock", () => {
+    expect(elapsedSince(then, at(0))).toEqual({ unit: "justNow" });
+    expect(elapsedSince(then, at(59.9))).toEqual({ unit: "justNow" });
+    // A check that finished after the header's clock last ticked.
+    expect(elapsedSince(then, at(-30))).toEqual({ unit: "justNow" });
+  });
+
+  it("counts whole minutes, then whole hours, then whole days, rounding down", () => {
+    expect(elapsedSince(then, at(60))).toEqual({ unit: "minutes", count: 1 });
+    expect(elapsedSince(then, at(3 * 60 + 59))).toEqual({ unit: "minutes", count: 3 });
+    expect(elapsedSince(then, at(59 * 60 + 59))).toEqual({ unit: "minutes", count: 59 });
+    expect(elapsedSince(then, at(60 * 60))).toEqual({ unit: "hours", count: 1 });
+    expect(elapsedSince(then, at(23 * 3600 + 3599))).toEqual({ unit: "hours", count: 23 });
+    expect(elapsedSince(then, at(24 * 3600))).toEqual({ unit: "days", count: 1 });
+    expect(elapsedSince(then, at(9 * 24 * 3600 + 5))).toEqual({ unit: "days", count: 9 });
   });
 });

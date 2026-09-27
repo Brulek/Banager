@@ -123,15 +123,15 @@ export function SnapshotStatus({ children }: SnapshotStatusProps) {
     //
     // The banner variant is meant to "sit above still-visible content"
     // without hiding any of it, but `children` (e.g. InstalledPage) sizes
-    // itself with `h-full` — 100% of the nearest positioned ancestor with a
-    // definite height, which is `<main>` in App.tsx, not this banner's
-    // sibling slot. Stacked as plain siblings under `<main>`, the banner's
-    // own height plus `children`'s 100%-of-`<main>` height would overflow
-    // `<main>`'s box, forcing an extra scroll to reach content that would
+    // itself with `h-full` — 100% of the nearest ancestor with a definite
+    // height, which is the page's box under the header in App.tsx, not this
+    // banner's sibling slot. Stacked as plain siblings in that box, the
+    // banner's own height plus `children`'s 100%-of-the-box height would
+    // overflow it, forcing an extra scroll to reach content that would
     // otherwise be fully visible. Constraining both to a local `h-full` flex
     // column — banner sized to its own content, `children` wrapped in the
     // remaining `flex-1 min-h-0` space with its own scroll — keeps the
-    // total height exactly at `<main>`'s height, so nothing overflows.
+    // total height exactly at the box's height, so nothing overflows.
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <EmptyState

@@ -177,8 +177,9 @@ impl InstanceNote {
 /// Deliberately *without* a per-instance `refreshed_at` (spec §2.4's note):
 /// `Snapshot::same_content` compares `instances` with the derived
 /// `PartialEq`, so a unix second that moves every refresh would bump the
-/// generation and rebroadcast `SnapshotChanged` on every poll, and there is
-/// no renderer for a relative timestamp anywhere in `src/`.
+/// generation and rebroadcast `SnapshotChanged` on every poll, and the one
+/// relative time `src/` renders -- the page header's "Checked 3 min ago" --
+/// reads the snapshot's own `refreshed_at`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceStatus {
     /// `None` means the source answered.

@@ -523,10 +523,12 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
     // Both sentences name Canager, not "it", because "it" has just meant
     // the package, and for a pinned cask that is an app -- "open it" reads
     // as "open that app". "Start" is the right verb for `description`
-    // and `selfUpdatingDescription`: the page has no refresh button (the
-    // only one is `SnapshotStatus`'s retry after a failed refresh), and
-    // closing the window quits, since `run` in src-tauri/src/lib.rs has
-    // no `ExitRequested` handler to keep the app alive without one.
+    // and `selfUpdatingDescription`: "at the latest" has to name a check
+    // that happens whether or not the user does anything, and that is the
+    // one every start runs -- the page header's Check again runs the same
+    // check sooner, but only when pressed -- and closing the window quits,
+    // since `run` in src-tauri/src/lib.rs has no `ExitRequested` handler
+    // to keep the app alive without one.
     description: "updates.blocked.Pinned.description",
     descriptionSourceUnavailable: "updates.blocked.Pinned.descriptionSourceUnavailable",
     // A pinned cask with `auto_updates true` can still move: `brew pin`

@@ -42,7 +42,7 @@ function fileName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** An absolute date in the user's language. This repository deliberately has no relative-time formatter. */
+/** An absolute date in the user's language: when the file last changed, which "3 days ago" would blur. */
 function formatDate(seconds: number, language: string): string {
   return new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(
     new Date(seconds * 1000),
@@ -125,11 +125,11 @@ export function UnknownPage() {
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="flex items-start justify-between gap-4 p-4">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold">{t("unknown.title")}</h1>
+          <h2 className="text-section">{t("unknown.title")}</h2>
           <p className="mt-1 text-sm text-[var(--color-muted)]">{t("unknown.intro")}</p>
         </div>
-        {/* The app's first standing refresh control, scoped to this page:
-            it re-runs only this scan, never the sources' refresh. */}
+        {/* This page's own: it re-runs only this scan, never the sources'
+            refresh, which is the page header's Check again. */}
         <button
           type="button"
           onClick={() => void refetch()}

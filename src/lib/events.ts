@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { refresh, subscribeEvents } from "./api";
 import { queryKeys } from "./queryKeys";
@@ -73,6 +73,41 @@ let refreshInFlight: Promise<void> | null = null;
 let refreshAgain = false;
 
 /**
+ * Who wants to know when `refreshInFlight` starts or stops being null: the
+ * page header's "Checking…" and its Check again button, through
+ * `useRefreshInFlight`. Module-level for the same reason the coordinator
+ * is: a refresh started by the startup hook, by a finished operation or
+ * by any button is the same one refresh, and "is one running" has one
+ * answer.
+ */
+const refreshListeners = new Set<() => void>();
+
+function notifyRefreshListeners(): void {
+  for (const listener of refreshListeners) listener();
+}
+
+function subscribeToRefresh(listener: () => void): () => void {
+  refreshListeners.add(listener);
+  return () => {
+    refreshListeners.delete(listener);
+  };
+}
+
+function isRefreshInFlight(): boolean {
+  return refreshInFlight !== null;
+}
+
+/**
+ * Whether a refresh is running right now, whoever started it -- the one at
+ * startup, the one after an operation, or a click. A follow-up refresh
+ * (`refreshAgain` below) starts as the one before it settles, so this
+ * stays true across the pair.
+ */
+export function useRefreshInFlight(): boolean {
+  return useSyncExternalStore(subscribeToRefresh, isRefreshInFlight);
+}
+
+/**
  * Exported (Task 13) so `useRefresh` (src/lib/queries.ts) shares this same
  * single-flight coordinator instead of calling `refresh()` directly --
  * previously a manual "Try again" click could run fully concurrently with
@@ -108,10 +143,15 @@ export function refreshIntoCache(queryClient: QueryClient, why: string): Promise
       refreshInFlight = null;
       if (refreshAgain) {
         refreshAgain = false;
+        // Starts the follow-up, which sets `refreshInFlight` again and
+        // tells the listeners itself: to them the two are one refresh.
         refreshIntoCache(queryClient, `${why} (follow-up)`).catch(() => {});
+      } else {
+        notifyRefreshListeners();
       }
     });
   refreshInFlight = run;
+  notifyRefreshListeners();
   return run;
 }
 

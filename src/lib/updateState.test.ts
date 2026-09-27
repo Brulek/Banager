@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  actionableUpdatesOf,
   canSkipVersion,
   hidingRule,
   isUpdateActionable,
@@ -248,6 +249,47 @@ describe("notHidden", () => {
     });
     expect(notHidden([formula, cask, jq], settings)).toEqual([jq]);
     expect(notHidden([formula, cask, jq], hiding())).toEqual([formula, cask, jq]);
+  });
+});
+
+describe("actionableUpdatesOf", () => {
+  it("keeps the listed updates that have an Update button, in the snapshot's order", () => {
+    const pip: ManagerInstance = {
+      ...brew,
+      id: "pip:/usr/bin/python3",
+      adapter_id: "pip",
+      read_only_reason: "ByDesign",
+    };
+    const stopped: ManagerInstance = {
+      ...brew,
+      id: "ollama:http://127.0.0.1:11434",
+      adapter_id: "ollama",
+      status: { unavailable: "NotRunning", notes: [] },
+    };
+    const named = (name: string, over: Partial<UpdateCandidate> = {}) =>
+      candidate({ key: { instance_id: brew.id, kind: "Formula", name }, ...over });
+    const glib = named("glib");
+    const wget = named("wget");
+    const pinned = named("jq", { blocked: "Pinned" });
+    const unchecked = named("pcre2", { checkable: false });
+    const ignored = named("ffmpeg");
+    const skipped = named("gh");
+    const readOnly = candidate({ key: { instance_id: pip.id, kind: "Package", name: "urllib3" } });
+    const silent = candidate({ key: { instance_id: stopped.id, kind: "Model", name: "qwen3:8b" } });
+    const orphan = candidate({ key: { instance_id: "cargo:/gone", kind: "Binary", name: "rg" } });
+
+    const offered = actionableUpdatesOf(
+      {
+        instances: [brew, pip, stopped],
+        updates: [glib, pinned, unchecked, ignored, skipped, readOnly, silent, orphan, wget],
+      },
+      hiding({
+        ignored_updates: [ignored.key],
+        skipped_versions: [{ key: skipped.key, version: skipped.target }],
+      }),
+    );
+
+    expect(offered).toEqual([glib, wget]);
   });
 });
 

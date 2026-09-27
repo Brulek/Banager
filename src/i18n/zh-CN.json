@@ -1,18 +1,33 @@
 {
   "app": {
+    "name": "Canager",
     "operationBarRegion": "操作状态"
   },
   "nav": {
     "label": "导航",
-    "installed": "已安装",
     "updates": "更新",
+    "installed": "已安装",
     "unknown": "来源不明",
-    "settings": "设置"
+    "settings": "设置",
+    "count": {
+      "updates_other": "{{count}} 个可以更新",
+      "installed_other": "已安装 {{count}} 个",
+      "unknown_other": "找到 {{count}} 个"
+    }
   },
   "common": {
     "loading": "加载中…",
     "cancel": "取消",
-    "close": "关闭"
+    "close": "关闭",
+    "checking": "正在检查…"
+  },
+  "header": {
+    "checkedJustNow": "上次检查：刚刚",
+    "checkedMinutesAgo_other": "上次检查：{{count}} 分钟前",
+    "checkedHoursAgo_other": "上次检查：{{count}} 小时前",
+    "checkedDaysAgo_other": "上次检查：{{count}} 天前",
+    "checkFailed": "没能检查",
+    "checkAgain": "重新检查"
   },
   "adapters": {
     "brew": "Homebrew",
@@ -299,7 +314,6 @@
     "trashPreview_other": "Canager 会自己把上面列出的 {{count}} 项移到废纸篓——不运行任何命令，也不删除任何东西：清空废纸篓之前都能把它们拖回来，访达的「放回原处」多半也能用。"
   },
   "settings": {
-    "title": "设置",
     "loading": "正在加载设置…",
     "showTechnicalDetails": {
       "label": "显示技术细节",

@@ -37,6 +37,7 @@ import type {
   UpdateCandidate,
 } from "../lib/types";
 import {
+  actionableUpdatesOf,
   canSkipVersion,
   isUpdateActionable,
   notHidden,
@@ -364,7 +365,15 @@ export function UpdatesPage() {
   // `actionableUpdates` is also every row that shows a checkbox, and it is
   // what Select all and Invert selection hand to the store, so neither
   // button can tick a row the user could not tick by hand.
-  const actionableUpdates = visibleUpdates.filter(isActionable);
+  //
+  // `actionableUpdatesOf` is `visibleUpdates` filtered by `isActionable`:
+  // the same two rules, kept in src/lib/updateState.ts because the
+  // sidebar's count on this page's entry is this list's length, and the
+  // two must never disagree.
+  const actionableUpdates = useMemo(
+    () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : []),
+    [snapshot, settings],
+  );
   const actionableCount = actionableUpdates.length;
   const unmanageableCount = visibleUpdates.length - actionableCount;
 

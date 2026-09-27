@@ -169,8 +169,8 @@ pub struct UnknownEntry {
     pub size_bytes: Option<u64>,
     /// The target's modification time, unix seconds. `None` for a broken
     /// link, whose own `mtime` would only say when the link was made.
-    /// Formatted with `Intl.DateTimeFormat` (an absolute date; this
-    /// repository deliberately has no relative-time formatter).
+    /// Formatted with `Intl.DateTimeFormat`, as an absolute date: when the
+    /// file last changed, not how long ago.
     pub modified_at: Option<i64>,
     /// Whether the entry itself belongs to the user Canager runs as
     /// (`st_uid == euid`, of the entry, not its target: the question is

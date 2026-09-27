@@ -92,6 +92,19 @@ describe("App", () => {
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 
+  it("titles every page in one header, with Check again beside it", async () => {
+    const { getByRole, findByLabelText, getAllByRole } = renderWithProviders(<App />);
+    await findByLabelText("Filter installed items");
+
+    for (const name of ["Installed", "Updates", "Unknown", "Settings"]) {
+      if (name !== "Installed") fireEvent.click(getByRole("button", { name }));
+      // One page title, and it is this page's.
+      const titles = getAllByRole("heading", { level: 1 });
+      expect(titles.map((title) => title.textContent)).toEqual([name]);
+      expect(getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    }
+  });
+
   it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
