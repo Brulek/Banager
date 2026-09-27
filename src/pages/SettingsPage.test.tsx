@@ -10,6 +10,7 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
     language: "System",
     show_technical_details: false,
     ignored_updates: [],
+    skipped_versions: [],
     include_self_updating: false,
     ...overrides,
   };
@@ -126,8 +127,9 @@ describe("SettingsPage", () => {
 
   it("does not re-scan every source for a save that cannot change what a refresh finds", async () => {
     // Only include_self_updating changes the backend's answer. Refreshing on
-    // every save would put a full scan of every source behind each Ignore
-    // click on the Updates page, which shares this mutation.
+    // every save would put a full scan of every source behind each Skip this
+    // version or Never remind me click on the Updates page, which shares
+    // this mutation.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings();
       if (cmd === "set_settings") return undefined;

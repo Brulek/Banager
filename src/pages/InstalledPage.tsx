@@ -17,8 +17,8 @@ import {
   uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import { notIgnored, updateStateOf } from "../lib/updateState";
-import type { UpdateState } from "../lib/updateState";
+import { hidingRule, shownSkippedVersion, updateStateOf } from "../lib/updateState";
+import type { HiddenBy, UpdateState } from "../lib/updateState";
 import type { BadgeVariant } from "../components/ArtifactRow";
 import type { SourceNoticeSpec } from "../lib/sources";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
@@ -69,6 +69,12 @@ type ListItem =
     }
   | { type: "toggle"; instanceId: string; hiddenCount: number; expanded: boolean };
 
+/** An update the user hid on the Updates page, and how (`hidingRule`). */
+interface HiddenUpdate {
+  by: HiddenBy;
+  candidate: UpdateCandidate;
+}
+
 export function InstalledPage() {
   const { t } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
@@ -89,21 +95,22 @@ export function InstalledPage() {
     displayName: string;
   } | null>(null);
 
-  // The updates the Updates page lists (`notIgnored`), and the ids of the
-  // ones the user ignored there. This used to be every entry in
+  // Every update in the snapshot, split by the rule the Updates page lists
+  // by (`hidingRule`, src/lib/updateState.ts): the ones it lists, and the
+  // ones the user hid there, with how. This used to be every entry in
   // `snapshot.updates`, so a pinned package, one Canager could not check
   // and one the user had ignored were all "Update available" here while
   // the Updates page offered none of them.
-  const { listedUpdates, ignoredIds } = useMemo(() => {
+  const { listedUpdates, hiddenUpdates } = useMemo(() => {
+    const hiddenBy = hidingRule(settings ?? { ignored_updates: [], skipped_versions: [] });
     const listed = new Map<string, UpdateCandidate>();
-    const all = snapshot?.updates ?? [];
-    for (const u of notIgnored(all, settings?.ignored_updates ?? [])) {
-      listed.set(artifactKeyId(u.key), u);
+    const hidden = new Map<string, HiddenUpdate>();
+    for (const candidate of snapshot?.updates ?? []) {
+      const by = hiddenBy(candidate);
+      if (by === null) listed.set(artifactKeyId(candidate.key), candidate);
+      else hidden.set(artifactKeyId(candidate.key), { by, candidate });
     }
-    const ignored = new Set(
-      all.map((u) => artifactKeyId(u.key)).filter((id) => !listed.has(id)),
-    );
-    return { listedUpdates: listed, ignoredIds: ignored };
+    return { listedUpdates: listed, hiddenUpdates: hidden };
   }, [snapshot, settings]);
 
   // The badge of a package the Updates page lists. It follows the same
@@ -134,6 +141,33 @@ export function InstalledPage() {
     }
   }
 
+  // The badge of a package whose update the user hid on the Updates page:
+  // how it was hidden, where "Update available" would promise an update
+  // that page no longer lists. A `switch` with no default, like
+  // `listedBadge`, so a new `HiddenBy` without a badge here fails `tsc`.
+  //
+  // A skip names the version skipped, with technical details off too, as
+  // the update confirmation names the version jump: the skip is about
+  // that one version, and "Skipped" alone would not say what brings the
+  // reminder back. An Ollama model's skipped version is a digest, and is
+  // never shown (`shownSkippedVersion`).
+  function hiddenBadge({ by, candidate }: HiddenUpdate): { text: string; variant: BadgeVariant } {
+    switch (by) {
+      case "ignored":
+        return { text: t("installed.updateIgnored"), variant: "neutral" };
+      case "skipped": {
+        const version = shownSkippedVersion({ key: candidate.key, version: candidate.target });
+        return {
+          text:
+            version === null
+              ? t("installed.updateSkippedNewBuild")
+              : t("installed.updateSkipped", { version }),
+          variant: "neutral",
+        };
+      }
+    }
+  }
+
   // The row's badge.
   function installedBadge(
     artifact: InstalledArtifact,
@@ -150,7 +184,8 @@ export function InstalledPage() {
         variant: "neutral",
       };
     }
-    if (ignoredIds.has(id)) return { text: t("installed.updateIgnored"), variant: "neutral" };
+    const hidden = hiddenUpdates.get(id);
+    if (hidden !== undefined) return hiddenBadge(hidden);
     return { text: t("installed.upToDate"), variant: "neutral" };
   }
 

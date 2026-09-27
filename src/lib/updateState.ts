@@ -1,12 +1,19 @@
 /**
- * What Canager can do about one update candidate, decided in one place so
- * the Updates page and the Installed page cannot disagree. The Installed
- * page's badge used to call every entry in `snapshot.updates` "Update
- * available" -- a pinned package, a package Canager could not check, one
- * the user had ignored -- and so promised updates the Updates page, which
- * applied four more conditions, did not offer.
+ * What Canager can do about one update candidate, and whether the user
+ * has hidden it, decided in one place so the Updates page and the
+ * Installed page cannot disagree. The Installed page's badge used to call
+ * every entry in `snapshot.updates` "Update available" -- a pinned
+ * package, a package Canager could not check, one the user had ignored --
+ * and so promised updates the Updates page, which applied four more
+ * conditions, did not offer.
  */
-import type { ArtifactKey, ManagerInstance, UpdateBlocked, UpdateCandidate } from "./types";
+import type {
+  ManagerInstance,
+  Settings,
+  SkippedVersion,
+  UpdateBlocked,
+  UpdateCandidate,
+} from "./types";
 import { canWrite, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
@@ -61,14 +68,100 @@ export function isUpdateActionable(
 }
 
 /**
- * The candidates the Updates page lists: every one the user has not
- * ignored (`Settings.ignored_updates`). The Installed page reads the same
- * list, so an ignored update is not "available" there either.
+ * Why the Updates page leaves out an update the snapshot has: the user
+ * pressed "Never remind me" on its package (`ignored`:
+ * `Settings.ignored_updates`, every version), or "Skip this version" on
+ * the version it offers (`skipped`: `Settings.skipped_versions`, that
+ * version only).
  */
-export function notIgnored(
+export type HiddenBy = "ignored" | "skipped";
+
+/** The two lists in `Settings` that hide an update. */
+export type HidingSettings = Pick<Settings, "ignored_updates" | "skipped_versions">;
+
+/** One string per skipped version of one package. */
+function skippedVersionId(skipped: SkippedVersion): string {
+  return `${artifactKeyId(skipped.key)}|${skipped.version}`;
+}
+
+/**
+ * The rule, in one place: why `settings` hides a candidate, or null when
+ * the Updates page lists it. Both pages read it -- the Updates page
+ * through `notHidden` for everything it lists, counts or selects (its
+ * rows, its headline and second line, Select all, Invert selection and
+ * Update selected), the Installed page's badge directly -- so neither can
+ * offer an update the other hides. It builds its two lookups once and
+ * returns the check to run per candidate, so a long list is not rescanned
+ * for each row.
+ *
+ * "Never remind me" comes first: it holds for every version, so a package
+ * that is both reads as ignored.
+ *
+ * A skip hides a candidate only while its `target` is the version that
+ * was skipped; once the source offers another, the row is listed again.
+ * An Ollama model's `target` is a digest, and so is what its skip stored:
+ * both are the registry manifest's config digest, so they compare like
+ * with like. A candidate Canager could not check is never hidden by a
+ * skip: its `target` is its installed version (`uncheckable_candidate` in
+ * crates/canager-core/src/adapters/mod.rs), not a version any source
+ * offered, and the Updates page offers no Skip this version on its row.
+ */
+export function hidingRule(
+  settings: HidingSettings,
+): (candidate: UpdateCandidate) => HiddenBy | null {
+  const ignoredIds = new Set(settings.ignored_updates.map(artifactKeyId));
+  const skippedIds = new Set(settings.skipped_versions.map(skippedVersionId));
+  return (candidate) => {
+    if (ignoredIds.has(artifactKeyId(candidate.key))) return "ignored";
+    if (
+      candidate.checkable &&
+      skippedIds.has(skippedVersionId({ key: candidate.key, version: candidate.target }))
+    ) {
+      return "skipped";
+    }
+    return null;
+  };
+}
+
+/** The candidates the Updates page lists: every one `hidingRule` does not hide. */
+export function notHidden(
   updates: UpdateCandidate[],
-  ignored: ArtifactKey[],
+  settings: HidingSettings,
 ): UpdateCandidate[] {
-  const ignoredIds = new Set(ignored.map((k) => artifactKeyId(k)));
-  return updates.filter((u) => !ignoredIds.has(artifactKeyId(u.key)));
+  const hiddenBy = hidingRule(settings);
+  return updates.filter((u) => hiddenBy(u) === null);
+}
+
+/**
+ * `skipped` once "Skip this version" is pressed on `candidate`'s row: the
+ * version the row offers, recorded in place of any earlier skip of the
+ * same package. That earlier one can only be for a version the source no
+ * longer offers -- a skip that still matched would have hidden the row --
+ * so it could never hide anything again. Nothing else is dropped: a skip
+ * whose version the source has moved past stays until the user skips that
+ * package's next version or removes it.
+ */
+export function withSkippedVersion(
+  skipped: SkippedVersion[],
+  candidate: UpdateCandidate,
+): SkippedVersion[] {
+  const id = artifactKeyId(candidate.key);
+  return [
+    ...skipped.filter((s) => artifactKeyId(s.key) !== id),
+    { key: candidate.key, version: candidate.target },
+  ];
+}
+
+/**
+ * The version a skip may show the user, or null when it must not be
+ * shown. An Ollama model's skipped version is a registry manifest's config
+ * digest -- the `target` of the `UpdateChannel::Digest` candidate it was
+ * skipped from (`check_one_model` in
+ * crates/canager-core/src/adapters/ollama/mod.rs, the only producer of
+ * `Model` rows) -- and no hash goes in front of this audience. A skip
+ * carries no channel, so this goes by the key's kind, as the Installed
+ * page does when it leaves a model's digest out of the row's name.
+ */
+export function shownSkippedVersion(skipped: SkippedVersion): string | null {
+  return skipped.key.kind === "Model" ? null : skipped.version;
 }

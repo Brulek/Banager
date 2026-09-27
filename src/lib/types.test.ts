@@ -10,6 +10,7 @@ import type {
   ReadOnlyReason,
   InstanceStatus,
   Settings,
+  SkippedVersion,
   UninstallBlocked,
   UpdateBlocked,
   Warning,
@@ -409,6 +410,7 @@ describe("types", () => {
       language: "ZhCn",
       show_technical_details: true,
       ignored_updates: [],
+      skipped_versions: [],
       include_self_updating: false,
     };
 
@@ -417,6 +419,27 @@ describe("types", () => {
     expect(roundTrip(opSummary).status).toBe("Running");
     expect(roundTrip(opSummary).outcome).toBeNull();
     expect(roundTrip(settings).language).toBe("ZhCn");
+  });
+
+  it("spells Settings.skipped_versions as settings.rs's shape test does", () => {
+    // `test_skipped_versions_wire_shape_matches_the_hand_written_ts_mirror`
+    // in crates/canager-core/src/settings.rs asserts this exact string from
+    // the Rust side: the key is the same object `ignored_updates` holds, and
+    // the skipped version is a bare string.
+    const skipped: SkippedVersion[] = [
+      { key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" }, version: "2.90.0" },
+    ];
+    expect(JSON.stringify(skipped)).toBe(
+      '[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"glib"},"version":"2.90.0"}]',
+    );
+    const settings: Settings = {
+      language: "System",
+      show_technical_details: false,
+      ignored_updates: [],
+      skipped_versions: skipped,
+      include_self_updating: false,
+    };
+    expect(roundTrip(settings).skipped_versions).toEqual(skipped);
   });
 
   it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {

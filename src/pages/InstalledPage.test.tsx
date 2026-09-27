@@ -79,6 +79,7 @@ const settings: Settings = {
   language: "System",
   show_technical_details: false,
   ignored_updates: [],
+  skipped_versions: [],
   include_self_updating: false,
 };
 
@@ -599,6 +600,10 @@ describe("InstalledPage", () => {
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name },
       ...over,
     });
+    // The registry digest a skipped model's row offered, which no page may
+    // print.
+    const DIGEST = "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b";
+    const skippedModelKey = { instance_id: OLLAMA, kind: "Model", name: "skipped-model" } as const;
     const mixed: Snapshot = {
       ...snapshot,
       artifacts: [
@@ -609,11 +614,14 @@ describe("InstalledPage", () => {
         }),
         artifact("unchecked"),
         artifact("ignored"),
+        artifact("skipped"),
+        artifact("skipped-before"),
         artifact("pinned-current", { uninstall_blocked: "Pinned" }),
         artifact("current"),
         artifact("stopped-model", {
           key: { instance_id: OLLAMA, kind: "Model", name: "stopped-model" },
         }),
+        artifact("skipped-model", { key: skippedModelKey, version: "5642e97495e1" }),
       ],
       instances: [
         ...snapshot.instances,
@@ -644,15 +652,37 @@ describe("InstalledPage", () => {
         }),
         update("unchecked", { checkable: false, warnings: [{ Message: "timed out" }] }),
         update("ignored"),
+        update("skipped"),
+        update("skipped-before"),
         update("stopped-model", {
           key: { instance_id: OLLAMA, kind: "Model", name: "stopped-model" },
           channel: "Registry",
+        }),
+        update("skipped-model", {
+          key: skippedModelKey,
+          current: "5642e97495e1",
+          target: DIGEST,
+          channel: "Digest",
         }),
       ],
     };
     const mixedSettings: Settings = {
       ...settings,
       ignored_updates: [{ instance_id: "brew:/opt/homebrew", kind: "Formula", name: "ignored" }],
+      // `skipped` is skipped at the version its row offers (2.90.0);
+      // `skipped-before` at a version its source no longer offers, so its
+      // update is listed again.
+      skipped_versions: [
+        {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "skipped" },
+          version: "2.90.0",
+        },
+        {
+          key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "skipped-before" },
+          version: "2.89.0",
+        },
+        { key: skippedModelKey, version: DIGEST },
+      ],
     };
 
     beforeEach(() => {
@@ -660,6 +690,15 @@ describe("InstalledPage", () => {
         if (cmd === "get_snapshot") return Promise.resolve(mixed);
         if (cmd === "get_settings") return Promise.resolve(mixedSettings);
         return Promise.resolve(undefined);
+      });
+      // Fourteen slots of 56px -- three headings and eleven rows -- are
+      // taller than the 600px viewport the outer `beforeEach` gives the
+      // list, and these tests read every row's badge, so the list gets a
+      // viewport that holds them all.
+      vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        return this.getAttribute("data-index") === null ? 1200 : DEFAULT_ROW_HEIGHT;
       });
     });
 
@@ -677,12 +716,19 @@ describe("InstalledPage", () => {
       expect(badgeOf(container, "pinned-outdated")).toBe("Pinned");
       expect(badgeOf(container, "pipx-pinned")).toBe("Pinned");
       expect(badgeOf(container, "unchecked")).toBe("Can't check");
-      expect(badgeOf(container, "ignored")).toBe("Update ignored");
+      expect(badgeOf(container, "ignored")).toBe("Update reminders off");
+      // The version the skip is about, which is what brings the reminder
+      // back once the source offers another.
+      expect(badgeOf(container, "skipped")).toBe("Skipped 2.90.0");
+      expect(badgeOf(container, "skipped-before")).toBe("Update available");
       // Pinned in Homebrew and up to date: still pinned, from the inventory.
       expect(badgeOf(container, "pinned-current")).toBe("Pinned");
       expect(badgeOf(container, "current")).toBe("Up to date");
       // Its source is not running, so there is no Update button for it.
       expect(badgeOf(container, "stopped-model")).toBe("Newer version, can't update now");
+      // A model's skipped version is a digest, and no digest is printed.
+      expect(badgeOf(container, "skipped-model")).toBe("Newer build skipped");
+      expect(container.textContent).not.toContain("sha256");
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
@@ -705,7 +751,11 @@ describe("InstalledPage", () => {
       // The stopped source's update is listed there, with no button: it is
       // left out of `offered` for that, not for a missing row.
       expect(updates.queryByText("stopped-model", { selector: "p" })).not.toBeNull();
-      expect(badged).toEqual(["offered"]);
+      // The two skipped at the version they offer are not listed there at
+      // all; the one skipped at an older version is, with its button.
+      expect(updates.queryByText("skipped", { selector: "p" })).toBeNull();
+      expect(updates.queryByText("skipped-model", { selector: "p" })).toBeNull();
+      expect(badged).toEqual(["offered", "skipped-before"]);
       expect(offered).toEqual(badged);
     });
   });

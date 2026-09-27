@@ -33,9 +33,15 @@ import type {
   IssuedPlan,
   ManagerInstance,
   OpRequest,
+  Settings,
   UpdateCandidate,
 } from "../lib/types";
-import { isUpdateActionable, notIgnored, updateStateOf } from "../lib/updateState";
+import {
+  isUpdateActionable,
+  notHidden,
+  updateStateOf,
+  withSkippedVersion,
+} from "../lib/updateState";
 import type { UpdateState } from "../lib/updateState";
 
 // The virtualizer's first guesses: a row, and a source's heading when it
@@ -205,11 +211,13 @@ export function UpdatesPage() {
   // write state; every async continuation checks `isCurrent` after `await`.
   const batchIdRef = useRef(0);
 
-  // `notIgnored` (src/lib/updateState.ts), which the Installed page's
-  // badge reads too.
+  // Every update the user has not hidden, with "Never remind me" or "Skip
+  // this version": `notHidden`, the rule in src/lib/updateState.ts that
+  // the Installed page's badge reads too. Everything below that lists,
+  // counts or selects a row starts from this list.
   const visibleUpdates = useMemo(() => {
     if (!snapshot || !settings) return [];
-    return notIgnored(snapshot.updates, settings.ignored_updates);
+    return notHidden(snapshot.updates, settings);
   }, [snapshot, settings]);
 
   // A candidate carries no adapter of its own; the only route from an
@@ -361,7 +369,7 @@ export function UpdatesPage() {
 
   // Only rows that are selected, still visible *and* still actionable
   // count. The store keeps a selection for a row that has since been
-  // ignored; without this intersection "Update selected" would be enabled
+  // hidden; without this intersection "Update selected" would be enabled
   // for nothing and open an empty dialog. Actionability is in the same
   // intersection because a selection outlives the row that made it: a
   // candidate selected while it was actionable stays selected after a
@@ -729,20 +737,34 @@ export function UpdatesPage() {
     setBatch(anyFailed ? { id, phase: "done", items } : null);
   }
 
-  function ignore(candidate: UpdateCandidate) {
-    // One save at a time. A second Ignore while the first is pending would
-    // build its settings from the same stale base, and the later save would
-    // overwrite the earlier one. The buttons are disabled meanwhile; this
-    // guard covers a click that was already queued.
+  // What a row's two hiding buttons share: `next` builds the settings to
+  // save from the ones on screen.
+  function hide(candidate: UpdateCandidate, next: (current: Settings) => Settings) {
+    // One save at a time. A second click while the first save is pending
+    // would build its settings from the same stale base, and the later save
+    // would overwrite the earlier one. The buttons are disabled meanwhile;
+    // this guard covers a click that was already queued.
     if (!settings || saveSettings.isPending) return;
     if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
       toggleUpdate(candidate.key);
     }
-    saveSettings.mutate({
-      ...settings,
-      ignored_updates: [...settings.ignored_updates, candidate.key],
-    });
+    saveSettings.mutate(next(settings));
   }
+
+  // "Skip this version": hides this update until the source offers another
+  // version (`withSkippedVersion`, `hidingRule`).
+  const skipVersion = (candidate: UpdateCandidate) =>
+    hide(candidate, (current) => ({
+      ...current,
+      skipped_versions: withSkippedVersion(current.skipped_versions, candidate),
+    }));
+
+  // "Never remind me": hides every update of this package, now and later.
+  const neverRemind = (candidate: UpdateCandidate) =>
+    hide(candidate, (current) => ({
+      ...current,
+      ignored_updates: [...current.ignored_updates, candidate.key],
+    }));
 
   // Above every early return: hooks cannot be called conditionally, and
   // three of the returns below are reached before the list is drawn.
@@ -765,7 +787,8 @@ export function UpdatesPage() {
   }
 
   // Two different kinds of empty: the backend found no updates, or it found
-  // some and every one is on the ignore list. Only the first can mean the
+  // some and the user has hidden every one (skipped the version it offers,
+  // or asked never to be reminded about it). Only the first can mean the
   // machine is up to date -- and only when every source actually answered.
   //
   // The notices go *above* the early return, not after it. "Everything is
@@ -799,7 +822,7 @@ export function UpdatesPage() {
     return (
       <div className="p-4">
         <SourceNotices notices={instanceNotices} />
-        <p className="text-sm text-[var(--color-muted)]">{t("updates.allIgnored")}</p>
+        <p className="text-sm text-[var(--color-muted)]">{t("updates.allHidden")}</p>
       </div>
     );
   }
@@ -901,15 +924,38 @@ export function UpdatesPage() {
               }
             : undefined
         }
+        // The two ways to stop seeing this update, the lighter one first:
+        // "Skip this version" hides it until the source offers another
+        // version, "Never remind me" hides every update of this package
+        // until the user undoes it in Settings. The one "Ignore" button
+        // they replace did not say which of the two it did. Each button's
+        // title -- a tooltip on hover, and its accessible description --
+        // says what it does. A row Canager could not check has no version
+        // to skip: its `target` is its installed version, not one the
+        // source offered (`hidingRule`), so it gets only "Never remind me".
         secondaryContent={
-          <button
-            type="button"
-            onClick={() => ignore(candidate)}
-            disabled={saveSettings.isPending}
-            className="shrink-0 text-xs text-[var(--color-muted)] underline disabled:opacity-50"
-          >
-            {t("updates.ignore")}
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-0.5">
+            {candidate.checkable ? (
+              <button
+                type="button"
+                onClick={() => skipVersion(candidate)}
+                disabled={saveSettings.isPending}
+                title={t("updates.skipVersionHint")}
+                className="text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+              >
+                {t("updates.skipVersion")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => neverRemind(candidate)}
+              disabled={saveSettings.isPending}
+              title={t("updates.neverRemindHint")}
+              className="text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+            >
+              {t("updates.neverRemind")}
+            </button>
+          </div>
         }
       />
     );
@@ -928,7 +974,7 @@ export function UpdatesPage() {
       ))}
       {saveSettings.isError ? (
         <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
-          {t("updates.ignoreFailed", {
+          {t("updates.saveChoiceFailed", {
             message: settingsSaveErrorMessage(t, saveSettings.error.message),
           })}
         </p>
@@ -967,9 +1013,10 @@ export function UpdatesPage() {
           {/* Select all and Invert selection act on the rows that show a
               checkbox (`actionableUpdates`) and on no others. A row in any
               other `UpdateState` -- read-only, could not be checked,
-              blocked, its source not answering -- has no checkbox, and an
-              ignored row is not listed at all, so neither button selects
-              one. `selectUpdates` and `invertUpdateSelection` change only
+              blocked, its source not answering -- has no checkbox, and a
+              row the user hid (skipped, or never to be reminded about) is
+              not listed at all, so neither button selects one.
+              `selectUpdates` and `invertUpdateSelection` change only
               the ids they are handed, so a row selected before a refresh
               took its checkbox away keeps its id in `selectedUpdates`,
               where `selectedVisible` already leaves it out. The words on

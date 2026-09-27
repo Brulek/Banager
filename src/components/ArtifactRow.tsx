@@ -28,7 +28,7 @@ export interface ArtifactRowProps {
   onPrimaryAction?: () => void;
   primaryActionDisabled?: boolean;
   selectable?: ArtifactRowSelectable;
-  /** Extra inline content between the description and the badge (Task 12 uses this for an Ignore link). */
+  /** Extra inline content between the description and the badge (the Updates page's Skip this version and Never remind me buttons). */
   secondaryContent?: ReactNode;
   /**
    * Let the description use as many lines as it needs instead of being cut

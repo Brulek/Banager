@@ -348,10 +348,24 @@ export interface UnknownScan {
   stopped: ScanStop | null;
 }
 export type Language = "System" | "En" | "ZhCn";
+/**
+ * One update the user skipped with "Skip this version": `key`'s update to
+ * `version`, the `UpdateCandidate.target` its row offered. Mirrors
+ * `SkippedVersion` in crates/canager-core/src/settings.rs, whose shape test
+ * `types.test.ts` repeats. Hides that update only while the source still
+ * offers `version` (`hidingRule` in src/lib/updateState.ts); an Ollama
+ * model's `version` is a digest, never shown (`shownSkippedVersion`).
+ */
+export interface SkippedVersion {
+  key: ArtifactKey;
+  version: string;
+}
 export interface Settings {
   language: Language;
   show_technical_details: boolean;
+  /** "Never remind me": every update of each of these is hidden. */
   ignored_updates: ArtifactKey[];
+  skipped_versions: SkippedVersion[];
   include_self_updating: boolean;
 }
 export type Stream = "Stdout" | "Stderr";

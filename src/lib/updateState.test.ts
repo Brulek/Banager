@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { isUpdateActionable, notIgnored, updateStateOf } from "./updateState";
-import type { ManagerInstance, UpdateCandidate } from "./types";
+import {
+  hidingRule,
+  isUpdateActionable,
+  notHidden,
+  shownSkippedVersion,
+  updateStateOf,
+  withSkippedVersion,
+} from "./updateState";
+import type { HidingSettings } from "./updateState";
+import type { ArtifactKey, ManagerInstance, UpdateCandidate } from "./types";
 
 const brew: ManagerInstance = {
   id: "brew:/opt/homebrew",
@@ -73,14 +81,129 @@ describe("updateStateOf", () => {
   });
 });
 
-describe("notIgnored", () => {
-  it("drops exactly the ignored keys, matching instance, kind and name", () => {
+function hiding(over: Partial<HidingSettings> = {}): HidingSettings {
+  return { ignored_updates: [], skipped_versions: [], ...over };
+}
+
+const qwenKey: ArtifactKey = {
+  instance_id: "ollama:127.0.0.1:11434",
+  kind: "Model",
+  name: "qwen3:8b",
+};
+
+describe("hidingRule", () => {
+  const formula = candidate();
+  const cask = candidate({ key: { instance_id: brew.id, kind: "Cask", name: "glib" } });
+  const otherPrefix = candidate({
+    key: { instance_id: "brew:/usr/local", kind: "Formula", name: "glib" },
+  });
+
+  it("hides every version of a package the user is never reminded about, matching instance, kind and name", () => {
+    const hiddenBy = hidingRule(hiding({ ignored_updates: [formula.key] }));
+    expect(hiddenBy(formula)).toBe("ignored");
+    expect(hiddenBy(candidate({ target: "3.0.0" }))).toBe("ignored");
+    expect(hiddenBy(cask)).toBeNull();
+    expect(hiddenBy(otherPrefix)).toBeNull();
+  });
+
+  it("hides a skipped version only while the source still offers that version", () => {
+    const hiddenBy = hidingRule(
+      hiding({ skipped_versions: [{ key: formula.key, version: "2.90.0" }] }),
+    );
+    expect(hiddenBy(formula)).toBe("skipped");
+    // The source has moved on: the skip no longer matches and the row is
+    // listed again, with the version it offers now.
+    expect(hiddenBy(candidate({ target: "2.92.0" }))).toBeNull();
+    // The same version of another package is that package's own update.
+    expect(hiddenBy({ ...cask, target: "2.90.0" })).toBeNull();
+    expect(hiddenBy({ ...otherPrefix, target: "2.90.0" })).toBeNull();
+  });
+
+  it("never lets a skip hide a row Canager could not check", () => {
+    // An uncheckable candidate's `target` is its installed version
+    // (`uncheckable_candidate` in crates/canager-core/src/adapters/mod.rs),
+    // not one the source offered. glib 2.90.0 was skipped, glib was later
+    // brought to 2.90.0 some other way, and now its lookup fails: that row
+    // says Canager could not check it, and a skip of an offered 2.90.0 must
+    // not hide it.
+    const hiddenBy = hidingRule(
+      hiding({ skipped_versions: [{ key: formula.key, version: "2.90.0" }] }),
+    );
+    expect(
+      hiddenBy(candidate({ current: "2.90.0", target: "2.90.0", checkable: false })),
+    ).toBeNull();
+  });
+
+  it("calls a package that is both never reminded about and skipped ignored", () => {
+    // "Never remind me" holds for every version, the skip for one.
+    const hiddenBy = hidingRule(
+      hiding({
+        ignored_updates: [formula.key],
+        skipped_versions: [{ key: formula.key, version: "2.90.0" }],
+      }),
+    );
+    expect(hiddenBy(formula)).toBe("ignored");
+  });
+
+  it("matches a skipped Ollama build by the digest the row offered", () => {
+    // `target` is the registry manifest's config digest; the skip stored the
+    // same kind of digest, so this compares like with like (never `current`,
+    // a digest from another hash space).
+    const offered = candidate({
+      key: qwenKey,
+      current: "5642e97495e1",
+      target: "sha256:9f1c0b6d2e4a",
+      channel: "Digest",
+    });
+    const hiddenBy = hidingRule(
+      hiding({ skipped_versions: [{ key: qwenKey, version: "sha256:9f1c0b6d2e4a" }] }),
+    );
+    expect(hiddenBy(offered)).toBe("skipped");
+    expect(hiddenBy({ ...offered, target: "sha256:0a1b2c3d4e5f" })).toBeNull();
+  });
+});
+
+describe("notHidden", () => {
+  it("lists exactly the candidates the rule does not hide", () => {
     const formula = candidate();
     const cask = candidate({ key: { instance_id: brew.id, kind: "Cask", name: "glib" } });
-    const otherPrefix = candidate({
-      key: { instance_id: "brew:/usr/local", kind: "Formula", name: "glib" },
+    const jq = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "jq" } });
+    const settings = hiding({
+      ignored_updates: [formula.key],
+      skipped_versions: [{ key: cask.key, version: cask.target }],
     });
-    expect(notIgnored([formula, cask, otherPrefix], [formula.key])).toEqual([cask, otherPrefix]);
-    expect(notIgnored([formula], [])).toEqual([formula]);
+    expect(notHidden([formula, cask, jq], settings)).toEqual([jq]);
+    expect(notHidden([formula, cask, jq], hiding())).toEqual([formula, cask, jq]);
+  });
+});
+
+describe("withSkippedVersion", () => {
+  it("records the version the row offers", () => {
+    expect(withSkippedVersion([], candidate())).toEqual([
+      { key: candidate().key, version: "2.90.0" },
+    ]);
+  });
+
+  it("replaces the package's earlier skip, whose version the source no longer offers, and keeps every other", () => {
+    // The row is listed, so an earlier skip of this package no longer
+    // matches what it offers: the source has moved past that version.
+    const onyx: ArtifactKey = { instance_id: brew.id, kind: "Cask", name: "onyx" };
+    const earlier = [
+      { key: candidate().key, version: "2.88.0" },
+      { key: onyx, version: "5.1.0" },
+    ];
+    expect(withSkippedVersion(earlier, candidate())).toEqual([
+      { key: onyx, version: "5.1.0" },
+      { key: candidate().key, version: "2.90.0" },
+    ]);
+  });
+});
+
+describe("shownSkippedVersion", () => {
+  it("shows a skipped version, and never an Ollama model's digest", () => {
+    expect(shownSkippedVersion({ key: candidate().key, version: "2.90.0" })).toBe("2.90.0");
+    expect(
+      shownSkippedVersion({ key: qwenKey, version: "sha256:9f1c0b6d2e4a" }),
+    ).toBeNull();
   });
 });

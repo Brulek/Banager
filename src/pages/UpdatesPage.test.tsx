@@ -243,6 +243,7 @@ beforeEach(() => {
     language: "System",
     show_technical_details: false,
     ignored_updates: [],
+    skipped_versions: [],
     include_self_updating: false,
   };
   updates = snapshot.updates;
@@ -1323,58 +1324,209 @@ describe("UpdatesPage", () => {
     expect(updateSelected).not.toBeDisabled();
   });
 
-  it("removes an item from the list when Ignore is clicked", async () => {
+  // The saved settings of the one `set_settings` call a test expects.
+  function savedSettings(): Settings {
+    const saves = calls("set_settings");
+    expect(saves).toHaveLength(1);
+    return (saves[0][1] as { settings: Settings }).settings;
+  }
+
+  it("hides the row when Never remind me is clicked, and saves its package, not a version", async () => {
     const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
 
     await findByText("glib");
-    const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
-    fireEvent.click(ignoreButtons[0]);
+    fireEvent.click((await findAllByRole("button", { name: "Never remind me" }))[0]);
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    expect(savedSettings().ignored_updates).toEqual([glibKey]);
+    expect(savedSettings().skipped_versions).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
   });
 
-  it("disables every Ignore while a save is pending so a second click cannot overwrite the first", async () => {
+  it("hides the row when Skip this version is clicked, and saves the version it offers", async () => {
+    const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    fireEvent.click((await findAllByRole("button", { name: "Skip this version" }))[0]);
+
+    await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
+    expect(savedSettings().skipped_versions).toEqual([{ key: glibKey, version: "2.90.0" }]);
+    expect(savedSettings().ignored_updates).toEqual([]);
+    expect(queryByText("onyx")).toBeInTheDocument();
+  });
+
+  it("replaces a package's earlier skip when its next version is skipped", async () => {
+    // glib 2.89.0 was skipped; the source now offers 2.90.0, so the row is
+    // back. Skipping it again records 2.90.0 in place of 2.89.0, which
+    // could never hide anything again; onyx's skip is left as it was.
+    settings.skipped_versions = [
+      { key: glibKey, version: "2.89.0" },
+      { key: onyxKey, version: "5.0.9" },
+    ];
+    const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    fireEvent.click((await findAllByRole("button", { name: "Skip this version" }))[0]);
+
+    await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
+    expect(savedSettings().skipped_versions).toEqual([
+      { key: onyxKey, version: "5.0.9" },
+      { key: glibKey, version: "2.90.0" },
+    ]);
+  });
+
+  it("lists a skipped package again once its source offers another version", async () => {
+    settings.skipped_versions = [{ key: glibKey, version: "2.89.0" }];
+    const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("glib");
+    await findByText("2 updates available");
+    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+  });
+
+  it("leaves a skipped row out of the headline, Select all and Update selected, even one selected before", async () => {
+    settings.skipped_versions = [{ key: glibKey, version: "2.90.0" }];
+    act(() => {
+      useUiStore.getState().toggleUpdate(glibKey);
+    });
+    const { findByText, queryByText, getByRole, findByRole } = renderWithProviders(
+      <UpdatesPage />,
+    );
+
+    await findByText("onyx");
+    expect(queryByText("glib")).not.toBeInTheDocument();
+    expect(await findByText("1 update available")).toBeInTheDocument();
+    // glib's selection outlived its row, and counts for nothing.
+    expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+
+    fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
+    fireEvent.click(getByRole("button", { name: "Update selected" }));
+    await findByRole("dialog");
+    expect(
+      calls("plan_operation").map(([, args]) => (args as { request: OpRequest }).request.name),
+    ).toEqual(["onyx"]);
+  });
+
+  it("offers Never remind me but no Skip this version on a row Canager could not check", async () => {
+    // An uncheckable row's `target` is its installed version, not one the
+    // source offered, so there is no version to skip.
+    updates = [
+      snapshot.updates[0],
+      {
+        key: myForkKey,
+        current: "0.1.0",
+        target: "0.1.0",
+        channel: "Registry",
+        checkable: false,
+        warnings: ["NonRegistrySource"],
+        blocked: null,
+      },
+    ];
+    const { findByText, getAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    const myFork = (await findByText("my-fork")).parentElement?.parentElement as HTMLElement;
+    const glib = (await findByText("glib")).parentElement?.parentElement as HTMLElement;
+    expect(within(myFork).getByRole("button", { name: "Never remind me" })).toBeInTheDocument();
+    expect(within(myFork).queryByRole("button", { name: "Skip this version" })).toBeNull();
+    expect(within(glib).getByRole("button", { name: "Skip this version" })).toBeInTheDocument();
+    expect(getAllByRole("button", { name: "Skip this version" })).toHaveLength(1);
+  });
+
+  it("skips an Ollama model's newer build by its digest without ever printing the digest", async () => {
+    settings.show_technical_details = true;
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    const digest = "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b";
+    updates = [
+      {
+        key: qwenKey,
+        current: "5642e97495e1a0888838ee1b3b1a0b1c6a0f0f5e6c2d4a8b9e7c3d1f0a2b4c6d",
+        target: digest,
+        channel: "Digest",
+        checkable: true,
+        warnings: [],
+        blocked: null,
+      },
+    ];
+    const { findByText, getByRole, container } = renderWithProviders(<UpdatesPage />);
+
+    await findByText("qwen3:8b");
+    fireEvent.click(getByRole("button", { name: "Skip this version" }));
+
+    await findByText(
+      "No pending updates — you've skipped the rest or asked not to be reminded about them.",
+    );
+    expect(savedSettings().skipped_versions).toEqual([{ key: qwenKey, version: digest }]);
+    expect(container.textContent).not.toMatch(/sha256|5642e974/);
+  });
+
+  it("says on each button what it will do", async () => {
+    const { findAllByRole } = renderWithProviders(<UpdatesPage />);
+
+    const skip = (await findAllByRole("button", { name: "Skip this version" }))[0];
+    const never = (await findAllByRole("button", { name: "Never remind me" }))[0];
+    expect(skip).toHaveAccessibleDescription(
+      "You'll be reminded again when its next version is out.",
+    );
+    expect(never).toHaveAccessibleDescription(
+      "You won't be reminded about any update of this again. You can undo this in Settings.",
+    );
+  });
+
+  it("calls them 跳过这个版本 and 不再提醒 in Chinese, and says what each does", () => {
+    expect(zhCN.updates.skipVersion).toBe("跳过这个版本");
+    expect(zhCN.updates.skipVersionHint).toBe("你会在它出下一个版本时再看到提醒。");
+    expect(zhCN.updates.neverRemind).toBe("不再提醒");
+    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个软件的任何更新，可在设置里撤销。");
+  });
+
+  it("disables both buttons on every row while a save is pending so a second click cannot overwrite the first", async () => {
     holdSaves = true;
     const { findByText, queryByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
 
     await findByText("glib");
-    const ignoreButtons = await findAllByRole("button", { name: "Ignore" });
-    fireEvent.click(ignoreButtons[0]);
+    const skipButtons = await findAllByRole("button", { name: "Skip this version" });
+    const neverButtons = await findAllByRole("button", { name: "Never remind me" });
+    fireEvent.click(skipButtons[0]);
 
-    // Both buttons lock until the first save settles. A second Ignore now
+    // Every button locks until the first save settles. A second click now
     // would build its settings from the same stale base, and the later save
     // would drop the earlier one.
-    await waitFor(() => expect(ignoreButtons[1]).toBeDisabled());
-    expect(ignoreButtons[0]).toBeDisabled();
-    fireEvent.click(ignoreButtons[1]);
+    await waitFor(() => expect(skipButtons[1]).toBeDisabled());
+    for (const button of [...skipButtons, ...neverButtons]) expect(button).toBeDisabled();
+    fireEvent.click(skipButtons[1]);
+    fireEvent.click(neverButtons[1]);
     expect(calls("set_settings")).toHaveLength(1);
 
     releaseSave[0]();
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     await findByText("onyx");
-    await waitFor(() => expect(ignoreButtons[1]).not.toBeDisabled());
+    await waitFor(() => expect(skipButtons[1]).not.toBeDisabled());
+    expect(neverButtons[1]).not.toBeDisabled();
     expect(calls("set_settings")).toHaveLength(1);
   });
 
-  it("shows the backend's message when saving the ignore list fails", async () => {
+  it("shows the backend's message when saving the choice fails", async () => {
     saveFailure = "settings.json is read-only";
     const { findByText, findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     await findByText("glib");
-    fireEvent.click((await findAllByRole("button", { name: "Ignore" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: "Skip this version" }))[0]);
 
     expect(await findByRole("alert")).toHaveTextContent(
-      "Couldn't save the ignored updates: settings.json is read-only",
+      "Couldn't save that choice: settings.json is read-only",
     );
     // Nothing was saved, so nothing disappears.
     expect(await findByText("glib")).toBeInTheDocument();
   });
 
-  it("says every update is ignored — not that everything is up to date — once all are ignored", async () => {
-    settings.ignored_updates = [glibKey, onyxKey];
+  it("says every update is hidden — not that everything is up to date — once each is skipped or never reminded about", async () => {
+    settings.ignored_updates = [glibKey];
+    settings.skipped_versions = [{ key: onyxKey, version: "5.1.0" }];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("No pending updates — everything else is ignored.");
+    await findByText(
+      "No pending updates — you've skipped the rest or asked not to be reminded about them.",
+    );
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
 
@@ -2012,11 +2164,13 @@ describe("UpdatesPage", () => {
     const jq = brewCandidate("jq");
     const wget: Snapshot["updates"][number] = { ...brewCandidate("wget"), blocked: "Pinned" };
     const tree = brewCandidate("tree");
+    const curl = brewCandidate("curl");
 
-    // A row in each of the five `UpdateState`s, and an ignored row the page
-    // does not list. Only glib, onyx and jq have a checkbox: wget is
-    // pinned, my-fork could not be checked, urllib3 is pip's (read-only),
-    // qwen3:8b's Ollama is not running, and tree is ignored.
+    // A row in each of the five `UpdateState`s, and two rows the page does
+    // not list. Only glib, onyx and jq have a checkbox: wget is pinned,
+    // my-fork could not be checked, urllib3 is pip's (read-only), qwen3:8b's
+    // Ollama is not running, tree is never reminded about, and the version
+    // curl offers was skipped.
     function listEveryKindOfRow() {
       instances = [...snapshot.instances, stoppedOllama];
       updates = [
@@ -2024,6 +2178,7 @@ describe("UpdatesPage", () => {
         jq,
         wget,
         tree,
+        curl,
         {
           key: myForkKey,
           current: "0.1.0",
@@ -2053,6 +2208,7 @@ describe("UpdatesPage", () => {
         },
       ];
       settings.ignored_updates = [tree.key];
+      settings.skipped_versions = [{ key: curl.key, version: curl.target }];
     }
 
     // The selection as a sorted list of ids: these tests are about which
@@ -2121,12 +2277,13 @@ describe("UpdatesPage", () => {
       expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
     });
 
-    it("never selects an ignored row, and leaves a pinned row's earlier selection as it was", async () => {
+    it("never selects a row the page does not list, and leaves a pinned row's earlier selection as it was", async () => {
       // wget was selected while it could still be updated; a refresh since
       // says it is pinned, so it has no checkbox. Neither button may take it
-      // out of the selection or put the ignored tree into it: they act on
-      // the rows with a checkbox and nothing else. Update selected still
-      // leaves wget out of the batch (`isActionable`).
+      // out of the selection or put tree (never reminded about) or curl
+      // (skipped) into it: they act on the rows with a checkbox and nothing
+      // else. Update selected still leaves wget out of the batch
+      // (`isActionable`).
       listEveryKindOfRow();
       act(() => {
         useUiStore.getState().toggleUpdate(wget.key);
@@ -2151,8 +2308,8 @@ describe("UpdatesPage", () => {
     });
 
     it("disables both when no listed row has a checkbox", async () => {
-      // tree could be updated but is ignored, so it is not listed; every
-      // row that is listed is one Canager cannot update.
+      // tree and curl could be updated but are hidden, so they are not
+      // listed; every row that is listed is one Canager cannot update.
       listEveryKindOfRow();
       const withCheckbox = ids(glibKey, onyxKey, jq.key);
       updates = updates.filter((u) => !withCheckbox.includes(artifactKeyId(u.key)));

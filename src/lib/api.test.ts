@@ -102,6 +102,7 @@ describe("api", () => {
       language: "System",
       show_technical_details: false,
       ignored_updates: [],
+      skipped_versions: [],
       include_self_updating: false,
     };
     mockInvoke.mockResolvedValueOnce(undefined as never);

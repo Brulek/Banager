@@ -20,8 +20,9 @@ pub type AdapterId = String; // "brew"
 ///
 /// Every id this produces is byte-for-byte what the adapters wrote by hand
 /// before it existed. That matters: ids are persisted, inside the
-/// `ArtifactKey`s of `Settings.ignored_updates`, so changing their shape
-/// would silently un-ignore every update the user had ignored.
+/// `ArtifactKey`s of `Settings.ignored_updates` and
+/// `Settings.skipped_versions`, so changing their shape would silently
+/// bring back every update the user had hidden.
 pub fn instance_id(adapter_id: &str, qualifier: Option<&str>) -> InstanceId {
     debug_assert!(
         !adapter_id.contains(':'),
@@ -962,8 +963,9 @@ mod tests {
 
     #[test]
     fn test_instance_id_reproduces_every_shape_already_persisted() {
-        // Ids live on disk inside `Settings.ignored_updates`; the shared
-        // constructor must not change a single one of them.
+        // Ids live on disk inside `Settings.ignored_updates` and
+        // `Settings.skipped_versions`; the shared constructor must not
+        // change a single one of them.
         assert_eq!(instance_id("pipx", None), "pipx");
         assert_eq!(instance_id("uv", None), "uv");
         assert_eq!(

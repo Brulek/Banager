@@ -1045,7 +1045,7 @@ const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
 
 /**
  * What a rejected `set_settings` should read as, as a phrase for the
- * caller's own frame (`settings.saveError`, `updates.ignoreFailed`) to
+ * caller's own frame (`settings.saveError`, `updates.saveChoiceFailed`) to
  * interpolate. The three reasons a person can act on are worded here;
  * `other` quotes the operating system's own description verbatim inside
  * a translated phrase, since that text is the system's, not Canager's.

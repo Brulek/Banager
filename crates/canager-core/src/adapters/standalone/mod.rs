@@ -270,7 +270,7 @@ impl StandaloneAdapter {
         vec![ManagerInstance {
             // Bare adapter id: one native install per tool is the real
             // cardinality (spec §2.1), and this id is persisted in
-            // `Settings.ignored_updates`.
+            // `Settings.ignored_updates` and `Settings.skipped_versions`.
             id: crate::model::instance_id(&self.meta.id, None),
             adapter_id: self.meta.id.clone(),
             // The launcher itself: the program every plan runs, the path

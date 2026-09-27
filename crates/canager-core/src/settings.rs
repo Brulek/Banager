@@ -9,11 +9,42 @@ pub enum Language {
     ZhCn,
 }
 
+/// One update the user chose to skip with the Updates page's "Skip this
+/// version": `key`'s update to `version`, the `UpdateCandidate.target` the
+/// source offered when they did. It hides that update only while the source
+/// still offers `version`; once it offers another, the row is listed again.
+/// For an Ollama model `version` is a registry manifest's config digest (an
+/// `UpdateChannel::Digest` candidate's target), which the front end never
+/// shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkippedVersion {
+    pub key: ArtifactKey,
+    pub version: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub language: Language,
     pub show_technical_details: bool,
+    /// The packages the user asked, with "Never remind me", never to be
+    /// reminded about: every update of each is hidden, whatever its version.
     pub ignored_updates: Vec<ArtifactKey>,
+    /// The single versions the user skipped with "Skip this version"
+    /// (`SkippedVersion`). `#[serde(default)]` so a settings.json written
+    /// before this field existed still loads with its other fields, instead
+    /// of `load()` falling back to `Settings::default()`.
+    ///
+    /// Neither this nor `ignored_updates` is read anywhere in Rust, and
+    /// neither needs to be: both decide only what the Updates page lists
+    /// (`hidingRule` in src/lib/updateState.ts, which the Installed page's
+    /// badge reads too). `refresh` keeps reporting every candidate, which
+    /// is what lets the Installed page's badge say that an update was
+    /// skipped or its reminders turned off; and `Session::issue_plan` does
+    /// not refuse to upgrade a hidden package, because hiding a reminder is
+    /// not a refusal to update (a pin is one, carried by
+    /// `UpdateCandidate.blocked`) and no page offers the button for one.
+    #[serde(default)]
+    pub skipped_versions: Vec<SkippedVersion>,
     /// Feeds CheckOptions.include_self_updating. Default false: most people
     /// do not want Chrome and Docker listed as updatable when those apps
     /// update themselves. `#[serde(default)]` so a settings.json written by
@@ -30,6 +61,7 @@ impl Default for Settings {
             language: Language::System,
             show_technical_details: false,
             ignored_updates: Vec::new(),
+            skipped_versions: Vec::new(),
             include_self_updating: false,
         }
     }
@@ -90,12 +122,21 @@ mod tests {
         ))
     }
 
+    fn key(name: &str) -> ArtifactKey {
+        ArtifactKey {
+            instance_id: "brew:/opt/homebrew".to_string(),
+            kind: ArtifactKind::Formula,
+            name: name.to_string(),
+        }
+    }
+
     #[test]
     fn test_default_settings_are_the_documented_safe_defaults() {
         let settings = Settings::default();
         assert_eq!(settings.language, Language::System);
         assert!(!settings.show_technical_details);
         assert!(settings.ignored_updates.is_empty());
+        assert!(settings.skipped_versions.is_empty());
     }
 
     #[test]
@@ -109,7 +150,46 @@ mod tests {
         assert!(json.contains("\"language\":\"System\""));
         assert!(json.contains("\"show_technical_details\":false"));
         assert!(json.contains("\"ignored_updates\":[]"));
+        assert!(json.contains("\"skipped_versions\":[]"));
         assert!(json.contains("\"include_self_updating\":false"));
+    }
+
+    #[test]
+    fn test_skipped_versions_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `SkippedVersion` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string: snake_case
+        // fields, the key as the same object `ignored_updates` holds, and
+        // the skipped version as a bare string.
+        let skipped = vec![SkippedVersion {
+            key: key("glib"),
+            version: "2.90.0".to_string(),
+        }];
+        assert_eq!(
+            serde_json::to_string(&skipped).expect("serialize"),
+            r#"[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"glib"},"version":"2.90.0"}]"#
+        );
+    }
+
+    #[test]
+    fn test_load_of_json_missing_skipped_versions_defaults_it_to_empty_and_keeps_the_rest() {
+        // Every settings.json written before Skip this version existed
+        // lacks this field. Without `#[serde(default)]` on it, `load` would
+        // fall back to Settings::default() and silently drop the user's
+        // language, the updates they asked never to be reminded about, and
+        // include_self_updating.
+        let path = temp_settings_path("no-skipped-versions");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"}],"include_self_updating":true}"#,
+        )
+        .expect("write settings.json without skipped_versions");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::ZhCn);
+        assert!(loaded.show_technical_details);
+        assert_eq!(loaded.ignored_updates, vec![key("jq")]);
+        assert!(loaded.include_self_updating);
+        assert!(loaded.skipped_versions.is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -152,10 +232,10 @@ mod tests {
         let settings = Settings {
             language: Language::ZhCn,
             show_technical_details: true,
-            ignored_updates: vec![ArtifactKey {
-                instance_id: "brew:/opt/homebrew".to_string(),
-                kind: ArtifactKind::Formula,
-                name: "jq".to_string(),
+            ignored_updates: vec![key("jq")],
+            skipped_versions: vec![SkippedVersion {
+                key: key("glib"),
+                version: "2.90.0".to_string(),
             }],
             include_self_updating: true,
         };

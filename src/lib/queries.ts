@@ -103,12 +103,13 @@ export function useSaveSettings(): UseMutationResult<void, Error, Settings> {
       // was triggering a refresh, so flipping the switch changed nothing the
       // user could see until the app was restarted. Only this one field is
       // worth re-scanning for: `show_technical_details` and `language` are
-      // rendered from the settings themselves, and `ignored_updates` is
-      // filtered client-side, so refreshing on every save would put a full
-      // scan of every source behind each Ignore click on the Updates page
-      // (which shares this mutation). A failed refresh is swallowed: the
-      // save itself did succeed, and the snapshot's own stale/errors fields
-      // are what report a bad refresh.
+      // rendered from the settings themselves, and `ignored_updates` and
+      // `skipped_versions` are filtered client-side, so refreshing on every
+      // save would put a full scan of every source behind each Skip this
+      // version or Never remind me click on the Updates page (which shares
+      // this mutation). A failed refresh is swallowed: the save itself did
+      // succeed, and the snapshot's own stale/errors fields are what report
+      // a bad refresh.
       if (previous && previous.include_self_updating !== settings.include_self_updating) {
         return refreshIntoCache(queryClient, "include_self_updating changed").catch(() => {});
       }
