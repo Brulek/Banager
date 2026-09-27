@@ -142,6 +142,30 @@ describe("UninstallDialog", () => {
     expect(within(item as HTMLElement).getByText("H")).toHaveAttribute("aria-hidden", "true");
   });
 
+  it("shows an app's own icon beside its name, as its row does, once the icon arrives", async () => {
+    const icon = "data:image/png;base64,iVBORw0KGgo=";
+    const itermRequest: OpRequest = { ...request, artifact_kind: "Cask", name: "iterm2" };
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshotWith([brewInstance()]);
+      if (cmd === "plan_operation") return issuedPlanFor({ request: itermRequest });
+      if (cmd === "artifact_icon") return icon;
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={itermRequest} displayName="iTerm2" />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall iTerm2?" });
+    const item = within(dialog).getByText("iTerm2", { selector: "p" }).closest("[data-sheet-tool]") as HTMLElement;
+    await waitFor(() => expect(item.querySelector("img[data-app-icon]")).toHaveAttribute("src", icon));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("artifact_icon", {
+      key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" },
+    });
+    // In place of the source's initial, not beside it.
+    expect(within(item).queryByText("H")).toBeNull();
+  });
+
   it("puts the focus on Cancel as it opens, and gives Uninstall the danger colour", async () => {
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor());
 

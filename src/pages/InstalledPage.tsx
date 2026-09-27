@@ -24,6 +24,7 @@ import { Drawer } from "../components/ui/Drawer";
 import { SourceNotices } from "../components/SourceNotices";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { SourceAvatar } from "../components/SourceAvatar";
+import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
@@ -604,6 +605,8 @@ export function InstalledPage() {
       <ToolRow
         adapterId={instance.adapter_id}
         sourceLabel={label}
+        // A cask's row shows its app's own icon once it arrives.
+        iconKey={artifact.key}
         name={name}
         // A tool with its own installer is its own source: the chip would
         // only say its name again.
@@ -731,7 +734,7 @@ export function InstalledPage() {
         }}
         title={name}
         subtitle={label === name ? undefined : label}
-        leading={<SourceAvatar adapterId={instance.adapter_id} label={label} size="md" />}
+        leading={<ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} />}
         description={describe(artifact, instance, label)}
         closeLabel={t("common.close")}
         onCloseAutoFocus={(event) => {

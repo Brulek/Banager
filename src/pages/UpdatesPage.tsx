@@ -601,6 +601,8 @@ export function UpdatesPage() {
       <ToolRow
         adapterId={adapterId}
         sourceLabel={source}
+        // A cask's row shows its app's own icon once it arrives.
+        iconKey={candidate.key}
         name={name}
         // A tool with its own installer is its own source: the chip would
         // only say its name again.

@@ -415,6 +415,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               key={artifactKeyId(key)}
               adapterId={adapterId}
               sourceLabel={adapterLabel(t, adapterId)}
+              iconKey={key}
               name={item.name}
               // A model's "newer build" is a sentence, not a number: under the name.
               aside={digest ? null : jump}

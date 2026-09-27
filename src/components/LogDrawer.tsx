@@ -18,7 +18,7 @@ import { adapterIdOf, adapterLabel } from "../lib/sources";
 import { Drawer } from "./ui/Drawer";
 import { SHEET_BUTTON } from "./ui/Dialog";
 import { ScrollArea } from "./ui/ScrollArea";
-import { SourceAvatar } from "./SourceAvatar";
+import { ToolAvatar } from "./ToolAvatar";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { SpinnerIcon } from "./icons";
 
@@ -109,8 +109,9 @@ export function LogDrawer() {
 
   /** The header, the next step and the foot for one operation. */
   function partsOf(op: OpSummary) {
-    // The source's avatar, as on the tool's row: its adapter from the
-    // snapshot, or from the id for a source the snapshot no longer has.
+    // The avatar the tool's row has -- its app's icon, or its source's:
+    // the adapter from the snapshot, or from the id for a source the
+    // snapshot no longer has.
     const adapterId =
       snapshot?.instances?.find((instance) => instance.id === op.instance_id)?.adapter_id ??
       adapterIdOf(op.instance_id);
@@ -119,7 +120,13 @@ export function LogDrawer() {
     const cancel = cancelState(op);
     return {
       title: t("operations.title", { kind: t(OP_KIND_KEYS[op.kind]), name: nameOf(op) }),
-      leading: <SourceAvatar adapterId={adapterId} label={adapterLabel(t, adapterId)} size="md" />,
+      leading: (
+        <ToolAvatar
+          adapterId={adapterId}
+          sourceLabel={adapterLabel(t, adapterId)}
+          iconKey={{ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }}
+        />
+      ),
       // Where it stands while under way; once done, how it ended.
       subtitle:
         status !== null ? (

@@ -1,8 +1,10 @@
 import type { MouseEvent } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, waitFor } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { RowAction, ToolRow } from "./ToolRow";
+import type { ArtifactKey } from "../lib/types";
 
 /** The classes a class list holds with no state prefix: how it looks at rest. */
 function atRest(className: string): string[] {
@@ -190,5 +192,74 @@ describe("ToolRow", () => {
     expect(row.querySelector('[data-testid="own-avatar"]')).not.toBeNull();
     // No source's letter or colour beside it.
     expect(row.querySelector('[class*="bg-source-"]')).toBeNull();
+  });
+});
+
+describe("ToolRow's app icon", () => {
+  const iterm: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" };
+  const jq: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
+  const ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==";
+  const mockInvoke = vi.mocked(invoke);
+
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  /** The row's avatar: the first thing in it hidden from a screen reader. */
+  function avatarOf(container: HTMLElement): Element {
+    return (container.querySelector("[data-tool-row]") as HTMLElement).querySelector('[aria-hidden="true"]') as Element;
+  }
+
+  it("shows a cask's own app icon once it arrives, and the source's letter until then", async () => {
+    let answer: (icon: string | null) => void = () => {};
+    mockInvoke.mockImplementation(
+      (cmd: string) =>
+        new Promise((resolve) => {
+          if (cmd === "artifact_icon") answer = resolve;
+        }),
+    );
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={iterm} name="iTerm2" description="Terminal emulator" />,
+    );
+
+    // Asked, and not here yet: the coloured initial stands in.
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("artifact_icon", { key: iterm }));
+    expect(avatarOf(container)).toHaveTextContent("H");
+    expect(avatarOf(container).className).toContain("bg-source-homebrew");
+
+    await act(async () => answer(ICON));
+
+    await waitFor(() => expect(avatarOf(container).tagName).toBe("IMG"));
+    const icon = avatarOf(container);
+    expect(icon).toHaveAttribute("src", ICON);
+    expect(icon).toHaveAttribute("alt", "");
+    // A row avatar's size, rounded like an app icon, with nothing coloured behind it.
+    expect(icon.className).toContain("h-8");
+    expect(icon.className).toContain("rounded-[7px]");
+    expect(icon.className).not.toMatch(/\bbg-/);
+    expect(container.textContent).not.toContain("H");
+  });
+
+  it("keeps the source's letter for a cask that has no icon", async () => {
+    mockInvoke.mockImplementation((cmd: string) => Promise.resolve(cmd === "artifact_icon" ? null : undefined));
+    const { container, queryClient } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={iterm} name="iTerm2" description="Terminal emulator" />,
+    );
+
+    await waitFor(() => expect(queryClient.getQueryState(["artifactIcon", "brew:/opt/homebrew", "Cask", "iterm2"])?.status).toBe("success"));
+    expect(avatarOf(container).tagName).toBe("SPAN");
+    expect(avatarOf(container)).toHaveTextContent("H");
+  });
+
+  it("asks nothing for a row that is not a cask, or that names no tool", () => {
+    mockInvoke.mockResolvedValue(ICON);
+    const formula = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" iconKey={jq} name="jq" description="JSON processor" />,
+    );
+    expect(avatarOf(formula.container)).toHaveTextContent("H");
+    formula.unmount();
+    renderWithProviders(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" />);
+
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

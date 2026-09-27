@@ -245,7 +245,13 @@ export function UninstallDialog({
       }
     >
       <ul>
-        <SheetTool adapterId={adapterId} sourceLabel={sourceLabel} name={displayName} aside={version} />
+        <SheetTool
+          adapterId={adapterId}
+          sourceLabel={sourceLabel}
+          iconKey={{ instance_id: request.instance_id, kind: request.artifact_kind, name: request.name }}
+          name={displayName}
+          aside={version}
+        />
       </ul>
 
       {planMutation.isPending ? (

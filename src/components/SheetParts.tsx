@@ -6,14 +6,17 @@
  */
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import type { ArtifactKey } from "../lib/types";
 import type { WarningLine } from "../lib/warnings";
 import { InfoDetail } from "./InfoDetail";
-import { SourceAvatar } from "./SourceAvatar";
+import { ToolAvatar } from "./ToolAvatar";
 
 export interface SheetToolProps {
   /** The source's adapter id and name, for the avatar -- the one a row has (`ToolRow`). */
   adapterId: string;
   sourceLabel: string;
+  /** The tool's key, for a cask's app icon in place of the source's initial, as on its row. */
+  iconKey?: ArtifactKey;
   name: string;
   /** On the right: the version it has, or the one it moves to. */
   aside?: ReactNode;
@@ -22,15 +25,15 @@ export interface SheetToolProps {
 }
 
 /**
- * One tool a sheet is about, as its row shows it: the source's avatar, the
+ * One tool a sheet is about, as its row shows it: its avatar, the
  * name -- with the source's name under it, unless the tool is its own
  * source -- and a version on the right. A list item: the sheet lists one
  * for an uninstall, and one per tool for an update.
  */
-export function SheetTool({ adapterId, sourceLabel, name, aside, children }: SheetToolProps) {
+export function SheetTool({ adapterId, sourceLabel, iconKey, name, aside, children }: SheetToolProps) {
   return (
     <li data-sheet-tool="" className="flex items-start gap-3 py-1.5">
-      <SourceAvatar adapterId={adapterId} label={sourceLabel} size="md" />
+      <ToolAvatar adapterId={adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
       <div className="min-w-0 flex-1">
         <div className="flex min-h-8 items-center gap-3">
           <div className="min-w-0 flex-1">

@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
-import { SourceAvatar } from "./SourceAvatar";
+import type { ArtifactKey } from "../lib/types";
+import { ToolAvatar } from "./ToolAvatar";
 
 /**
  * How a row's own button looks: `accent` for what the row recommends --
@@ -42,13 +43,15 @@ export interface ToolRowSelectable {
 }
 
 /**
- * What stands at the start of a row: the source's avatar, by its adapter
- * id and name -- the colour and the letter -- or, for a row that belongs
- * to no source, such as the Unknown page's, an avatar of its own.
+ * What stands at the start of a row: the tool's avatar (`ToolAvatar`) --
+ * its app's own icon for a cask, by `iconKey`, and otherwise the source's,
+ * by its adapter id and name, the colour and the letter -- or, for a row
+ * that belongs to no source, such as the Unknown page's, an avatar of its
+ * own.
  */
 export type ToolRowAvatarProps =
-  | { adapterId: string; sourceLabel: string; avatar?: never }
-  | { avatar: ReactNode; adapterId?: never; sourceLabel?: never };
+  | { adapterId: string; sourceLabel: string; iconKey?: ArtifactKey; avatar?: never }
+  | { avatar: ReactNode; adapterId?: never; sourceLabel?: never; iconKey?: never };
 
 export type ToolRowProps = ToolRowAvatarProps & ToolRowContentProps;
 
@@ -92,11 +95,12 @@ export interface ToolRowContentProps {
  * (docs/superpowers/2026-09-27-ui-redesign.md, 更新页 and 已安装页), and
  * the Unknown page's programs, with an avatar of their own.
  *
- * The source's avatar, the name with its one line of description under it,
- * then the columns on the right: status chips, the version, the primary
- * action and the ⋯ menu. A column is drawn whenever its prop is given, even
- * as `null`, so rows that leave one empty still line up with rows that
- * fill it; leave the prop out to drop the column altogether.
+ * The avatar -- an app's own icon, or the source's -- the name with its
+ * one line of description under it, then the columns on the right: status
+ * chips, the version, the primary action and the ⋯ menu. A column is drawn
+ * whenever its prop is given, even as `null`, so rows that leave one empty
+ * still line up with rows that fill it; leave the prop out to drop the
+ * column altogether.
  *
  * No borders between rows but a hairline, which gives way to the hover
  * background; `data-tool-row` marks the row for anything that needs to
@@ -110,6 +114,7 @@ export interface ToolRowContentProps {
 export function ToolRow({
   adapterId,
   sourceLabel,
+  iconKey,
   avatar,
   name,
   nameChip,
@@ -148,7 +153,7 @@ export function ToolRow({
           className="relative z-10 h-4 w-4 shrink-0 cursor-pointer"
         />
       ) : null}
-      {avatar ?? <SourceAvatar adapterId={adapterId ?? ""} label={sourceLabel ?? ""} size="md" />}
+      {avatar ?? <ToolAvatar adapterId={adapterId ?? ""} sourceLabel={sourceLabel ?? ""} iconKey={iconKey} />}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <p title={name} className="truncate text-name font-semibold text-foreground">
