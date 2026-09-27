@@ -261,11 +261,8 @@ describe("App", () => {
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
 
-    expect(await findByRole("heading", { name: "Programs Canager can't place" })).toBeInTheDocument();
-    expect(
-      await findByText(
-        "Nothing unexplained: every command-line program Canager found came from a source it knows.",
-      ),
-    ).toBeInTheDocument();
+    // Its title is the page header's; the page adds no second one.
+    expect(await findByRole("heading", { level: 1, name: "Unknown" })).toBeInTheDocument();
+    expect(await findByText("No programs of unknown origin")).toBeInTheDocument();
   });
 });

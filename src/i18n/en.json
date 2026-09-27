@@ -24,6 +24,7 @@
     "cancel": "Cancel",
     "close": "Close",
     "viewLog": "View log",
+    "listSeparator": ", ",
     "checking": "Checking…",
     "retry": "Try again",
     "details": "Details",
@@ -451,31 +452,28 @@
     "other": "your Mac gave this reason: {{detail}}"
   },
   "unknown": {
-    "title": "Programs Canager can't place",
-    "intro": "These command-line programs are on your Mac, but Canager couldn't match them to any source it knows, so it can't tell you how they got here. Canager only lists them — it never runs or deletes anything here.",
-    "lookedIn": "Looked in:",
-    "dirCount_one": "{{path}} ({{count}} item)",
-    "dirCount_other": "{{path}} ({{count}} items)",
-    "attributed_one": "{{count}} more program came from a source Canager knows and is listed under it.",
-    "attributed_other": "{{count}} more programs came from sources Canager knows and are listed under them.",
+    "intro": "Canager can't tell how these command-line programs got here. It only lists them and never runs or deletes them.",
+    "lookedIn": "Looked in: {{folders}}",
+    "attributed_one": "Canager recognized {{count}} more program and doesn't list it here.",
+    "attributed_other": "Canager recognized {{count}} more programs and doesn't list them here.",
     "stopped": {
-      "FileLimit": "Canager stopped after looking at {{count}} items, so this list may be incomplete.",
-      "TimeLimit": "Canager stopped after {{seconds}} seconds, so this list may be incomplete."
+      "FileLimit": "Canager stopped after {{count}} items and didn't check the rest.",
+      "TimeLimit": "Canager stopped after {{seconds}} seconds and didn't check the rest."
     },
     "kind": {
       "File": "Program",
-      "Symlink": "Program (link)",
+      "Symlink": "Link",
       "BrokenSymlink": "Broken link"
     },
-    "brokenLink": "Points at {{target}}, which no longer exists",
+    "brokenLink": "Points to {{target}}, which is gone",
     "linksTo": "Links to {{path}}",
     "partOfApp": "Part of {{app}}",
-    "adminOwned": "Put here by an installer with administrator rights",
+    "adminOwned": "Owned by the system or another account",
     "sizeAndDate": "{{size}} · {{date}}",
     "scanAgain": "Scan again",
     "scanning": "Scanning…",
     "scanFailed": "Couldn't scan: {{message}}",
-    "empty": "Nothing unexplained: every command-line program Canager found came from a source it knows."
+    "empty": "No programs of unknown origin"
   },
   "emptyStates": {
     "loadFailed": {

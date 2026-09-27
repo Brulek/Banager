@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UnknownPage } from "./UnknownPage";
@@ -103,106 +103,162 @@ function dateOf(seconds: number): string {
   );
 }
 
-describe("UnknownPage", () => {
-  it("scans once when it opens and lists each program under its kind badge", async () => {
-    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+/** The row a program's name is on. */
+function rowOf(name: HTMLElement): HTMLElement {
+  return name.closest("[data-tool-row]") as HTMLElement;
+}
 
-    expect(await findByText("standalone-tool")).toBeInTheDocument();
-    expect(getByText("old-script")).toBeInTheDocument();
-    expect(getByText("helper-cli")).toBeInTheDocument();
-    expect(getByText("Program")).toBeInTheDocument();
-    expect(getByText("Broken link")).toBeInTheDocument();
-    expect(getByText("Program (link)")).toBeInTheDocument();
-    // The path is the row's first line, home abbreviated as Rust sent it.
-    expect(getByText("~/.opencode/bin/standalone-tool")).toBeInTheDocument();
+describe("UnknownPage", () => {
+  it("scans once when it opens and lists each program as a row, under the chip for its kind", async () => {
+    const { findByText, getByText, container } = renderWithProviders(<UnknownPage />);
+
+    const tool = rowOf(await findByText("standalone-tool"));
+    const script = rowOf(getByText("old-script"));
+    const helper = rowOf(getByText("helper-cli"));
+    expect(container.querySelectorAll("[data-tool-row]")).toHaveLength(3);
+    expect(within(tool).getByText("Program")).toBeInTheDocument();
+    expect(within(script).getByText("Broken link")).toBeInTheDocument();
+    expect(within(helper).getByText("Link")).toBeInTheDocument();
+    // The path is the row's line under its name, home abbreviated as Rust
+    // sent it.
+    expect(within(tool).getByText("~/.opencode/bin/standalone-tool")).toBeInTheDocument();
     expect(scanCalls()).toBe(1);
   });
 
-  it("explains a broken link and names the app a program runs inside", async () => {
-    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+  it("gives each row a neutral avatar of its own, not a source's", async () => {
+    const { findByText } = renderWithProviders(<UnknownPage />);
 
-    expect(
-      await findByText(
-        "Points at /Applications/Removed.app/Contents/Resources/scripts/index.js, which no longer exists",
-      ),
-    ).toBeInTheDocument();
-    expect(getByText("Part of Removed")).toBeInTheDocument();
-    expect(getByText("Part of Helper")).toBeInTheDocument();
+    const row = rowOf(await findByText("standalone-tool"));
+    const avatar = row.querySelector('[aria-hidden="true"]') as HTMLElement;
+    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).toContain("h-8");
+    expect(avatar.querySelector("svg")).not.toBeNull();
+    expect(avatar.textContent).toBe("");
   });
 
-  it("shows size and date, and says when an installer with administrator rights put it there", async () => {
+  it("keeps what a broken link pointed at and the app a program belongs to behind its chip's ⓘ", async () => {
     const { findByText, getByText, queryByText } = renderWithProviders(<UnknownPage />);
+
+    const script = rowOf(await findByText("old-script"));
+    // One line a row, by default: the explanations are behind the chip.
+    expect(
+      queryByText("Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone"),
+    ).toBeNull();
+    fireEvent.click(within(script).getByRole("button", { name: "Broken link" }));
+    expect(
+      within(script).getByText(
+        "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
+      ),
+    ).toBeInTheDocument();
+    expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
+
+    const helper = rowOf(getByText("helper-cli"));
+    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
+    // Only what can be confirmed: the file is not the user's.
+    expect(within(helper).getByText("Owned by the system or another account")).toBeInTheDocument();
+  });
+
+  it("puts each row in a slot of its own, marked open while its ⓘ is, so the rows after it cannot cover it", async () => {
+    // index.css lifts a `data-list-slot` that holds an open panel over the
+    // slots after it; each is `relative z-0`, a stacking context of its own.
+    const { findByText } = renderWithProviders(<UnknownPage />);
+
+    const row = rowOf(await findByText("old-script"));
+    const slot = row.parentElement as HTMLElement;
+    expect(slot).toHaveAttribute("data-list-slot");
+    expect(slot.className).toContain("relative");
+    fireEvent.click(within(row).getByRole("button", { name: "Broken link" }));
+    expect(slot.querySelector("[data-popup-open]")).not.toBeNull();
+  });
+
+  it("leaves the chip of a plain program of the user's own a plain label, with nothing behind it", async () => {
+    const { findByText } = renderWithProviders(<UnknownPage />);
+
+    const tool = rowOf(await findByText("standalone-tool"));
+    expect(within(tool).queryByRole("button")).toBeNull();
+    expect(within(tool).getByText("Program").tagName).toBe("SPAN");
+  });
+
+  it("shows size and date where a tool's version would be, and nothing there for a broken link", async () => {
+    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
     expect(
       await findByText(`${formatBytes(144_300_000)} · ${dateOf(1_758_000_000)}`),
     ).toBeInTheDocument();
     expect(getByText(`${formatBytes(2_100_000)} · ${dateOf(1_700_000_000)}`)).toBeInTheDocument();
-    // Exactly one row is not the user's own.
-    expect(getByText("Put here by an installer with administrator rights")).toBeInTheDocument();
-    // A broken link has no size and no date, and is not blank either: its
-    // sentence is the broken-link one, tested above.
-    expect(queryByText(/^ · /)).not.toBeInTheDocument();
+    // A broken link has no size and no date, and no stray separator.
+    expect(rowOf(getByText("old-script")).textContent).not.toContain("·");
   });
 
-  it("shows where a link resolves only with technical details on", async () => {
+  it("shows where a link leads only with technical details on", async () => {
     const hidden = renderWithProviders(<UnknownPage />);
-    await hidden.findByText("helper-cli");
+    const hiddenRow = rowOf(await hidden.findByText("helper-cli"));
+    fireEvent.click(within(hiddenRow).getByRole("button", { name: "Link" }));
     expect(
-      hidden.queryByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
+      within(hiddenRow).queryByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
     ).not.toBeInTheDocument();
     hidden.unmount();
 
     settings = { ...settings, show_technical_details: true };
     const shown = renderWithProviders(<UnknownPage />);
+    const shownRow = rowOf(await shown.findByText("helper-cli"));
+    fireEvent.click(within(shownRow).getByRole("button", { name: "Link" }));
     expect(
-      await shown.findByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
+      within(shownRow).getByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
     ).toBeInTheDocument();
-    // A plain file resolves to itself; there is nothing to add.
-    expect(
-      shown.queryByText("Links to /Users/someone/.opencode/bin/standalone-tool"),
-    ).not.toBeInTheDocument();
+    // A plain file resolves to itself; there is nothing to add, so its
+    // chip stays a plain label.
+    const tool = rowOf(shown.getByText("standalone-tool"));
+    expect(within(tool).queryByRole("button")).toBeNull();
   });
 
-  it("says how many programs known sources accounted for, and where it looked", async () => {
+  it("says where it looked in one quiet line at the top, and how many programs it recognized", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
-    expect(
-      await findByText(
-        "4 more programs came from sources Canager knows and are listed under them.",
-      ),
-    ).toBeInTheDocument();
-    expect(getByText("Looked in:")).toBeInTheDocument();
-    expect(getByText("~/.local/bin (5 items)")).toBeInTheDocument();
-    expect(getByText("/usr/local/bin (1 item)")).toBeInTheDocument();
+    expect(await findByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
+    expect(getByText("Canager recognized 4 more programs and doesn't list them here.")).toBeInTheDocument();
+  });
+
+  it("says so in Chinese, the folders run together with 、", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+      expect(await findByText("查找位置：~/.local/bin、/usr/local/bin")).toBeInTheDocument();
+      expect(getByText("程序")).toBeInTheDocument();
+      expect(getByText("链接")).toBeInTheDocument();
+      expect(getByText("失效的链接")).toBeInTheDocument();
+      expect(getByText("另有 4 个程序认得出来历，不在这里列出。")).toBeInTheDocument();
+      expect(getByText("Canager 认不出这些程序的来历。这里只列出，不运行也不删除。")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("warns with the scan's own numbers when it stopped early", async () => {
     scan = { ...baseScan, stopped: { FileLimit: { max_entries: 2000 } } };
     const byFiles = renderWithProviders(<UnknownPage />);
     expect(
-      await byFiles.findByText(
-        "Canager stopped after looking at 2000 items, so this list may be incomplete.",
-      ),
+      await byFiles.findByText("Canager stopped after 2000 items and didn't check the rest."),
     ).toBeInTheDocument();
     byFiles.unmount();
 
     scan = { ...baseScan, stopped: { TimeLimit: { max_secs: 10 } } };
     const byTime = renderWithProviders(<UnknownPage />);
     expect(
-      await byTime.findByText("Canager stopped after 10 seconds, so this list may be incomplete."),
+      await byTime.findByText("Canager stopped after 10 seconds and didn't check the rest."),
     ).toBeInTheDocument();
+    // The rows are still there under it.
+    expect(byTime.getByText("standalone-tool")).toBeInTheDocument();
   });
 
   it("says so when nothing is unexplained, and still says where it looked", async () => {
     scan = { ...baseScan, entries: [], attributed: 7 };
-    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+    const { findByText, getByText, container } = renderWithProviders(<UnknownPage />);
 
-    expect(
-      await findByText(
-        "Nothing unexplained: every command-line program Canager found came from a source it knows.",
-      ),
-    ).toBeInTheDocument();
-    expect(getByText("~/.local/bin (5 items)")).toBeInTheDocument();
+    expect(await findByText("No programs of unknown origin")).toBeInTheDocument();
+    expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
+    expect(container.querySelector("[data-tool-row]")).toBeNull();
   });
 
   it("scans again when the button is pressed", async () => {

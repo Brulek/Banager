@@ -1,15 +1,16 @@
 import { useEffect } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ArtifactRow } from "../components/ArtifactRow";
-import { SourceNotice } from "../components/SourceNotice";
+import { ToolRow } from "../components/ToolRow";
+import { StatusChip } from "../components/StatusChip";
+import { SourceNoticeLine } from "../components/SourceNotice";
+import { CheckCircleIcon, RefreshIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
 import { formatBytes } from "../lib/format";
 import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
- * The badge for each kind of entry. A `Record` over `EntryKind`, so a
- * variant added to the mirror without a badge here fails `tsc` -- this
+ * The chip for each kind of entry. A `Record` over `EntryKind`, so a
+ * variant added to the mirror without a chip here fails `tsc` -- this
  * project's signature defect is a variant that is defined, mirrored and
  * never rendered.
  */
@@ -23,7 +24,7 @@ const KIND_KEYS: Record<EntryKind, string> = {
 type Translate = (key: string, options?: Record<string, string | number>) => string;
 
 /**
- * The banner for a scan that stopped early, carrying the number it
+ * The notice for a scan that stopped early, carrying the number it
  * stopped at -- the one Rust enforced, never a copy in the locale files.
  * `in` branches with a `never` default, as `faultKey` in src/lib/format.ts.
  */
@@ -50,50 +51,63 @@ function formatDate(seconds: number, language: string): string {
 }
 
 /**
- * Everything the row says under its name, one line each: the path as
- * found, what a broken link pointed at, the app it runs inside, size and
- * date, who put it there, and -- with technical details on -- where a
- * link resolves. A plain file resolves to itself, so that last line is
- * for links only.
+ * The size and the date, in the column where a tool's version goes: what
+ * a program has in place of one. A broken link has neither -- there is no
+ * target to measure -- and its chip says why.
  */
-function describeEntry(
-  entry: UnknownEntry,
-  t: Translate,
-  language: string,
-  technical: boolean,
-): ReactNode {
-  const lines: string[] = [entry.path];
-  if (entry.kind === "BrokenSymlink") {
-    lines.push(t("unknown.brokenLink", { target: entry.link_target ?? "" }));
-  }
-  if (entry.app_bundle !== null) {
-    lines.push(t("unknown.partOfApp", { app: entry.app_bundle }));
-  }
+function sizeAndDate(entry: UnknownEntry, t: Translate, language: string): string | null {
   const size = entry.size_bytes === null ? null : formatBytes(entry.size_bytes);
   const date = entry.modified_at === null ? null : formatDate(entry.modified_at, language);
-  if (size !== null && date !== null) {
-    lines.push(t("unknown.sizeAndDate", { size, date }));
-  } else if (size !== null) {
-    lines.push(size);
-  } else if (date !== null) {
-    lines.push(date);
-  }
-  if (!entry.owned_by_me) {
-    lines.push(t("unknown.adminOwned"));
-  }
-  if (technical && entry.kind === "Symlink" && entry.resolved !== null) {
-    lines.push(t("unknown.linksTo", { path: entry.resolved }));
-  }
-  // Keyed by position: the list is rebuilt from the entry on every render
-  // and two lines can read the same (a size with no date is one bare
-  // string), so the text itself is not a safe key.
-  return lines.map((line, index) => (
-    <span key={index} className="block">
-      {line}
-    </span>
-  ));
+  if (size !== null && date !== null) return t("unknown.sizeAndDate", { size, date });
+  return size ?? date;
 }
 
+/**
+ * What the kind chip's ⓘ says about a program, a line each: what a broken
+ * link pointed at, the app it runs inside, that another account owns it,
+ * and -- with technical details on -- where a link leads. A plain file
+ * resolves to itself, so that last one is for links only. Empty for a
+ * program of the user's own that is none of these, whose chip is then a
+ * plain label.
+ */
+function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[] {
+  const facts: string[] = [];
+  if (entry.kind === "BrokenSymlink") {
+    facts.push(t("unknown.brokenLink", { target: entry.link_target ?? "" }));
+  }
+  if (entry.app_bundle !== null) facts.push(t("unknown.partOfApp", { app: entry.app_bundle }));
+  if (!entry.owned_by_me) facts.push(t("unknown.adminOwned"));
+  if (technical && entry.kind === "Symlink" && entry.resolved !== null) {
+    facts.push(t("unknown.linksTo", { path: entry.resolved }));
+  }
+  return facts;
+}
+
+/**
+ * The avatar of a program no source accounts for: a prompt, in the
+ * neutral colour of the Overview's Unknown tile. Decorative, as a
+ * source's is: the name is beside it.
+ */
+function ProgramAvatar() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-white"
+    >
+      <TerminalIcon size={18} />
+    </span>
+  );
+}
+
+/**
+ * The command-line programs on this Mac that no source accounts for, as
+ * rows like every other list's: a neutral avatar, the name with the path
+ * it was found at, a chip for what kind of entry it is -- whose ⓘ says
+ * the rest, where there is more to say -- and its size and date where a
+ * tool's version would be. Canager only lists them: nothing here runs or
+ * removes anything, which the page says once, at its top, beside Scan
+ * again and above the folders it looked in.
+ */
 export function UnknownPage() {
   const { t, i18n } = useTranslation();
   const { data: settings } = useSettings();
@@ -120,73 +134,109 @@ export function UnknownPage() {
   }, [refetch, generation]);
 
   const result = scan.data;
+  const technical = settings?.show_technical_details ?? false;
+  const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex items-start justify-between gap-4 p-4">
-        <div className="min-w-0">
-          <h2 className="text-section">{t("unknown.title")}</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">{t("unknown.intro")}</p>
+    <div className="flex min-h-full flex-col">
+      <div className="flex shrink-0 flex-col gap-1 px-6 pb-3">
+        <div className="flex items-center justify-between gap-4">
+          <p className="min-w-0 text-body text-muted">{t("unknown.intro")}</p>
+          {/* This page's own: it re-runs only this scan, never the sources'
+              refresh, which is the page header's Check again. */}
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={scan.isFetching}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-button border border-border bg-surface px-3 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60 disabled:hover:bg-surface"
+          >
+            {scan.isFetching ? (
+              <SpinnerIcon size={15} className="shrink-0 text-accent-text" />
+            ) : (
+              <RefreshIcon size={15} className="shrink-0" />
+            )}
+            {scan.isFetching ? t("unknown.scanning") : t("unknown.scanAgain")}
+          </button>
         </div>
-        {/* This page's own: it re-runs only this scan, never the sources'
-            refresh, which is the page header's Check again. */}
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          disabled={scan.isFetching}
-          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
-        >
-          {scan.isFetching ? t("unknown.scanning") : t("unknown.scanAgain")}
-        </button>
+        {result ? (
+          <p className="break-words text-small text-muted">
+            {t("unknown.lookedIn", {
+              // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
+              folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
+            })}
+          </p>
+        ) : null}
       </div>
       {scan.isError ? (
-        <p role="alert" className="px-4 pb-2 text-sm text-[var(--color-danger)]">
+        <p role="alert" className="px-6 pb-2 text-body text-danger">
           {t("unknown.scanFailed", { message: scan.error.message })}
         </p>
       ) : null}
-      {result ? (
+      {result === undefined ? (
+        scan.isFetching ? (
+          <div className="flex flex-1 items-center justify-center pb-10">
+            <SpinnerIcon size={22} className="text-muted" />
+          </div>
+        ) : null
+      ) : (
         <>
-          {result.stopped !== null ? (
-            <div className="px-4">
-              <SourceNotice variant="warning" title={stoppedText(t, result.stopped)} />
+          {stopped !== null ? (
+            <div className="px-6 pb-2">
+              <SourceNoticeLine
+                variant="warning"
+                title={stopped}
+                detailsLabel={t("common.details")}
+                detailsAriaLabel={t("common.detailsLabel", { title: stopped })}
+              />
             </div>
           ) : null}
           {result.entries.length === 0 ? (
-            <p className="p-12 text-center text-sm text-[var(--color-muted)]">
-              {t("unknown.empty")}
-            </p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
+              <CheckCircleIcon size={44} className="text-success" />
+              <p className="text-section text-foreground">{t("unknown.empty")}</p>
+            </div>
           ) : (
-            result.entries.map((entry) => (
-              <ArtifactRow
-                key={entry.path}
-                name={fileName(entry.path)}
-                description={describeEntry(
-                  entry,
-                  t,
-                  i18n.language,
-                  settings?.show_technical_details ?? false,
-                )}
-                wrapDescription
-                badgeText={t(KIND_KEYS[entry.kind])}
-                badgeVariant="neutral"
-              />
-            ))
+            <div className="px-3 pb-2">
+              {result.entries.map((entry) => {
+                const facts = factsOf(entry, t, technical);
+                const detail =
+                  facts.length === 0
+                    ? undefined
+                    : facts.map((fact) => (
+                        <span key={fact} className="block break-words">
+                          {fact}
+                        </span>
+                      ));
+                return (
+                  // A slot of its own, as a virtualized list's rows have:
+                  // a stacking context each, and the one with an open ⓘ
+                  // lifted over the rows after it (`data-list-slot` in
+                  // index.css), whose chips would otherwise cover it.
+                  <div key={entry.path} data-list-slot="" className="relative z-0">
+                    <ToolRow
+                      avatar={<ProgramAvatar />}
+                      name={fileName(entry.path)}
+                      // Home abbreviated as Rust sent it (`UnknownEntry.path`).
+                      description={entry.path}
+                      status={<StatusChip label={t(KIND_KEYS[entry.kind])} detail={detail} />}
+                      // As wide as a size and a date, so the chips before it
+                      // line up down the list, a broken link's too.
+                      version={
+                        <span className="inline-block min-w-[9.5rem]">{sizeAndDate(entry, t, i18n.language)}</span>
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </div>
           )}
-          <div className="p-4 text-xs text-[var(--color-muted)]">
-            {result.attributed > 0 ? (
-              <p>{t("unknown.attributed", { count: result.attributed })}</p>
-            ) : null}
-            <p className="mt-2">{t("unknown.lookedIn")}</p>
-            <ul>
-              {result.scanned.map((dir) => (
-                <li key={dir.path}>
-                  {t("unknown.dirCount", { path: dir.path, count: dir.entries })}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {result.attributed > 0 ? (
+            <p className="px-6 pb-6 pt-2 text-small text-muted">
+              {t("unknown.attributed", { count: result.attributed })}
+            </p>
+          ) : null}
         </>
-      ) : null}
+      )}
     </div>
   );
 }

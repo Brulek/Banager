@@ -73,6 +73,15 @@ export function UnknownIcon(props: IconProps) {
   );
 }
 
+/** A command-line program: a prompt and its cursor. */
+export function TerminalIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5.5 8L9.5 12L5.5 16M12.5 16.5H18.5" />
+    </Icon>
+  );
+}
+
 /** Settings: an eight-toothed gear around its axle. */
 export function SettingsIcon(props: IconProps) {
   return (

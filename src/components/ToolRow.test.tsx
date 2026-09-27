@@ -180,4 +180,15 @@ describe("ToolRow", () => {
     expect((container.querySelector("[data-tool-row]") as HTMLElement).className).toContain("@container");
     expect(getByText("Homebrew", { selector: "span" }).className).toContain("@max-2xl:hidden");
   });
+
+  it("draws an avatar of its own in place of a source's, for a row that belongs to no source", () => {
+    const { container } = renderWithProviders(
+      <ToolRow avatar={<span data-testid="own-avatar" />} name="sync-photos" description="~/bin/sync-photos" />,
+    );
+
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    expect(row.querySelector('[data-testid="own-avatar"]')).not.toBeNull();
+    // No source's letter or colour beside it.
+    expect(row.querySelector('[class*="bg-source-"]')).toBeNull();
+  });
 });
