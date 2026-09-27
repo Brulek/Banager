@@ -41,6 +41,15 @@ export interface UiState {
   // Removes the id of every key given that is selected, and adds the id of
   // every one that is not.
   invertUpdateSelection(keys: ArtifactKey[]): void;
+  // The version each update the Updates page started was for, by
+  // operation id: the `target` of the row it was started from. An
+  // operation carries no version (`OpSummary`), and a finished one stays
+  // in the backend's list, so this is how a row tells an outcome that is
+  // still about the version it offers -- "Updated", "Failed" -- from one
+  // about a version it no longer offers, whose row gets its Update button
+  // back.
+  updateTargets: Record<number, string>;
+  rememberUpdateTarget(opId: number, target: string): void;
   startupRefreshError: string | null;
   setStartupRefreshError(message: string | null): void;
 }
@@ -109,6 +118,9 @@ export const useUiStore = create<UiState>((set) => ({
         ],
       };
     }),
+  updateTargets: {},
+  rememberUpdateTarget: (opId, target) =>
+    set((s) => ({ updateTargets: { ...s.updateTargets, [opId]: target } })),
   startupRefreshError: null,
   setStartupRefreshError: (message) => set({ startupRefreshError: message }),
 }));

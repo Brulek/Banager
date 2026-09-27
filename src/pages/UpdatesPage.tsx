@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -8,24 +8,34 @@ import {
   useSaveSettings,
   usePlanOperation,
   useSubmitOperation,
+  useOperations,
 } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   artifactBlurb,
-  isAvailable,
   planErrorMessage,
+  READ_ONLY_DETAIL_KEYS,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  UNAVAILABLE_DETAIL_KEYS,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import type { SourceNoticeSpec } from "../lib/sources";
 import { warningMessage, warningText, warningTexts } from "../lib/warnings";
-import { ArtifactRow } from "../components/ArtifactRow";
+import { ToolRow } from "../components/ToolRow";
+import { StatusChip } from "../components/StatusChip";
+import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
 import { CommandPreview } from "../components/CommandPreview";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Dialog } from "../components/ui/Dialog";
+import {
+  CheckCircleIcon,
+  CheckIcon,
+  ChevronIcon,
+  InfoIcon,
+  SpinnerIcon,
+} from "../components/icons";
 import type {
   ArtifactKey,
   InstalledArtifact,
@@ -33,64 +43,63 @@ import type {
   IssuedPlan,
   ManagerInstance,
   OpRequest,
+  OpSummary,
+  Outcome,
   Settings,
+  UpdateBlocked,
   UpdateCandidate,
 } from "../lib/types";
 import {
   actionableUpdatesOf,
   canSkipVersion,
   everySourceChecked,
-  isUpdateActionable,
   notHidden,
   updateStateOf,
   withSkippedVersion,
 } from "../lib/updateState";
 import type { UpdateState } from "../lib/updateState";
 
-// The virtualizer's first guesses: a row, and a source's heading when it
-// also carries a banner (a title line, a description line and, for
-// Ollama, a button) -- the same two numbers as the Installed page. Every
-// item measures itself through `measureElement` as soon as it is in the
-// DOM, which matters here more than there: an uncheckable row wraps its
-// explanation over as many lines as the tool's error text needs.
-const ROW_ESTIMATE = 56;
-const NOTICE_GROUP_ESTIMATE = 120;
+// The virtualizer's first guesses: a row, the "Can't update here" toggle
+// and the line under it. Each slot then measures itself through
+// `measureElement`.
+const ROW_ESTIMATE = 60;
+const SECTION_ESTIMATE = 48;
+const SUMMARY_ESTIMATE = 36;
 
 /**
- * One slot in the virtualized list: a source's heading, or one of its
- * rows. The page is grouped by source, like the Installed page, because a
- * source's notice describes *its* rows and nobody else's. It used to be one
- * flat list with every notice hoisted above it, and a row carries no
- * source name -- so "Ollama didn't answer; what's listed here is what
- * Canager saw last time" sat over five rows of which three were this
- * minute's Homebrew data, and nothing on screen said which two it meant.
+ * One slot in the virtualized list. The page is one flat list, sorted by
+ * name, the way 360's update list is: every row it can update, then the
+ * toggle for the rows it cannot ("Can't update here (5)"), folded until
+ * pressed. Each row carries its source -- the avatar's colour and a small
+ * chip -- in place of the per-source headings the list used to be grouped
+ * under.
  */
 type ListItem =
-  | {
-      type: "group";
-      instanceId: string;
-      label: string;
-      // What `sourceNoticesFor` decided this source needs, carried on the
-      // item for the same reason as on the Installed page: `estimateSize`
-      // has only the item to ask whether this heading has a banner.
-      notices: SourceNoticeSpec[];
-    }
-  | { type: "update"; candidate: UpdateCandidate };
+  | { type: "update"; candidate: UpdateCandidate }
+  | { type: "section"; count: number; expanded: boolean }
+  | { type: "summary"; count: number };
 
 /**
  * A slot's identity: its React key, and the key the virtualizer files the
  * slot's measured height under -- the same string, so a height stays with
- * the heading or row it was measured from. Left to its default, the
- * virtualizer keys by position: once an update removed a source's last row
- * and so its heading, every slot below moved up while its React key kept
- * its DOM node, and the heights stayed where they were -- pip's tall
- * heading, now first, was placed as if it were Homebrew's one-line one,
- * and the row under it was drawn over its notice. A moved node is not
- * measured again (its ref does not change, and a ResizeObserver sees no
- * resize), so nothing corrected it.
+ * the row or the toggle it was measured from. Left to its default, the
+ * virtualizer keys by position: when an update finished and its row went,
+ * every slot below moved up while its React key kept its DOM node, and
+ * the heights stayed where they were -- the toggle, now where a row had
+ * been, was placed as if it were that row. A moved node is not measured
+ * again (its ref does not change, and a ResizeObserver sees no resize), so
+ * nothing corrected it. An artifact key id has a `|` in it and the other
+ * two do not, so they cannot collide.
  */
 function listItemKey(item: ListItem): string {
-  return item.type === "group" ? `group:${item.instanceId}` : artifactKeyId(item.candidate.key);
+  switch (item.type) {
+    case "update":
+      return artifactKeyId(item.candidate.key);
+    case "section":
+      return "section:cant-update-here";
+    case "summary":
+      return "summary:cannot-check";
+  }
 }
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
@@ -119,6 +128,8 @@ interface BatchItem {
   // is built, so a refresh landing behind the dialog cannot change the
   // numbers under the command the user is reading.
   candidate: UpdateCandidate;
+  /** The row's name, as the list showed it when the batch was built. */
+  name: string;
   issued: IssuedPlan | null;
   planError: string | null;
   submittedOpId: number | null;
@@ -170,9 +181,10 @@ function hasPlanError(item: BatchItem): item is BatchItem & { planError: string 
  * the name finds nothing there or another program with that name
  * (`NotOnPath`); another program with that name is found there before this
  * copy (`ShadowedBy*`); or the launcher's program files are gone
- * (`LauncherOnly`). Read by `selfUpdatingHintKey`: "or just run it"
- * updates this copy only where typing the name runs it. A `Record`, so a
- * note added to `InstanceNote` without an answer here fails `tsc`.
+ * (`LauncherOnly`). Read by `saysItUpdatesItself`: a tool that updates
+ * itself does so when it runs, and "it usually updates itself" is true of
+ * this copy only where typing its name runs it. A `Record`, so a note
+ * added to `InstanceNote` without an answer here fails `tsc`.
  */
 const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   // Homebrew's: about its list of software, not about which copy runs.
@@ -185,10 +197,151 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   LauncherOnly: true,
 };
 
-export function UpdatesPage() {
+/**
+ * What a row shows in place of its Update button while an update of it is
+ * under way or has just finished (`UpdateProgress`). `failed` and `check`
+ * keep the operation's id, for the log they offer.
+ */
+type RowProgress =
+  | { kind: "queued" }
+  | { kind: "running" }
+  | { kind: "cancelling" }
+  | { kind: "succeeded" }
+  | { kind: "cancelled" }
+  | { kind: "failed"; opId: number }
+  | { kind: "check"; opId: number };
+
+/**
+ * How a finished update ended, for its row. "Check" -- look at the log --
+ * for every outcome that is neither a plain success nor a plain failure:
+ * the tool said it worked and Canager could not confirm it (`Unconfirmed`)
+ * or found the opposite (`NeedsAttention`). A finished operation with no
+ * outcome, which the backend never sends, claims nothing either way.
+ */
+function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
+  if (outcome === null) return { kind: "check", opId };
+  if (typeof outcome === "string") {
+    switch (outcome) {
+      case "Succeeded":
+        return { kind: "succeeded" };
+      case "Cancelled":
+        return { kind: "cancelled" };
+      case "Unconfirmed":
+        return { kind: "check", opId };
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
+    }
+  }
+  if ("NeedsAttention" in outcome) return { kind: "check", opId };
+  if ("Failed" in outcome || "CanagerFailed" in outcome) return { kind: "failed", opId };
+  const unhandled: never = outcome;
+  return unhandled;
+}
+
+/** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
+function progressOf(op: OpSummary): RowProgress {
+  switch (op.status) {
+    case "Queued":
+      return { kind: "queued" };
+    // Verifying is the update's own last step: the command has ended and
+    // Canager is reading the result back.
+    case "Running":
+    case "Verifying":
+      return { kind: "running" };
+    case "CancelRequested":
+    case "Cancelling":
+      return { kind: "cancelling" };
+    case "Done":
+      return outcomeProgress(op.outcome, op.id);
+  }
+}
+
+interface UpdateProgressProps {
+  progress: RowProgress;
+  /** The row's name, for "View log"'s accessible name. */
+  name: string;
+  onViewLog: (opId: number) => void;
+}
+
+/**
+ * The row's own progress, where its Update button was: 360's "the progress
+ * is in the row". Waiting, updating with a spinner, a tick when it is
+ * done; a failure, or an outcome to check, with the way to its log.
+ */
+function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProps) {
   const { t } = useTranslation();
+  const viewLog = (opId: number) => (
+    <button
+      type="button"
+      onClick={() => onViewLog(opId)}
+      aria-label={t("updates.progress.viewLogLabel", { name })}
+      className="rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      {t("updates.progress.viewLog")}
+    </button>
+  );
+  switch (progress.kind) {
+    case "queued":
+      return <span className="text-small text-muted">{t("updates.progress.queued")}</span>;
+    case "running":
+      return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small font-medium text-accent-text">
+          <SpinnerIcon size={14} />
+          {t("updates.progress.running")}
+        </span>
+      );
+    case "cancelling":
+      return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
+          <SpinnerIcon size={14} />
+          {t("updates.progress.cancelling")}
+        </span>
+      );
+    case "succeeded":
+      return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-small font-medium text-success">
+          <CheckIcon size={15} />
+          {t("updates.progress.succeeded")}
+        </span>
+      );
+    case "cancelled":
+      return <span className="text-small text-muted">{t("updates.progress.cancelled")}</span>;
+    case "failed":
+      return (
+        <span className="flex flex-col items-end leading-tight">
+          <span className="text-small font-medium text-danger">{t("updates.progress.failed")}</span>
+          {viewLog(progress.opId)}
+        </span>
+      );
+    case "check":
+      return (
+        <span className="flex flex-col items-end leading-tight">
+          <span className="text-small font-medium text-warning">{t("updates.progress.check")}</span>
+          {viewLog(progress.opId)}
+        </span>
+      );
+  }
+}
+
+/** A chip's detail, a sentence to a line; the lines after the first are the quieter kind. */
+function detailLines(lines: ReactNode[]): ReactNode {
+  return lines.map((line, index) => (
+    <p key={index} className={index === 0 ? "break-words" : "mt-1.5 break-words text-muted"}>
+      {line}
+    </p>
+  ));
+}
+
+const HEADER_TEXT_BUTTON =
+  "rounded-button px-2.5 py-1.5 text-body font-medium text-accent-text outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent";
+
+export function UpdatesPage() {
+  const { t, i18n } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
+  const { data: operations } = useOperations();
   const saveSettings = useSaveSettings();
   // Used only for their promise-returning `mutateAsync` — which keeps
   // `useSubmitOperation`'s operations-query invalidation — never for their
@@ -199,12 +352,21 @@ export function UpdatesPage() {
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const invertUpdateSelection = useUiStore((s) => s.invertUpdateSelection);
+  const updateTargets = useUiStore((s) => s.updateTargets);
+  const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
+  const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
 
   const listRef = useRef<HTMLDivElement>(null);
   const [batch, setBatch] = useState<Batch | null>(null);
   // Monotonic. The batch whose id equals this is the only one allowed to
   // write state; every async continuation checks `isCurrent` after `await`.
   const batchIdRef = useRef(0);
+  // "Can't update here (N)": folded until pressed.
+  const [showCantUpdate, setShowCantUpdate] = useState(false);
+  // What the last "Copy command" did, said for a moment in the header.
+  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
+  const copyTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copyTimerRef.current), []);
 
   // Every update the user has not hidden, with "Never remind me" or "Skip
   // this version": `notHidden`, the rule in src/lib/updateState.ts that
@@ -224,179 +386,6 @@ export function UpdatesPage() {
     return byId;
   }, [snapshot]);
 
-  // The page, one source at a time: each source's rows, and what that
-  // source has to say about them, decided once here.
-  //
-  // The *state* axis always: whether Canager could reach a source at all
-  // is not on any row, because a source it could not reach may well have
-  // no rows -- a stopped Ollama on the first refresh after launch is a
-  // heading and a banner with nothing under it, exactly as on the
-  // Installed page.
-  //
-  // The *capability* axis only for a source that has rows here: "pip is
-  // read-only" is not news on a page listing two Homebrew updates. When it
-  // does apply it is said once, under the source's own heading, rather
-  // than on each of its rows -- that advice runs to about two hundred
-  // characters, and six outdated pip packages used to mean six identical
-  // paragraphs displacing the six descriptions that tell the rows apart.
-  //
-  // How many rows a source has is also part of what its notice *says*: a
-  // silent source's "what's listed here is last time's" is true only over
-  // rows it actually has. Because the notice now sits directly above those
-  // rows and no others, "here" means exactly them.
-  //
-  // Iterates `snapshot.instances`, which is every source any candidate can
-  // come from: `refresh` builds `updates` only from instances it also puts
-  // in `instances` (crates/canager-core/src/session/refresh.rs).
-  const groups = useMemo(() => {
-    const byInstance = new Map<string, UpdateCandidate[]>();
-    for (const update of visibleUpdates) {
-      const list = byInstance.get(update.key.instance_id) ?? [];
-      list.push(update);
-      byInstance.set(update.key.instance_id, list);
-    }
-    return (snapshot?.instances ?? []).map((instance) => {
-      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-      const label = labelKey ? t(labelKey) : instance.adapter_id;
-      const rows = byInstance.get(instance.id) ?? [];
-      const notices = sourceNoticesFor(instance, label, rows.length).filter(
-        (notice) => notice.axis === "state" || rows.length > 0,
-      );
-      return { instanceId: instance.id, label, rows, notices };
-    });
-  }, [snapshot, visibleUpdates, t]);
-
-  // What the two early returns below show above their one sentence. Both
-  // run with no visible rows, so every group is empty there and this list
-  // is state-only. It does not decide between "Everything is up to date"
-  // and "No updates in the sources Canager could check" (`everySourceChecked`
-  // does): a state notice can be information only -- which copy runs when
-  // you type a tool's name -- about a source Canager did check. With no
-  // rows there is nothing for a notice to be mistaken as describing, so
-  // they can stand together.
-  const instanceNotices = groups.flatMap((group) => group.notices);
-
-  // The list proper: each source's heading, then its rows. A source with
-  // neither rows nor anything to say is left out altogether.
-  //
-  // A source with something to say and no rows goes first. When every
-  // notice sat at the top of the page, a stopped Ollama's Open Ollama
-  // button was the first thing anyone saw; in `snapshot.instances` order it
-  // would sit under however many Homebrew rows there are, scrolled out of
-  // sight. Its notice describes no rows, so the top is still an honest
-  // place for it. `sort` is stable, so both halves keep the instances'
-  // order.
-  const items = useMemo<ListItem[]>(
-    () =>
-      [...groups]
-        .sort((a, b) => Number(a.rows.length > 0) - Number(b.rows.length > 0))
-        .flatMap((group): ListItem[] =>
-          group.rows.length === 0 && group.notices.length === 0
-            ? []
-            : [
-                {
-                  type: "group",
-                  instanceId: group.instanceId,
-                  label: group.label,
-                  notices: group.notices,
-                },
-                ...group.rows.map((candidate): ListItem => ({ type: "update", candidate })),
-              ],
-        ),
-    [groups],
-  );
-
-  /**
-   * Whether this row may offer an Update button and a checkbox. Four
-   * independent reasons it may not, and the wire carries all four:
-   *
-   * - `checkable: false` -- the adapter could not establish what the remote
-   *   version is.
-   * - a read-only source -- its `plan()` refuses every operation, yet its
-   *   candidates can still be built with `checkable: true` because the tool
-   *   genuinely *can* check. Offering Update here produced nothing but a
-   *   raw "unsupported: pip is read-only in Canager" string in a dialog.
-   * - a source that is not answering -- the two axes are independent: a
-   *   stopped Ollama is perfectly writable, and its candidates are still
-   *   listed because `refresh` carries the last round's forward, so these
-   *   rows are on screen. `ollama pull` against a daemon that is not
-   *   listening cannot succeed, and offering an action and then refusing
-   *   it is the exact pattern this phase exists to remove.
-   * - `blocked` -- the only one about this package rather than its
-   *   source: the tool will refuse to update it (a pinned Homebrew
-   *   formula or cask, whose `brew upgrade` exits 1, or a pinned pipx
-   *   tool, whose `pipx upgrade` changes nothing; `UpdateBlocked::Pinned`
-   *   in crates/canager-core/src/model.rs).
-   *
-   * All four are `updateStateOf` in src/lib/updateState.ts, which the
-   * Installed page's badge reads too, so the two pages cannot disagree
-   * about whether a package can be updated. `Session::issue_plan` applies
-   * the same conjunction in Rust (spec §2.5 for the source,
-   * `blocked_upgrade` in crates/canager-core/src/session/plans.rs for the
-   * package), so a stale snapshot costs an error message, not a wrong
-   * command.
-   */
-  const stateOf = (candidate: UpdateCandidate): UpdateState =>
-    updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
-  const isActionable = (candidate: UpdateCandidate): boolean =>
-    isUpdateActionable(candidate, instancesById.get(candidate.key.instance_id));
-
-  // Two numbers, not one. Folding unactionable rows out of a single count
-  // told a user with six outdated pip packages "0 updates available" above
-  // six listed rows; folding them in would promise six Update buttons that
-  // are not there.
-  //
-  // The split is `isActionable` itself, so the count and the buttons can
-  // only ever agree. It used to test two of that predicate's three parts
-  // and leave out `checkable`, which counted a row Canager had failed to
-  // check as an available update -- "6 updates available" over six rows
-  // with no buttons, on a machine where the registry had not answered at
-  // all. A row from a source that is not answering counts as unmanageable
-  // too: it is listed, it is real, and Canager cannot act on it right now
-  // either.
-  //
-  // `actionableUpdates` is also every row that shows a checkbox, and it is
-  // what Select all and Invert selection hand to the store, so neither
-  // button can tick a row the user could not tick by hand.
-  //
-  // `actionableUpdatesOf` is `visibleUpdates` filtered by `isActionable`:
-  // the same two rules, kept in src/lib/updateState.ts because the
-  // sidebar's count on this page's entry is this list's length, and the
-  // two must never disagree.
-  const actionableUpdates = useMemo(
-    () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : []),
-    [snapshot, settings],
-  );
-  const actionableCount = actionableUpdates.length;
-  const unmanageableCount = visibleUpdates.length - actionableCount;
-
-  // Only rows that are selected, still visible *and* still actionable
-  // count. The store keeps a selection for a row that has since been
-  // hidden; without this intersection "Update selected" would be enabled
-  // for nothing and open an empty dialog. Actionability is in the same
-  // intersection because a selection outlives the row that made it: a
-  // candidate selected while it was actionable stays selected after a
-  // refresh takes that away, and the batch would then plan the very row
-  // whose Update button has just gone.
-  //
-  // `isActionable` itself, not a second copy of its conditions. This used
-  // to re-spell all three of them forty lines below where the predicate is
-  // defined, which agreed with it exactly and would have stopped agreeing
-  // the moment a fourth condition arrived -- and one did, `blocked`
-  // (per-package actionability, spec §8). With a copy, the button and the
-  // count would drop a pinned row while a selection made before that
-  // refresh still reached the batch, to be refused by `issue_plan`.
-  const selectedVisible = useMemo(
-    () =>
-      visibleUpdates.filter(
-        (u) => isActionable(u) && selectedUpdates.includes(artifactKeyId(u.key)),
-      ),
-    // `isActionable` is rebuilt every render and so cannot be a dependency;
-    // `instancesById` is the one value it closes over, which is the same
-    // thing.
-    [visibleUpdates, selectedUpdates, instancesById],
-  );
-
   // One lookup table instead of a `snapshot.artifacts.find` per row: that
   // scan made every render O(updates × artifacts).
   const artifactsById = useMemo(() => {
@@ -407,223 +396,364 @@ export function UpdatesPage() {
     return byId;
   }, [snapshot]);
 
-  // Default view hides version numbers (Global Constraints); the row falls
-  // back to the artifact's blurb -- its description, or a standalone
-  // tool's summary sentence -- through the lookup the Installed page uses
-  // (`artifactBlurb`).
-  const descriptionFor = (candidate: UpdateCandidate): string => {
-    if (candidate.channel === "Digest") {
-      // Ollama. `current` is the local manifest digest that /api/tags
-      // reported and `target` is the registry manifest's config digest:
-      // **different hash spaces**, not two readings of one identifier, and
-      // they will not be equal even after a successful pull. The adapter's
-      // own comment (crates/canager-core/src/adapters/ollama/mod.rs) says
-      // never to render them as a version jump, and a 64-hex string is not
-      // something to put in front of this audience either way. The channel
-      // is the discriminator, so this holds whether or not technical
-      // details are on -- a Digest row is a "changed / not changed" marker
-      // and that is all it can honestly say.
-      return t("updates.newBuild");
+  // The source's name in the user's language: the chip beside a row's
+  // name, the `{{source}}` in its detail, and the one refusal that can
+  // reach a real person verbatim otherwise (`planErrorMessage`'s
+  // NotActionable case). A stale snapshot's own read-only/unavailable
+  // state cannot be trusted for *which* reason applies -- that is exactly
+  // what went stale -- but the instance's adapter, and therefore its
+  // label, does not change underneath it, so this is safe to read from the
+  // same snapshot.
+  const sourceLabelFor = useCallback(
+    (instanceId: string): string => {
+      const instance = instancesById.get(instanceId);
+      if (!instance) return instanceId;
+      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
+      return labelKey ? t(labelKey) : instance.adapter_id;
+    },
+    [instancesById, t],
+  );
+
+  // The name a row shows: the one the Installed page shows for the same
+  // software ("Microsoft Visual Studio Code", "Claude Code"), or the
+  // package's own name where the snapshot has no entry for it.
+  const nameOf = useCallback(
+    (candidate: UpdateCandidate): string =>
+      artifactsById.get(artifactKeyId(candidate.key))?.display_name || candidate.key.name,
+    [artifactsById],
+  );
+
+  // By name, as the user reads it: case and accents aside, and "node@22"
+  // after "node@9". The key breaks a tie between two sources' same-named
+  // packages, so the order never depends on the snapshot's.
+  const compareRows = useMemo(() => {
+    const collator = new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" });
+    return (a: UpdateCandidate, b: UpdateCandidate) =>
+      collator.compare(nameOf(a), nameOf(b)) ||
+      collator.compare(artifactKeyId(a.key), artifactKeyId(b.key));
+  }, [i18n.language, nameOf]);
+
+  const stateOf = (candidate: UpdateCandidate): UpdateState =>
+    updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
+
+  // The rows Canager can update from here: every listed update whose row
+  // has an Update button and a checkbox. `actionableUpdatesOf` is
+  // `visibleUpdates` filtered by `isUpdateActionable` -- read-only source,
+  // could not be checked, blocked, source not answering: `updateStateOf`
+  // in src/lib/updateState.ts, which the Installed page's badge reads too,
+  // so the two pages cannot disagree about whether a package can be
+  // updated -- and it is kept there because the sidebar's count on this
+  // page's entry and the Overview's are this list's length, which must
+  // never disagree with the page. `Session::issue_plan` applies the same
+  // conditions in Rust (spec §2.5 for the source, `blocked_upgrade` in
+  // crates/canager-core/src/session/plans.rs for the package), so a stale
+  // snapshot costs an error message, not a wrong command.
+  //
+  // It is also every row that shows a checkbox, and what Select all,
+  // Invert selection and Update all hand to the store, so none of them can
+  // tick a row the user could not tick by hand.
+  const actionableUpdates = useMemo(
+    () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : []),
+    [snapshot, settings],
+  );
+
+  // The list's two parts, each by name: the rows with an Update button,
+  // and everything else listed -- pinned, read-only, could not be checked,
+  // updating itself, its source not answering -- under "Can't update
+  // here". Two numbers, never one: folding the second into the first
+  // would promise buttons that are not there, and leaving it out would
+  // call six listed pip packages "0 updates".
+  const { actionableRows, otherRows } = useMemo(() => {
+    const actionableIds = new Set(actionableUpdates.map((u) => artifactKeyId(u.key)));
+    return {
+      actionableRows: [...actionableUpdates].sort(compareRows),
+      otherRows: visibleUpdates
+        .filter((u) => !actionableIds.has(artifactKeyId(u.key)))
+        .sort(compareRows),
+    };
+  }, [actionableUpdates, visibleUpdates, compareRows]);
+
+  // Only rows that are selected, still visible *and* still actionable
+  // count. The store keeps a selection for a row that has since been
+  // hidden; without this intersection "Update selected" would be enabled
+  // for nothing and open an empty dialog. Actionability is in the same
+  // intersection because a selection outlives the row that made it: a
+  // candidate selected while it was actionable stays selected after a
+  // refresh takes that away (a pin, a failed lookup, a source that stopped
+  // answering), and the batch would then plan the very row whose Update
+  // button has just gone.
+  const selectedVisible = useMemo(
+    () => actionableRows.filter((u) => selectedUpdates.includes(artifactKeyId(u.key))),
+    [actionableRows, selectedUpdates],
+  );
+
+  // What each source has to say about this check, one compact line each
+  // at the top of the page: not running, not answering, a list it could
+  // not download, another copy that runs when its name is typed. What a
+  // source lets Canager do at all -- pip being read-only -- is not a line
+  // here: every row of such a source says it with its own "Read-only"
+  // chip. How many rows a source has is part of what its notice says: a
+  // silent source's "what's listed here is last time's" is true only over
+  // rows it actually has.
+  //
+  // Iterates `snapshot.instances`, which is every source any candidate can
+  // come from: `refresh` builds `updates` only from instances it also puts
+  // in `instances` (crates/canager-core/src/session/refresh.rs).
+  const notices = useMemo(() => {
+    const rowsByInstance = new Map<string, number>();
+    for (const update of visibleUpdates) {
+      const id = update.key.instance_id;
+      rowsByInstance.set(id, (rowsByInstance.get(id) ?? 0) + 1);
     }
-    if (settings?.show_technical_details) {
-      return t("updates.versionChange", { current: candidate.current, target: candidate.target });
-    }
-    return (
-      artifactBlurb(
-        t,
-        artifactsById.get(artifactKeyId(candidate.key))?.description,
-        instancesById.get(candidate.key.instance_id)?.adapter_id,
-      ) ?? t("installed.noDescription")
+    return (snapshot?.instances ?? []).flatMap((instance) =>
+      sourceNoticesFor(
+        instance,
+        sourceLabelFor(instance.id),
+        rowsByInstance.get(instance.id) ?? 0,
+      ).filter((notice) => notice.axis === "state"),
     );
-  };
+  }, [snapshot, visibleUpdates, sourceLabelFor]);
 
-  /**
-   * The version jump for the confirmation dialog, or null when there is no
-   * honest one to show.
-   *
-   * A `Digest` candidate is Ollama: `current` is the local manifest digest
-   * and `target` the registry manifest's config digest -- different hash
-   * spaces, unequal even after a successful pull, and two 64-hex strings
-   * are not something to put in front of this audience. It says "there is
-   * a newer build" instead, exactly as the row does. An empty `current` or
-   * `target` (a source that could name only one side) yields null rather
-   * than a dangling arrow.
-   */
-  const versionJump = (candidate: UpdateCandidate): string | null => {
-    if (candidate.channel === "Digest") return t("updates.newBuild");
-    if (candidate.current === "" || candidate.target === "") return null;
-    return t("updates.versionChange", { current: candidate.current, target: candidate.target });
-  };
-
-  /**
-   * What an uncheckable row says about *why* it is uncheckable.
-   *
-   * Two kinds of text arrive in `warnings`. A warning with a key of its
-   * own (`NonRegistrySource`) was written for this audience and already
-   * reads as a whole sentence, so it is rendered as-is. A `Message` is
-   * raw text off the wire -- a tool's stderr, an HTTP error -- kept
-   * verbatim on purpose, which on its own makes the row's entire
-   * description a line of somebody's stderr.
-   *
-   * That line is behind `show_technical_details`, which is exactly what
-   * spec §6 says the right shape is: a localised sentence by default, the
-   * raw string behind the switch that already promises to reveal "the
-   * commands Canager actually runs". It matters more than it looks.
-   * Before this branch an index outage produced *one* banner -- npm
-   * returned an empty list, pip/uv/pipx returned `Err` -- and now it
-   * produces one row per installed package, so leaving the stderr on
-   * meant dozens of identical English sentences down the page.
-   *
-   * With the switch off, the row says only *that* it could not be
-   * checked, in one short sentence. What that might mean and where to look
-   * is said once for the whole page (`hiddenReasonCount` below): it used
-   * to be a 180-character paragraph on every such row, and a single lookup
-   * that cannot reach its index turns every installed package into such a
-   * row, so an offline Mac with seventy npm globals showed seventy copies.
-   */
-  const cannotCheckText = (candidate: UpdateCandidate): string => {
-    const parts = candidate.warnings.map((warning) => {
-      const raw = warningMessage(warning);
-      if (raw === null) return warningText(t, warning);
-      return settings?.show_technical_details
-        ? t("updates.cannotCheckDetail", { message: raw })
-        : t("updates.cannotCheckShort");
-    });
-    // Distinct, because with the switch off every `Message` on a row
-    // collapses to the same sentence and a row carrying two of them would
-    // otherwise say it twice.
-    return [...new Set(parts)]
-      .filter((text): text is string => text !== null && text !== "")
-      .join(" ");
-  };
-
-  // The key of the sentence that stands in for this row's blurb because
-  // its tool updates itself -- `updates.selfUpdatingHint` or
-  // `updates.selfUpdatingHintNotRunByName` -- or null for a row that
-  // gets neither. A tool that updates itself in the background
-  // (`auto_updates`, set by the standalone adapter from its recipe): the
-  // row is real -- it compares the launcher's live version with the
-  // published one -- and keeps its button, but the honest sentence says
-  // the tool usually does this itself and offers two ways to update it:
-  // Canager's button now, or just running the tool (spec D5). The second
-  // is typing its name in Terminal, which updates this copy only if this
-  // copy is what runs. Under a note that says it may not be
-  // (`NAME_MAY_NOT_RUN_THIS_COPY`; the notice under the same heading
-  // says why), the row says only that this copy is behind and that
-  // Canager can update it. Only for the standalone adapters: a
-  // self-updating Homebrew cask listed by --greedy keeps its blurb, since
-  // Homebrew, not the app, is what the button drives. Only for an
-  // actionable row: a blocked or uncheckable one says why it has no
-  // button instead, and one whose source did not answer has no button
-  // for the sentence to offer. One function for both readers,
-  // `rowDescription` and the row's `wrapDescription`, so the sentence and
-  // its wrapping cannot disagree.
-  const selfUpdatingHintKey = (candidate: UpdateCandidate): string | null => {
-    const owner = instancesById.get(candidate.key.instance_id);
-    if (
-      !isActionable(candidate) ||
-      owner === undefined ||
-      !owner.adapter_id.startsWith("standalone-") ||
-      artifactsById.get(artifactKeyId(candidate.key))?.auto_updates !== true
-    ) {
-      return null;
-    }
-    return owner.status.notes.some((note) => NAME_MAY_NOT_RUN_THIS_COPY[note])
-      ? "updates.selfUpdatingHintNotRunByName"
-      : "updates.selfUpdatingHint";
-  };
-
-  /**
-   * The row's description: why Canager could not check this one, or --
-   * when it could -- what the package is.
-   *
-   * Read-only-ness is deliberately not in here. The two axes are
-   * independent and both can be true at once, and both used to be said on
-   * the row; but the capability half is a property of the *source*, not of
-   * this package, and six rows from one read-only source repeated it six
-   * times while displacing the six blurbs that tell them apart. It is the
-   * source's notice under its heading now, and the row keeps its own
-   * description back.
-   */
-  //
-  // A blocked row says why in place of its blurb, for the same reason an
-  // uncheckable one does: it is the one thing on the row the user has to
-  // read to understand why there is no button. "Could not check" wins
-  // when both are true, since without a check there is no update to block.
-  // An actionable row of a standalone tool that updates itself says so in
-  // place of its blurb, or -- where typing its name may not run this copy
-  // -- only that this copy is behind and Canager can update it
-  // (`selfUpdatingHintKey`).
-  const rowDescription = (candidate: UpdateCandidate): ReactNode => {
-    if (!candidate.checkable) return cannotCheckText(candidate);
-    if (candidate.blocked !== null) {
-      const copy = UPDATE_BLOCKED_KEYS[candidate.blocked];
-      const instance = snapshot?.instances.find((i) => i.id === candidate.key.instance_id);
-      // On a blocked row `auto_updates` is brew's own flag for a cask that
-      // updates itself (`parse_info_installed` in crates/canager-core/src/
-      // adapters/brew/parse.rs), or the standalone adapter's
-      // `Recipe.self_updates` for a tool that does. A reason with no
-      // separate sentence for such a package (`SelfUpdatesOnly`, whose
-      // reason is that very fact) falls back to its plain copy, as does a
-      // package missing from `artifacts`.
-      const selfUpdating = artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true;
-      // A blocked candidate under a source that did not answer the last
-      // refresh is carried forward and gets no Update button either way
-      // (`isUpdateActionable` needs `isAvailable`), so its sentence may
-      // not promise the update "the next time it checks" -- only once
-      // the source answers again.
-      const sourceUnavailable = instance === undefined || !isAvailable(instance);
-      const description = sourceUnavailable
-        ? selfUpdating
-          ? (copy.selfUpdatingDescriptionSourceUnavailable ?? copy.descriptionSourceUnavailable)
-          : copy.descriptionSourceUnavailable
-        : selfUpdating
-          ? (copy.selfUpdatingDescription ?? copy.description)
-          : copy.description;
-      return withCommand(
-        t(description, {
-          command: COMMAND_SLOT,
-          source: sourceLabelFor(candidate.key.instance_id),
-          // `SelfUpdatesOnly`'s sentence names the versions the row
-          // compared (spec §9.2); `Pinned`'s do not use them.
-          current: candidate.current,
-          target: candidate.target,
-        }),
-        copy.command(candidate.key, instance),
-      );
-    }
-    const hintKey = selfUpdatingHintKey(candidate);
-    if (hintKey !== null) {
-      return t(hintKey, {
-        current: candidate.current,
-        target: candidate.target,
-        source: sourceLabelFor(candidate.key.instance_id),
-      });
-    }
-    return descriptionFor(candidate);
-  };
-
-  // How many rows `cannotCheckText` gave the short sentence in place of
-  // the tool's own words: exactly its `cannotCheckShort` branch, an
-  // uncheckable row with a `Message` while the switch is off. The page says
-  // what that might mean once, above the list, counting these rows and no
-  // others -- a `NonRegistrySource` row already says its own, different,
-  // reason, and with the switch on every row carries the tool's text.
-  //
-  // It claims no diagnosis. The first line of the tool's stderr is the
-  // only thing that tells "this Mac is offline" from "that index is
-  // refusing you" (`lookup_failure_reason`, crates/canager-core/src/
-  // adapters/mod.rs), and it is precisely what this copy stands in for, so
-  // the sentence names being offline as one possible reason, not as the
-  // reason. These adapters push no `SourceError` for a failed lookup, so no
-  // page-wide banner says any of this either.
+  // How many rows can only say that Canager could not check them, the
+  // tool's own words being hidden while "Show technical details" is off:
+  // an uncheckable row with a `Message`. The page says once, over those
+  // rows, where to see why, counting these rows and no others -- a
+  // `NonRegistrySource` row already says its own reason. It claims no
+  // diagnosis: the first line of the tool's stderr is the only thing that
+  // tells "this Mac is offline" from "that index is refusing you"
+  // (`lookup_failure_reason`, crates/canager-core/src/adapters/mod.rs),
+  // and it is precisely what is hidden.
   const hiddenReasonCount = settings?.show_technical_details
     ? 0
-    : visibleUpdates.filter(
+    : otherRows.filter(
         (candidate) =>
           !candidate.checkable &&
           candidate.warnings.some((warning) => warningMessage(warning) !== null),
       ).length;
+
+  const items = useMemo<ListItem[]>(
+    () => [
+      ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate })),
+      ...(otherRows.length > 0
+        ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
+        : []),
+      ...(showCantUpdate && hiddenReasonCount > 0
+        ? [{ type: "summary", count: hiddenReasonCount } as const]
+        : []),
+      ...(showCantUpdate
+        ? otherRows.map((candidate): ListItem => ({ type: "update", candidate }))
+        : []),
+    ],
+    [actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
+  );
+
+  // The newest update operation of each package. The backend keeps a
+  // finished operation in its list, so an operation is matched to a row
+  // by its key -- instance, kind and name -- and, once it has finished, by
+  // the version the row offers too (`operationFor`).
+  const latestUpdateOp = useMemo(() => {
+    const byKey = new Map<string, OpSummary>();
+    for (const op of operations ?? []) {
+      if (op.kind !== "Upgrade") continue;
+      const id = artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name });
+      const seen = byKey.get(id);
+      if (seen === undefined || op.id > seen.id) byKey.set(id, op);
+    }
+    return byKey;
+  }, [operations]);
+
+  /**
+   * The operation a row shows in place of its Update button, or null.
+   * One still under way, always: a second click could only queue the same
+   * update behind it. A finished one only while the row still offers the
+   * version it was started for (`updateTargets`, remembered when this page
+   * submitted it): "Updated" or "Failed" is about that version, and a
+   * newer one the source offers later gets its button back. An operation
+   * this page has no record of -- one from before the window was reloaded
+   * -- is not shown once it has finished.
+   */
+  const operationFor = (candidate: UpdateCandidate): OpSummary | null => {
+    const op = latestUpdateOp.get(artifactKeyId(candidate.key));
+    if (op === undefined) return null;
+    if (op.status !== "Done") return op;
+    return updateTargets[op.id] === candidate.target ? op : null;
+  };
+
+  const viewLog = (opId: number) => {
+    setFocusedOpId(opId);
+    setDrawerOpen(true);
+  };
+
+  /**
+   * Whether the row may say its tool usually updates itself: an actionable
+   * row of a tool with its own installer that updates itself in the
+   * background (`auto_updates`, set by the standalone adapter from its
+   * recipe; spec D5). The row is real -- it compares the launcher's live
+   * version with the published one -- and keeps its button; the chip says
+   * the tool usually does this itself. It does so when it runs, and typing
+   * its name runs this copy only where no note says otherwise
+   * (`NAME_MAY_NOT_RUN_THIS_COPY`; the notice at the top says why): there
+   * the row is a plain one, behind and updatable. Only for the standalone
+   * adapters: a self-updating Homebrew cask listed by --greedy is a plain
+   * row too, since Homebrew, not the app, is what its button drives.
+   */
+  const saysItUpdatesItself = (
+    candidate: UpdateCandidate,
+    instance: ManagerInstance | undefined,
+  ): boolean =>
+    instance !== undefined &&
+    instance.adapter_id.startsWith("standalone-") &&
+    artifactsById.get(artifactKeyId(candidate.key))?.auto_updates === true &&
+    !instance.status.notes.some((note) => NAME_MAY_NOT_RUN_THIS_COPY[note]);
+
+  /**
+   * Why a row could not be checked, for its "Can't check" chip: that it
+   * could not, then its reason. A warning with a key of its own
+   * (`NonRegistrySource`) was written for this audience and is always
+   * given. A `Message` is raw text off the wire -- a tool's stderr, an
+   * HTTP error -- kept verbatim on purpose, and it is behind "Show
+   * technical details", which is exactly what spec §6 says the right
+   * shape is. Distinct, so a row carrying the same reason twice says it
+   * once.
+   */
+  const cannotCheckDetail = (candidate: UpdateCandidate): ReactNode => {
+    const reasons = new Set<string>();
+    for (const warning of candidate.warnings) {
+      const raw = warningMessage(warning);
+      const text = raw === null ? warningText(t, warning) : settings?.show_technical_details ? raw : null;
+      if (text !== null && text !== "") reasons.add(text);
+    }
+    return detailLines([t("updates.cannotCheckShort"), ...reasons]);
+  };
+
+  // A blocked row's chip and its detail: why the tool will not update it,
+  // and what the user can do instead -- the unpin command, set as code in
+  // the sentence, or "open it once", with the command that opens it under
+  // it while technical details are on.
+  const blockedDetail = (
+    candidate: UpdateCandidate,
+    reason: UpdateBlocked,
+    instance: ManagerInstance | undefined,
+  ): ReactNode => {
+    const copy = UPDATE_BLOCKED_KEYS[reason];
+    const source = sourceLabelFor(candidate.key.instance_id);
+    const command = copy.command(candidate.key, instance);
+    if (copy.commandInDetail) {
+      return detailLines([withCommand(t(copy.detail, { command: COMMAND_SLOT, source }), command)]);
+    }
+    return detailLines([
+      t(copy.detail, { source }),
+      ...(settings?.show_technical_details
+        ? [withCommand(t("updates.runInTerminal", { command: COMMAND_SLOT }), command)]
+        : []),
+    ]);
+  };
+
+  /**
+   * The row's status chips, one per `UpdateState`, each with its why
+   * behind an ⓘ. A `switch` with no default, so a state added to
+   * `UpdateState` without a chip here fails `tsc`. A read-only source's
+   * row that could not be checked either says both: "Read-only" is the
+   * fact that no button will ever appear on it, whatever the next check
+   * finds, and that this check found nothing is its own news.
+   */
+  const statusChips = (
+    candidate: UpdateCandidate,
+    state: UpdateState,
+    instance: ManagerInstance | undefined,
+  ): ReactNode[] => {
+    const cannotCheck = (
+      <StatusChip key="cannot-check" label={t("updates.cannotCheck")} detail={cannotCheckDetail(candidate)} />
+    );
+    switch (state.kind) {
+      case "actionable":
+        return saysItUpdatesItself(candidate, instance)
+          ? [
+              <StatusChip
+                key="updates-itself"
+                label={t("updates.selfUpdating")}
+                detail={detailLines([t("updates.selfUpdatingDetail")])}
+              />,
+            ]
+          : [];
+      case "readOnly": {
+        const reason = instance?.read_only_reason ?? null;
+        return [
+          <StatusChip
+            key="read-only"
+            label={t("updates.readOnly")}
+            detail={reason === null ? undefined : detailLines([t(READ_ONLY_DETAIL_KEYS[reason])])}
+          />,
+          ...(candidate.checkable ? [] : [cannotCheck]),
+        ];
+      }
+      case "cannotCheck":
+        return [cannotCheck];
+      case "blocked":
+        return [
+          <StatusChip
+            key="blocked"
+            label={t(UPDATE_BLOCKED_KEYS[state.reason].badge)}
+            detail={blockedDetail(candidate, state.reason, instance)}
+          />,
+        ];
+      case "sourceUnavailable":
+        // An instance missing from the snapshot, which `refresh` never
+        // produces, reads as one that did not answer.
+        return [
+          <StatusChip
+            key="unavailable"
+            label={t("updates.sourceUnavailable")}
+            detail={detailLines([
+              t(UNAVAILABLE_DETAIL_KEYS[instance?.status.unavailable ?? "NotResponding"], {
+                source: sourceLabelFor(candidate.key.instance_id),
+              }),
+            ])}
+          />,
+        ];
+    }
+  };
+
+  /**
+   * The version column: "7.1 → 7.2", in tabular numerals.
+   *
+   * A `Digest` candidate is Ollama: `current` is the local manifest digest
+   * that /api/tags reported and `target` is the registry manifest's config
+   * digest -- **different hash spaces**, not two readings of one
+   * identifier, and they will not be equal even after a successful pull.
+   * The adapter's own comment (crates/canager-core/src/adapters/ollama/
+   * mod.rs) says never to render them as a version jump, and a 64-hex
+   * string is not something to put in front of this audience either way:
+   * such a row says "New version" -- only when it was checked. A row
+   * Canager could not check has no version to move to (its `target` is
+   * its installed version, `uncheckable_candidate` in crates/canager-core/
+   * src/adapters/mod.rs), so it shows the version it has, and a model's
+   * nothing at all.
+   */
+  const versionOf = (candidate: UpdateCandidate): string | null => {
+    const { current, target } = candidate;
+    if (!candidate.checkable) {
+      return candidate.channel === "Digest" || current === "" ? null : current;
+    }
+    if (candidate.channel === "Digest") return t("updates.newVersion");
+    if (current !== "" && target !== "") return t("updates.versionChange", { current, target });
+    return target !== "" ? target : current !== "" ? current : null;
+  };
+
+  /**
+   * The version jump for the confirmation dialog, or null when there is no
+   * honest one to show: `versionOf`'s rule in the dialog's own words -- a
+   * `Digest` candidate says a newer build of the model is available, never
+   * two digests -- and nothing, rather than a dangling arrow, when a source
+   * could name only one side. Not behind "Show technical details": spec §6
+   * asks this screen to show the version jump, and a confirmation that
+   * names the command but not the change is not a confirmation.
+   */
+  const dialogVersionJump = (candidate: UpdateCandidate): string | null => {
+    if (candidate.channel === "Digest") return t("updates.newBuild");
+    if (candidate.current === "" || candidate.target === "") return null;
+    return t("updates.versionChange", { current: candidate.current, target: candidate.target });
+  };
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -638,28 +768,18 @@ export function UpdatesPage() {
     }
   }
 
-  // The source's name in the user's language, for the one refusal that can
-  // reach a real person verbatim otherwise (`planErrorMessage`'s
-  // NotActionable case): a stale snapshot's own read-only/unavailable
-  // state (`stateOf` above) cannot be trusted for *which* reason applies -- that is exactly what went stale -- but the
-  // instance's adapter, and therefore its label, does not change underneath
-  // it, so this is safe to read from the same snapshot.
-  function sourceLabelFor(instanceId: string): string {
-    const instance = snapshot?.instances.find((i) => i.id === instanceId);
-    if (!instance) return instanceId;
-    const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-    return labelKey ? t(labelKey) : instance.adapter_id;
-  }
-
-  async function openConfirm(candidates: UpdateCandidate[]) {
+  async function openConfirm(chosen: UpdateCandidate[]) {
     // A new id retires whatever batch was still planning. Planning has no
     // side effect beyond issuing PlanIds that expire on their own, so the
     // newest click wins and the older batch's late replies are dropped by
     // `isCurrent`. Submitting is different — see the lock in the dialog.
     const id = batchIdRef.current + 1;
     batchIdRef.current = id;
+    // In the list's own order, so the confirmation reads as the rows did.
+    const candidates = [...chosen].sort(compareRows);
     const blank = (c: UpdateCandidate): BatchItem => ({
       candidate: c,
+      name: nameOf(c),
       issued: null,
       planError: null,
       submittedOpId: null,
@@ -708,6 +828,10 @@ export function UpdatesPage() {
       try {
         const opId = await submitMutation.mutateAsync(item.issued.id);
         items[i] = { ...item, submittedOpId: opId };
+        // Which version this operation is for, so its row can tell its
+        // outcome from a later version's (`operationFor`). Recorded
+        // whether or not this batch is still current: the operation runs.
+        useUiStore.getState().rememberUpdateTarget(opId, item.candidate.target);
         // Guarded like every other post-await write: `deselect` mutates the
         // shared selection store, so a superseded batch must not reach it.
         if (isCurrent(id)) deselect(item.candidate.key);
@@ -740,13 +864,13 @@ export function UpdatesPage() {
     setBatch(anyFailed ? { id, phase: "done", items } : null);
   }
 
-  // What a row's two hiding buttons share: `next` builds the settings to
+  // What a row's two hiding items share: `next` builds the settings to
   // save from the ones on screen.
   function hide(candidate: UpdateCandidate, next: (current: Settings) => Settings) {
-    // One save at a time. A second click while the first save is pending
+    // One save at a time. A second choice while the first save is pending
     // would build its settings from the same stale base, and the later save
-    // would overwrite the earlier one. The buttons are disabled meanwhile;
-    // this guard covers a click that was already queued.
+    // would overwrite the earlier one. The items are disabled meanwhile;
+    // this guard covers a choice that was already on its way.
     if (!settings || saveSettings.isPending) return;
     if (selectedUpdates.includes(artifactKeyId(candidate.key))) {
       toggleUpdate(candidate.key);
@@ -769,8 +893,71 @@ export function UpdatesPage() {
       ignored_updates: [...current.ignored_updates, candidate.key],
     }));
 
+  // "Copy command", and a word in the header about whether it worked:
+  // the clipboard can refuse, and a menu item that did nothing must not
+  // look as if it had.
+  function copyCommand(command: string) {
+    const say = (status: "copied" | "failed") => {
+      setCopyStatus(status);
+      window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2500);
+    };
+    if (navigator.clipboard === undefined) {
+      say("failed");
+      return;
+    }
+    navigator.clipboard.writeText(command).then(
+      () => say("copied"),
+      () => say("failed"),
+    );
+  }
+
+  /**
+   * The row's ⋯ menu: the two ways to stop seeing this update, the lighter
+   * one first, and -- with technical details on -- the command its chip
+   * talks about. "Skip this version" hides it until the source offers
+   * another version; "Never remind me" hides every update of this package
+   * until the user undoes it in Settings. Each item's hint -- a tooltip,
+   * and its accessible description -- says what it does. A row whose
+   * `target` does not name one release gets only "Never remind me"
+   * (`canSkipVersion`): one Canager could not check, whose `target` is its
+   * installed version, and a Homebrew cask declared `version :latest`,
+   * every release of which is offered as "latest", so that a skip of it
+   * would never end. "Copy command" only where the command is known
+   * without asking the backend for a plan: a blocked row's unpin command
+   * or launcher.
+   */
+  const menuItems = (
+    candidate: UpdateCandidate,
+    state: UpdateState,
+    instance: ManagerInstance | undefined,
+  ): MenuItem[] => {
+    const items: MenuItem[] = [];
+    if (canSkipVersion(candidate)) {
+      items.push({
+        id: "skip",
+        label: t("updates.skipVersion"),
+        hint: t("updates.skipVersionHint"),
+        disabled: saveSettings.isPending,
+        onSelect: () => skipVersion(candidate),
+      });
+    }
+    items.push({
+      id: "never",
+      label: t("updates.neverRemind"),
+      hint: t("updates.neverRemindHint"),
+      disabled: saveSettings.isPending,
+      onSelect: () => neverRemind(candidate),
+    });
+    if (settings?.show_technical_details && state.kind === "blocked") {
+      const command = UPDATE_BLOCKED_KEYS[state.reason].command(candidate.key, instance);
+      items.push({ id: "copy", label: t("updates.copyCommand"), onSelect: () => copyCommand(command) });
+    }
+    return items;
+  };
+
   // Above every early return: hooks cannot be called conditionally, and
-  // three of the returns below are reached before the list is drawn.
+  // the returns below are reached before the list is drawn.
   //
   // `getItemKey` changes with `items`, which is what tells the virtualizer
   // to lay the list out again from its measured heights under the new keys.
@@ -780,9 +967,9 @@ export function UpdatesPage() {
     getScrollElement: () => listRef.current,
     estimateSize: (index) => {
       const item = items[index];
-      return item?.type === "group" && item.notices.length > 0
-        ? NOTICE_GROUP_ESTIMATE
-        : ROW_ESTIMATE;
+      if (item?.type === "section") return SECTION_ESTIMATE;
+      if (item?.type === "summary") return SUMMARY_ESTIMATE;
+      return ROW_ESTIMATE;
     },
     getItemKey,
   });
@@ -794,42 +981,57 @@ export function UpdatesPage() {
     return null;
   }
 
+  const noticeLines =
+    notices.length > 0 ? (
+      <div className="flex flex-col gap-1.5 px-6 pb-3">
+        <SourceNotices notices={notices} layout="line" />
+      </div>
+    ) : null;
+
   // Two different kinds of empty: the backend found no updates, or it found
   // some and the user has hidden every one (skipped the version it offers,
   // or asked never to be reminded about it). Only the first can mean the
   // machine is up to date -- and only when every source actually answered.
   //
-  // The notices go *above* the early return, not after it. "Everything is
-  // up to date" over a stopped Ollama or a Homebrew whose catalogue could
-  // not be downloaded is precisely the lie this page used to tell: no
-  // candidates is exactly what an unreachable source produces, and the
-  // page read that silence as good news. When a source did not answer, or
-  // carries a note that means its updates were not fully checked
-  // (`NOTE_LEAVES_UPDATES_UNCHECKED`), the headline drops to what Canager
-  // can honestly claim -- nothing to update *in the sources it managed to
-  // check*. Not for every notice: one that is information only -- which
-  // copy runs when you type a tool's name -- still goes above the
-  // sentence, and leaves the sentence alone. A read-only source is one
-  // Canager *can* check. The rule is `everySourceChecked` in
-  // src/lib/updateState.ts, which the Overview's headline reads too: it
-  // may call the Mac up to date only when this page would.
-  if (snapshot.updates.length === 0) {
-    return (
-      <div className="p-4">
-        <SourceNotices notices={instanceNotices} />
-        <p className="text-sm text-[var(--color-muted)]">
-          {everySourceChecked(snapshot.instances)
-            ? t("updates.upToDate")
-            : t("updates.noneCheckable")}
-        </p>
-      </div>
-    );
-  }
+  // The notices go *above* the sentence. "Everything is up to date" over a
+  // stopped Ollama or a Homebrew whose catalogue could not be downloaded is
+  // precisely the lie this page used to tell: no candidates is exactly
+  // what an unreachable source produces, and the page read that silence as
+  // good news. When a source did not answer, or carries a note that means
+  // its updates were not fully checked (`NOTE_LEAVES_UPDATES_UNCHECKED`),
+  // the sentence drops to what Canager can honestly claim -- nothing to
+  // update *in the sources it managed to check*. Not for every notice: one
+  // that is information only -- which copy runs when you type a tool's
+  // name -- still goes above the sentence, and leaves the sentence alone.
+  // A read-only source is one Canager *can* check. The rule is
+  // `everySourceChecked` in src/lib/updateState.ts, which the Overview's
+  // headline reads too: it may call the Mac up to date only when this page
+  // would.
   if (visibleUpdates.length === 0) {
+    const upToDate = snapshot.updates.length === 0 && everySourceChecked(snapshot.instances);
+    const message =
+      snapshot.updates.length > 0
+        ? t("updates.allHidden")
+        : upToDate
+          ? t("updates.upToDate")
+          : t("updates.noneCheckable");
     return (
-      <div className="p-4">
-        <SourceNotices notices={instanceNotices} />
-        <p className="text-sm text-[var(--color-muted)]">{t("updates.allHidden")}</p>
+      <div className="flex h-full flex-col">
+        {noticeLines}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
+          {upToDate ? (
+            <CheckCircleIcon size={44} className="text-success" />
+          ) : (
+            <InfoIcon size={36} className="text-muted" />
+          )}
+          <p
+            className={
+              upToDate ? "text-section text-foreground" : "max-w-sm text-body text-muted"
+            }
+          >
+            {message}
+          </p>
+        </div>
       </div>
     );
   }
@@ -843,210 +1045,120 @@ export function UpdatesPage() {
       ? batch.items.filter(hasPlanError)
       : [];
 
-  // The row's badge, one per `UpdateState`. A `switch` with no default, so
-  // a state added to `UpdateState` without a badge here fails `tsc`.
-  function updateBadgeText(state: UpdateState): string {
-    switch (state.kind) {
-      case "readOnly":
-        return t("updates.readOnly");
-      case "cannotCheck":
-        return t("updates.cannotCheck");
-      case "blocked":
-        return t(UPDATE_BLOCKED_KEYS[state.reason].badge);
-      case "sourceUnavailable":
-      case "actionable":
-        return t("updates.available");
-    }
-  }
-
-  // One update's row. A function rather than inline in the list only so
-  // that the list's `map` can stay about slots -- headings and rows -- while
-  // this stays about what one candidate offers.
+  // One row. Its checkbox and Update button come with an Update button's
+  // state and no other (`actionable`); `checkable: false` in particular
+  // must offer neither -- "Update" on a git-installed crate would run
+  // `cargo install --force {name}` against the crates.io crate of the
+  // same name, a different package. While an update of it is under way,
+  // or has just finished, its progress stands where the button was.
   const updateRow = (candidate: UpdateCandidate) => {
-    // Resolved once per row: the badge and the row's own actionability
+    const instance = instancesById.get(candidate.key.instance_id);
+    // Resolved once per row: the chips and the row's own actionability
     // must agree.
     const state = stateOf(candidate);
+    const actionable = state.kind === "actionable";
+    const name = nameOf(candidate);
+    const source = sourceLabelFor(candidate.key.instance_id);
+    const op = operationFor(candidate);
+    const chips = statusChips(candidate, state, instance);
     return (
-      <ArtifactRow
-        name={candidate.key.name}
-        // `checkable: false` means the adapter could not establish what
-        // the remote version is -- a cargo crate installed from git or a
-        // path, an Ollama model whose manifest could not be read, any
-        // source whose registry lookup could not be made. Such a row
-        // must offer no action and no selection: "Update" on a
-        // git-sourced crate would run `cargo install --force {name}`
-        // against the crates.io crate of the same name, which is a
-        // different package. The reason lives in `warnings`, and
-        // `rowDescription` is what puts it somewhere the user reads.
-        description={rowDescription(candidate)}
-        // An explanation has to be readable end to end or it has not
-        // been given. The reason a lookup failed can run to a few
-        // hundred characters and the detail comes last, so one
-        // clipped line would hide precisely the part such a row
-        // exists to say; the self-updating hint ends in what the user
-        // can do (update now, or just run the tool, where typing its
-        // name runs this copy). A package's own blurb keeps the single
-        // line: it is a nicety, not something the user is being asked
-        // to act on.
-        wrapDescription={
-          !candidate.checkable ||
-          candidate.blocked !== null ||
-          selfUpdatingHintKey(candidate) !== null
-        }
-        // Capability first when both apply: "Read-only" is the fact
-        // that no button will ever appear on this row, whatever the
-        // next refresh finds. That a lookup also failed is on the
-        // row already, in words, via `rowDescription`.
-        // There is no "N warnings" state: nothing in production builds a
-        // `checkable: true` candidate with a warning on it any more.
-        // That badge's only two producers were brew's `"pinned"` string
-        // and its per-candidate "brew update failed" sentence, and this
-        // branch deleted both (the second is now
-        // `InstanceNote::IndexMayBeStale`, a notice on the source rather
-        // than a count on a row). The badge outlived them, unreachable,
-        // which is the exact shape of defect this phase keeps finding.
-        //
-        // The pin came back as `blocked`, with a badge of its own: checked,
-        // newer version known, and the tool will not install it. The badge
-        // names why ("Pinned") and comes after "could not check" for the
-        // same reason `rowDescription` puts it there.
-        //
-        // A source that is not answering keeps the plain "Update" badge:
-        // the newer version is real, and the source's own notice under its
-        // heading says why there is no button. It is `neutral`, like every
-        // row Canager cannot act on (`BadgeVariant`).
-        badgeText={updateBadgeText(state)}
-        badgeVariant={state.kind === "actionable" ? "info" : "neutral"}
-        primaryActionLabel={state.kind === "actionable" ? t("updates.update") : undefined}
-        onPrimaryAction={
-          state.kind === "actionable" ? () => openConfirm([candidate]) : undefined
-        }
-        primaryActionDisabled={dialogOpen}
+      <ToolRow
+        adapterId={instance?.adapter_id ?? candidate.key.instance_id.split(":")[0]}
+        sourceLabel={source}
+        name={name}
+        // A tool with its own installer is its own source: the chip would
+        // only say its name again.
+        nameChip={source === name ? undefined : source}
+        description={artifactBlurb(
+          t,
+          artifactsById.get(artifactKeyId(candidate.key))?.description,
+          instance?.adapter_id,
+        )}
         selectable={
-          isActionable(candidate)
+          actionable
             ? {
                 checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
                 onToggle: () => toggleUpdate(candidate.key),
-                ariaLabel: t("updates.selectRow", { name: candidate.key.name }),
+                ariaLabel: t("updates.selectRow", { name }),
               }
             : undefined
         }
-        // The two ways to stop seeing this update, the lighter one first:
-        // "Skip this version" hides it until the source offers another
-        // version, "Never remind me" hides every update of this package
-        // until the user undoes it in Settings. The one "Ignore" button
-        // they replace did not say which of the two it did. Each button's
-        // title -- a tooltip on hover, and its accessible description --
-        // says what it does. A row whose `target` does not name one
-        // release gets only "Never remind me" (`canSkipVersion`): one
-        // Canager could not check, whose `target` is its installed
-        // version, and a Homebrew cask declared `version :latest`, every
-        // release of which is offered as "latest", so that a skip of it
-        // would never end.
-        secondaryContent={
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
-            {canSkipVersion(candidate) ? (
-              <button
-                type="button"
-                onClick={() => skipVersion(candidate)}
-                disabled={saveSettings.isPending}
-                title={t("updates.skipVersionHint")}
-                className="text-xs text-[var(--color-muted)] underline disabled:opacity-50"
-              >
-                {t("updates.skipVersion")}
-              </button>
-            ) : null}
+        status={chips.length > 0 ? chips : undefined}
+        version={versionOf(candidate)}
+        action={
+          op !== null ? (
+            <UpdateProgress progress={progressOf(op)} name={name} onViewLog={viewLog} />
+          ) : actionable ? (
             <button
               type="button"
-              onClick={() => neverRemind(candidate)}
-              disabled={saveSettings.isPending}
-              title={t("updates.neverRemindHint")}
-              className="text-xs text-[var(--color-muted)] underline disabled:opacity-50"
+              onClick={() => openConfirm([candidate])}
+              disabled={dialogOpen}
+              className="h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text"
             >
-              {t("updates.neverRemind")}
+              {t("updates.update")}
             </button>
-          </div>
+          ) : null
+        }
+        menu={
+          <Menu
+            label={t("updates.moreActions", { name })}
+            items={menuItems(candidate, state, instance)}
+          />
         }
       />
     );
   };
 
+  const actionableCount = actionableUpdates.length;
+
   return (
     <div className="flex h-full flex-col">
-      {pageErrors.map((item) => (
-        <p
-          key={artifactKeyId(item.candidate.key)}
-          role="alert"
-          className="px-4 pt-4 text-sm text-[var(--color-danger)]"
-        >
-          {t("updates.planFailed", { message: item.planError })}
-        </p>
-      ))}
-      {saveSettings.isError ? (
-        <p role="alert" className="px-4 pt-4 text-sm text-[var(--color-danger)]">
-          {t("updates.saveChoiceFailed", {
-            message: settingsSaveErrorMessage(t, saveSettings.error.message),
-          })}
-        </p>
-      ) : null}
-      <div className="flex items-center justify-between gap-4 border-b border-[var(--color-border)] p-4">
-        <div className="text-sm text-[var(--color-muted)]">
-          {/* Two-part, always: the headline counts what Canager can act on,
-              the second line counts what it cannot. "0 updates available" is
-              a lie when the rows below exist and simply are not Canager's to
-              update, so the headline says that instead -- but the second line
-              stays, because "how many" is exactly what a user staring at six
-              listed rows needs to know.
-
-              The second line's wording follows the headline. "6 more can't
-              be updated here" is right under "2 updates available"; under
-              "Nothing here can be updated by Canager" it is "more" than the
-              nothing just stated, on the first line of the page for every
-              offline Mac, every pip-only list and every nodejs.org npm. With
-              nothing actionable, every row is one Canager cannot update --
-              the headline has already said so -- and the line only counts
-              them. */}
-          <p>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pb-3">
+        <div className="flex min-w-0 items-baseline gap-3">
+          {/* How many rows have an Update button. With none, not "0
+              updates": the rows under "Can't update here" are real, and
+              simply not Canager's to update. */}
+          <p className="text-section text-foreground">
             {actionableCount === 0
               ? t("updates.noneActionable")
               : t("updates.count", { count: actionableCount })}
           </p>
-          {unmanageableCount > 0 ? (
-            <p>
-              {actionableCount === 0
-                ? t("updates.countListed", { count: unmanageableCount })
-                : t("updates.countUnmanageable", { count: unmanageableCount })}
-            </p>
-          ) : null}
+          <p role="status" className="text-small text-muted">
+            {copyStatus === "copied"
+              ? t("updates.copied")
+              : copyStatus === "failed"
+                ? t("updates.copyFailed")
+                : null}
+          </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Select all and Invert selection act on the rows that show a
-              checkbox (`actionableUpdates`) and on no others. A row in any
-              other `UpdateState` -- read-only, could not be checked,
-              blocked, its source not answering -- has no checkbox, and a
-              row the user hid (skipped, or never to be reminded about) is
-              not listed at all, so neither button selects one.
-              `selectUpdates` and `invertUpdateSelection` change only
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Select all, Invert selection and Update all act on the rows
+              that show a checkbox (`actionableUpdates`) and on no others.
+              A row in any other `UpdateState` -- read-only, could not be
+              checked, blocked, its source not answering -- has no
+              checkbox, and a row the user hid (skipped, or never to be
+              reminded about) is not listed at all, so none of them selects
+              one. `selectUpdates` and `invertUpdateSelection` change only
               the ids they are handed, so a row selected before a refresh
               took its checkbox away keeps its id in `selectedUpdates`,
               where `selectedVisible` already leaves it out. The words on
-              the buttons are short; their accessible names also say which
-              rows they act on. */}
+              the two are short; their accessible names also say which rows
+              they act on. */}
           <button
             type="button"
-            disabled={actionableUpdates.length === 0}
+            disabled={actionableCount === 0}
             onClick={() => selectUpdates(actionableUpdates.map((u) => u.key))}
             aria-label={t("updates.selectAllLabel")}
-            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+            className={HEADER_TEXT_BUTTON}
           >
             {t("updates.selectAll")}
           </button>
           <button
             type="button"
-            disabled={actionableUpdates.length === 0}
+            disabled={actionableCount === 0}
             onClick={() => invertUpdateSelection(actionableUpdates.map((u) => u.key))}
             aria-label={t("updates.invertSelectionLabel")}
-            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+            className={HEADER_TEXT_BUTTON}
           >
             {t("updates.invertSelection")}
           </button>
@@ -1054,48 +1166,63 @@ export function UpdatesPage() {
             type="button"
             disabled={selectedVisible.length === 0 || dialogOpen}
             onClick={() => openConfirm(selectedVisible)}
-            className="rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+            className="ml-2 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
           >
-            {t("updates.updateSelected")}
+            {selectedVisible.length === 0
+              ? t("updates.updateSelected")
+              : t("updates.updateSelectedCount", { number: selectedVisible.length })}
+          </button>
+          {/* Every row with a checkbox, ticked, into the same confirmation
+              Update selected opens: one batch flow, not two. */}
+          <button
+            type="button"
+            disabled={actionableCount === 0 || dialogOpen}
+            onClick={() => {
+              selectUpdates(actionableUpdates.map((u) => u.key));
+              void openConfirm(actionableUpdates);
+            }}
+            className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content disabled:opacity-50 disabled:hover:bg-accent"
+          >
+            {t("updates.updateAll")}
           </button>
         </div>
       </div>
-      {/* Outside the scrolling list, so it stays in view however far down
-          the rows it describes run. */}
-      {hiddenReasonCount > 0 ? (
-        <p className="border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-muted)]">
-          {t("updates.cannotCheckSummary", {
-            count: hiddenReasonCount,
-            setting: t("settings.showTechnicalDetails.label"),
+      {noticeLines}
+      {pageErrors.map((item) => (
+        <p
+          key={artifactKeyId(item.candidate.key)}
+          role="alert"
+          className="px-6 pb-2 text-body text-danger"
+        >
+          {t("updates.planFailed", { message: item.planError })}
+        </p>
+      ))}
+      {saveSettings.isError ? (
+        <p role="alert" className="px-6 pb-2 text-body text-danger">
+          {t("updates.saveChoiceFailed", {
+            message: settingsSaveErrorMessage(t, saveSettings.error.message),
           })}
         </p>
       ) : null}
-      {/* Virtualized, like the Installed page. The entry that deferred this
-          reasoned that the page only ever lists "a few to a few dozen"
-          Homebrew updates; phase 3 killed that. A source that cannot reach
+      {/* Virtualized, like the Installed page. A source that cannot reach
           its registry reports one `checkable: false` candidate per
-          installed package, so a Mac that is merely offline turns this into
-          a list as long as everything it has installed -- and it stalls
-          exactly when the user is already confused about why nothing could
-          be checked. */}
-      <div ref={listRef} className="flex-1 overflow-y-auto">
+          installed package, so a Mac that is merely offline turns this
+          into a list as long as everything it has installed -- and it
+          would stall exactly when the user is already confused about why
+          nothing could be checked. */}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const item = items[virtualRow.index];
             return (
-              // No fixed height on the slot: a heading with a banner is far
-              // taller than a row, and an uncheckable row wraps its
-              // explanation (`wrapDescription`) over as many lines as the
-              // tool's error text needs, so each slot reports its real
-              // height back through `measureElement` instead. A fixed height
-              // would let the next slot -- later in DOM order, painted on
-              // top -- cover the tail of the sentence this one exists to
-              // say, or the Ollama banner's button.
+              // No fixed height on the slot: each reports its real height
+              // back through `measureElement` instead.
               <div
                 // `listItemKey`, through the virtualizer: the key its
                 // measured height is filed under.
                 key={virtualRow.key}
                 data-index={virtualRow.index}
+                data-list-slot=""
                 ref={rowVirtualizer.measureElement}
                 style={{
                   position: "absolute",
@@ -1105,13 +1232,28 @@ export function UpdatesPage() {
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                {item.type === "group" ? (
-                  <div className="px-4 py-2">
-                    <p className="text-xs font-semibold uppercase text-[var(--color-muted)]">
-                      {item.label}
-                    </p>
-                    <SourceNotices notices={item.notices} />
+                {item.type === "section" ? (
+                  <div className="pt-4">
+                    <button
+                      type="button"
+                      aria-expanded={item.expanded}
+                      onClick={() => setShowCantUpdate((shown) => !shown)}
+                      className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body font-semibold text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <ChevronIcon
+                        size={14}
+                        className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
+                      />
+                      {t("updates.cantUpdateHere", { number: item.count })}
+                    </button>
                   </div>
+                ) : item.type === "summary" ? (
+                  <p className="px-3 pb-2 text-small text-muted">
+                    {t("updates.cannotCheckSummary", {
+                      count: item.count,
+                      setting: t("settings.showTechnicalDetails.label"),
+                    })}
+                  </p>
                 ) : (
                   updateRow(item.candidate)
                 )}
@@ -1165,23 +1307,16 @@ export function UpdatesPage() {
         <div className="flex flex-col gap-4">
           {(batch?.items ?? []).map((item) => {
             const itemWarnings = item.issued ? warningTexts(t, item.issued.plan.warnings) : [];
+            const jump = dialogVersionJump(item.candidate);
             return (
               <div
                 key={artifactKeyId(item.candidate.key)}
                 className="flex flex-col gap-1"
               >
-                <p className="text-sm font-medium text-[var(--color-foreground)]">
-                  {item.candidate.key.name}
-                </p>
-                {/* What you are moving to, spelled out. Spec §6 asks this
-                    screen to show the version jump, and unlike the row's
-                    own description it is *not* behind
-                    `show_technical_details`: a confirmation that names the
-                    command but not the change is not a confirmation. */}
-                {versionJump(item.candidate) !== null ? (
-                  <p className="text-sm text-[var(--color-muted)]">
-                    {versionJump(item.candidate)}
-                  </p>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">{item.name}</p>
+                {/* What you are moving to, spelled out (`dialogVersionJump`). */}
+                {jump !== null ? (
+                  <p className="text-sm text-[var(--color-muted)]">{jump}</p>
                 ) : null}
                 {item.planError !== null ? (
                   <p role="alert" className="text-sm text-[var(--color-danger)]">

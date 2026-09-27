@@ -195,8 +195,8 @@ export function InstalledPage() {
   // it beside any refusal: what the tool is still needs saying on a row
   // that cannot be uninstalled here.
   // Any other row the tool will not uninstall says why in place of its
-  // blurb, as a pinned row does on the Updates page: it is the one thing
-  // the user has to read to understand why there is no Uninstall button.
+  // blurb: it is the one thing the user has to read to understand why
+  // there is no Uninstall button.
   // A row of a source that did not answer promises Uninstall only once it
   // answers (`descriptionSourceUnavailable`).
   function installedDescription(

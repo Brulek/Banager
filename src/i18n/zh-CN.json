@@ -92,51 +92,73 @@
   "updates": {
     "upToDate": "所有内容都已是最新",
     "allHidden": "没有待处理的更新，其余的都已跳过或设为不再提醒。",
-    "count_other": "{{count}} 个可用更新",
-    "countUnmanageable_other": "另有 {{count}} 个无法在这里更新",
-    "countListed_other": "下面列出了 {{count}} 个",
-    "noneActionable": "这里没有 Canager 能更新的内容",
-    "updateSelected": "更新所选项",
+    "noneCheckable": "已检查的来源里没有可更新的内容",
+    "count_other": "{{count}} 个可更新",
+    "noneActionable": "这里没有可更新的",
+    "cantUpdateHere": "不能在这里更新的（{{number}}）",
     "selectAll": "全选",
     "selectAllLabel": "全选能在这里更新的项",
     "invertSelection": "反选",
     "invertSelectionLabel": "反选能在这里更新的项",
+    "updateSelected": "更新所选",
+    "updateSelectedCount": "更新所选（{{number}}）",
+    "updateAll": "全部更新",
     "update": "更新",
+    "selectRow": "选择要更新的 {{name}}",
+    "moreActions": "{{name}} 的更多操作",
     "skipVersion": "跳过这个版本",
     "skipVersionHint": "你会在它出下一个版本时再看到提醒。",
     "neverRemind": "不再提醒这个软件",
     "neverRemindHint": "以后不再提醒这个软件的任何更新，可在设置里撤销。",
+    "copyCommand": "复制命令",
+    "copied": "已复制",
+    "copyFailed": "没能复制",
     "saveChoiceFailed": "没能保存这个选择：{{message}}",
-    "available": "更新",
-    "cannotCheck": "无法检查",
-    "cannotCheckDetail": "Canager 没能检查它有没有更新。{{message}}",
-    "cannotCheckShort": "Canager 没能检查它有没有更新。",
-    "cannotCheckSummary_other": "下面有 {{count}} 项，Canager 没能检查它们有没有更新。没联网是一种可能，但不是唯一的原因。在“设置”里打开“{{setting}}”，就能看到每个工具具体报了什么。",
-    "readOnly": "只读",
     "versionChange": "{{current}} → {{target}}",
+    "newVersion": "有新版本",
     "newBuild": "这个模型有新的版本可用",
-    "selectRow": "选择要更新的 {{name}}",
+    "selfUpdating": "会自动更新",
+    "selfUpdatingDetail": "它平时会自己更新，也可以现在更新。",
+    "readOnly": "只读",
+    "readOnlyDetail": {
+      "ByDesign": "用 pip 装的包只能在这里查看。命令行工具建议改用 pipx 或 uv 安装。",
+      "PrefixNotWritable": "这些只能在这里查看：npm 把它们放在你的账户改不了的文件夹里。用 Homebrew 安装 Node，Canager 就能管理 npm 包了。"
+    },
+    "cannotCheck": "无法检查",
+    "cannotCheckShort": "查不到它的最新版本。",
+    "cannotCheckSummary_other": "这里有 {{count}} 项没能检查更新。想看原因，在“设置”里打开“{{setting}}”。",
+    "sourceUnavailable": "暂时不可用",
+    "unavailableDetail": {
+      "NotRunning": "{{source}} 没有在运行。启动它，然后再检查。",
+      "NotResponding": "{{source}} 没有响应，稍后再检查。",
+      "RefusesAsRoot": "Canager 用管理员身份运行时，{{source}} 不肯工作。像平常那样重新打开 Canager。"
+    },
+    "runInTerminal": "在终端运行：{{command}}",
+    "progress": {
+      "queued": "排队中",
+      "running": "正在更新…",
+      "cancelling": "正在取消…",
+      "succeeded": "已更新",
+      "failed": "更新失败",
+      "cancelled": "已取消",
+      "check": "请查看",
+      "viewLog": "查看日志",
+      "viewLogLabel": "查看日志：{{name}}"
+    },
     "confirmTitle": "确认更新",
     "confirmUpdate": "确认",
     "started": "已开始",
     "planFailed": "没能准备这次更新：{{message}}",
     "submitFailed": "没能开始更新：{{message}}",
-    "noneCheckable": "已检查的来源里没有可更新的内容",
-    "selfUpdatingHint": "这份落后了（{{current}} → {{target}}）。{{source}} 通常在下次运行时会自己更新；可以现在用 Canager 更新，也可以直接运行它。",
-    "selfUpdatingHintNotRunByName": "这份落后了（{{current}} → {{target}}）。可以现在用 Canager 更新。",
     "blocked": {
       "Pinned": {
         "badge": "已固定",
-        "description": "它在 {{source}} 里被固定（pin）在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次启动 Canager 的时候。",
-        "descriptionSourceUnavailable": "它在 {{source}} 里被固定（pin）在了现在的版本，所以 Canager 不会更新它。想让它更新的话，先在「终端」里运行 {{command}}，之后 Canager 检查时只要 {{source}} 有应答，就会提供更新。",
-        "descriptionSelfUpdating": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，Canager 下次检查时就会提供更新，最晚在你下次启动 Canager 的时候。",
-        "descriptionSelfUpdatingSourceUnavailable": "它在 Homebrew 里被固定（pin）了，所以 Homebrew 和 Canager 都不会更新它。不过这个应用会自己更新，被固定了也可能照样更新。想让 Homebrew 更新它的话，先在「终端」里运行 {{command}}，之后 Canager 检查时只要 Homebrew 有应答，就会提供更新。",
+        "detail": "它在 {{source}} 里固定了版本。要更新，先在终端运行 {{command}}。",
         "refused": "这个软件在 {{source}} 里被固定（pin）了，所以 Canager 没有更新它。什么都没有改动。"
       },
       "SelfUpdatesOnly": {
-        "badge": "自己更新",
-        "description": "{{source}} 出了新版本（{{current}} → {{target}}），它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：只要它的自动更新没有被关掉，它启动时就会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
-        "descriptionSourceUnavailable": "上次 {{source}} 应答时就已经有新版本了，它会在后台自己安装更新——Canager 没有安全的办法替你做这件事。打开它一次（在「终端」里运行 {{command}}，然后退出）：只要它的自动更新没有被关掉，它启动时就会检查更新，最多每 15 分钟一次，并在后台自己装好新版本。",
+        "badge": "自动更新",
+        "detail": "它会自己更新：打开它一次就会检查新版本。",
         "refused": "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
       }
     }
@@ -150,7 +172,7 @@
     "dependentsUnknown": "Canager 无法确定有什么依赖它，卸载可能会影响其他软件。",
     "wouldBreak_other": "卸载后会影响 {{count}} 项：{{names}}。",
     "compilesLocally": "这将在本机编译，可能需要几分钟。",
-    "nonRegistrySource": "这不是从 crates.io 安装的，Canager 无法检查它的更新。",
+    "nonRegistrySource": "它不是从 crates.io 安装的。",
     "thirdPartyRegistry": "这个模型要从 {{host}} 下载，不是 Ollama 自己的模型库。确认信任 {{host}} 再继续。",
     "willTrash": {
       "Launcher": "移到废纸篓：{{path}}（命令本身）",
@@ -240,7 +262,9 @@
     "launcherOnly": {
       "title": "{{command}} 这个链接还在，但它指向的程序已经不在了",
       "description": "这个 {{command}} 链接指向的程序文件已经不在了，所以这个链接无法运行（另一份安装在「终端」里可能仍然可用）。如果是上次卸载中途停下，它们可能在废纸篓里。卸载会把这个链接也移到废纸篓。如果你并不想删掉 {{source}}，把它的文件夹从废纸篓放回去再刷新，或者按 {{source}} 官方文档里的安装步骤重新安装。"
-    }
+    },
+    "details": "详情",
+    "detailsLabel": "详情：{{title}}"
   },
   "planRefused": {
     "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。它可能在你打开这个窗口之后被卸载了。",

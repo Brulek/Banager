@@ -17,8 +17,8 @@ export interface ArtifactRowSelectable {
 
 export interface ArtifactRowProps {
   name: string;
-  /** Usually a string; a node when part of it is not prose, like the
-   *  Updates page's unpin command rendered as code. */
+  /** Usually a string; a node when part of it is not prose, like a
+   *  pinned package's unpin command rendered as code. */
   description: ReactNode;
   badgeText: string;
   badgeVariant: BadgeVariant;
@@ -28,7 +28,7 @@ export interface ArtifactRowProps {
   onPrimaryAction?: () => void;
   primaryActionDisabled?: boolean;
   selectable?: ArtifactRowSelectable;
-  /** Extra inline content between the description and the badge (the Updates page's Skip this version and Never remind me buttons). */
+  /** Extra inline content between the description and the badge. */
   secondaryContent?: ReactNode;
   /**
    * Let the description use as many lines as it needs instead of being cut

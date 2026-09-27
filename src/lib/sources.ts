@@ -76,9 +76,9 @@ export function standaloneSummaryKey(adapterId: string): string | null {
  * tool, whose artifact carries none, its summary sentence
  * (`standaloneSummaryKey`); `null` when there is neither. The one lookup
  * both pages' rows use -- `installedDescription` in
- * src/pages/InstalledPage.tsx and `descriptionFor` in
- * src/pages/UpdatesPage.tsx -- so a tool's Updates row cannot say "No
- * description available" while its Installed row has a sentence.
+ * src/pages/InstalledPage.tsx and `updateRow` in src/pages/UpdatesPage.tsx
+ * -- so a tool's Updates row cannot say "No description" while its
+ * Installed row has a sentence.
  * `adapterId` is `undefined` for a row whose instance is not in the
  * snapshot, which leaves only the description to go on.
  */
@@ -434,15 +434,14 @@ export function unpinCommand(key: ArtifactKey, instance: ManagerInstance | undef
 }
 
 /**
- * The command a `SelfUpdatesOnly` row's sentence tells the user to run
- * once: the tool itself -- its launcher, which is the standalone
- * instance's `exe_path` (`StandaloneAdapter::detect`) -- with no
- * arguments. Opening it is what makes it check for updates, while its
- * automatic updates are on (spec §4.4); `<launcher> --version` would not
- * (agy 1.2.10 never reaches its updater from `--version`, spec §3.4).
- * Quoted by `displayToken` when the path has a space, like the unpin
- * commands. The bare name when the snapshot lacks the instance, which
- * `refresh` never produces.
+ * The command that opens a `SelfUpdatesOnly` row's tool once: the tool
+ * itself -- its launcher, which is the standalone instance's `exe_path`
+ * (`StandaloneAdapter::detect`) -- with no arguments. Opening it is what
+ * makes it check for updates, while its automatic updates are on (spec
+ * §4.4); `<launcher> --version` would not (agy 1.2.10 never reaches its
+ * updater from `--version`, spec §3.4). Quoted by `displayToken` when the
+ * path has a space, like the unpin commands. The bare name when the
+ * snapshot lacks the instance, which `refresh` never produces.
  */
 function launcherCommand(key: ArtifactKey, instance: ManagerInstance | undefined): string {
   return displayToken(instance?.exe_path ?? key.name);
@@ -450,42 +449,32 @@ function launcherCommand(key: ArtifactKey, instance: ManagerInstance | undefined
 
 /** What `UPDATE_BLOCKED_KEYS` holds for one reason. */
 interface UpdateBlockedCopy {
-  /** The row's badge on the Updates page, in place of "Update". */
+  /** The row's status chip on the Updates page, where "Update" would be. */
   badge: string;
-  /** The row's description: why, and what the user can do about it. The
-   *  Updates page fills `{{source}}` with the owning source's label
-   *  (`sourceLabelFor`) and `{{command}}` with `command` below, so one
-   *  sentence serves every tool that produces the reason. */
-  description: string;
-  /** `description` for a candidate whose owning instance did not answer
-   *  the last refresh (`isAvailable` false, or the instance missing from
-   *  the snapshot). Such a row gets no Update button until the source
-   *  answers again (`updateStateOf` in src/lib/updateState.ts checks
-   *  `blocked` before `sourceUnavailable`, so a pinned-and-silent row is
-   *  still badged and described as blocked, not as unavailable), so it
-   *  may not promise the update sooner than that. Filled the same way as
-   *  `description`. */
-  descriptionSourceUnavailable: string;
   /**
-   * `description` for a package that updates itself
-   * (`InstalledArtifact.auto_updates`), or `null` when this reason needs
-   * no separate sentence for one. A reason whose `description` promises
-   * the package stays where it is cannot make that promise to an app that
-   * updates itself outside the tool.
+   * The chip's detail: why there is no Update button, and what the user
+   * can do instead, in at most two short sentences. The Updates page
+   * fills `{{source}}` with the owning source's label (`sourceLabelFor`)
+   * and, where the sentence has one, `{{command}}` with `command` below,
+   * set as code (`withCommand` in src/components/withCommand.tsx), so one
+   * sentence serves every tool that produces the reason. It promises
+   * nothing about when the update will be offered, so it holds as well
+   * for a row whose source did not answer the last check -- which keeps
+   * its chip and gets no button until the source answers again
+   * (`updateStateOf` in src/lib/updateState.ts checks `blocked` before
+   * `sourceUnavailable`) -- and for an app that updates itself.
    */
-  selfUpdatingDescription: string | null;
-  /** `selfUpdatingDescription` for a self-updating package whose owning
-   *  instance did not answer the last refresh, or `null` when
-   *  `selfUpdatingDescription` itself is `null`. Same reasoning as
-   *  `descriptionSourceUnavailable`, for the sentence that does not
-   *  promise the package stays put. */
-  selfUpdatingDescriptionSourceUnavailable: string | null;
-  /** The command `description`'s `{{command}}` stands for, from the row's
-   *  own key and the instance that key's `instance_id` names (`undefined`
-   *  only if the snapshot lacks it, which `refresh` never produces: it
-   *  builds `updates` only from instances it also puts in `instances`).
-   *  The Updates page renders it as code (`withCommand` in
-   *  src/pages/UpdatesPage.tsx), not as a word of the sentence. */
+  detail: string;
+  /**
+   * Whether `detail` sets the command into its sentence, or leaves it out
+   * of the sentence: then the command is a line of its own under it, only
+   * while Settings' "Show technical details" is on.
+   */
+  commandInDetail: boolean;
+  /** The command, from the row's own key and the instance that key's
+   *  `instance_id` names (`undefined` only if the snapshot lacks it, which
+   *  `refresh` never produces: it builds `updates` only from instances it
+   *  also puts in `instances`). Also what the row's "Copy command" copies. */
   command: (key: ArtifactKey, instance: ManagerInstance | undefined) => string;
   /** `planErrorMessage`'s sentence for the gate's `update_blocked`
    *  refusal, which only a stale Updates page can reach. It is given only
@@ -503,78 +492,53 @@ interface UpdateBlockedCopy {
 export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
   Pinned: {
     badge: "updates.blocked.Pinned.badge",
-    // `description` (and `descriptionSelfUpdating` below) promise the
-    // update appears "at the latest the next time you start Canager".
-    // That rests on the refresh every start runs
-    // (`refreshIntoCache(queryClient, "initial")` in src/lib/events.ts)
-    // and on `parse_outdated` reading `pinned` afresh each time -- and,
-    // just as much, on the owning instance answering that refresh: a
-    // candidate whose instance is unavailable is carried forward from the
-    // last snapshot that did answer, and gets no Update button regardless
-    // of the pin (`isUpdateActionable` in src/lib/updateState.ts needs
-    // `isAvailable`). `UpdatesPage.tsx`'s `rowDescription` picks
-    // `description` when the candidate's instance (found the same way the
-    // row's command is, `snapshot.instances.find` on `candidate.key.
-    // instance_id`) is available, and `descriptionSourceUnavailable`
-    // otherwise, which promises the update only once a check finds the
-    // source answering again -- never "the next time you start Canager",
-    // which such a row cannot back up.
-    //
-    // Both sentences name Canager, not "it", because "it" has just meant
-    // the package, and for a pinned cask that is an app -- "open it" reads
-    // as "open that app". "Start" is the right verb for `description`
-    // and `selfUpdatingDescription`: "at the latest" has to name a check
-    // that happens whether or not the user does anything, and that is the
-    // one every start runs -- the page header's Check again runs the same
-    // check sooner, but only when pressed -- and closing the window quits,
-    // since `run` in src-tauri/src/lib.rs has no `ExitRequested` handler
-    // to keep the app alive without one.
-    description: "updates.blocked.Pinned.description",
-    descriptionSourceUnavailable: "updates.blocked.Pinned.descriptionSourceUnavailable",
-    // A pinned cask with `auto_updates true` can still move: `brew pin`
-    // itself warns it "may update itself outside Homebrew despite being
-    // pinned" (Homebrew's `cmd/pin.rb`). `description` says Homebrew is
-    // keeping the package at its version, which such an app does not
-    // honour, so it gets a sentence that promises only what Homebrew and
-    // Canager will not do. Such a cask reaches this page mostly through
-    // `brew outdated --greedy` (`include_self_updating`, `check_updates`
-    // in crates/canager-core/src/adapters/brew/mod.rs), but Homebrew's own
-    // environment settings can list it without that flag
-    // (`outdated_version` in Homebrew's `cask/cask.rb`), which is why the
-    // page asks the package's `auto_updates` and not the setting. The
-    // sentence names Homebrew, not `{{source}}`: of `Pinned`'s two
-    // producers only brew ever sets `auto_updates` (`parse_list` in
-    // crates/canager-core/src/adapters/pipx.rs writes `false`). Such a
-    // cask can be under a silent Homebrew too, so it gets the same
-    // unavailable/available split as `description`, against
-    // `descriptionSelfUpdatingSourceUnavailable`.
-    selfUpdatingDescription: "updates.blocked.Pinned.descriptionSelfUpdating",
-    selfUpdatingDescriptionSourceUnavailable:
-      "updates.blocked.Pinned.descriptionSelfUpdatingSourceUnavailable",
+    // "It's pinned in {{source}}. To update it, first run {{command}} in
+    // Terminal." `{{source}}`, not Homebrew: pipx pins too. It says what
+    // stands in the way and what removes it, and nothing about when
+    // Canager will offer the update or whether the package stays where
+    // it is -- a pinned cask that updates itself may move anyway (`brew
+    // pin` warns of it, Homebrew's `cmd/pin.rb`), and a row whose source
+    // did not answer is offered nothing until it does.
+    detail: "updates.blocked.Pinned.detail",
+    commandInDetail: true,
     command: unpinCommand,
     refused: "updates.blocked.Pinned.refused",
   },
   SelfUpdatesOnly: {
     badge: "updates.blocked.SelfUpdatesOnly.badge",
-    // The tool installs its updates itself (agy: a 15-minute debounce on
-    // its background check, agy.md §4) and offers no command Canager may
-    // run, so the sentence says what does work: open it once, then quit.
-    // That works only while the tool's automatic updates are on -- agy's
-    // documented switch, `AGY_CLI_DISABLE_AUTO_UPDATE=true`, turns them
-    // off, and Canager does not look for it -- so the promise says
-    // "unless". The available sentence names the versions the row
-    // compared; the unavailable one cannot promise a current target and
-    // says only that a newer version was seen.
-    description: "updates.blocked.SelfUpdatesOnly.description",
-    descriptionSourceUnavailable: "updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable",
-    // The reason *is* "it updates itself": no separate sentence exists for
-    // a self-updating package, and `rowDescription` falls back to
-    // `description` (`copy.selfUpdatingDescription ?? copy.description`).
-    selfUpdatingDescription: null,
-    selfUpdatingDescriptionSourceUnavailable: null,
+    // The tool installs its updates itself (agy: when it starts, at most
+    // every 15 minutes, agy.md §4) and offers no command Canager may run,
+    // so the detail says what does work: open it once. The launcher that
+    // opens it is a path, which is a technical detail: it is shown under
+    // the sentence only while "Show technical details" is on.
+    detail: "updates.blocked.SelfUpdatesOnly.detail",
+    commandInDetail: false,
     command: launcherCommand,
     refused: "updates.blocked.SelfUpdatesOnly.refused",
   },
+};
+
+/**
+ * A read-only source's rows, in the detail of their "Read-only" chip on
+ * the Updates page: two short sentences, different for each reason for
+ * the same reason `READ_ONLY_NOTICE_KEYS` is -- pipx or uv is the way out
+ * for pip, and nonsense for an npm whose folder the account cannot write.
+ */
+export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
+  ByDesign: "updates.readOnlyDetail.ByDesign",
+  PrefixNotWritable: "updates.readOnlyDetail.PrefixNotWritable",
+};
+
+/**
+ * A row whose source did not answer the last check, in the detail of its
+ * "Unavailable" chip: what is wrong and what to do, per reason, because
+ * "check again later" is no help for an Ollama that is not running or a
+ * Canager started with `sudo`. The Updates page fills `{{source}}`.
+ */
+export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
+  NotRunning: "updates.unavailableDetail.NotRunning",
+  NotResponding: "updates.unavailableDetail.NotResponding",
+  RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
 };
 
 /**

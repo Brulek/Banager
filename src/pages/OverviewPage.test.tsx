@@ -264,7 +264,7 @@ describe("OverviewPage", () => {
             element?.tagName === "P" &&
             [
               "No updates in the sources Canager could check",
-              "Nothing here can be updated by Canager",
+              "Nothing to update here",
               "No pending updates — you've skipped the rest or asked not to be reminded about them.",
             ].includes(element.textContent ?? ""),
         ),

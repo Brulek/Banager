@@ -21,7 +21,8 @@ import { artifactKeyId } from "../store/ui";
 
 /**
  * Why a listed update is or is not offered. The order of the checks in
- * `updateStateOf` is the order the Updates page's badge has always used:
+ * `updateStateOf` is the order the Updates page's status chip has always
+ * gone by:
  * what is true of the whole source first ("Read-only" holds whatever the
  * next refresh finds), then "could not check" (without a check there is no
  * update to block), then the package's own refusal, then a source that is
@@ -178,9 +179,9 @@ export function notHidden(
  * The updates Canager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
  * (`isUpdateActionable`, against the instance its key names). This is the
- * Updates page's "N updates available", the rows its Select all ticks, and
- * the count on the sidebar's Updates entry -- one function, so the badge
- * cannot promise a row the page does not offer.
+ * Updates page's "N updates", the rows its Select all and Update all tick,
+ * and the count on the sidebar's Updates entry -- one function, so the
+ * badge cannot promise a row the page does not offer.
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,

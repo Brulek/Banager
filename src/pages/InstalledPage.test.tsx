@@ -751,21 +751,29 @@ describe("InstalledPage", () => {
 
       const updates = renderWithProviders(<UpdatesPage />);
       await updates.findByText("offered");
+      // Every row it lists on the page, the ones folded under "Can't update
+      // here" too.
+      fireEvent.click(updates.getByRole("button", { name: /^Can't update here/ }));
+      await updates.findByText("stopped-model", { selector: "[data-tool-row] p" });
+      const rowNamed = (name: string) =>
+        updates.queryByText(name, { selector: "[data-tool-row] p" })?.closest("[data-tool-row]") ?? null;
       const offered = mixed.updates
         .map((u) => u.key.name)
         .filter((name) => {
-          const row = updates.queryByText(name, { selector: "p" })?.parentElement?.parentElement;
-          return row ? within(row).queryByRole("button", { name: "Update" }) !== null : false;
+          const row = rowNamed(name);
+          return row instanceof HTMLElement
+            ? within(row).queryByRole("button", { name: "Update" }) !== null
+            : false;
         });
 
       // The stopped source's update is listed there, with no button: it is
       // left out of `offered` for that, not for a missing row.
-      expect(updates.queryByText("stopped-model", { selector: "p" })).not.toBeNull();
+      expect(rowNamed("stopped-model")).not.toBeNull();
       // The two skipped at the version they offer are not listed there at
       // all; the one skipped at an older version is, with its button, and
       // so is the cask whose skip of "latest" hides nothing.
-      expect(updates.queryByText("skipped", { selector: "p" })).toBeNull();
-      expect(updates.queryByText("skipped-model", { selector: "p" })).toBeNull();
+      expect(rowNamed("skipped")).toBeNull();
+      expect(rowNamed("skipped-model")).toBeNull();
       expect(badged).toEqual(["offered", "skipped-before", "chromium"]);
       expect(offered).toEqual(badged);
     });

@@ -13,9 +13,11 @@ import {
   parseUninstallBlocked,
   parseUninstallUnsafe,
   planErrorMessage,
+  READ_ONLY_DETAIL_KEYS,
   settingsSaveErrorMessage,
   sourceNoticesFor,
   standaloneSummaryKey,
+  UNAVAILABLE_DETAIL_KEYS,
   UNINSTALL_BLOCKED_KEYS,
   uninstallBlockedCopy,
   UPDATE_BLOCKED_KEYS,
@@ -784,34 +786,25 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     expect(UPDATE_BLOCKED_KEYS.Pinned.command(key, undefined)).toBe("pipx unpin cowsay");
   });
 
-  it("names the pinned package's own source in the description, not always Homebrew", () => {
-    // pipx produces `Pinned` too, so "Homebrew is keeping this" would be
+  it("names the pinned package's own source in its detail, not always Homebrew, and the command once", () => {
+    // pipx produces `Pinned` too, so "It's pinned in Homebrew" would be
     // false on a pipx row.
-    for (const copy of [
-      en.updates.blocked.Pinned.description,
-      zhCN.updates.blocked.Pinned.description,
-    ]) {
+    for (const copy of [en.updates.blocked.Pinned.detail, zhCN.updates.blocked.Pinned.detail]) {
       expect(copy).toContain("{{source}}");
       expect(copy).not.toContain("Homebrew");
+      expect(copy.split("{{command}}")).toHaveLength(2);
     }
+    expect(UPDATE_BLOCKED_KEYS.Pinned.commandInDetail).toBe(true);
   });
 
-  it("says the pin's release shows up when Canager next starts, not when 'it' is next opened", () => {
-    // "it" has just meant the package, and for a pinned cask that is an
-    // app, "open it" reads as "open that app". What refreshes is Canager's
-    // start (`refreshIntoCache(queryClient, "initial")`), so name Canager.
-    for (const copy of [
-      en.updates.blocked.Pinned.description,
-      en.updates.blocked.Pinned.descriptionSelfUpdating,
-    ]) {
-      expect(copy).toMatch(/the next time you start Canager\.$/);
-    }
-    for (const copy of [
-      zhCN.updates.blocked.Pinned.description,
-      zhCN.updates.blocked.Pinned.descriptionSelfUpdating,
-    ]) {
-      expect(copy).toMatch(/下次启动 Canager 的时候。$/);
-    }
+  it("promises nothing in a pin's detail about when the update comes, or that the package stays put", () => {
+    // The one sentence serves a row whose source did not answer the last
+    // check, which gets no Update button until it does, and a pinned app
+    // that updates itself, which `brew pin` warns may move anyway: "the
+    // next time Canager checks" and "keeping it at the version it has"
+    // would each be false of one of them.
+    expect(en.updates.blocked.Pinned.detail).not.toMatch(/next time|version it has now|keeping/);
+    expect(zhCN.updates.blocked.Pinned.detail).not.toMatch(/下次|现在的版本/);
   });
 
   it("does not promise, when refusing, that a pinned package stays at its version", () => {
@@ -824,19 +817,19 @@ describe("UPDATE_BLOCKED_KEYS", () => {
 
   it("does not say in Chinese that Homebrew is the one who pinned it", () => {
     // Someone ran `brew pin` -- the user, or a script. "Homebrew 把它固定"
-    // made Homebrew the one who did it; the English never says who.
-    for (const copy of [
-      zhCN.updates.blocked.Pinned.description,
-      zhCN.updates.blocked.Pinned.descriptionSelfUpdating,
-      zhCN.updates.blocked.Pinned.refused,
-    ]) {
+    // made Homebrew the one who did it; the English never says who. The
+    // detail names the source as where the pin is (「在 {{source}} 里」),
+    // not as who put it there.
+    for (const copy of [zhCN.updates.blocked.Pinned.detail, zhCN.updates.blocked.Pinned.refused]) {
       expect(copy).not.toMatch(/把[^，。]*固定/);
-      expect(copy).toMatch(/被固定/);
+      expect(copy).not.toMatch(/\{\{source\}\}\s*固定/);
     }
+    expect(zhCN.updates.blocked.Pinned.detail).toContain("在 {{source}} 里固定");
+    expect(zhCN.updates.blocked.Pinned.refused).toMatch(/被固定/);
   });
 
   it("names the tool's own launcher, quoted when its path has a space, as what a self-updating tool is opened with", () => {
-    // Spec §4.4 / §十三 #31: the sentence says to open the tool once (not
+    // Spec §4.4 / §十三 #31: the detail says to open the tool once (not
     // `<launcher> --version`, which on agy 1.2.10 never reaches its
     // updater), so the command is the launcher itself, bare. A missing
     // instance gives the bare name, which `refresh` never produces.
@@ -851,65 +844,105 @@ describe("UPDATE_BLOCKED_KEYS", () => {
       "'/Users/Alice Smith/.local/bin/agy'",
     );
     expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.command(key, undefined)).toBe("agy");
-    // The reason itself is "it updates itself": no separate sentence for a
-    // self-updating package.
-    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.selfUpdatingDescription).toBeNull();
-    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.selfUpdatingDescriptionSourceUnavailable).toBeNull();
+    // A path is a technical detail: it is a line of its own under the
+    // sentence, with "Show technical details" on, not part of it.
+    expect(UPDATE_BLOCKED_KEYS.SelfUpdatesOnly.commandInDetail).toBe(false);
   });
 
-  it("tells a self-updating tool's user to open it once, that it checks at most every 15 minutes, and names the versions", () => {
-    // agy.md §4 (VERIFIED): a 15-minute debounce on its background check --
-    // without that number, "I opened it and nothing happened" is certain.
-    for (const copy of [
-      en.updates.blocked.SelfUpdatesOnly.description,
-      en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
-    ]) {
-      expect(copy).toContain("{{source}}");
-      expect(copy).toContain("{{command}}");
-      expect(copy).toMatch(/Open it once/);
-      expect(copy).toMatch(/15 minutes/);
+  it("tells a self-updating tool's user to open it once, in both locales, with no command or versions in the sentence", () => {
+    // The versions are the row's own version column; the launcher is shown
+    // under the sentence only with technical details on.
+    expect(en.updates.blocked.SelfUpdatesOnly.detail).toBe(
+      "It updates itself: open it once and it checks for a new version.",
+    );
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.detail).toBe("它会自己更新：打开它一次就会检查新版本。");
+    for (const copy of [en.updates.blocked.SelfUpdatesOnly.detail, zhCN.updates.blocked.SelfUpdatesOnly.detail]) {
+      expect(copy).not.toContain("{{command}}");
+      expect(copy).not.toContain("{{target}}");
     }
-    for (const copy of [
-      zhCN.updates.blocked.SelfUpdatesOnly.description,
-      zhCN.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
-    ]) {
-      expect(copy).toContain("{{source}}");
-      expect(copy).toContain("{{command}}");
-      expect(copy).toMatch(/打开它一次/);
-      expect(copy).toMatch(/15 分钟/);
-    }
-    // The available-source sentence names the two versions (spec §9.2);
-    // the unavailable one cannot promise a current target and does not.
-    expect(en.updates.blocked.SelfUpdatesOnly.description).toContain("{{current}} → {{target}}");
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.description).toContain("{{current}} → {{target}}");
-    expect(en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable).not.toContain("{{target}}");
     // `refused` gets only the source's label.
     expect(en.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
     expect(zhCN.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
     expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Updates itself");
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("自己更新");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("自动更新");
+  });
+});
+
+describe("the Updates page's chip details", () => {
+  // Every sentence behind a status chip on the Updates page, in both
+  // locales: the redesign's rule is at most two short sentences.
+  interface ChipCopy {
+    updates: {
+      blocked: { Pinned: { detail: string }; SelfUpdatesOnly: { detail: string } };
+      selfUpdatingDetail: string;
+      cannotCheckShort: string;
+      readOnlyDetail: Record<string, string>;
+      unavailableDetail: Record<string, string>;
+    };
+  }
+  const details = (locale: ChipCopy) => [
+    locale.updates.blocked.Pinned.detail,
+    locale.updates.blocked.SelfUpdatesOnly.detail,
+    locale.updates.selfUpdatingDetail,
+    locale.updates.cannotCheckShort,
+    ...Object.values(locale.updates.readOnlyDetail),
+    ...Object.values(locale.updates.unavailableDetail),
+  ];
+
+  it("keeps every one to at most two sentences, in both locales", () => {
+    for (const copy of details(en)) {
+      expect(copy.match(/[.!?](\s|$)/g)?.length ?? 0, copy).toBeLessThanOrEqual(2);
+    }
+    for (const copy of details(zhCN)) {
+      expect(copy.match(/[。！？]/g)?.length ?? 0, copy).toBeLessThanOrEqual(2);
+    }
   });
 
-  it("promises the self-installed update only while the tool's automatic updates are on", () => {
-    // Google documents `AGY_CLI_DISABLE_AUTO_UPDATE=true` as turning
-    // Antigravity CLI's background updater off (agy.md §4). Set in a
-    // shell's startup file, it stops the very run the sentence asks for
-    // from installing anything, and Canager does not look for it, so the
-    // promise says "unless" in both locales.
-    for (const copy of [
-      en.updates.blocked.SelfUpdatesOnly.description,
-      en.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
-    ]) {
-      expect(copy).toContain(
-        "unless its automatic updates have been turned off, it checks for updates when it starts",
-      );
+  it("gives pip's rows pipx or uv, and npm's rows Homebrew, each only its own advice", () => {
+    // The two read-only reasons need different ways out: pipx or uv for
+    // pip, and a Node installed with Homebrew for an npm whose folder the
+    // account cannot change.
+    expect(READ_ONLY_DETAIL_KEYS).toEqual({
+      ByDesign: "updates.readOnlyDetail.ByDesign",
+      PrefixNotWritable: "updates.readOnlyDetail.PrefixNotWritable",
+    });
+    for (const locale of [en, zhCN]) {
+      expect(locale.updates.readOnlyDetail.ByDesign).toMatch(/pipx 或 uv|pipx or uv/);
+      expect(locale.updates.readOnlyDetail.ByDesign).not.toContain("Homebrew");
+      expect(locale.updates.readOnlyDetail.PrefixNotWritable).toContain("Homebrew");
+      expect(locale.updates.readOnlyDetail.PrefixNotWritable).not.toMatch(/pipx|uv/);
     }
-    for (const copy of [
-      zhCN.updates.blocked.SelfUpdatesOnly.description,
-      zhCN.updates.blocked.SelfUpdatesOnly.descriptionSourceUnavailable,
-    ]) {
-      expect(copy).toContain("只要它的自动更新没有被关掉，它启动时就会检查更新");
+    expect(zhCN.updates.readOnlyDetail.ByDesign).toBe(
+      "用 pip 装的包只能在这里查看。命令行工具建议改用 pipx 或 uv 安装。",
+    );
+    expect(en.updates.readOnlyDetail.ByDesign).toBe(
+      "Packages installed with pip can only be viewed here. For command-line tools, use pipx or uv.",
+    );
+  });
+
+  it("says what to do about a source that did not answer by why it did not, naming the source", () => {
+    // "Check again later" is no help for an Ollama that is not running or
+    // a Canager started with sudo.
+    expect(UNAVAILABLE_DETAIL_KEYS).toEqual({
+      NotRunning: "updates.unavailableDetail.NotRunning",
+      NotResponding: "updates.unavailableDetail.NotResponding",
+      RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
+    });
+    expect(en.updates.unavailableDetail.NotResponding).toBe(
+      "{{source}} isn't responding. Check again later.",
+    );
+    expect(zhCN.updates.unavailableDetail.NotResponding).toBe("{{source}} 没有响应，稍后再检查。");
+    for (const locale of [en, zhCN]) {
+      for (const copy of Object.values(locale.updates.unavailableDetail)) {
+        expect(copy).toContain("{{source}}");
+      }
+      expect(locale.updates.unavailableDetail.NotRunning).not.toMatch(/later|稍后/);
+      expect(locale.updates.unavailableDetail.RefusesAsRoot).not.toMatch(/later|稍后/);
     }
+    expect(en.updates.unavailableDetail.NotRunning).toMatch(/Start it/);
+    expect(zhCN.updates.unavailableDetail.NotRunning).toMatch(/启动它/);
+    expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Open Canager again/);
+    expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/重新打开 Canager/);
   });
 });
 

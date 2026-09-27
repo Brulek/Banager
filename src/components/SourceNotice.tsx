@@ -1,3 +1,6 @@
+import { InfoIcon, WarningIcon } from "./icons";
+import { Popover } from "./ui/Popover";
+
 export type SourceNoticeVariant = "info" | "warning";
 
 export interface SourceNoticeAction {
@@ -25,11 +28,11 @@ const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
 
 /**
  * One banner about one source: pip's read-only note, or Ollama's "not
- * running" notice with a button to start it. Both pages render these
- * under the source's own heading, directly above that source's rows and
- * no one else's; the Updates page also renders them above its "nothing to
- * update" sentence, where there are no rows at all and that sentence names
- * no source. `SourceNotices` maps `sourceNoticesFor`'s specs onto this.
+ * running" notice with a button to start it. The Installed page renders
+ * these under the source's own heading, directly above that source's rows
+ * and no one else's; the Updates page puts the same notices at its top, a
+ * line each (`SourceNoticeLine`). `SourceNotices` maps `sourceNoticesFor`'s
+ * specs onto either.
  *
  * Purely presentational -- callers decide when it applies and what its
  * action does; this component never calls `invoke`.
@@ -56,6 +59,68 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
         >
           {action.label}
         </button>
+      ) : null}
+    </div>
+  );
+}
+
+export interface SourceNoticeLineProps extends SourceNoticeProps {
+  /** The words on the button that shows `description`: 「详情」/"Details". */
+  detailsLabel: string;
+  /** That button's accessible name, which says which notice it belongs to. */
+  detailsAriaLabel: string;
+}
+
+/**
+ * The same notice as one compact line, for the top of the Updates page:
+ * an icon, the short title, and "Details" -- a popover with the
+ * description -- then the notice's own button, if it has one (Open
+ * Ollama, Try again), which stays in the line rather than behind the
+ * popover. A failed press says so under the line.
+ */
+export function SourceNoticeLine({
+  variant,
+  title,
+  description,
+  action,
+  error,
+  detailsLabel,
+  detailsAriaLabel,
+}: SourceNoticeLineProps) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-2 text-body">
+        {variant === "warning" ? (
+          <WarningIcon size={16} className="shrink-0 text-warning" />
+        ) : (
+          <InfoIcon size={16} className="shrink-0 text-muted" />
+        )}
+        <span title={title} className="min-w-0 truncate text-foreground">
+          {title}
+        </span>
+        {description ? (
+          <Popover
+            trigger={detailsLabel}
+            triggerLabel={detailsAriaLabel}
+            triggerClassName="shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {description}
+          </Popover>
+        ) : null}
+        {action ? (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="shrink-0 rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {action.label}
+          </button>
+        ) : null}
+      </div>
+      {error ? (
+        <p role="alert" className="pl-6 text-small font-medium text-danger">
+          {error}
+        </p>
       ) : null}
     </div>
   );

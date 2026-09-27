@@ -145,11 +145,11 @@ describe("App", () => {
 
     fireEvent.click(await findByRole("button", { name: "Review updates" }));
 
-    expect(await findByText("2 updates available")).toBeInTheDocument();
+    expect(await findByText("2 updates")).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
-    expect(getByRole("button", { name: "Update selected" })).toBeEnabled();
+    expect(getByRole("button", { name: "Update selected (2)" })).toBeEnabled();
   });
 
   it("keeps Settings reachable when no source is installed", async () => {
