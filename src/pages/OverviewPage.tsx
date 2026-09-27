@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
@@ -8,7 +9,7 @@ import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { SourceAvatar } from "../components/SourceAvatar";
-import { CheckCircleIcon } from "../components/icons";
+import { CheckIcon, DashIcon, InfoIcon, UnknownIcon, WarningIcon } from "../components/icons";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -33,26 +34,109 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
   }
 }
 
+/** What the ring shows: the headline's verdict, or that the first check is still running. */
+type RingState = UpdatesSummary | { kind: "checking" };
+
+// The ring's circle in its 160-unit box: 10 units of stroke, and the
+// length of the whole way round, which the spinning arc is a quarter of.
+const RING_RADIUS = 72;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+/**
+ * The large round mark over the headline (CleanMyMac's one big thing to
+ * look at): the accent colour round the number of updates, with the word
+ * for them under it; a calm green round a check when everything is up to
+ * date; a grey ring with a dash when there is nothing to update but that
+ * is not the same as up to date; a faint ring with a quarter of it
+ * turning while the first check runs -- only without "reduce motion".
+ * Decorative: the headline under it says the same in words, so it is
+ * hidden from screen readers. `data-ring` names its state.
+ */
+function StatusRing({ state }: { state: RingState }) {
+  const { t } = useTranslation();
+  const ring = (className: string) => (
+    <circle cx="80" cy="80" r={RING_RADIUS} fill="none" strokeWidth="10" className={className} />
+  );
+  return (
+    <div
+      data-ring={state.kind}
+      aria-hidden="true"
+      className="relative flex h-40 w-40 shrink-0 items-center justify-center"
+    >
+      <svg viewBox="0 0 160 160" className="absolute inset-0 h-full w-full">
+        {state.kind === "updates" ? (
+          <>
+            <circle cx="80" cy="80" r={RING_RADIUS - 5} className="fill-accent/10" />
+            {ring("stroke-accent")}
+          </>
+        ) : state.kind === "upToDate" ? (
+          <>
+            <circle cx="80" cy="80" r={RING_RADIUS - 5} className="fill-success/10" />
+            {ring("stroke-success")}
+          </>
+        ) : (
+          ring("stroke-hover")
+        )}
+      </svg>
+      {state.kind === "checking" ? (
+        <svg
+          viewBox="0 0 160 160"
+          className="absolute inset-0 h-full w-full motion-safe:animate-spin motion-safe:[animation-duration:1.6s]"
+        >
+          <circle
+            cx="80"
+            cy="80"
+            r={RING_RADIUS}
+            fill="none"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeDasharray={`${RING_LENGTH / 4} ${RING_LENGTH}`}
+            className="stroke-accent/70"
+          />
+        </svg>
+      ) : null}
+      {state.kind === "updates" ? (
+        <span className="relative flex flex-col items-center">
+          <span className="text-[44px] font-semibold leading-none tabular-nums text-foreground">
+            {state.actionable.length}
+          </span>
+          <span className="mt-2 text-small text-muted">
+            {t("overview.updatesUnit", { count: state.actionable.length })}
+          </span>
+        </span>
+      ) : state.kind === "upToDate" ? (
+        <CheckIcon size={60} className="relative text-success" />
+      ) : state.kind === "nothingToUpdate" ? (
+        <DashIcon size={52} className="relative text-muted" />
+      ) : null}
+    </div>
+  );
+}
+
+const TILE =
+  "flex w-full items-center gap-3 rounded-row p-2.5 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent";
+
 /**
  * The first page: the Mac at a glance, and one thing to do about it.
  *
- * The headline is the Updates page's own verdict (`updatesSummary`): how
- * many updates it offers to install, with one button that opens it with
- * all of them selected; "Everything is up to date" only when that page
- * would say so; and a plain "Nothing to update" when there is nothing to
- * install but that is not the same thing. Before the first check has
- * answered, "Checking…" -- the startup placeholder is not an answer
- * (`isStartupSnapshot`).
+ * In the middle, the ring and the headline under it: the Updates page's
+ * own verdict (`updatesSummary`) -- how many updates it offers to
+ * install, with one button that opens it with all of them selected;
+ * "Everything is up to date" only when that page would say so; and a
+ * plain "Nothing to update" when there is nothing to install but that is
+ * not the same thing. Before the first check has answered, "Checking…" --
+ * the startup placeholder is not an answer (`isStartupSnapshot`).
  *
- * Below it, quietly: each source with something installed and how much,
- * what the last scan of the Unknown page found, and one line for each
- * source that needs attention -- the title of its first notice about what
- * Canager found this time (`axis: "state"`: not running, not answering,
- * a list it could not download, another copy that runs instead). What a
- * source lets Canager do at all, pip being read-only, is not news here;
- * the Installed and Updates pages say it under the source's name. Each
- * line is a title only; the explanation stays with the source on those
- * pages.
+ * Below it, quietly, two panels. "Your tools": a tile for each source
+ * with something installed and how much, and one for the programs the
+ * Unknown page's last scan could not place, once a scan has found some
+ * (nothing starts one here). "Needs attention": one line for each source
+ * that needs it -- the title of its first notice about what Canager found
+ * this time (`axis: "state"`: not running, not answering, a list it could
+ * not download, another copy that runs instead). What a source lets
+ * Canager do at all, pip being read-only, is not news here; the Updates
+ * page says it on each of its rows. Each line is a title only; the
+ * explanation stays with the source on those pages.
  */
 export function OverviewPage() {
   const { t } = useTranslation();
@@ -61,11 +145,14 @@ export function OverviewPage() {
   const { data: scan } = useUnknownScan();
   const setPage = useUiStore((s) => s.setPage);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
+  const toolsHeadingId = useId();
+  const attentionHeadingId = useId();
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
     return (
-      <div className="flex min-h-full flex-col px-6 pb-6">
-        <section className="flex flex-1 flex-col items-start justify-center py-6">
+      <div className="flex min-h-full flex-col items-center px-6 pb-8">
+        <section className="flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
+          <StatusRing state={{ kind: "checking" }} />
           <h2 className="text-headline text-muted">{t("common.checking")}</h2>
         </section>
       </div>
@@ -104,11 +191,9 @@ export function OverviewPage() {
   const unknownCount = scan?.entries.length ?? 0;
 
   return (
-    <div className="flex min-h-full flex-col px-6 pb-6">
-      <section className="flex flex-1 flex-col items-start justify-center gap-5 py-6">
-        {summary.kind === "upToDate" ? (
-          <CheckCircleIcon size={44} className="text-success" />
-        ) : null}
+    <div className="flex min-h-full flex-col items-center px-6 pb-8">
+      <section className="flex flex-1 flex-col items-center justify-center gap-5 pb-10 pt-6 text-center">
+        <StatusRing state={summary} />
         <h2 className="text-headline text-foreground">{headlineText(t, summary)}</h2>
         {summary.kind === "updates" ? (
           <button
@@ -119,65 +204,88 @@ export function OverviewPage() {
               selectUpdates(summary.actionable.map((candidate) => candidate.key));
               setPage("updates");
             }}
-            className="rounded-button bg-accent px-5 py-2.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content"
+            className="h-10 rounded-button bg-accent px-8 text-section font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content"
           >
             {t("overview.reviewUpdates")}
           </button>
         ) : null}
       </section>
 
-      <div className="flex flex-col gap-4">
-        {tiles.length > 0 ? (
-          <ul aria-label={t("nav.installed")} className="flex flex-wrap gap-2">
-            {tiles.map((tile) => (
-              <li key={tile.instanceId}>
-                {/* The Installed page has no filter by source yet, so a
-                    tile opens it whole. */}
-                <button
-                  type="button"
-                  onClick={() => setPage("installed")}
-                  className="flex items-center gap-2 rounded-row border border-border bg-surface py-1.5 pl-1.5 pr-3 text-body text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <SourceAvatar adapterId={tile.adapterId} label={tile.label} />
-                  <span className="font-medium">{tile.label}</span>{" "}
-                  <span className="tabular-nums text-muted">
-                    {t("overview.itemCount", { count: tile.count })}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {unknownCount > 0 ? (
-          <p className="flex items-center gap-2 text-body text-muted">
-            <span>{t("overview.unknownCount", { count: unknownCount })}</span>
-            <span aria-hidden="true">·</span>
-            <button
-              type="button"
-              onClick={() => setPage("unknown")}
-              aria-label={t("overview.viewUnknownLabel")}
-              className="rounded-sm font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+      <div className="flex w-full max-w-3xl flex-col gap-4">
+        {tiles.length > 0 || unknownCount > 0 ? (
+          <section
+            aria-labelledby={toolsHeadingId}
+            className="rounded-panel border border-border bg-surface p-3"
+          >
+            <h2 id={toolsHeadingId} className="px-2.5 pb-2 pt-1 text-section text-foreground">
+              {t("overview.yourTools")}
+            </h2>
+            <ul
+              aria-labelledby={toolsHeadingId}
+              className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-4"
             >
-              {t("overview.viewUnknown")}
-            </button>
-          </p>
+              {tiles.map((tile) => (
+                <li key={tile.instanceId}>
+                  {/* The Installed page has no filter by source yet, so a
+                      tile opens it whole. */}
+                  <button type="button" onClick={() => setPage("installed")} className={TILE}>
+                    <SourceAvatar adapterId={tile.adapterId} label={tile.label} size="md" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-body font-semibold text-foreground">
+                        {tile.label}
+                      </span>{" "}
+                      <span className="block text-small tabular-nums text-muted">
+                        {t("overview.itemCount", { count: tile.count })}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {unknownCount > 0 ? (
+                <li>
+                  <button type="button" onClick={() => setPage("unknown")} className={TILE}>
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-white"
+                    >
+                      <UnknownIcon size={18} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-body font-semibold text-foreground">
+                        {t("nav.unknown")}
+                      </span>{" "}
+                      <span className="block text-small tabular-nums text-muted">
+                        {t("overview.itemCount", { count: unknownCount })}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ) : null}
+            </ul>
+          </section>
         ) : null}
 
         {attention.length > 0 ? (
-          <ul aria-label={t("overview.attentionLabel")} className="flex flex-col gap-1.5">
-            {attention.map((notice) => (
-              <li key={notice.id} className="flex items-center gap-2 text-body text-foreground">
-                <span
-                  aria-hidden="true"
-                  className={`h-2 w-2 shrink-0 rounded-full ${
-                    notice.variant === "warning" ? "bg-warning" : "bg-muted"
-                  }`}
-                />
-                {t(notice.titleKey, notice.values)}
-              </li>
-            ))}
-          </ul>
+          <section aria-labelledby={attentionHeadingId} className="rounded-panel bg-hover/60 p-3">
+            <h2 id={attentionHeadingId} className="px-2.5 pb-1 pt-1 text-section text-foreground">
+              {t("overview.attentionLabel")}
+            </h2>
+            <ul aria-labelledby={attentionHeadingId} className="flex flex-col">
+              {attention.map((notice) => (
+                <li
+                  key={notice.id}
+                  className="flex items-center gap-2.5 px-2.5 py-1.5 text-body text-foreground"
+                >
+                  {notice.variant === "warning" ? (
+                    <WarningIcon size={16} className="shrink-0 text-warning" />
+                  ) : (
+                    <InfoIcon size={16} className="shrink-0 text-muted" />
+                  )}
+                  {t(notice.titleKey, notice.values)}
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
       </div>
     </div>

@@ -1099,13 +1099,21 @@ describe("STANDALONE_SUMMARY_KEYS", () => {
     expect(zhCN.adapters["standalone-rustup"]).toBe("rustup");
   });
 
-  it("labels Antigravity CLI and Grok Build with the command the user types, in both locales", () => {
-    // Spec §9.2: the label carries the command name in parentheses, since
-    // "Antigravity CLI" and "Grok Build" are not what the user types.
-    expect(en.adapters["standalone-agy"]).toBe("Antigravity CLI (agy)");
-    expect(zhCN.adapters["standalone-agy"]).toBe("Antigravity CLI（agy）");
-    expect(en.adapters["standalone-grok"]).toBe("Grok Build (grok)");
-    expect(zhCN.adapters["standalone-grok"]).toBe("Grok Build（grok）");
+  it("labels Antigravity CLI and Grok Build by their product names alone, in both locales", () => {
+    // Spec §9.2 put the command in parentheses after the name ("Grok Build
+    // (grok)"). The redesign drops parenthetical asides from every page
+    // (docs/superpowers/2026-09-27-ui-redesign.md, 原则 3), and the label is
+    // a name -- on the Overview's tiles, a row's source chip, a notice's
+    // title -- so it is the product's alone. The command is said where
+    // typing it matters: the PATH and launcher notices' `{{command}}`, and
+    // under a self-updating tool's detail with technical details on.
+    expect(en.adapters["standalone-agy"]).toBe("Antigravity CLI");
+    expect(zhCN.adapters["standalone-agy"]).toBe("Antigravity CLI");
+    expect(en.adapters["standalone-grok"]).toBe("Grok Build");
+    expect(zhCN.adapters["standalone-grok"]).toBe("Grok Build");
+    for (const label of [...Object.values(en.adapters), ...Object.values(zhCN.adapters)]) {
+      expect(label).not.toMatch(/[()（）]/);
+    }
     expect(ADAPTER_LABEL_KEYS["standalone-agy"]).toBe("adapters.standalone-agy");
     expect(ADAPTER_LABEL_KEYS["standalone-grok"]).toBe("adapters.standalone-grok");
   });

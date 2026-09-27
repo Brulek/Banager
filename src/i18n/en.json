@@ -42,15 +42,14 @@
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
     "updatesAvailable_other": "{{count}} tools can be updated",
+    "updatesUnit_one": "update",
+    "updatesUnit_other": "updates",
     "reviewUpdates": "Review updates",
     "upToDate": "Everything is up to date",
     "nothingToUpdate": "Nothing to update",
+    "yourTools": "Your tools",
     "itemCount_one": "{{count}} item",
     "itemCount_other": "{{count}} items",
-    "unknownCount_one": "{{count}} program Canager can't place",
-    "unknownCount_other": "{{count}} programs Canager can't place",
-    "viewUnknown": "View",
-    "viewUnknownLabel": "View the programs Canager can't place",
     "attentionLabel": "Needs attention"
   },
   "adapters": {
@@ -63,8 +62,8 @@
     "ollama": "Ollama",
     "standalone-claude": "Claude Code",
     "standalone-rustup": "rustup",
-    "standalone-agy": "Antigravity CLI (agy)",
-    "standalone-grok": "Grok Build (grok)"
+    "standalone-agy": "Antigravity CLI",
+    "standalone-grok": "Grok Build"
   },
   "installed": {
     "filterLabel": "Filter installed items",
