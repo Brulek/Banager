@@ -15,11 +15,13 @@ import {
   setSettings,
   openOllamaApp,
   scanUnknown,
+  artifactIcon,
 } from "./api";
 import { isNewerSnapshot, refreshIntoCache } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
 import type {
+  ArtifactKey,
   IssuedPlan,
   OpRequest,
   OpSummary,
@@ -185,5 +187,37 @@ export function useOpenOllamaApp(): UseMutationResult<void, Error, void> {
         if (up) return;
       }
     },
+  });
+}
+
+/**
+ * How long a cask's icon is kept, and trusted, before it is asked for
+ * again. An app's icon changes only when the app is replaced, by an
+ * upgrade, and asking again costs little: the Rust side keeps every icon it
+ * drew in memory until the app's folder changes (`AppIcons`). An hour, so
+ * an app upgraded while Canager stays open shows its new icon without a
+ * relaunch, and a row scrolled away and back does not ask again.
+ */
+export const ARTIFACT_ICON_STALE_MS = 60 * 60 * 1000;
+
+/**
+ * The icon Finder shows for a cask's app, for that cask's row: a `data:`
+ * URL, or null when it has none (`undefined` until the answer arrives, and
+ * when not asked). Asked only when `enabled` and `key` names a cask: no
+ * other kind of row ever has one, so anything else would be an IPC call
+ * answered null. `retry: false`: null is an answer, and the one failure
+ * there is -- a panic while drawing -- would not go away on a second try.
+ */
+export function useArtifactIcon(
+  key: ArtifactKey,
+  enabled: boolean,
+): UseQueryResult<string | null> {
+  return useQuery({
+    queryKey: queryKeys.artifactIcon(key),
+    queryFn: () => artifactIcon(key),
+    enabled: enabled && key.kind === "Cask",
+    staleTime: ARTIFACT_ICON_STALE_MS,
+    gcTime: ARTIFACT_ICON_STALE_MS,
+    retry: false,
   });
 }

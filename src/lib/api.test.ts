@@ -11,8 +11,9 @@ import {
   setSettings,
   subscribeEvents,
   scanUnknown,
+  artifactIcon,
 } from "./api";
-import type { IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
+import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -135,5 +136,19 @@ describe("api", () => {
     const result = await scanUnknown();
     expect(mockInvoke).toHaveBeenCalledWith("scan_unknown");
     expect(result).toEqual(scan);
+  });
+
+  it("artifactIcon invokes artifact_icon with the key and nothing else, and returns its answer", async () => {
+    // The trust boundary: a key the Rust side looks up in its own
+    // snapshot, never a path -- not even the row's own `path`.
+    const key: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" };
+    mockInvoke.mockResolvedValueOnce("data:image/png;base64,iVBORw0KGgo=" as never);
+    expect(await artifactIcon(key)).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls[0]).toEqual(["artifact_icon", { key }]);
+    expect(Object.keys(mockInvoke.mock.calls[0][1] as object)).toEqual(["key"]);
+
+    mockInvoke.mockResolvedValueOnce(null as never);
+    expect(await artifactIcon({ ...key, kind: "Formula", name: "git" })).toBeNull();
   });
 });

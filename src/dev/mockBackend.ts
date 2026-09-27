@@ -21,6 +21,7 @@ import type {
   UiEvent,
 } from "../lib/types";
 import { buildWorld, initialSettings, sameKey, unknownScan, unverifiedVersion, type World } from "./mockData";
+import { appIcon } from "./mockIcons";
 import { buildPlan, playOutcome, refusal, type LogLine, type Subject } from "./mockPlans";
 import type { Scenario } from "./scenario";
 
@@ -37,6 +38,7 @@ export const MOCK_COMMANDS = [
   "subscribe_events",
   "open_ollama_app",
   "scan_unknown",
+  "artifact_icon",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
 
@@ -68,6 +70,8 @@ export const TIMING = {
   verify: 550,
   /** A cancelled command stopping. */
   cancel: 500,
+  /** Drawing a cask's app icon (the real one remembers each after the first). */
+  icon: 60,
 } as const;
 
 /** How many operations may run at once (`OperationManager`'s semaphore). */
@@ -458,6 +462,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       await wait(TIMING.scan);
       if (scenario.scan === "error") throw 'task 17 panicked with message "failed to read /usr/local/bin"';
       return unknownScan(scenario.scan);
+    },
+    async artifact_icon(args) {
+      await wait(TIMING.icon);
+      // `Session::artifact_icon`: the key is only matched against the
+      // committed snapshot's rows, never read as a path; before the first
+      // refresh there are none.
+      const key = args.key as ArtifactKey;
+      const row = committed?.artifacts.find((a) => sameKey(a.key, key));
+      return row === undefined ? null : appIcon(row);
     },
   };
 
