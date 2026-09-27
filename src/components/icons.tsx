@@ -101,3 +101,81 @@ export function CheckCircleIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Done: a check mark on its own. */
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5.5 12.5L10 17L18.5 7.5" />
+    </Icon>
+  );
+}
+
+/** More about this: an "i", in a circle. */
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5M12 7.75h.01" />
+    </Icon>
+  );
+}
+
+/** Look at this: an exclamation mark, in a triangle. */
+export function WarningIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10.3 4.4L2.9 17.3A2 2 0 0 0 4.6 20.3H19.4A2 2 0 0 0 21.1 17.3L13.7 4.4A2 2 0 0 0 10.3 4.4Z" />
+      <path d="M12 9.5v4.5M12 17h.01" />
+    </Icon>
+  );
+}
+
+/** The row's other actions: three dots in a row. */
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 12h.01M12 12h.01M18 12h.01" strokeWidth={2.75} />
+    </Icon>
+  );
+}
+
+/** A section that opens: a chevron pointing right, turned down when open. */
+export function ChevronIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.5 6.5L15 12L9.5 17.5" />
+    </Icon>
+  );
+}
+
+/** Nothing to do: a dash. */
+export function DashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 12h10" />
+    </Icon>
+  );
+}
+
+/**
+ * Something is happening: a quarter of a circle that turns, over a faint
+ * whole one. Turns only for someone who has not asked for less motion.
+ */
+export function SpinnerIcon({ size = 18, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth={2.25}
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={`motion-safe:animate-spin ${className ?? ""}`}
+    >
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" opacity={0.25} />
+      <path d="M12 3.5A8.5 8.5 0 0 1 20.5 12" stroke="currentColor" />
+    </svg>
+  );
+}

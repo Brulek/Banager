@@ -22,17 +22,29 @@ export const SOURCE_AVATAR_CLASSES: Record<string, string> = {
 /** A source this build has no colour for: the muted grey, never a guess. */
 const UNKNOWN_SOURCE_CLASSES = "bg-muted text-white";
 
+/**
+ * `sm`, 24px: a tile's or a list's small mark. `md`, 32px: a tool's row
+ * (`ToolRow`) and the Overview's tiles. Whole class names, for Tailwind.
+ */
+const SIZE_CLASSES = {
+  sm: "h-6 w-6 rounded-[7px] text-small",
+  md: "h-8 w-8 rounded-[9px] text-body",
+} as const;
+
+export type SourceAvatarSize = keyof typeof SIZE_CLASSES;
+
 export interface SourceAvatarProps {
   adapterId: string;
   /** The source's name as the user reads it; its first letter goes on the avatar. */
   label: string;
+  size?: SourceAvatarSize;
 }
 
 /**
  * A small rounded square in the source's colour with the first letter of
  * its name. Decorative: the name itself is always beside it.
  */
-export function SourceAvatar({ adapterId, label }: SourceAvatarProps) {
+export function SourceAvatar({ adapterId, label, size = "sm" }: SourceAvatarProps) {
   // `hasOwnProperty`, not a plain lookup: an id like "toString" would find
   // a function on the prototype.
   const colours = Object.prototype.hasOwnProperty.call(SOURCE_AVATAR_CLASSES, adapterId)
@@ -41,7 +53,7 @@ export function SourceAvatar({ adapterId, label }: SourceAvatarProps) {
   return (
     <span
       aria-hidden="true"
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-small font-semibold ${colours}`}
+      className={`inline-flex shrink-0 items-center justify-center font-semibold ${SIZE_CLASSES[size]} ${colours}`}
     >
       {label.slice(0, 1).toUpperCase()}
     </span>

@@ -30,6 +30,9 @@
     "checkFailed": "没能检查",
     "checkAgain": "重新检查"
   },
+  "toolRow": {
+    "noDescription": "暂无简介"
+  },
   "overview": {
     "updatesAvailable_other": "有 {{count}} 个工具可以更新",
     "reviewUpdates": "查看更新",

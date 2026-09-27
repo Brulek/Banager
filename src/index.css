@@ -29,6 +29,9 @@
   --text-section: 15px;
   --text-section--line-height: 20px;
   --text-section--font-weight: 600;
+  /* A tool's name on its row (`ToolRow`). */
+  --text-name: 14px;
+  --text-name--line-height: 20px;
   --text-body: 13px;
   --text-body--line-height: 18px;
   --text-small: 12px;
@@ -115,4 +118,16 @@ body {
   background: var(--color-content);
   accent-color: var(--color-accent);
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * A virtualized list gives every row a slot of its own, placed with a
+ * transform, and a transform makes each slot its own stacking context: a
+ * later slot is painted over an earlier one, whatever z-index a panel
+ * inside the earlier one has. The slot holding an open chip detail or ⋯
+ * menu (`data-popup-open`, src/components/ui/floating.ts) is lifted above
+ * its neighbours instead.
+ */
+[data-list-slot]:has([data-popup-open]) {
+  z-index: 10;
 }

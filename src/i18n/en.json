@@ -36,6 +36,9 @@
     "checkFailed": "Couldn't check",
     "checkAgain": "Check again"
   },
+  "toolRow": {
+    "noDescription": "No description"
+  },
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
     "updatesAvailable_other": "{{count}} tools can be updated",
