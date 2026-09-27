@@ -14,15 +14,17 @@
 //! to keep each settings-and-state path those lists keep, the read-only
 //! check command of a tool asked for its own update check with the words
 //! that it installs nothing, the call Canager makes to move a file to the
-//! Trash with the pause after each such move, that the `PATH` look behind
+//! Trash with the pause after each such move, the call Canager makes for a
+//! cask app's icon with the size it is drawn at and the words that no
+//! command runs for it, that the `PATH` look behind
 //! Claude Code's notice goes on past the first executable `claude`, that
 //! the never-list's bullet about rustup's own update or uninstall being
 //! under way states the window in which a refresh's version read can
 //! still overlap it, and that the never-list holds a moved path to the
 //! tool's uninstall list, not to vendor instructions, which Antigravity CLI
 //! and Grok Build do not publish. A source, host, variable, limit, path,
-//! check or pause added or changed, or that look shortened, without its
-//! line in the document fails here.
+//! check, pause or icon size added or changed, or that look shortened,
+//! without its line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::cargo::CargoAdapter;
@@ -35,6 +37,7 @@ use canager_core::adapters::AdapterMeta;
 use canager_core::events::VecSink;
 use canager_core::http::real::{host_allowed, ALLOWED_HTTPS_HOSTS};
 use canager_core::http::HttpError;
+use canager_core::icon::ICON_PIXELS;
 use canager_core::model::{InstanceNote, KeptWhat};
 use canager_core::runner::HostEnv;
 use canager_core::scan::ScanBudget;
@@ -450,6 +453,29 @@ fn test_what_we_run_states_the_trash_call_and_the_pause_after_each_move() {
     assert!(
         folded.contains(&pause),
         "the `## Moving files to the Trash` section of docs/what-we-run.md does not state the pause {pause:?} (removal::PUT_BACK_SETTLE)"
+    );
+}
+
+#[test]
+fn test_what_we_run_states_the_app_icon_call_its_size_and_that_no_command_runs() {
+    let doc = read_doc();
+    let body = section_body(&doc, "App icons").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## App icons` section for icon::RealIconRenderer")
+    });
+    // Hard-wrapped prose: compare with the line breaks folded away.
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        folded.contains("NSWorkspace iconForFile:"),
+        "the `## App icons` section of docs/what-we-run.md does not name the call RealIconRenderer makes"
+    );
+    let size = format!("{ICON_PIXELS} × {ICON_PIXELS} pixels");
+    assert!(
+        folded.contains(&size),
+        "the `## App icons` section of docs/what-we-run.md does not state the size {size:?} (icon::ICON_PIXELS)"
+    );
+    assert!(
+        folded.contains("runs no command"),
+        "the `## App icons` section of docs/what-we-run.md does not say that getting an icon runs no command"
     );
 }
 

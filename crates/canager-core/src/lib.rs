@@ -9,10 +9,12 @@
 //! that spawns those commands and streams their output back line by line,
 //! and the [`ops`] engine that turns a user's request into a plan, executes
 //! it under locks and cancellation, and reports what actually happened.
-//! [`scan`] is the one read-only path beside them: which programs in the
-//! usual bin directories none of those sources put there. [`trash`] is the
-//! one place it changes a file itself: macOS's own move-to-Trash, for a
-//! confirmed uninstall of a tool that has no uninstall command.
+//! Two read-only paths sit beside them: [`scan`], which programs in the
+//! usual bin directories none of those sources put there, and [`icon`], the
+//! icon Finder shows for the app a Homebrew cask installed, which macOS
+//! draws for that cask's row. [`trash`] is the one place it changes a file
+//! itself: macOS's own move-to-Trash, for a confirmed uninstall of a tool
+//! that has no uninstall command.
 //!
 //! It must never depend on `tauri` (see
 //! `docs/superpowers/specs/2026-09-17-canager-design.md` section 3). The
@@ -51,6 +53,9 @@ compile_error!(
 pub mod adapters;
 pub mod events;
 pub mod http;
+/// The icon Finder shows for a cask's app, drawn by macOS for the window
+/// and remembered in memory -- read-only, behind a seam like `trash`.
+pub mod icon;
 pub mod model;
 pub mod ops;
 pub mod runner;

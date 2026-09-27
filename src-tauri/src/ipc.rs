@@ -608,6 +608,44 @@ pub async fn scan_unknown(state: State<'_, AppState>) -> Result<UnknownScan, Str
         .map_err(|e| e.to_string())
 }
 
+/// The icon Finder shows for the app a Homebrew cask installed, for that
+/// cask's row: a `data:image/png;base64,...` URL, or `None` for any other
+/// row and whenever there is no icon to show (`Session::artifact_icon`).
+///
+/// Takes a key and nothing else: the window sends no path, here as in
+/// every command in this file (README, "What makes it safe"). Which
+/// folder's icon is drawn is decided on this side, from the current
+/// snapshot's own row for that key -- the `.app` Homebrew reported -- and
+/// no field of the key is ever read as a path. `icons` is the in-memory
+/// cache `run()` manages beside `AppState`; the tests hand in one that
+/// draws with a mock.
+pub(crate) fn artifact_icon_impl(
+    session: &Session,
+    icons: &canager_core::icon::AppIcons,
+    key: &canager_core::model::ArtifactKey,
+) -> Option<String> {
+    session.artifact_icon(icons, key)
+}
+
+#[tauri::command]
+pub async fn artifact_icon(
+    state: State<'_, AppState>,
+    icons: State<'_, std::sync::Arc<canager_core::icon::AppIcons>>,
+    key: canager_core::model::ArtifactKey,
+) -> Result<Option<String>, String> {
+    // On the blocking pool, as `scan_unknown` is: an `lstat`, and on a
+    // folder's first request an AppKit drawing (`icon::RealIconRenderer`,
+    // which says why that is allowed off the main thread), neither of which
+    // may hold one of the async runtime's worker threads.
+    let session = state.session.clone();
+    let icons = icons.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || artifact_icon_impl(&session, &icons, &key))
+        .await
+        // Only a panic while drawing reaches this arm: the runtime's
+        // sentence, as in `scan_unknown`, and no icon for that row.
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2207,5 +2245,73 @@ mod tests {
             contents.contains("stderr=null"),
             "stderr must be null, got: {contents:?}"
         );
+    }
+
+    /// `artifact_icon`'s inputs, pinned: Tauri's two `State`s and one
+    /// `ArtifactKey`, the only thing the window's payload carries -- no
+    /// path, no URL, nothing a drawing could be pointed at. Adding one
+    /// fails to compile here.
+    #[test]
+    fn test_artifact_icon_takes_only_a_key_from_the_window() {
+        use canager_core::icon::AppIcons;
+
+        fn command_inputs<F, Fut>(_command: F)
+        where
+            F: Fn(State<'static, AppState>, State<'static, Arc<AppIcons>>, ArtifactKey) -> Fut,
+            Fut: std::future::Future<Output = Result<Option<String>, String>>,
+        {
+        }
+        command_inputs(artifact_icon);
+        let _: fn(&Session, &AppIcons, &ArtifactKey) -> Option<String> = artifact_icon_impl;
+    }
+
+    /// A key that names a path, in any of its fields, is a key the
+    /// snapshot has no row for: nothing is drawn, whatever is at that path.
+    /// `session::icon`'s tests draw what a cask's own row holds.
+    #[tokio::test]
+    async fn test_artifact_icon_impl_never_draws_a_path_the_key_names() {
+        use canager_core::icon::{AppIcons, MockIconRenderer};
+
+        let state = state_with_fake_adapter();
+        refresh_impl(&state).await.expect("refresh");
+        let dir = std::env::temp_dir().join(format!(
+            "canager-ipc-icon-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let app = dir.join("Here.app");
+        std::fs::create_dir_all(&app).expect("create an .app folder");
+        let renderer = Arc::new(MockIconRenderer::answering(b"\x89PNG\r\n\x1a\n"));
+        let icons = AppIcons::new(renderer.clone());
+
+        let mut named = Vec::new();
+        for path in [
+            app.display().to_string(),
+            format!("file://{}", app.display()),
+            "/System/Applications/Calculator.app".to_string(),
+        ] {
+            named.push(ArtifactKey {
+                instance_id: "fake:1".to_string(),
+                kind: ArtifactKind::Cask,
+                name: path.clone(),
+            });
+            named.push(ArtifactKey {
+                instance_id: path.clone(),
+                kind: ArtifactKind::Cask,
+                name: path,
+            });
+        }
+        for key in named {
+            assert_eq!(
+                artifact_icon_impl(&state.session, &icons, &key),
+                None,
+                "{key:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(renderer.calls().is_empty(), "{:?}", renderer.calls());
     }
 }

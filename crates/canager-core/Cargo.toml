@@ -41,37 +41,63 @@ toml = "1"
 # transitive dependency (uuid, rand_core, …), so this adds no new crate to
 # the build graph.
 getrandom = "0.4"
+# `icon::AppIcons` hands the window a cask app's icon as a
+# `data:image/png;base64,...` URL. Already in Cargo.lock at this version as a
+# transitive dependency of reqwest (through hyper-util), so this adds no new
+# crate to the build graph; declared directly for the same reason as
+# percent-encoding above.
+base64 = "0.22"
 
 # `RealTrasher` (src/trash/real.rs) is one call: `NSFileManager
 # trashItemAtURL:resultingItemURL:error:`, the call Finder makes to move an
 # item to the Trash, which needs no Full Disk Access (docs/what-we-run.md,
 # "Moving files to the Trash", says what was observed, Finder's "Put Back"
-# included). Both crates are already in Cargo.lock at these versions as
-# dependencies of tauri, so no new crate enters the build -- only the
-# features named here are switched on. macOS only: there is no Trash to
-# call on another target, and `RealTrasher::trash` answers `Unsupported`
-# there.
+# included). `RealIconRenderer` (src/icon/real.rs) asks `NSWorkspace
+# iconForFile:` for the icon Finder shows for a cask's app, draws it into a
+# bitmap and has AppKit encode that as PNG (docs/what-we-run.md, "App
+# icons"); `NSData` and `NSGeometry` are the Foundation types it hands to
+# and gets back from AppKit. All three crates are already in Cargo.lock at
+# these versions as dependencies of tauri, so no new crate enters the build
+# -- only the features named here are switched on. macOS only: there is no
+# Trash or Finder icon to ask for on another target; `RealTrasher::trash`
+# answers `Unsupported` there and `RealIconRenderer` no icon.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
+    "objc2-core-foundation",
+    "NSData",
+    "NSDictionary",
     "NSError",
     "NSFileManager",
+    "NSGeometry",
     "NSString",
     "NSURL",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSBitmapImageRep",
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSImageRep",
+    "NSWorkspace",
 ] }
 
 [features]
 # Gates the test code that touches real state rather than building a
 # disconnected fixture: `testing::expire_issued_plans`, which mutates a live
 # `Session`, and `trash::MockTrasher`, which creates a directory, renames
-# into it and deletes it when dropped. Left off by default so a release
-# build of this library contains neither; `src-tauri`'s own tests enable it
+# into it and deletes it when dropped. Also the test double beside the
+# latter, `icon::MockIconRenderer`, which touches nothing but has no place
+# in the app. Left off by default so a release build of this library
+# contains none of them; `src-tauri`'s own tests enable it
 # via a `[dev-dependencies]` entry on this crate with this feature turned
 # on, and this crate's own integration tests via its `[dev-dependencies]`
 # entry on itself -- resolver v2 keeps both scoped to test targets and out
-# of the release binary's dependency graph. See `testing.rs` and
-# `trash/mod.rs` for the items this gates and why.
+# of the release binary's dependency graph. See `testing.rs`,
+# `trash/mod.rs` and `icon/mod.rs` for the items this gates and why.
 test-support = []
 
 [dev-dependencies]
@@ -84,3 +110,11 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 # every release build (see `[features]`). Resolver v2 scopes the feature to
 # test targets.
 canager-core = { path = ".", features = ["test-support"] }
+
+# Decodes the PNG `RealIconRenderer` makes in its one `#[ignore]`d test
+# (src/icon/real.rs), so that test can check the icon was drawn across the
+# whole square and not only that some PNG came back. Already in Cargo.lock
+# at this version as a dependency of tauri (through muda); a dev-dependency,
+# so it never reaches a release build.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+png = "0.18"

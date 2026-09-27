@@ -18,8 +18,10 @@ three tools uninstalled by moving files to the Trash (Claude Code,
 Antigravity CLI, Grok Build) name every path those uninstalls move or
 keep and their time budget, and the never-list every path of settings or
 state they keep, that Grok Build's section shows the update check it runs
-on every refresh and says it installs nothing, and that the Trash section
-names the call and states the pause after each move.
+on every refresh and says it installs nothing, that the Trash section
+names the call and states the pause after each move, and that the app
+icons section names the call, the size an icon is drawn at, and that no
+command runs for it.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -1210,6 +1212,53 @@ that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
 put on the disk, or one inside a second `.app` of the same cask), and a
 cask whose `brew info` entry carries no absolute `target` for its `app`.
 
+## App icons: read through macOS, no command runs
+
+The window can ask for the icon of the app a Homebrew cask installed, the
+icon Finder shows for it (`artifactIcon` in `src/lib/api.ts`, through
+`useArtifactIcon` in `src/lib/queries.ts`). Nothing in the window asks
+yet: its rows still show a letter; when they show icons, this paragraph
+changes. Getting an icon runs no command, and Canager reads nothing else
+for it:
+
+- The window sends the row's key — which source, which kind of package,
+  which name — and nothing else (`artifact_icon` in
+  `src-tauri/src/ipc.rs`). Canager looks that key up in the sources' last
+  known state (`Session::artifact_icon` in
+  `crates/canager-core/src/session/icon.rs`) and goes on only for a cask
+  whose path is absolute and ends in `.app` (`cask_app_bundle` in
+  `crates/canager-core/src/icon/mod.rs`): the app that Homebrew's own
+  inventory, `brew info --installed --json=v2` (Homebrew's section), names
+  beside the cask's `app` stanza (`parse_info_installed` in
+  `crates/canager-core/src/adapters/brew/parse.rs`). No part of the key is
+  ever read as a path. A formula, a font, a cask with no app, and a key
+  the last known state has no row for get no icon, and nothing is read
+  for them.
+- Canager `lstat`s that path, each time the window asks: an icon is drawn
+  only for a folder, never for a link to one — an app Homebrew recorded as
+  a link gets no icon rather than one with Finder's alias arrow — and the
+  folder's modification time, device and inode tell whether the icon drawn
+  for it before is still its own (`AppIcons::bundle_icon`).
+- For a folder with no icon drawn yet, or one that has changed since, it
+  makes one call, `NSWorkspace iconForFile:`, through the `objc2-app-kit`
+  crate, and has AppKit draw that icon 128 × 128 pixels and encode it as
+  PNG (`RealIconRenderer` in `crates/canager-core/src/icon/real.rs`).
+  macOS finds the icon itself, in the app or in its own icon cache;
+  Canager opens no file in the app.
+- The PNG goes to the window as a `data:image/png;base64,…` URL. Canager
+  keeps each icon in memory, one per app folder, until it quits
+  (`AppIcons`), and the window does not ask for it again for an hour
+  (`useArtifactIcon`). Nothing is written to disk and no connection is
+  made. The window's content security policy already allowed `data:`
+  images (`img-src 'self' data: asset: https://asset.localhost` in
+  `src-tauri/tauri.conf.json`) and was not changed for this.
+
+An `#[ignore]`d test in `crates/canager-core/src/icon/real.rs` draws
+Calculator's icon (`/System/Applications/Calculator.app`) with the real
+call and checks it is a 128 × 128 PNG drawn across the whole square; it
+reads that icon and writes nothing. Run it with `cargo test -p
+canager-core --lib icon::real -- --ignored`; CI does not.
+
 ## Files Canager reads
 
 All read-only, none saved anywhere else, none uploaded:
@@ -1217,6 +1266,10 @@ All read-only, none saved anywhere else, none uploaded:
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
   the uninstall preview (Homebrew's section).
+- A Homebrew cask's app, when the window asks for its icon: `lstat` of the
+  `.app` Homebrew named for that cask, and the icon macOS finds for it
+  through `NSWorkspace iconForFile:` — Canager opens no file in the app
+  (App icons, above).
 - npm: whether `{prefix}/lib/node_modules`, `{prefix}/lib` or `{prefix}`
   is writable, via `access(2)`.
 - pip: the canonical path of each interpreter found, to count it once.
