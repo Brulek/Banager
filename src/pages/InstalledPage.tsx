@@ -21,6 +21,7 @@ import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { Drawer } from "../components/ui/Drawer";
+import { ChipRow } from "../components/ui/ChipRow";
 import { SourceNotices } from "../components/SourceNotices";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { SourceAvatar } from "../components/SourceAvatar";
@@ -129,7 +130,9 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
  *
  * At the top a search box and the sort, and a row of filters: 「全部」 and
  * one per source with something installed, each with how much -- an
- * Overview tile opens the page on its own (`openInstalled`). Under them,
+ * Overview tile opens the page on its own (`openInstalled`). One line
+ * however many sources there are, which scrolls sideways when they do not
+ * fit (`ChipRow`), so the list keeps its room at 800×600. Under them,
  * one line per thing a source had to say this time (`SourceNoticeLine`,
  * as on the Updates page).
  *
@@ -796,7 +799,7 @@ export function InstalledPage() {
       type="button"
       aria-pressed={pressed}
       onClick={onPress}
-      className={`inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-small font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
+      className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2 text-small font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
         pressed
           ? "border-accent bg-accent text-accent-foreground"
           : "border-border bg-surface text-foreground hover:bg-hover"
@@ -852,7 +855,7 @@ export function InstalledPage() {
           </div>
         </div>
         {filterSources.length > 0 ? (
-          <div role="group" aria-label={t("installed.filterBySource")} className="flex flex-wrap gap-1">
+          <ChipRow label={t("installed.filterBySource")}>
             {filterChip("all", t("installed.all"), snapshot.artifacts.length, activeFilter === null, () =>
               setFilter(null),
             )}
@@ -868,7 +871,7 @@ export function InstalledPage() {
                 () => setFilter(instance.id),
               ),
             )}
-          </div>
+          </ChipRow>
         ) : null}
       </div>
       {notices.length > 0 || untested.length > 0 ? (

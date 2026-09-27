@@ -1242,6 +1242,124 @@ describe("InstalledPage", () => {
       expect(useUiStore.getState().page).toBe("installed");
     });
 
+    describe("as one line", () => {
+      // jsdom lays nothing out and has no `scrollIntoView`: the row's
+      // widths are given, and each chip scrolled into view is noted.
+      let scrolledIntoView: Element[];
+      beforeEach(() => {
+        scrolledIntoView = [];
+        Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+          expect(options).toEqual({ block: "nearest", inline: "nearest" });
+          scrolledIntoView.push(this);
+        };
+      });
+      afterEach(() => {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      });
+
+      // The row as a browser would measure it: `scrollWidth` of chips in a
+      // `clientWidth`-wide window onto them.
+      function measureAs(row: HTMLElement, scrollWidth: number, clientWidth: number) {
+        Object.defineProperty(row, "scrollWidth", { configurable: true, get: () => scrollWidth });
+        Object.defineProperty(row, "clientWidth", { configurable: true, get: () => clientWidth });
+      }
+
+      it("keeps the filters on one line that scrolls sideways, with its scrollbar hidden and every chip whole", async () => {
+        served = twoSources();
+        const { getByRole } = renderWithProviders(<InstalledPage />);
+
+        await findRow("requests");
+        const group = getByRole("group", { name: "Filter by source" });
+        expect(group.className).toContain("flex-nowrap");
+        expect(group.className).not.toMatch(/(^|\s)flex-wrap(\s|$)/);
+        expect(group.className).toContain("overflow-x-auto");
+        expect(group.className).toContain("[scrollbar-width:none]");
+        expect(group.className).toContain("[&::-webkit-scrollbar]:hidden");
+        for (const chip of within(group).getAllByRole("button")) {
+          expect(chip.className).toContain("shrink-0");
+          expect(chip.className).toContain("whitespace-nowrap");
+        }
+        // Everything fits here: no fade either side.
+        expect(group).not.toHaveAttribute("data-more-before");
+        expect(group).not.toHaveAttribute("data-more-after");
+      });
+
+      it("fades the edge past which chips are hidden, and follows the row as it scrolls", async () => {
+        served = twoSources();
+        const { getByRole } = renderWithProviders(<InstalledPage />);
+
+        await findRow("requests");
+        const group = getByRole("group", { name: "Filter by source" });
+        measureAs(group, 900, 500);
+
+        fireEvent.scroll(group);
+        expect(group).toHaveAttribute("data-more-after");
+        expect(group).not.toHaveAttribute("data-more-before");
+
+        group.scrollLeft = 200;
+        fireEvent.scroll(group);
+        expect(group).toHaveAttribute("data-more-before");
+        expect(group).toHaveAttribute("data-more-after");
+
+        group.scrollLeft = 400;
+        fireEvent.scroll(group);
+        expect(group).toHaveAttribute("data-more-before");
+        expect(group).not.toHaveAttribute("data-more-after");
+      });
+
+      it("keeps every chip in the tab order, and scrolls one into view as it takes the focus", async () => {
+        served = twoSources();
+        const { getByRole } = renderWithProviders(<InstalledPage />);
+
+        await findRow("requests");
+        const group = getByRole("group", { name: "Filter by source" });
+        const pipChip = within(group).getByRole("button", { name: "pip 1" });
+        for (const chip of within(group).getAllByRole("button")) {
+          expect(chip).not.toHaveAttribute("tabindex");
+        }
+        scrolledIntoView = [];
+
+        act(() => pipChip.focus());
+        expect(document.activeElement).toBe(pipChip);
+        expect(scrolledIntoView).toEqual([pipChip]);
+      });
+
+      it("scrolls the chosen chip into view when the choice changes, as when a tile opens the page on it", async () => {
+        served = twoSources();
+        useUiStore.getState().openInstalled(pip.id);
+        const { getByRole } = renderWithProviders(<InstalledPage />);
+
+        await findRow("requests");
+        const group = getByRole("group", { name: "Filter by source" });
+        const pipChip = within(group).getByRole("button", { name: "pip 1" });
+        expect(pipChip).toHaveAttribute("aria-pressed", "true");
+        expect(scrolledIntoView).toContain(pipChip);
+
+        scrolledIntoView = [];
+        fireEvent.click(within(group).getByRole("button", { name: "All 3" }));
+        await waitFor(() => expect(scrolledIntoView).toEqual([within(group).getByRole("button", { name: "All 3" })]));
+      });
+
+      it("moves sideways under a mouse's up-and-down wheel only while it has chips hidden", async () => {
+        served = twoSources();
+        const { getByRole } = renderWithProviders(<InstalledPage />);
+
+        await findRow("requests");
+        const group = getByRole("group", { name: "Filter by source" });
+        measureAs(group, 500, 500);
+        // Nothing hidden: the wheel is the page's.
+        expect(fireEvent.wheel(group, { deltaY: 120 })).toBe(true);
+        expect(group.scrollLeft).toBe(0);
+
+        measureAs(group, 900, 500);
+        expect(fireEvent.wheel(group, { deltaY: 120 })).toBe(false);
+        expect(group.scrollLeft).toBe(120);
+        // A sideways swipe is the trackpad's own.
+        expect(fireEvent.wheel(group, { deltaX: 40, deltaY: 5 })).toBe(true);
+        expect(group.scrollLeft).toBe(120);
+      });
+    });
+
     it("shows everything, and drops the filter, when its source has nothing installed any more", async () => {
       served = twoSources();
       useUiStore.setState({ installedFilter: OLLAMA });
