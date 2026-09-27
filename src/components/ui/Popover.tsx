@@ -7,7 +7,7 @@ export interface PopoverProps {
   /** The button's accessible name, when its content alone does not say it. */
   triggerLabel?: string;
   triggerClassName: string;
-  /** Which edge of the button the panel lines up with: `end` near the right of the window. */
+  /** Which edge of the button the panel lines up with by preference (`usePlacement` swaps it where it would not fit): `end` near the right of the window. */
   align?: "start" | "end";
   /** The detail: one or two short sentences. */
   children: ReactNode;
@@ -33,7 +33,7 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
   const panelRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, wrapperRef, triggerRef);
-  const placement = usePlacement(open, triggerRef, panelRef);
+  const placement = usePlacement(open, triggerRef, panelRef, align);
 
   return (
     <span
@@ -57,8 +57,8 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
           ref={panelRef}
           id={panelId}
           className={`absolute z-30 w-64 rounded-button border border-border bg-surface px-3 py-2.5 text-left text-small font-normal text-foreground shadow-lg shadow-black/10 ${
-            align === "end" ? "right-0" : "left-0"
-          } ${placement === "above" ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
+            placement.align === "end" ? "right-0" : "left-0"
+          } ${placement.side === "above" ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
         >
           {children}
         </div>

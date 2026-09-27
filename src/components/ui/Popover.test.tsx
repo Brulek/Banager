@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
 import { Popover } from "./Popover";
 import { StatusChip } from "../StatusChip";
@@ -83,6 +83,59 @@ describe("Popover", () => {
     expect(queryByText("It's pinned in Homebrew.")).toBeNull();
     expect(queryByText("Packages installed with pip can only be viewed here.")).not.toBeNull();
     expect(pinned).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("Popover placement", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A button at `left`..`right` on a 1024 x 768 window, and a panel 256px
+  // wide and 80px tall -- what a browser would measure.
+  function layOut(left: number, right: number, top = 100) {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.tagName === "BUTTON"
+        ? ({ left, right, top, bottom: top + 20, width: right - left, height: 20 } as DOMRect)
+        : ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 } as DOMRect);
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(256);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(80);
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(768);
+  }
+
+  function openPanel(align: "start" | "end") {
+    const { getByRole } = render(
+      <Popover trigger="Details" triggerClassName="details" align={align}>
+        <p>More.</p>
+      </Popover>,
+    );
+    const button = getByRole("button", { name: "Details" });
+    fireEvent.click(button);
+    return document.getElementById(button.getAttribute("aria-controls") ?? "") as HTMLElement;
+  }
+
+  it("opens from the button's left edge when it fits", () => {
+    layOut(100, 160);
+    expect(openPanel("start").className).toContain("left-0");
+  });
+
+  it("opens leftwards from near the window's right edge instead of past it", () => {
+    layOut(900, 960);
+    expect(openPanel("start").className).toContain("right-0");
+  });
+
+  it("opens rightwards from near the window's left edge when asked to line up with the button's right", () => {
+    layOut(20, 80);
+    expect(openPanel("end").className).toContain("left-0");
+  });
+
+  it("opens upwards at the foot of the window, and downwards where there is room", () => {
+    layOut(100, 160, 720);
+    expect(openPanel("start").className).toContain("bottom-full");
   });
 });
 

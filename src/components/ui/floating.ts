@@ -62,23 +62,37 @@ function scrollingAncestor(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-export type Placement = "below" | "above";
+/** Which side of its button a panel opens on, and which of the button's edges it lines up with. */
+export interface Placement {
+  side: "below" | "above";
+  align: "start" | "end";
+}
 
 /**
  * Below the button, unless the panel would run past the bottom of the
  * list it is in (or of the window) and there is more room above: a row at
  * the foot of the Updates page opens its menu upwards instead of into the
- * operation bar. Measured once each time the panel opens.
+ * operation bar. Lined up with the button's `preferred` edge, unless the
+ * panel would then run past the list's or the window's side and fits the
+ * other way: a notice's "Details" near the right of a narrow window opens
+ * leftwards instead of past the window's edge. Measured once each time the
+ * panel opens, from the button, so the answer does not depend on where
+ * the panel happened to be drawn first.
  */
 export function usePlacement(
   open: boolean,
   trigger: RefObject<HTMLElement | null>,
   panel: RefObject<HTMLElement | null>,
+  preferred: "start" | "end" = "start",
 ): Placement {
-  const [placement, setPlacement] = useState<Placement>("below");
+  const [placement, setPlacement] = useState<Placement>({ side: "below", align: preferred });
   useLayoutEffect(() => {
+    // Only a change is set: every closed chip and menu on a list runs this
+    // when it mounts, and an equal new object would draw each one twice.
+    const settle = (next: Placement) =>
+      setPlacement((was) => (was.side === next.side && was.align === next.align ? was : next));
     if (!open) {
-      setPlacement("below");
+      settle({ side: "below", align: preferred });
       return;
     }
     const button = trigger.current;
@@ -87,12 +101,20 @@ export function usePlacement(
     const bounds = scrollingAncestor(button)?.getBoundingClientRect() ?? {
       top: 0,
       bottom: window.innerHeight,
+      left: 0,
+      right: window.innerWidth,
     };
     const rect = button.getBoundingClientRect();
     const needed = content.offsetHeight + 8;
     const below = bounds.bottom - rect.bottom;
     const above = rect.top - bounds.top;
-    setPlacement(below < needed && above > below ? "above" : "below");
-  }, [open, trigger, panel]);
+    const width = content.offsetWidth;
+    const fitsFromStart = rect.left + width <= bounds.right;
+    const fitsFromEnd = rect.right - width >= bounds.left;
+    let align = preferred;
+    if (preferred === "start" && !fitsFromStart && fitsFromEnd) align = "end";
+    if (preferred === "end" && !fitsFromEnd && fitsFromStart) align = "start";
+    settle({ side: below < needed && above > below ? "above" : "below", align });
+  }, [open, trigger, panel, preferred]);
   return placement;
 }

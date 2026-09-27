@@ -51,7 +51,7 @@ export function Menu({ label, items }: MenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, wrapperRef, triggerRef);
-  const placement = usePlacement(open, triggerRef, menuRef);
+  const placement = usePlacement(open, triggerRef, menuRef, "end");
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -141,9 +141,9 @@ export function Menu({ label, items }: MenuProps) {
           role="menu"
           aria-labelledby={buttonId}
           onKeyDown={onMenuKeyDown}
-          className={`absolute right-0 z-30 flex min-w-52 flex-col rounded-button border border-border bg-surface p-1 shadow-lg shadow-black/10 ${
-            placement === "above" ? "bottom-full mb-1" : "top-full mt-1"
-          }`}
+          className={`absolute z-30 flex min-w-52 flex-col rounded-button border border-border bg-surface p-1 shadow-lg shadow-black/10 ${
+            placement.align === "end" ? "right-0" : "left-0"
+          } ${placement.side === "above" ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           {items.map((item) => (
             <button
