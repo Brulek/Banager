@@ -155,7 +155,7 @@ describe("App", () => {
   it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Nothing for Canager to manage yet");
+    await findByText("Canager found nothing it can manage");
 
     fireEvent.click(getByRole("button", { name: "Settings" }));
 
@@ -163,13 +163,13 @@ describe("App", () => {
   });
 
   it("switches to the Unknown page, which lives outside the snapshot's empty states", async () => {
-    // A Mac with no source at all: SnapshotStatus shows "Nothing for
-    // Canager to manage yet" for the Installed and Updates pages. That is
+    // A Mac with no source at all: SnapshotStatus shows "Canager found
+    // nothing it can manage" for the Installed and Updates pages. That is
     // exactly where everything on the machine is unknown, so this page
     // must not be behind that gate.
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Nothing for Canager to manage yet");
+    await findByText("Canager found nothing it can manage");
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
 

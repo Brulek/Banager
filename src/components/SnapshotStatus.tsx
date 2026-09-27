@@ -4,7 +4,7 @@ import { useRefresh, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { failedSourceCount, hasSourceNotice } from "../lib/sources";
 import { useUiStore } from "../store/ui";
-import { EmptyState } from "./EmptyState";
+import { EmptyState, type EmptyStateDetail } from "./EmptyState";
 
 export interface SnapshotStatusProps {
   children: ReactNode;
@@ -23,6 +23,16 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
   const startupRefreshError = useUiStore((s) => s.startupRefreshError);
   const snapshot = snapshotQuery.data;
 
+  // What Canager works with, and where it looks, behind "Details" on the
+  // two states that found nothing. "Not found", never "not installed": a
+  // tool with its own installer is looked for in its default location
+  // only, so one somewhere else is not found although it is there.
+  const supportedList = (title: string): EmptyStateDetail => ({
+    label: t("common.details"),
+    ariaLabel: t("common.detailsLabel", { title }),
+    content: t("emptyStates.supportedList"),
+  });
+
   if (snapshotQuery.isError) {
     // get_snapshot itself failed. InstalledPage renders null without data,
     // so without this branch the user would face a blank page and no way
@@ -35,7 +45,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
           message: (refreshMutation.error ?? snapshotQuery.error).message,
         })}
         action={{
-          label: t("emptyStates.refreshFailed.retry"),
+          label: t("common.retry"),
           onClick: () => refreshMutation.mutate(),
         }}
       />
@@ -65,7 +75,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
         title={t("emptyStates.loadFailed.title")}
         description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
         action={{
-          label: t("emptyStates.refreshFailed.retry"),
+          label: t("common.retry"),
           onClick: () => refreshMutation.mutate(),
         }}
       />
@@ -76,7 +86,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
     // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
     // why its three fields, and only they, mean that). Judging it here
-    // would flash "Nothing for Canager to manage yet" at every launch. A
+    // would flash "Canager found nothing it can manage" at every launch. A
     // page that says "Checking…" itself is shown instead of "Loading…".
     return showsFirstCheck ? (
       <>{children}</>
@@ -93,6 +103,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
       <EmptyState
         title={t("emptyStates.noSources.title")}
         description={t("emptyStates.noSources.description")}
+        detail={supportedList(t("emptyStates.noSources.title"))}
       />
     );
   }
@@ -139,7 +150,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
                 })
           }
           action={{
-            label: t("emptyStates.refreshFailed.retry"),
+            label: t("common.retry"),
             onClick: () => refreshMutation.mutate(),
           }}
         />
@@ -166,6 +177,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
       <EmptyState
         title={t("emptyStates.nothingInstalled.title")}
         description={t("emptyStates.nothingInstalled.description")}
+        detail={supportedList(t("emptyStates.nothingInstalled.title"))}
       />
     );
   }

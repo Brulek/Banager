@@ -1,5 +1,10 @@
+import type { ReactNode } from "react";
 import { InfoIcon, WarningIcon } from "./icons";
 import { Popover } from "./ui/Popover";
+
+/** The look of a "Details" button beside a sentence: a notice's, or its error's. */
+export const DETAILS_TRIGGER_CLASS =
+  "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
 
 export type SourceNoticeVariant = "info" | "warning";
 
@@ -15,10 +20,11 @@ export interface SourceNoticeProps {
   action?: SourceNoticeAction;
   /**
    * What went wrong the last time `action` was pressed, already in the
-   * user's language. Shown under the description rather than in place of
-   * it: the notice is still true, and its button can be pressed again.
+   * user's language -- with its own "Details", when it has one. Shown
+   * under the description rather than in place of it: the notice is still
+   * true, and its button can be pressed again.
    */
-  error?: string;
+  error?: ReactNode;
 }
 
 const VARIANT_CLASSES: Record<SourceNoticeVariant, string> = {
@@ -46,9 +52,9 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
         <p className="font-medium">{title}</p>
         {description ? <p className="mt-0.5 text-xs opacity-80">{description}</p> : null}
         {error ? (
-          <p role="alert" className="mt-1 text-xs font-medium">
+          <div role="alert" className="mt-1 text-xs font-medium">
             {error}
-          </p>
+          </div>
         ) : null}
       </div>
       {action ? (
@@ -99,11 +105,7 @@ export function SourceNoticeLine({
           {title}
         </span>
         {description ? (
-          <Popover
-            trigger={detailsLabel}
-            triggerLabel={detailsAriaLabel}
-            triggerClassName="shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
-          >
+          <Popover trigger={detailsLabel} triggerLabel={detailsAriaLabel} triggerClassName={DETAILS_TRIGGER_CLASS}>
             {description}
           </Popover>
         ) : null}
@@ -117,10 +119,11 @@ export function SourceNoticeLine({
           </button>
         ) : null}
       </div>
+      {/* A <div>: the error's own "Details" panel is one. */}
       {error ? (
-        <p role="alert" className="pl-6 text-small font-medium text-danger">
+        <div role="alert" className="pl-6 text-small font-medium text-danger">
           {error}
-        </p>
+        </div>
       ) : null}
     </div>
   );

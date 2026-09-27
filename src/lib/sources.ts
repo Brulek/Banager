@@ -336,7 +336,7 @@ export function sourceNoticesFor(
         variant: "warning",
         titleKey: "sourceNotice.indexMayBeStale.title",
         descriptionKey: "sourceNotice.indexMayBeStale.description",
-        action: { id: "retry", labelKey: "sourceNotice.indexMayBeStale.action" },
+        action: { id: "retry", labelKey: "common.retry" },
       });
     } else if (note === "IndexUpdating") {
       // Nothing has failed: the download is still going. So an "info"
@@ -425,8 +425,8 @@ export function sourceNoticesFor(
  *
  * `SnapshotStatus` asks this as well as the pages do: its zero-artifact
  * empty state replaces `children` outright, so without it a Mac whose only
- * source is a stopped Ollama shows "Nothing installed yet" and the Open
- * Ollama button is unreachable. One rule, one place.
+ * source is a stopped Ollama shows "Canager found nothing installed" and
+ * the Open Ollama button is unreachable. One rule, one place.
  */
 export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
@@ -573,14 +573,18 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
 };
 
 /**
- * A read-only source's rows, in the detail of their "Read-only" chip on
- * the Updates page: two short sentences, different for each reason for
- * the same reason `READ_ONLY_NOTICE_KEYS` is -- pipx or uv is the way out
- * for pip, and nonsense for an npm whose folder the account cannot write.
+ * A read-only source's rows, in the detail of their "Read-only" chip:
+ * two short sentences, different for each reason for the same reason
+ * `READ_ONLY_NOTICE_KEYS` is -- pipx or uv is the way out for pip, and
+ * nonsense for an npm whose folder the account cannot write. The very
+ * sentences a refusal for that source says (`notActionableMessage`), so
+ * the chip and the refusal cannot disagree: npm's promises to manage only
+ * the npm packages installed with a Node from Homebrew, since the ones in
+ * the old folder do not move over.
  */
 export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
-  ByDesign: "updates.readOnlyDetail.ByDesign",
-  PrefixNotWritable: "updates.readOnlyDetail.PrefixNotWritable",
+  ByDesign: "sourceNotice.pipReadOnly.description",
+  PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
 };
 
 /**
@@ -1024,6 +1028,15 @@ const OPEN_OLLAMA_FAILURE_KEYS: Record<OpenOllamaFailure, string> = {
 };
 
 /**
+ * What a failure's sentence leaves for its "Details": why the app is
+ * missing when someone installed Ollama with Homebrew, which is what
+ * `brew install ollama` does without it.
+ */
+const OPEN_OLLAMA_FAILURE_DETAIL_KEYS: Partial<Record<OpenOllamaFailure, string>> = {
+  not_installed: "sourceNotice.openOllamaFailed.notInstalledDetail",
+};
+
+/**
  * Reads the payload `open_ollama_app` rejects with, the same way
  * `parseNotActionable` reads the actionability gate's. `null` for anything
  * else, including a `reason` this build does not know -- which
@@ -1053,6 +1066,13 @@ export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | nul
 export function openOllamaErrorMessage(t: Translate, raw: string): string {
   const reason = parseOpenOllamaFailure(raw);
   return reason ? t(OPEN_OLLAMA_FAILURE_KEYS[reason]) : raw;
+}
+
+/** The "Details" of `openOllamaErrorMessage`'s sentence, or null when it has none. */
+export function openOllamaErrorDetail(t: Translate, raw: string): string | null {
+  const reason = parseOpenOllamaFailure(raw);
+  const key = reason === null ? undefined : OPEN_OLLAMA_FAILURE_DETAIL_KEYS[reason];
+  return key === undefined ? null : t(key);
 }
 
 /** Why writing the settings file failed, as `settings_save_error` in

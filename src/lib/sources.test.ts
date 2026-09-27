@@ -6,6 +6,7 @@ import {
   hasSourceNotice,
   isAvailable,
   notActionableMessage,
+  openOllamaErrorDetail,
   openOllamaErrorMessage,
   parseNotActionable,
   parseOpenOllamaFailure,
@@ -299,77 +300,73 @@ describe("sourceNoticesFor", () => {
     expect(notices[0].values).toEqual({ source: "Claude Code", command: "/" });
   });
 
-  it("puts the command and the source into every standalone notice's copy, in both locales", () => {
+  it("names the command in every standalone notice about typing it, and the source where the title stands alone, in both locales", () => {
+    // The titles are what the Overview's "Needs attention" shows, with no
+    // group or row around them, so each one says which tool it is about.
     for (const locale of [en, zhCN]) {
-      for (const key of [
-        "notOnPath",
-        "shadowedByHomebrew",
-        "shadowedByNpm",
-        "shadowedByOther",
-        "launcherOnly",
-      ] as const) {
-        expect(locale.sourceNotice[key].description).toContain("{{command}}");
+      for (const key of ["notOnPath", "shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
+        expect(locale.sourceNotice[key].title).toContain("{{command}}");
       }
-      // The three "another program with that name runs" notices share one
-      // title, and two of the descriptions say whose directory it is in.
-      expect(locale.sourceNotice.shadowedByNpm.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
-      expect(locale.sourceNotice.shadowedByOther.title).toBe(locale.sourceNotice.shadowedByHomebrew.title);
+      expect(locale.sourceNotice.notOnPath.title).toContain("{{source}}");
+      expect(locale.sourceNotice.launcherOnly.title).toContain("{{source}}");
+      expect(locale.sourceNotice.launcherOnly.description).toContain("{{command}}");
+      expect(locale.sourceNotice.launcherOnly.description).toContain("{{source}}");
+      // Each "another program runs first" title says whose it is, where
+      // Canager can tell: the three used to share one title.
+      expect(locale.sourceNotice.shadowedByHomebrew.title).toContain("Homebrew");
+      expect(locale.sourceNotice.shadowedByNpm.title).toContain("npm");
+      expect(locale.sourceNotice.shadowedByOther.title).not.toMatch(/Homebrew|npm/);
       expect(locale.sourceNotice.shadowedByHomebrew.description).toContain("Homebrew");
       expect(locale.sourceNotice.shadowedByNpm.description).toContain("npm");
-      expect(locale.sourceNotice.launcherOnly.description).toContain("{{source}}");
-      // The LauncherOnly row offers Uninstall (its artifact carries no
-      // `uninstall_blocked` since step C), so spec §9.2's promises are
-      // back: the link goes to the Trash too, and a folder an earlier
-      // stopped uninstall moved may be in the Trash -- "may", as spec §9.2
-      // says: the Trash can have been emptied since. It still does not claim
-      // typing the command fails -- another copy on PATH may run (B's
-      // review finding 9).
-      expect(locale.sourceNotice.launcherOnly.description).toMatch(
-        /Uninstall moves the link to the Trash|卸载会把这个链接也移到废纸篓/,
-      );
-      expect(locale.sourceNotice.launcherOnly.description).toMatch(/may be in the Trash|可能在废纸篓里/);
-      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(
-        /typing .* in Terminal fails|输入 .* 会失败/,
-      );
       for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
         expect(locale.sourceNotice[key].description).not.toMatch(/both are listed on this page|两份在这一页上都能找到/);
       }
     }
   });
 
-  it("has the not-on-PATH notice say typing the name won't find this copy, and that Terminal then finds nothing or runs another program with that name, in both locales", () => {
+  it("says this copy can't be found by typing its name, never that nothing runs, in both locales (T6)", () => {
     // NotOnPath is also the note when another executable with the tool's
     // name is on PATH and this copy is not (route::shadow_note): typing the
-    // name then runs that other program, which may or may not be another
-    // copy of the tool. So the sentence says it is this copy that won't be
-    // found, and names both outcomes, instead of reading as "nothing runs".
-    expect(en.sourceNotice.notOnPath.description).toContain("probably won't find this copy");
-    expect(en.sourceNotice.notOnPath.description).toContain(
-      "either finds nothing or runs another program named {{command}}",
+    // name then runs that other program, which may even be another copy
+    // of the tool -- so "Terminal won't find Claude Code" would be false
+    // there. The title says it is *this copy* that won't be found. What
+    // happens in Terminal is judged by the PATH Canager sees, which it
+    // takes from a login shell when opened from Finder
+    // (src-tauri/src/lib.rs); the detail's first step, a new Terminal
+    // window, covers a shell whose PATH has not caught up.
+    expect(en.sourceNotice.notOnPath.title).toBe(
+      "Terminal won't find this copy of {{source}} when you type {{command}}",
     );
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("多半找不到这一份");
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("要么什么也找不到，要么运行的是另一个同名程序");
+    expect(zhCN.sourceNotice.notOnPath.title).toBe("在终端输入 {{command}} 找不到这一份 {{source}}");
+    expect(en.sourceNotice.notOnPath.description).toContain("Open a new Terminal window first");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("先新开一个终端窗口试试");
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.notOnPath.title).not.toMatch(/nothing|什么也/);
+    }
   });
 
-  it("has the not-on-PATH notice say no executable entry on PATH reaches this copy, and give the missing folder as the likely cause, in both locales", () => {
+  it("says what was checked for not-on-PATH, and no cause it did not check, in both locales", () => {
     // route::shadow_note answers NotOnPath whenever no executable
     // `command` on PATH resolves to this copy -- also when the launcher's
     // folder is on PATH but the file it links to has no executable bit
     // (route.rs, test_shadow_note_says_not_on_path_when_the_launcher_is_on_path_but_its_target_is_not_executable).
-    // So the sentence says what was checked, and gives the folder's absence
-    // as the likely cause rather than stating it as the cause (step-B
-    // review finding B-5).
+    // So the detail says that none of the places Terminal looks leads to
+    // this copy, and not that its folder is missing from them (step-B
+    // review finding B-5) -- nor "probably", "most likely" or PATH.
     expect(en.sourceNotice.notOnPath.description).toContain(
-      "no executable {{command}} in your shell's search path (PATH) leads to it",
+      "None of the places Terminal looks in for {{command}} leads to this copy.",
     );
-    expect(en.sourceNotice.notOnPath.description).toContain("Most likely the folder it lives in isn't in PATH");
-    expect(en.sourceNotice.notOnPath.description).not.toMatch(/this copy: the folder/);
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("没有一个可执行的 {{command}} 通向这一份");
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("最可能的原因是它所在的文件夹不在 PATH 里");
-    expect(zhCN.sourceNotice.notOnPath.description).not.toMatch(/这一份：它所在的文件夹/);
+    expect(zhCN.sourceNotice.notOnPath.description).toContain(
+      "终端查找 {{command}} 的位置里，没有一处通向这一份。",
+    );
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.notOnPath.description).not.toMatch(
+        /folder|PATH|probably|likely|文件夹|多半|可能/,
+      );
+    }
   });
 
-  it("calls what PATH finds instead another program with the tool's name, never another copy, in both locales: it may only share the name", () => {
+  it("calls what PATH finds first a program with the tool's name, never another copy, and says Canager can't tell which it is, in both locales (T6)", () => {
     // Step D's review: route::shadow_note compares the name the user types
     // and where the first executable of that name resolves -- a Homebrew
     // directory, an npm one, or anywhere else -- never what program it is.
@@ -378,36 +375,46 @@ describe("sourceNoticesFor", () => {
     // Build, gets; npm's package `grok-cli`, a third-party wrapper, puts a
     // `grok` on PATH that is not Grok Build either (route.rs,
     // test_shadow_note_classifies_by_where_the_first_one_resolves_not_by_what_program_it_is).
-    // So the three notices name another program with the same name, say it
-    // may be another copy or a different program, and none of the four
-    // PATH notices calls it a copy.
-    for (const key of ["shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
-      expect(en.sourceNotice[key].title).toBe("Another program named {{command}} runs when you type {{command}}");
-      expect(zhCN.sourceNotice[key].title).toBe("输入 {{command}} 时运行的是另一个同名程序");
-      expect(en.sourceNotice[key].description).toContain(
-        "It may be another copy of {{source}}, or a different program that happens to have the same name.",
-      );
-      expect(zhCN.sourceNotice[key].description).toContain(
-        "它可能是 {{source}} 的另一份安装，也可能只是碰巧同名的另一个程序。",
-      );
+    // So each title names a program with the same name, its detail says
+    // Canager can't tell whether it is the tool, and none says "probably".
+    expect(en.sourceNotice.shadowedByHomebrew.title).toBe(
+      "Typing {{command}} runs a same-named program from Homebrew first",
+    );
+    expect(zhCN.sourceNotice.shadowedByHomebrew.title).toBe("输入 {{command}} 先运行的是 Homebrew 里的同名程序");
+    expect(zhCN.sourceNotice.shadowedByNpm.title).toBe("输入 {{command}} 先运行的是 npm 里的同名程序");
+    expect(zhCN.sourceNotice.shadowedByOther.title).toBe("输入 {{command}} 先运行的是另一个同名程序");
+    for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
+      expect(en.sourceNotice[key].description).toContain("Canager can't tell whether that one is {{source}}.");
+      expect(zhCN.sourceNotice[key].description).toContain("Canager 看不出它是不是 {{source}}。");
     }
+    expect(en.sourceNotice.shadowedByOther.description).toContain("Canager can't identify that program.");
+    expect(zhCN.sourceNotice.shadowedByOther.description).toContain("Canager 认不出那个程序。");
     for (const key of ["notOnPath", "shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
-      expect(en.sourceNotice[key].title).not.toMatch(/copy/i);
-      expect(en.sourceNotice[key].description).not.toMatch(/runs? (that other|another) copy/);
-      expect(zhCN.sourceNotice[key].title).not.toMatch(/另一份/);
-      expect(zhCN.sourceNotice[key].description).not.toMatch(/运行的是另一份/);
+      for (const locale of [en, zhCN]) {
+        expect(locale.sourceNotice[key].title).not.toMatch(/another copy|other copy|另一份|多半|probably|likely/i);
+        expect(locale.sourceNotice[key].description).not.toMatch(/runs? (that other|another) copy|运行的是另一份|多半/);
+      }
     }
   });
 
-  it("points at the tool's official documentation, not at a website Canager doesn't show, when the launcher is left without its program", () => {
-    // The same rule as the no-safe-method sentence (the row of a recipe
-    // without an uninstall method; this row's own before step C): Canager shows
-    // no homepage and opens no link, so "its website" and "the same page"
-    // named nothing the user could find from here.
-    expect(en.sourceNotice.launcherOnly.description).toContain("{{source}}'s official documentation");
-    expect(zhCN.sourceNotice.launcherOnly.description).toContain("{{source}} 官方文档");
+  it("says it is this copy that can no longer run when the launcher is left without its program, in both locales (T7)", () => {
+    // Another installation -- a Homebrew or npm command of the same name --
+    // may run in Terminal as before, so the detail speaks of this copy
+    // only. The row offers Uninstall (its artifact carries no
+    // `uninstall_blocked` since step C), which cleans it up; to keep the
+    // tool, reinstall it, or drag its files back if an earlier uninstall
+    // that stopped partway moved them to the Trash -- "if", as spec §9.2
+    // says: the Trash can have been emptied since.
+    expect(en.sourceNotice.launcherOnly.description).toBe(
+      "This copy of {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again.",
+    );
+    expect(zhCN.sourceNotice.launcherOnly.description).toBe(
+      "这一份 {{command}} 已经无法运行，点「卸载」可以清理掉它。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后重新检查。",
+    );
     for (const locale of [en, zhCN]) {
-      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(/website|same page|网站|同一页/);
+      expect(locale.sourceNotice.launcherOnly.description).not.toMatch(
+        /typing .* in Terminal fails|输入 .* 会失败|website|same page|网站|同一页/,
+      );
     }
   });
 
@@ -416,14 +423,43 @@ describe("sourceNoticesFor", () => {
     // `~/.grok/bin/agent` dangles beside `~/.grok/bin/grok`, and a stopped
     // uninstall can leave other listed paths as well, so "Only the grok
     // link is left" was untrue. The title says what holds for every
-    // launcher-only row: this link is still there, and what it points to
-    // is not.
-    expect(en.sourceNotice.launcherOnly.title).toBe(
-      "The {{command}} link is still there, but its program is gone",
-    );
-    expect(zhCN.sourceNotice.launcherOnly.title).toBe("{{command}} 这个链接还在，但它指向的程序已经不在了");
+    // launcher-only row: the program files are gone.
+    expect(en.sourceNotice.launcherOnly.title).toBe("{{source}}'s program files are missing");
+    expect(zhCN.sourceNotice.launcherOnly.title).toBe("{{source}} 的程序文件不见了");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.launcherOnly.title).not.toMatch(/only|只剩/i);
+    }
+  });
+
+  it("promises a Node from Homebrew manages only the npm packages installed with it, in both locales (T5)", () => {
+    // After Node is reinstalled with Homebrew, npm's global folder is a
+    // different one: the packages in the old folder do not move over, and
+    // the new npm does not list them. So the sentence promises to manage
+    // what is installed with the new Node, never "them".
+    expect(en.sourceNotice.prefixNotWritable.description).toContain(
+      "After you install Node with Homebrew, you can manage the npm packages you install with it here.",
+    );
+    expect(zhCN.sourceNotice.prefixNotWritable.description).toContain(
+      "用 Homebrew 装 Node 后，再用它装的 npm 包就能在这里管理。",
+    );
+    expect(en.sourceNotice.prefixNotWritable.description).not.toMatch(/manage them|usually/);
+    expect(zhCN.sourceNotice.prefixNotWritable.description).not.toMatch(/就能管理它们了|通常/);
+  });
+
+  it("keeps every notice's title short enough for one line, and its detail to two sentences, in both locales", () => {
+    const notices = (locale: typeof en) =>
+      Object.values(locale.sourceNotice).filter(
+        (entry): entry is { title: string; description: string } =>
+          typeof entry === "object" && "title" in entry && "description" in entry,
+      );
+    for (const notice of notices(en)) {
+      expect(notice.title.length, notice.title).toBeLessThanOrEqual(80);
+      expect(notice.description.match(/[.!?](\s|$)/g)?.length ?? 0, notice.description).toBeLessThanOrEqual(2);
+    }
+    for (const notice of notices(zhCN as unknown as typeof en)) {
+      expect(notice.title.length, notice.title).toBeLessThanOrEqual(40);
+      expect(notice.title).not.toMatch(/[（(]|多半|可能/);
+      expect(notice.description.match(/[。！？]/g)?.length ?? 0, notice.description).toBeLessThanOrEqual(2);
     }
   });
 });
@@ -704,6 +740,20 @@ describe("openOllamaErrorMessage", () => {
       "command open_ollama_app not found",
     );
   });
+
+  it("keeps why Homebrew's ollama has no app for the failure's Details, and gives the others none", () => {
+    // The sentence says what to do -- download the app -- and the Details
+    // why it is missing when Ollama was installed with Homebrew.
+    expect(
+      openOllamaErrorDetail(fakeT, '{"kind":"ollama_open_failed","reason":"not_installed"}'),
+    ).toBe("sourceNotice.openOllamaFailed.notInstalledDetail");
+    expect(openOllamaErrorDetail(fakeT, '{"kind":"ollama_open_failed","reason":"launch_failed"}')).toBeNull();
+    expect(openOllamaErrorDetail(fakeT, "command open_ollama_app not found")).toBeNull();
+    expect(en.sourceNotice.openOllamaFailed.notInstalled).toBe(
+      "There's no Ollama app in Applications. Download it from ollama.com, install it, then press Open Ollama again.",
+    );
+    expect(zhCN.sourceNotice.openOllamaFailed.notInstalledDetail).toBe("用 Homebrew 装的 ollama 命令不包含这个 App。");
+  });
 });
 
 describe("failedSourceCount", () => {
@@ -877,8 +927,11 @@ describe("the Updates page's chip details", () => {
       blocked: { Pinned: { detail: string }; SelfUpdatesOnly: { detail: string } };
       selfUpdatingDetail: string;
       cannotCheckShort: string;
-      readOnlyDetail: Record<string, string>;
       unavailableDetail: Record<string, string>;
+    };
+    sourceNotice: {
+      pipReadOnly: { description: string };
+      prefixNotWritable: { description: string };
     };
   }
   const details = (locale: ChipCopy) => [
@@ -886,7 +939,8 @@ describe("the Updates page's chip details", () => {
     locale.updates.blocked.SelfUpdatesOnly.detail,
     locale.updates.selfUpdatingDetail,
     locale.updates.cannotCheckShort,
-    ...Object.values(locale.updates.readOnlyDetail),
+    locale.sourceNotice.pipReadOnly.description,
+    locale.sourceNotice.prefixNotWritable.description,
     ...Object.values(locale.updates.unavailableDetail),
   ];
 
@@ -899,25 +953,34 @@ describe("the Updates page's chip details", () => {
     }
   });
 
-  it("gives pip's rows pipx or uv, and npm's rows Homebrew, each only its own advice", () => {
+  it("gives pip's rows pipx or uv, and npm's rows Homebrew, each only its own advice, in the words a refusal uses", () => {
     // The two read-only reasons need different ways out: pipx or uv for
     // pip, and a Node installed with Homebrew for an npm whose folder the
-    // account cannot change.
+    // account cannot change. The chip's detail is the sentence a refusal
+    // for that source says (`notActionableMessage`), so the two cannot
+    // disagree -- npm's used to promise, on the chip, that a Node from
+    // Homebrew lets Canager manage the packages already there (T5).
     expect(READ_ONLY_DETAIL_KEYS).toEqual({
-      ByDesign: "updates.readOnlyDetail.ByDesign",
-      PrefixNotWritable: "updates.readOnlyDetail.PrefixNotWritable",
+      ByDesign: "sourceNotice.pipReadOnly.description",
+      PrefixNotWritable: "sourceNotice.prefixNotWritable.description",
     });
-    for (const locale of [en, zhCN]) {
-      expect(locale.updates.readOnlyDetail.ByDesign).toMatch(/pipx 或 uv|pipx or uv/);
-      expect(locale.updates.readOnlyDetail.ByDesign).not.toContain("Homebrew");
-      expect(locale.updates.readOnlyDetail.PrefixNotWritable).toContain("Homebrew");
-      expect(locale.updates.readOnlyDetail.PrefixNotWritable).not.toMatch(/pipx|uv/);
-    }
-    expect(zhCN.updates.readOnlyDetail.ByDesign).toBe(
-      "用 pip 装的包只能在这里查看。命令行工具建议改用 pipx 或 uv 安装。",
+    expect(notActionableMessage(fakeT, { read_only: "ByDesign", unavailable: null }, "pip")).toBe(
+      READ_ONLY_DETAIL_KEYS.ByDesign,
     );
-    expect(en.updates.readOnlyDetail.ByDesign).toBe(
-      "Packages installed with pip can only be viewed here. For command-line tools, use pipx or uv.",
+    expect(notActionableMessage(fakeT, { read_only: "PrefixNotWritable", unavailable: null }, "npm")).toBe(
+      READ_ONLY_DETAIL_KEYS.PrefixNotWritable,
+    );
+    for (const locale of [en, zhCN]) {
+      expect(locale.sourceNotice.pipReadOnly.description).toMatch(/pipx 或 uv|pipx or uv/);
+      expect(locale.sourceNotice.pipReadOnly.description).not.toContain("Homebrew");
+      expect(locale.sourceNotice.prefixNotWritable.description).toContain("Homebrew");
+      expect(locale.sourceNotice.prefixNotWritable.description).not.toMatch(/pipx|uv/);
+    }
+    expect(zhCN.sourceNotice.pipReadOnly.description).toBe(
+      "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。",
+    );
+    expect(en.sourceNotice.pipReadOnly.description).toBe(
+      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     );
   });
 

@@ -538,7 +538,7 @@ describe("UninstallDialog", () => {
     await waitFor(() => expect(confirmButton).not.toBeDisabled());
     fireEvent.click(confirmButton);
 
-    await screen.findByText(/Couldn't check what this would affect: Homebrew is installed but didn't answer/);
+    await screen.findByText(/Couldn't check what this would affect: Homebrew didn't respond/);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.queryByText(/Couldn't start the uninstall/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -589,7 +589,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Couldn't check what this would affect: Start Homebrew and Canager will list",
+        "Couldn't check what this would affect: Open Homebrew to see what it has and check for updates.",
       ),
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);
@@ -771,7 +771,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Couldn't start the uninstall: Homebrew is installed but didn't answer",
+        "Couldn't start the uninstall: Homebrew didn't respond, so Canager can't show what it has installed.",
       ),
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);

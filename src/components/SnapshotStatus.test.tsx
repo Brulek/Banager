@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import i18n from "../i18n";
 import { SnapshotStatus } from "./SnapshotStatus";
 import { useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
@@ -51,12 +52,18 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Nothing for Canager to manage yet")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start.",
-      ),
-    ).toBeInTheDocument();
+    // "Found nothing", never "nothing yet" (T8): a tool with its own
+    // installer is looked for only where its installer puts it, so one
+    // somewhere else is not found although it is there.
+    expect(await screen.findByText("Canager found nothing it can manage")).toBeInTheDocument();
+    expect(screen.getByText("Homebrew is a good place to start.")).toBeInTheDocument();
+    expect(screen.queryByText(/None of them are set up|yet/)).not.toBeInTheDocument();
+    // What Canager works with, and where it looks, behind Details.
+    const details = screen.getByRole("button", { name: "Details: Canager found nothing it can manage" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+    );
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
@@ -75,7 +82,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Loading…")).toBeInTheDocument();
-    expect(screen.queryByText("Nothing for Canager to manage yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Canager found nothing it can manage")).not.toBeInTheDocument();
   });
 
   it("shows the stale-data banner, and no separate incomplete-check one, when a source failed", async () => {
@@ -164,7 +171,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Nothing for Canager to manage yet")).toBeInTheDocument();
+    expect(await screen.findByText("Canager found nothing it can manage")).toBeInTheDocument();
     expect(screen.queryByText("overview")).not.toBeInTheDocument();
   });
 
@@ -266,14 +273,35 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Nothing installed yet")).toBeInTheDocument();
+    // "Found nothing installed", not "nothing installed yet" (T8).
+    expect(await screen.findByText("Canager found nothing installed")).toBeInTheDocument();
     // Not "Once you install something with Homebrew": a Mac with Node and no
     // global packages lands here too.
     expect(
-      screen.getByText(
-        "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code, Antigravity CLI, Grok Build and rustup installed at their own installers' default locations.",
-      ),
+      screen.getByText("Tools you install with Homebrew, npm and the like show up here."),
     ).toBeInTheDocument();
+    const details = screen.getByRole("button", { name: "Details: Canager found nothing installed" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+    );
+  });
+
+  it("says in Chinese that nothing was found, never that nothing is installed yet (T8)", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      vi.mocked(invoke).mockResolvedValue(baseSnapshot({ artifacts: [] }));
+      renderWithProviders(
+        <SnapshotStatus>
+          <p>installed list</p>
+        </SnapshotStatus>,
+      );
+
+      expect(await screen.findByText("没有找到已安装的工具")).toBeInTheDocument();
+      expect(screen.queryByText(/还没有/)).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders children, not the nothing-installed state, when a source still has a notice to show", async () => {
@@ -312,7 +340,7 @@ describe("SnapshotStatus", () => {
 
     await screen.findByText("snapshot loaded");
     expect(screen.getByText("installed list")).toBeInTheDocument();
-    expect(screen.queryByText("Nothing installed yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Canager found nothing installed")).not.toBeInTheDocument();
     // And no page-wide banner either. An unavailable source is not a
     // failed refresh (`refresh()` leaves `stale` false for it), and it
     // already says so itself, in its own words and with its own button,

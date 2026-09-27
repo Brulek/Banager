@@ -39,7 +39,7 @@ export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined
  * Whether `snapshot` is the placeholder the backend starts from,
  * `Snapshot::empty()`, before the startup refresh (`useStartupRefresh`)
  * has answered: not an answer, and never to be judged as one --
- * `SnapshotStatus` would flash "Nothing for Canager to manage yet" at
+ * `SnapshotStatus` would flash "Canager found nothing it can manage" at
  * every launch, and the Overview would say there is nothing to update.
  *
  * `detect === "Missing"` is what makes this the *placeholder* rather than

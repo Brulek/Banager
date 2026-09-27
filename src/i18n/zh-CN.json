@@ -20,7 +20,10 @@
     "loading": "加载中…",
     "cancel": "取消",
     "close": "关闭",
-    "checking": "正在检查…"
+    "checking": "正在检查…",
+    "retry": "重试",
+    "details": "详情",
+    "detailsLabel": "详情：{{title}}"
   },
   "header": {
     "checkedJustNow": "上次检查：刚刚",
@@ -128,10 +131,6 @@
     "selfUpdating": "会自动更新",
     "selfUpdatingDetail": "它平时会自己更新，也可以现在更新。",
     "readOnly": "只读",
-    "readOnlyDetail": {
-      "ByDesign": "用 pip 装的包只能在这里查看。命令行工具建议改用 pipx 或 uv 安装。",
-      "PrefixNotWritable": "这些只能在这里查看：npm 把它们放在你的账户改不了的文件夹里。用 Homebrew 安装 Node，Canager 就能管理 npm 包了。"
-    },
     "cannotCheck": "无法检查",
     "cannotCheckShort": "查不到它的最新版本。",
     "cannotCheckSummary_other": "这里有 {{count}} 项没能检查更新。想看原因，在“设置”里打开“{{setting}}”。",
@@ -217,62 +216,60 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "title": "只读：pip 包",
-      "description": "Canager 只能展示通过 pip 安装的内容，无法更新或卸载。请改用 pipx 或 uv 安装 Python 命令行工具，才能在这里管理它们。"
+      "title": "只能查看",
+      "description": "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。"
     },
     "prefixNotWritable": {
-      "title": "只读：npm 包",
-      "description": "Canager 只能列出这些，无法更新或卸载——npm 把它们放在了你的账户无权改动的文件夹里。这通常是因为 Node 是用 nodejs.org 的安装包装的。改用 Homebrew 安装 Node，Canager 就能管理它们了。"
+      "title": "只能查看",
+      "description": "npm 把它们装在你的账户改不了的文件夹里，所以只能查看。用 Homebrew 装 Node 后，再用它装的 npm 包就能在这里管理。"
     },
     "unreachable": {
-      "title": "Canager 现在连不上 {{source}}",
-      "description": "{{source}} 装着，但没有应答，所以 Canager 现在不知道它里面有什么。",
-      "descriptionWithRows": "{{source}} 装着，但没有应答。这里列出的是 Canager 上次问到时看到的内容，之后添加或删除的都不会显示。"
+      "title": "{{source}} 没有应答",
+      "description": "{{source}} 没有应答，所以看不到它装了什么。",
+      "descriptionWithRows": "这里列出的 {{source}} 内容是它上次应答时的，之后的变化不会显示。"
     },
     "refusesAsRoot": {
-      "title": "{{source}} 装着，但这样启动用不了",
-      "description": "这次是用管理员身份（sudo）启动的 Canager，{{source}} 不肯在这种身份下干活。退出 Canager，像平常那样双击重新打开，用 {{source}} 装的东西就会出现在这里。"
+      "title": "以管理员身份打开时 {{source}} 不工作",
+      "description": "Canager 这次是以管理员身份打开的，{{source}} 不接受。退出后双击正常打开即可。"
     },
     "notRunning": {
-      "title": "{{source}} 没有在运行",
-      "description": "启动 {{source}}，Canager 就能列出它里面的内容，也能检查更新。"
+      "title": "{{source}} 没有运行",
+      "description": "打开 {{source}} 后，才能列出它装的内容和更新。"
     },
     "openOllama": "打开 Ollama",
     "openOllamaFailed": {
-      "notInstalled": "Canager 在这台 Mac 上找不到 Ollama 应用。用 Homebrew 等方式装的 ollama 命令行工具并不包含这个应用，它需要单独下载。请到 ollama.com 下载并安装 Ollama 应用，然后再点一次“打开 Ollama”。",
-      "launchFailed": "macOS 没能打开 Ollama 应用。请到“应用程序”文件夹里自己打开 Ollama 试试。如果在那里也打不开，请从 ollama.com 重新下载并安装。"
+      "notInstalled": "「应用程序」里没有 Ollama App。请从 ollama.com 下载安装，再点「打开 Ollama」。",
+      "notInstalledDetail": "用 Homebrew 装的 ollama 命令不包含这个 App。",
+      "launchFailed": "macOS 没能打开 Ollama。请到「应用程序」里手动打开，还打不开就从 ollama.com 重装。"
     },
     "indexMayBeStale": {
-      "title": "Homebrew 这里的「已是最新」可能不准",
-      "description": "Canager 没能下载 Homebrew 最新的软件目录，所以可能有更新它还看不到。检查一下网络连接，然后重试。",
-      "action": "重试"
+      "title": "Homebrew 软件清单没更新成功",
+      "description": "这次的更新结果以旧清单为准。检查网络后点「重试」。"
     },
     "indexUpdating": {
-      "title": "Homebrew 还在下载最新的软件目录",
-      "description": "Homebrew 的软件目录下载得比较慢，所以「已是最新」暂时可能不准。你什么都不用做：下载一完成，Canager 会自己再检查一遍。"
+      "title": "Homebrew 正在更新软件清单",
+      "description": "更新列表显示的是上次的结果。更新完会自动重新检查。"
     },
     "notOnPath": {
-      "title": "{{source}} 不在 PATH 里",
-      "description": "它装好了，但在「终端」里输入 {{command}} 多半找不到这一份：shell 的搜索路径（PATH）里没有一个可执行的 {{command}} 通向这一份，所以终端要么什么也找不到，要么运行的是另一个同名程序。最可能的原因是它所在的文件夹不在 PATH 里；新开一个终端窗口有时就好了，不行的话，按这个工具自己的安装说明把它加进 PATH。"
+      "title": "在终端输入 {{command}} 找不到这一份 {{source}}",
+      "description": "终端查找 {{command}} 的位置里，没有一处通向这一份。先新开一个终端窗口试试，不行就按它的安装说明操作。"
     },
     "shadowedByHomebrew": {
-      "title": "输入 {{command}} 时运行的是另一个同名程序",
-      "description": "Canager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 Homebrew 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是那一个，而不是这一份。它可能是 {{source}} 的另一份安装，也可能只是碰巧同名的另一个程序。可以在「已安装」页找找，但 Canager 不一定能列出它。"
+      "title": "输入 {{command}} 先运行的是 Homebrew 里的同名程序",
+      "description": "Canager 看不出它是不是 {{source}}。可以到「已安装」的 Homebrew 下查看。"
     },
     "shadowedByNpm": {
-      "title": "输入 {{command}} 时运行的是另一个同名程序",
-      "description": "Canager 找到了这份原生安装的 {{source}}，也在它的 PATH 中更靠前的 npm 目录里找到了可执行文件。在「终端」里输入 {{command}} 时，多半运行的是那一个，而不是这一份。它可能是 {{source}} 的另一份安装，也可能只是碰巧同名的另一个程序。可以在「已安装」页找找，但 Canager 不一定能列出它。"
+      "title": "输入 {{command}} 先运行的是 npm 里的同名程序",
+      "description": "Canager 看不出它是不是 {{source}}。可以到「已安装」的 npm 下查看。"
     },
     "shadowedByOther": {
-      "title": "输入 {{command}} 时运行的是另一个同名程序",
-      "description": "Canager 在它的 PATH 中找到了比这份 {{source}} 更靠前的另一个可执行文件。在「终端」里输入 {{command}} 时，多半运行的是那一个，而不是这一份。它可能是 {{source}} 的另一份安装，也可能只是碰巧同名的另一个程序。「来源不明」页可能能看到它在哪。"
+      "title": "输入 {{command}} 先运行的是另一个同名程序",
+      "description": "Canager 认不出那个程序。它若在「来源不明」页里，可以在那里看到位置。"
     },
     "launcherOnly": {
-      "title": "{{command}} 这个链接还在，但它指向的程序已经不在了",
-      "description": "这个 {{command}} 链接指向的程序文件已经不在了，所以这个链接无法运行（另一份安装在「终端」里可能仍然可用）。如果是上次卸载中途停下，它们可能在废纸篓里。卸载会把这个链接也移到废纸篓。如果你并不想删掉 {{source}}，把它的文件夹从废纸篓放回去再刷新，或者按 {{source}} 官方文档里的安装步骤重新安装。"
-    },
-    "details": "详情",
-    "detailsLabel": "详情：{{title}}"
+      "title": "{{source}} 的程序文件不见了",
+      "description": "这一份 {{command}} 已经无法运行，点「卸载」可以清理掉它。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后重新检查。"
+    }
   },
   "planRefused": {
     "sourceGone": "Canager 在这台 Mac 上已经找不到这个来源了，所以没有开始。它可能在你打开这个窗口之后被卸载了。",
@@ -429,18 +426,18 @@
       "description": "上次尝试失败，原因：{{message}}"
     },
     "noSources": {
-      "title": "Canager 还没有可管理的内容",
-      "description": "Canager 支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。这台 Mac 上一个都还没装，建议先从 Homebrew 开始。"
+      "title": "没有找到可管理的工具",
+      "description": "建议先装 Homebrew。"
     },
     "refreshFailed": {
       "title": "部分数据可能不是最新的",
       "description_other": "上次刷新有 {{count}} 个来源没能完成，下面显示的内容可能不是最新的。",
-      "retryFailed": "重试没有成功：{{message}}",
-      "retry": "重试"
+      "retryFailed": "重试没有成功：{{message}}"
     },
     "nothingInstalled": {
-      "title": "还没有安装任何东西",
-      "description": "用 Homebrew、npm、pipx、uv、pip、Cargo、Ollama 装的东西，以及用各自的原生安装器装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup，会出现在这里。"
-    }
+      "title": "没有找到已安装的工具",
+      "description": "用 Homebrew、npm 等装的工具会出现在这里。"
+    },
+    "supportedList": "支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。"
   }
 }

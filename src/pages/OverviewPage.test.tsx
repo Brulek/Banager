@@ -156,10 +156,10 @@ describe("OverviewPage", () => {
     // The ring turns while it waits, and says no number.
     expect(ringOf(container).getAttribute("data-ring")).toBe("checking");
     expect(ringOf(container).textContent).toBe("");
-    // Not "Loading…", and not "Nothing for Canager to manage yet": the
+    // Not "Loading…", and not "Canager found nothing it can manage": the
     // placeholder is not an answer.
     expect(queryByText("Loading…")).not.toBeInTheDocument();
-    expect(queryByText("Nothing for Canager to manage yet")).not.toBeInTheDocument();
+    expect(queryByText("Canager found nothing it can manage")).not.toBeInTheDocument();
     expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
   });
 
@@ -233,7 +233,7 @@ describe("OverviewPage", () => {
       },
     ],
     [
-      "Homebrew still downloading its list of software",
+      "Homebrew still updating its list of software",
       () => {
         const note: InstanceNote = "IndexUpdating";
         served = snapshotWith({
@@ -365,7 +365,7 @@ describe("OverviewPage", () => {
     const list = await findByRole("list", { name: "Needs attention" });
     expect(
       [...list.querySelectorAll("li")].map((line) => line.textContent),
-    ).toEqual(["Homebrew is still downloading its latest list of software", "Ollama isn't running"]);
+    ).toEqual(["Homebrew is updating its software list", "Ollama isn't running"]);
     // Each with an icon: information, and a warning.
     const icons = [...list.querySelectorAll("li")].map((line) => line.querySelector("svg"));
     expect(icons[0]?.getAttribute("class")).toContain("text-muted");
@@ -373,11 +373,9 @@ describe("OverviewPage", () => {
     // In a panel of its own, apart from the tools.
     expect(getByRole("heading", { level: 2, name: "Needs attention" })).toBeInTheDocument();
     // Titles only: the explanations stay on the Installed and Updates pages.
-    expect(
-      queryByText("Start Ollama and Canager will list what's in it and check it for updates."),
-    ).not.toBeInTheDocument();
+    expect(queryByText("Open Ollama to see what it has and check for updates.")).not.toBeInTheDocument();
     // pip being read-only is what it always is, not something to attend to.
-    expect(queryByText("Read-only: pip packages")).not.toBeInTheDocument();
+    expect(queryByText("View only")).not.toBeInTheDocument();
     expect(getByRole("heading", { level: 2, name: "Nothing to update" })).toBeInTheDocument();
   });
 

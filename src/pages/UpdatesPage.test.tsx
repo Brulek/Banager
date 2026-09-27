@@ -886,7 +886,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "Read-only");
     expect(detail).toHaveTextContent(
-      "Packages installed with pip can only be viewed here. For command-line tools, use pipx or uv.",
+      "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     );
   });
 
@@ -923,13 +923,13 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     await findRow("urllib3");
     expect(getAllByRole("button", { name: "Read-only" })).toHaveLength(6);
-    expect(queryAllByText(/use pipx or uv/)).toHaveLength(0);
+    expect(queryAllByText(/with pipx or uv/)).toHaveLength(0);
     // And each row can be told from the next again.
     for (const name of pipPackages) {
       expect(await findByText(`what ${name} is for`)).toBeInTheDocument();
     }
     chipDetail(rowOf("idna"), "Read-only");
-    expect(queryAllByText(/use pipx or uv/)).toHaveLength(1);
+    expect(queryAllByText(/with pipx or uv/)).toHaveLength(1);
   });
 
   it("says nothing about a read-only source that has no rows on this page", async () => {
@@ -938,8 +938,7 @@ describe("UpdatesPage", () => {
     const { queryByText, queryByRole } = renderWithProviders(<UpdatesPage />);
 
     await findRow("glib");
-    expect(queryByText("Read-only: pip packages")).not.toBeInTheDocument();
-    expect(queryByText("Read-only: npm packages")).not.toBeInTheDocument();
+    expect(queryByText("View only")).not.toBeInTheDocument();
     expect(queryByRole("button", { name: "Read-only" })).not.toBeInTheDocument();
   });
 
@@ -990,7 +989,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const urllib3 = await findRow("urllib3");
     const advice = chipDetail(urllib3, "Read-only");
-    expect(advice).toHaveTextContent(/use pipx or uv/);
+    expect(advice).toHaveTextContent(/with pipx or uv/);
     expect(advice.textContent).not.toMatch(/latest version/);
     const reason = chipDetail(urllib3, "Can't check");
     expect(reason).toHaveTextContent("Canager can't find its latest version.");
@@ -1163,13 +1162,15 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const npm = chipDetail(await findRow("typescript"), "Read-only");
+    // Only the packages installed with a Node from Homebrew: the ones in
+    // this folder do not move over (T5).
     expect(npm).toHaveTextContent(
-      "These can only be viewed here: npm keeps them in a folder your account can't change. Install Node with Homebrew so Canager can manage npm packages.",
+      "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
     );
     expect(npm.textContent).not.toMatch(/pipx|uv/);
     // pip's row keeps pip's advice, right next to it.
     const pip = chipDetail(rowOf("urllib3"), "Read-only");
-    expect(pip).toHaveTextContent(/use pipx or uv/);
+    expect(pip).toHaveTextContent(/with pipx or uv/);
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 
@@ -1384,7 +1385,7 @@ describe("UpdatesPage", () => {
 
     const alert = await findByRole("alert");
     expect(alert).toHaveTextContent(
-      "Couldn't prepare the update: Start Homebrew and Canager will list",
+      "Couldn't prepare the update: Open Homebrew to see what it has and check for updates.",
     );
     expect(alert.textContent).not.toMatch(/not_actionable/);
     expect(queryByRole("dialog")).not.toBeInTheDocument();
@@ -1672,7 +1673,7 @@ describe("UpdatesPage", () => {
           ),
         ).toBeInTheDocument();
         expect(chipDetail(rowOf("urllib3"), "只读")).toHaveTextContent(
-          "用 pip 装的包只能在这里查看。命令行工具建议改用 pipx 或 uv 安装。",
+          "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。",
         );
       } finally {
         await i18n.changeLanguage("en");
@@ -2185,7 +2186,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("“Up to date” may not be accurate for Homebrew");
+    await findByText("Couldn't update Homebrew's software list");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
@@ -2204,7 +2205,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("Homebrew is still downloading its latest list of software");
+    await findByText("Homebrew is updating its software list");
     expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
@@ -2222,14 +2223,12 @@ describe("UpdatesPage", () => {
       ).toBeTruthy();
       expect(getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
       // Its explanation is behind Details, not spread over the page.
-      expect(
-        queryByText("Start Ollama and Canager will list what's in it and check it for updates."),
-      ).toBeNull();
+      expect(queryByText("Open Ollama to see what it has and check for updates.")).toBeNull();
       const details = getByRole("button", { name: "Details: Ollama isn't running" });
       fireEvent.click(details);
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
-      ).toHaveTextContent("Start Ollama and Canager will list what's in it and check it for updates.");
+      ).toHaveTextContent("Open Ollama to see what it has and check for updates.");
     });
 
     it("names the silent source in its notice, and every row names its own, so the notice is never read as another source's", async () => {
@@ -2258,13 +2257,15 @@ describe("UpdatesPage", () => {
       ];
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
-      await findByText("Canager can't reach Ollama right now");
-      const details = getByRole("button", { name: "Details: Canager can't reach Ollama right now" });
+      await findByText("Ollama isn't responding");
+      const details = getByRole("button", { name: "Details: Ollama isn't responding" });
       fireEvent.click(details);
+      // Its rows, by name: in a list that mixes sources, "what's listed
+      // here" alone would take in Homebrew's fresh rows too.
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Ollama is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+        "What's listed for Ollama is from the last time it answered. Later changes aren't shown.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -2312,7 +2313,7 @@ describe("UpdatesPage", () => {
         expect(within(rowOf(name)).getByText("pip")).toBeInTheDocument();
       }
       // Not a notice line of its own: the rows say it.
-      expect(queryByText("Read-only: pip packages")).toBeNull();
+      expect(queryByText("View only")).toBeNull();
     });
 
     it("tells the truth about carried-forward rows on this page, both ways round", async () => {
@@ -2326,13 +2327,13 @@ describe("UpdatesPage", () => {
       const withRows = renderWithProviders(<UpdatesPage />);
 
       const details = await withRows.findByRole("button", {
-        name: "Details: Canager can't reach Homebrew right now",
+        name: "Details: Homebrew isn't responding",
       });
       fireEvent.click(details);
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "Homebrew is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+        "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
       );
       withRows.unmount();
 
@@ -2353,14 +2354,14 @@ describe("UpdatesPage", () => {
       const coldStart = renderWithProviders(<UpdatesPage />);
 
       const coldDetails = await coldStart.findByRole("button", {
-        name: "Details: Canager can't reach Homebrew right now",
+        name: "Details: Homebrew isn't responding",
       });
       fireEvent.click(coldDetails);
       const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
       expect(text).toHaveTextContent(
-        "Homebrew is installed but didn't answer, so Canager doesn't know what's in it right now.",
+        "Homebrew didn't respond, so Canager can't show what it has installed.",
       );
-      expect(text?.textContent).not.toMatch(/What's listed here/);
+      expect(text?.textContent).not.toMatch(/What's listed/);
     });
   });
 
@@ -2756,10 +2757,10 @@ describe("UpdatesPage", () => {
   // The four PATH notes (spec §七), each with the title of the notice it
   // puts at the top of the page.
   const pathNotes: [InstanceNote, string][] = [
-    ["NotOnPath", "Claude Code isn't in your PATH"],
-    ["ShadowedByHomebrew", "Another program named claude runs when you type claude"],
-    ["ShadowedByNpm", "Another program named claude runs when you type claude"],
-    ["ShadowedByOther", "Another program named claude runs when you type claude"],
+    ["NotOnPath", "Terminal won't find this copy of Claude Code when you type claude"],
+    ["ShadowedByHomebrew", "Typing claude runs a same-named program from Homebrew first"],
+    ["ShadowedByNpm", "Typing claude runs a same-named program from npm first"],
+    ["ShadowedByOther", "Typing claude runs another program with the same name first"],
   ];
 
   it.each(pathNotes)(
@@ -2820,7 +2821,7 @@ describe("UpdatesPage", () => {
     artifacts = [{ ...claudeArtifact, version: "", path: null }];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    expect(await findByText("The claude link is still there, but its program is gone")).toBeInTheDocument();
+    expect(await findByText("Claude Code's program files are missing")).toBeInTheDocument();
     expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).toBeNull();
   });

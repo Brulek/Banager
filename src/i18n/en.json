@@ -23,7 +23,10 @@
     "loading": "Loading…",
     "cancel": "Cancel",
     "close": "Close",
-    "checking": "Checking…"
+    "checking": "Checking…",
+    "retry": "Try again",
+    "details": "Details",
+    "detailsLabel": "Details: {{title}}"
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -140,10 +143,6 @@
     "selfUpdating": "Updates itself",
     "selfUpdatingDetail": "It usually updates itself. You can also update it now.",
     "readOnly": "Read-only",
-    "readOnlyDetail": {
-      "ByDesign": "Packages installed with pip can only be viewed here. For command-line tools, use pipx or uv.",
-      "PrefixNotWritable": "These can only be viewed here: npm keeps them in a folder your account can't change. Install Node with Homebrew so Canager can manage npm packages."
-    },
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Canager can't find its latest version.",
     "cannotCheckSummary_one": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
@@ -232,62 +231,60 @@
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "title": "Read-only: pip packages",
-      "description": "Canager can only show what's installed with pip, not update or uninstall it. Install Python command-line tools with pipx or uv instead to manage them here."
+      "title": "View only",
+      "description": "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here."
     },
     "prefixNotWritable": {
-      "title": "Read-only: npm packages",
-      "description": "Canager can list these but can't update or remove them: npm keeps them in a folder your account isn't allowed to change. That usually means Node was installed with the installer from nodejs.org. Installing Node with Homebrew instead lets Canager manage them."
+      "title": "View only",
+      "description": "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here."
     },
     "unreachable": {
-      "title": "Canager can't reach {{source}} right now",
-      "description": "{{source}} is installed but didn't answer, so Canager doesn't know what's in it right now.",
-      "descriptionWithRows": "{{source}} is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing."
+      "title": "{{source}} isn't responding",
+      "description": "{{source}} didn't respond, so Canager can't show what it has installed.",
+      "descriptionWithRows": "What's listed for {{source}} is from the last time it answered. Later changes aren't shown."
     },
     "refusesAsRoot": {
-      "title": "{{source}} is installed, but it won't run this way",
-      "description": "Canager was started with administrator powers (sudo), and {{source}} refuses to work like that. Quit Canager and open it again the normal way — just double-click it — and your {{source}} software will show up here."
+      "title": "{{source}} doesn't work while Canager runs as administrator",
+      "description": "Canager was opened as administrator this time, and {{source}} refuses to run that way. Quit, then open it again with a double-click."
     },
     "notRunning": {
       "title": "{{source}} isn't running",
-      "description": "Start {{source}} and Canager will list what's in it and check it for updates."
+      "description": "Open {{source}} to see what it has and check for updates."
     },
     "openOllama": "Open Ollama",
     "openOllamaFailed": {
-      "notInstalled": "Canager couldn't find the Ollama app on this Mac. The ollama command you may have installed with Homebrew doesn't include the app — it's a separate download. Get the Ollama app from ollama.com, install it, then press Open Ollama again.",
-      "launchFailed": "macOS couldn't open the Ollama app. Try opening Ollama yourself from your Applications folder. If it won't open there either, download it again from ollama.com and reinstall it."
+      "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then press Open Ollama again.",
+      "notInstalledDetail": "The ollama command from Homebrew doesn't include the app.",
+      "launchFailed": "macOS couldn't open Ollama. Open it yourself from Applications; if that fails too, reinstall it from ollama.com."
     },
     "indexMayBeStale": {
-      "title": "“Up to date” may not be accurate for Homebrew",
-      "description": "Canager couldn't download Homebrew's latest list of software, so there may be updates it can't see yet. Check your internet connection, then try again.",
-      "action": "Try again"
+      "title": "Couldn't update Homebrew's software list",
+      "description": "Canager checked for updates against the old list. Check your connection, then try again."
     },
     "indexUpdating": {
-      "title": "Homebrew is still downloading its latest list of software",
-      "description": "Homebrew's list of available software is taking a while to download, so “up to date” may not be accurate yet. You don't need to do anything: Canager will check again by itself as soon as the download finishes."
+      "title": "Homebrew is updating its software list",
+      "description": "The update list shows the last results. Canager checks again by itself when it's done."
     },
     "notOnPath": {
-      "title": "{{source}} isn't in your PATH",
-      "description": "It's installed, but typing {{command}} in Terminal probably won't find this copy: no executable {{command}} in your shell's search path (PATH) leads to it, so Terminal either finds nothing or runs another program named {{command}}. Most likely the folder it lives in isn't in PATH; opening a new Terminal window sometimes fixes that, and otherwise the tool's own install guide says how to add it to PATH."
+      "title": "Terminal won't find this copy of {{source}} when you type {{command}}",
+      "description": "None of the places Terminal looks in for {{command}} leads to this copy. Open a new Terminal window first; if that doesn't help, follow its install guide."
     },
     "shadowedByHomebrew": {
-      "title": "Another program named {{command}} runs when you type {{command}}",
-      "description": "Canager found this native copy of {{source}} and an executable in a Homebrew directory earlier in its PATH. Typing {{command}} in Terminal will likely run that one instead. It may be another copy of {{source}}, or a different program that happens to have the same name. Check the Installed page for it; Canager may not list its installation."
+      "title": "Typing {{command}} runs a same-named program from Homebrew first",
+      "description": "Canager can't tell whether that one is {{source}}. Look under Homebrew on the Installed page."
     },
     "shadowedByNpm": {
-      "title": "Another program named {{command}} runs when you type {{command}}",
-      "description": "Canager found this native copy of {{source}} and an executable in an npm directory earlier in its PATH. Typing {{command}} in Terminal will likely run that one instead. It may be another copy of {{source}}, or a different program that happens to have the same name. Check the Installed page for it; Canager may not list its installation."
+      "title": "Typing {{command}} runs a same-named program from npm first",
+      "description": "Canager can't tell whether that one is {{source}}. Look under npm on the Installed page."
     },
     "shadowedByOther": {
-      "title": "Another program named {{command}} runs when you type {{command}}",
-      "description": "Canager found another executable earlier in its PATH than this copy of {{source}}. Typing {{command}} in Terminal will likely run that one instead. It may be another copy of {{source}}, or a different program that happens to have the same name. The Unknown page may show where it is."
+      "title": "Typing {{command}} runs another program with the same name first",
+      "description": "Canager can't identify that program. If it's on the Unknown page, you can see where it is there."
     },
     "launcherOnly": {
-      "title": "The {{command}} link is still there, but its program is gone",
-      "description": "The program files this {{command}} link points to are gone, so this link can't run (another installation may still work in Terminal). If an earlier uninstall stopped partway, they may be in the Trash. Uninstall moves the link to the Trash too. If you didn't mean to remove {{source}}, put its folder back from the Trash and refresh, or reinstall it by following the install steps in {{source}}'s official documentation."
-    },
-    "details": "Details",
-    "detailsLabel": "Details: {{title}}"
+      "title": "{{source}}'s program files are missing",
+      "description": "This copy of {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again."
+    }
   },
   "planRefused": {
     "sourceGone": "Canager can't find that source on this Mac any more, so it didn't start this. It may have been removed since you opened this.",
@@ -447,19 +444,19 @@
       "description": "The last attempt failed with: {{message}}"
     },
     "noSources": {
-      "title": "Nothing for Canager to manage yet",
-      "description": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup at their own installers' default locations. None of them are set up on this Mac yet — Homebrew is the easiest place to start."
+      "title": "Canager found nothing it can manage",
+      "description": "Homebrew is a good place to start."
     },
     "refreshFailed": {
       "title": "Some data might be out of date",
       "description_one": "The last refresh couldn't finish for {{count}} source, so what you see below may be stale.",
       "description_other": "The last refresh couldn't finish for {{count}} sources, so what you see below may be stale.",
-      "retryFailed": "Trying again didn't work: {{message}}",
-      "retry": "Try again"
+      "retryFailed": "Trying again didn't work: {{message}}"
     },
     "nothingInstalled": {
-      "title": "Nothing installed yet",
-      "description": "Items installed with Homebrew, npm, pipx, uv, pip, Cargo or Ollama appear here, along with Claude Code, Antigravity CLI, Grok Build and rustup installed at their own installers' default locations."
-    }
+      "title": "Canager found nothing installed",
+      "description": "Tools you install with Homebrew, npm and the like show up here."
+    },
+    "supportedList": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations."
   }
 }

@@ -37,8 +37,8 @@ function App() {
             {/* Settings and Unknown are not snapshot pages: Settings never
                 was, and the unknown-source scan is judged against the
                 snapshot but is not part of it -- on a Mac with no source at
-                all, SnapshotStatus would replace it with "Nothing for
-                Canager to manage yet", the one case where every program on
+                all, SnapshotStatus would replace it with "Canager found
+                nothing it can manage", the one case where every program on
                 the machine belongs on it. */}
             {page === "settings" ? (
               <SettingsPage />

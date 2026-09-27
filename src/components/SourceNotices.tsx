@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOpenOllamaApp, useRefresh } from "../lib/queries";
-import { openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
-import { SourceNotice, SourceNoticeLine } from "./SourceNotice";
+import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
+import { DETAILS_TRIGGER_CLASS, SourceNotice, SourceNoticeLine } from "./SourceNotice";
+import { Popover } from "./ui/Popover";
 
 export interface SourceNoticesProps {
   notices: SourceNoticeSpec[];
@@ -32,6 +34,31 @@ export function SourceNotices({ notices, layout = "banner" }: SourceNoticesProps
   const openOllamaApp = useOpenOllamaApp();
   const refresh = useRefresh();
 
+  // Why Open Ollama did nothing, and, when the sentence leaves one for
+  // it, its "Details". Without this a rejected Open Ollama rendered
+  // nothing at all -- the same silence the backend used to produce by
+  // never reading `open`'s exit status.
+  let openOllamaError: ReactNode = undefined;
+  if (openOllamaApp.error) {
+    const message = openOllamaErrorMessage(t, openOllamaApp.error.message);
+    const detail = openOllamaErrorDetail(t, openOllamaApp.error.message);
+    openOllamaError =
+      detail === null ? (
+        message
+      ) : (
+        <>
+          {message}{" "}
+          <Popover
+            trigger={t("common.details")}
+            triggerLabel={t("common.detailsLabel", { title: message })}
+            triggerClassName={DETAILS_TRIGGER_CLASS}
+          >
+            {detail}
+          </Popover>
+        </>
+      );
+  }
+
   return (
     <>
       {notices.map((notice) => {
@@ -49,21 +76,15 @@ export function SourceNotices({ notices, layout = "banner" }: SourceNoticesProps
                     : () => refresh.mutate(),
               }
             : undefined,
-          // Only the notice whose button failed says so. Without this a
-          // rejected Open Ollama rendered nothing at all -- the same
-          // silence the backend used to produce by never reading `open`'s
-          // exit status.
-          error:
-            notice.action?.id === "openOllama" && openOllamaApp.error
-              ? openOllamaErrorMessage(t, openOllamaApp.error.message)
-              : undefined,
+          // Only the notice whose button failed says so.
+          error: notice.action?.id === "openOllama" ? openOllamaError : undefined,
         };
         return layout === "line" ? (
           <SourceNoticeLine
             key={notice.id}
             {...props}
-            detailsLabel={t("sourceNotice.details")}
-            detailsAriaLabel={t("sourceNotice.detailsLabel", { title })}
+            detailsLabel={t("common.details")}
+            detailsAriaLabel={t("common.detailsLabel", { title })}
           />
         ) : (
           <SourceNotice key={notice.id} {...props} />

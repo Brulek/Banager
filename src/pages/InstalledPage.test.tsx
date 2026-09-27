@@ -782,7 +782,7 @@ describe("InstalledPage", () => {
 
     await findByText("requests");
     expect(queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
-    expect(await findByText("Read-only: pip packages")).toBeInTheDocument();
+    expect(await findByText("View only")).toBeInTheDocument();
   });
 
   it("lets each row measure itself so a source notice cannot be overlapped by the row below it", async () => {
@@ -804,7 +804,7 @@ describe("InstalledPage", () => {
 
     const { findByText, container } = renderWithProviders(<InstalledPage />);
 
-    await findByText("Read-only: pip packages");
+    await findByText("View only");
     const rowAt = (index: number) =>
       container.querySelector<HTMLElement>(`[data-index="${index}"]`);
 
@@ -846,7 +846,7 @@ describe("InstalledPage", () => {
     const { findByText, queryByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    expect(await findByText("Canager can't reach npm right now")).toBeInTheDocument();
+    expect(await findByText("npm isn't responding")).toBeInTheDocument();
     // Nothing was carried forward for npm -- and nothing ever is on the
     // first refresh after a launch, because the snapshot is in memory
     // only (`Session::new` starts from `Snapshot::empty()`). The notice
@@ -854,11 +854,9 @@ describe("InstalledPage", () => {
     // group, which for a source whose CLI simply fails is every launch,
     // forever.
     expect(
-      await findByText(
-        "npm is installed but didn't answer, so Canager doesn't know what's in it right now.",
-      ),
+      await findByText("npm didn't respond, so Canager can't show what it has installed."),
     ).toBeInTheDocument();
-    expect(queryByText(/What's listed here/)).not.toBeInTheDocument();
+    expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
     expect(queryByText(/Reopening Canager/)).not.toBeInTheDocument();
   });
@@ -885,10 +883,10 @@ describe("InstalledPage", () => {
     await findByText("jq");
     expect(
       await findByText(
-        "Homebrew is installed but didn't answer. What's listed here is what Canager saw the last time it did, so anything added or removed since then is missing.",
+        "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
       ),
     ).toBeInTheDocument();
-    expect(queryByText(/doesn't know what's in it right now/)).not.toBeInTheDocument();
+    expect(queryByText(/can't show what it has installed/)).not.toBeInTheDocument();
   });
 
   it("gives a root-owned npm prefix its own notice and no Uninstall button", async () => {
@@ -941,8 +939,14 @@ describe("InstalledPage", () => {
     const { findByText, queryByText, queryAllByRole } = renderWithProviders(<InstalledPage />);
 
     await findByText("typescript");
-    expect(await findByText("Read-only: npm packages")).toBeInTheDocument();
-    expect(queryByText("Read-only: pip packages")).not.toBeInTheDocument();
+    expect(await findByText("View only")).toBeInTheDocument();
+    // npm's way out, not pip's.
+    expect(
+      await findByText(
+        "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
+      ),
+    ).toBeInTheDocument();
+    expect(queryByText(/pipx or uv/)).not.toBeInTheDocument();
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
   });
 
@@ -1091,8 +1095,13 @@ describe("InstalledPage", () => {
     fireEvent.click(getByRole("button", { name: "Open Ollama" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/find the Ollama app on this Mac/);
-    expect(alert).toHaveTextContent(/separate download/);
+    expect(alert).toHaveTextContent(/There's no Ollama app in Applications/);
+    // Why Homebrew's ollama has none is the failure's Details.
+    const details = within(alert).getByRole("button", { name: /^Details: There's no Ollama app/ });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "The ollama command from Homebrew doesn't include the app.",
+    );
     expect(queryByText(/ollama_open_failed/)).not.toBeInTheDocument();
   });
   it("keeps a stopped source's rows on screen but offers no Uninstall on them", async () => {
