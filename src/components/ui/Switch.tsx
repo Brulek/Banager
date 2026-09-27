@@ -23,9 +23,12 @@ export function Switch({
       aria-describedby={ariaDescribedBy}
       checked={checked}
       onCheckedChange={onCheckedChange}
-      className="relative h-6 w-10 shrink-0 rounded-full bg-[var(--color-hover)] outline-none data-[state=checked]:bg-[var(--color-accent)]"
+      // Off, a grey that still reads as a control on a white card (the
+      // quiet fill alone all but vanished there); on, the accent. A ring
+      // for the keyboard's focus.
+      className="relative h-6 w-10 shrink-0 rounded-full bg-muted/45 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface data-[state=checked]:bg-accent"
     >
-      <RadixSwitch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-[var(--color-background)] transition-transform duration-150 data-[state=checked]:translate-x-[18px]" />
+      <RadixSwitch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-sm shadow-black/20 transition-transform duration-150 data-[state=checked]:translate-x-[18px]" />
     </RadixSwitch.Root>
   );
 }

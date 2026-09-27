@@ -74,7 +74,10 @@ describe("SettingsPage", () => {
     fireEvent.click(toggle);
     expect(toggle).toBeChecked();
 
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    // One sentence: what went wrong, and that the old setting is back.
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save: disk full. Your previous setting is back."),
+    );
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
@@ -99,11 +102,7 @@ describe("SettingsPage", () => {
     const remindButton = await screen.findByRole("button", { name: "Remind me again about jq" });
     fireEvent.click(remindButton);
 
-    await waitFor(() =>
-      expect(
-        screen.getByText("You haven't turned off reminders for any software."),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("No reminders turned off")).toBeInTheDocument());
     // The optimistic draft shows the empty list before the save resolves, so
     // the line above alone cannot tell a correct payload from a wrong one.
     expect(lastSaved().ignored_updates).toEqual([]);
@@ -149,10 +148,8 @@ describe("SettingsPage", () => {
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
     const never = screen.getByRole("region", { name: "Never remind me about" });
-    expect(within(skipped).getByText("You haven't skipped any versions.")).toBeInTheDocument();
-    expect(
-      within(never).getByText("You haven't turned off reminders for any software."),
-    ).toBeInTheDocument();
+    expect(within(skipped).getByText("No skipped versions")).toBeInTheDocument();
+    expect(within(never).getByText("No reminders turned off")).toBeInTheDocument();
   });
 
   it("removes one skipped version and saves the shorter list, leaving every other entry alone", async () => {
@@ -276,7 +273,7 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const toggle = await screen.findByRole("switch", { name: "Include self-updating apps" });
+    const toggle = await screen.findByRole("switch", { name: "Show self-updating apps" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);
 
@@ -385,5 +382,63 @@ describe("SettingsPage", () => {
     const unskip = screen.getByRole("button", { name: "Stop skipping 2.90.0 of glib" });
     expect(remind.className).not.toBe("");
     expect(unskip.className).toBe(remind.className);
+  });
+
+  it("groups the settings in three cards: General, Updates and Hidden updates", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const general = await screen.findByRole("region", { name: "General" });
+    const updates = screen.getByRole("region", { name: "Updates" });
+    const hidden = screen.getByRole("region", { name: "Hidden updates" });
+    expect(within(general).getByRole("radiogroup", { name: "Language" })).toBeInTheDocument();
+    expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
+    expect(within(updates).getByRole("switch", { name: "Show self-updating apps" })).toHaveAccessibleDescription(
+      "Also list Homebrew apps that update themselves, like Chrome, under Updates.",
+    );
+    expect(within(hidden).getByRole("region", { name: "Skipped versions" })).toBeInTheDocument();
+    expect(within(hidden).getByRole("region", { name: "Never remind me about" })).toBeInTheDocument();
+    // The groups' titles in the section style; nothing else is on the switches' cards.
+    for (const name of ["General", "Updates", "Hidden updates"]) {
+      expect(screen.getByRole("heading", { level: 2, name }).className).toContain("text-section");
+    }
+    expect(within(general).queryByRole("button", { name: "Remind me again about jq" })).toBeNull();
+  });
+
+  it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
+    expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新" });
+    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示自更新 App");
+    // The switch adds Homebrew's self-updating apps and nothing else, so
+    // its line names Homebrew.
+    expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");
+    expect(zhCN.settings.skippedVersions.empty).toBe("没有跳过的版本");
+    expect(zhCN.settings.ignoredUpdates.empty).toBe("没有设为不再提醒的软件");
+  });
+
+  it("puts a skipped version back with its own undo, from its card, and leaves the other list alone", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
+      if (cmd === "get_settings") {
+        return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
+      }
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const hidden = await screen.findByRole("region", { name: "Hidden updates" });
+    fireEvent.click(within(hidden).getByRole("button", { name: "Stop skipping 2.90.0 of glib" }));
+
+    const skipped = within(hidden).getByRole("region", { name: "Skipped versions" });
+    await waitFor(() => expect(within(skipped).getByText("No skipped versions")).toBeInTheDocument());
+    expect(lastSaved().skipped_versions).toEqual([]);
+    expect(lastSaved().ignored_updates).toEqual([jqKey]);
+    expect(within(hidden).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
   });
 });

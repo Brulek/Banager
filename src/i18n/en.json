@@ -414,14 +414,18 @@
     "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out."
   },
   "settings": {
-    "loading": "Loading settings…",
+    "groups": {
+      "general": "General",
+      "updates": "Updates",
+      "hidden": "Hidden updates"
+    },
     "showTechnicalDetails": {
       "label": "Show technical details",
       "description": "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start."
     },
     "includeSelfUpdating": {
-      "label": "Include self-updating apps",
-      "description": "List apps that update themselves, like Chrome and Docker, as updatable here too."
+      "label": "Show self-updating apps",
+      "description": "Also list Homebrew apps that update themselves, like Chrome, under Updates."
     },
     "language": {
       "label": "Language",
@@ -431,7 +435,7 @@
     },
     "skippedVersions": {
       "title": "Skipped versions",
-      "empty": "You haven't skipped any versions.",
+      "empty": "No skipped versions",
       "newBuild": "A newer build",
       "unskip": "Stop skipping",
       "unskipAriaLabel": "Stop skipping {{version}} of {{name}}",
@@ -439,17 +443,17 @@
     },
     "ignoredUpdates": {
       "title": "Never remind me about",
-      "empty": "You haven't turned off reminders for any software.",
+      "empty": "No reminders turned off",
       "unignore": "Remind me again",
       "unignoreAriaLabel": "Remind me again about {{name}}"
     },
-    "saveError": "Couldn't save that change ({{message}}). It's been reverted."
+    "saveError": "Couldn't save: {{message}}. Your previous setting is back."
   },
   "settingsSaveFailed": {
-    "permissionDenied": "Canager isn't allowed to write to the folder where it keeps its settings",
-    "diskFull": "your Mac's disk is full",
-    "readOnly": "the disk where Canager keeps its settings can't be written to",
-    "other": "your Mac gave this reason: {{detail}}"
+    "permissionDenied": "no permission to write to the settings folder",
+    "diskFull": "the disk is full",
+    "readOnly": "the settings disk is read-only",
+    "other": "{{detail}}"
   },
   "unknown": {
     "intro": "Canager can't tell how these command-line programs got here. It only lists them and never runs or deletes them.",

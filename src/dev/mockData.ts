@@ -254,7 +254,7 @@ function casks(): InstalledArtifact[] {
       path: "/Applications/iTerm.app",
     }),
     // The app that updates itself: listed as updatable only while Settings'
-    // Include self-updating apps is on (brew outdated --greedy).
+    // Show self-updating apps is on (brew outdated --greedy).
     artifact(IDS.brew, "Cask", "visual-studio-code", "1.116.1", {
       display_name: "Microsoft Visual Studio Code",
       description: "Open-source code editor",
@@ -414,7 +414,7 @@ export interface World {
   artifacts: InstalledArtifact[];
   /** What each source's update check finds. */
   updates: UpdateCandidate[];
-  /** Listed only while Settings' Include self-updating apps is on. */
+  /** Listed only while Settings' Show self-updating apps is on. */
   greedyUpdates: UpdateCandidate[];
   errors: SourceError[];
 }

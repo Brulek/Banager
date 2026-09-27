@@ -394,14 +394,18 @@
     "trashPreview_other": "这 {{count}} 项会移到废纸篓，可以从那里拖回来。"
   },
   "settings": {
-    "loading": "正在加载设置…",
+    "groups": {
+      "general": "通用",
+      "updates": "更新",
+      "hidden": "已隐藏的更新"
+    },
     "showTechnicalDetails": {
       "label": "显示技术细节",
       "description": "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。"
     },
     "includeSelfUpdating": {
-      "label": "包含自更新的应用",
-      "description": "把 Chrome、Docker 这类会自己更新的应用，也列为这里可更新的项目。"
+      "label": "显示自更新 App",
+      "description": "Homebrew 装的 Chrome 这类会自己更新的 App，也列进「更新」。"
     },
     "language": {
       "label": "语言",
@@ -411,7 +415,7 @@
     },
     "skippedVersions": {
       "title": "已跳过的版本",
-      "empty": "还没有跳过的版本。",
+      "empty": "没有跳过的版本",
       "newBuild": "新版本",
       "unskip": "取消跳过",
       "unskipAriaLabel": "取消跳过 {{name}} 的 {{version}}",
@@ -419,17 +423,17 @@
     },
     "ignoredUpdates": {
       "title": "不再提醒的软件",
-      "empty": "还没有设为不再提醒的软件。",
+      "empty": "没有设为不再提醒的软件",
       "unignore": "恢复提醒",
       "unignoreAriaLabel": "恢复 {{name}} 的更新提醒"
     },
-    "saveError": "保存失败（{{message}}），已恢复原来的设置。"
+    "saveError": "没能保存：{{message}}。已改回原来的设置。"
   },
   "settingsSaveFailed": {
-    "permissionDenied": "Canager 没有权限写入存放设置的文件夹",
-    "diskFull": "Mac 的磁盘已满",
-    "readOnly": "存放 Canager 设置的磁盘无法写入",
-    "other": "系统给出的原因是：{{detail}}"
+    "permissionDenied": "没有权限写入设置文件夹",
+    "diskFull": "磁盘已满",
+    "readOnly": "设置所在的磁盘是只读的",
+    "other": "{{detail}}"
   },
   "unknown": {
     "intro": "Canager 认不出这些程序的来历。这里只列出，不运行也不删除。",

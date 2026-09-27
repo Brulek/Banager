@@ -89,7 +89,7 @@ Paths are under a generic home folder, `/Users/you`.
   disappears altogether.
 - Cancel works on a queued or running operation, except rustup's, which
   refuses once it runs.
-- Settings are kept until the page reloads. Turning on Include
+- Settings are kept until the page reloads. Turning on Show
   self-updating apps adds the Visual Studio Code update on the next
   refresh.
 

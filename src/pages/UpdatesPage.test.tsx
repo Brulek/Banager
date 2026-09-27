@@ -1826,7 +1826,7 @@ describe("UpdatesPage", () => {
   });
 
   // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2
-  // --greedy` lists one -- Include self-updating apps is what makes Canager
+  // --greedy` lists one -- Show self-updating apps is what makes Canager
   // pass `--greedy` -- whenever it takes its download to have changed:
   // `latest -> latest`, for every release.
   const chromiumKey: ArtifactKey = {
