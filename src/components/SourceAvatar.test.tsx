@@ -46,6 +46,16 @@ describe("SourceAvatar", () => {
     expect(avatar.className).toContain("rounded-[9px]");
   });
 
+  it("edges a glyph's square with the border colour in dark mode, and with nothing in light mode", () => {
+    const { container } = renderWithProviders(<SourceAvatar adapterId="brew" label="Homebrew" size="xs" />, {
+      toolIcons,
+    });
+    const classes = (container.firstElementChild as HTMLElement).className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-border"]));
+    // No ring or border outside the dark variant.
+    expect(classes.filter((c) => /^(inset-ring|ring|border)/.test(c))).toEqual([]);
+  });
+
   it("draws a raster logo on white inside the border colour's hairline, so a black one shows in dark mode", () => {
     const { container } = renderWithProviders(<SourceAvatar adapterId="standalone-grok" label="Grok Build" size="xs" />, {
       toolIcons,

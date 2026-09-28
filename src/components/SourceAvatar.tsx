@@ -64,6 +64,14 @@ const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
   md: "h-[18px] w-[18px]",
 };
 
+/**
+ * A glyph's square in dark mode: a 1px edge just inside it, in the border
+ * colour, so that a near-black brand's square -- GitHub's, Rust's,
+ * Ollama's -- keeps its outline on the dark content. None in light mode.
+ * Whole class names, for Tailwind.
+ */
+const GLYPH_EDGE_CLASSES = "dark:inset-ring dark:inset-ring-border";
+
 export interface PackLogoProps {
   icon: ToolIcon;
   size: SourceAvatarSize;
@@ -73,9 +81,11 @@ export interface PackLogoProps {
  * A logo from the logo pack (src/lib/toolIcons.ts) on an avatar's square.
  * A glyph is drawn in white or near-black, whichever reads better on its
  * brand's colour (`glyphInk`), on a square of that colour, in dark mode as
- * in light. A raster fills a white square inside the border colour's
- * hairline: some are black on transparent, and would vanish on dark mode's
- * surfaces. `data-logo` says which it is. Decorative, as the initial is.
+ * in light; in dark mode the square has a 1px edge inside it
+ * (`GLYPH_EDGE_CLASSES`). A raster fills a white square inside the border
+ * colour's hairline: some are black on transparent, and would vanish on
+ * dark mode's surfaces. `data-logo` says which it is. Decorative, as the
+ * initial is.
  */
 export function PackLogo({ icon, size }: PackLogoProps) {
   if (icon.kind === "raster") {
@@ -94,7 +104,7 @@ export function PackLogo({ icon, size }: PackLogoProps) {
     <span
       aria-hidden="true"
       data-logo="glyph"
-      className={`inline-flex shrink-0 items-center justify-center ${SIZE_CLASSES[size]}`}
+      className={`inline-flex shrink-0 items-center justify-center ${SIZE_CLASSES[size]} ${GLYPH_EDGE_CLASSES}`}
       style={{ backgroundColor: `#${icon.hex}` }}
     >
       <svg viewBox="0 0 24 24" fill={glyphInk(icon.hex)} className={GLYPH_CLASSES[size]}>

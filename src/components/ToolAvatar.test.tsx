@@ -95,6 +95,15 @@ describe("ToolAvatar", () => {
     expect(light.querySelector("svg")).toHaveAttribute("fill", GLYPH_INK_DARK);
   });
 
+  it("edges the tool's glyph and its 14px badge's in the border colour in dark mode", () => {
+    // jq's near-black, which dark mode's content would otherwise swallow.
+    const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: jq });
+    const edge = ["dark:inset-ring", "dark:inset-ring-border"];
+    expect(ownLogo(avatar())?.className.split(" ")).toEqual(expect.arrayContaining(edge));
+    const badge = avatar().querySelector("[data-source-badge] [data-logo]");
+    expect(badge?.className.split(" ")).toEqual(expect.arrayContaining(edge));
+  });
+
   it("puts the source's initial on the corner of the tool's logo when the source has no logo", () => {
     const { avatar } = renderAvatar({ adapterId: "npm", sourceLabel: "npm", iconKey: typescript });
 
