@@ -466,6 +466,20 @@ describe("UninstallDialog", () => {
         "删除 Homebrew 为 Claudebar 装的文件；它的设置和数据不动。",
       ],
       [
+        { UninstallScope: { what: "HomebrewCaskSteps" } },
+        "Charles",
+        "Deletes what Homebrew installed for Charles and runs the uninstall steps it recorded.",
+        "删除 Homebrew 为 Charles 装的文件，并执行它记下的卸载步骤。",
+      ],
+      // A cask whose record lists nothing Homebrew put down: an installer
+      // put it on the Mac, and only the recorded steps take any of it away.
+      [
+        { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
+        "Little Snitch",
+        "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay.",
+        "执行 Homebrew 为 Little Snitch 记下的卸载步骤；安装器装的其他文件不删。",
+      ],
+      [
         { UninstallScope: { what: "Npm" } },
         "typescript",
         "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
@@ -518,7 +532,8 @@ describe("UninstallDialog", () => {
         },
         needs_password: true,
         warnings: [
-          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          // Word installs with a `pkg`, which its record leaves out.
+          { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
           {
             CaskUninstallStep: {
               step: "RemovesPackages",
@@ -537,7 +552,7 @@ describe("UninstallDialog", () => {
     );
 
     const sentence = await screen.findByText(
-      "Deletes what Homebrew installed for Microsoft Word and runs the uninstall steps it recorded.",
+      "Runs the uninstall steps Homebrew recorded for Microsoft Word; other files its installer put on this Mac stay.",
     );
     expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
     expect(linesOf("Before you continue")).toEqual([
@@ -557,7 +572,7 @@ describe("UninstallDialog", () => {
       request: cask,
       needs_password: true,
       warnings: [
-        { UninstallScope: { what: "HomebrewCaskSteps" } },
+        { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
         {
           CaskUninstallStep: {
             step: "Deletes",
@@ -583,7 +598,7 @@ describe("UninstallDialog", () => {
     try {
       renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />);
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
-      expect(await screen.findByText("删除 Homebrew 为 DuckieTV 装的文件，并执行它记下的卸载步骤。")).toBeInTheDocument();
+      expect(await screen.findByText("执行 Homebrew 为 DuckieTV 记下的卸载步骤；安装器装的其他文件不删。")).toBeInTheDocument();
       expect(linesOf("请注意").slice(0, 2)).toEqual([
         "还会永久删除：/Applications/duckieTV.app, ~/Library/Application Support/DuckieTV-Standalone。",
         "还会把这些移到废纸篓：~/.nvs。",

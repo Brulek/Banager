@@ -181,32 +181,49 @@ fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
 /// the lines it lists under 「请注意」.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Classified {
-    /// Nothing but what Homebrew put down and linked for the cask, apps
-    /// quit, folders left empty removed, and paths' owners or permissions
-    /// changed or processes ended: its settings and data stay.
+    /// Deletes what Homebrew put down or linked for the cask -- the record
+    /// lists at least one of `PLACED_STANZAS` -- and takes no step but
+    /// quitting apps, removing folders left empty, and changing paths'
+    /// owners or permissions or ending processes: its settings and data
+    /// stay.
     Plain,
-    /// Extra steps, one entry per kind in `CaskStep`'s order, each with
-    /// what the record names for it (nothing for `RunsOwnSteps`).
+    /// Deletes what Homebrew put down or linked for the cask and takes
+    /// extra steps, one entry per kind in `CaskStep`'s order, each with
+    /// what the record names for it (nothing for `DeletesUnnamed` and
+    /// `RunsOwnSteps`).
     Steps(Vec<(CaskStep, Vec<String>)>),
-    /// A record Canager does not read: an artifact, a directive or a value
-    /// of a shape it does not know. Says nothing it cannot back.
+    /// Lists none of `PLACED_STANZAS` -- a cask installed with a `pkg` or an
+    /// installer, which the record leaves out -- and takes these extra
+    /// steps, as in `Steps`: they are all that deletes any of what its
+    /// installer put down.
+    OnlySteps(Vec<(CaskStep, Vec<String>)>),
+    /// A record Canager does not read -- an artifact, a directive or a
+    /// value of a shape it does not know -- or one that lists neither any
+    /// of `PLACED_STANZAS` nor any step: an empty list, which Homebrew saves
+    /// for a cask with nothing to uninstall (`save_caskfile`,
+    /// `cask/installer.rb:594-607`), or `zap` alone. Says nothing it cannot
+    /// back.
     Unknown,
 }
 
-/// Stanzas whose uninstall removes only what Homebrew itself put down or
-/// linked for the cask, with the artifact classes each is in Homebrew
-/// 7.0.6-70 (`cask/dsl.rb:39-72`): the moved kinds (`cask/artifact/moved.rb`,
-/// deleted from their target -- `keyboard_layout` also clears macOS's
-/// keyboard layout cache, `qlplugin` reloads Quick Look), the linked kinds
-/// (`symlinked.rb`, a link removed only when it is one) and the completion
-/// files Homebrew generated. `preflight_steps` and `postflight_steps` run at
-/// uninstall only to remove the links they made and marked so
-/// (`Runner#run_uninstall_step`, `install_steps.rb:1349-1363`). `zap` runs
-/// only with `--zap`, which Canager never passes. `artifact`, a moved kind
-/// whose target the cask chooses, is `classify`'s own case.
-const PLAIN_STANZAS: [&str; 28] = [
+/// Stanzas whose uninstall deletes what Homebrew itself put down or linked
+/// for the cask, by their artifact classes in Homebrew 7.0.6-70
+/// (`cask/dsl.rb:39-72`, `cask/artifact/*.rb`): the moved kinds, moved back
+/// into the Caskroom and deleted from their target
+/// (`Moved#uninstall_phase`, `moved.rb:45-48`, `:200-253` -- `keyboard_layout`
+/// also clears macOS's keyboard layout cache, `qlplugin` reloads Quick Look,
+/// and `artifact`, placed where the cask chooses, is `classify`'s own
+/// case); the linked kinds, whose link is removed when it is one
+/// (`Symlinked#uninstall_phase`, `symlinked.rb:49-52`); and the completion
+/// files Homebrew generated (`GeneratedCompletion#uninstall_phase`). A
+/// `pkg`, an `installer`, `stage_only` and `generated_script` have no
+/// uninstall phase, so the record never lists them
+/// (`Cask#artifacts_list`, `cask/cask.rb:709-732`), and nothing but a
+/// recorded step deletes what a `pkg` or an installer put down.
+const PLACED_STANZAS: [&str; 26] = [
     "app",
     "app_image",
+    "artifact",
     "audio_unit_plugin",
     "colorpicker",
     "dictionary",
@@ -230,29 +247,38 @@ const PLAIN_STANZAS: [&str; 28] = [
     "pwsh_completion",
     "zsh_completion",
     "generate_completions_from_executable",
-    "preflight_steps",
-    "postflight_steps",
-    "zap",
 ];
+
+/// Stanzas that take no step at uninstall and are not `PLACED_STANZAS`:
+/// `preflight_steps` and `postflight_steps` run then only to remove the
+/// links they made and marked so (`Runner#run_uninstall_step`,
+/// `install_steps.rb:1349-1363`) -- for the `pkg` casks that have them,
+/// never what the installer put down -- and `zap` runs only with `--zap`,
+/// which Canager never passes.
+const NO_STEP_STANZAS: [&str; 3] = ["preflight_steps", "postflight_steps", "zap"];
 
 /// Uninstall steps that leave the cask plain: they change who owns a path
 /// or its permissions so it can be removed, or end a process.
 const PLAIN_STEP_TYPES: [&str; 3] = ["set_ownership", "set_permissions", "terminate_process"];
 
-/// The kinds of extra step `recorded` takes, or `Plain` when it takes none,
-/// or `Unknown`. `home` is the home folder, to shorten a path in it to `~`
-/// and to tell whether an `artifact` lands in it; unknown, every absolute
-/// `artifact` target counts as possibly in it.
+/// The kinds of extra step `recorded` takes, and whether Homebrew deletes
+/// anything it put down for the cask, or `Unknown`. `home` is the home
+/// folder, to shorten a path in it to `~` and to tell whether an
+/// `artifact` lands in it; unknown, every absolute `artifact` target
+/// counts as possibly in it.
 ///
-/// Plain: every artifact is one of `PLAIN_STANZAS`, or an `artifact` placed
-/// outside the home folder, or `uninstall` with nothing but `quit`,
-/// `signal` (apps quit) and `rmdir` (a folder removed only when nothing but
-/// empty folders and `.DS_Store` files is left in it,
-/// `abstract_uninstall.rb:695-750`), or uninstall steps of the types in
-/// `PLAIN_STEP_TYPES`; and there are no Ruby flight blocks. Anything else
-/// is a kind of extra step, and then the apps quit are said too.
+/// Plain: at least one of `PLACED_STANZAS` -- an `artifact` placed outside
+/// the home folder among them -- and otherwise only `NO_STEP_STANZAS`,
+/// `uninstall` with nothing but `quit`, `signal` (apps quit) and `rmdir` (a
+/// folder removed only when nothing but empty folders and `.DS_Store`
+/// files is left in it, `abstract_uninstall.rb:695-750`), or uninstall
+/// steps of the types in `PLAIN_STEP_TYPES`; and there are no Ruby flight
+/// blocks. Anything else is a kind of extra step, and then the apps quit
+/// are said too: `Steps` beside one of `PLACED_STANZAS`, `OnlySteps`
+/// without. A record with neither is `Unknown`.
 pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
     let mut steps = Steps::default();
+    let mut placed = false;
     if recorded.flight_blocks {
         steps.flag(CaskStep::RunsOwnSteps);
     }
@@ -261,9 +287,9 @@ pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
             return Classified::Unknown;
         };
         let known = match stanza {
-            s if PLAIN_STANZAS.contains(&s) => true,
             "artifact" => match artifact_target(args) {
                 Some(target) => {
+                    placed = true;
                     if in_home(target, home) {
                         steps.add(CaskStep::Deletes, [target.to_string()], home);
                     }
@@ -271,6 +297,11 @@ pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
                 }
                 None => false,
             },
+            s if PLACED_STANZAS.contains(&s) => {
+                placed = true;
+                true
+            }
+            s if NO_STEP_STANZAS.contains(&s) => true,
             "uninstall" => uninstall_directives(args, &mut steps, home),
             "uninstall_preflight_steps" | "uninstall_postflight_steps" => {
                 uninstall_steps(args, &mut steps, home)
@@ -287,7 +318,7 @@ pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
             return Classified::Unknown;
         }
     }
-    steps.finish()
+    steps.finish(placed)
 }
 
 /// The kinds found so far, each with its names in the order first met and
@@ -321,12 +352,18 @@ impl Steps {
         self.kinds.entry(step).or_default();
     }
 
-    /// `Plain` when only apps are quit, else every kind, in order.
-    fn finish(self) -> Classified {
-        if self.kinds.keys().all(|step| *step == CaskStep::QuitsApps) {
-            return Classified::Plain;
+    /// With something Homebrew `placed`, `Plain` when only apps are quit,
+    /// else `Steps` with every kind, in order; without, `OnlySteps` with
+    /// every kind -- apps quit included -- or `Unknown` when there is none.
+    fn finish(self, placed: bool) -> Classified {
+        let only_quits = self.kinds.keys().all(|step| *step == CaskStep::QuitsApps);
+        let kinds: Vec<_> = self.kinds.into_iter().collect();
+        match (placed, only_quits, kinds.is_empty()) {
+            (true, true, _) => Classified::Plain,
+            (true, false, _) => Classified::Steps(kinds),
+            (false, _, true) => Classified::Unknown,
+            (false, _, false) => Classified::OnlySteps(kinds),
         }
-        Classified::Steps(self.kinds.into_iter().collect())
     }
 }
 
@@ -689,13 +726,21 @@ mod tests {
         classify(&recorded(json), Some(Path::new(HOME)))
     }
 
+    fn listed(kinds: &[(CaskStep, &[&str])]) -> Vec<(CaskStep, Vec<String>)> {
+        kinds
+            .iter()
+            .map(|(step, items)| (*step, items.iter().map(|s| s.to_string()).collect()))
+            .collect()
+    }
+
+    /// Beside what Homebrew put down or linked.
     fn steps(kinds: &[(CaskStep, &[&str])]) -> Classified {
-        Classified::Steps(
-            kinds
-                .iter()
-                .map(|(step, items)| (*step, items.iter().map(|s| s.to_string()).collect()))
-                .collect(),
-        )
+        Classified::Steps(listed(kinds))
+    }
+
+    /// With nothing Homebrew put down or linked: a `pkg` or installer cask.
+    fn only_steps(kinds: &[(CaskStep, &[&str])]) -> Classified {
+        Classified::OnlySteps(listed(kinds))
     }
 
     #[test]
@@ -726,11 +771,88 @@ mod tests {
     }
 
     #[test]
+    fn a_cask_whose_record_lists_nothing_homebrew_put_down_has_only_its_steps() {
+        // little-snitch@4 installs with `installer manual:`, which the
+        // record leaves out, and records one step: `launchctl`. Homebrew
+        // deletes none of what the installer put down but by that step.
+        let (_, little_snitch) = receipt!("little-snitch@4");
+        assert_eq!(
+            classified(little_snitch),
+            only_steps(&[(
+                RemovesServices,
+                &[
+                    "at.obdev.littlesnitchd",
+                    "at.obdev.LittleSnitchHelper",
+                    "at.obdev.LittleSnitchUIAgent",
+                ]
+            )])
+        );
+        // Quitting an app is a step there too: nothing else is done.
+        let recorded_as = |artifacts: Value| {
+            classify(
+                &Recorded {
+                    artifacts: artifacts.as_array().unwrap().clone(),
+                    flight_blocks: false,
+                },
+                Some(Path::new(HOME)),
+            )
+        };
+        assert_eq!(
+            recorded_as(serde_json::json!([{ "uninstall": [{ "quit": "com.example.app" }] }])),
+            only_steps(&[(QuitsApps, &["com.example.app"])])
+        );
+        // Every kind Homebrew itself deletes is enough to say it does.
+        for placed in PLACED_STANZAS {
+            let args = match placed {
+                "artifact" => serde_json::json!(["x", { "target": "/Library/X" }]),
+                _ => serde_json::json!(["x"]),
+            };
+            assert_eq!(
+                recorded_as(serde_json::json!([{ placed: args }])),
+                Classified::Plain,
+                "{placed}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_record_with_nothing_homebrew_put_down_and_no_step_is_unknown_not_plain() {
+        let recorded_as = |artifacts: Value| {
+            classify(
+                &Recorded {
+                    artifacts: artifacts.as_array().unwrap().clone(),
+                    flight_blocks: false,
+                },
+                Some(Path::new(HOME)),
+            )
+        };
+        for artifacts in [
+            // What Homebrew saves for a cask with nothing to uninstall.
+            serde_json::json!([]),
+            // `zap` runs only with `--zap`.
+            serde_json::json!([{ "zap": [{ "trash": "~/Library/Foo" }] }]),
+            // Steps that leave a record plain, and links an install step
+            // made, with nothing Homebrew put down beside them.
+            serde_json::json!([{ "uninstall": [{ "rmdir": "/Library/Foo" }] }]),
+            serde_json::json!([{ "uninstall_preflight_steps": [{ "steps": [
+                { "type": "terminate_process", "name": "foo" }
+            ] }] }]),
+            serde_json::json!([{ "postflight_steps": [{ "steps": [] }] }]),
+        ] {
+            assert_eq!(
+                recorded_as(artifacts.clone()),
+                Classified::Unknown,
+                "{artifacts}"
+            );
+        }
+    }
+
+    #[test]
     fn each_kind_of_extra_step_is_named_with_what_the_receipt_names_for_it() {
         let cases: [((&str, &str), Classified); 13] = [
             (
                 receipt!("microsoft-word"),
-                steps(&[
+                only_steps(&[
                     (
                         RemovesPackages,
                         &[
@@ -744,7 +866,7 @@ mod tests {
             ),
             (
                 receipt!("duckietv"),
-                steps(&[
+                only_steps(&[
                     (
                         Deletes,
                         &[
@@ -755,10 +877,10 @@ mod tests {
                     (RemovesPackages, &["tv.duckie.base.pkg"]),
                 ]),
             ),
-            (receipt!("nvs"), steps(&[(Trashes, &["~/.nvs"])])),
+            (receipt!("nvs"), only_steps(&[(Trashes, &["~/.nvs"])])),
             (
                 receipt!("gpt4all"),
-                steps(&[
+                only_steps(&[
                     (Deletes, &["~/Library/Application Support/nomic.ai/GPT4All"]),
                     (
                         RunsScript,
@@ -770,14 +892,14 @@ mod tests {
             // the cask's staged folder); `rmdir` gets no line.
             (
                 receipt!("adobe-air"),
-                steps(&[(
+                only_steps(&[(
                     RunsScript,
                     &["Adobe AIR Installer.app/Contents/MacOS/Adobe AIR Installer"],
                 )]),
             ),
             (
                 receipt!("adobe-creative-cloud"),
-                steps(&[
+                only_steps(&[
                     (
                         Deletes,
                         &[
@@ -816,7 +938,7 @@ mod tests {
             ),
             (
                 receipt!("gutenprint"),
-                steps(&[
+                only_steps(&[
                     (
                         Deletes,
                         &[
@@ -896,7 +1018,7 @@ mod tests {
             // `terminate_process` stays plain and unnamed.
             (
                 receipt!("appvolume"),
-                steps(&[
+                only_steps(&[
                     (
                         Deletes,
                         &[
@@ -1007,7 +1129,10 @@ mod tests {
         }
         // An empty directive does nothing, so says nothing.
         assert_eq!(
-            unknown(serde_json::json!([{ "uninstall": [{ "delete": [], "quit": "a.b" }] }])),
+            unknown(serde_json::json!([
+                { "app": ["A.app"] },
+                { "uninstall": [{ "delete": [], "quit": "a.b" }] }
+            ])),
             Classified::Plain
         );
     }
@@ -1017,9 +1142,10 @@ mod tests {
         let classify_steps = |steps: Value| {
             classify(
                 &Recorded {
-                    artifacts: vec![serde_json::json!({
-                        "uninstall_preflight_steps": [{ "steps": steps }]
-                    })],
+                    artifacts: vec![
+                        serde_json::json!({ "uninstall_preflight_steps": [{ "steps": steps }] }),
+                        serde_json::json!({ "app": ["A.app"] }),
+                    ],
                     flight_blocks: false,
                 },
                 Some(Path::new(HOME)),
@@ -1056,7 +1182,7 @@ mod tests {
         let (_, autofirma) = receipt!("autofirma");
         assert_eq!(
             classified(autofirma),
-            steps(&[
+            only_steps(&[
                 (Deletes, &["/Applications/AutoFirma.app"]),
                 (RemovesPackages, &["es.gob.afirma"]),
                 (DeletesCertificates, &["AutoFirma ROOT", "127.0.0.1"]),
@@ -1074,11 +1200,14 @@ mod tests {
         let classify_remove = |paths: Value| {
             classify(
                 &Recorded {
-                    artifacts: vec![serde_json::json!({
-                        "uninstall_postflight_steps": [{ "steps": [
-                            { "type": "remove", "paths": paths, "recursive": true }
-                        ] }]
-                    })],
+                    artifacts: vec![
+                        serde_json::json!({ "app": ["A.app"] }),
+                        serde_json::json!({
+                            "uninstall_postflight_steps": [{ "steps": [
+                                { "type": "remove", "paths": paths, "recursive": true }
+                            ] }]
+                        }),
+                    ],
                     flight_blocks: false,
                 },
                 Some(Path::new(HOME)),
@@ -1154,7 +1283,7 @@ mod tests {
         let (_, playdate) = receipt!("playdate-simulator");
         assert_eq!(
             classified(playdate),
-            steps(&[
+            only_steps(&[
                 (Deletes, &["/usr/local/bin/arm-*", "/usr/local/playdate"]),
                 (Trashes, &["~/Developer/PlaydateSDK"]),
                 (RemovesPackages, &["date.play.sdk"]),
@@ -1269,8 +1398,10 @@ mod tests {
             vec![serde_json::json!({"app": ["Word.app"]})]
         );
         assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Plain);
-        // An empty list is a list: nothing to run (`save_caskfile` writes
-        // one for a cask with no uninstall artifacts).
+        // An empty list is a list: Homebrew runs nothing (`save_caskfile`
+        // writes one for a cask with no uninstall artifacts). Nor does it
+        // say what the install left -- a `pkg`'s files stay -- so it is not
+        // plain.
         prefix.caskfile(
             "word",
             "1.0",
@@ -1280,7 +1411,7 @@ mod tests {
         );
         let read = read_recorded(&prefix.0, "word").expect("recorded");
         assert!(read.artifacts.is_empty());
-        assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Plain);
+        assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Unknown);
     }
 
     #[test]
@@ -1306,7 +1437,7 @@ mod tests {
         let read = read_recorded(&prefix.0, "app").expect("recorded");
         assert_eq!(
             classify(&read, Some(Path::new(HOME))),
-            steps(&[(Trashes, &["~/newer"])])
+            only_steps(&[(Trashes, &["~/newer"])])
         );
     }
 

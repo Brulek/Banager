@@ -280,6 +280,7 @@
       "HomebrewFormula": "Deletes this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
       "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}; its settings and data stay.",
       "HomebrewCaskSteps": "Deletes what Homebrew installed for {{name}} and runs the uninstall steps it recorded.",
+      "HomebrewCaskStepsOnly": "Runs the uninstall steps Homebrew recorded for {{name}}; other files its installer put on this Mac stay.",
       "HomebrewCask": "Deletes what Homebrew installed for {{name}}; Canager could not read what else its uninstall does.",
       "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
       "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",

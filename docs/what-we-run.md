@@ -250,14 +250,26 @@ runs, never from `brew info`, which reads the cask's current definition
 `<prefix>/Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, which also
 says whether the cask has Ruby that runs before or after its uninstall
 (`uninstall_flight_blocks`); a saved `.rb` caskfile is read through that
-receipt. When everything listed is something Homebrew put down or linked,
+receipt. The list never holds a `pkg`, an `installer`, `stage_only` or
+`generated_script`: they have no uninstall phase (`cask/cask.rb:709-732`),
+and nothing but a recorded step deletes what a `pkg` or an installer put
+down. So the sentence says Homebrew deletes what it installed for the cask
+only when the list holds something Homebrew itself put down or linked: an
+app or another artifact it moved into place (`cask/artifact/moved.rb`), a
+link (`symlinked.rb`) or completions it generated
+(`generated_completion.rb`). When it does, and everything else listed is
 an app to quit, a folder removed only once nothing but empty folders is
 left in it, a step that changes a path's owner or permissions or ends a
-process, or the `zap` stanza, which runs only with `--zap`, and the
-receipt says there is no such Ruby, the sentence says the cask's settings
-and data stay. Otherwise it says Homebrew also runs the uninstall steps it
-recorded, and "Before you continue" lists one line per kind, with what the
-record names, the home folder spelled `~`: paths deleted for good
+process, a link an install step made, or the `zap` stanza, which runs
+only with `--zap`, and the receipt says there is no such Ruby, the
+sentence says the cask's settings and data stay; when more is listed, it
+says Homebrew also runs the uninstall steps it recorded. When the list
+holds nothing Homebrew put down but does hold a step — a cask installed
+with a `pkg` or an installer, such as `little-snitch@4`, whose one step
+removes its background services — the sentence says Homebrew runs the
+uninstall steps it recorded and that the other files its installer put on
+the Mac stay. Either way, "Before you continue" lists one line per kind,
+with what the record names, the home folder spelled `~`: paths deleted for good
 (`delete:`, an `artifact` placed in the home folder, and each path an
 uninstall step of type `remove` spells out — from `/` or `~`, or under the
 home folder — which that step deletes where the path passes the check it
@@ -281,8 +293,10 @@ list — no Caskroom folder for the cask or one that is a link, no saved
 caskfile, a legacy `.internal.json` one, a file that does not parse, or
 neither `artifacts` of its own nor a receipt that lists any, when Homebrew
 would read the cask's current definition — or the list holds a stanza or
-directive it does not read, the sentence says Canager could not read what
-else the uninstall does.
+directive it does not read, or it holds neither anything Homebrew put down
+nor any step (an empty list, which Homebrew saves for a cask with nothing
+to uninstall, `cask/installer.rb:594-607`, or `zap` alone), the sentence
+says Canager could not read what else the uninstall does.
 
 **Read-only commands** (background checks; never need a password):
 

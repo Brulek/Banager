@@ -645,22 +645,34 @@ pub enum UninstallScope {
     /// file: the same sentence without "only", beside
     /// `Warning::HomebrewAutoremoves`, which says what else goes.
     HomebrewFormula,
-    /// `brew uninstall --cask` whose recorded uninstall is plain: nothing but
-    /// what Homebrew itself put down and linked, apps quit, folders removed
-    /// once nothing but empty folders is left in them, and steps that
-    /// change a path's owner or permissions or end a process
+    /// `brew uninstall --cask` whose recorded uninstall is plain: it deletes
+    /// what Homebrew itself put down and linked -- the record lists at
+    /// least one such artifact -- and otherwise only quits apps, removes
+    /// folders once nothing but empty folders is left in them, and runs
+    /// steps that change a path's owner or permissions or end a process
     /// (`cask_receipt::classify`). Its settings and data stay: the cask's
     /// `zap` stanza runs only with `--zap` (`cmd/uninstall.rb:90-117`),
     /// which Canager never passes.
     HomebrewCaskPlain,
-    /// `brew uninstall --cask` whose recorded uninstall takes extra steps,
-    /// each kind of which the plan names in a `Warning::CaskUninstallStep`.
+    /// `brew uninstall --cask` whose recorded uninstall deletes what
+    /// Homebrew put down and linked and takes extra steps, each kind of
+    /// which the plan names in a `Warning::CaskUninstallStep`.
     HomebrewCaskSteps,
+    /// `brew uninstall --cask` whose record lists nothing Homebrew put down
+    /// or linked -- a cask installed with a `pkg` or an installer, neither
+    /// of which the record lists (`cask/cask.rb:709-732`) -- but takes extra
+    /// steps, each kind of which the plan names in a
+    /// `Warning::CaskUninstallStep`: nothing else deletes any of what the
+    /// installer put down (little-snitch@4's only step removes its
+    /// background services).
+    HomebrewCaskStepsOnly,
     /// `brew uninstall --cask` whose recorded uninstall Canager could not
     /// read (`cask_receipt::read_recorded`): no receipt, a caskfile saved in
     /// a form it does not read, a record Homebrew would replace with the
-    /// cask's current definition, or a kind of artifact it does not know.
-    /// Says so rather than guess.
+    /// cask's current definition, or a kind of artifact it does not know;
+    /// or a record that lists neither anything Homebrew put down or linked
+    /// nor any step -- an empty list, or `zap` alone -- which cannot tell
+    /// what the install left. Says so rather than guess.
     HomebrewCask,
     /// `npm uninstall -g`, when the npm Canager detected is 7 or later: npm
     /// deletes the package's folder, with the dependencies inside it, and
@@ -1558,6 +1570,7 @@ mod tests {
             UninstallScope::HomebrewFormula,
             UninstallScope::HomebrewCaskPlain,
             UninstallScope::HomebrewCaskSteps,
+            UninstallScope::HomebrewCaskStepsOnly,
             UninstallScope::HomebrewCask,
             UninstallScope::Npm,
             UninstallScope::Pipx,

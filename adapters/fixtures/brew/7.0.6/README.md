@@ -111,6 +111,7 @@ above have:
 | `playdate-simulator.json` | `playdate-simulator` 3.1.2 | an uninstall step `remove` (`/usr/local/bin/arm-*`, where each is a link whose target holds `playdate`), `pkgutil`, `delete`, `trash`, `rmdir` |
 | `autofirma.json` | `autofirma` 1.9.2 | `quit`, `pkgutil`, `delete`, two uninstall steps `delete_keychain_certificate` (`AutoFirma ROOT`, `127.0.0.1`) |
 | `betwixt.json` | `betwixt` 1.6.1 | an uninstall step `delete_keychain_certificate` with a `matching_certificate` file |
+| `little-snitch@4.json` | `little-snitch@4` 4.6.1 | `launchctl` and nothing Homebrew put down: its `installer manual:` has no uninstall phase and is dropped |
 | `twelite-stage.json` | `twelite-stage` 202508,R2 | an `artifact` placed at `~/MWSTAGE` |
 | `touchosc-editor.json` | `touchosc-editor` 1.8.9 | an `artifact` placed under `/$HOME`, so the home folder's absolute path |
 | `graalvm-jdk.json` | `graalvm-jdk` 25.0.4 | an `artifact` placed in `/Library/Java/JavaVirtualMachines` |

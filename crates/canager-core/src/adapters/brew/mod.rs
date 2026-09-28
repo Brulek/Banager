@@ -380,17 +380,19 @@ impl BrewAdapter {
             Some(recorded) => cask_receipt::classify(&recorded, home.as_deref()),
             None => Classified::Unknown,
         };
-        match classified {
-            Classified::Plain => (scope(UninstallScope::HomebrewCaskPlain), Vec::new()),
-            Classified::Unknown => (scope(UninstallScope::HomebrewCask), Vec::new()),
-            Classified::Steps(steps) => (
-                scope(UninstallScope::HomebrewCaskSteps),
-                steps
-                    .into_iter()
-                    .map(|(step, items)| Warning::CaskUninstallStep { step, items })
-                    .collect(),
-            ),
-        }
+        let (what, steps) = match classified {
+            Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
+            Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
+            Classified::Steps(steps) => (UninstallScope::HomebrewCaskSteps, steps),
+            Classified::OnlySteps(steps) => (UninstallScope::HomebrewCaskStepsOnly, steps),
+        };
+        (
+            scope(what),
+            steps
+                .into_iter()
+                .map(|(step, items)| Warning::CaskUninstallStep { step, items })
+                .collect(),
+        )
     }
 
     /// What the `brew.env` files make Homebrew do beyond a plan's command,
@@ -3125,10 +3127,12 @@ mod plan_execute_tests {
             vec![scope(UninstallScope::HomebrewCaskPlain)]
         );
 
-        // One line per kind of extra step, in `CaskStep`'s order.
+        // One line per kind of extra step, in `CaskStep`'s order. Word
+        // installs with a `pkg`, which the record leaves out: nothing but
+        // those steps deletes what it put down.
         let plan = cask_uninstall(&runner, &adapter, &inst, "microsoft-word").await;
         let word = vec![
-            scope(UninstallScope::HomebrewCaskSteps),
+            scope(UninstallScope::HomebrewCaskStepsOnly),
             step(
                 CaskStep::RemovesPackages,
                 &[
@@ -3208,11 +3212,12 @@ mod plan_execute_tests {
             ]
         );
 
+        // A `pkg` cask: only its steps delete what it put down.
         let plan = cask_uninstall(&runner, &adapter, &inst, "playdate-simulator").await;
         assert_eq!(
             plan.warnings,
             vec![
-                scope(UninstallScope::HomebrewCaskSteps),
+                scope(UninstallScope::HomebrewCaskStepsOnly),
                 step(
                     CaskStep::Deletes,
                     &["/usr/local/bin/arm-*", "/usr/local/playdate"]
@@ -3220,6 +3225,70 @@ mod plan_execute_tests {
                 step(CaskStep::Trashes, &["~/Developer/PlaydateSDK"]),
                 step(CaskStep::RemovesPackages, &["date.play.sdk"]),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_says_only_the_steps_go_when_its_record_lists_nothing_homebrew_put_down(
+    ) {
+        // little-snitch@4 installs with `installer manual:`, which the
+        // record leaves out (`cask/cask.rb:709-732`), so the sentence must
+        // not say Homebrew deletes what it installed: only its one step,
+        // `launchctl`, removes anything.
+        const LITTLE_SNITCH_RECEIPT: &str = include_str!(
+            "../../../../../adapters/fixtures/brew/7.0.6/receipts/little-snitch@4.json"
+        );
+        let prefix = CaskroomPrefix::new(
+            "steps-only",
+            &[
+                ("little-snitch@4", LITTLE_SNITCH_RECEIPT),
+                ("nothing-recorded", CLAUDEBAR_RECEIPT),
+            ],
+        );
+        // Homebrew saves `"artifacts": []` for a cask with nothing to
+        // uninstall (`save_caskfile`, `cask/installer.rb:594-607`).
+        std::fs::write(
+            prefix.0.join(
+                "Caskroom/nothing-recorded/.metadata/1.0/20260928000000.000/Casks/nothing-recorded.json",
+            ),
+            r#"{"artifacts": []}"#,
+        )
+        .unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+
+        let plan = cask_uninstall(&runner, &adapter, &inst, "little-snitch@4").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                Warning::UninstallScope {
+                    what: UninstallScope::HomebrewCaskStepsOnly
+                },
+                Warning::CaskUninstallStep {
+                    step: CaskStep::RemovesServices,
+                    items: vec![
+                        "at.obdev.littlesnitchd".to_string(),
+                        "at.obdev.LittleSnitchHelper".to_string(),
+                        "at.obdev.LittleSnitchUIAgent".to_string(),
+                    ],
+                },
+            ]
+        );
+
+        // An empty list: not plain, since it cannot tell what the install
+        // left.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "nothing-recorded").await;
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::UninstallScope {
+                what: UninstallScope::HomebrewCask
+            }]
         );
     }
 
