@@ -201,6 +201,20 @@ The design and the reasoning behind it live in [`docs/superpowers/`](docs/superp
 spec, the implementation plans, and the review findings that changed them. They are working
 documents rather than polished writing, but they record why things are the way they are.
 
+## Logos
+
+The logos Canager shows for tools and sources are trademarks of their owners, shown only to
+identify the tool or source each stands for; a tool may show its maker's logo in place of one of
+its own. Those drawn in white or near-black on their brand's colour come from
+[Simple Icons](https://simpleicons.org/), which is released under CC0 — though, as Simple Icons
+says, not every icon in it is: an icon under a license of its own has that license named in
+Simple Icons' data. The others are the GitHub avatar of the organization or account behind the
+project, or behind its maker. All of them are built into the app, from `src/assets/tool-icons/`,
+and showing one makes no network request. `pnpm icons:build` regenerates that folder from
+`scripts/tool-icons/mapping.json`, taking Simple Icons' logos from the pinned `simple-icons`
+package and downloading the avatars from GitHub, and fails if the folder comes to more than 5 MB,
+the limit a test holds it to as well. Neither the app nor the tests run it.
+
 ## License
 
 Not chosen yet. Until a license file is added this repository is "all rights reserved" by
