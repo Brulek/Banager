@@ -1512,7 +1512,17 @@ at development time, downloading the GitHub avatars among them, and
 `src/lib/toolIcons.ts` imports that folder, so the app's build carries
 it — `pack.json` inside the window's script, each avatar as a file of its
 own that the window loads from the app, as it loads the rest of itself.
-The window's content security policy was not changed for them.
+The window's content security policy was not changed for them. A logo
+Simple Icons lists under a license of its own keeps that license:
+`icons:build` stops, before it downloads or writes anything, when the
+mapping names one under a license Canager does not ship
+(`SHIPPABLE_LICENSE` in `build.mjs`), and otherwise writes that logo
+unmodified — its path exactly as Simple Icons has it — with its license
+and Simple Icons' source for it into `pack.json`. Settings credits each
+such logo under About → Icon credits (`IconCreditsDrawer` in
+`src/components/IconCreditsDrawer.tsx`), with its license and the
+addresses of the license's text and of that source, shown as text: the
+credits call no opener either.
 
 The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
 `pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull`, `claude update`,

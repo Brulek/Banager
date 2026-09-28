@@ -208,12 +208,18 @@ identify the tool or source each stands for; a tool may show its maker's logo in
 its own. Those drawn in white or near-black on their brand's colour come from
 [Simple Icons](https://simpleicons.org/), which is released under CC0 — though, as Simple Icons
 says, not every icon in it is: an icon under a license of its own has that license named in
-Simple Icons' data. The others are the GitHub avatar of the organization or account behind the
+Simple Icons' data. Such a logo keeps its license. Canager ships it unmodified, its path exactly
+as Simple Icons has it, and credits it in Settings, under About → Icon credits, with its license
+and the addresses of the license's text and of the page Simple Icons took the logo from. The
+logos not from Simple Icons are the GitHub avatar of the organization or account behind the
 project, or behind its maker. All of them are built into the app, from `src/assets/tool-icons/`,
 and showing one makes no network request. `pnpm icons:build` regenerates that folder from
 `scripts/tool-icons/mapping.json`, taking Simple Icons' logos from the pinned `simple-icons`
-package and downloading the avatars from GitHub, and fails if the folder comes to more than 5 MB,
-the limit a test holds it to as well. Neither the app nor the tests run it.
+package and downloading the avatars from GitHub. It fails if the mapping names a logo under a
+license Canager does not ship — it ships CC0-1.0, MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
+ISC, CC-BY and CC-BY-SA, and no other: nothing noncommercial, no-derivatives, GPL-family or
+custom — and if the folder comes to more than 5 MB, the limit a test holds it to as well. Neither
+the app nor the tests run it.
 
 ## License
 
