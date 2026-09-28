@@ -268,7 +268,10 @@ check found and what the new catalogue adds (`RoundLog::awaits_follow_up`)
 — so a daily check posts one notification at most. That refresh is the
 daily check's whether the update ends before the rest of the check does
 or after: which check it belongs to is read as its own round is recorded
-(`RoundLog::record_follow_up`), after the check's. A report that comes while
+(`RoundLog::record_follow_up`), after the check's. It is the window's
+instead when a check of the window's reads the new catalogue before it or
+shares its round (`RoundLog::record`), and the daily check then posts
+nothing. A report that comes while
 the window has the focus marks its pairs as seen, and posts nothing. One
 that comes while Canager is in front with its window closed or in the
 Dock posts nothing and marks nothing, so its updates are still news to
