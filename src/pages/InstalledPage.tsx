@@ -7,10 +7,11 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   canWrite,
+  describeTool,
   isAvailable,
   sourceNoticesFor,
   type SourceNoticeSpec,
-  toolDescription,
+  type ToolDescriptionLines,
   uninstallBlockedCopy,
   uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
@@ -24,6 +25,7 @@ import {
 } from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
+import { useTranslatedDescription } from "../lib/toolDescriptions";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -176,6 +178,8 @@ export function InstalledPage() {
   const operationFor = useUpdateOperationFor();
   const { data: operations } = useOperations();
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
+  // A tool's line in Chinese, while the window is in Chinese.
+  const translatedDescription = useTranslatedDescription();
   const listRef = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const searchFocusRequested = useUiStore((s) => s.searchFocusRequested);
@@ -495,10 +499,17 @@ export function InstalledPage() {
     setDetailsId(artifactKeyId(artifact.key));
   };
 
-  const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): string =>
-    toolDescription(
+  // What a row says it is, and what its details show under that: the
+  // source's own words, where the line is their translation.
+  const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): ToolDescriptionLines =>
+    describeTool(
       t,
-      { description: artifact.description, kind: artifact.key.kind, path: artifact.path },
+      {
+        description: artifact.description,
+        translated: translatedDescription(artifact.key, instance.adapter_id),
+        kind: artifact.key.kind,
+        path: artifact.path,
+      },
       instance.adapter_id,
       label,
     );
@@ -685,7 +696,7 @@ export function InstalledPage() {
         // A tool with its own installer is its own source: the chip would
         // only say its name again.
         nameChip={mixed && label !== name ? label : undefined}
-        description={describe(artifact, instance, label)}
+        description={describe(artifact, instance, label).line}
         status={
           chips.length > 0
             ? chips.map((chip) => <RowChipView key={chip.id} chip={chip} withDetail />)
@@ -733,12 +744,13 @@ export function InstalledPage() {
   const detailsInstance = details === undefined ? undefined : instancesById.get(details.key.instance_id);
 
   /**
-   * A row's details: all of its description, its version and the one an
-   * update would bring, where it is (with technical details on), every
-   * chip with its why in full, what its source had to say this time, and
-   * what can be done -- Uninstall, and Update where the Updates page
-   * offers one, through that page's own confirmation; while that update
-   * runs, its progress where the button was, and once it has ended
+   * A row's details: all of its description -- and under it, quieter, the
+   * source's own words where the line is their translation -- its version
+   * and the one an update would bring, where it is (with technical details
+   * on), every chip with its why in full, what its source had to say this
+   * time, and what can be done -- Uninstall, and Update where the Updates
+   * page offers one, through that page's own confirmation; while that
+   * update runs, its progress where the button was, and once it has ended
    * without updating, how it ended beside Retry.
    */
   const detailsDrawer = (artifact: InstalledArtifact, instance: ManagerInstance) => {
@@ -777,6 +789,7 @@ export function InstalledPage() {
       });
     }
     const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
+    const { line, original } = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);
     const footer =
       removable || updatable ? (
@@ -817,7 +830,18 @@ export function InstalledPage() {
         title={name}
         subtitle={label === name ? undefined : label}
         leading={<ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} />}
-        description={describe(artifact, instance, label)}
+        description={
+          original === null ? (
+            line
+          ) : (
+            <>
+              {line}
+              <span data-original-description="" className="mt-1 block text-small text-muted">
+                {original}
+              </span>
+            </>
+          )
+        }
         closeLabel={t("common.close")}
         onCloseAutoFocus={(event) => {
           if (leaveFocusOnClose.current) {

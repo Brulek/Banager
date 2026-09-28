@@ -65,9 +65,10 @@ export interface ToolRowContentProps {
    */
   nameChip?: string;
   /**
-   * One line about what it is: the source's description, or what the
-   * source says it is when it gave none (`toolDescription` in
-   * src/lib/sources.ts), so a row never reads "No description".
+   * One line about what it is: its line in the window's language, the
+   * source's description, or what the source says it is when it gave none
+   * (`toolDescription` in src/lib/sources.ts), so a row never reads "No
+   * description".
    */
   description: string;
   /**

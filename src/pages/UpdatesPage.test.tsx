@@ -6,6 +6,7 @@ import { UpdatesPage } from "./UpdatesPage";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
 import { loadToolIcons } from "../lib/toolIcons";
+import { lazyDescriptionTable } from "../lib/toolDescriptions";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import type {
@@ -3409,6 +3410,55 @@ describe("UpdatesPage", () => {
         await i18n.changeLanguage("en");
       });
     }
+  });
+
+  it("says a row's line in Chinese where the table has one, and what the row said where it has none", async () => {
+    // A table of this test's own: glib's line and tokei's -- Cargo's
+    // inventory gives no description -- and none for OnyX.
+    const toolDescriptions = lazyDescriptionTable(async () => ({
+      "brew:glib": "C 语言核心应用库",
+      "cargo:tokei": "代码行数统计工具",
+    }));
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const described = (key: ArtifactKey, displayName: string, description: string | null) => ({
+      key,
+      display_name: displayName,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+    });
+    artifacts = [
+      described(glibKey, "glib", "Core application library for C"),
+      described(onyxKey, "OnyX", "Verify system files structure"),
+      described(tokeiKey, "tokei", null),
+    ];
+    updates = [...snapshot.updates, { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" }];
+    renderWithProviders(<UpdatesPage />, { toolDescriptions });
+
+    expect(within(await findRow("glib")).getByText("Core application library for C")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(await within(rowOf("glib")).findByText("C 语言核心应用库")).toBeInTheDocument();
+      expect(within(rowOf("glib")).queryByText("Core application library for C")).toBeNull();
+      expect(within(rowOf("tokei")).getByText("代码行数统计工具")).toBeInTheDocument();
+      expect(within(rowOf("OnyX")).getByText("Verify system files structure")).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+    expect(within(rowOf("glib")).getByText("Core application library for C")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
   });
 
   it("gives a standalone row that cannot be checked its reason, not the self-updating chip", async () => {

@@ -73,8 +73,9 @@ export function standaloneSummaryKey(adapterId: string): string | null {
 }
 
 /**
- * What a row says a tool is when its source gave no description, by the
- * source that lists it -- so no row reads 「暂无简介」/"No description".
+ * What a row says a tool is when its source gave no description, and the
+ * window has no line of its own for it (`DescribedTool.translated`), by
+ * the source that lists it -- so no row reads 「暂无简介」/"No description".
  * Most sources never give one: npm's, pip's, pipx's, uv's, Cargo's and
  * Ollama's inventories leave `description` null, and so do some of
  * Homebrew's casks. Each line holds for everything its source can list:
@@ -109,6 +110,13 @@ const FALLBACK_DESCRIPTION_KEYS: Record<string, string> = {
 export interface DescribedTool {
   /** The source's own sentence, when it gave one. */
   description: string | null | undefined;
+  /**
+   * The tool's line in the window's language, where it has one
+   * (`useTranslatedDescription`, src/lib/toolDescriptions.ts): Chinese,
+   * translated from the description the tool's source gives it, while the
+   * window is in Chinese. Left out, or `null`, where there is none.
+   */
+  translated?: string | null;
   kind: ArtifactKind;
   /**
    * For a Homebrew cask, where its app is: set only for a cask with an
@@ -118,33 +126,68 @@ export interface DescribedTool {
   path: string | null | undefined;
 }
 
+/** A tool's line (`describeTool`), and what its details show under it. */
+export interface ToolDescriptionLines {
+  /** The one line a row says the tool is. Never empty. */
+  line: string;
+  /**
+   * The source's own description where `line` is a translation shown in
+   * its place, for the tool's details to show under it, quieter, so that
+   * nothing the source said is lost; `null` where `line` is the source's
+   * own words, or the source gave none.
+   */
+  original: string | null;
+}
+
+/** `text`, or `null` for none: `null`, `undefined` or empty. */
+function nonEmpty(text: string | null | undefined): string | null {
+  return text === null || text === undefined || text === "" ? null : text;
+}
+
 /**
  * A row's one line about what it is, on the Installed and the Updates
- * page alike, so a tool reads the same on both: the source's own
- * description; else, for a standalone tool, its summary
- * (`standaloneSummaryKey`); else a line from its source
- * (`FALLBACK_DESCRIPTION_KEYS`). Never empty. `adapterId` is the
- * instance's, or the part of the key's `instance_id` before any `:` when
- * the snapshot lacks the instance (the id starts with its adapter's);
- * `sourceLabel` is the source's name in the user's language.
+ * page alike, so a tool reads the same on both, and the source's own
+ * description when the line is in its place: the tool's line in the
+ * window's language (`translated`); else the source's own description;
+ * else, for a standalone tool, its summary (`standaloneSummaryKey`) --
+ * which is in the window's language already, in both, and so is never
+ * replaced by a translated line; else a line from its source
+ * (`FALLBACK_DESCRIPTION_KEYS`). `adapterId` is the instance's, or the
+ * part of the key's `instance_id` before any `:` when the snapshot lacks
+ * the instance (the id starts with its adapter's); `sourceLabel` is the
+ * source's name in the user's language.
  */
+export function describeTool(
+  t: Translate,
+  tool: DescribedTool,
+  adapterId: string,
+  sourceLabel: string,
+): ToolDescriptionLines {
+  const own = nonEmpty(tool.description);
+  const summaryKey = standaloneSummaryKey(adapterId);
+  const translated = summaryKey === null ? nonEmpty(tool.translated) : null;
+  if (translated !== null) return { line: translated, original: own === translated ? null : own };
+  if (own !== null) return { line: own, original: null };
+  if (summaryKey !== null) return { line: t(summaryKey), original: null };
+  if (adapterId === "brew" && tool.kind === "Cask" && tool.path !== null && tool.path !== undefined) {
+    return { line: t("toolRow.fallback.homebrewApp"), original: null };
+  }
+  return {
+    line: Object.prototype.hasOwnProperty.call(FALLBACK_DESCRIPTION_KEYS, adapterId)
+      ? t(FALLBACK_DESCRIPTION_KEYS[adapterId])
+      : t("toolRow.fallback.other", { source: sourceLabel }),
+    original: null,
+  };
+}
+
+/** A row's one line about what it is: `describeTool`'s `line`. Never empty. */
 export function toolDescription(
   t: Translate,
   tool: DescribedTool,
   adapterId: string,
   sourceLabel: string,
 ): string {
-  if (tool.description !== null && tool.description !== undefined && tool.description !== "") {
-    return tool.description;
-  }
-  const summaryKey = standaloneSummaryKey(adapterId);
-  if (summaryKey !== null) return t(summaryKey);
-  if (adapterId === "brew" && tool.kind === "Cask" && tool.path !== null && tool.path !== undefined) {
-    return t("toolRow.fallback.homebrewApp");
-  }
-  return Object.prototype.hasOwnProperty.call(FALLBACK_DESCRIPTION_KEYS, adapterId)
-    ? t(FALLBACK_DESCRIPTION_KEYS[adapterId])
-    : t("toolRow.fallback.other", { source: sourceLabel });
+  return describeTool(t, tool, adapterId, sourceLabel).line;
 }
 
 /**

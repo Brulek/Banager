@@ -4,6 +4,7 @@ import {
   adapterIdOf,
   adapterLabel,
   canWrite,
+  describeTool,
   failedSourceCount,
   hasSourceNotice,
   isAvailable,
@@ -1352,6 +1353,74 @@ describe("toolDescription", () => {
     expect(zhCN.toolRow.fallback.ollamaModel).toBe("Ollama 模型");
     expect(zhCN.toolRow.fallback.homebrewApp).toBe("用 Homebrew 安装的 App");
     expect(zhCN.toolRow.fallback.cargoProgram).toBe("用 Cargo 安装的程序");
+  });
+
+  // A Homebrew formula with a line in the table, as a window in Chinese
+  // hands it to a row (`useTranslatedDescription`).
+  const GIT = "Distributed revision control system";
+  const GIT_ZH = "分布式版本控制系统";
+
+  it("gives the tool's line in the window's language before its source's words, and a fallback's", () => {
+    expect(toolDescription(fakeT, tool({ description: GIT, translated: GIT_ZH }), "brew", "Homebrew")).toBe(GIT_ZH);
+    // npm's inventory gives no description: the line, not "npm package".
+    const prettier = tool({ kind: "Package", translated: "代码格式化工具" });
+    expect(toolDescription(fakeT, prettier, "npm", "npm")).toBe("代码格式化工具");
+    // None, or an empty one: what the row said without it.
+    for (const translated of [null, undefined, ""]) {
+      expect(toolDescription(fakeT, tool({ description: GIT, translated }), "brew", "Homebrew")).toBe(GIT);
+      expect(toolDescription(fakeT, tool({ kind: "Package", translated }), "npm", "npm")).toBe(
+        "toolRow.fallback.npmPackage",
+      );
+    }
+  });
+
+  it("keeps a standalone tool's summary, which is in the window's language already", () => {
+    const claude = tool({ kind: "Binary", translated: "某个翻译" });
+    expect(toolDescription(fakeT, claude, "standalone-claude", "Claude Code")).toBe(
+      "standalone.summary.standalone-claude",
+    );
+  });
+});
+
+describe("describeTool", () => {
+  const tool = (over: Partial<DescribedTool> = {}): DescribedTool => ({
+    description: null,
+    kind: "Formula",
+    path: null,
+    ...over,
+  });
+  const GIT = "Distributed revision control system";
+  const GIT_ZH = "分布式版本控制系统";
+
+  it("gives the source's own words under a translated line, so that nothing it said is lost", () => {
+    expect(describeTool(fakeT, tool({ description: GIT, translated: GIT_ZH }), "brew", "Homebrew")).toEqual({
+      line: GIT_ZH,
+      original: GIT,
+    });
+  });
+
+  it("gives nothing under the line where the line is the source's own words, or the source said nothing", () => {
+    // In English, or with no line in the table: the source's words alone.
+    expect(describeTool(fakeT, tool({ description: GIT }), "brew", "Homebrew")).toEqual({
+      line: GIT,
+      original: null,
+    });
+    // A line from a registry's description, where the inventory gave none.
+    const prettier = tool({ kind: "Package", translated: "代码格式化工具" });
+    expect(describeTool(fakeT, prettier, "npm", "npm")).toEqual({ line: "代码格式化工具", original: null });
+    // A translation that reads as its source did: said once.
+    const ndi = tool({ kind: "Cask", description: "NDI SDK", translated: "NDI SDK" });
+    expect(describeTool(fakeT, ndi, "brew", "Homebrew")).toEqual({ line: "NDI SDK", original: null });
+    // A fallback, and a standalone tool's summary.
+    expect(describeTool(fakeT, tool({ kind: "Package" }), "npm", "npm")).toEqual({
+      line: "toolRow.fallback.npmPackage",
+      original: null,
+    });
+    const grok = tool({ kind: "Binary", translated: "某个翻译" });
+    expect(describeTool(fakeT, grok, "standalone-grok", "Grok Build")).toEqual({
+      line: "standalone.summary.standalone-grok",
+      original: null,
+    });
   });
 });
 

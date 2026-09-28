@@ -87,6 +87,12 @@ does: it would ask Tauri, and here it asks the stand-in in
   a logo for shows it here as it does in the app. A cask's app icon still
   comes first: iTerm2 and Visual Studio Code show the generated one
   described below.
+- Nor are the tools' lines in Chinese: with `lang=zh-CN`, the rows read
+  the table built into the app (`src/assets/tool-descriptions/zh-CN.json`,
+  through `src/lib/toolDescriptions.ts`), so git, ffmpeg and jq say what
+  they are in Chinese, git's details show Homebrew's own description under
+  its line, and a tool the table has no line for keeps what it said:
+  iTerm2 its cask's English, TypeScript 「npm 软件包」.
 
 The files: `mockTauri.ts`, `mockTauriEvent.ts` and `mockTauriWindow.ts`
 (the stand-in modules; the second listens to nothing, and the third

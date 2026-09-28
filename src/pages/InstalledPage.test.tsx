@@ -8,6 +8,7 @@ import { SnapshotStatus } from "../components/SnapshotStatus";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import { loadToolIcons } from "../lib/toolIcons";
+import { lazyDescriptionTable } from "../lib/toolDescriptions";
 import type {
   InstalledArtifact,
   ManagerInstance,
@@ -1879,6 +1880,99 @@ describe("InstalledPage", () => {
       } finally {
         Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
       }
+    });
+  });
+
+  describe("Chinese descriptions", () => {
+    // A table of this test's own: jq's line, prettier's -- npm's inventory
+    // gives no description -- and one under Claude Code's key, which its
+    // summary keeps off its row; none for corepack.
+    const toolDescriptions = () =>
+      lazyDescriptionTable(async () => ({
+        "brew:jq": "命令行 JSON 处理工具",
+        "npm:prettier": "代码格式化工具",
+        "standalone:claude": "不该出现的一行",
+      }));
+    const JQ = "Lightweight and flexible command-line JSON processor";
+    const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" };
+    const npmPackage = (name: string): InstalledArtifact =>
+      formula(name, { key: { instance_id: "npm:/opt/homebrew", kind: "Package", name }, description: null });
+
+    beforeEach(() => {
+      served = {
+        ...snapshot,
+        instances: [brew, npm, claudeInstance],
+        artifacts: [snapshot.artifacts[0], npmPackage("prettier"), npmPackage("corepack"), claudeArtifact],
+        updates: [],
+      };
+    });
+
+    async function inChinese(check: () => Promise<void>) {
+      await act(async () => {
+        await i18n.changeLanguage("zh-CN");
+      });
+      try {
+        await check();
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage("en");
+        });
+      }
+    }
+
+    it("gives a row its line in Chinese where the table has one, and what it said where the table has none", async () => {
+      renderWithProviders(<InstalledPage />, { toolDescriptions: toolDescriptions() });
+
+      expect(within(await findRow("jq")).getByText(JQ)).toBeInTheDocument();
+      expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
+
+      await inChinese(async () => {
+        expect(await within(rowOf("jq")).findByText("命令行 JSON 处理工具")).toBeInTheDocument();
+        expect(within(rowOf("jq")).queryByText(JQ)).toBeNull();
+        expect(within(rowOf("prettier")).getByText("代码格式化工具")).toBeInTheDocument();
+        expect(within(rowOf("corepack")).getByText("npm 软件包")).toBeInTheDocument();
+        expect(within(rowOf("Claude Code")).getByText("Anthropic 的 AI 编程助手")).toBeInTheDocument();
+        expect(screen.queryByText("不该出现的一行")).toBeNull();
+      });
+
+      // English again: the source's words, as before.
+      expect(within(rowOf("jq")).getByText(JQ)).toBeInTheDocument();
+      expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
+    });
+
+    it("shows the line in a tool's details, with the source's own words under it, quieter", async () => {
+      renderWithProviders(<InstalledPage />, { toolDescriptions: toolDescriptions() });
+      await findRow("jq");
+
+      await inChinese(async () => {
+        await within(rowOf("jq")).findByText("命令行 JSON 处理工具");
+        fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "详情：jq" }));
+        const drawer = await screen.findByRole("dialog", { name: "jq" });
+        const line = within(drawer).getByText("命令行 JSON 处理工具");
+        const original = within(drawer).getByText(JQ);
+        // Under the line, in the drawer's description, smaller and muted.
+        expect(line.contains(original)).toBe(true);
+        expect(line.firstChild?.textContent).toBe("命令行 JSON 处理工具");
+        expect(original).toHaveAttribute("data-original-description");
+        expect(original).toHaveClass("block", "text-small", "text-muted");
+        fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+        // prettier's source said nothing: its line alone.
+        fireEvent.click(within(rowOf("prettier")).getByRole("button", { name: "详情：prettier" }));
+        const prettier = await screen.findByRole("dialog", { name: "prettier" });
+        expect(within(prettier).getByText("代码格式化工具")).toBeInTheDocument();
+        expect(prettier.querySelector("[data-original-description]")).toBeNull();
+        fireEvent.click(within(prettier).getByRole("button", { name: "关闭" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      });
+
+      // In English: the source's words, once.
+      const drawer = await openDetails("jq");
+      expect(within(drawer).getAllByText(JQ)).toHaveLength(1);
+      expect(within(drawer).queryByText("命令行 JSON 处理工具")).toBeNull();
+      expect(drawer.querySelector("[data-original-description]")).toBeNull();
     });
   });
 

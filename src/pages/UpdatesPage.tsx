@@ -16,6 +16,7 @@ import {
 import { warningMessage } from "../lib/warnings";
 import { useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
+import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -147,6 +148,8 @@ export function UpdatesPage() {
   const [showCantUpdate, setShowCantUpdate] = useState(false);
   // What the last "Copy command" did, said for a moment in the header.
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
+  // A tool's line in Chinese, while the window is in Chinese.
+  const translatedDescription = useTranslatedDescription();
 
   // Every update the user has not hidden, with "Never remind me" or "Skip
   // this version": `notHidden`, the rule in src/lib/updateState.ts that
@@ -702,11 +705,17 @@ export function UpdatesPage() {
         // only say its name again.
         nameChip={source === name ? undefined : source}
         // The same line the Installed page's row has (`toolDescription`):
-        // the source's description, a standalone tool's summary, or what
-        // its source says it is.
+        // the tool's line in the window's language, the source's
+        // description, a standalone tool's summary, or what its source
+        // says it is.
         description={toolDescription(
           t,
-          { description: artifact?.description, kind: candidate.key.kind, path: artifact?.path },
+          {
+            description: artifact?.description,
+            translated: translatedDescription(candidate.key, adapterId),
+            kind: candidate.key.kind,
+            path: artifact?.path,
+          },
           adapterId,
           source,
         )}

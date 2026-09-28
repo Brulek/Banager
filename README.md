@@ -231,6 +231,19 @@ ISC, CC-BY and CC-BY-SA, and no other: nothing noncommercial, no-derivatives, GP
 custom — and if the folder comes to more than 5 MB, the limit a test holds it to as well. Neither
 the app nor the tests run it.
 
+## Descriptions
+
+Under a tool's name, its row says in one line what the tool is: the description the tool's source
+gives it, such as Homebrew's for a formula or a cask; where the source gives none, what kind of
+thing that source lists ("npm package"); and for a tool with its own installer, a line of Canager's
+own, in both languages. In Chinese, a row says a line in Chinese instead wherever Canager has one:
+about 2,000 of them, for Homebrew's formulae and casks and for npm, PyPI and crates.io packages,
+each translated from the description the tool's own source gives it. They are built into the app,
+in `src/assets/tool-descriptions/zh-CN.json`, which is read only once the window is in Chinese, and
+fetched from nowhere: showing one makes no network request. A tool's details show the Chinese line
+with its source's own description under it, so nothing the source said is lost; a tool Canager has
+no Chinese line for reads as it did before.
+
 ## License
 
 Not chosen yet. Until a license file is added this repository is "all rights reserved" by
@@ -289,6 +302,13 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   Antigravity CLI、Grok Build 与 rustup 共用的代码；已安装版本与发布版本无法比较，只出自 Claude Code、
   Antigravity CLI 与 rustup，因为 Grok Build 的检查直接采信 grok 自己的回答，不比较版本。
   这些都应该像上面的拒绝理由一样改成结构化数据，在那之前，中文用户在开关打开时看到的，就是英文。
+
+每个软件名下那一行简介，默认是它所在来源自己给的说明（比如 Homebrew 给 formula 和 cask 写的那句英文）；
+来源没给的，写这个来源列出的是什么（“npm 软件包”）；自带安装器的工具，是 Canager 自己写的一句，
+中英文都有。中文界面里，只要 Canager 有这个软件的中文说明，就改显示中文：约 2,000 条，涵盖 Homebrew 的
+formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
+（`src/assets/tool-descriptions/zh-CN.json`），界面是中文时才读取，不从任何地方下载，显示时不发任何网络请求。
+软件详情里，中文说明下面用小字附上来源的原文，来源说过的话一句不丢；没有中文说明的软件，照旧显示原来那一行。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
 

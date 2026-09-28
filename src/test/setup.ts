@@ -8,6 +8,7 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "../i18n";
 import { loadToolIcons, type ToolIcons } from "../lib/toolIcons";
 import { ToolIconsContext } from "../lib/toolIconsContext";
+import { DescriptionTableContext, lazyDescriptionTable, type DescriptionTable } from "../lib/toolDescriptions";
 import { useUiStore } from "../store/ui";
 
 beforeEach(() => {
@@ -71,12 +72,25 @@ const NO_TOOL_ICONS: ToolIcons = loadToolIcons(
   new Map(),
 );
 
+/**
+ * A Chinese table with no lines: what the rows read under
+ * `renderWithProviders` unless a test hands it a table of its own, so
+ * that a row in Chinese says what its source says, whatever lines the
+ * built-in table holds.
+ */
+const NO_DESCRIPTIONS: DescriptionTable = lazyDescriptionTable(async () => ({}));
+
 export interface RenderOptions {
   /** The logos the avatars draw (`loadToolIcons` over a test's own pack); none unless given. */
   toolIcons?: ToolIcons;
+  /** The Chinese lines the rows read (`lazyDescriptionTable` over a test's own); none unless given. */
+  toolDescriptions?: DescriptionTable;
 }
 
-export function renderWithProviders(ui: ReactElement, { toolIcons = NO_TOOL_ICONS }: RenderOptions = {}) {
+export function renderWithProviders(
+  ui: ReactElement,
+  { toolIcons = NO_TOOL_ICONS, toolDescriptions = NO_DESCRIPTIONS }: RenderOptions = {},
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -91,7 +105,11 @@ export function renderWithProviders(ui: ReactElement, { toolIcons = NO_TOOL_ICON
       React.createElement(
         I18nextProvider,
         { i18n },
-        React.createElement(ToolIconsContext.Provider, { value: toolIcons }, children),
+        React.createElement(
+          ToolIconsContext.Provider,
+          { value: toolIcons },
+          React.createElement(DescriptionTableContext.Provider, { value: toolDescriptions }, children),
+        ),
       ),
     );
   }
