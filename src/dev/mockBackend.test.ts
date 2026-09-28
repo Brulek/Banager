@@ -240,6 +240,14 @@ describe("the browser preview's mock backend", () => {
     await expectRefusal(plan("ruff"), '{"kind":"not_actionable","read_only":null,"unavailable":"NotResponding"}');
     await expectRefusal(plan("postgresql@17"), '{"kind":"update_blocked","reason":"Pinned"}');
     await expectRefusal(plan("agy"), '{"kind":"update_blocked","reason":"SelfUpdatesOnly"}');
+    // An install is refused before the gate, as `plan_operation_impl`
+    // refuses it: `refused` even for pip, which the gate would call read-only.
+    const requests = snapshot.updates.find((u) => u.key.name === "requests");
+    if (requests === undefined) throw new Error("no update for requests");
+    await expectRefusal(
+      backend.invoke("plan_operation", { request: { ...upgradeOf(requests), kind: "Install" } }),
+      '{"kind":"refused"}',
+    );
     await expectRefusal(
       backend.invoke("submit_operation", { planId: "0".repeat(32) }),
       '{"kind":"unknown"}',

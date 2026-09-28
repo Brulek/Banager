@@ -218,7 +218,8 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
  * `Session::issue_plan` calls `Adapter::plan`.
  */
 export function buildPlan(world: World, inst: ManagerInstance, request: OpRequest): Plan {
-  // Installing is phase 5: no page offers it, and no adapter would plan it.
+  // Installing is phase 5: no page offers it, and `plan_operation` refuses
+  // it before the gate (mockBackend.ts), as the real IPC does.
   if (request.kind === "Install") throw refusal({ kind: "refused" });
   const { kind, name } = request;
   const upgrade = kind === "Upgrade";

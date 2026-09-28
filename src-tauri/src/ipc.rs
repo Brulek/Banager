@@ -2,7 +2,7 @@ use crate::events::UiEvent;
 use crate::state::AppState;
 use canager_core::adapters::CheckOptions;
 use canager_core::auto_check::RoundTrigger;
-use canager_core::model::OpRequest;
+use canager_core::model::{OpKind, OpRequest};
 use canager_core::ops::{CancelRefused, OpSummary};
 use canager_core::runner::HostEnv;
 use canager_core::scan::UnknownScan;
@@ -244,7 +244,8 @@ pub(crate) async fn refresh_on_background_change(state: &AppState) {
 ///   it, and the user should try again shortly), and `refused` for
 ///   everything that is a bug in
 ///   Canager rather than a state of the Mac (an instance/request mismatch,
-///   an unregistered adapter, a test-only `NoMock`). `Refused` carries an
+///   an unregistered adapter, a test-only `NoMock`, an install the window
+///   asked for, which `plan_operation_impl` refuses). `Refused` carries an
 ///   English string in Rust; it is dropped here on purpose -- it is for
 ///   logs.
 /// - **Another program's words** are kept verbatim, for the front end to
@@ -395,15 +396,45 @@ fn submit_operation_error(e: canager_core::session::SubmitError) -> String {
     }
 }
 
+/// The window's preview of an operation, through `Session::issue_plan`,
+/// for an upgrade or an uninstall only (`window_may_plan`).
+///
+/// An install is refused here, before the snapshot or any adapter is
+/// asked: no page offers one, and `issue_plan`'s gate asks only whether the
+/// source can act, not what it is asked to install, so an `Install` of any
+/// name the window sent used to come back as a plan one
+/// `submit_operation` away from running (phase 5 proposal §零 6). The
+/// adapters keep planning installs, for the catalogue's own command
+/// (§3.4), which will name a catalogue entry rather than a package.
+/// Refused as `refused`, the payload for Canager's own bug: a page asking
+/// for what no page offers.
 pub(crate) async fn plan_operation_impl(
     state: &AppState,
     request: OpRequest,
 ) -> Result<IssuedPlan, String> {
+    if !window_may_plan(request.kind) {
+        return Err(plan_operation_error(
+            canager_core::adapters::AdapterError::Refused(format!(
+                "the window may not plan this kind of operation: {:?}",
+                request.kind
+            )),
+        ));
+    }
     state
         .session
         .issue_plan(&request)
         .await
         .map_err(plan_operation_error)
+}
+
+/// Whether `plan_operation` may preview an operation of this kind: an
+/// upgrade or an uninstall, never an install. No wildcard arm, so a kind
+/// added to `OpKind` does not compile until it is sorted here.
+fn window_may_plan(kind: OpKind) -> bool {
+    match kind {
+        OpKind::Upgrade | OpKind::Uninstall => true,
+        OpKind::Install => false,
+    }
 }
 
 #[tauri::command]
@@ -755,6 +786,11 @@ mod tests {
         /// reaches the runner (F1 in the design review); every other test
         /// in this module ignores it.
         execute_calls: Arc<AtomicUsize>,
+        /// How many times `plan()` was asked for a plan. Read only by the
+        /// two tests of which kinds of operation the window may plan
+        /// (`state_with_instance_counting_plans`): an install must never
+        /// reach an adapter; every other fixture ignores it.
+        plan_calls: Arc<AtomicUsize>,
         /// Every `CheckOptions` this adapter's `check_updates` was handed,
         /// in order. Proves the Settings toggle really reaches the adapter
         /// on a refresh instead of only round-tripping through
@@ -816,6 +852,7 @@ mod tests {
             inst: &ManagerInstance,
             req: &OpRequest,
         ) -> Result<Plan, AdapterError> {
+            self.plan_calls.fetch_add(1, Ordering::SeqCst);
             Ok(Plan {
                 request: req.clone(),
                 action: PlanAction::Command {
@@ -967,6 +1004,7 @@ mod tests {
             meta,
             instance,
             execute_calls: execute_calls.clone(),
+            plan_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: check_options_calls.clone(),
             detect_delay: std::time::Duration::ZERO,
             execute_delay,
@@ -1008,6 +1046,7 @@ mod tests {
             meta,
             instance,
             execute_calls: Arc::new(AtomicUsize::new(0)),
+            plan_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay,
             execute_delay: std::time::Duration::ZERO,
@@ -1058,6 +1097,7 @@ mod tests {
             meta,
             instance,
             execute_calls: Arc::new(AtomicUsize::new(0)),
+            plan_calls: Arc::new(AtomicUsize::new(0)),
             check_options_calls: check_options_calls.clone(),
             detect_delay,
             execute_delay: std::time::Duration::ZERO,
@@ -1576,7 +1616,7 @@ mod tests {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind: OpKind::Upgrade,
             instance_id: "fake:1".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
@@ -1594,7 +1634,7 @@ mod tests {
     async fn test_plan_operation_impl_maps_an_unknown_instance_to_source_gone() {
         let state = state_with_fake_adapter();
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind: OpKind::Upgrade,
             instance_id: "does-not-exist".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
@@ -1606,6 +1646,87 @@ mod tests {
         // that vanished, so the front end has one sentence for both -- and
         // never the Rust `Display` ("unknown instance does-not-exist").
         assert_eq!(err, r#"{"kind":"source_gone"}"#);
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_refuses_an_install_before_any_adapter_is_asked() {
+        // No page offers an install, and `Session::issue_plan`'s gate asks
+        // only whether the source can act, not what it is asked to install
+        // -- so an `Install` the window sent, of any name, used to come back
+        // as a plan one `submit_operation` away from running (phase 5
+        // proposal §零 6). It is refused here, at the IPC boundary, before
+        // the snapshot or the adapter is asked: for a source that could
+        // install it, and for one that is not there at all, which would
+        // otherwise have said `source_gone`.
+        let (state, plan_calls) = state_with_instance_counting_plans(
+            canager_core::testing::manager_instance("fake", "fake:1"),
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        for instance_id in ["fake:1", "does-not-exist"] {
+            let req = OpRequest {
+                kind: OpKind::Install,
+                instance_id: instance_id.to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            };
+            let err = plan_operation_impl(&state, req)
+                .await
+                .expect_err("the window may not plan an install");
+            // `refused`, which the page already words: Canager's own bug,
+            // not a state of the Mac, and never the Rust string.
+            assert_eq!(err, r#"{"kind":"refused"}"#, "{instance_id}");
+        }
+        assert_eq!(
+            plan_calls.load(Ordering::SeqCst),
+            0,
+            "an install the window asked for must never reach an adapter"
+        );
+    }
+
+    #[test]
+    fn test_what_we_run_never_list_says_the_window_cannot_ask_for_an_install() {
+        // docs/what-we-run.md, "What Canager never does": the promise
+        // `window_may_plan` keeps. Hard-wrapped prose: compared with the
+        // line breaks folded away.
+        let doc = include_str!("../../docs/what-we-run.md");
+        let never = doc
+            .split_once("\n## What Canager never does\n")
+            .expect("docs/what-we-run.md has no `## What Canager never does` section")
+            .1;
+        let folded = never.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            folded.contains(
+                "Never lets the window ask for an install: it can ask for the preview of an \
+                 upgrade or an uninstall only, and `plan_operation_impl` \
+                 (`src-tauri/src/ipc.rs`) refuses an install before any source is asked"
+            ),
+            "the never-list of docs/what-we-run.md does not say the window cannot ask for an install"
+        );
+        assert!(!window_may_plan(OpKind::Install));
+        assert!(window_may_plan(OpKind::Upgrade) && window_may_plan(OpKind::Uninstall));
+    }
+
+    #[tokio::test]
+    async fn test_plan_operation_impl_still_plans_an_upgrade_and_an_uninstall() {
+        // The two kinds the pages offer go through as before: to the gate,
+        // then to the adapter, once each.
+        let (state, plan_calls) = state_with_instance_counting_plans(
+            canager_core::testing::manager_instance("fake", "fake:1"),
+        );
+        refresh_impl(&state).await.expect("refresh_impl");
+        for (asked, kind) in [OpKind::Upgrade, OpKind::Uninstall].into_iter().enumerate() {
+            let req = OpRequest {
+                kind,
+                instance_id: "fake:1".to_string(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            };
+            let issued = plan_operation_impl(&state, req.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{kind:?} must still be planned: {e}"));
+            assert_eq!(issued.plan.request, req);
+            assert_eq!(plan_calls.load(Ordering::SeqCst), asked + 1, "{kind:?}");
+        }
     }
 
     #[test]
@@ -1784,6 +1905,17 @@ mod tests {
     /// mapping is through an instance the gate in `Session::issue_plan`
     /// refuses.
     fn state_with_instance(instance: ManagerInstance) -> AppState {
+        state_with_instance_counting_plans(instance).0
+    }
+
+    /// `state_with_instance`, with the count of the fake adapter's `plan()`
+    /// calls: how the tests of which kinds the window may plan tell an
+    /// operation refused at the IPC boundary from one an adapter was asked
+    /// to plan.
+    fn state_with_instance_counting_plans(
+        instance: ManagerInstance,
+    ) -> (AppState, Arc<AtomicUsize>) {
+        let plan_calls = Arc::new(AtomicUsize::new(0));
         let meta = AdapterMeta {
             id: "fake".to_string(),
             name: "fake".to_string(),
@@ -1797,6 +1929,7 @@ mod tests {
             meta,
             instance,
             execute_calls: Arc::new(AtomicUsize::new(0)),
+            plan_calls: plan_calls.clone(),
             check_options_calls: Arc::new(Mutex::new(Vec::new())),
             detect_delay: std::time::Duration::ZERO,
             execute_delay: std::time::Duration::ZERO,
@@ -1805,7 +1938,7 @@ mod tests {
         let sink = ChannelSink::new();
         let session =
             canager_core::session::Session::with_adapters(sink.clone(), vec![adapter], None);
-        AppState {
+        let state = AppState {
             session,
             settings_path: temp_settings_path("not-actionable"),
             settings: std::sync::Mutex::new(Settings::default()),
@@ -1813,7 +1946,8 @@ mod tests {
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
             notified: std::sync::Mutex::new(Default::default()),
-        }
+        };
+        (state, plan_calls)
     }
 
     #[tokio::test]
@@ -1953,7 +2087,7 @@ mod tests {
         subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
 
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind: OpKind::Upgrade,
             instance_id: "fake:1".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
@@ -2164,7 +2298,7 @@ mod tests {
         let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind: OpKind::Upgrade,
             instance_id: "fake:1".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),
@@ -2202,7 +2336,7 @@ mod tests {
         let (state, execute_calls, _check_options_calls) = state_with_fake_adapter_and_now(None);
         refresh_impl(&state).await.expect("refresh_impl");
         let req = OpRequest {
-            kind: OpKind::Install,
+            kind: OpKind::Upgrade,
             instance_id: "fake:1".to_string(),
             artifact_kind: ArtifactKind::Formula,
             name: "jq".to_string(),

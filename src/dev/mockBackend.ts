@@ -413,6 +413,9 @@ export function createMockBackend(scenario: Scenario): MockBackend {
     },
     async plan_operation(args) {
       const request = args.request as OpRequest;
+      // Before the gate, as `plan_operation_impl` (src-tauri/src/ipc.rs)
+      // refuses it: no page offers an install.
+      if (request.kind === "Install") throw refusal({ kind: "refused" });
       const inst = gate(request);
       await wait(
         inst.adapter_id === "brew" && request.kind === "Uninstall" ? TIMING.brewUninstallPlan : TIMING.plan,

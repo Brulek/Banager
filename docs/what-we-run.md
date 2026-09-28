@@ -33,7 +33,8 @@ notification plugin the window has, and that Homebrew's section keeps
 `brew update` out of its read-only table and cites the lines of
 Homebrew's own code at which it installs.
 `src-tauri/src/notify.rs`'s tests check that the section quotes what a
-notification says in both languages.
+notification says in both languages, and `src-tauri/src/ipc.rs`'s that
+the never-list says the window cannot ask for an install.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -149,7 +150,10 @@ the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
 minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),
-after which it has to be previewed again. Before a plan is built,
+after which it has to be previewed again. The window can ask for the
+preview of an upgrade or an uninstall, never of an install: no page
+offers one, and `plan_operation_impl` in `src-tauri/src/ipc.rs` refuses
+an install before any source is asked. Before a plan is built,
 `Session::issue_plan` refuses an operation on a source that is read-only
 or not answering, an upgrade or uninstall the tool itself reports it will
 refuse (a pinned package), an update of a tool that installs its
@@ -2059,6 +2063,10 @@ Canager neither chooses nor sees them.
   update` a refresh runs is Homebrew's exception: it can install, move or
   uninstall Homebrew packages by itself when Homebrew has moved a package
   between a formula and a cask, or renamed one (Homebrew's section).
+- Never lets the window ask for an install: it can ask for the preview
+  of an upgrade or an uninstall only, and `plan_operation_impl`
+  (`src-tauri/src/ipc.rs`) refuses an install before any source is
+  asked, whatever it names.
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
 - Never opens a tool to make it update itself: a self-updating tool's row
