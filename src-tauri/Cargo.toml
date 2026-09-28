@@ -35,8 +35,27 @@ canager-core = { path = "../crates/canager-core" }
 # what Cargo.lock currently resolves to.
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c4c45d503ea115a839aae718d02f79e7c7f0f673" }
 
+# `menu::preferred_languages` asks macOS for the user's preferred languages
+# (`NSLocale preferredLanguages`), to build the menu bar in the window's
+# language before the page has said which. Already in Cargo.lock at this
+# version as a dependency of tauri, with these features on, so no new crate
+# enters the build -- declared, as canager-core declares its own. macOS
+# only, as the call is.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSLocale",
+    "NSString",
+] }
 
 [dev-dependencies]
+# The parser tauri reads a menu item's shortcut with -- `MenuItem::with_id`
+# parses the string, and drops a shortcut it cannot read without a word --
+# so that `menu.rs`'s tests read the page items' shortcuts as tauri will.
+# The version tauri depends on, already in Cargo.lock, and no feature
+# tauri does not already switch on, so nothing new is compiled.
+muda = { version = "0.19", default-features = false }
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }

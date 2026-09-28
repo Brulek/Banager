@@ -1,5 +1,6 @@
 pub mod events;
 mod ipc;
+mod menu;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
 // `get_settings`/`set_settings` methods are only exercised by this module's
@@ -59,8 +60,24 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 ipc::refresh_on_background_change(&handle.state::<AppState>()).await
             });
+            // The menu bar (menu.rs), up before the window has loaded, in
+            // the language the page is about to choose; the page then says
+            // which it did (`menu::set_menu_language`).
+            let language = menu::initial_language(
+                app.state::<AppState>().get_settings().language,
+                &menu::preferred_languages(),
+            );
+            menu::show(app.handle(), language)?;
             Ok(())
         })
+        // Canager's own menu bar in place of tauri's default, which `setup`
+        // above would only replace. Its state is managed here, on the
+        // builder, so that it is there before the page can name a language.
+        .enable_macos_default_menu(false)
+        .manage(menu::MenuBar::default())
+        // Its items that act in the page tell the window; macOS carries out
+        // the rest itself.
+        .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             ipc::get_snapshot,
             ipc::refresh,
@@ -74,6 +91,7 @@ pub fn run() {
             ipc::open_ollama_app,
             ipc::scan_unknown,
             ipc::artifact_icon,
+            menu::set_menu_language,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

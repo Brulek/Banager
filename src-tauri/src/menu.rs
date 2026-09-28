@@ -1,0 +1,708 @@
+//! The menu bar: what a Mac app has at the top of the screen, in the
+//! language the window uses.
+//!
+//! What goes in it is `menu_bar`, a plain description a test can read
+//! without a running app -- tauri's menu items can only be made on the
+//! main thread of a running one -- and `build` turns that into tauri's
+//! menu. Where macOS provides an item's action (About and its panel,
+//! Services, Hide, Quit, the Edit menu's, the Window menu's), the item is
+//! macOS's own (`MacItem`), shortcut and all, and Canager gives only its
+//! label. The three items that act in the page -- Settings…, Check Again,
+//! Search -- tell the window, one event each (`PageCommand`), and the page
+//! runs the code its own controls run (src/lib/menu.ts).
+//!
+//! The page says which language: `set_menu_language`, at startup and at
+//! every change of language. Until it has, the menu bar is built in the
+//! one the page is about to choose (`initial_language`).
+
+use canager_core::settings::Language;
+use serde::Deserialize;
+use std::sync::Mutex;
+use tauri::menu::{
+    AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
+};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
+
+/// The window's label: tauri.conf.json's one window, which gives none, so
+/// Tauri's default -- the label capabilities/default.json names too.
+const MAIN_WINDOW: &str = "main";
+
+/// The languages the menu bar is written in: the window's two. The page
+/// names them as its i18n does, "en" and "zh-CN"; Tauri refuses any other
+/// value for `set_menu_language` before the command runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum MenuLanguage {
+    #[serde(rename = "en")]
+    En,
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+}
+
+/// What an item of the menu bar asks of the page. The page handles each
+/// with what its own control for it runs (src/lib/menu.ts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageCommand {
+    /// Settings… (⌘,): the Settings page, as the sidebar's Settings opens it.
+    Settings,
+    /// Check Again (⌘R): the refresh the page header's Check again runs,
+    /// and nothing while one runs.
+    CheckAgain,
+    /// Search (⌘F): the Installed page, with its search box focused.
+    Search,
+}
+
+impl PageCommand {
+    pub const ALL: [PageCommand; 3] = [
+        PageCommand::Settings,
+        PageCommand::CheckAgain,
+        PageCommand::Search,
+    ];
+
+    /// The item's id: what `on_menu_event` hears when it is chosen.
+    pub fn id(self) -> &'static str {
+        match self {
+            PageCommand::Settings => "settings",
+            PageCommand::CheckAgain => "check-again",
+            PageCommand::Search => "search",
+        }
+    }
+
+    /// The event the window hears; src/lib/api.ts's `MENU_EVENTS` spells
+    /// the same three.
+    pub fn event(self) -> &'static str {
+        match self {
+            PageCommand::Settings => "menu://settings",
+            PageCommand::CheckAgain => "menu://check-again",
+            PageCommand::Search => "menu://search",
+        }
+    }
+
+    /// Its shortcut, as tauri writes one: ⌘, ⌘R ⌘F on a Mac.
+    pub fn shortcut(self) -> &'static str {
+        match self {
+            PageCommand::Settings => "CmdOrCtrl+Comma",
+            PageCommand::CheckAgain => "CmdOrCtrl+R",
+            PageCommand::Search => "CmdOrCtrl+F",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<PageCommand> {
+        PageCommand::ALL
+            .into_iter()
+            .find(|command| command.id() == id)
+    }
+}
+
+/// An item whose action macOS provides (tauri's `PredefinedMenuItem`):
+/// AppKit carries it out -- About's panel, Hide's hiding, the Edit
+/// menu's Undo to Select All in a text field -- with the shortcut a Mac
+/// app has for it (⌘H, ⌥⌘H, ⌘Q, ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘M).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacItem {
+    About,
+    Services,
+    Hide,
+    HideOthers,
+    ShowAll,
+    Quit,
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+    Minimize,
+    Zoom,
+    BringAllToFront,
+}
+
+/// One entry of a menu, with its label in the menu bar's language.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Item {
+    Mac(MacItem, String),
+    Page(PageCommand, String),
+    Separator,
+}
+
+/// One menu of the menu bar: Canager's own (the one macOS titles with the
+/// app's name), Edit, View, Window, Help.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TopMenu {
+    /// The Window and Help menus carry tauri's ids for them, by which it
+    /// makes them the app's Window menu -- macOS adds the window's name and
+    /// its own arranging items -- and its Help menu, whose search field
+    /// macOS adds.
+    pub id: &'static str,
+    pub label: String,
+    pub items: Vec<Item>,
+}
+
+/// The menu bar's words in one language. `{app}` is the app's name.
+/// Where a Mac app's menu has the item, the words are the ones macOS's own
+/// menus use in that language -- Finder's, Safari's: 拷贝, not 复制, and
+/// 显示 for View.
+struct Words {
+    about: &'static str,
+    settings: &'static str,
+    services: &'static str,
+    hide: &'static str,
+    hide_others: &'static str,
+    show_all: &'static str,
+    quit: &'static str,
+    edit: &'static str,
+    undo: &'static str,
+    redo: &'static str,
+    cut: &'static str,
+    copy: &'static str,
+    paste: &'static str,
+    select_all: &'static str,
+    view: &'static str,
+    /// The page header's Check again, in its menu's title case.
+    check_again: &'static str,
+    search: &'static str,
+    window: &'static str,
+    minimize: &'static str,
+    zoom: &'static str,
+    bring_all_to_front: &'static str,
+    help: &'static str,
+}
+
+const ENGLISH: Words = Words {
+    about: "About {app}",
+    settings: "Settings…",
+    services: "Services",
+    hide: "Hide {app}",
+    hide_others: "Hide Others",
+    show_all: "Show All",
+    quit: "Quit {app}",
+    edit: "Edit",
+    undo: "Undo",
+    redo: "Redo",
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    select_all: "Select All",
+    view: "View",
+    check_again: "Check Again",
+    search: "Search",
+    window: "Window",
+    minimize: "Minimize",
+    zoom: "Zoom",
+    bring_all_to_front: "Bring All to Front",
+    help: "Help",
+};
+
+const SIMPLIFIED_CHINESE: Words = Words {
+    about: "关于 {app}",
+    settings: "设置…",
+    services: "服务",
+    hide: "隐藏 {app}",
+    hide_others: "隐藏其他",
+    show_all: "全部显示",
+    quit: "退出 {app}",
+    edit: "编辑",
+    undo: "撤销",
+    redo: "重做",
+    cut: "剪切",
+    copy: "拷贝",
+    paste: "粘贴",
+    select_all: "全选",
+    view: "显示",
+    check_again: "重新检查",
+    search: "搜索",
+    window: "窗口",
+    minimize: "最小化",
+    zoom: "缩放",
+    bring_all_to_front: "前置全部窗口",
+    help: "帮助",
+};
+
+/// The menu bar in `language`, laid out as a Mac app's is: About, then
+/// Settings…, Services, the three Hide items and Quit, each group apart;
+/// the Edit menu a text field needs; View with the page's two; the Window
+/// menu; and Help, which has no item of Canager's -- only the search field
+/// macOS puts there.
+pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
+    let words = match language {
+        MenuLanguage::En => &ENGLISH,
+        MenuLanguage::ZhCn => &SIMPLIFIED_CHINESE,
+    };
+    let named = |template: &str| template.replace("{app}", app_name);
+    let mac = |item: MacItem, label: &str| Item::Mac(item, label.to_string());
+    let page = |command: PageCommand, label: &str| Item::Page(command, label.to_string());
+    vec![
+        TopMenu {
+            id: "app",
+            label: app_name.to_string(),
+            items: vec![
+                mac(MacItem::About, &named(words.about)),
+                Item::Separator,
+                page(PageCommand::Settings, words.settings),
+                Item::Separator,
+                mac(MacItem::Services, words.services),
+                Item::Separator,
+                mac(MacItem::Hide, &named(words.hide)),
+                mac(MacItem::HideOthers, words.hide_others),
+                mac(MacItem::ShowAll, words.show_all),
+                Item::Separator,
+                mac(MacItem::Quit, &named(words.quit)),
+            ],
+        },
+        TopMenu {
+            id: "edit",
+            label: words.edit.to_string(),
+            items: vec![
+                mac(MacItem::Undo, words.undo),
+                mac(MacItem::Redo, words.redo),
+                Item::Separator,
+                mac(MacItem::Cut, words.cut),
+                mac(MacItem::Copy, words.copy),
+                mac(MacItem::Paste, words.paste),
+                mac(MacItem::SelectAll, words.select_all),
+            ],
+        },
+        TopMenu {
+            id: "view",
+            label: words.view.to_string(),
+            items: vec![
+                page(PageCommand::CheckAgain, words.check_again),
+                page(PageCommand::Search, words.search),
+            ],
+        },
+        TopMenu {
+            id: WINDOW_SUBMENU_ID,
+            label: words.window.to_string(),
+            items: vec![
+                mac(MacItem::Minimize, words.minimize),
+                mac(MacItem::Zoom, words.zoom),
+                Item::Separator,
+                mac(MacItem::BringAllToFront, words.bring_all_to_front),
+            ],
+        },
+        TopMenu {
+            id: HELP_SUBMENU_ID,
+            label: words.help.to_string(),
+            items: Vec::new(),
+        },
+    ]
+}
+
+/// The language to build the menu bar in before the page has said: the
+/// one it is about to choose. Settings' language when it names one;
+/// following the system, the page's i18n takes the language WebKit
+/// reports, the first of the user's preferred languages, and reads any
+/// Chinese as Simplified Chinese and anything else as English. Should the
+/// two ever differ, the page's word wins as soon as it arrives
+/// (`set_menu_language`); this only spares a Chinese Mac an English menu
+/// bar while the window loads.
+pub fn initial_language(setting: Language, preferred: &[String]) -> MenuLanguage {
+    match setting {
+        Language::En => MenuLanguage::En,
+        Language::ZhCn => MenuLanguage::ZhCn,
+        Language::System => match preferred.first() {
+            Some(first) if first == "zh" || first.starts_with("zh-") => MenuLanguage::ZhCn,
+            _ => MenuLanguage::En,
+        },
+    }
+}
+
+/// The user's preferred languages, most preferred first, as macOS keeps
+/// them ("zh-Hans-CN", "en-US"): `NSLocale preferredLanguages`, which
+/// reads the user's settings and runs nothing.
+#[cfg(target_os = "macos")]
+pub fn preferred_languages() -> Vec<String> {
+    objc2_foundation::NSLocale::preferredLanguages()
+        .iter()
+        .map(|language| language.to_string())
+        .collect()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn preferred_languages() -> Vec<String> {
+    Vec::new()
+}
+
+/// Tauri's menu for `menus`. Only on the main thread of a running app,
+/// as every tauri menu item is made; `menu_bar` is what the tests read.
+fn build<R: Runtime>(app: &AppHandle<R>, menus: &[TopMenu]) -> tauri::Result<Menu<R>> {
+    let bar = Menu::new(app)?;
+    for top in menus {
+        let submenu = Submenu::with_id(app, top.id, &top.label, true)?;
+        for item in &top.items {
+            match item {
+                Item::Mac(mac, label) => submenu.append(&mac_item(app, *mac, label)?)?,
+                Item::Page(command, label) => submenu.append(&MenuItem::with_id(
+                    app,
+                    command.id(),
+                    label,
+                    true,
+                    Some(command.shortcut()),
+                )?)?,
+                Item::Separator => submenu.append(&PredefinedMenuItem::separator(app)?)?,
+            }
+        }
+        bar.append(&submenu)?;
+    }
+    Ok(bar)
+}
+
+fn mac_item<R: Runtime>(
+    app: &AppHandle<R>,
+    item: MacItem,
+    label: &str,
+) -> tauri::Result<PredefinedMenuItem<R>> {
+    let label = Some(label);
+    match item {
+        MacItem::About => PredefinedMenuItem::about(app, label, Some(about_panel(app))),
+        MacItem::Services => PredefinedMenuItem::services(app, label),
+        MacItem::Hide => PredefinedMenuItem::hide(app, label),
+        MacItem::HideOthers => PredefinedMenuItem::hide_others(app, label),
+        MacItem::ShowAll => PredefinedMenuItem::show_all(app, label),
+        MacItem::Quit => PredefinedMenuItem::quit(app, label),
+        MacItem::Undo => PredefinedMenuItem::undo(app, label),
+        MacItem::Redo => PredefinedMenuItem::redo(app, label),
+        MacItem::Cut => PredefinedMenuItem::cut(app, label),
+        MacItem::Copy => PredefinedMenuItem::copy(app, label),
+        MacItem::Paste => PredefinedMenuItem::paste(app, label),
+        MacItem::SelectAll => PredefinedMenuItem::select_all(app, label),
+        MacItem::Minimize => PredefinedMenuItem::minimize(app, label),
+        // tauri's "maximize" is AppKit's Zoom on a Mac (`performZoom:`).
+        MacItem::Zoom => PredefinedMenuItem::maximize(app, label),
+        MacItem::BringAllToFront => PredefinedMenuItem::bring_all_to_front(app, label),
+    }
+}
+
+/// What macOS's About panel shows: the app's name and version, as
+/// tauri's default menu gave it -- named here so a window run from
+/// `tauri dev`, outside an app bundle, has them too -- and the icon and
+/// the rest AppKit finds itself.
+fn about_panel<R: Runtime>(app: &AppHandle<R>) -> AboutMetadata<'static> {
+    let package = app.package_info();
+    AboutMetadata {
+        name: Some(package.name.clone()),
+        version: Some(package.version.to_string()),
+        copyright: app.config().bundle.copyright.clone(),
+        ..Default::default()
+    }
+}
+
+/// The language the menu bar is in, once it is up. The page often names
+/// the one it is in already -- at startup, the one `initial_language`
+/// guessed -- and that rebuilds nothing.
+#[derive(Default)]
+pub struct MenuBar {
+    language: Mutex<Option<MenuLanguage>>,
+}
+
+/// Puts up the menu bar in `language`, unless it is in it already.
+/// `run()` manages `MenuBar` on the builder, before any of this can run.
+pub fn show<R: Runtime>(app: &AppHandle<R>, language: MenuLanguage) -> tauri::Result<()> {
+    let state = app.state::<MenuBar>();
+    let mut current = state.language.lock().unwrap();
+    if *current == Some(language) {
+        return Ok(());
+    }
+    app.set_menu(build(app, &menu_bar(language, &app.package_info().name))?)?;
+    *current = Some(language);
+    Ok(())
+}
+
+/// The language the page uses, which the menu bar follows:
+/// src/i18n/useLanguageSync.ts sends the one its i18n resolved, at startup
+/// and at every change -- an override in Settings, or following the
+/// system again.
+///
+/// Not `async`, as the commands in ipc.rs are: a command that is not runs
+/// on the main thread, the one AppKit's menus are made on, so the menu is
+/// built there directly instead of each item being handed over to it and
+/// waited for, and building one is quick. A failure leaves the menu bar
+/// in the language it had; the page only logs it.
+#[tauri::command]
+pub fn set_menu_language(app: AppHandle, language: MenuLanguage) -> Result<(), String> {
+    show(&app, language).map_err(|e| e.to_string())
+}
+
+/// Tells the window that one of the items acting in the page was chosen:
+/// its event (`PageCommand::event`), to the window alone. Every other
+/// item's action is macOS's and needs nothing from here.
+pub fn forward_to_page<R: Runtime>(app: &AppHandle<R>, id: &str) {
+    let Some(command) = PageCommand::from_id(id) else {
+        return;
+    };
+    if let Err(e) = app.emit_to(MAIN_WINDOW, command.event(), ()) {
+        eprintln!(
+            "[canager] could not tell the window {} was chosen: {e}",
+            command.id()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each menu's label, and its items' labels, with "—" for a separator.
+    fn labels(menus: &[TopMenu]) -> Vec<(String, Vec<String>)> {
+        menus
+            .iter()
+            .map(|menu| {
+                let items = menu
+                    .items
+                    .iter()
+                    .map(|item| match item {
+                        Item::Mac(_, label) | Item::Page(_, label) => label.clone(),
+                        Item::Separator => "—".to_string(),
+                    })
+                    .collect();
+                (menu.label.clone(), items)
+            })
+            .collect()
+    }
+
+    /// The same bar with every label blanked: what must not differ between
+    /// the two languages.
+    fn shape(menus: &[TopMenu]) -> Vec<TopMenu> {
+        menus
+            .iter()
+            .map(|menu| TopMenu {
+                id: menu.id,
+                label: String::new(),
+                items: menu
+                    .items
+                    .iter()
+                    .map(|item| match item {
+                        Item::Mac(mac, _) => Item::Mac(*mac, String::new()),
+                        Item::Page(command, _) => Item::Page(*command, String::new()),
+                        Item::Separator => Item::Separator,
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn owned(menus: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> {
+        menus
+            .iter()
+            .map(|(menu, items)| {
+                (
+                    menu.to_string(),
+                    items.iter().map(|item| item.to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_the_english_menu_bar_is_a_mac_apps() {
+        let bar = menu_bar(MenuLanguage::En, "Canager");
+        assert_eq!(
+            labels(&bar),
+            owned(&[
+                (
+                    "Canager",
+                    &[
+                        "About Canager",
+                        "—",
+                        "Settings…",
+                        "—",
+                        "Services",
+                        "—",
+                        "Hide Canager",
+                        "Hide Others",
+                        "Show All",
+                        "—",
+                        "Quit Canager",
+                    ],
+                ),
+                (
+                    "Edit",
+                    &["Undo", "Redo", "—", "Cut", "Copy", "Paste", "Select All"],
+                ),
+                ("View", &["Check Again", "Search"]),
+                ("Window", &["Minimize", "Zoom", "—", "Bring All to Front"]),
+                ("Help", &[]),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_the_chinese_menu_bar_has_macos_own_chinese_words() {
+        let bar = menu_bar(MenuLanguage::ZhCn, "Canager");
+        assert_eq!(
+            labels(&bar),
+            owned(&[
+                (
+                    "Canager",
+                    &[
+                        "关于 Canager",
+                        "—",
+                        "设置…",
+                        "—",
+                        "服务",
+                        "—",
+                        "隐藏 Canager",
+                        "隐藏其他",
+                        "全部显示",
+                        "—",
+                        "退出 Canager",
+                    ],
+                ),
+                (
+                    "编辑",
+                    &["撤销", "重做", "—", "剪切", "拷贝", "粘贴", "全选"],
+                ),
+                ("显示", &["重新检查", "搜索"]),
+                ("窗口", &["最小化", "缩放", "—", "前置全部窗口"]),
+                ("帮助", &[]),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_only_the_words_differ_between_the_two_languages() {
+        let english = menu_bar(MenuLanguage::En, "Canager");
+        assert_eq!(
+            shape(&english),
+            shape(&menu_bar(MenuLanguage::ZhCn, "Canager"))
+        );
+        assert_eq!(
+            english.iter().map(|menu| menu.id).collect::<Vec<_>>(),
+            ["app", "edit", "view", WINDOW_SUBMENU_ID, HELP_SUBMENU_ID]
+        );
+    }
+
+    #[test]
+    fn test_every_item_but_the_pages_three_is_macos_own() {
+        let bar = menu_bar(MenuLanguage::En, "Canager");
+        let items: Vec<&Item> = bar.iter().flat_map(|menu| &menu.items).collect();
+        let pages: Vec<PageCommand> = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Page(command, _) => Some(*command),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pages, PageCommand::ALL);
+        let macs: Vec<MacItem> = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Mac(mac, _) => Some(*mac),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            macs,
+            [
+                MacItem::About,
+                MacItem::Services,
+                MacItem::Hide,
+                MacItem::HideOthers,
+                MacItem::ShowAll,
+                MacItem::Quit,
+                MacItem::Undo,
+                MacItem::Redo,
+                MacItem::Cut,
+                MacItem::Copy,
+                MacItem::Paste,
+                MacItem::SelectAll,
+                MacItem::Minimize,
+                MacItem::Zoom,
+                MacItem::BringAllToFront,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_the_app_menu_is_named_for_the_app_it_is_given() {
+        let bar = menu_bar(MenuLanguage::ZhCn, "Other");
+        assert_eq!(bar[0].label, "Other");
+        assert_eq!(
+            bar[0].items[0],
+            Item::Mac(MacItem::About, "关于 Other".to_string())
+        );
+        assert_eq!(
+            bar[0].items.last(),
+            Some(&Item::Mac(MacItem::Quit, "退出 Other".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_each_page_item_has_its_id_event_and_shortcut() {
+        let described: Vec<(&str, &str, &str)> = PageCommand::ALL
+            .into_iter()
+            .map(|command| (command.id(), command.event(), command.shortcut()))
+            .collect();
+        assert_eq!(
+            described,
+            [
+                ("settings", "menu://settings", "CmdOrCtrl+Comma"),
+                ("check-again", "menu://check-again", "CmdOrCtrl+R"),
+                ("search", "menu://search", "CmdOrCtrl+F"),
+            ]
+        );
+        for command in PageCommand::ALL {
+            assert_eq!(PageCommand::from_id(command.id()), Some(command));
+        }
+        // What macOS's own items carry: tauri's counted ids, never these.
+        assert_eq!(PageCommand::from_id("1"), None);
+        assert_eq!(PageCommand::from_id("menu://search"), None);
+    }
+
+    #[test]
+    fn test_each_page_items_shortcut_is_one_tauri_reads_as_command_and_its_key() {
+        // tauri would drop a shortcut it cannot read, and say nothing.
+        use muda::accelerator::{Accelerator, Code, Modifiers};
+        let keys = [Code::Comma, Code::KeyR, Code::KeyF];
+        for (command, key) in PageCommand::ALL.into_iter().zip(keys) {
+            let read: Accelerator = command.shortcut().parse().unwrap_or_else(|e| {
+                panic!("{:?} is no shortcut tauri reads: {e}", command.shortcut())
+            });
+            // CmdOrCtrl: ⌘ on a Mac, Ctrl elsewhere.
+            let modifier = if cfg!(target_os = "macos") {
+                Modifiers::SUPER
+            } else {
+                Modifiers::CONTROL
+            };
+            assert_eq!(read, Accelerator::new(Some(modifier), key));
+        }
+    }
+
+    #[test]
+    fn test_the_page_can_name_only_the_two_languages() {
+        let parse = |value: &str| serde_json::from_value::<MenuLanguage>(serde_json::json!(value));
+        assert_eq!(parse("en").unwrap(), MenuLanguage::En);
+        assert_eq!(parse("zh-CN").unwrap(), MenuLanguage::ZhCn);
+        for other in [
+            "", "EN", "zh", "zh-cn", "zh-TW", "fr", "En", "ZhCn", "System",
+        ] {
+            assert!(parse(other).is_err(), "{other:?} was taken for a language");
+        }
+        assert!(serde_json::from_value::<MenuLanguage>(serde_json::json!(1)).is_err());
+    }
+
+    #[test]
+    fn test_settings_language_decides_when_it_names_one() {
+        let chinese_mac = ["zh-Hans-CN".to_string(), "en-CN".to_string()];
+        assert_eq!(
+            initial_language(Language::En, &chinese_mac),
+            MenuLanguage::En
+        );
+        assert_eq!(initial_language(Language::ZhCn, &[]), MenuLanguage::ZhCn);
+    }
+
+    #[test]
+    fn test_following_the_system_takes_its_first_preferred_language() {
+        let system = |languages: &[&str]| {
+            let languages: Vec<String> = languages.iter().map(|l| l.to_string()).collect();
+            initial_language(Language::System, &languages)
+        };
+        assert_eq!(system(&["zh-Hans-CN", "en-CN"]), MenuLanguage::ZhCn);
+        assert_eq!(system(&["zh-Hant-TW"]), MenuLanguage::ZhCn);
+        assert_eq!(system(&["zh"]), MenuLanguage::ZhCn);
+        assert_eq!(system(&["en-US", "zh-Hans-CN"]), MenuLanguage::En);
+        assert_eq!(system(&["ja-JP", "zh-Hans-CN"]), MenuLanguage::En);
+        // Zhuang, whose three-letter code starts with Chinese's two.
+        assert_eq!(system(&["zha"]), MenuLanguage::En);
+        assert_eq!(system(&[]), MenuLanguage::En);
+    }
+}
