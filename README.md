@@ -10,7 +10,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 886 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 827
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 846
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -43,12 +43,13 @@ first its record lists — so the other programs of a crate that installs severa
 
 Canager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
-last check finished. The "Try again" of a failed refresh, or of a Homebrew index Canager couldn't
-update, runs the same check, and a Homebrew index update left running in the background starts one
-on its own when it ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:59-62`). The
-Unknown page's header has *Scan again* in its place, with how long ago that page last scanned: it
-re-runs only that page's scan of your bin folders, against the sources' last known state — it does
-not refresh the sources. Settings' header has neither.
+last check finished, or choose **Check Again** (⌘R) in the menu bar's View menu, on any page; while
+a check runs, neither starts another. The "Try again" of a failed refresh, or of a Homebrew index
+Canager couldn't update, runs the same check, and a Homebrew index update left running in the
+background starts one on its own when it ends (`ipc::refresh_on_background_change`,
+`src-tauri/src/lib.rs:59-62`). The Unknown page's header has *Scan again* in its place, with how
+long ago that page last scanned: it re-runs only that page's scan of your bin folders, against the
+sources' last known state — it does not refresh the sources. Settings' header has neither.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -148,8 +149,10 @@ cargo test -p canager-core --lib icon::real -- --ignored
 ## Language
 
 English by default, with a full Simplified Chinese translation. Every label, heading, button and
-message frame goes through i18n, and a test keeps the two locales in step — a sentence a Chinese
-user cannot read is treated as a bug.
+message frame in the window goes through i18n, and a test keeps the two locales in step — a sentence
+a Chinese user cannot read is treated as a bug. The menu bar follows the window's language, Settings'
+choice included. Its words are Rust's (`src-tauri/src/menu.rs`), macOS's own for the items every Mac
+app has, and a test there keeps its two languages in step too.
 
 Rust's refusals are translated too, not just the frames around them. A plan built against a source
 that is read-only, unavailable or gone, an operation Canager can't prepare (a name it won't pass to
@@ -245,11 +248,12 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 886 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 827 个前端测试，但还没有可下载的版本，v0.1 正在
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 846 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
-界面默认英文，内置完整简体中文。所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
-中文用户读不懂的句子算 bug。
+界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
+中文用户读不懂的句子算 bug。菜单栏跟着窗口的语言走，设置里选的语言也算。它的文字写在 Rust 里
+（`src-tauri/src/menu.rs`），每个 Mac 应用都有的菜单项用 macOS 自己的叫法，那里也有测试保证两种语言同步。
 
 Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所针对的来源只读、连不上或已不存在，操作无法
 准备（某个名字 Canager 不肯交给工具、某个程序不见了、卸载清单上的某条路径不在你的个人文件夹里、
@@ -284,8 +288,9 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。
 
-Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”时检查各来源，
-页头上也写着上次检查是多久以前。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
+Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
+从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
+再按也不会多查一遍。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
 `src-tauri/src/lib.rs:59-62`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。

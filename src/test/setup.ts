@@ -45,6 +45,12 @@ vi.mock("@tauri-apps/api/core", () => {
   };
 });
 
+// The menu bar's events (`onMenuCommand` in src/lib/api.ts): listened for
+// and never heard, unless a test fakes the menu bar (./menuBar.ts).
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
 /**
  * A logo pack with no logos: what the avatars draw from under
  * `renderWithProviders` unless a test hands it a pack of its own, so that

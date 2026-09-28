@@ -31,6 +31,16 @@ export interface UiState {
   // is of everything installed. Either way the search starts empty, so the
   // list is the one the tile or the count promised, not an old search's.
   openInstalled(instanceId: string | null): void;
+  // The menu bar's Search (⌘F, src/lib/menu.ts): the Installed page, whose
+  // search box takes the focus as soon as it is on screen -- at once, or
+  // once the page has loaded -- and says so (`searchFocused`). From another
+  // page, the page opens as the sidebar opens it, on everything with the
+  // search empty; on it, it keeps its source and its search, whose text is
+  // then selected, to be typed over. Going to any page by any other way
+  // drops a search not yet focused, so it cannot take the focus later.
+  searchFocusRequested: boolean;
+  searchInstalled(): void;
+  searchFocused(): void;
   // The ids of the sources whose dependencies are unfolded. This used to
   // be one boolean for the whole page, so unfolding pip's "N components
   // installed by other software" unfolded Homebrew's and npm's too --
@@ -105,14 +115,23 @@ let logSeq = 0;
 export const useUiStore = create<UiState>((set) => ({
   // The Overview: what the Mac looks like at a glance, before any list.
   page: "overview",
-  setPage: (p) => set({ page: p }),
+  setPage: (p) => set({ page: p, searchFocusRequested: false }),
   query: "",
   setQuery: (q) => set({ query: q }),
   installedFilter: null,
   setInstalledFilter: (instanceId) => set({ installedFilter: instanceId }),
   installedSort: "name",
   setInstalledSort: (sort) => set({ installedSort: sort }),
-  openInstalled: (instanceId) => set({ page: "installed", installedFilter: instanceId, query: "" }),
+  openInstalled: (instanceId) =>
+    set({ page: "installed", installedFilter: instanceId, query: "", searchFocusRequested: false }),
+  searchFocusRequested: false,
+  searchInstalled: () =>
+    set((s) =>
+      s.page === "installed"
+        ? { searchFocusRequested: true }
+        : { page: "installed", installedFilter: null, query: "", searchFocusRequested: true },
+    ),
+  searchFocused: () => set({ searchFocusRequested: false }),
   expandedDependencies: [],
   toggleDependencies: (instanceId) =>
     set((s) => ({

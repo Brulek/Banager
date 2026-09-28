@@ -39,6 +39,7 @@ export const MOCK_COMMANDS = [
   "open_ollama_app",
   "scan_unknown",
   "artifact_icon",
+  "set_menu_language",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
 
@@ -471,6 +472,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const key = args.key as ArtifactKey;
       const row = committed?.artifacts.find((a) => sameKey(a.key, key));
       return row === undefined ? null : appIcon(row);
+    },
+    async set_menu_language(args) {
+      // No menu bar to build: the browser has none of Canager's, and the
+      // one `pnpm tauri:mock` shows is Rust's, which this page never
+      // reaches (./mockTauriEvent.ts). Like the real command, it takes
+      // only the window's two languages; Tauri turns any other away.
+      if (args.language !== "en" && args.language !== "zh-CN") {
+        throw `invalid args \`language\` for command \`set_menu_language\`: ${JSON.stringify(args.language)}`;
+      }
     },
   };
 

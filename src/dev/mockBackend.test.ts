@@ -100,6 +100,14 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("no_such_command")).rejects.toBe("Command no_such_command not found");
   });
 
+  it("takes the menu bar's language as the real command does: the window's two, and no other", async () => {
+    const { backend } = backendFor();
+    await expect(backend.invoke("set_menu_language", { language: "en" })).resolves.toBeUndefined();
+    await expect(backend.invoke("set_menu_language", { language: "zh-CN" })).resolves.toBeUndefined();
+    await expect(backend.invoke("set_menu_language", { language: "fr" })).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("set_menu_language")).rejects.toMatch(/^invalid args/);
+  });
+
   it("starts empty, like a real launch, and the first refresh commits generation 1", async () => {
     const { backend, events } = backendFor();
     const before = await answer<Snapshot>(backend.invoke("get_snapshot"));

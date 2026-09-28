@@ -1,4 +1,5 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
   ArtifactKey,
   IssuedPlan,
@@ -27,8 +28,13 @@ function call<T>(cmd: string, args?: InvokeArgs): Promise<T> {
   // would fail every zero-argument assertion in this task.
   const result = args === undefined ? invoke<T>(cmd) : invoke<T>(cmd, args);
   return result.catch((e: unknown) => {
-    throw e instanceof Error ? e : new Error(typeof e === "string" ? e : JSON.stringify(e));
+    throw asError(e);
   });
+}
+
+/** A rejection from Tauri as an `Error` whose `.message` is the backend's text (`call`). */
+function asError(e: unknown): Error {
+  return e instanceof Error ? e : new Error(typeof e === "string" ? e : JSON.stringify(e));
 }
 
 export function getSnapshot(): Promise<Snapshot> {
@@ -103,4 +109,56 @@ export function scanUnknown(): Promise<UnknownScan> {
  */
 export function artifactIcon(key: ArtifactKey): Promise<string | null> {
   return call<string | null>("artifact_icon", { key });
+}
+
+/**
+ * The languages the menu bar is written in: the window's two, by the names
+ * its i18n gives them (`MenuLanguage` in src-tauri/src/menu.rs).
+ */
+export type MenuLanguage = "en" | "zh-CN";
+
+/**
+ * Tells Rust the language the window uses, which the menu bar follows: it
+ * is built again in that language, or left as it is when it is in it
+ * already. `useLanguageSync` sends it.
+ */
+export function setMenuLanguage(language: MenuLanguage): Promise<void> {
+  return call<void>("set_menu_language", { language });
+}
+
+/**
+ * The event Rust sends the window when an item of the menu bar that acts in
+ * the page is chosen, by what the page does for it: Settings… (⌘,), Check
+ * Again (⌘R), Search (⌘F). `PageCommand` in src-tauri/src/menu.rs sends
+ * these three.
+ */
+export const MENU_EVENTS = {
+  settings: "menu://settings",
+  checkAgain: "menu://check-again",
+  search: "menu://search",
+} as const;
+
+export type MenuCommand = keyof typeof MENU_EVENTS;
+
+/**
+ * Calls `onCommand` each time one of those items is chosen, and resolves to
+ * what stops that once the window listens for all three. If one cannot be
+ * listened for, those that could are stopped again and this rejects.
+ * `useMenuCommands` is the caller.
+ */
+export async function onMenuCommand(onCommand: (command: MenuCommand) => void): Promise<() => void> {
+  const commands = Object.keys(MENU_EVENTS) as MenuCommand[];
+  const settled = await Promise.allSettled(
+    commands.map((command) => listen(MENU_EVENTS[command], () => onCommand(command))),
+  );
+  const unlisteners = settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+  const stop = () => {
+    for (const unlisten of unlisteners) unlisten();
+  };
+  const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failed !== undefined) {
+    stop();
+    throw asError(failed.reason);
+  }
+  return stop;
 }

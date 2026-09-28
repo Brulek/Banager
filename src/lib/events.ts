@@ -121,7 +121,13 @@ function subscribeToRefresh(listener: () => void): () => void {
   };
 }
 
-function isRefreshInFlight(): boolean {
+/**
+ * Whether a refresh is running right now, as of the moment it is asked:
+ * what Check again asks before it starts one (`useCheckAgain`), a click
+ * or the menu bar's ⌘R. `useRefreshInFlight` is the same answer for a
+ * component to draw.
+ */
+export function isRefreshInFlight(): boolean {
   return refreshInFlight !== null;
 }
 

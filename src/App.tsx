@@ -13,6 +13,7 @@ import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
+import { useMenuCommands } from "./lib/menu";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -44,6 +45,7 @@ function App() {
   const openInstalled = useUiStore((s) => s.openInstalled);
   useOperationEvents();
   useStartupRefresh();
+  useMenuCommands();
 
   return (
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">

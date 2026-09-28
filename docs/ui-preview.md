@@ -41,14 +41,24 @@ starts nothing by itself -- the one refresh it runs unasked follows a
 refresh; the config's comments say more. The first run compiles the app.
 Stop it with Ctrl-C in its terminal, or by quitting the window.
 
+The menu bar is the app's own too, and so is everything macOS does in
+it: About, Hide, Quit, the Edit and Window menus. But the page never
+talks to Rust, so it never says which language it uses -- the menu bar
+stays in the one it was built in, which follows macOS's language here,
+this identifier having no settings of its own -- and it never hears
+Settings…, Check Again or Search, which Rust sends only to a page that
+asked it to listen: in this window those three do nothing.
+
 ## How it works, and why it never ships
 
 - `src/lib/api.ts` is the only production module that imports Tauri
-  (`invoke` and `Channel` from `@tauri-apps/api/core`).
+  (`invoke` and `Channel` from `@tauri-apps/api/core`, and `listen` from
+  `@tauri-apps/api/event` for the menu bar's items).
 - `vite.config.ts` aliases `@tauri-apps/api/core` to
-  `src/dev/mockTauri.ts` in `--mode mock` only, and serves that mode on
-  port 1430 (`pnpm tauri dev` keeps 1420, and `pnpm tauri:mock` asks for
-  1440). In every other mode -- `pnpm dev`
+  `src/dev/mockTauri.ts`, and `@tauri-apps/api/event` to
+  `src/dev/mockTauriEvent.ts`, in `--mode mock` only, and serves that
+  mode on port 1430 (`pnpm tauri dev` keeps 1420, and `pnpm tauri:mock`
+  asks for 1440). In every other mode -- `pnpm dev`
   under `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, and
   vitest -- the config resolves exactly as it did before this mode existed.
 - Nothing outside `src/dev/` imports anything in it, so a production
@@ -68,10 +78,11 @@ Stop it with Ctrl-C in its terminal, or by quitting the window.
   comes first: iTerm2 and Visual Studio Code show the generated one
   described below.
 
-The files: `mockTauri.ts` (the stand-in module), `mockBackend.ts` (the
-commands), `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps'
-icons), `mockPlans.ts` (what each operation would run and print),
-`scenario.ts` (the URL switches).
+The files: `mockTauri.ts` and `mockTauriEvent.ts` (the stand-in modules;
+the second listens to nothing), `mockBackend.ts` (the commands),
+`mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps' icons),
+`mockPlans.ts` (what each operation would run and print), `scenario.ts`
+(the URL switches).
 
 ## What the pretend Mac has
 

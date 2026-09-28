@@ -176,6 +176,9 @@ export function InstalledPage() {
   const { data: operations } = useOperations();
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   const listRef = useRef<HTMLDivElement>(null);
+  const searchBox = useRef<HTMLInputElement>(null);
+  const searchFocusRequested = useUiStore((s) => s.searchFocusRequested);
+  const searchFocused = useUiStore((s) => s.searchFocused);
 
   // Uninstall is destructive, so a button only *targets* an artifact;
   // UninstallDialog is what plans it, shows what it would change and what
@@ -410,6 +413,19 @@ export function InstalledPage() {
     },
     getItemKey,
   });
+
+  // The menu bar's Search (⌘F, `searchInstalled`): the box takes the
+  // focus as soon as it is on screen, its text selected to be typed over,
+  // wherever the focus was. Still loading, the box is not there yet, and
+  // the request waits for it.
+  const hasSearchBox = !isLoading && snapshot !== undefined;
+  useEffect(() => {
+    const box = searchBox.current;
+    if (!searchFocusRequested || box === null) return;
+    box.focus();
+    box.select();
+    searchFocused();
+  }, [searchFocusRequested, hasSearchBox, searchFocused]);
 
   if (isLoading) {
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
@@ -875,6 +891,7 @@ export function InstalledPage() {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
             />
             <input
+              ref={searchBox}
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}

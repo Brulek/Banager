@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   useMutation,
   useQuery,
@@ -17,7 +18,7 @@ import {
   scanUnknown,
   artifactIcon,
 } from "./api";
-import { isNewerSnapshot, refreshIntoCache } from "./events";
+import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
 import type {
@@ -91,6 +92,26 @@ export function useRefresh(): UseMutationResult<Snapshot, Error, void> {
       return result;
     },
   });
+}
+
+/**
+ * Check again, wherever it is asked for: the page header's button
+ * (`CheckAgain`), and the menu bar's Check Again (⌘R, src/lib/menu.ts).
+ * It is the refresh every other trigger runs -- the one at startup, the
+ * one after an operation, the Try again of a failed one -- through
+ * `useRefresh`, and it does nothing while a refresh runs, whoever started
+ * it: one asked for then would be folded into the running one and then run
+ * once more after it (`refreshIntoCache`'s follow-up), a second check
+ * nobody asked for. The button is off meanwhile; the menu bar's item,
+ * which stays on, does nothing. `checking` says whether one runs.
+ */
+export function useCheckAgain(): { checkAgain: () => void; checking: boolean } {
+  const { mutate } = useRefresh();
+  const checking = useRefreshInFlight();
+  const checkAgain = useCallback(() => {
+    if (!isRefreshInFlight()) mutate();
+  }, [mutate]);
+  return { checkAgain, checking };
 }
 
 export function useSaveSettings(): UseMutationResult<void, Error, Settings> {

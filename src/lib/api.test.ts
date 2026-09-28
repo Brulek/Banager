@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type EventCallback } from "@tauri-apps/api/event";
 import {
   getSnapshot,
   refresh,
@@ -12,6 +13,9 @@ import {
   subscribeEvents,
   scanUnknown,
   artifactIcon,
+  setMenuLanguage,
+  onMenuCommand,
+  type MenuCommand,
 } from "./api";
 import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 
@@ -150,5 +154,64 @@ describe("api", () => {
 
     mockInvoke.mockResolvedValueOnce(null as never);
     expect(await artifactIcon({ ...key, kind: "Formula", name: "git" })).toBeNull();
+  });
+
+  it("setMenuLanguage invokes set_menu_language with the language and nothing else", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await setMenuLanguage("zh-CN");
+    expect(mockInvoke.mock.calls).toEqual([["set_menu_language", { language: "zh-CN" }]]);
+  });
+});
+
+describe("the menu bar's events", () => {
+  const mockListen = vi.mocked(listen);
+  // What is listened for, and what stopped listening, by event name.
+  let handlers: Map<string, EventCallback<unknown>>;
+  let stopped: string[];
+
+  beforeEach(() => {
+    handlers = new Map();
+    stopped = [];
+    mockListen.mockReset();
+    mockListen.mockImplementation(async (event, handler) => {
+      handlers.set(event, handler as EventCallback<unknown>);
+      return () => {
+        stopped.push(event);
+      };
+    });
+  });
+
+  it("are the three Rust sends, one per item acting in the page, each calling back with its item", async () => {
+    const chosen: MenuCommand[] = [];
+    await onMenuCommand((command) => chosen.push(command));
+
+    // `PageCommand::event` in src-tauri/src/menu.rs.
+    expect([...handlers.keys()].sort()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
+    for (const event of ["menu://search", "menu://settings", "menu://check-again", "menu://search"]) {
+      handlers.get(event)?.({ event, id: 1, payload: null });
+    }
+    expect(chosen).toEqual(["search", "settings", "checkAgain", "search"]);
+  });
+
+  it("stop being listened for, all three, through what onMenuCommand resolves to", async () => {
+    const stop = await onMenuCommand(() => {});
+    expect(stopped).toEqual([]);
+
+    stop();
+
+    expect(stopped.sort()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
+  });
+
+  it("are not left half listened for: when one cannot be, the others stop and the error says why", async () => {
+    mockListen.mockImplementation(async (event, handler) => {
+      if (event === "menu://search") throw "event.listen not allowed";
+      handlers.set(event, handler as EventCallback<unknown>);
+      return () => {
+        stopped.push(event);
+      };
+    });
+
+    await expect(onMenuCommand(() => {})).rejects.toThrow("event.listen not allowed");
+    expect(stopped.sort()).toEqual(["menu://check-again", "menu://settings"]);
   });
 });

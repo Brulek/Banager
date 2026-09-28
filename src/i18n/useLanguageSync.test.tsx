@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { useLanguageSync } from "./useLanguageSync";
+import { menuLanguageOf, useLanguageSync } from "./useLanguageSync";
 import i18n from "./index";
 import { queryKeys, useSettings } from "../lib/queries";
 import type { Language, Settings } from "../lib/types";
@@ -32,6 +32,14 @@ beforeEach(async () => {
   vi.mocked(invoke).mockReset();
   await i18n.changeLanguage("en");
 });
+
+/** The languages the menu bar was told, in order (`set_menu_language`). */
+function menuLanguagesSent(): unknown[] {
+  return vi
+    .mocked(invoke)
+    .mock.calls.filter(([cmd]) => cmd === "set_menu_language")
+    .map(([, args]) => (args as { language: unknown }).language);
+}
 
 describe("useLanguageSync", () => {
   it("switches i18next to Simplified Chinese, resources included, when Settings overrides the language", async () => {
@@ -83,5 +91,57 @@ describe("useLanguageSync", () => {
     await screen.findByText("System");
     await waitFor(() => expect(i18n.resolvedLanguage).toBe("en"));
     expect(i18n.t("nav.settings")).toBe("Settings");
+  });
+
+  it("tells the menu bar the language in use at startup, then each language it changes to", async () => {
+    let language: Language = "ZhCn";
+    vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+      cmd === "get_settings" ? baseSettings({ language }) : undefined,
+    );
+
+    const { queryClient } = renderWithProviders(<Probe />);
+    // First the language i18next detected, before the settings arrive;
+    // then Settings' override.
+    await waitFor(() => expect(menuLanguagesSent()).toEqual(["en", "zh-CN"]));
+
+    language = "System";
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+
+    // Following the system again: jsdom's en-US.
+    await waitFor(() => expect(menuLanguagesSent()).toEqual(["en", "zh-CN", "en"]));
+  });
+
+  it("tells it nothing more while the language stays as it is", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+      cmd === "get_settings" ? baseSettings({ language: "En" }) : undefined,
+    );
+
+    const { queryClient } = renderWithProviders(<Probe />);
+    await screen.findByText("En");
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+    await screen.findByText("En");
+
+    expect(menuLanguagesSent()).toEqual(["en"]);
+  });
+
+  it("leaves the page as it is when the menu bar cannot be told", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "set_menu_language") throw "menu failed";
+      return baseSettings({ language: "ZhCn" });
+    });
+
+    renderWithProviders(<Probe />);
+
+    await waitFor(() => expect(i18n.language).toBe("zh-CN"));
+    await waitFor(() => expect(logged).toHaveBeenCalledWith("set_menu_language failed", expect.any(Error)));
+    logged.mockRestore();
+  });
+
+  it("names the menu bar's language as the window's two", () => {
+    expect(menuLanguageOf("zh-CN")).toBe("zh-CN");
+    expect(menuLanguageOf("en")).toBe("en");
+    // Before i18next has resolved one, English, as it falls back to.
+    expect(menuLanguageOf(undefined)).toBe("en");
   });
 });

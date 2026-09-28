@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
+import { fakeMenuBar } from "./test/menuBar";
 import App from "./App";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type { OpRequest, Settings, Snapshot, UnknownScan } from "./lib/types";
@@ -301,5 +302,163 @@ describe("App", () => {
     vi.unstubAllEnvs();
     const dev = renderWithProviders(<App />);
     expect(fireEvent.contextMenu(await dev.findByRole("heading", { level: 1, name: "Overview" }))).toBe(true);
+  });
+});
+
+describe("the menu bar's items that act in the page", () => {
+  /** How many times the page has asked for a refresh. */
+  function refreshes(): number {
+    return mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+  }
+
+  it("are listened for from the start: Settings…, Check Again and Search", async () => {
+    const menu = fakeMenuBar();
+    const { findByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    expect(menu.listening()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
+  });
+
+  it("open Settings on Settings…, as the sidebar's Settings does", async () => {
+    const menu = fakeMenuBar();
+    const { findByText, findByRole, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    menu.choose("settings");
+
+    expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("run the header's Check again on Check Again, and nothing more while a check runs", async () => {
+    // The startup check answers at once; every one after it waits.
+    const menu = fakeMenuBar();
+    const answer = mockInvoke.getMockImplementation();
+    const waiting: Array<(snapshot: Snapshot) => void> = [];
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "refresh" && refreshes() > 1) {
+        return new Promise((resolve) => waiting.push(resolve as (snapshot: Snapshot) => void));
+      }
+      return answer === undefined ? Promise.resolve(undefined) : answer(cmd, args);
+    });
+    const { findByText, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    const checkAgain = getByRole("button", { name: "Check again" });
+    await waitFor(() => expect(checkAgain).toBeEnabled());
+    expect(refreshes()).toBe(1);
+
+    menu.choose("checkAgain");
+
+    await waitFor(() => expect(refreshes()).toBe(2));
+    // The header says so, as for its own button.
+    expect(checkAgain).toBeDisabled();
+    expect(checkAgain.closest("header")).toHaveTextContent("Checking…");
+
+    // Chosen again while it runs: no second check, now or after it.
+    menu.choose("checkAgain");
+    menu.choose("checkAgain");
+    expect(waiting).toHaveLength(1);
+    waiting[0](snapshot);
+
+    await waitFor(() => expect(checkAgain).toBeEnabled());
+    expect(refreshes()).toBe(2);
+  });
+
+  it("go to the Installed page and focus its search on Search, with the focus in the sidebar", async () => {
+    const menu = fakeMenuBar();
+    const { findByText, findByLabelText, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    const updates = getByRole("button", { name: "Updates" });
+    fireEvent.click(updates);
+    updates.focus();
+    expect(document.activeElement).toBe(updates);
+
+    menu.choose("search");
+
+    const box = await findByLabelText("Search installed items");
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(getByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keep the Installed page's search on Search there, its text selected to be typed over", async () => {
+    const menu = fakeMenuBar();
+    const { findByText, findByLabelText, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    fireEvent.click(getByRole("button", { name: "Installed" }));
+    const box = (await findByLabelText("Search installed items")) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "jq" } });
+    getByRole("button", { name: "Installed" }).focus();
+
+    menu.choose("search");
+
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(box.value).toBe("jq");
+    expect([box.selectionStart, box.selectionEnd]).toEqual([0, 2]);
+  });
+
+  it("focus the search once the Installed page has loaded, when Search comes before the first check is done", async () => {
+    // The backend's startup snapshot, until the first refresh answers.
+    const menu = fakeMenuBar();
+    const answer = mockInvoke.getMockImplementation();
+    let finishFirstCheck: ((snapshot: Snapshot) => void) | undefined;
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "get_snapshot") {
+        return Promise.resolve({
+          ...snapshot,
+          generation: 0,
+          detect: "Missing",
+          instances: [],
+          artifacts: [],
+          refreshed_at: null,
+        });
+      }
+      if (cmd === "refresh") {
+        return new Promise((resolve) => {
+          finishFirstCheck = resolve as (snapshot: Snapshot) => void;
+        });
+      }
+      return answer === undefined ? Promise.resolve(undefined) : answer(cmd, args);
+    });
+    const { findByRole, findByLabelText, queryByLabelText } = renderWithProviders(<App />);
+    await findByRole("heading", { level: 1, name: "Overview" });
+
+    menu.choose("search");
+
+    expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
+    expect(queryByLabelText("Search installed items")).toBeNull();
+    await waitFor(() => expect(finishFirstCheck).toBeDefined());
+    finishFirstCheck?.(snapshot);
+
+    const box = await findByLabelText("Search installed items");
+    await waitFor(() => expect(document.activeElement).toBe(box));
+  });
+
+  it("focus the search once the Installed page has its snapshot, when Search comes before it has", async () => {
+    // The page is up, still asking the backend for what it last found.
+    const menu = fakeMenuBar();
+    const answer = mockInvoke.getMockImplementation();
+    const answers = new Map<string, (snapshot: Snapshot) => void>();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "get_snapshot" || cmd === "refresh") {
+        return new Promise((resolve) => answers.set(cmd, resolve as (snapshot: Snapshot) => void));
+      }
+      return answer === undefined ? Promise.resolve(undefined) : answer(cmd, args);
+    });
+    const { findByRole, findByLabelText, getByRole, queryByLabelText } = renderWithProviders(<App />);
+    await findByRole("heading", { level: 1, name: "Overview" });
+
+    menu.choose("search");
+
+    expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
+    expect(queryByLabelText("Search installed items")).toBeNull();
+    await waitFor(() => expect(answers.has("get_snapshot")).toBe(true));
+    answers.get("get_snapshot")?.(snapshot);
+
+    const box = await findByLabelText("Search installed items");
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    // The startup check, which nothing here waited on, finishes too.
+    answers.get("refresh")?.(snapshot);
+    await waitFor(() => expect(getByRole("button", { name: "Check again" })).toBeEnabled());
   });
 });

@@ -68,6 +68,46 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().query).toBe("");
   });
 
+  it("asks for the Installed page's search box from another page, opening the page as the sidebar does", () => {
+    useUiStore.setState({ page: "updates", installedFilter: "npm:/opt/homebrew", query: "ts" });
+
+    useUiStore.getState().searchInstalled();
+
+    const state = useUiStore.getState();
+    expect(state.page).toBe("installed");
+    expect(state.installedFilter).toBeNull();
+    expect(state.query).toBe("");
+    expect(state.searchFocusRequested).toBe(true);
+  });
+
+  it("asks for the search box on the Installed page itself, keeping its source and its search", () => {
+    useUiStore.setState({ page: "installed", installedFilter: "npm:/opt/homebrew", query: "ts" });
+
+    useUiStore.getState().searchInstalled();
+
+    const state = useUiStore.getState();
+    expect(state.installedFilter).toBe("npm:/opt/homebrew");
+    expect(state.query).toBe("ts");
+    expect(state.searchFocusRequested).toBe(true);
+  });
+
+  it("drops a search not yet focused once another page is chosen, or once it is focused", () => {
+    // Asked for while the page loads, then left: it must not take the focus
+    // when the user comes back later by any other way.
+    useUiStore.getState().searchInstalled();
+    useUiStore.getState().setPage("settings");
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
+
+    useUiStore.getState().searchInstalled();
+    useUiStore.getState().openInstalled("brew:/opt/homebrew");
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
+
+    useUiStore.getState().searchInstalled();
+    useUiStore.getState().searchFocused();
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
+    expect(useUiStore.getState().page).toBe("installed");
+  });
+
   it("toggleDependencies expands one source at a time", () => {
     // It used to be a single boolean, so unfolding pip's dependencies also
     // unfolded Homebrew's. Every row already carries the instance it came

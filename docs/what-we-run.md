@@ -100,10 +100,13 @@ own behalf.
 
 **A refresh** happens when the window opens (`refreshIntoCache(…,
 "initial")` in `src/lib/events.ts`), when the user presses a Retry or
-Refresh control (the status bar after a failed refresh, a source notice),
-after every operation finishes, when the "include self-updating apps"
-setting changes, after Ollama is opened from its notice, and whenever a
-`brew update` a refresh left running in the background ends
+Refresh control (the status bar after a failed refresh, a source notice)
+or asks to check again — the page header's Check again, or Check Again
+(⌘R) in the menu bar's View menu, neither of which starts one while one
+runs (`useCheckAgain` in `src/lib/queries.ts`) — after every operation
+finishes, when the "include self-updating apps" setting changes, after
+Ollama is opened from its notice, and whenever a `brew update` a refresh
+left running in the background ends
 (`refresh_on_background_change` in `src-tauri/src/ipc.rs`). Within a
 refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,

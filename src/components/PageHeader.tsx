@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useRefresh, useSnapshot } from "../lib/queries";
-import { useRefreshInFlight } from "../lib/events";
+import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { elapsedSince, type Elapsed } from "../lib/format";
 import { useUiStore } from "../store/ui";
 import { RefreshIcon } from "./icons";
@@ -96,15 +95,10 @@ export function HeaderAction({ status, label, onPress, busy }: HeaderActionProps
 }
 
 /**
- * When Canager last checked its sources, and Check again: the header of
- * every page about them -- the Overview, Updates, Installed.
- *
- * Check again is the refresh every other trigger runs -- the one at
- * startup, the one after an operation, the Try again of a failed one --
- * through the same `useRefresh`, so a click while another refresh is
- * running would only be folded into it. The button is off meanwhile,
- * whoever started that refresh (`useRefreshInFlight`), and the time
- * gives way to "Checking…".
+ * When Canager last checked its sources, and Check again
+ * (`useCheckAgain`): the header of every page about them -- the Overview,
+ * Updates, Installed. While a check runs, whoever started it, the button
+ * is off and the time gives way to "Checking…".
  *
  * `startupRefreshError` is not only the startup's: every refresh sets it
  * when it fails and clears it when it works (`refreshIntoCache` in
@@ -115,14 +109,13 @@ export function HeaderAction({ status, label, onPress, busy }: HeaderActionProps
 export function CheckAgain() {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
-  const refresh = useRefresh();
-  const refreshing = useRefreshInFlight();
+  const { checkAgain, checking } = useCheckAgain();
   const lastCheckFailed = useUiStore((s) => s.startupRefreshError !== null);
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
 
   let status: HeaderStatus | null = null;
-  if (refreshing) {
+  if (checking) {
     status = { text: t("common.checking"), failed: false };
   } else if (lastCheckFailed) {
     status = { text: t("header.checkFailed"), failed: true };
@@ -130,9 +123,7 @@ export function CheckAgain() {
     status = { text: elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now)), failed: false };
   }
 
-  return (
-    <HeaderAction status={status} label={t("header.checkAgain")} onPress={() => refresh.mutate()} busy={refreshing} />
-  );
+  return <HeaderAction status={status} label={t("header.checkAgain")} onPress={checkAgain} busy={checking} />;
 }
 
 export interface PageHeaderProps {

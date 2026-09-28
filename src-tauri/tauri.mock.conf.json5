@@ -18,7 +18,10 @@
 //   refreshes only when `Session::background_change` fires: when a
 //   `brew update` that a refresh left running ends. Only the page starts
 //   a refresh, and this page never reaches the backend, so no refresh
-//   runs here, and no command.
+//   runs here, and no command. It puts up the menu bar too
+//   (src-tauri/src/menu.rs), which runs nothing either: its items are
+//   macOS's own -- Hide, Quit, Copy -- or tell the page, which does not
+//   listen here (src/dev/mockTauriEvent.ts).
 // - What runs at every launch runs here too: the login shell
 //   `fix-path-env` asks for `PATH`, which runs no command
 //   (docs/what-we-run.md, "How Canager runs anything").
