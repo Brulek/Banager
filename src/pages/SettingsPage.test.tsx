@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SettingsPage } from "./SettingsPage";
 import zhCN from "../i18n/zh-CN.json";
+import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 
 const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
@@ -527,7 +529,7 @@ describe("SettingsPage", () => {
   });
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
-    expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新" });
+    expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新", about: "关于" });
     expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自动更新的 App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
     // its line names Homebrew.
@@ -555,5 +557,129 @@ describe("SettingsPage", () => {
     expect(lastSaved().skipped_versions).toEqual([]);
     expect(lastSaved().ignored_updates).toEqual([jqKey]);
     expect(within(hidden).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage's icon credits", () => {
+  /**
+   * A pack of this test's own: two logos under a license of their own,
+   * listed out of order, one under Simple Icons' CC0 and one avatar.
+   */
+  const PACK: ToolIconPack = {
+    version: 1,
+    generated: "2026-09-28",
+    glyphs: {
+      "si-rust": {
+        path: "M0 0h24v24H0z",
+        hex: "000000",
+        title: "Rust",
+        license: { type: "CC-BY-SA-4.0", url: "https://spdx.org/licenses/CC-BY-SA-4.0" },
+        source: "https://www.rust-lang.org",
+      },
+      "si-npm": { path: "M0 0h24v24H0z", hex: "CB3837", title: "npm" },
+      "si-git": {
+        path: "M0 0h24v24H0z",
+        hex: "F03C2E",
+        title: "Git",
+        license: { type: "CC-BY-3.0", url: "https://spdx.org/licenses/CC-BY-3.0" },
+        source: "https://git-scm.com/community/logos",
+      },
+    },
+    rasters: { "gh-openai": { file: "gh-openai.webp", title: "openai" } },
+    tools: { "brew:git": "si-git", "npm:@openai/codex": "gh-openai" },
+    sources: { npm: "si-npm", cargo: "si-rust" },
+  };
+  const toolIcons = loadToolIcons(PACK, new Map());
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+  });
+
+  it("opens from the About card and lists every logo with a license of its own, with its license and source", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SettingsPage />, { toolIcons });
+
+    const about = await screen.findByRole("region", { name: "About" });
+    expect(screen.getByRole("heading", { level: 2, name: "About" }).className).toContain("text-section");
+    await user.click(within(about).getByRole("button", { name: "View icon credits" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
+    expect(drawer).toHaveAccessibleDescription(
+      "Each logo belongs to its owner and is shown only to identify the tool.",
+    );
+    expect(
+      within(drawer).getByText(
+        "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
+      ),
+    ).toBeInTheDocument();
+    const list = within(drawer).getByRole("list", { name: "These have a license of their own:" });
+    const items = within(list).getAllByRole("listitem");
+    // By title, each with its license's text and where Simple Icons took
+    // it from; npm's logo, under Simple Icons' CC0, is not listed.
+    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual([
+      "Git — CC-BY-3.0",
+      "Rust — CC-BY-SA-4.0",
+    ]);
+    const facts = (item: HTMLElement) => [
+      within(item).getAllByRole("term").map((term) => term.textContent),
+      within(item).getAllByRole("definition").map((definition) => definition.textContent),
+    ];
+    expect(facts(items[0])).toEqual([
+      ["License", "Source"],
+      ["https://spdx.org/licenses/CC-BY-3.0", "https://git-scm.com/community/logos"],
+    ]);
+    expect(facts(items[1])).toEqual([
+      ["License", "Source"],
+      ["https://spdx.org/licenses/CC-BY-SA-4.0", "https://www.rust-lang.org"],
+    ]);
+    expect(within(drawer).queryByText(/npm/)).toBeNull();
+    expect(
+      within(drawer).getByText(
+        "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("lists nothing under a license of its own for a pack with none, and says the rest", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SettingsPage />, { toolIcons: loadToolIcons({ ...PACK, glyphs: {} }, new Map()) });
+
+    await user.click(await screen.findByRole("button", { name: "View icon credits" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
+    expect(within(drawer).queryByRole("list")).toBeNull();
+    expect(within(drawer).queryByText("These have a license of their own:")).toBeNull();
+    expect(within(drawer).getByText(/^Most of the logos built into Canager/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/^Built-in logos that do not come from Simple Icons/)).toBeInTheDocument();
+  });
+
+  it("is reachable from the keyboard: Tab to it, Enter opens it, its credits take the focus to scroll, Escape gives the focus back", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SettingsPage />, { toolIcons });
+
+    const open = await screen.findByRole("button", { name: "View icon credits" });
+    for (let tabs = 0; tabs < 10 && document.activeElement !== open; tabs++) await user.tab();
+    expect(open).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+    const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
+    expect(within(drawer).getByRole("button", { name: "Close" })).toHaveFocus();
+    // Nothing in the credits takes the focus, so they do, as a whole.
+    await user.tab();
+    expect(within(drawer).getByRole("region", { name: "Icon credits" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(open).toHaveFocus());
+  });
+
+  it("calls the credits 图标来源 in Chinese, with a verb on the button", () => {
+    expect(zhCN.settings.iconCredits.label).toBe("图标来源");
+    expect(zhCN.settings.iconCredits.title).toBe("图标来源");
+    expect(zhCN.settings.iconCredits.open).toBe("查看");
+    expect(zhCN.settings.iconCredits.openAriaLabel).toBe("查看图标来源");
   });
 });

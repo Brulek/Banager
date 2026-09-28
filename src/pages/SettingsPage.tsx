@@ -7,6 +7,7 @@ import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
 import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
+import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
 
 const LANGUAGES: Language[] = ["System", "En", "ZhCn"];
 
@@ -16,8 +17,8 @@ function languageLabelKey(lang: Language): string {
   return "settings.language.chinese";
 }
 
-/** A list's own button: Stop skipping, Remind me again. */
-const UNDO_BUTTON =
+/** A row's own button: Stop skipping, Remind me again, View. */
+const ROW_BUTTON =
   "h-7 shrink-0 rounded-button border border-border bg-surface px-3 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent";
 
 /**
@@ -80,12 +81,13 @@ function EntryName({ name, source }: { name: string; source: string | undefined 
 }
 
 /**
- * Settings, in three cards: 「通用」 -- the language, and whether to show
+ * Settings, in four cards: 「通用」 -- the language, and whether to show
  * technical details -- 「更新」 -- whether Homebrew's self-updating apps
- * are listed -- and 「已隐藏的更新」, the versions skipped and the
- * software never to be reminded about, each with the button that takes it
- * back. Every change is saved at once; one that cannot be saved is undone
- * on screen and said at the top.
+ * are listed -- 「已隐藏的更新」, the versions skipped and the software
+ * never to be reminded about, each with the button that takes it back --
+ * and 「关于」, whose 「图标来源」 row opens the credits for the logos
+ * built into the app (`IconCreditsDrawer`). Every change is saved at
+ * once; one that cannot be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -93,6 +95,7 @@ export function SettingsPage() {
   const saveMutation = useSaveSettings();
   const { data: snapshot } = useSnapshot();
   const [draft, setDraft] = useState<Settings | null>(null);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const languageRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const languageLabelId = useId();
   const skippedTitleId = useId();
@@ -321,7 +324,7 @@ export function SettingsPage() {
                           : t("settings.skippedVersions.unskipAriaLabel", { name, version })
                       }
                       onClick={() => unskip(skipped)}
-                      className={UNDO_BUTTON}
+                      className={ROW_BUTTON}
                     >
                       {t("settings.skippedVersions.unskip")}
                     </button>
@@ -351,7 +354,7 @@ export function SettingsPage() {
                       type="button"
                       aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", { name })}
                       onClick={() => unignore(key)}
-                      className={UNDO_BUTTON}
+                      className={ROW_BUTTON}
                     >
                       {t("settings.ignoredUpdates.unignore")}
                     </button>
@@ -362,6 +365,24 @@ export function SettingsPage() {
           )}
         </section>
       </SettingsGroup>
+
+      <SettingsGroup title={t("settings.groups.about")}>
+        <SettingRow
+          label={<span className={ROW_LABEL}>{t("settings.iconCredits.label")}</span>}
+          description={<p className={ROW_DESCRIPTION}>{t("settings.iconCredits.description")}</p>}
+          control={
+            <button
+              type="button"
+              aria-label={t("settings.iconCredits.openAriaLabel")}
+              onClick={() => setCreditsOpen(true)}
+              className={ROW_BUTTON}
+            >
+              {t("settings.iconCredits.open")}
+            </button>
+          }
+        />
+      </SettingsGroup>
+      <IconCreditsDrawer open={creditsOpen} onOpenChange={setCreditsOpen} />
     </div>
   );
 }

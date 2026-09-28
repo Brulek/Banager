@@ -442,7 +442,8 @@
     "groups": {
       "general": "General",
       "updates": "Updates",
-      "hidden": "Hidden updates"
+      "hidden": "Hidden updates",
+      "about": "About"
     },
     "showTechnicalDetails": {
       "label": "Show technical details",
@@ -471,6 +472,20 @@
       "empty": "No reminders turned off",
       "unignore": "Remind me again",
       "unignoreAriaLabel": "Remind me again about {{name}}"
+    },
+    "iconCredits": {
+      "label": "Icon credits",
+      "description": "Where the tools' logos come from, and their licenses.",
+      "open": "View",
+      "openAriaLabel": "View icon credits",
+      "title": "Icon credits",
+      "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
+      "simpleIcons": "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
+      "ownLicense": "These have a license of their own:",
+      "entry": "{{title}} — {{license}}",
+      "license": "License",
+      "source": "Source",
+      "avatars": "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations."
     },
     "saveError": "Couldn't save: {{message}}. Your previous setting is back."
   },

@@ -175,6 +175,44 @@ describe("resolveToolIcon and resolveSourceIcon", () => {
   });
 });
 
+describe("credits", () => {
+  const licensed = (title: string, type: string) => ({
+    path: "M0 0h24v24H0z",
+    hex: "000000",
+    title,
+    license: { type, url: `https://spdx.org/licenses/${type}` },
+    source: `https://example.org/${title.toLowerCase()}`,
+  });
+
+  it("lists every glyph with a license of its own, by title, and no other logo", () => {
+    const icons = loadToolIcons(
+      {
+        ...FIXTURE,
+        glyphs: { ...FIXTURE.glyphs, "si-rust": licensed("Rust", "CC-BY-SA-4.0"), "si-ajv": licensed("Ajv", "MIT") },
+      },
+      new Map([["gh-openai.webp", "/assets/gh-openai.webp"]]),
+    );
+    expect(icons.credits).toEqual([
+      {
+        id: "si-ajv",
+        title: "Ajv",
+        license: { type: "MIT", url: "https://spdx.org/licenses/MIT" },
+        source: "https://example.org/ajv",
+      },
+      {
+        id: "si-rust",
+        title: "Rust",
+        license: { type: "CC-BY-SA-4.0", url: "https://spdx.org/licenses/CC-BY-SA-4.0" },
+        source: "https://example.org/rust",
+      },
+    ]);
+  });
+
+  it("is empty for a pack with no logo under a license of its own", () => {
+    expect(fixture.credits).toEqual([]);
+  });
+});
+
 describe("glyphInk", () => {
   it("draws a glyph white on a dark colour and near-black on a light one", () => {
     expect(glyphInk("000000")).toBe(GLYPH_INK_LIGHT);

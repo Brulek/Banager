@@ -56,6 +56,18 @@ export type ToolIcon =
   | { kind: "glyph"; path: string; hex: string; title: string }
   | { kind: "raster"; url: string; title: string };
 
+/**
+ * A logo in the pack under a license of its own, as Settings credits it:
+ * the brand's name, the license, and where Simple Icons took the logo from.
+ */
+export interface ToolIconCredit {
+  /** Its id in the pack, `si-<slug>`. */
+  id: string;
+  title: string;
+  license: ToolIconLicense;
+  source: string;
+}
+
 export interface ToolIcons {
   /**
    * The key a tool's logo is listed under, from the tool's own key and
@@ -81,6 +93,11 @@ export interface ToolIcons {
   resolveToolIcon(key: ArtifactKey, adapterId: string): ToolIcon | null;
   /** The pack's logo for this source (Homebrew, npm, …), or `null` when it has none. */
   resolveSourceIcon(adapterId: string): ToolIcon | null;
+  /**
+   * Every glyph in the pack with a license of its own, by title: what
+   * Settings' icon credits list. None from a pack without one.
+   */
+  credits: readonly ToolIconCredit[];
 }
 
 const OLLAMA = "ollama:";
@@ -136,6 +153,11 @@ export function loadToolIcons(pack: ToolIconPack, rasterUrls: ReadonlyMap<string
   };
   const iconOf = (id: string | undefined): ToolIcon | null =>
     id === undefined ? null : (icons.get(id) ?? null);
+  const credits = Object.entries(pack.glyphs)
+    .flatMap(([id, glyph]): ToolIconCredit[] =>
+      glyph.license === undefined ? [] : [{ id, title: glyph.title, license: glyph.license, source: glyph.source }],
+    )
+    .sort((a, b) => a.title.localeCompare(b.title, "en") || (a.id < b.id ? -1 : 1));
 
   return {
     toolIconKey,
@@ -144,6 +166,7 @@ export function loadToolIcons(pack: ToolIconPack, rasterUrls: ReadonlyMap<string
       return toolKey === null ? null : iconOf(tools.get(toolKey));
     },
     resolveSourceIcon: (adapterId) => iconOf(sources.get(adapterId)),
+    credits,
   };
 }
 
@@ -206,3 +229,4 @@ const BUILT_IN = loadToolIcons(packJson, RASTER_URLS);
 export const toolIconKey = BUILT_IN.toolIconKey;
 export const resolveToolIcon = BUILT_IN.resolveToolIcon;
 export const resolveSourceIcon = BUILT_IN.resolveSourceIcon;
+export const toolIconCredits = BUILT_IN.credits;

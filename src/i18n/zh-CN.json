@@ -418,7 +418,8 @@
     "groups": {
       "general": "通用",
       "updates": "更新",
-      "hidden": "已隐藏的更新"
+      "hidden": "已隐藏的更新",
+      "about": "关于"
     },
     "showTechnicalDetails": {
       "label": "显示技术细节",
@@ -447,6 +448,20 @@
       "empty": "没有设为不再提醒的软件",
       "unignore": "恢复提醒",
       "unignoreAriaLabel": "恢复 {{name}} 的更新提醒"
+    },
+    "iconCredits": {
+      "label": "图标来源",
+      "description": "各工具标志的出处和许可。",
+      "open": "查看",
+      "openAriaLabel": "查看图标来源",
+      "title": "图标来源",
+      "owners": "每个标志都归其所有者，这里只用它来认出是哪个工具。",
+      "simpleIcons": "Canager 内置的标志大多来自 Simple Icons，它以 CC0 发布。",
+      "ownLicense": "以下标志另有自己的许可：",
+      "entry": "{{title}} — {{license}}",
+      "license": "许可",
+      "source": "出处",
+      "avatars": "内置标志中不来自 Simple Icons 的，都是各项目 GitHub 组织的头像。"
     },
     "saveError": "没能保存：{{message}}。已改回原来的设置。"
   },
