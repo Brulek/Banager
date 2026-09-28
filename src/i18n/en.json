@@ -317,16 +317,20 @@
       "RunsScript_one": "Also runs {{items}}.",
       "RunsScript_other": "Also runs these programs: {{items}}.",
       "RunsOwnSteps": "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
-      "RemovesServices_one": "Also stops and removes the background service {{items}}.",
-      "RemovesServices_other": "Also stops and removes these background services: {{items}}.",
+      "RemovesServices_one": "Also stops and removes a background service.",
+      "RemovesServices_other": "Also stops and removes {{count}} background services.",
       "RemovesKexts_one": "Also unloads and deletes the kernel extension {{items}}.",
       "RemovesKexts_other": "Also unloads and deletes these kernel extensions: {{items}}.",
       "DeletesCertificates_one": "Also deletes every certificate in the keychain whose name contains {{items}}.",
       "DeletesCertificates_other": "Also deletes every certificate in the keychain whose name contains any of these: {{items}}.",
       "RemovesLoginItems_one": "Also removes the login item {{items}}.",
       "RemovesLoginItems_other": "Also removes these login items: {{items}}.",
-      "QuitsApps_one": "Also quits {{items}} if it is running.",
-      "QuitsApps_other": "Also quits these apps if they are running: {{items}}."
+      "QuitsApps_one": "Also quits an app if it is running.",
+      "QuitsApps_other": "Also quits {{count}} apps if they are running.",
+      "QuitsNamedApps_one": "Also quits {{items}} if it is running.",
+      "QuitsNamedApps_other": "Also quits {{items}} if they are running.",
+      "systemNames_one": "As macOS names it: {{items}}",
+      "systemNames_other": "As macOS names them: {{items}}"
     }
   },
   "standalone": {

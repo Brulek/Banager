@@ -744,6 +744,60 @@ fn untemplated(value: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Where each `app` stanza `recorded` lists put its app, as the record
+/// spells it: the `target:` it names, else the app's own file name
+/// (`["Visual Studio Code.app"]`) -- relative to Homebrew's `appdir`
+/// unless it is absolute or starts with `~/` (`Relocated#resolve_target`,
+/// `cask/artifact/relocated.rb`). Read to name the apps a `quit:` or
+/// `signal:` step quits (`BrewAdapter::quit_app_names`); an entry of a
+/// shape Homebrew would not take names nothing.
+pub(crate) fn app_targets(recorded: &Recorded) -> Vec<String> {
+    recorded
+        .artifacts
+        .iter()
+        .filter_map(|artifact| {
+            let (stanza, args) = single_entry(artifact)?;
+            if stanza != "app" {
+                return None;
+            }
+            let args = args.as_array()?;
+            match args
+                .iter()
+                .find_map(|arg| arg.as_object()?.get("target")?.as_str())
+            {
+                Some(target) => Some(target.to_string()),
+                None => Path::new(args.first()?.as_str()?)
+                    .file_name()?
+                    .to_str()
+                    .map(str::to_string),
+            }
+        })
+        .collect()
+}
+
+/// The `CFBundleIdentifier` in `<app>/Contents/Info.plist`, XML or binary,
+/// or `None` when there is no such regular file or it holds no such
+/// string. Read only: the file is parsed, nothing is opened or run.
+#[cfg(target_os = "macos")]
+pub(crate) fn app_bundle_id(app: &Path) -> Option<String> {
+    let info = app.join("Contents").join("Info.plist");
+    // A regular file only, links followed: a named pipe would wait for a
+    // writer (`read_regular_file`).
+    let bytes = read_regular_file(&info)?;
+    plist::Value::from_reader(std::io::Cursor::new(bytes))
+        .ok()?
+        .as_dictionary()?
+        .get("CFBundleIdentifier")?
+        .as_string()
+        .map(str::to_string)
+}
+
+/// There is no app bundle to read off macOS.
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn app_bundle_id(_app: &Path) -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1749,5 +1803,89 @@ mod tests {
         )
         .unwrap();
         assert_eq!(read_recorded(&prefix.0, "onyx"), None);
+    }
+
+    #[test]
+    fn names_where_each_recorded_app_went() {
+        // visual-studio-code's record: its app by file name, its binary,
+        // and its uninstall stanza. An app moved to a target of its own is
+        // named by that target; one staged under a folder, by its file.
+        let recorded = Recorded {
+            artifacts: serde_json::from_str(
+                r#"[
+                    {"uninstall": [{"launchctl": "com.microsoft.VSCode.ShipIt", "quit": "com.microsoft.VSCode"}]},
+                    {"app": ["Visual Studio Code.app"]},
+                    {"binary": ["$APPDIR/Visual Studio Code.app/Contents/Resources/app/bin/code"]},
+                    {"app": ["Foo.app", {"target": "Bar.app"}]},
+                    {"app": ["Mounted/Baz.app"]},
+                    {"app": []},
+                    {"app": "Wrong.app"}
+                ]"#,
+            )
+            .unwrap(),
+            flight_blocks: false,
+        };
+        assert_eq!(
+            app_targets(&recorded),
+            vec![
+                "Visual Studio Code.app".to_string(),
+                "Bar.app".to_string(),
+                "Baz.app".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reads_an_apps_bundle_id_from_its_info_plist_xml_or_binary() {
+        let dir = Prefix::new("bundle-id");
+        let xml = dir.0.join("Visual Studio Code.app");
+        std::fs::create_dir_all(xml.join("Contents")).unwrap();
+        std::fs::write(
+            xml.join("Contents/Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Code</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.microsoft.VSCode</string>
+</dict>
+</plist>
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            app_bundle_id(&xml),
+            Some("com.microsoft.VSCode".to_string())
+        );
+
+        let binary = dir.0.join("OnyX.app");
+        std::fs::create_dir_all(binary.join("Contents")).unwrap();
+        let mut info = plist::Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".to_string(),
+            plist::Value::String("com.titanium.OnyX".to_string()),
+        );
+        plist::Value::Dictionary(info)
+            .to_file_binary(binary.join("Contents/Info.plist"))
+            .unwrap();
+        assert_eq!(
+            app_bundle_id(&binary),
+            Some("com.titanium.OnyX".to_string())
+        );
+
+        // No app there, an Info.plist with no id, and one that is no
+        // property list: nothing to name it by.
+        assert_eq!(app_bundle_id(&dir.0.join("Gone.app")), None);
+        let bare = dir.0.join("Bare.app");
+        std::fs::create_dir_all(bare.join("Contents")).unwrap();
+        plist::Value::Dictionary(plist::Dictionary::new())
+            .to_file_xml(bare.join("Contents/Info.plist"))
+            .unwrap();
+        assert_eq!(app_bundle_id(&bare), None);
+        std::fs::write(bare.join("Contents/Info.plist"), "not a plist").unwrap();
+        assert_eq!(app_bundle_id(&bare), None);
     }
 }

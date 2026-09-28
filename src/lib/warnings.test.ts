@@ -5,6 +5,7 @@ import {
   warningDetailKey,
   warningGroup,
   warningKey,
+  warningLine,
   warningLines,
   warningMessage,
   warningText,
@@ -390,6 +391,9 @@ const CHECKS: [RemoveCheck, string][] = [
   [{ LinkTargetAndContentContain: { link_target: "MacGPG2", content: "gpg" } }, "LinksToFilesContaining"],
 ];
 
+/** The cask steps whose line counts what it would name, the ids behind its ⓘ. */
+const COUNTED_STEPS: CaskStep[] = ["RemovesServices", "QuitsApps"];
+
 /** Every `CaskStep`, in its declared order. */
 const EVERY_STEP: CaskStep[] = [
   "Deletes",
@@ -403,6 +407,7 @@ const EVERY_STEP: CaskStep[] = [
   "DeletesCertificates",
   "RemovesLoginItems",
   "QuitsApps",
+  "QuitsNamedApps",
 ];
 
 /** A key's text in one locale, or undefined when it has none. */
@@ -536,10 +541,35 @@ describe("warningDetailKey", () => {
       { AlreadyGone: { path: "~/.local/share/claude" } },
       { Message: "boom" },
       ...EVERY_SCOPE.map((what): Warning => ({ UninstallScope: { what } })),
-      ...EVERY_STEP.map((step): Warning => ({ CaskUninstallStep: { step, items: ["x"] } })),
+      ...EVERY_STEP.filter((step) => !COUNTED_STEPS.includes(step)).map(
+        (step): Warning => ({ CaskUninstallStep: { step, items: ["x"] } }),
+      ),
     ] as Warning[]) {
       expect(warningDetailKey(warning)).toBeNull();
     }
+  });
+
+  it("puts the ids a counted cask step does not name behind its ⓘ, as macOS names them", () => {
+    // 「还会停止并删除这些后台服务：com.microsoft.VSCode.ShipIt。」 told a
+    // beginner nothing: the line counts, and the ids are one press away.
+    for (const step of COUNTED_STEPS) {
+      expect(warningDetailKey({ CaskUninstallStep: { step, items: ["com.microsoft.VSCode.ShipIt"] } })).toBe(
+        "warnings.caskStep.systemNames",
+      );
+    }
+    const chineseT = (key: string, options?: Record<string, unknown>) =>
+      key === "common.listSeparator" ? "、" : fakeT(key, options);
+    expect(
+      warningLine(chineseT, {
+        CaskUninstallStep: { step: "QuitsApps", items: ["com.microsoft.VSCode", "com.microsoft.VSCode.helper"] },
+      }),
+    ).toEqual({
+      text: 'warnings.caskStep.QuitsApps({"count":2,"items":"com.microsoft.VSCode、com.microsoft.VSCode.helper"})',
+      detail:
+        'warnings.caskStep.systemNames({"count":2,"items":"com.microsoft.VSCode、com.microsoft.VSCode.helper"})',
+    });
+    // An app Canager found is named on the line itself, with nothing behind it.
+    expect(warningDetailKey({ CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } })).toBeNull();
   });
 
   it("has copy in both languages for every scope sentence and every kind of cask step", () => {
@@ -561,6 +591,24 @@ describe("warningDetailKey", () => {
         for (const locale of [en, zhCN]) {
           expect(typeof lookUp(locale, key), key).toBe("string");
           expect(lookUp(locale, key) as string, key).not.toContain("{{");
+        }
+        continue;
+      }
+      // The two that count what they would name say how many, and their
+      // ⓘ has the ids (`systemNames`).
+      if (COUNTED_STEPS.includes(step)) {
+        for (const [locale, forms] of [
+          [en, ["_one", "_other"]],
+          [zhCN, ["_other"]],
+        ] as const) {
+          for (const form of forms) {
+            const text = lookUp(locale, `${key}${form}`);
+            expect(typeof text, `${key}${form}`).toBe("string");
+            expect(text as string, `${key}${form}`).not.toContain("{{items}}");
+            if (form === "_other") expect(text as string, `${key}${form}`).toContain("{{count}}");
+            const names = lookUp(locale, `warnings.caskStep.systemNames${form}`);
+            expect(names as string, `systemNames${form}`).toContain("{{items}}");
+          }
         }
         continue;
       }
@@ -683,7 +731,8 @@ describe("warningLines", () => {
       keep: [
         {
           text: 'warnings.willKeep.ShellConfigLines({"path":"~/.zshrc"})',
-          detail: "warnings.willKeep.ShellConfigLinesDetail",
+          // Its why, handed the line's own values, which it may say.
+          detail: 'warnings.willKeep.ShellConfigLinesDetail({"path":"~/.zshrc"})',
         },
         { text: 'warnings.willKeep.Settings({"path":"~/.claude.json"})', detail: null },
       ],

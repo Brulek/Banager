@@ -3,6 +3,7 @@ import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
+import zhCN from "../i18n/zh-CN.json";
 import { UninstallDialog } from "./UninstallDialog";
 import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
 
@@ -538,7 +539,7 @@ describe("UninstallDialog", () => {
     }
   });
 
-  it("lists a cask's extra uninstall steps under Before you continue, one line per kind, naming what it recorded", async () => {
+  it("lists a cask's extra uninstall steps under Before you continue, one line per kind, counting what only an id names", async () => {
     // `Warning::CaskUninstallStep`s from the cask's install receipt
     // (crates/canager-core/src/adapters/brew/cask_receipt.rs), after the
     // sentence under the tool that says there are steps.
@@ -576,13 +577,71 @@ describe("UninstallDialog", () => {
     expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
     expect(linesOf("Before you continue")).toEqual([
       "Also deletes every file these installer packages put on this Mac, whether or not other apps use them: com.microsoft.package.Microsoft_Word.app, com.microsoft.pkg.licensing.",
-      "Also stops and removes the background service com.microsoft.office.licensingV2.helper.",
+      "Also stops and removes a background service.",
       "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
-      "Also quits com.microsoft.autoupdate2 if it is running.",
+      "Also quits an app if it is running.",
       "Some apps ask for your Mac password at this step.",
     ]);
+    // What only a reverse-DNS id names is counted, with the id behind the
+    // line's ⓘ.
+    for (const [line, ids] of [
+      ["Also stops and removes a background service.", "As macOS names it: com.microsoft.office.licensingV2.helper"],
+      ["Also quits an app if it is running.", "As macOS names it: com.microsoft.autoupdate2"],
+    ]) {
+      expect(screen.queryByText(ids)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: `Details: ${line}` }));
+      expect(screen.getByText(ids)).toBeInTheDocument();
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    }
     // Nothing it lists is deleted for good in so many words.
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
+  it("names the app a cask quits, and counts its background service, in Chinese with no 这些", async () => {
+    // Visual Studio Code: 「还会停止并删除这些后台服务：com.microsoft.VSCode.ShipIt。」
+    // and 「还会退出正在运行的这些 App：com.microsoft.VSCode。」 named by
+    // reverse-DNS ids, with 这些 for one item, in the most destructive
+    // sheet an app's row opens. The app is named as Finder names it, found
+    // on the Mac (`BrewAdapter::quit_app_names`).
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "visual-studio-code" };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: cask,
+        action: {
+          Command: { program: "/opt/homebrew/bin/brew", args: ["uninstall", "--cask", "visual-studio-code"], env: [] },
+        },
+        needs_password: true,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          { CaskUninstallStep: { step: "RemovesServices", items: ["com.microsoft.VSCode.ShipIt"] } },
+          { CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } },
+        ],
+      }),
+    );
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(
+        <UninstallDialog
+          open
+          onOpenChange={() => {}}
+          request={cask}
+          displayName="Microsoft Visual Studio Code"
+        />,
+      );
+
+      await screen.findByRole("button", { name: "卸载" });
+      expect(linesOf("请注意")).toEqual([
+        "还会停止并删除 1 个后台服务。",
+        "还会退出正在运行的 Visual Studio Code。",
+        "部分 App 在这一步会要求输入 Mac 密码。",
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "详情：还会停止并删除 1 个后台服务。" }));
+      expect(screen.getByText("macOS 里的名称：com.microsoft.VSCode.ShipIt")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "详情：还会退出正在运行的 Visual Studio Code。" })).toBeNull();
+      expect(JSON.stringify(zhCN.warnings.caskStep)).not.toContain("这些");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("says Uninstall permanently where a cask's recorded steps delete paths, and says them in Chinese too", async () => {
@@ -620,7 +679,7 @@ describe("UninstallDialog", () => {
       expect(await screen.findByText("执行 Homebrew 为 DuckieTV 记下的卸载步骤；安装器装的其他文件不删。")).toBeInTheDocument();
       expect(linesOf("请注意").slice(0, 2)).toEqual([
         "还会永久删除：/Applications/duckieTV.app、~/Library/Application Support/DuckieTV-Standalone。",
-        "还会把这些移到废纸篓：~/.nvs。",
+        "还会移到废纸篓：~/.nvs。",
       ]);
     } finally {
       await i18n.changeLanguage("en");
@@ -695,7 +754,7 @@ describe("UninstallDialog", () => {
         [
           "还会永久删除：/usr/local/playdate。",
           "还会永久删除下列路径，但只删其中指向的路径含有“playdate”的链接：/usr/local/bin/arm-*。",
-          "还会把这些移到废纸篓：~/Developer/PlaydateSDK。",
+          "还会移到废纸篓：~/Developer/PlaydateSDK。",
         ],
       ],
       [

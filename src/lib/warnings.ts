@@ -67,8 +67,13 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
 /**
  * The line for each kind of extra step a cask's recorded uninstall takes.
  * A `Record` over `CaskStep`. Each but `DeletesUnnamed` and `RunsOwnSteps`,
- * which name nothing, interpolates `{{items}}` and pluralises on
- * `{{count}}`.
+ * which name nothing, pluralises on `{{count}}`, and each of those but
+ * `RemovesServices` and `QuitsApps` interpolates `{{items}}`. Those two
+ * count what they would name: a background service's label and an app
+ * Canager did not find on the Mac are reverse-DNS ids
+ * (`com.microsoft.VSCode.ShipIt`) that tell a person nothing, so the line
+ * says how many, and the ids are behind its ⓘ (`warningDetailKey`). An
+ * app it did find is named, as Finder names it (`QuitsNamedApps`).
  */
 const CASK_STEP_KEYS: Record<CaskStep, string> = {
   Deletes: "warnings.caskStep.Deletes",
@@ -82,6 +87,7 @@ const CASK_STEP_KEYS: Record<CaskStep, string> = {
   DeletesCertificates: "warnings.caskStep.DeletesCertificates",
   RemovesLoginItems: "warnings.caskStep.RemovesLoginItems",
   QuitsApps: "warnings.caskStep.QuitsApps",
+  QuitsNamedApps: "warnings.caskStep.QuitsNamedApps",
 };
 
 /** Which check a `remove` step makes of each path before it deletes it. */
@@ -305,8 +311,10 @@ export function warningText(t: Translate, warning: Warning, subject?: string): s
  * line's ⓘ (the copy table's `<key>Detail`), or null when the line says
  * all there is: what a kept path is and why it stays, what rustup's
  * permanent deletions and the line it leaves in a startup file mean for
- * you, and which Homebrew setting brings back a clean-up or an autoremove
- * Canager turns off. The line keeps what decides whether to go on -- "permanently
+ * you, which Homebrew setting brings back a clean-up or an autoremove
+ * Canager turns off, and the ids a cask's background services and the apps
+ * Canager did not find go by, which their lines count instead of naming.
+ * The line keeps what decides whether to go on -- "permanently
  * deletes", the path, what goes with it; the ⓘ has the rest. The Cargo
  * folder's line has nothing behind it: that the whole folder goes, and
  * none of it to the Trash, is what decides.
@@ -337,6 +345,13 @@ export function warningDetailKey(warning: Warning): string | null {
     }
   }
   if ("WillKeep" in warning) return KEPT_WHAT_DETAIL_KEYS[warning.WillKeep.what];
+  // What a counted line did not name: the ids, as macOS names them.
+  if ("CaskUninstallStep" in warning) {
+    const { step, items } = warning.CaskUninstallStep;
+    return (step === "RemovesServices" || step === "QuitsApps") && items.length > 0
+      ? "warnings.caskStep.systemNames"
+      : null;
+  }
   // The listed and the unlisted sentence share one why.
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
@@ -352,7 +367,6 @@ export function warningDetailKey(warning: Warning): string | null {
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
     "UninstallScope" in warning ||
-    "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
     return null;
@@ -472,7 +486,11 @@ export function warningLine(t: Translate, warning: Warning, subject?: string): W
   const text = warningText(t, warning, subject);
   if (text === null) return null;
   const detailKey = warningDetailKey(warning);
-  return { text, detail: detailKey === null ? null : t(detailKey) };
+  // With the line's own values: the ids a counted line did not name.
+  return {
+    text,
+    detail: detailKey === null ? null : t(detailKey, warningArgs(warning, t("common.listSeparator"))),
+  };
 }
 
 /** A plan's warnings as lines, each in its group, in the plan's order. */

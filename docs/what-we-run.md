@@ -508,7 +508,9 @@ both hold (`install_steps.rb:1051-1060`; `playdate-simulator`'s
 line) — paths moved to the Trash (`trash:`), installer packages whose
 every file is deleted (`pkgutil:`), programs run (`early_script:`,
 `script:`, an uninstall step of type `run`), background services removed
-(`launchctl:`), kernel extensions (`kext:`), the text whose every
+(`launchctl:`) — counted, their labels behind the line's ⓘ, since a
+label such as `com.microsoft.VSCode.ShipIt` tells a person nothing —
+kernel extensions (`kext:`), the text whose every
 certificate in the keychain goes (an uninstall step of type
 `delete_keychain_certificate` runs `security find-certificate -a -c <name>`
 with `sudo` and deletes each certificate it lists, every one whose name
@@ -516,7 +518,15 @@ contains that text, `install_steps.rb:1179-1210`; one that also names a
 `matching_certificate` file deletes only the certificate with that file's
 hash, and counts among the other uninstall steps), login items
 (`login_item:`), the apps quit (`quit:`, `signal:`), and, naming nothing,
-Ruby blocks and other uninstall steps. When Canager finds no such
+Ruby blocks and other uninstall steps. An app quit is named as Finder
+names it ("Visual Studio Code") when Canager finds it: an app the record
+puts down (its `app` stanza's target, or its file name), where Homebrew
+puts it — at that target when it is absolute or under `~`, else in
+`/Applications` or `~/Applications` — whose `Contents/Info.plist` gives
+the bundle id the step names (`CFBundleIdentifier`; the file is parsed,
+and nothing is opened or run). An app it does not find — one kept in an
+`--appdir` of its own, or a bundle id with a `*` in it — is counted
+instead, its bundle id behind the line's ⓘ. When Canager finds no such
 list — no Caskroom folder for the cask or one that is a link, no saved
 caskfile, a legacy `.internal.json` one, a file that does not parse, or
 neither `artifacts` of its own nor a receipt that lists any, when Homebrew

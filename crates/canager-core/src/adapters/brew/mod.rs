@@ -8,9 +8,9 @@ use crate::adapters::{
 };
 use crate::events::{EventSink, OpId};
 use crate::model::{
-    ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, InstanceId, InstanceNote,
-    InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, Warning,
+    ArtifactKey, ArtifactKind, CancelPolicy, CaskStep, Fault, InstalledArtifact, InstanceId,
+    InstanceNote, InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction,
+    Reconciled, ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -143,6 +143,14 @@ pub struct BrewAdapter {
     /// (`with_recorded_uninstall_fn`), so that no test answers differently
     /// for the casks installed on the Mac running it.
     recorded_uninstall_fn: fn(&Path, &str) -> Option<Recorded>,
+    /// How to read the bundle id of an app on the disk, for the cask
+    /// uninstall preview to name the apps a `quit:` step quits
+    /// (`quit_app_names`): `cask_receipt::app_bundle_id` outside this
+    /// crate's unit tests; inside them no app is there unless a test
+    /// installs a reader (`with_app_bundle_id_fn`), so that no test answers
+    /// differently for the apps in the `/Applications` of the Mac running
+    /// it.
+    app_bundle_id_fn: fn(&Path) -> Option<String>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -180,6 +188,13 @@ const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> =
     cask_receipt::read_recorded;
 #[cfg(test)]
 const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> = |_, _| None;
+
+/// `BrewAdapter::app_bundle_id_fn` as `BrewAdapter::new` sets it: the real
+/// apps in every build but this crate's unit tests, where there are none.
+#[cfg(not(test))]
+const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = cask_receipt::app_bundle_id;
+#[cfg(test)]
+const DEFAULT_APP_BUNDLE_ID_FN: fn(&Path) -> Option<String> = |_| None;
 
 /// `BrewAdapter::wall_clock_fn` as `BrewAdapter::new` sets it: the real
 /// clock in every build but this crate's unit tests, where it stands still
@@ -284,6 +299,7 @@ impl BrewAdapter {
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
             recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
+            app_bundle_id_fn: DEFAULT_APP_BUNDLE_ID_FN,
         }
     }
 
@@ -392,6 +408,17 @@ impl BrewAdapter {
         self
     }
 
+    /// Test-only hook to put apps on the disk the preview reads (see
+    /// `app_bundle_id_fn`).
+    #[cfg(test)]
+    fn with_app_bundle_id_fn(
+        mut self,
+        app_bundle_id_fn: fn(&Path) -> Option<String>,
+    ) -> BrewAdapter {
+        self.app_bundle_id_fn = app_bundle_id_fn;
+        self
+    }
+
     /// What an uninstall of `req` says under the tool
     /// (`Warning::UninstallScope`), and, for a cask whose recorded uninstall
     /// takes extra steps, one `Warning::CaskUninstallStep` per kind.
@@ -420,8 +447,9 @@ impl BrewAdapter {
         let home = (self.env_var_fn)("HOME")
             .filter(|home| !home.is_empty())
             .map(PathBuf::from);
-        let classified = match (self.recorded_uninstall_fn)(&inst.prefix, &req.name) {
-            Some(recorded) => cask_receipt::classify(&recorded, home.as_deref()),
+        let recorded = (self.recorded_uninstall_fn)(&inst.prefix, &req.name);
+        let classified = match &recorded {
+            Some(recorded) => cask_receipt::classify(recorded, home.as_deref()),
             None => Classified::Unknown,
         };
         let (what, steps) = match classified {
@@ -433,17 +461,88 @@ impl BrewAdapter {
             Classified::Steps(steps) => (UninstallScope::HomebrewCaskSteps, steps),
             Classified::OnlySteps(steps) => (UninstallScope::HomebrewCaskStepsOnly, steps),
         };
+        // Looked for only when there is an app to quit and a line to say it.
+        let apps = match &recorded {
+            Some(recorded)
+                if steps
+                    .iter()
+                    .any(|(step, _, _)| *step == CaskStep::QuitsApps) =>
+            {
+                self.quit_app_names(recorded, home.as_deref())
+            }
+            _ => Vec::new(),
+        };
         (
             scope(what),
             steps
                 .into_iter()
-                .map(|(step, only_if, items)| Warning::CaskUninstallStep {
-                    step,
-                    items,
-                    only_if,
+                .flat_map(|(step, only_if, items)| {
+                    if step != CaskStep::QuitsApps {
+                        return vec![Warning::CaskUninstallStep {
+                            step,
+                            items,
+                            only_if,
+                        }];
+                    }
+                    // The apps it quits that were found, by name, and the
+                    // ids of the rest, which their line counts.
+                    let mut named: Vec<String> = Vec::new();
+                    let mut unfound: Vec<String> = Vec::new();
+                    for id in items {
+                        match apps.iter().find(|(app_id, _)| *app_id == id) {
+                            Some((_, name)) if !named.contains(name) => named.push(name.clone()),
+                            Some(_) => {}
+                            None => unfound.push(id),
+                        }
+                    }
+                    [
+                        (CaskStep::QuitsNamedApps, named),
+                        (CaskStep::QuitsApps, unfound),
+                    ]
+                    .into_iter()
+                    .filter(|(_, items)| !items.is_empty())
+                    .map(|(step, items)| Warning::CaskUninstallStep {
+                        step,
+                        items,
+                        only_if: None,
+                    })
+                    .collect()
                 })
                 .collect(),
         )
+    }
+
+    /// The apps a cask's `quit:` and `signal:` steps can be said to quit by
+    /// name, as (bundle id, name) pairs: each app its record puts down
+    /// (`cask_receipt::app_targets`) that is on the disk where Homebrew
+    /// puts it -- at its target when that is absolute or under `~/`, else
+    /// in `/Applications`, Homebrew's default `appdir`, or
+    /// `~/Applications` -- with the bundle id its `Info.plist` gives
+    /// (`app_bundle_id_fn`), named as Finder shows its bundle, without
+    /// `.app`: "Visual Studio Code". An app kept in an `appdir` of its own
+    /// (`--appdir` in `HOMEBREW_CASK_OPTS`) is not found here, and a step
+    /// that quits it is said by count and bundle id instead: a name is
+    /// said only where the id that goes with it was read.
+    fn quit_app_names(&self, recorded: &Recorded, home: Option<&Path>) -> Vec<(String, String)> {
+        let mut apps = Vec::new();
+        for target in cask_receipt::app_targets(recorded) {
+            let candidates: Vec<PathBuf> = if let Some(rest) = target.strip_prefix("~/") {
+                home.map(|home| home.join(rest)).into_iter().collect()
+            } else if Path::new(&target).is_absolute() {
+                vec![PathBuf::from(&target)]
+            } else {
+                std::iter::once(Path::new("/Applications").join(&target))
+                    .chain(home.map(|home| home.join("Applications").join(&target)))
+                    .collect()
+            };
+            let found = candidates.iter().find_map(|path| {
+                let id = (self.app_bundle_id_fn)(path)?;
+                let name = path.file_stem()?.to_str()?.to_string();
+                Some((id, name))
+            });
+            apps.extend(found);
+        }
+        apps
     }
 
     /// What the `brew.env` files make Homebrew do beyond a plan's command,
@@ -3388,6 +3487,97 @@ mod plan_execute_tests {
     const PLAYDATE_RECEIPT: &str = include_str!(
         "../../../../../adapters/fixtures/brew/7.0.6/receipts/playdate-simulator.json"
     );
+
+    /// Charles, where Homebrew puts it: `/Applications/Charles.app`, whose
+    /// Info.plist says it is `com.xk72.Charles`.
+    fn charles_in_applications(app: &Path) -> Option<String> {
+        (app == Path::new("/Applications/Charles.app")).then(|| "com.xk72.Charles".to_string())
+    }
+
+    /// Charles, where the home folder's Applications keeps it.
+    fn charles_in_home_applications(app: &Path) -> Option<String> {
+        (app == Path::new("/Users/someone/Applications/Charles.app"))
+            .then(|| "com.xk72.Charles".to_string())
+    }
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_names_the_app_it_quits_where_it_found_it() {
+        // Charles's record quits `com.xk72.Charles` and puts down
+        // `Charles.app`. Found where Homebrew puts apps, with that bundle
+        // id in its Info.plist, the line names it as Finder does --
+        // 「还会退出正在运行的 Charles」 -- where it said the bundle id.
+        let charles =
+            include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/charles.json");
+        let prefix = CaskroomPrefix::new(
+            "quit-names",
+            &[("charles", charles), ("microsoft-word", WORD_RECEIPT)],
+        );
+        let runner = Arc::new(MockRunner::new());
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let step = |step, items: &[&str]| Warning::CaskUninstallStep {
+            step,
+            items: items.iter().map(|item| item.to_string()).collect(),
+            only_if: None,
+        };
+        let quits = |plan: &Plan| -> Vec<Warning> {
+            plan.warnings
+                .iter()
+                .filter(|warning| {
+                    matches!(
+                        warning,
+                        Warning::CaskUninstallStep {
+                            step: CaskStep::QuitsApps | CaskStep::QuitsNamedApps,
+                            ..
+                        }
+                    )
+                })
+                .cloned()
+                .collect()
+        };
+
+        for found in [charles_in_applications, charles_in_home_applications] {
+            let adapter = BrewAdapter::new(runner.clone())
+                .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+                .with_env_var_fn(someones_home)
+                .with_app_bundle_id_fn(found);
+            let plan = cask_uninstall(&runner, &adapter, &inst, "charles").await;
+            assert_eq!(
+                quits(&plan),
+                vec![step(CaskStep::QuitsNamedApps, &["Charles"])]
+            );
+            // Its other lines are as the record has them.
+            assert!(plan.warnings.contains(&step(
+                CaskStep::RemovesServices,
+                &["com.xk72.Charles.ProxyHelper"]
+            )));
+
+            // Word's record puts down no app for `com.microsoft.autoupdate2`:
+            // nothing to name it by, so its line counts it.
+            let plan = cask_uninstall(&runner, &adapter, &inst, "microsoft-word").await;
+            assert_eq!(
+                quits(&plan),
+                vec![step(CaskStep::QuitsApps, &["com.microsoft.autoupdate2"])]
+            );
+        }
+
+        // Not on the disk, or another app under that name: the bundle id,
+        // counted.
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home)
+            .with_app_bundle_id_fn(|app| {
+                (app == Path::new("/Applications/Charles.app"))
+                    .then(|| "com.example.not-charles".to_string())
+            });
+        let plan = cask_uninstall(&runner, &adapter, &inst, "charles").await;
+        assert_eq!(
+            quits(&plan),
+            vec![step(CaskStep::QuitsApps, &["com.xk72.Charles"])]
+        );
+    }
 
     #[tokio::test]
     async fn test_a_cask_uninstall_says_what_its_install_receipt_records() {

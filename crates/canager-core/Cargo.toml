@@ -84,6 +84,14 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSImageRep",
     "NSWorkspace",
 ] }
+# `cask_receipt::app_bundle_id` reads the `CFBundleIdentifier` in a cask
+# app's `Contents/Info.plist`, XML or binary, so that the uninstall
+# preview can name the app a `quit:` step quits rather than print its
+# bundle id. Already in Cargo.lock at this version as a macOS dependency
+# of tauri, with the same default features, so no new crate enters the
+# build; macOS only, as there. Read only: the file is parsed, nothing is
+# opened or run.
+plist = "1"
 
 [features]
 # Gates the test code that touches real state rather than building a

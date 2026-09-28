@@ -72,12 +72,14 @@ const BREW_DEPENDENTS_UNKNOWN = new Set(["htop"]);
  * down (`uninstall_artifacts` in each one's INSTALL_RECEIPT.json, as the
  * catalogue for Homebrew 7.0.6 defines them): `visual-studio-code`'s
  * `launchctl` and `quit`. The others record only apps, links, fonts and a
- * `quit`, so their uninstall is plain (`cask_receipt::classify`).
+ * `quit`, so their uninstall is plain (`cask_receipt::classify`). The app
+ * it quits is the one it put in /Applications, so the preview names it
+ * (`BrewAdapter::quit_app_names`).
  */
 const CASK_STEPS: Record<string, Warning[]> = {
   "visual-studio-code": [
     { CaskUninstallStep: { step: "RemovesServices", items: ["com.microsoft.VSCode.ShipIt"] } },
-    { CaskUninstallStep: { step: "QuitsApps", items: ["com.microsoft.VSCode"] } },
+    { CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } },
   ],
 };
 

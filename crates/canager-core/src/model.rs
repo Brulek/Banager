@@ -821,8 +821,19 @@ pub enum CaskStep {
     RemovesLoginItems,
     /// `quit:` and `signal:`: running apps with those bundle ids (`*` a
     /// wildcard) are quit or signalled. Plain on its own; said only beside
-    /// another kind.
+    /// another kind. The items are the bundle ids of the apps Canager
+    /// could not find on this Mac; the line counts them, the ids behind
+    /// its ⓘ.
     QuitsApps,
+    /// `QuitsApps`, for the apps it quits that Canager found: an app the
+    /// cask's record puts down whose `CFBundleIdentifier` is one the step
+    /// names, found where Homebrew puts apps
+    /// (`BrewAdapter::quit_app_names`). The items are the apps' names, as
+    /// Finder shows their bundles ("Visual Studio Code"), not their bundle
+    /// ids. Never produced by `cask_receipt::classify`, which reads the
+    /// record alone: the preview turns a `QuitsApps` line into this one,
+    /// and a `QuitsApps` for the rest, once it has looked.
+    QuitsNamedApps,
 }
 
 /// The check an uninstall step of type `remove` makes of each path it
@@ -1738,6 +1749,7 @@ mod tests {
             CaskStep::DeletesCertificates,
             CaskStep::RemovesLoginItems,
             CaskStep::QuitsApps,
+            CaskStep::QuitsNamedApps,
         ] {
             assert_eq!(
                 serde_json::to_string(&step).unwrap(),
