@@ -34,6 +34,28 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
   }
 }
 
+/**
+ * The line under "Nothing to update": what there is instead, in the
+ * Updates page's own numbers (`updatesSummary`) -- the updates the user
+ * hid, the ones under its "Can't update here", the checks that did not
+ * finish -- or null when there is none of that. A source not checked in
+ * full says so under "Needs attention" instead.
+ */
+function nothingToUpdateLine(
+  t: Translate,
+  summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" }>,
+): string | null {
+  const parts: string[] = [];
+  if (summary.hidden > 0) parts.push(t("overview.hiddenCount", { count: summary.hidden }));
+  if (summary.cantUpdateHere > 0) {
+    parts.push(t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }));
+  }
+  if (summary.checksUnfinished > 0) {
+    parts.push(t("overview.checksUnfinished", { count: summary.checksUnfinished }));
+  }
+  return parts.length === 0 ? null : parts.join(t("overview.listSeparator"));
+}
+
 /** What the ring shows: the headline's verdict, or that the first check is still running. */
 type RingState = UpdatesSummary | { kind: "checking" };
 
@@ -124,8 +146,11 @@ const TILE =
  * install, with one button that opens it with all of them selected;
  * "Everything is up to date" only when that page would say so; and a
  * plain "Nothing to update" when there is nothing to install but that is
- * not the same thing. Before the first check has answered, "Checking…" --
- * the startup placeholder is not an answer (`isStartupSnapshot`).
+ * not the same thing, with a line under it saying what there is instead
+ * (`nothingToUpdateLine`) and, when the Updates page lists any of it, a
+ * quieter Review updates that opens it. Before the first check has
+ * answered, "Checking…" -- the startup placeholder is not an answer
+ * (`isStartupSnapshot`).
  *
  * Below it, quietly, two panels. "Your tools": a tile for each source
  * with something installed and how much, which opens the Installed page on
@@ -172,6 +197,7 @@ export function OverviewPage() {
   }
 
   const summary = updatesSummary(snapshot, settings);
+  const whyNothing = summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary) : null;
 
   const tiles: SourceTile[] = snapshot.instances.flatMap((instance) => {
     const count = installedByInstance.get(instance.id) ?? 0;
@@ -191,7 +217,21 @@ export function OverviewPage() {
     <div className="flex min-h-full flex-col items-center px-6 pb-8">
       <section className="flex flex-1 flex-col items-center justify-center gap-5 pb-10 pt-6 text-center">
         <StatusRing state={summary} />
-        <h2 className="text-headline text-foreground">{headlineText(t, summary)}</h2>
+        <div className="flex flex-col items-center gap-1.5">
+          <h2 className="text-headline text-foreground">{headlineText(t, summary)}</h2>
+          {whyNothing !== null ? <p className="text-body text-muted">{whyNothing}</p> : null}
+        </div>
+        {summary.kind === "nothingToUpdate" && summary.cantUpdateHere > 0 ? (
+          // The Updates page has rows to show, every one under "Can't
+          // update here": nothing to select, only a page to open.
+          <button
+            type="button"
+            onClick={() => setPage("updates")}
+            className="h-9 rounded-button border border-border bg-surface px-6 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {t("overview.reviewUpdates")}
+          </button>
+        ) : null}
         {summary.kind === "updates" ? (
           <button
             type="button"

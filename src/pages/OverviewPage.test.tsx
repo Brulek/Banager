@@ -224,13 +224,18 @@ describe("OverviewPage", () => {
 
   // Each of these has nothing to install and is not up to date: the
   // Overview must say so exactly when the Updates page does, and never
-  // "Everything is up to date" over any of them.
-  const notUpToDate: Array<[string, () => void]> = [
+  // "Everything is up to date" over any of them. Under the headline, the
+  // line that says what there is instead, or none; and Review updates
+  // only where the Updates page lists a row.
+  const notUpToDate: Array<[string, () => void, string | null, boolean]> = [
     [
       "a source that is not running",
       () => {
         served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
       },
+      // "Needs attention" says it.
+      null,
+      false,
     ],
     [
       "Homebrew still updating its list of software",
@@ -240,6 +245,8 @@ describe("OverviewPage", () => {
           instances: [{ ...brew, status: { unavailable: null, notes: [note] } }, pip],
         });
       },
+      null,
+      false,
     ],
     [
       "only updates Canager cannot install",
@@ -248,6 +255,8 @@ describe("OverviewPage", () => {
           updates: [candidate(formula("jq"), { blocked: "Pinned" }), candidate(urllib3)],
         });
       },
+      "2 can't be updated here",
+      true,
     ],
     [
       "only updates the user hid",
@@ -255,6 +264,9 @@ describe("OverviewPage", () => {
         served = snapshotWith({ updates: [candidate(formula("glib"))] });
         settings.ignored_updates = [formula("glib")];
       },
+      // The Updates page lists no row of it: nothing there to review.
+      "1 hidden",
+      false,
     ],
     // Homebrew still reads as answering, with no note: `refresh` keeps a
     // source whose update check failed as it was, and carries its last
@@ -267,6 +279,8 @@ describe("OverviewPage", () => {
           errors: [{ instance_id: brew.id, message: "brew outdated exited with code 1" }],
         });
       },
+      "1 check didn't finish",
+      false,
     ],
     [
       "a source whose detection failed this round",
@@ -276,10 +290,12 @@ describe("OverviewPage", () => {
           errors: [{ instance_id: "npm", message: "internal error detecting this source" }],
         });
       },
+      "1 check didn't finish",
+      false,
     ],
   ];
 
-  it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange) => {
+  it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange, line, review) => {
     arrange();
     const { getByRole, getByText, queryByRole, queryByText, container } = renderWithProviders(
       <>
@@ -315,7 +331,95 @@ describe("OverviewPage", () => {
       ).toBeInTheDocument(),
     );
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
+    const headline = getByRole("heading", { level: 2, name: "Nothing to update" });
+    if (line === null) {
+      expect(headline.nextElementSibling).toBeNull();
+    } else {
+      expect(headline.nextElementSibling?.textContent).toBe(line);
+    }
+    if (review) {
+      expect(getByRole("button", { name: "Review updates" })).toBeInTheDocument();
+    } else {
+      expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("says under Nothing to update what the Updates page has instead, in its numbers, and Review updates opens it", async () => {
+    // jq is pinned and urllib3's source is read-only: listed, under "Can't
+    // update here". glib is never to be reminded about and gh's version is
+    // skipped: not listed. wget's skip hides no update this check found,
+    // and is not counted; nor is the stopped Ollama, which "Needs
+    // attention" names.
+    served = snapshotWith({
+      instances: [brew, pip, stoppedOllama],
+      updates: [
+        candidate(formula("jq"), { blocked: "Pinned" }),
+        candidate(urllib3),
+        candidate(formula("glib")),
+        candidate(formula("gh"), { target: "2.102.0" }),
+      ],
+    });
+    settings.ignored_updates = [formula("glib")];
+    settings.skipped_versions = [
+      { key: formula("gh"), version: "2.102.0" },
+      { key: formula("wget"), version: "1.24.0" },
+    ];
+    useUiStore.setState({ page: "overview" });
+    // The Updates page's list is virtualized, and measures its box and
+    // its slots through these, which jsdom leaves at 0 (as in
+    // UpdatesPage.test.tsx): without them it draws no slot at all.
+    const height = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("data-index") === null ? 600 : 56;
+      });
+    const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    try {
+      const { findByRole, getByRole, container } = renderWithProviders(
+        <>
+          <SnapshotStatus showsFirstCheck>
+            <OverviewPage />
+          </SnapshotStatus>
+          <UpdatesPage />
+        </>,
+      );
+
+      const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+      expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
+      // The same number the Updates page gives its folded rows.
+      expect(await findByRole("button", { name: "Can't update here (2)" })).toBeInTheDocument();
+      // The ring is as it was: grey, with a dash.
+      expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");
+
+      fireEvent.click(getByRole("button", { name: "Review updates" }));
+      expect(useUiStore.getState().page).toBe("updates");
+      // Nothing on that page has a checkbox: nothing is selected.
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+    } finally {
+      height.mockRestore();
+      width.mockRestore();
+    }
+  });
+
+  it("says what there is instead in Chinese, one line", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      served = snapshotWith({
+        updates: [
+          candidate(formula("jq"), { blocked: "Pinned" }),
+          candidate(formula("glib")),
+          candidate(formula("wget")),
+        ],
+      });
+      settings.ignored_updates = [formula("glib"), formula("wget")];
+      const { findByRole } = renderOverview();
+
+      const headline = await findByRole("heading", { level: 2, name: "没有要更新的工具" });
+      expect(headline.nextElementSibling?.textContent).toBe("2 个已隐藏，1 个不能在这里更新");
+      expect(await findByRole("button", { name: "查看更新" })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("shows each source with something installed and how much, and a tile opens Installed on that source", async () => {

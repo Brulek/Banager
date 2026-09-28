@@ -17,7 +17,7 @@ import type {
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
-import { canWrite, isAvailable } from "./sources";
+import { canWrite, failedSourceCount, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
 /**
@@ -280,12 +280,20 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  *   from a source not answering), the user hid the rest, a source was not
  *   checked in full, or a check failed this round. Calling that up to date
  *   is the lie the Updates page stopped telling; the Overview does not
- *   start.
+ *   start. It carries what the Overview says under its headline, in the
+ *   Updates page's own numbers: `cantUpdateHere`, every update that page
+ *   lists -- none can be installed, so each is under its "Can't update
+ *   here (N)" -- `hidden`, the updates it leaves out because the user hid
+ *   them (`hidingRule`; a skip or a never-remind that hides no update this
+ *   check found is not counted), and `checksUnfinished`, the sources whose
+ *   check failed this round, as the "Some checks didn't finish" banner
+ *   counts them (`failedSourceCount`). A source not checked in full says
+ *   so in the Overview's "Needs attention", and is not counted here.
  */
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[] }
   | { kind: "upToDate" }
-  | { kind: "nothingToUpdate" };
+  | { kind: "nothingToUpdate"; cantUpdateHere: number; hidden: number; checksUnfinished: number };
 
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
@@ -296,7 +304,13 @@ export function updatesSummary(
   if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors)) {
     return { kind: "upToDate" };
   }
-  return { kind: "nothingToUpdate" };
+  const listed = notHidden(snapshot.updates, settings).length;
+  return {
+    kind: "nothingToUpdate",
+    cantUpdateHere: listed,
+    hidden: snapshot.updates.length - listed,
+    checksUnfinished: failedSourceCount(snapshot.errors),
+  };
 }
 
 /**

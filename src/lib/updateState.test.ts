@@ -352,12 +352,19 @@ describe("updatesSummary", () => {
       ...brew,
       status: { unavailable: "NotRunning", notes: [] },
     };
+    // Not checked in full, and nothing else to say: "Needs attention" says why.
     expect(updatesSummary({ instances: [stopped], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      cantUpdateHere: 0,
+      hidden: 0,
+      checksUnfinished: 0,
     });
     const pinned = candidate({ blocked: "Pinned" });
     expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      cantUpdateHere: 1,
+      hidden: 0,
+      checksUnfinished: 0,
     });
     const glib = candidate();
     expect(
@@ -365,13 +372,51 @@ describe("updatesSummary", () => {
         { instances: [brew], updates: [glib], errors: [] },
         hiding({ ignored_updates: [glib.key] }),
       ),
-    ).toEqual({ kind: "nothingToUpdate" });
+    ).toEqual({ kind: "nothingToUpdate", cantUpdateHere: 0, hidden: 1, checksUnfinished: 0 });
+  });
+
+  it("counts, with nothing to install, what the Updates page lists, what the user hid and the checks that failed", () => {
+    const readOnly: ManagerInstance = { ...brew, id: "pip:/usr/bin/python3", read_only_reason: "ByDesign" };
+    const jq = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "jq" }, blocked: "Pinned" });
+    const urllib3 = candidate({ key: { instance_id: readOnly.id, kind: "Package", name: "urllib3" } });
+    const wget = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "wget" }, checkable: false });
+    const glib = candidate();
+    const gh = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "gh" }, target: "2.102.0" });
+    const settings = hiding({
+      ignored_updates: [glib.key],
+      // One skip hides gh's row; the other is of a version jq no longer
+      // offers, and hides nothing.
+      skipped_versions: [
+        { key: gh.key, version: "2.102.0" },
+        { key: jq.key, version: "1.0.5" },
+      ],
+    });
+    const failed = [
+      { instance_id: brew.id, message: "brew outdated exited 1" },
+      { instance_id: brew.id, message: "brew list exited 1" },
+      { instance_id: "npm", message: "internal error detecting this source" },
+    ];
+    const snapshot = { instances: [brew, readOnly], updates: [jq, urllib3, wget, glib, gh], errors: failed };
+
+    expect(updatesSummary(snapshot, settings)).toEqual({
+      kind: "nothingToUpdate",
+      // jq, urllib3 and wget: what the Updates page lists, every row
+      // under "Can't update here".
+      cantUpdateHere: 3,
+      hidden: 2,
+      // Two sources, as the "Some checks didn't finish" banner counts them.
+      checksUnfinished: 2,
+    });
+    expect(notHidden(snapshot.updates, settings)).toEqual([jq, urllib3, wget]);
   });
 
   it("is not up to date when a check failed this round, even with nothing listed", () => {
     const failed = { instance_id: brew.id, message: "brew outdated exited 1" };
     expect(updatesSummary({ instances: [brew], updates: [], errors: [failed] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      cantUpdateHere: 0,
+      hidden: 0,
+      checksUnfinished: 1,
     });
     // What can be installed still comes first: a failed check elsewhere
     // does not take the count away.
