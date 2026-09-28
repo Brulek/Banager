@@ -477,7 +477,8 @@
     "scannedHoursAgo_other": "上次扫描：{{count}} 小时前",
     "scannedDaysAgo_other": "上次扫描：{{count}} 天前",
     "scanFailed": "没能扫描：{{message}}",
-    "empty": "没有来源不明的程序"
+    "empty": "没有来源不明的程序",
+    "emptyChecked": "查过的部分没有来源不明的程序"
   },
   "emptyStates": {
     "loadFailed": {

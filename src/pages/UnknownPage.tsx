@@ -227,9 +227,13 @@ export function UnknownPage() {
             </div>
           ) : null}
           {result.entries.length === 0 ? (
+            // A scan that stopped early vouches only for what it checked:
+            // no check mark over the rest.
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
-              <CheckCircleIcon size={44} className="text-success" />
-              <p className="text-section text-foreground">{t("unknown.empty")}</p>
+              {stopped === null ? <CheckCircleIcon size={44} className="text-success" /> : null}
+              <p className="text-section text-foreground">
+                {t(stopped === null ? "unknown.empty" : "unknown.emptyChecked")}
+              </p>
             </div>
           ) : (
             <div className="px-3 pb-2">

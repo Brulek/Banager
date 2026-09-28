@@ -272,6 +272,32 @@ describe("UnknownPage", () => {
     expect(container.querySelector("[data-tool-row]")).toBeNull();
   });
 
+  it("vouches only for what it checked when a scan that stopped early found nothing, with no check mark", async () => {
+    scan = { ...baseScan, entries: [], stopped: { TimeLimit: { max_secs: 10 } } };
+    const stoppedEarly = renderWithProviders(<UnknownPage />);
+    expect(await stoppedEarly.findByText("No programs of unknown origin in what Canager checked")).toBeInTheDocument();
+    expect(stoppedEarly.getByText("Canager stopped after 10 seconds and didn't check the rest.")).toBeInTheDocument();
+    expect(stoppedEarly.queryByText("No programs of unknown origin")).toBeNull();
+    expect(stoppedEarly.container.querySelector("svg.text-success")).toBeNull();
+    stoppedEarly.unmount();
+
+    scan = { ...baseScan, entries: [] };
+    const whole = renderWithProviders(<UnknownPage />);
+    expect(await whole.findByText("No programs of unknown origin")).toBeInTheDocument();
+    expect(whole.container.querySelector("svg.text-success")).not.toBeNull();
+  });
+
+  it("says a scan that stopped early and found nothing vouches only for what it checked, in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      scan = { ...baseScan, entries: [], stopped: { FileLimit: { max_entries: 2000 } } };
+      const { findByText } = renderWithProviders(<UnknownPage />);
+      expect(await findByText("查过的部分没有来源不明的程序")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("scans again when the button is pressed", async () => {
     // The button is the page header's now (`ScanAgain`), as App puts it.
     const { findByText, getByRole } = renderWithProviders(

@@ -504,7 +504,8 @@
     "scannedDaysAgo_one": "Scanned {{count}} day ago",
     "scannedDaysAgo_other": "Scanned {{count}} days ago",
     "scanFailed": "Couldn't scan: {{message}}",
-    "empty": "No programs of unknown origin"
+    "empty": "No programs of unknown origin",
+    "emptyChecked": "No programs of unknown origin in what Canager checked"
   },
   "emptyStates": {
     "loadFailed": {
