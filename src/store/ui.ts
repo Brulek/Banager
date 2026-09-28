@@ -28,7 +28,8 @@ export interface UiState {
   setInstalledSort(sort: InstalledSort): void;
   // Opens the Installed page showing one source's tools -- an Overview
   // tile's -- or, with null, all of them: the sidebar's entry, whose count
-  // is of everything installed.
+  // is of everything installed. Either way the search starts empty, so the
+  // list is the one the tile or the count promised, not an old search's.
   openInstalled(instanceId: string | null): void;
   // The ids of the sources whose dependencies are unfolded. This used to
   // be one boolean for the whole page, so unfolding pip's "N components
@@ -111,7 +112,7 @@ export const useUiStore = create<UiState>((set) => ({
   setInstalledFilter: (instanceId) => set({ installedFilter: instanceId }),
   installedSort: "name",
   setInstalledSort: (sort) => set({ installedSort: sort }),
-  openInstalled: (instanceId) => set({ page: "installed", installedFilter: instanceId }),
+  openInstalled: (instanceId) => set({ page: "installed", installedFilter: instanceId, query: "" }),
   expandedDependencies: [],
   toggleDependencies: (instanceId) =>
     set((s) => ({

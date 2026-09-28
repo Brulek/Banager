@@ -55,6 +55,19 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().installedSort).toBe("source");
   });
 
+  it("opens the Installed page with the search cleared, from a tile and from the sidebar alike", () => {
+    // An Overview tile promises one source's tools; an old search left in
+    // the box would show fewer than the tile's count.
+    useUiStore.getState().setQuery("jq");
+    useUiStore.getState().setPage("overview");
+    useUiStore.getState().openInstalled("brew:/opt/homebrew");
+    expect(useUiStore.getState().query).toBe("");
+
+    useUiStore.getState().setQuery("node");
+    useUiStore.getState().openInstalled(null);
+    expect(useUiStore.getState().query).toBe("");
+  });
+
   it("toggleDependencies expands one source at a time", () => {
     // It used to be a single boolean, so unfolding pip's dependencies also
     // unfolded Homebrew's. Every row already carries the instance it came
