@@ -82,6 +82,8 @@ const settings: Settings = {
   ignored_updates: [formula("ffmpeg")],
   skipped_versions: [],
   include_self_updating: false,
+  auto_check: false,
+  notify_updates: false,
 };
 
 /** What the backend has before its first check has answered (`Snapshot::empty()`). */

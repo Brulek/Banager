@@ -58,6 +58,8 @@ function baseSettings(overrides: Partial<Settings> = {}): Settings {
     ignored_updates: [],
     skipped_versions: [],
     include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
     ...overrides,
   };
 }
@@ -428,6 +430,97 @@ describe("SettingsPage", () => {
     );
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
+
+  it("offers the daily check in the Updates card, off, saying what it does, with Notify me under it, off until it is on", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const updates = await screen.findByRole("region", { name: "Updates" });
+    const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
+    expect(daily).not.toBeChecked();
+    expect(daily).toHaveAccessibleDescription(
+      "Checks once a day while Canager is running. It only checks and installs nothing. Nothing is checked after you quit.",
+    );
+    const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
+    expect(notify).not.toBeChecked();
+    expect(notify).toBeDisabled();
+    // Under the daily check, the row it depends on.
+    const switches = within(updates).getAllByRole("switch");
+    expect(switches.indexOf(notify)).toBe(switches.indexOf(daily) + 1);
+  });
+
+  it("turns the daily check on and saves it, which makes Notify me available, and re-scans nothing", async () => {
+    // The daily check runs at its next look, a day after the last check
+    // ended; turning it on is no reason to check now.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "refresh") return null;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Check for updates every day" }));
+
+    await waitFor(() => expect(lastSaved()).toEqual(baseSettings({ auto_check: true })));
+    expect(screen.getByRole("switch", { name: "Check for updates every day" })).toBeChecked();
+    const notify = screen.getByRole("switch", { name: "Notify me when there are updates" });
+    expect(notify).toBeEnabled();
+    expect(notify).not.toBeChecked();
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
+  });
+
+  it("turns Notify me on while the daily check is on, and off with the daily check", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    expect(notify).toBeEnabled();
+    fireEvent.click(notify);
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
+    );
+    expect(notify).toBeChecked();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false })),
+    );
+    expect(notify).not.toBeChecked();
+    expect(notify).toBeDisabled();
+  });
+
+  it("shows Notify me off while the daily check is off, even where a file saved it on", async () => {
+    // What the switch shows is what can happen: nothing is checked, so
+    // nothing can be notified.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: false, notify_updates: true });
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    expect(notify).not.toBeChecked();
+    expect(notify).toBeDisabled();
+  });
+
+  it("calls the daily check and its notification what the spec has them in Chinese", () => {
+    expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
+    expect(zhCN.settings.autoCheck.description).toBe("Canager 开着时每天检查一次，只检查不安装。退出后不检查。");
+    expect(zhCN.settings.notifyUpdates.label).toBe("有可更新时通知我");
+  });
+
   it("marks the chosen language visibly, not only through aria-checked", async () => {
     // Under Tailwind's preflight a class-less <button> has no background, no
     // border and no padding, so the three languages rendered as three bare

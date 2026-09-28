@@ -323,6 +323,8 @@ beforeEach(() => {
     ignored_updates: [],
     skipped_versions: [],
     include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
   };
   updates = snapshot.updates;
   instances = snapshot.instances;

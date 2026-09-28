@@ -603,6 +603,8 @@ export function initialSettings(scenario: Scenario): Settings {
     ignored_updates: [key(IDS.brew, "Formula", "ffmpeg")],
     skipped_versions: [{ key: key(IDS.brew, "Formula", "gh"), version: "2.102.0" }],
     include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
   };
 }
 

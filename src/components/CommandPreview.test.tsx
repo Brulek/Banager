@@ -21,6 +21,8 @@ beforeEach(() => {
     ignored_updates: [],
     skipped_versions: [],
     include_self_updating: false,
+    auto_check: false,
+    notify_updates: false,
   };
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation(async (cmd: string) => (cmd === "get_settings" ? settings : undefined));

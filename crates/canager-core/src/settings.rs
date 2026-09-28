@@ -59,16 +59,24 @@ pub struct Settings {
     /// `Settings::default()` in `load()`.
     #[serde(default)]
     pub include_self_updating: bool,
-    /// The daily check: whether Canager, while it runs, refreshes by itself
-    /// once a day -- the same refresh as Check again, which installs
-    /// nothing. Read at every tick of the shell's task
-    /// (`check_automatically` in src-tauri/src/auto_check.rs), which hands
-    /// it to `auto_check::tick`. Off by default. `#[serde(default)]` so a
-    /// settings.json written before this field existed still loads with its
-    /// other fields, instead of `load()` falling back to
-    /// `Settings::default()`.
+    /// The daily check, Settings → Updates' 「每天自动检查」: whether
+    /// Canager, while it runs, refreshes by itself once a day -- the same
+    /// refresh as Check again, which installs nothing. Read at every tick
+    /// of the shell's task (`check_automatically` in
+    /// src-tauri/src/auto_check.rs), which hands it to `auto_check::tick`.
+    /// Off by default. `#[serde(default)]` so a settings.json written
+    /// before this field existed still loads with its other fields,
+    /// instead of `load()` falling back to `Settings::default()`.
     #[serde(default)]
     pub auto_check: bool,
+    /// Settings → Updates' 「有可更新时通知我」, under the daily check: the
+    /// Settings page offers it only while `auto_check` is on, and turning
+    /// the daily check off turns this off with it. Only the Settings page
+    /// reads it so far; nothing in Rust does, and no notification is posted
+    /// yet. Off by default, and `#[serde(default)]` for the same reason as
+    /// `auto_check`.
+    #[serde(default)]
+    pub notify_updates: bool,
 }
 
 impl Default for Settings {
@@ -80,6 +88,7 @@ impl Default for Settings {
             skipped_versions: Vec::new(),
             include_self_updating: false,
             auto_check: false,
+            notify_updates: false,
         }
     }
 }
@@ -155,6 +164,7 @@ mod tests {
         assert!(settings.ignored_updates.is_empty());
         assert!(settings.skipped_versions.is_empty());
         assert!(!settings.auto_check, "the daily check is off by default");
+        assert!(!settings.notify_updates, "and so are its notifications");
     }
 
     #[test]
@@ -171,6 +181,18 @@ mod tests {
         assert!(json.contains("\"skipped_versions\":[]"));
         assert!(json.contains("\"include_self_updating\":false"));
         assert!(json.contains("\"auto_check\":false"));
+        assert!(json.contains("\"notify_updates\":false"));
+    }
+
+    #[test]
+    fn test_default_settings_wire_shape_matches_the_hand_written_ts_mirror() {
+        // `Settings` in src/lib/types.ts; the shape test in
+        // src/lib/types.test.ts expects exactly this string, every field in
+        // this order, the daily check's two last.
+        assert_eq!(
+            serde_json::to_string(&Settings::default()).expect("serialize"),
+            r#"{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false}"#
+        );
     }
 
     #[test]
@@ -248,9 +270,10 @@ mod tests {
     #[test]
     fn test_load_of_json_written_before_the_daily_check_turns_it_off_and_keeps_the_rest() {
         // Every settings.json written before the daily check existed: all
-        // of today's other fields, set, and no `auto_check`. Without
-        // `#[serde(default)]` on it `load` would fall back to
-        // Settings::default() and drop every one of them.
+        // of today's other fields, set, and neither `auto_check` nor
+        // `notify_updates`. Without `#[serde(default)]` on both `load`
+        // would fall back to Settings::default() and drop every one of
+        // them.
         let path = temp_settings_path("no-auto-check");
         std::fs::write(
             &path,
@@ -270,8 +293,26 @@ mod tests {
                 }],
                 include_self_updating: true,
                 auto_check: false,
+                notify_updates: false,
             }
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_of_json_with_the_daily_check_but_no_notify_updates_keeps_the_daily_check() {
+        // Written by a Canager with the daily check and nothing after it:
+        // `notify_updates` alone is missing, and alone defaults.
+        let path = temp_settings_path("no-notify-updates");
+        std::fs::write(
+            &path,
+            br#"{"language":"En","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":true}"#,
+        )
+        .expect("write settings.json without notify_updates");
+        let loaded = load(&path);
+        assert_eq!(loaded.language, Language::En);
+        assert!(loaded.auto_check);
+        assert!(!loaded.notify_updates);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -288,6 +329,7 @@ mod tests {
             }],
             include_self_updating: true,
             auto_check: true,
+            notify_updates: true,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

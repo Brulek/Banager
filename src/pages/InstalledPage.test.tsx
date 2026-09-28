@@ -87,6 +87,8 @@ const settings: Settings = {
   ignored_updates: [],
   skipped_versions: [],
   include_self_updating: false,
+  auto_check: false,
+  notify_updates: false,
 };
 
 const pip: ManagerInstance = {

@@ -513,6 +513,13 @@
       "label": "Show apps that update themselves",
       "description": "Also list Homebrew apps that update themselves, like Chrome, under Updates."
     },
+    "autoCheck": {
+      "label": "Check for updates every day",
+      "description": "Checks once a day while Canager is running. It only checks and installs nothing. Nothing is checked after you quit."
+    },
+    "notifyUpdates": {
+      "label": "Notify me when there are updates"
+    },
     "language": {
       "label": "Language",
       "system": "System",

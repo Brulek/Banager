@@ -476,6 +476,13 @@
       "label": "显示会自动更新的 App",
       "description": "Homebrew 装的 Chrome 这类会自己更新的 App，也列进「更新」。"
     },
+    "autoCheck": {
+      "label": "每天自动检查",
+      "description": "Canager 开着时每天检查一次，只检查不安装。退出后不检查。"
+    },
+    "notifyUpdates": {
+      "label": "有可更新时通知我"
+    },
     "language": {
       "label": "语言",
       "system": "跟随系统",

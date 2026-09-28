@@ -7,6 +7,12 @@ export interface SwitchProps {
   "aria-label"?: string;
   /** Points at a description element; Task 15 uses it to keep the Switch's accessible name to the label text alone. */
   "aria-describedby"?: string;
+  /**
+   * A switch that cannot be changed now, because another setting it
+   * depends on is off: drawn faded, and neither a click nor the keyboard
+   * changes it. Settings' 「有可更新时通知我」 under 「每天自动检查」.
+   */
+  disabled?: boolean;
 }
 
 export function Switch({
@@ -15,6 +21,7 @@ export function Switch({
   id,
   "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedBy,
+  disabled = false,
 }: SwitchProps) {
   return (
     <RadixSwitch.Root
@@ -23,10 +30,11 @@ export function Switch({
       aria-describedby={ariaDescribedBy}
       checked={checked}
       onCheckedChange={onCheckedChange}
+      disabled={disabled}
       // Off, a grey that still reads as a control on a white card (the
       // quiet fill alone all but vanished there); on, the accent. A ring
-      // for the keyboard's focus.
-      className="relative h-6 w-10 shrink-0 rounded-full bg-muted/45 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface data-[state=checked]:bg-accent"
+      // for the keyboard's focus. Disabled, faded, with no pointer.
+      className="relative h-6 w-10 shrink-0 rounded-full bg-muted/45 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent"
     >
       <RadixSwitch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-sm shadow-black/20 transition-transform duration-150 data-[state=checked]:translate-x-[18px]" />
     </RadixSwitch.Root>

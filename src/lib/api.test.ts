@@ -115,6 +115,8 @@ describe("api", () => {
       ignored_updates: [],
       skipped_versions: [],
       include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
     };
     mockInvoke.mockResolvedValueOnce(undefined as never);
     await setSettings(settings);

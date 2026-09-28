@@ -79,6 +79,8 @@ function SettingRow({
 }
 
 const ROW_LABEL = "block text-body font-medium text-foreground";
+/** The label of a row whose switch is disabled: as muted as the switch is faded. */
+const ROW_LABEL_DISABLED = "block text-body font-medium text-muted";
 const ROW_DESCRIPTION = "mt-0.5 text-small text-muted";
 
 /**
@@ -97,8 +99,9 @@ function EntryName({ name, source }: { name: string; source: string | undefined 
 
 /**
  * Settings, in four cards: 「通用」 -- the language, and whether to show
- * technical details -- 「更新」 -- whether Homebrew's self-updating apps
- * are listed -- 「已隐藏的更新」, the versions skipped and the software
+ * technical details -- 「更新」 -- the daily check, 「有可更新时通知我」
+ * under it, and whether Homebrew's self-updating apps are listed --
+ * 「已隐藏的更新」, the versions skipped and the software
  * never to be reminded about, each with the button that takes it back,
  * where the Overview's count of hidden updates opens the page -- and
  * 「关于」, whose 「图标来源」 row opens the credits for the logos
@@ -291,6 +294,50 @@ export function SettingsPage() {
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.groups.updates")}>
+        {/* The daily check (src-tauri/src/auto_check.rs), off by default,
+            and under it the notification that belongs to it: offered only
+            while the daily check is on, shown off while it is not, and
+            turned off with it -- so what the switch shows is what is saved. */}
+        <SettingRow
+          label={
+            <label htmlFor="settings-auto-check" className={ROW_LABEL}>
+              {t("settings.autoCheck.label")}
+            </label>
+          }
+          description={
+            <p id="settings-auto-check-desc" className={ROW_DESCRIPTION}>
+              {t("settings.autoCheck.description")}
+            </p>
+          }
+          control={
+            <Switch
+              id="settings-auto-check"
+              aria-describedby="settings-auto-check-desc"
+              checked={current.auto_check}
+              onCheckedChange={(checked) =>
+                persist({ ...current, auto_check: checked, notify_updates: checked && current.notify_updates })
+              }
+            />
+          }
+        />
+        <SettingRow
+          label={
+            <label
+              htmlFor="settings-notify-updates"
+              className={current.auto_check ? ROW_LABEL : ROW_LABEL_DISABLED}
+            >
+              {t("settings.notifyUpdates.label")}
+            </label>
+          }
+          control={
+            <Switch
+              id="settings-notify-updates"
+              checked={current.auto_check && current.notify_updates}
+              disabled={!current.auto_check}
+              onCheckedChange={(checked) => persist({ ...current, notify_updates: checked })}
+            />
+          }
+        />
         <SettingRow
           label={
             <label htmlFor="settings-include-self-updating" className={ROW_LABEL}>

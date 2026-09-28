@@ -455,6 +455,8 @@ describe("types", () => {
       ignored_updates: [],
       skipped_versions: [],
       include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
     };
 
     expect(roundTrip(plan).cancel_policy).toBe("KillThenReconcile");
@@ -481,8 +483,28 @@ describe("types", () => {
       ignored_updates: [],
       skipped_versions: skipped,
       include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
     };
     expect(roundTrip(settings).skipped_versions).toEqual(skipped);
+  });
+
+  it("spells Settings as settings.rs's shape test does, the daily check's two fields last", () => {
+    // `test_default_settings_wire_shape_matches_the_hand_written_ts_mirror`
+    // in crates/canager-core/src/settings.rs asserts this exact string from
+    // the Rust side: `Settings::default()`, every field snake_case.
+    const defaults: Settings = {
+      language: "System",
+      show_technical_details: false,
+      ignored_updates: [],
+      skipped_versions: [],
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
+    };
+    expect(JSON.stringify(defaults)).toBe(
+      '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false}',
+    );
   });
 
   it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {

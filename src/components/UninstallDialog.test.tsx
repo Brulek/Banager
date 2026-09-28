@@ -924,6 +924,8 @@ describe("UninstallDialog", () => {
           ignored_updates: [],
           skipped_versions: [],
           include_self_updating: false,
+          auto_check: false,
+          notify_updates: false,
         };
       }
       if (cmd === "plan_operation") return issuedPlanFor();

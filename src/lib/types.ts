@@ -447,6 +447,16 @@ export interface Settings {
   ignored_updates: ArtifactKey[];
   skipped_versions: SkippedVersion[];
   include_self_updating: boolean;
+  /**
+   * The daily check, 「每天自动检查」 in Settings: a refresh by itself once
+   * a day while Canager runs (src-tauri/src/auto_check.rs). Off by default.
+   */
+  auto_check: boolean;
+  /**
+   * 「有可更新时通知我」 in Settings, which offers it only while
+   * `auto_check` is on and turns it off with it. Off by default.
+   */
+  notify_updates: boolean;
 }
 export type Stream = "Stdout" | "Stderr";
 // A line of Canager's own in an operation's log (Rust `LogNote`): a key the

@@ -115,6 +115,8 @@ const settings: Settings = {
   ignored_updates: [formula("ffmpeg")],
   skipped_versions: [{ key: formula("gh"), version: "2.102.0" }],
   include_self_updating: false,
+  auto_check: false,
+  notify_updates: false,
 };
 
 const scan: UnknownScan = {
