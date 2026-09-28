@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useSettings, useSnapshot } from "../lib/queries";
+import { useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
@@ -173,6 +173,7 @@ export function InstalledPage() {
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
+  const { data: operations } = useOperations();
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -429,7 +430,20 @@ export function InstalledPage() {
   // (`uninstallHoldKey`) -- with a chip saying why. It comes back with the
   // refresh that clears the note.
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
-    canUninstall(artifact, instance) && uninstallHoldKey(instance) !== null;
+    canUninstall(artifact, instance) && (uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
+  // An uninstall of this one already queued or running: its Uninstall
+  // stays, disabled, and says which.
+  const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
+    const id = artifactKeyId(artifact.key);
+    const op = (operations ?? []).find(
+      (op) =>
+        op.kind === "Uninstall" &&
+        op.status !== "Done" &&
+        artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === id,
+    );
+    if (op === undefined) return null;
+    return op.status === "Queued" ? t("installed.uninstallQueued") : t("installed.uninstalling");
+  };
 
   // `opener` is the button pressed, passed rather than read off the focus:
   // a click in WebKit does not focus a button.
@@ -658,7 +672,7 @@ export function InstalledPage() {
               disabled={uninstallHeld(artifact, instance)}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
             >
-              {t("installed.uninstall")}
+              {uninstallUnderway(artifact) ?? t("installed.uninstall")}
             </RowAction>
           ) : null
         }
@@ -746,7 +760,7 @@ export function InstalledPage() {
               onClick={(event) => uninstall(artifact, event.currentTarget)}
               className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-surface disabled:hover:text-muted"
             >
-              {t("installed.uninstall")}
+              {uninstallUnderway(artifact) ?? t("installed.uninstall")}
             </button>
           ) : null}
           {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}

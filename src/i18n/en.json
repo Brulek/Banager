@@ -103,6 +103,8 @@
     "sortBySource": "Source",
     "noMatches": "Nothing matches “{{query}}”",
     "uninstall": "Uninstall",
+    "uninstallQueued": "Queued",
+    "uninstalling": "Uninstalling…",
     "uninstallHold": {
       "label": "Can't uninstall now",
       "IndexUpdating": "Homebrew is updating its software list. Uninstall once it's done."

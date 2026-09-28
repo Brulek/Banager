@@ -91,6 +91,8 @@
     "sortBySource": "来源",
     "noMatches": "没有找到“{{query}}”",
     "uninstall": "卸载",
+    "uninstallQueued": "排队中",
+    "uninstalling": "正在卸载…",
     "uninstallHold": {
       "label": "暂时不能卸载",
       "IndexUpdating": "Homebrew 正在更新软件清单，等它更新完再卸载。"

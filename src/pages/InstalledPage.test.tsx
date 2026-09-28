@@ -1638,6 +1638,33 @@ describe("InstalledPage", () => {
       expect(within(jq).queryByText(/^Couldn't prepare the update/)).toBeNull();
     });
 
+    it.each([
+      ["Queued", "Queued"],
+      ["Running", "Uninstalling…"],
+    ] as const)("offers no second Uninstall while one is %s, on the row and in the drawer", async (status, label) => {
+      operations = [
+        {
+          id: 11,
+          kind: "Uninstall",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "jq",
+          status,
+          outcome: null,
+          argv_preview: ["/opt/homebrew/bin/brew", "uninstall", "jq"],
+          cancel_policy: "KillThenReconcile",
+        },
+      ];
+      renderWithProviders(<InstalledPage />);
+
+      const row = await findRow("jq");
+      expect(await within(row).findByRole("button", { name: label })).toBeDisabled();
+      expect(within(row).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      const drawer = await openDetails("jq");
+      expect(within(drawer).getByRole("button", { name: label })).toBeDisabled();
+      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+    });
+
     it("offers no Update for an update the Updates page does not offer", async () => {
       served = {
         ...snapshot,
