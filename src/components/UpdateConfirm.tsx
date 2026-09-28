@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, planErrorDetail, planErrorMessage } from "../lib/sources";
@@ -7,8 +7,16 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
 import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
-import { CheckIcon, WarningIcon } from "./icons";
+import { CheckIcon, ChevronIcon, WarningIcon } from "./icons";
 import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
+
+/**
+ * How many tools a long confirmation lists before 「还有 N 个」, so that
+ * Update all over ten tools is not a sheet of list with the commands far
+ * below it. Folded only past one more than this, so the fold never hides
+ * a single tool behind a line as tall as it.
+ */
+const FOLDED_TOOLS = 5;
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -326,6 +334,14 @@ export interface UpdateConfirmDialogProps {
  * note stays with the tool it is true of. A line's longer why is behind
  * its ⓘ. The commands are one click away (`CommandPreview`), each under
  * its tool's name, open from the start with technical details on.
+ *
+ * Until it is submitted, 「请注意」 comes first, above the tools: Update all
+ * over ten tools filled the sheet with its list, and the notes were below
+ * the fold, under an Update that had the focus. Beside Cancel and Update,
+ * 「有 4 条需要留意」 says how many there are, and takes the focus -- and
+ * the sheet's scroll -- to them. A list longer than six shows its first
+ * five and the rest one press away, unless a tool in it has a refusal to
+ * show. Once it is done, what did not start comes first instead.
  */
 export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const { t } = useTranslation();
@@ -333,6 +349,10 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const { batch, dialogOpen, submitting } = confirm;
   const updateRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const notesRef = useRef<HTMLElement>(null);
+  const toolsId = useId();
+  // The batch whose whole list the user unfolded: a new batch starts folded.
+  const [unfoldedBatch, setUnfoldedBatch] = useState<number | null>(null);
   const items = batch?.items ?? [];
   const issued = items.filter(
     (item): item is BatchItem & { issued: IssuedPlan } => item.issued !== null,
@@ -401,6 +421,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const noted = issued
     .map((item) => ({ item, notes: notesOf(item) }))
     .filter(({ notes }) => notes.length > 0);
+  const noteCount = noted.reduce((count, { notes }) => count + notes.length, 0);
 
   // While it prepares, it asks about everything chosen; then about what
   // can be confirmed of it.
@@ -409,6 +430,37 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     asked.length === 1
       ? t("updates.confirmTitleNamed", { name: asked[0].name })
       : t("updates.confirmTitle", { count: asked.length });
+
+  // The first `FOLDED_TOOLS` tools, and the rest one press away -- never
+  // while one of them has a refusal to show, which every tool then shows.
+  const foldable =
+    items.length > FOLDED_TOOLS + 1 &&
+    items.every((item) => item.planError === null && item.submitError === null);
+  const unfolded = batch !== null && unfoldedBatch === batch.id;
+  const shownItems = foldable && !unfolded ? items.slice(0, FOLDED_TOOLS) : items;
+  // What there is to know before Update, first; what did not start, once done.
+  const notesFirst = phase !== "done";
+
+  const notesSection =
+    noted.length > 0 ? (
+      <SheetSection
+        ref={notesRef}
+        first={notesFirst}
+        title={t("updates.warningsTitle")}
+        icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
+      >
+        <div className="flex flex-col gap-3">
+          {noted.map(({ item, notes: lines }) => (
+            // A `<div>` per tool, holding its name and its notes and no
+            // other tool's.
+            <div key={artifactKeyId(item.candidate.key)}>
+              {several ? <p className="mb-1 text-body font-medium text-foreground">{item.name}</p> : null}
+              <SheetLines lines={lines} />
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+    ) : null;
 
   return (
     <Dialog
@@ -431,6 +483,18 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           </button>
         ) : (
           <>
+            {noteCount > 0 ? (
+              // How many notes there are, where the eye is when Update is
+              // pressed; it takes the focus, and the scroll, to them.
+              <button
+                type="button"
+                onClick={() => notesRef.current?.focus()}
+                className="mr-auto inline-flex min-w-0 items-center gap-1.5 rounded-sm text-small font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <WarningIcon size={14} className="shrink-0 text-warning" />
+                {t("updates.notesSummary", { count: noteCount })}
+              </button>
+            ) : null}
             <button type="button" onClick={confirm.close} disabled={submitting} className={SHEET_BUTTON.secondary}>
               {t("common.cancel")}
             </button>
@@ -447,8 +511,10 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         )
       }
     >
-      <ul className="flex flex-col">
-        {items.map((item) => {
+      {notesFirst ? notesSection : null}
+
+      <ul id={toolsId} className={notesFirst && notesSection !== null ? "mt-5 flex flex-col" : "flex flex-col"}>
+        {shownItems.map((item) => {
           const { key } = item.candidate;
           const jump = versionJump(item.candidate);
           const digest = item.candidate.channel === "Digest";
@@ -492,26 +558,24 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           );
         })}
       </ul>
+      {foldable ? (
+        <button
+          type="button"
+          aria-expanded={unfolded}
+          aria-controls={toolsId}
+          onClick={() => setUnfoldedBatch(unfolded ? null : (batch?.id ?? null))}
+          className="mt-1 flex items-center gap-1.5 rounded-button py-1 text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <ChevronIcon size={14} className={`shrink-0 transition-transform ${unfolded ? "rotate-90" : ""}`} />
+          {unfolded
+            ? t("updates.fewerTools")
+            : t("updates.moreTools", { count: items.length - FOLDED_TOOLS })}
+        </button>
+      ) : null}
 
       {phase === "planning" ? <SheetPending text={t("updates.preparing")} /> : null}
 
-      {noted.length > 0 ? (
-        <SheetSection
-          title={t("updates.warningsTitle")}
-          icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
-        >
-          <div className="flex flex-col gap-3">
-            {noted.map(({ item, notes }) => (
-              // A `<div>` per tool, holding its name and its notes and no
-              // other tool's.
-              <div key={artifactKeyId(item.candidate.key)}>
-                {several ? <p className="mb-1 text-body font-medium text-foreground">{item.name}</p> : null}
-                <SheetLines lines={notes} />
-              </div>
-            ))}
-          </div>
-        </SheetSection>
-      ) : null}
+      {notesFirst ? null : notesSection}
 
       <CommandPreview
         plans={issued.map((item) => ({

@@ -3050,6 +3050,76 @@ describe("UpdatesPage", () => {
       ]);
     });
 
+    it("puts Before you continue above the tools, with how many notes beside Update, which takes the focus to them", async () => {
+      needsPassword.add("onyx");
+      planWarnings.glib = ["CompilesLocally"];
+      const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      await findByText("2 updates");
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+
+      const notes = await within(dialog).findByRole("region", { name: "Before you continue" });
+      const firstTool = dialog.querySelector("[data-sheet-tool]");
+      expect(firstTool).toBeInstanceOf(HTMLElement);
+      expect(notes.compareDocumentPosition(firstTool as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      const summary = within(dialog).getByRole("button", { name: "2 things to note" });
+      fireEvent.click(summary);
+      expect(document.activeElement).toBe(notes);
+    });
+
+    it("says nothing about notes beside Update when there are none", async () => {
+      const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      await findByText("2 updates");
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
+    });
+
+    it("lists the first five tools of a long batch, and the rest one press away", async () => {
+      updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
+      const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      await findByText("10 updates");
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      const dialog = await findByRole("dialog", { name: "Update 10 tools?" });
+      const toolNames = () =>
+        [...dialog.querySelectorAll("[data-sheet-tool]")].map(
+          (tool) => within(tool as HTMLElement).getAllByText(/./, { selector: "p" })[0].textContent,
+        );
+
+      expect(toolNames()).toEqual(["tool-0", "tool-1", "tool-2", "tool-3", "tool-4"]);
+      const more = within(dialog).getByRole("button", { name: "5 more" });
+      expect(more).toHaveAttribute("aria-expanded", "false");
+
+      fireEvent.click(more);
+      expect(toolNames()).toHaveLength(10);
+      const fewer = within(dialog).getByRole("button", { name: "Show fewer" });
+      expect(fewer).toHaveAttribute("aria-expanded", "true");
+
+      fireEvent.click(fewer);
+      expect(toolNames()).toHaveLength(5);
+    });
+
+    it("lists every tool of a long batch when one of them was refused, with its why", async () => {
+      updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
+      planFailures["tool-8"] = "tool-8 is pinned";
+      const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      await findByText("10 updates");
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      const dialog = await findByRole("dialog", { name: "Update 9 tools?" });
+
+      expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(10);
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("Couldn't prepare the update: tool-8 is pinned");
+      expect(within(dialog).queryByRole("button", { name: /more$/ })).toBeNull();
+    });
+
     it("keeps a row's Update the accent: the thing this page recommends", async () => {
       renderWithProviders(<UpdatesPage />);
 

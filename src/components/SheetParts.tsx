@@ -4,7 +4,7 @@
  * out what to say, its notes in named groups, and a refusal with its why.
  * One set, so the update and the uninstall confirmation read alike.
  */
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import type { WarningLine } from "../lib/warnings";
@@ -79,13 +79,26 @@ export interface SheetSectionProps {
   /** Before the heading, such as the warning sign on 「请注意」. */
   icon?: ReactNode;
   children: ReactNode;
+  /**
+   * The section, for a sheet that moves the focus to it -- which also
+   * brings it into view -- as the update sheet's 「有 4 条需要留意」 does.
+   * With one, the section takes the focus from code, never from Tab.
+   */
+  ref?: Ref<HTMLElement>;
+  /** It is the first thing under the sheet's title: no space above it. */
+  first?: boolean;
 }
 
 /** One named group of a sheet's notes (the copy table's C4 premise), under a quiet heading. */
-export function SheetSection({ title, icon, children }: SheetSectionProps) {
+export function SheetSection({ title, icon, children, ref, first = false }: SheetSectionProps) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="mt-5">
+    <section
+      ref={ref}
+      tabIndex={ref === undefined ? undefined : -1}
+      aria-labelledby={headingId}
+      className={first ? "outline-none" : "mt-5 outline-none"}
+    >
       <h3 id={headingId} className="flex items-center gap-1.5 text-small font-semibold text-muted">
         {icon}
         {title}
