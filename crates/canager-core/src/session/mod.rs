@@ -81,6 +81,13 @@ pub enum DetectOutcome {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Snapshot {
     pub generation: u64,
+    /// The number of the refresh round that committed this snapshot, the
+    /// one `refresh_with_round` hands back with it: 0 for
+    /// `Snapshot::empty()`, before any round has. Each round has a higher
+    /// one than the last, whether or not it moved `generation`, so unlike
+    /// `generation` it names the round a snapshot came from -- the number
+    /// `auto_check::RoundLog` records who asked for each round by.
+    pub round: u64,
     pub detect: DetectOutcome,
     pub instances: Vec<ManagerInstance>,
     pub artifacts: Vec<InstalledArtifact>,
@@ -113,6 +120,7 @@ impl Snapshot {
     fn empty() -> Snapshot {
         Snapshot {
             generation: 0,
+            round: 0,
             detect: DetectOutcome::Missing,
             instances: Vec::new(),
             artifacts: Vec::new(),
@@ -124,8 +132,8 @@ impl Snapshot {
     }
 
     /// Whether `self` and `other` carry the same *data* -- every field
-    /// except `generation`, `refreshed_at` and `stale`, which describe the
-    /// refresh attempt rather than the fetched data itself.
+    /// except `generation`, `round`, `refreshed_at` and `stale`, which
+    /// describe the refresh attempt rather than the fetched data itself.
     fn same_content(&self, other: &Snapshot) -> bool {
         self.detect == other.detect
             && self.instances == other.instances

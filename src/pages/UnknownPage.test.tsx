@@ -64,6 +64,7 @@ const baseScan: UnknownScan = {
 // scan's judgement is Rust's.
 const snapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [],
   artifacts: [],

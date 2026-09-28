@@ -41,6 +41,7 @@ function artifact(key: ArtifactKey, displayName: string): InstalledArtifact {
 function snapshotOf(artifacts: InstalledArtifact[], updates: Snapshot["updates"] = []): Snapshot {
   return {
     generation: 3,
+    round: 3,
     detect: "Found",
     instances: [],
     artifacts,

@@ -421,6 +421,7 @@ describe("OperationBar", () => {
     const claude = { instance_id: "standalone-claude", kind: "Binary" as const, name: "claude" };
     const listed: Snapshot = {
       generation: 1,
+      round: 1,
       detect: "Found",
       instances: [],
       artifacts: [

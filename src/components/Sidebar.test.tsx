@@ -85,6 +85,7 @@ function artifact(key: ArtifactKey, reason: InstalledArtifact["reason"]): Instal
 // reminded about, one whose version was skipped.
 const snapshot: Snapshot = {
   generation: 3,
+  round: 3,
   detect: "Found",
   instances: [brew, pip, ollama],
   artifacts: [

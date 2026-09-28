@@ -84,6 +84,7 @@ const PLAN_LIFETIME_MS = 10 * 60 * 1000;
 /** `Snapshot::empty()`: what `get_snapshot` answers before any refresh. */
 const EMPTY_SNAPSHOT: Snapshot = {
   generation: 0,
+  round: 0,
   detect: "Missing",
   instances: [],
   artifacts: [],
@@ -130,6 +131,7 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   let settings: Settings = initialSettings(scenario);
   let committed: Snapshot | null = null;
   let generation = 0;
+  let round = 0;
   let lastContent = JSON.stringify(snapshotContent(buildWorld("empty"), settings));
   let lastAnnounced = 0;
   const channels = new Set<EventChannel>();
@@ -163,9 +165,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
   }
 
   /**
-   * One refresh round's result, committed: the generation moves only when
-   * the content does (`Snapshot::same_content`), and a new generation is
-   * announced once (`announce` in src-tauri/src/ipc.rs).
+   * One refresh round's result, committed: numbered one above the last
+   * (`Snapshot::round`), the generation moving only when the content does
+   * (`Snapshot::same_content`), and a new generation announced once
+   * (`announce` in src-tauri/src/ipc.rs).
    */
   function commit(): Snapshot {
     const content = snapshotContent(world, settings);
@@ -174,8 +177,10 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       generation += 1;
       lastContent = serialized;
     }
+    round += 1;
     committed = clone({
       generation,
+      round,
       ...content,
       refreshed_at: nowSeconds(),
       stale: content.errors.length > 0,

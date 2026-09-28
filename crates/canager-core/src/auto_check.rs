@@ -307,6 +307,7 @@ mod tests {
         };
         Snapshot {
             generation: 1,
+            round: 1,
             detect: DetectOutcome::Found,
             instances: vec![ManagerInstance {
                 status: InstanceStatus {

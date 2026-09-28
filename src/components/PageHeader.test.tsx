@@ -16,6 +16,7 @@ const CHECKED_AT = 1790586000;
 function snapshotCheckedAt(refreshedAt: number | null, generation = 4): Snapshot {
   return {
     generation,
+    round: generation,
     detect: "Found",
     instances: [],
     artifacts: [],

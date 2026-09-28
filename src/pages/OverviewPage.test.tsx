@@ -86,6 +86,7 @@ function artifact(key: ArtifactKey): InstalledArtifact {
 function snapshotWith(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
     generation: 7,
+    round: 7,
     detect: "Found",
     instances: [brew, pip],
     artifacts: [
@@ -105,6 +106,7 @@ function snapshotWith(overrides: Partial<Snapshot> = {}): Snapshot {
 // The placeholder the backend starts from, before the first check.
 const startupSnapshot: Snapshot = {
   generation: 0,
+  round: 0,
   detect: "Missing",
   instances: [],
   artifacts: [],

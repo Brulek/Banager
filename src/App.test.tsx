@@ -15,6 +15,7 @@ const mockInvoke = vi.mocked(invoke);
 // keeps the Updates page on "Everything is up to date".
 const snapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [
     {

@@ -112,15 +112,18 @@ describe("the browser preview's mock backend", () => {
   it("starts empty, like a real launch, and the first refresh commits generation 1", async () => {
     const { backend, events } = backendFor();
     const before = await answer<Snapshot>(backend.invoke("get_snapshot"));
-    expect(before).toMatchObject({ generation: 0, detect: "Missing", refreshed_at: null });
+    expect(before).toMatchObject({ generation: 0, round: 0, detect: "Missing", refreshed_at: null });
     const first = await answer<Snapshot>(backend.invoke("refresh"));
     expect(first.generation).toBe(1);
+    expect(first.round).toBe(1);
     expect(first.refreshed_at).not.toBeNull();
     await vi.runOnlyPendingTimersAsync();
     expect(events).toContainEqual({ SnapshotChanged: { generation: 1 } });
-    // An unchanged refresh keeps its generation and announces nothing new.
+    // An unchanged refresh keeps its generation and announces nothing new,
+    // and is a round of its own (`Snapshot::round`).
     const again = await answer<Snapshot>(backend.invoke("refresh"));
     expect(again.generation).toBe(1);
+    expect(again.round).toBe(2);
     expect(await answer<Snapshot>(backend.invoke("get_snapshot"))).toEqual(again);
   });
 

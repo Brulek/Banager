@@ -49,6 +49,7 @@ const typescriptKey: ArtifactKey = {
 
 const snapshot: Snapshot = {
   generation: 2,
+  round: 2,
   detect: "Found",
   // A candidate's adapter is only reachable by joining its key's
   // `instance_id` back to the snapshot's instances, so the page needs real

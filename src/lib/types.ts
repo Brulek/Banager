@@ -364,6 +364,12 @@ export interface SourceError {
 }
 export interface Snapshot {
   generation: number;
+  /**
+   * The number of the refresh round that committed this snapshot (Rust
+   * `Snapshot::round`): 0 before any has, and higher each round, whether
+   * or not `generation` moved.
+   */
+  round: number;
   detect: DetectOutcome;
   instances: ManagerInstance[];
   artifacts: InstalledArtifact[];

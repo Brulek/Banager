@@ -55,6 +55,7 @@ function brewInstance(over: Partial<ManagerInstance> = {}): ManagerInstance {
 function snapshotWith(instances: ManagerInstance[], artifacts: InstalledArtifact[] = []): Snapshot {
   return {
     generation: 1,
+    round: 1,
     detect: "Found",
     instances,
     artifacts,

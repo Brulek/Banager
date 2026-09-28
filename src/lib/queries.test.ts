@@ -44,6 +44,7 @@ function newClient() {
 
 const snapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [],
   artifacts: [],

@@ -67,6 +67,7 @@ function installed(name: string): InstalledArtifact {
 // asked never to be reminded about ffmpeg.
 const snapshot: Snapshot = {
   generation: 3,
+  round: 3,
   detect: "Found",
   instances: [brew],
   artifacts: [installed("glib"), installed("wget"), installed("jq")],
@@ -89,6 +90,7 @@ const settings: Settings = {
 /** What the backend has before its first check has answered (`Snapshot::empty()`). */
 const startup: Snapshot = {
   generation: 0,
+  round: 0,
   detect: "Missing",
   instances: [],
   artifacts: [],

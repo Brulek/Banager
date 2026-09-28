@@ -38,6 +38,7 @@ describe("types", () => {
   it("round-trips a realistic Snapshot (shape copied from canager-core's brew fixtures)", () => {
     const snapshot = {
       generation: 3,
+      round: 5,
       detect: "Found",
       instances: [
         {
@@ -99,6 +100,7 @@ describe("types", () => {
     const parsed = roundTrip<Snapshot>(snapshot);
 
     expect(parsed.generation).toBe(3);
+    expect(parsed.round).toBe(5);
     expect(parsed.detect).toBe("Found");
     expect(parsed.instances[0].scope).toBe("User");
     expect(parsed.instances[0].read_only_reason).toBeNull();

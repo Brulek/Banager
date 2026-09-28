@@ -25,6 +25,7 @@ function SnapshotProbe() {
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
     generation: 1,
+    round: 1,
     detect: "Found",
     instances: [],
     artifacts: [],

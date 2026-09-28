@@ -18,6 +18,7 @@ function wrapper(queryClient: QueryClient) {
 
 const refreshedSnapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [],
   artifacts: [],

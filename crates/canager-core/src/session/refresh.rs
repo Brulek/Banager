@@ -648,6 +648,7 @@ impl Session {
         let refreshed_at = Some(self.now());
         let candidate = Snapshot {
             generation: previous.generation,
+            round,
             detect,
             instances,
             artifacts,
@@ -2888,11 +2889,41 @@ mod tests {
         for handle in behind {
             let (round, snapshot) = handle.await.expect("caller task");
             assert_eq!(snapshot, session.snapshot(), "the shared round's snapshot");
+            assert_eq!(snapshot.round, round, "which carries its number");
             rounds.push(round);
         }
         assert_eq!(in_flight_round, second + 1);
         assert_eq!(rounds, vec![second + 2; 3], "one shared round, one number");
         assert_eq!(state.lock().unwrap().detect_calls, 4);
+    }
+
+    #[tokio::test]
+    async fn test_each_snapshot_carries_the_number_of_the_round_that_committed_it() {
+        // `Snapshot::round`: the number `refresh_with_round` hands back,
+        // higher each round, also when nothing changed and `generation`
+        // stayed where it was.
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        assert_eq!(
+            session.snapshot().round,
+            0,
+            "Snapshot::empty(), before any round"
+        );
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        let (first, snapshot) = session.refresh_with_round(&env, &opts).await;
+        assert_eq!(snapshot.round, first);
+        let (second, again) = session.refresh_with_round(&env, &opts).await;
+        assert_eq!(
+            again.generation, snapshot.generation,
+            "precondition: nothing changed"
+        );
+        assert_eq!(again.round, second);
+        assert!(second > first);
+        assert_eq!(session.snapshot().round, second);
     }
 
     #[tokio::test]

@@ -35,6 +35,7 @@ const brew: ManagerInstance = {
 
 const snapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [brew],
   artifacts: [
@@ -106,6 +107,7 @@ const pip: ManagerInstance = {
 // One pip instance with one package.
 const pipSnapshot: Snapshot = {
   generation: 1,
+  round: 1,
   detect: "Found",
   instances: [pip],
   artifacts: [
