@@ -49,7 +49,8 @@ vi.mock("@tauri-apps/api/core", () => {
  * A logo pack with no logos: what the avatars draw from under
  * `renderWithProviders` unless a test hands it a pack of its own, so that
  * every avatar is its source's coloured initial whatever the built-in
- * pack lists -- a seed today, the reviewed mapping's hundreds later.
+ * pack lists: the reviewed mapping's hundreds of logos, which the next
+ * review may change.
  */
 const NO_TOOL_ICONS: ToolIcons = loadToolIcons(
   { version: 1, generated: "", glyphs: {}, rasters: {}, tools: {}, sources: {} },

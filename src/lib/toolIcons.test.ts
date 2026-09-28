@@ -25,8 +25,8 @@ function key(instanceId: string, kind: ArtifactKind, name: string): ArtifactKey 
 
 /**
  * A pack of this test's own, so that no test here depends on what the
- * committed pack happens to list: the mapping it is built from is a seed,
- * replaced wholesale by the reviewed one.
+ * committed pack happens to list: it is built from the reviewed mapping,
+ * which the next review may change.
  */
 const FIXTURE: ToolIconPack = {
   version: 1,
@@ -265,8 +265,8 @@ describe("glyphInk", () => {
 });
 
 /**
- * The pack the app ships, whatever it lists: these hold for the seed
- * mapping and for the reviewed one of hundreds that replaces it.
+ * The pack the app ships, whatever it lists: these hold for the reviewed
+ * mapping's hundreds of logos, and must for any mapping that replaces it.
  */
 describe("the built-in pack", () => {
   const PACK_DIR = path.resolve(__dirname, "../assets/tool-icons");
