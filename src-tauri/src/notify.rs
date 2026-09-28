@@ -5,13 +5,12 @@
 //! (`report_update_set`), and `canager_core::notify_updates` decides what
 //! that report does. This is the shell's part: where the focus is -- on
 //! the window, on Canager without its window, or on another app -- and the
-//! notification itself -- titled with the app's name,
-//! Canager, and saying how many tools can be updated, in the window's
-//! language. On a Mac it carries a handler that would bring the window
-//! back on the Updates page for a click (`OPEN_UPDATES_EVENT`), which
-//! notify-rust never hands a click (`post`). The Settings page asks for
-//! permission to post as the switch is turned on
-//! (`request_notification_permission`).
+//! notification itself, titled with the app's name, Canager, and saying
+//! how many tools can be updated, in the window's language. On a Mac it
+//! carries a handler that would bring the window back on the Updates page
+//! for a click (`OPEN_UPDATES_EVENT`), which notify-rust never hands a
+//! click (`post`). The Settings page asks for permission to post as the
+//! switch is turned on (`request_notification_permission`).
 
 use crate::menu::{self, MenuBar, MenuLanguage};
 use crate::state::AppState;

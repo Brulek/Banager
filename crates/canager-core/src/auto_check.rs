@@ -71,11 +71,12 @@ pub enum Tick {
 /// A `now` [`SET_BACK_SLACK_SECS`] or more before `last_check_ended` is
 /// due as well: the clock was set back past the last check, and waiting
 /// for it to reach that check again plus a day could take as long as it
-/// was set back. The round that runs then stamps the corrected time, so it
-/// is one extra check, not one per tick. A `now` less than that before it
-/// is not due: the clock stepped back by a little, or a round ended
-/// between the tick reading `now` and reading `last_check_ended`, and in
-/// neither is a day gone.
+/// was set back. The round that runs then stamps the corrected time, and
+/// once one that counts has, the day is measured from there: a clock set
+/// back costs an extra check, not one per tick. A `now` less than that
+/// before it is not due: the clock stepped back by a little, or a round
+/// ended between the tick reading `now` and reading `last_check_ended`,
+/// and in neither is a day gone.
 ///
 /// `busy` wins only over a check that is due, so that `Tick` says why
 /// nothing ran.
@@ -109,10 +110,10 @@ pub fn wall_clock_now() -> i64 {
 
 /// Whether a round counts as a check for the daily one: every round does
 /// but a daily one (`RoundTrigger::Automatic`) in which every source failed
-/// (`every_source_failed`) -- a round that reached nothing, after which the
-/// next tick, 15 minutes on, checks again. A round that failed only in part
-/// counts, and so does one of the window's however it went: the user saw
-/// it, and asks again when they like.
+/// (`every_source_failed`) -- a round that learned nothing new, after which
+/// the check is due again at the next tick, 15 minutes on. A round that
+/// failed only in part counts, and so does one of the window's however it
+/// went: the user saw it, and asks again when they like.
 pub fn counts_as_check(trigger: RoundTrigger, snapshot: &Snapshot) -> bool {
     trigger == RoundTrigger::Window || !every_source_failed(snapshot)
 }

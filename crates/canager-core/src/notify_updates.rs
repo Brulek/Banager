@@ -4,9 +4,9 @@
 //! the user has not been told about. What is decided here is pure -- what
 //! is known of the round ([`ReportedRound`]), the settings, where the focus
 //! is ([`Focus`]), the updates the page offers and those told or seen
-//! before -- so every case is tested without a notification. The shell hands them in each
-//! time the page reports what it offers (`report_update_set` in
-//! `src-tauri/src/notify.rs`), and posts.
+//! before -- so every case is tested without a notification. The shell
+//! hands them in each time the page reports what it offers
+//! (`report_update_set` in `src-tauri/src/notify.rs`), and posts.
 
 use crate::auto_check::RoundTrigger;
 use crate::settings::Settings;
@@ -159,10 +159,10 @@ pub fn decide(
 
 /// A report's whole effect on `notified`: what `decide` answers, carried
 /// out. `Seen` marks every pair of `updates`; `Nothing`, `Deferred` and
-/// `Withheld` mark none. `Post` calls `post` with its count, and marks every pair once
-/// `post` returns `Ok`; when it fails, nothing is marked, so the next round
-/// of the daily check that offers them posts again, and its error is
-/// handed back for the caller to log.
+/// `Withheld` mark none. `Post` calls `post` with its count, and marks
+/// every pair once `post` returns `Ok`; when it fails, nothing is marked,
+/// so the next round of the daily check that offers them posts again, and
+/// its error is handed back for the caller to log.
 pub fn report(
     notified: &mut Notified,
     round: ReportedRound,
