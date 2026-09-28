@@ -38,7 +38,8 @@ function needsALook(tone: OutcomeTone): boolean {
  * spinner and 「更新 ffmpeg：进行中」 -- what it does, what it does it to,
  * where it stands -- with Cancel where Cancel can still do something, and
  * the way to its log; with several, how far along the run is: 「正在处理
- * 3 个中的第 2 个」. Once everything is done, how it went in place of where
+ * 3 个中的第 2 个」, and 「全部取消」 for all of it that can still be
+ * cancelled. Once everything is done, how it went in place of where
  * it stood: 「更新 ffmpeg：已成功」, or the outcome with a warning sign and
  * its log when it needs a look -- and a close button. Closed, it stays away
  * until the next operation starts.
@@ -46,10 +47,10 @@ function needsALook(tone: OutcomeTone): boolean {
  * Its operations are a run (`trackRun`): the ones started while others
  * were still under way belong together, and a new one started after
  * everything had finished replaces the last run's result. The one a run
- * names while under way is the oldest actually working (`currentOf`),
- * whose Cancel it offers; with a single operation that is it, and once a
- * run of one is done, that one -- so an update that finished while the
- * user was looking elsewhere is still on screen, with how it went.
+ * names while under way is the oldest actually working (`currentOf`);
+ * with a single operation that is it, and its Cancel is that one's alone.
+ * Once a run of one is done, that one -- so an update that finished while
+ * the user was looking elsewhere is still on screen, with how it went.
  */
 export function OperationBar() {
   const { t } = useTranslation();
@@ -95,7 +96,32 @@ export function OperationBar() {
     const done = total - active.length;
     const status = statusKey(current, logs);
     const line = t("operations.current", { ...titleOf(current), status: status === null ? "" : t(status) });
-    const cancel = cancelState(current);
+    // With several, Cancel all: every operation of the run that can still
+    // be cancelled -- each one queued, whatever its plan, and each one
+    // running whose plan allows it, the current one among them when it
+    // can be. One that cannot be (a NoCancel op already running) goes on
+    // to its end, on the bar. The queued ones go first, oldest first, so
+    // none of them starts in the moment its turn comes. Pressable while
+    // there is one to cancel; held, not pressable, while the cancels are
+    // on their way, as a single Cancel is.
+    const batch = total > 1;
+    const cancellable = active
+      .filter((op) => cancelState(op) === "enabled")
+      .sort((a, b) => Number(b.status === "Queued") - Number(a.status === "Queued") || a.id - b.id);
+    const cancel = !batch
+      ? cancelState(current)
+      : cancellable.length > 0
+        ? "enabled"
+        : active.some((op) => cancelState(op) === "disabled")
+          ? "disabled"
+          : "none";
+    const cancelNow = () => {
+      if (!batch) {
+        cancelMutation.mutate(current.id);
+        return;
+      }
+      for (const op of cancellable) cancelMutation.mutate(op.id);
+    };
     body = (
       <>
         <SpinnerIcon size={14} className="shrink-0 text-accent-text" />
@@ -126,13 +152,8 @@ export function OperationBar() {
         ) : null}
         {viewLog(current)}
         {cancel !== "none" ? (
-          <button
-            type="button"
-            onClick={() => cancelMutation.mutate(current.id)}
-            disabled={cancel === "disabled"}
-            className={CANCEL_BUTTON}
-          >
-            {t("common.cancel")}
+          <button type="button" onClick={cancelNow} disabled={cancel === "disabled"} className={CANCEL_BUTTON}>
+            {batch ? t("operations.batch.cancelAll") : t("common.cancel")}
           </button>
         ) : null}
       </>

@@ -52,6 +52,13 @@ beforeEach(() => {
   useUiStore.setState({ drawerOpen: false, focusedOpId: null, logs: [] });
 });
 
+/** The ids `cancel_operation` was called with, in order. */
+function calledToCancel(): number[] {
+  return mockInvoke.mock.calls
+    .filter(([cmd]) => cmd === "cancel_operation")
+    .map(([, args]) => (args as { opId: number }).opId);
+}
+
 /** The backend's list has moved on: what a `Status` or `Finished` event makes the bar ask again. */
 async function listNow(queryClient: QueryClient, next: OpSummary[]) {
   operations = next;
@@ -230,10 +237,9 @@ describe("OperationBar", () => {
 
     await listNow(queryClient, [op(13, "wget", "Queued"), op(12, "jq", "Queued"), op(11, "git", "Running")]);
     await findByText("Working on 1 of 3");
-    // The one doing something, and its Cancel.
+    // The one doing something; Cancel is for the whole run.
     expect(getByText("Update git: Running")).toBeInTheDocument();
-    fireEvent.click(getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 11 }));
+    expect(getByRole("button", { name: "Cancel all" })).toBeEnabled();
 
     await listNow(queryClient, [
       op(13, "wget", "Queued"),
@@ -249,10 +255,74 @@ describe("OperationBar", () => {
       op(11, "git", "Done", "Succeeded"),
     ]);
     await findByText("1 of 3 needs attention");
-    expect(queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(queryByRole("button", { name: /^Cancel/ })).toBeNull();
     // Its log is the one that needs it.
     fireEvent.click(getByRole("button", { name: "View log" }));
     expect(useUiStore.getState().focusedOpId).toBe(12);
+  });
+
+  describe("Cancel all, in a run of several", () => {
+    it("cancels every operation of the run still to do: the queued ones and each one running", async () => {
+      // Homebrew's two, one after the other on its lock, and npm's beside
+      // them: up to three run at once on different locks.
+      const { findByRole, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+      await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+      await listNow(queryClient, [
+        op(14, "typescript", "Running", null, { instance_id: "npm:/usr/local", artifact_kind: "Package" }),
+        op(13, "wget", "Queued"),
+        op(12, "jq", "Queued"),
+        op(11, "git", "Running"),
+      ]);
+
+      fireEvent.click(await findByRole("button", { name: "Cancel all" }));
+      expect(queryByRole("button", { name: "Cancel" })).toBeNull();
+
+      // The queued ones first, so neither starts as the one ahead of it stops.
+      await waitFor(() => expect(calledToCancel()).toEqual([12, 13, 11, 14]));
+    });
+
+    it("cancels the queued ones and lets a running one that cannot be stopped finish, still naming it", async () => {
+      // rustup's self update, NoCancel, running; two queued behind it.
+      const rustup = op(9, "rustup", "Running", null, {
+        instance_id: "standalone-rustup",
+        artifact_kind: "Binary",
+        cancel_policy: "NoCancel",
+      });
+      const { findByRole, findByText, getByText, queryByRole, queryClient } = renderWithProviders(<OperationBar />);
+      await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+      await listNow(queryClient, [op(11, "wget", "Queued"), op(10, "jq", "Queued"), rustup]);
+
+      await findByText("Update rustup: Running");
+      fireEvent.click(await findByRole("button", { name: "Cancel all" }));
+      await waitFor(() => expect(calledToCancel()).toEqual([10, 11]));
+
+      // Their cancels on the way: held, not pressable twice.
+      await listNow(queryClient, [op(11, "wget", "CancelRequested"), op(10, "jq", "CancelRequested"), rustup]);
+      expect(await findByRole("button", { name: "Cancel all" })).toBeDisabled();
+      expect(getByText("Update rustup: Running")).toBeInTheDocument();
+
+      // Only rustup left, which nothing can stop: no button, and the bar
+      // goes on naming it until it has finished.
+      await listNow(queryClient, [op(11, "wget", "Done", "Cancelled"), op(10, "jq", "Done", "Cancelled"), rustup]);
+      await waitFor(() => expect(queryByRole("button", { name: /^Cancel/ })).toBeNull());
+      expect(getByText("Update rustup: Running")).toBeInTheDocument();
+      expect(calledToCancel()).toEqual([10, 11]);
+    });
+
+    it("calls it 全部取消 in Chinese, and a single operation's still 取消", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const { findByRole, queryClient } = renderWithProviders(<OperationBar />);
+        await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+        await listNow(queryClient, [op(5, "ffmpeg", "Running")]);
+        expect(await findByRole("button", { name: "取消" })).toBeEnabled();
+
+        await listNow(queryClient, [op(6, "jq", "Queued"), op(5, "ffmpeg", "Running")]);
+        expect(await findByRole("button", { name: "全部取消" })).toBeEnabled();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
   });
 
   it("says a run of several all succeeded, or how many were cancelled, with nothing to look at", async () => {

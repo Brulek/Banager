@@ -346,7 +346,8 @@
       "allSucceeded_other": "All {{count}} succeeded",
       "needsAttention_one": "{{count}} of {{total}} needs attention",
       "needsAttention_other": "{{count}} of {{total}} need attention",
-      "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled"
+      "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
+      "cancelAll": "Cancel all"
     },
     "cancelKind": {
       "Install": "Cancel install",
