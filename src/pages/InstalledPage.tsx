@@ -812,18 +812,22 @@ export function InstalledPage() {
             <SourceNotices notices={sourceNotices} layout="block" />
           </div>
         ) : null}
-        {confirm.pageErrors.map((item) => {
-          const text = t("updates.planFailed", { message: item.planError });
-          return (
-            <Refusal
-              key={artifactKeyId(item.candidate.key)}
-              text={text}
-              detail={item.planErrorDetail}
-              detailTitle={text}
-              className="mt-4"
-            />
-          );
-        })}
+        {/* This tool's own refusal only: the update that failed to start
+            may have been pressed in another tool's drawer. */}
+        {confirm.pageErrors
+          .filter((item) => artifactKeyId(item.candidate.key) === id)
+          .map((item) => {
+            const text = t("updates.planFailed", { message: item.planError });
+            return (
+              <Refusal
+                key={id}
+                text={text}
+                detail={item.planErrorDetail}
+                detailTitle={text}
+                className="mt-4"
+              />
+            );
+          })}
       </Drawer>
     );
   };

@@ -1619,6 +1619,25 @@ describe("InstalledPage", () => {
       });
     });
 
+    it("shows an update that could not start in its own tool's drawer, not in another's", async () => {
+      const answer = mockInvoke.getMockImplementation()!;
+      mockInvoke.mockImplementation((cmd: string, args?: unknown) =>
+        cmd === "plan_operation" ? Promise.reject("brew is busy") : answer(cmd, args),
+      );
+      renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const glib = await openDetails("glib");
+      fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
+      expect(await within(glib).findByText(/^Couldn't prepare the update/)).toBeInTheDocument();
+
+      fireEvent.click(within(glib).getByRole("button", { name: "Close" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "glib" })).toBeNull());
+      const jq = await openDetails("jq");
+      expect(within(jq).queryByText(/^Couldn't prepare the update/)).toBeNull();
+    });
+
     it("offers no Update for an update the Updates page does not offer", async () => {
       served = {
         ...snapshot,
