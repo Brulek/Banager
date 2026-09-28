@@ -85,6 +85,11 @@ pub fn run() {
                 &menu::preferred_languages(),
             );
             menu::show(app.handle(), language)?;
+            // Canager coming to the front -- a click on the update
+            // notification brings it there -- with its window closed while
+            // a notification waits on the window brings the window back on
+            // the Updates page (window.rs).
+            window::observe_activation(app.handle());
             Ok(())
         })
         // Canager's own menu bar in place of tauri's default, which `setup`
@@ -92,6 +97,9 @@ pub fn run() {
         // builder, so that it is there before the page can name a language.
         .enable_macos_default_menu(false)
         .manage(menu::MenuBar::default())
+        // Whether an update notification waits on the window (window.rs):
+        // set as one is handed off, cleared as the window comes back.
+        .manage(window::NotificationPending::default())
         // Its items that act in the page bring the window back and tell it;
         // macOS carries out the rest itself.
         .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
@@ -117,7 +125,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        // A click on Canager's icon in the Dock brings a closed window back
-        // (window.rs).
+        // A click on Canager's icon in the Dock brings a closed window back,
+        // on the Updates page while a notification waits on it (window.rs).
         .run(window::on_run_event);
 }

@@ -2,8 +2,10 @@
  * The page's part in the update notification, Settings' 「有可更新时通知我」
  * (src-tauri/src/notify.rs): it tells Rust, after each snapshot, which
  * updates Update all would take, and Rust decides whether a notification
- * goes out; and it opens the Updates page when Rust says one was clicked,
- * which on a Mac Rust does not hear (`post` in notify.rs).
+ * goes out; and it opens the Updates page when Rust has brought the window
+ * back for one -- on a Mac, as Canager comes to the front with its window
+ * closed or minimized while a notification waits on it (`on_activate` in
+ * src-tauri/src/window.rs), which is how a click on it arrives.
  */
 import { useEffect, useRef } from "react";
 import { onOpenUpdates, reportUpdateSet } from "./api";
@@ -28,10 +30,13 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
  *   daily check's, notifications are on and another app is in front, not
  *   Canager, and posts only news: a (row, version) pair neither told nor
  *   seen before.
- * - When Rust says the notification was clicked, once it has brought the
- *   window back (`OPEN_UPDATES_EVENT`), it opens the Updates page, as the
- *   sidebar's Updates does. On a Mac, Rust does not hear the click
- *   (`post` in src-tauri/src/notify.rs), so this does not happen there.
+ * - When Rust has brought the window back for the notification
+ *   (`OPEN_UPDATES_EVENT`), it opens the Updates page, as the sidebar's
+ *   Updates does. On a Mac, Rust hears no click on the notification itself
+ *   (`post` in src-tauri/src/notify.rs): it sends this when Canager comes
+ *   to the front with its window closed or minimized while a notification
+ *   waits on it -- after a click, or ⌘-Tab or the Dock icon then
+ *   (`on_activate` in src-tauri/src/window.rs).
  */
 export function useUpdateNotification(): void {
   const { data: snapshot } = useSnapshot();

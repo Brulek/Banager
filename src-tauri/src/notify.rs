@@ -9,21 +9,26 @@
 //! how many tools can be updated, in the window's language. On a Mac it
 //! carries a handler that would bring the window back on the Updates page
 //! for a click (`OPEN_UPDATES_EVENT`), which notify-rust never hands a
-//! click (`post`). The Settings page asks for permission to post as the
-//! switch is turned on (`request_notification_permission`).
+//! click (`post`). What a click does instead is bring Canager to the
+//! front, and from its hand-off the notification waits on the window
+//! (`window::NotificationPending`), so that Canager coming to the front
+//! with its window closed or in the Dock brings it back on the Updates
+//! page (`window::on_activate`). The Settings page asks for permission to
+//! post as the switch is turned on (`request_notification_permission`).
 
 use crate::menu::{self, MenuBar, MenuLanguage};
 use crate::state::AppState;
-use crate::window::MAIN_WINDOW;
+use crate::window::{NotificationPending, MAIN_WINDOW};
 use canager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
 
 /// The event `open_updates` tells the window, once it is back on screen,
-/// for a click on the update notification -- which `post` never hears --
-/// and which opens the Updates page: src/lib/api.ts's
-/// `OPEN_UPDATES_EVENT` spells the same.
+/// for the update notification -- whose click `post` never hears, but
+/// which brings Canager to the front (`window::on_activate`) -- and which
+/// opens the Updates page: src/lib/api.ts's `OPEN_UPDATES_EVENT` spells
+/// the same.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 
@@ -31,8 +36,10 @@ pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 /// start -- the rows Update all would take, as (row, version) pairs -- and
 /// of `round`, the snapshot's `Snapshot::round`. What it does is `report`'s,
 /// with the focus as it is now (`focus`) and the notification in the
-/// window's language. A notification that could not be handed off is
-/// logged here; the page is told nothing, having nothing to do about it.
+/// window's language. A notification handed off waits on the window
+/// (`window::NotificationPending`) until the window is next in front. One
+/// that could not be handed off is logged here; the page is told nothing,
+/// having nothing to do about it.
 #[tauri::command]
 pub async fn report_update_set(
     app: AppHandle,
@@ -46,8 +53,10 @@ pub async fn report_update_set(
     let reported = report(&state, round, &updates, focus, |count| {
         post(&app, &title, &body(language, count))
     });
-    if let Err(e) = reported {
-        eprintln!("[canager] could not post the update notification: {e}");
+    match reported {
+        Ok(Notice::Post { .. }) => app.state::<NotificationPending>().set(),
+        Ok(_) => {}
+        Err(e) => eprintln!("[canager] could not post the update notification: {e}"),
     }
     Ok(())
 }
@@ -182,8 +191,11 @@ fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Re
 /// confirms a delivery or reports one that failed: the pairs are marked
 /// as told at the hand-off, and a notification macOS does not show is not
 /// posted again. Nor is the handler, which would bring the window back on
-/// the Updates page (`open_updates`), ever handed a click. What
-/// `wait_for_response` reports as an error is logged.
+/// the Updates page (`open_updates`), ever handed a click: a click only
+/// brings Canager to the front, and it is Canager coming to the front
+/// while the notification waits on the window that brings the window back
+/// on the Updates page (`window::on_activate`). What `wait_for_response`
+/// reports as an error is logged.
 #[cfg(target_os = "macos")]
 fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
     use notify_rust::error::{ApplicationError, MacOsError};
@@ -234,14 +246,17 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
         .map_err(|e| e.to_string())
 }
 
-/// A click on the notification: the window back on screen and the page
-/// told to open Updates, as the menu bar's items that act in the page are
-/// carried out (`window::show_and_tell`). Called from `post`'s handler,
-/// which notify-rust never hands a click (see there).
+/// The notification answered: the window back on screen and the page told
+/// to open Updates, as the menu bar's items that act in the page are
+/// carried out (`window::show_and_tell`). Called when Canager comes to the
+/// front, or its Dock icon is clicked, with its window closed or in the
+/// Dock while the notification waits on the window (`window::on_activate`)
+/// -- which is how a click on the notification arrives -- and from
+/// `post`'s handler, which notify-rust never hands a click (see there).
 #[cfg(target_os = "macos")]
-fn open_updates<R: Runtime>(app: &AppHandle<R>) {
+pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = crate::window::show_and_tell(app, OPEN_UPDATES_EVENT) {
-        eprintln!("[canager] could not open Updates for the notification's click: {e}");
+        eprintln!("[canager] could not open Updates for the update notification: {e}");
     }
 }
 

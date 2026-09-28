@@ -420,6 +420,7 @@ name = "canager"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "block2",
  "canager-core",
  "fix-path-env",
  "muda",

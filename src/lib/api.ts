@@ -222,10 +222,13 @@ export function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * The event Rust sends the window for a click on the update notification,
- * once the window is back on screen: `OPEN_UPDATES_EVENT` in
- * src-tauri/src/notify.rs, sent the way the menu bar's are -- by a handler
- * that, on a Mac, is never handed a click (`post` there).
+ * The event Rust sends the window for the update notification, once the
+ * window is back on screen: `OPEN_UPDATES_EVENT` in src-tauri/src/notify.rs,
+ * sent the way the menu bar's are. On a Mac, Rust hears no click on the
+ * notification itself (`post` there): it sends this when Canager comes to
+ * the front -- as a click on it brings Canager -- with its window closed or
+ * minimized while a notification waits on the window (`on_activate` in
+ * src-tauri/src/window.rs).
  */
 export const OPEN_UPDATES_EVENT = "notification://open-updates";
 
