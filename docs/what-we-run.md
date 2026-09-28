@@ -187,19 +187,19 @@ starts nothing. Turned on:
   update` sets off, a daily one — or when none has ended since launch
   (`auto_check::tick`, over `RoundLog::last_check_ended`). So a check of
   the user's own moves the next daily one 24 hours on, however it went,
-  and a daily one in which some sources failed counts too: a source that
-  keeps failing is not asked again every 15 minutes, and the window shows
-  the failure as it does after any check. A daily check in which every
+  and a daily one in which only some sources failed counts too: a source
+  that keeps failing is not asked again every 15 minutes, and the window
+  shows the failure as it does after any check. A daily check in which every
   source failed does not count (`auto_check::counts_as_check`), so the
   next look, 15 minutes on, checks again. Time the Mac spends asleep
   counts toward the 24 hours, so a Mac that slept for two days checks at
   the first look after it wakes — and, should every source fail then,
-  again at each look after that, until a check in which one answers. When
-  the Mac's clock has been set back to a minute or more before the last
-  check ended, the next look checks, once; a look that finds the clock
-  less than a minute before it — a small correction of the clock, or a
-  check that ended as the look read the time — starts nothing
-  (`auto_check::SET_BACK_SLACK_SECS`).
+  again at each look after that, until a check in which not every source
+  fails. When the Mac's clock has been set back to a minute or more
+  before the last check ended, the next look checks as though 24 hours
+  had passed; a look that finds the clock less than a minute before it —
+  a small correction of the clock, or a check that ended as the look read
+  the time — starts nothing (`auto_check::SET_BACK_SLACK_SECS`).
 - **Not while something is under way.** A look that finds a refresh
   running or waiting, or an operation queued, running, being cancelled or
   being verified (`Session::busy`), starts nothing; the next look asks
