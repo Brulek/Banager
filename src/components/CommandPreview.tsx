@@ -43,7 +43,8 @@ function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unkno
  * technical details" is on. One token per `displayToken`, since a plain
  * `join(" ")` cannot tell `/Users/Alice Smith/bin/brew` apart from a
  * program called `/Users/Alice` with an argument `Smith/bin/brew`; set as
- * code, which wraps rather than scrolls. A sheet about several updates
+ * code, which wraps rather than scrolls, and selects (`select-text`), to
+ * be copied into Terminal. A sheet about several updates
  * lists each command under its tool's name, behind one disclosure.
  *
  * For a `TrashPaths` plan there is no command to show: Canager moves the
@@ -99,7 +100,7 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
                   {command.name !== undefined ? (
                     <p className="mb-1 text-small font-medium text-muted">{command.name}</p>
                   ) : null}
-                  <code className="block whitespace-pre-wrap break-words rounded-button bg-[var(--color-hover)] px-3 py-2 font-mono text-small text-foreground">
+                  <code className="block select-text whitespace-pre-wrap break-words rounded-button bg-[var(--color-hover)] px-3 py-2 font-mono text-small text-foreground">
                     {command.text}
                   </code>
                 </div>

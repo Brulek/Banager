@@ -224,6 +224,28 @@ describe("UnknownPage", () => {
     expect(within(tool).queryByRole("button")).toBeNull();
   });
 
+  it("lets its paths be selected, to be copied, and nothing else on a row", async () => {
+    settings = { ...settings, show_technical_details: true };
+    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+
+    const helper = rowOf(await findByText("helper-cli"));
+    const path = within(helper).getByText("/usr/local/bin/helper-cli");
+    expect(path).toHaveClass("select-text");
+    // Not its name, its chip, nor its size and date.
+    expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
+    expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toHaveClass("select-text");
+
+    // Behind its chip, where it leads and whose it is.
+    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    for (const line of [
+      "Part of Helper",
+      "Owned by the system or another account",
+      "Links to /Applications/Helper.app/Contents/Helpers/helper-cli",
+    ]) {
+      expect(within(helper).getByText(line)).toHaveClass("select-text");
+    }
+  });
+
   it("says where it looked in one quiet line at the top, and how many programs it recognized", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 

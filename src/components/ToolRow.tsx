@@ -70,6 +70,13 @@ export interface ToolRowContentProps {
    * src/lib/sources.ts), so a row never reads "No description".
    */
   description: string;
+  /**
+   * The description is text a user copies, and selects (`select-text`):
+   * the Unknown page's path. A tool's own description does not, as no
+   * other text on a row does. Not with `onOpen`, whose button lies over
+   * the row's text.
+   */
+  selectableDescription?: boolean;
   /** A checkbox before the avatar, for a list that acts on several rows. */
   selectable?: ToolRowSelectable;
   /** Status chips (`StatusChip`), just before the version. */
@@ -119,6 +126,7 @@ export function ToolRow({
   name,
   nameChip,
   description,
+  selectableDescription = false,
   selectable,
   status,
   version,
@@ -170,7 +178,10 @@ export function ToolRow({
             </span>
           ) : null}
         </div>
-        <p title={description} className="truncate text-small text-muted">
+        <p
+          title={description}
+          className={`truncate text-small text-muted ${selectableDescription ? "select-text" : ""}`}
+        >
           {description}
         </p>
       </div>

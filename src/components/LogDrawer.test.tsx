@@ -119,6 +119,22 @@ describe("LogDrawer", () => {
     await findByText("Couldn't read any more output: EIO");
   });
 
+  it("lets the log be selected, to be copied, and nothing else in the drawer", async () => {
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "Error: No such keg: /opt/homebrew/Cellar/jq" });
+      useUiStore.getState().appendLog({ opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } } });
+    });
+
+    await findByText("Error: No such keg: /opt/homebrew/Cellar/jq");
+    // The whole log, Canager's notes among the tool's lines.
+    const log = getByRole("log");
+    expect(log).toHaveClass("select-text");
+    // Not its title, where it stands, nor Cancel.
+    expect([...getByRole("dialog").querySelectorAll(".select-text")]).toEqual([log]);
+  });
+
   it("words each path a path-list uninstall moved, and the one macOS refused", async () => {
     // Canager's own two lines in an uninstall that runs no command: where
     // each path went, and the system's words for one it would not move.

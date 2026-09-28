@@ -735,6 +735,8 @@ export function InstalledPage() {
       candidate.target !== artifact.version
         ? candidate.target
         : null;
+    // Each value selects (`select-text` on its `<dd>`), to be copied: a
+    // version into a search, a path into Terminal or Finder's Go to Folder.
     const facts: Array<{ term: string; value: ReactNode }> = [];
     if (version !== null) facts.push({ term: t("installed.version"), value: version });
     if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer });
@@ -802,7 +804,7 @@ export function InstalledPage() {
             {facts.map((fact) => (
               <div key={fact.term} className="contents">
                 <dt className="text-muted">{fact.term}</dt>
-                <dd className="min-w-0 tabular-nums text-foreground">{fact.value}</dd>
+                <dd className="min-w-0 select-text tabular-nums text-foreground">{fact.value}</dd>
               </div>
             ))}
           </dl>

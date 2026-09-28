@@ -68,7 +68,9 @@ function noteText(t: TFunction, note: LogNote): string {
  * what to do next about an outcome that needs it under that; then
  * everything the tool printed, in its own words, in a softly tinted panel
  * that keeps to its end while more arrives -- with Canager's own notes
- * among the lines as plain sentences. While the operation can still be
+ * among the lines as plain sentences. That text selects, as nothing else
+ * in the drawer does (`select-text`), to be copied into a search or into
+ * a report of what went wrong. While the operation can still be
  * stopped, the one button at its foot stops it: the page under the panel
  * is out of reach while it is open, the operation bar's Cancel with it.
  *
@@ -182,7 +184,7 @@ export function LogDrawer() {
         <div
           role="log"
           aria-label={t("operations.logDrawerTitle")}
-          className="flex flex-col gap-0.5 px-3 py-2.5 font-mono text-small text-foreground"
+          className="flex select-text flex-col gap-0.5 px-3 py-2.5 font-mono text-small text-foreground"
         >
           {visibleLogs.map((line) =>
             "note" in line ? (

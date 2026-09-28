@@ -157,6 +157,10 @@ export function ScanAgain() {
  * tool's version would be. Canager only lists them: nothing here runs or
  * removes anything, which the page says once, at its top, above the
  * folders it looked in; Scan again is in the page header (`ScanAgain`).
+ *
+ * Its paths select (`select-text`), to be copied into Terminal or into
+ * Finder's Go to Folder: each row's, the folders it looked in, and the
+ * lines behind a chip's ⓘ, among them where a link leads.
  */
 export function UnknownPage() {
   const { t, i18n } = useTranslation();
@@ -195,7 +199,7 @@ export function UnknownPage() {
             pages have Check again. */}
         <p className="text-body text-muted">{t("unknown.intro")}</p>
         {result ? (
-          <p className="break-words text-small text-muted">
+          <p className="select-text break-words text-small text-muted">
             {t("unknown.lookedIn", {
               // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
               folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
@@ -243,7 +247,7 @@ export function UnknownPage() {
                   facts.length === 0
                     ? undefined
                     : facts.map((fact) => (
-                        <span key={fact} className="block break-words">
+                        <span key={fact} className="block select-text break-words">
                           {fact}
                         </span>
                       ));
@@ -258,6 +262,7 @@ export function UnknownPage() {
                       name={fileName(entry.path)}
                       // Home abbreviated as Rust sent it (`UnknownEntry.path`).
                       description={entry.path}
+                      selectableDescription
                       status={<StatusChip label={t(KIND_KEYS[entry.kind])} detail={detail} />}
                       // As wide as a size and a date, so the chips before it
                       // line up down the list, a broken link's too.

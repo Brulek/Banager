@@ -77,6 +77,20 @@ describe("ToolRow", () => {
     expect(blurb).toHaveAttribute("title", "Lightweight and flexible command-line JSON processor");
   });
 
+  it("lets its description be selected only where asked, for a path to copy", () => {
+    const { container, getByText, rerender } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="Lightweight JSON processor" />,
+    );
+    // A tool's own blurb, like its name, is the row's words.
+    expect(container.querySelectorAll(".select-text")).toHaveLength(0);
+
+    rerender(
+      <ToolRow avatar={<span />} name="helper-cli" description="/usr/local/bin/helper-cli" selectableDescription />,
+    );
+    expect(getByText("/usr/local/bin/helper-cli")).toHaveClass("select-text");
+    expect(getByText("helper-cli")).not.toHaveClass("select-text");
+  });
+
   it("ticks its checkbox through onToggle, named for what it selects", () => {
     const onToggle = vi.fn();
     const { getByRole } = renderWithProviders(

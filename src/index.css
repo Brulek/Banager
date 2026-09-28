@@ -70,6 +70,10 @@
      same as the accent in light mode; lighter in dark mode, where the
      accent itself reads at 3:1. */
   --color-accent-text: var(--color-accent);
+  /* Selected text's highlight (`::selection` below): a tint of the
+     accent, over which the text keeps its own colour, as selected text
+     on a Mac does. */
+  --color-selection: color-mix(in srgb, var(--color-accent) 30%, transparent);
   --color-success: #1fa971;
   --color-warning: #e8a33d;
   --color-danger: #e5484d;
@@ -130,6 +134,7 @@
     --color-hover: #22263a;
     --color-overlay: rgb(0 0 0 / 0.6);
     --color-accent-text: #8f97ee;
+    --color-selection: color-mix(in srgb, var(--color-accent-text) 40%, transparent);
     --color-source-ollama: #e5e5e5;
     --color-source-ollama-ink: #1b1d2a;
   }
@@ -144,6 +149,30 @@ body {
   background: var(--color-content);
   accent-color: var(--color-accent);
   -webkit-font-smoothing: antialiased;
+  /* Text does not select, as a Mac app's labels do not: a click or a drag
+     across a row, a button or a heading highlights nothing. What a user
+     copies is marked `select-text`: an operation's log, a command
+     preview's command, the Unknown page's paths, and the version and the
+     location in a tool's details. A command set into a sentence is
+     `select-all` (src/components/withCommand.tsx), and text fields have a
+     rule of their own below. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The body's `none` reaches a text field too; a field says `text` for
+   itself, so its text selects whatever the engine makes of `none` on
+   editable text. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Selected text is highlighted in the accent's tint, not in the system's
+   highlight colour. */
+::selection {
+  background-color: var(--color-selection);
 }
 
 /*

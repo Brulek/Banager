@@ -1748,6 +1748,40 @@ describe("InstalledPage", () => {
         "/Users/someone/.local/share/claude/versions/2.1.281",
       );
     });
+
+    it("lets its versions and where it is be selected, to be copied, and nothing else", async () => {
+      served = {
+        ...snapshot,
+        instances: [claudeInstance],
+        artifacts: [claudeArtifact],
+        updates: [
+          {
+            key: claudeArtifact.key,
+            current: "2.1.281",
+            target: "2.1.290",
+            channel: "Native",
+            checkable: true,
+            warnings: [],
+            blocked: null,
+          },
+        ],
+      };
+      servedSettings = { ...settings, show_technical_details: true };
+      renderWithProviders(<InstalledPage />);
+
+      const drawer = await openDetails("Claude Code");
+      const values = ["Version", "Newer version", "Location"].map(
+        (term) => within(drawer).getByText(term).nextElementSibling,
+      );
+      expect(values.map((value) => value?.textContent)).toEqual([
+        "2.1.281",
+        "2.1.290",
+        "/Users/someone/.local/share/claude/versions/2.1.281",
+      ]);
+      for (const value of values) expect(value).toHaveClass("select-text");
+      // Not its name, its description, what each value is, nor its chips.
+      expect([...drawer.querySelectorAll(".select-text")]).toEqual(values);
+    });
   });
 
   describe("the ⋯ menu", () => {

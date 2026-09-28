@@ -74,6 +74,28 @@ describe("CommandPreview", () => {
     expect(screen.queryByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeNull();
   });
 
+  it("lets each command be selected, to be copied into Terminal, and not what it is for", async () => {
+    settings.show_technical_details = true;
+    renderWithProviders(
+      <CommandPreview
+        plans={[
+          { id: "1", name: "OnyX", action: brewUpgrade },
+          {
+            id: "2",
+            name: "rustup",
+            action: { Command: { program: "/Users/you/.cargo/bin/rustup", args: ["self", "update"], env: [] } },
+          },
+        ]}
+      />,
+    );
+
+    const onyx = await screen.findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
+    expect(onyx).toHaveClass("select-text");
+    expect(screen.getByText("/Users/you/.cargo/bin/rustup self update")).toHaveClass("select-text");
+    expect(screen.getByText("OnyX")).not.toHaveClass("select-text");
+    expect(screen.getByRole("button", { name: "Show the commands" })).not.toHaveClass("select-text");
+  });
+
   it("quotes tokens that contain whitespace so argument boundaries stay visible", async () => {
     settings.show_technical_details = true;
     renderWithProviders(
