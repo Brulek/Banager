@@ -476,10 +476,11 @@ describe("SettingsPage", () => {
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
 
-  it("turns Notify me on while the daily check is on, and off with the daily check", async () => {
+  it("turns Notify me on while the daily check is on, once permission is granted, and off with the daily check", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ auto_check: true });
       if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") return true;
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -492,11 +493,151 @@ describe("SettingsPage", () => {
       expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
     );
     expect(notify).toBeChecked();
+    expect(notify).toBeEnabled();
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "request_notification_permission")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
     await waitFor(() =>
       expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false })),
     );
+    expect(notify).not.toBeChecked();
+    expect(notify).toBeDisabled();
+  });
+
+  it("asks for permission before saving Notify me on, the switch on and still while it waits", async () => {
+    let answer: (granted: boolean) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") {
+        return new Promise<boolean>((resolve) => {
+          answer = resolve;
+        });
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+    await waitFor(() => expect(notify).toBeChecked());
+    expect(notify).toBeDisabled();
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
+
+    act(() => answer(true));
+
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
+    );
+    expect(notify).toBeChecked();
+    expect(notify).toBeEnabled();
+  });
+
+  it("turns Notify me back off when permission is refused, says where to allow it, and saves nothing", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") return false;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+
+    await waitFor(() =>
+      expect(notify).toHaveAccessibleDescription("Allow Canager in System Settings → Notifications."),
+    );
+    expect(notify).not.toBeChecked();
+    expect(notify).toBeEnabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Allow Canager in System Settings → Notifications.");
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
+  });
+
+  it("takes a permission request that failed as refused", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "request_notification_permission") throw "notification plugin not ready";
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+
+    await waitFor(() =>
+      expect(notify).toHaveAccessibleDescription("Allow Canager in System Settings → Notifications."),
+    );
+    expect(notify).not.toBeChecked();
+  });
+
+  it("drops the line once permission is granted on another try, or the daily check is turned off", async () => {
+    let grant = false;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") return grant;
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+
+    // Allowed in System Settings, then tried again.
+    grant = true;
+    fireEvent.click(notify);
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: true })),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(notify).not.toHaveAttribute("aria-describedby");
+
+    // Refused again after turning it off; then the daily check goes off.
+    grant = false;
+    fireEvent.click(notify);
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: true, notify_updates: false })),
+    );
+    fireEvent.click(notify);
+    await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("does not save Notify me on when the daily check was turned off while permission was asked for", async () => {
+    let answer: (granted: boolean) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      if (cmd === "set_settings") return undefined;
+      if (cmd === "request_notification_permission") {
+        return new Promise<boolean>((resolve) => {
+          answer = resolve;
+        });
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const notify = await screen.findByRole("switch", { name: "Notify me when there are updates" });
+    fireEvent.click(notify);
+    await waitFor(() => expect(notify).toBeChecked());
+    fireEvent.click(screen.getByRole("switch", { name: "Check for updates every day" }));
+    await waitFor(() =>
+      expect(lastSaved()).toEqual(baseSettings({ auto_check: false, notify_updates: false })),
+    );
+    const saves = () => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings").length;
+    const before = saves();
+
+    await act(async () => answer(true));
+
+    expect(saves()).toBe(before);
     expect(notify).not.toBeChecked();
     expect(notify).toBeDisabled();
   });
@@ -520,6 +661,7 @@ describe("SettingsPage", () => {
     expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
     expect(zhCN.settings.autoCheck.description).toBe("Canager 开着时每天检查一次，只检查不安装。退出后不检查。");
     expect(zhCN.settings.notifyUpdates.label).toBe("有可更新时通知我");
+    expect(zhCN.settings.notifyUpdates.refused).toBe("在系统设置 → 通知里允许 Canager");
   });
 
   it("marks the chosen language visibly, not only through aria-checked", async () => {

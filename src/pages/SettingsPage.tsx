@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
+import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, settingsSaveErrorMessage } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
@@ -115,6 +116,16 @@ export function SettingsPage() {
   const { data: snapshot } = useSnapshot();
   const [draft, setDraft] = useState<Settings | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  // 「有可更新时通知我」 while the permission it needs is being asked for
+  // (`turnNotifyOn`), and whether it was refused the last time it was.
+  const [askingToNotify, setAskingToNotify] = useState(false);
+  const [notifyRefused, setNotifyRefused] = useState(false);
+  // The settings the page holds, as of its last render: what the answer to
+  // that permission is saved over, since it arrives after the click.
+  const held = useRef<Settings | undefined>(undefined);
+  useEffect(() => {
+    held.current = draft ?? settingsQuery.data;
+  });
   const languageRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const languageLabelId = useId();
   const skippedTitleId = useId();
@@ -162,12 +173,32 @@ export function SettingsPage() {
   // function expressions, so a `function persist() {}` here would see
   // `current` as `Settings | undefined` and fail `pnpm build` (TS18048 /
   // TS2345) two tasks later, at Task 17's type-check.
-  const persist = (next: Settings) => {
-    const previous = current;
+  const persist = (next: Settings, previous: Settings = current) => {
     setDraft(next);
     saveMutation.mutate(next, {
       onError: () => setDraft(previous),
     });
+  };
+
+  // 「有可更新时通知我」 turned on: permission to post is asked for first,
+  // the switch on and still meanwhile, and the setting saved on only once
+  // it is granted -- over what the page holds by then, and only while the
+  // daily check is still on. Refused, or the asking itself failed, the
+  // switch is back off with the line that says where to allow it.
+  const turnNotifyOn = () => {
+    setNotifyRefused(false);
+    setAskingToNotify(true);
+    void requestNotificationPermission()
+      .catch(() => false)
+      .then((granted) => {
+        setAskingToNotify(false);
+        if (!granted) {
+          setNotifyRefused(true);
+          return;
+        }
+        const now = held.current;
+        if (now?.auto_check) persist({ ...now, notify_updates: true }, now);
+      });
   };
 
   // Arrow keys walk the language group and wrap at both ends, the way a
@@ -295,9 +326,11 @@ export function SettingsPage() {
 
       <SettingsGroup title={t("settings.groups.updates")}>
         {/* The daily check (src-tauri/src/auto_check.rs), off by default,
-            and under it the notification that belongs to it: offered only
-            while the daily check is on, shown off while it is not, and
-            saved off when the daily check is turned off. */}
+            and under it the notification that belongs to it
+            (src-tauri/src/notify.rs): offered only while the daily check
+            is on, shown off while it is not, saved off when the daily
+            check is turned off, and turned on only with permission to
+            post (`turnNotifyOn`). */}
         <SettingRow
           label={
             <label htmlFor="settings-auto-check" className={ROW_LABEL}>
@@ -314,9 +347,10 @@ export function SettingsPage() {
               id="settings-auto-check"
               aria-describedby="settings-auto-check-desc"
               checked={current.auto_check}
-              onCheckedChange={(checked) =>
-                persist({ ...current, auto_check: checked, notify_updates: checked && current.notify_updates })
-              }
+              onCheckedChange={(checked) => {
+                setNotifyRefused(false);
+                persist({ ...current, auto_check: checked, notify_updates: checked && current.notify_updates });
+              }}
             />
           }
         />
@@ -329,12 +363,22 @@ export function SettingsPage() {
               {t("settings.notifyUpdates.label")}
             </label>
           }
+          description={
+            notifyRefused ? (
+              <p id="settings-notify-updates-desc" role="status" className={ROW_DESCRIPTION}>
+                {t("settings.notifyUpdates.refused")}
+              </p>
+            ) : undefined
+          }
           control={
             <Switch
               id="settings-notify-updates"
-              checked={current.auto_check && current.notify_updates}
-              disabled={!current.auto_check}
-              onCheckedChange={(checked) => persist({ ...current, notify_updates: checked })}
+              aria-describedby={notifyRefused ? "settings-notify-updates-desc" : undefined}
+              checked={current.auto_check && (current.notify_updates || askingToNotify)}
+              disabled={!current.auto_check || askingToNotify}
+              onCheckedChange={(checked) =>
+                checked ? turnNotifyOn() : persist({ ...current, notify_updates: false })
+              }
             />
           }
         />

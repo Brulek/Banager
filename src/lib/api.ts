@@ -12,6 +12,7 @@ import type {
   OpSummary,
   UiEvent,
   UnknownScan,
+  UpdatePair,
 } from "./types";
 
 /**
@@ -195,6 +196,46 @@ export async function onMenuCommand(onCommand: (command: MenuCommand) => void): 
 export async function setDockBadge(count: number): Promise<void> {
   try {
     await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined);
+  } catch (e) {
+    throw asError(e);
+  }
+}
+
+/**
+ * Reports the updates Update all would take, as (row, version) pairs, with
+ * the round of the snapshot they came from (`Snapshot.round`): the
+ * update notification's report (`report_update_set` in
+ * src-tauri/src/notify.rs), which decides there whether a notification
+ * goes out. `useUpdateNotification` sends one after each snapshot.
+ */
+export function reportUpdateSet(round: number, updates: UpdatePair[]): Promise<void> {
+  return call<void>("report_update_set", { round, updates });
+}
+
+/**
+ * Asks for permission to post notifications, as Settings' 「有可更新时通知我」
+ * is turned on (`request_notification_permission` in
+ * src-tauri/src/notify.rs): true when it is granted.
+ */
+export function requestNotificationPermission(): Promise<boolean> {
+  return call<boolean>("request_notification_permission");
+}
+
+/**
+ * The event Rust sends the window when the update notification is
+ * clicked, once the window is back on screen: `OPEN_UPDATES_EVENT` in
+ * src-tauri/src/notify.rs, sent the way the menu bar's are.
+ */
+export const OPEN_UPDATES_EVENT = "notification://open-updates";
+
+/**
+ * Calls `onClick` each time the update notification is clicked, and
+ * resolves to what stops that once the window listens.
+ * `useUpdateNotification` is the caller.
+ */
+export async function onOpenUpdates(onClick: () => void): Promise<() => void> {
+  try {
+    return await listen(OPEN_UPDATES_EVENT, () => onClick());
   } catch (e) {
     throw asError(e);
   }

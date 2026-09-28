@@ -5,6 +5,7 @@ import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
 import { watchDock } from "./test/dock";
 import App from "./App";
+import { OPEN_UPDATES_EVENT } from "./lib/api";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type { OpRequest, Settings, Snapshot, UnknownScan } from "./lib/types";
 
@@ -366,6 +367,33 @@ describe("App", () => {
   });
 });
 
+describe("the update notification", () => {
+  it("is told, after the first check, which updates Update all would take, with the check's round", async () => {
+    const { findByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    await waitFor(() =>
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "report_update_set")).toEqual([
+        ["report_update_set", { round: snapshot.round, updates: [] }],
+      ]),
+    );
+  });
+
+  it("opens the Updates page when clicked, whichever page the window was left on", async () => {
+    const rust = fakeMenuBar();
+    const { findByText, findByRole, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    fireEvent.click(getByRole("button", { name: "Settings" }));
+    await findByRole("heading", { level: 1, name: "Settings" });
+    expect(rust.listening()).toContain(OPEN_UPDATES_EVENT);
+
+    rust.hear(OPEN_UPDATES_EVENT);
+
+    expect(await findByRole("heading", { level: 1, name: "Updates" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
+  });
+});
+
 describe("the menu bar's items that act in the page", () => {
   /** How many times the page has asked for a refresh. */
   function refreshes(): number {
@@ -377,7 +405,11 @@ describe("the menu bar's items that act in the page", () => {
     const { findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
 
-    expect(menu.listening()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
+    expect(menu.listening().filter((event) => event.startsWith("menu://"))).toEqual([
+      "menu://check-again",
+      "menu://search",
+      "menu://settings",
+    ]);
   });
 
   it("open Settings on Settings…, as the sidebar's Settings does", async () => {

@@ -109,6 +109,16 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("set_menu_language")).rejects.toMatch(/^invalid args/);
   });
 
+  it("takes the update notification's report as the real command does, and grants its permission", async () => {
+    // Nothing is posted in the preview: it has no daily check.
+    const { backend } = backendFor();
+    const updates = [{ key_id: "brew:/opt/homebrew|Formula|jq", target: "1.8.1" }];
+    await expect(backend.invoke("report_update_set", { round: 1, updates })).resolves.toBeUndefined();
+    await expect(backend.invoke("report_update_set", { updates })).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("report_update_set", { round: 1 })).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("request_notification_permission")).resolves.toBe(true);
+  });
+
   it("starts empty, like a real launch, and the first refresh commits generation 1", async () => {
     const { backend, events } = backendFor();
     const before = await answer<Snapshot>(backend.invoke("get_snapshot"));

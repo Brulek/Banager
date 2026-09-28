@@ -518,7 +518,8 @@
       "description": "Checks once a day while Canager is running. It only checks and installs nothing. Nothing is checked after you quit."
     },
     "notifyUpdates": {
-      "label": "Notify me when there are updates"
+      "label": "Notify me when there are updates",
+      "refused": "Allow Canager in System Settings → Notifications."
     },
     "language": {
       "label": "Language",

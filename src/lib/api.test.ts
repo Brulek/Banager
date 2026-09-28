@@ -21,6 +21,10 @@ import {
   type MenuCommand,
   setDockBadge,
   revealInFinder,
+  reportUpdateSet,
+  requestNotificationPermission,
+  OPEN_UPDATES_EVENT,
+  onOpenUpdates,
 } from "./api";
 import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 import { watchDock } from "../test/dock";
@@ -168,6 +172,59 @@ describe("api", () => {
     mockInvoke.mockResolvedValueOnce(undefined as never);
     await setMenuLanguage("zh-CN");
     expect(mockInvoke.mock.calls).toEqual([["set_menu_language", { language: "zh-CN" }]]);
+  });
+
+  it("reportUpdateSet invokes report_update_set with the round and the pairs, and nothing else", async () => {
+    // `report_update_set(round, updates)` in src-tauri/src/notify.rs.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    const updates = [{ key_id: "brew:/opt/homebrew|Formula|jq", target: "1.8.1" }];
+    await reportUpdateSet(7, updates);
+    expect(mockInvoke.mock.calls).toEqual([["report_update_set", { round: 7, updates }]]);
+  });
+
+  it("requestNotificationPermission invokes request_notification_permission and answers its yes or no", async () => {
+    mockInvoke.mockResolvedValueOnce(true as never);
+    expect(await requestNotificationPermission()).toBe(true);
+    mockInvoke.mockResolvedValueOnce(false as never);
+    expect(await requestNotificationPermission()).toBe(false);
+    expect(mockInvoke.mock.calls).toEqual([["request_notification_permission"], ["request_notification_permission"]]);
+  });
+});
+
+describe("the update notification's click", () => {
+  const mockListen = vi.mocked(listen);
+
+  beforeEach(() => {
+    mockListen.mockReset();
+  });
+
+  it("is the event Rust sends, and calls back each time it comes", async () => {
+    // `OPEN_UPDATES_EVENT` in src-tauri/src/notify.rs, whose test pins the
+    // same string.
+    expect(OPEN_UPDATES_EVENT).toBe("notification://open-updates");
+    let heard: EventCallback<unknown> | undefined;
+    let stopped = false;
+    mockListen.mockImplementation(async (event, handler) => {
+      expect(event).toBe(OPEN_UPDATES_EVENT);
+      heard = handler as EventCallback<unknown>;
+      return () => {
+        stopped = true;
+      };
+    });
+    let clicks = 0;
+    const stop = await onOpenUpdates(() => {
+      clicks += 1;
+    });
+    heard?.({ event: OPEN_UPDATES_EVENT, id: 1, payload: null });
+    heard?.({ event: OPEN_UPDATES_EVENT, id: 2, payload: null });
+    expect(clicks).toBe(2);
+    stop();
+    expect(stopped).toBe(true);
+  });
+
+  it("reports a failure to listen as an Error carrying Tauri's text", async () => {
+    mockListen.mockRejectedValueOnce("event.listen not allowed");
+    await expect(onOpenUpdates(() => {})).rejects.toThrow("event.listen not allowed");
   });
 });
 

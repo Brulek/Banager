@@ -158,7 +158,9 @@ Paths are under a generic home folder, `/Users/you`.
   self-updating apps adds the Visual Studio Code update on the next
   refresh. Check for updates every day is kept too, and checks nothing:
   the daily check is a task of the app's Rust side, which the preview
-  does not have.
+  does not have. Notify me when there are updates turns on without
+  asking anything, as where permission is granted, and nothing is ever
+  notified: the page's report after each check reaches no Rust.
 - On the Unknown page, a row's Show in Finder opens nothing: the console
   says which path Finder would have been asked to show. Copy path copies
   where the browser lets the page write to the clipboard, and otherwise

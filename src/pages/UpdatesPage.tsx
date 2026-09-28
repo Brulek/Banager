@@ -24,7 +24,14 @@ import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
-import { holdsRow, isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import {
+  holdsRow,
+  isRetryable,
+  progressOf,
+  UpdateProgress,
+  useStartableUpdates,
+  useUpdateOperationFor,
+} from "../components/UpdateProgress";
 import {
   blockedDetail,
   cannotCheckDetail,
@@ -58,6 +65,9 @@ const SECTION_ESTIMATE = 48;
 const SUMMARY_ESTIMATE = 36;
 const JUST_UPDATED_ESTIMATE = 52;
 const JUST_UPDATED_LINE_ESTIMATE = 36;
+
+/** No update: what the page starts from until the snapshot and the settings are in. */
+const NO_UPDATES: UpdateCandidate[] = [];
 
 /**
  * One slot in the virtualized list. The page is one flat list, sorted by
@@ -250,11 +260,9 @@ export function UpdatesPage() {
   // first, so a second click could only repeat it. These are every row
   // that shows a checkbox, the header's "N updates", and what Select all,
   // Invert selection and Update all hand to the store, so none of them can
-  // tick a row the user could not tick by hand.
-  const startableUpdates = useMemo(
-    () => actionableUpdates.filter((candidate) => !holdsRow(operationFor(candidate))),
-    [actionableUpdates, operationFor],
-  );
+  // tick a row the user could not tick by hand. `useStartableUpdates`,
+  // which the update notification's report reads too.
+  const startableUpdates = useStartableUpdates() ?? NO_UPDATES;
 
   // The list's two parts, each by name: the rows with an Update button,
   // and everything else listed -- pinned, read-only, could not be checked,

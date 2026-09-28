@@ -481,7 +481,8 @@
       "description": "Canager 开着时每天检查一次，只检查不安装。退出后不检查。"
     },
     "notifyUpdates": {
-      "label": "有可更新时通知我"
+      "label": "有可更新时通知我",
+      "refused": "在系统设置 → 通知里允许 Canager"
     },
     "language": {
       "label": "语言",

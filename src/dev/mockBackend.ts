@@ -40,6 +40,8 @@ export const MOCK_COMMANDS = [
   "scan_unknown",
   "artifact_icon",
   "set_menu_language",
+  "report_update_set",
+  "request_notification_permission",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
 
@@ -477,6 +479,20 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const key = args.key as ArtifactKey;
       const row = committed?.artifacts.find((a) => sameKey(a.key, key));
       return row === undefined ? null : appIcon(row);
+    },
+    async report_update_set(args) {
+      // No notification to post: the preview has no daily check, and so no
+      // round of one (src-tauri/src/notify.rs posts only after one). It
+      // takes what the real command takes, a round and a list of pairs;
+      // Tauri turns anything else away.
+      if (typeof args.round !== "number" || !Array.isArray(args.updates)) {
+        throw `invalid args for command \`report_update_set\`: ${JSON.stringify(args)}`;
+      }
+    },
+    async request_notification_permission() {
+      // Asks nobody: the preview posts no notification, so the switch
+      // turns on as it does where permission is granted.
+      return true;
     },
     async set_menu_language(args) {
       // No menu bar to build: the browser has none of Canager's, and the

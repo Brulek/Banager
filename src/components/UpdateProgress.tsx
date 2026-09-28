@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useOperations } from "../lib/queries";
+import { useOperations, useSettings, useSnapshot } from "../lib/queries";
+import { actionableUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { CheckIcon, SpinnerIcon } from "./icons";
@@ -130,6 +131,30 @@ export function useUpdateOperationFor(): (candidate: UpdateCandidate) => OpSumma
       return updateTargets[op.id] === candidate.target ? op : null;
     },
     [latestUpdateOp, updateTargets],
+  );
+}
+
+/**
+ * The updates Update all would take now: every one the Updates page offers
+ * to install (`actionableUpdatesOf`) whose row no update takes
+ * (`holdsRow`) -- the rows that show a checkbox, the page's "N updates",
+ * and what its Select all, Invert selection and Update all hand on -- or
+ * undefined until the snapshot and the settings have both arrived. The
+ * Updates page and the update notification's report
+ * (`useUpdateNotification` in src/lib/updateNotification.ts) read this
+ * one hook, so the notification cannot count a row the page does not
+ * offer to start.
+ */
+export function useStartableUpdates(): UpdateCandidate[] | undefined {
+  const { data: snapshot } = useSnapshot();
+  const { data: settings } = useSettings();
+  const operationFor = useUpdateOperationFor();
+  return useMemo(
+    () =>
+      snapshot && settings
+        ? actionableUpdatesOf(snapshot, settings).filter((candidate) => !holdsRow(operationFor(candidate)))
+        : undefined,
+    [snapshot, settings, operationFor],
   );
 }
 

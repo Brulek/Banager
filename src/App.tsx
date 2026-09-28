@@ -15,6 +15,7 @@ import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
 import { useDockBadge } from "./lib/dockBadge";
+import { useUpdateNotification } from "./lib/updateNotification";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -48,6 +49,7 @@ function App() {
   useStartupRefresh();
   useMenuCommands();
   useDockBadge();
+  useUpdateNotification();
 
   return (
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
