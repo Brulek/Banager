@@ -1,0 +1,293 @@
+import { describe, expect, it } from "vitest";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import pack from "../assets/tool-icons/pack.json";
+import { ADAPTER_LABEL_KEYS } from "./sources";
+import {
+  GLYPH_INK_DARK,
+  GLYPH_INK_LIGHT,
+  glyphInk,
+  loadToolIcons,
+  resolveSourceIcon,
+  resolveToolIcon,
+  toolIconKey,
+  type ToolIconPack,
+} from "./toolIcons";
+import type { ArtifactKey, ArtifactKind } from "./types";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function key(instanceId: string, kind: ArtifactKind, name: string): ArtifactKey {
+  return { instance_id: instanceId, kind, name };
+}
+
+/**
+ * A pack of this test's own, so that no test here depends on what the
+ * committed pack happens to list: the mapping it is built from is a seed,
+ * replaced wholesale by the reviewed one.
+ */
+const FIXTURE: ToolIconPack = {
+  version: 1,
+  generated: "2026-09-28",
+  glyphs: { "si-git": { path: "M0 0h24v24H0z", hex: "F03C2E", title: "Git" } },
+  rasters: {
+    "gh-openai": { file: "gh-openai.webp", title: "openai" },
+    // Named, but with no file to serve: the URL map below leaves it out.
+    "gh-gone": { file: "gh-gone.webp", title: "gone" },
+  },
+  tools: {
+    "brew:git": "si-git",
+    "brew:wget": "gh-gone",
+    "npm:@openai/codex": "gh-openai",
+    // Ollama families. `phi` (Microsoft's) is a prefix of `phind` (Phind's).
+    "ollama:llama": "si-git",
+    "ollama:qwen": "si-git",
+    "ollama:phi": "si-git",
+    "ollama:phind": "gh-openai",
+  },
+  sources: { brew: "si-git", npm: "gh-openai", cargo: "gh-gone" },
+};
+const fixture = loadToolIcons(FIXTURE, new Map([["gh-openai.webp", "/assets/gh-openai.webp"]]));
+
+describe("toolIconKey", () => {
+  const brew = "brew:/opt/homebrew";
+
+  it("keys a Homebrew formula by its name without a trailing @version", () => {
+    expect(fixture.toolIconKey(key(brew, "Formula", "git"), "brew")).toBe("brew:git");
+    expect(fixture.toolIconKey(key(brew, "Formula", "python@3.13"), "brew")).toBe("brew:python");
+    expect(fixture.toolIconKey(key(brew, "Formula", "openssl@3"), "brew")).toBe("brew:openssl");
+  });
+
+  it("keeps a tapped formula's tap: it is not Homebrew's formula of that name", () => {
+    expect(fixture.toolIconKey(key(brew, "Formula", "hashicorp/tap/terraform"), "brew")).toBe(
+      "brew:hashicorp/tap/terraform",
+    );
+    expect(fixture.toolIconKey(key(brew, "Formula", "someone/tap/node@22"), "brew")).toBe(
+      "brew:someone/tap/node",
+    );
+  });
+
+  it("keys a Homebrew cask by its token, exactly", () => {
+    expect(fixture.toolIconKey(key(brew, "Cask", "visual-studio-code"), "brew")).toBe(
+      "cask:visual-studio-code",
+    );
+    expect(fixture.toolIconKey(key(brew, "Cask", "firefox@nightly"), "brew")).toBe("cask:firefox@nightly");
+  });
+
+  it("keys an npm package by its name, a scope and all", () => {
+    expect(fixture.toolIconKey(key("npm:/opt/homebrew", "Package", "@openai/codex"), "npm")).toBe(
+      "npm:@openai/codex",
+    );
+    expect(fixture.toolIconKey(key("npm:/opt/homebrew", "Package", "typescript"), "npm")).toBe(
+      "npm:typescript",
+    );
+  });
+
+  it("keys a Python package by its PEP 503 name, from pip, pipx and uv alike", () => {
+    expect(fixture.toolIconKey(key("pipx", "Tool", "Foo.Bar_baz--Qux"), "pipx")).toBe("pypi:foo-bar-baz-qux");
+    expect(fixture.toolIconKey(key("uv", "Tool", "pre-commit"), "uv")).toBe("pypi:pre-commit");
+    const pip = "pip:/opt/homebrew/bin/python3";
+    expect(fixture.toolIconKey(key(pip, "Package", "charset_normalizer"), "pip")).toBe("pypi:charset-normalizer");
+  });
+
+  it("keys a Cargo program by its crate", () => {
+    expect(fixture.toolIconKey(key("cargo:/Users/you/.cargo", "Binary", "jj-cli"), "cargo")).toBe("cargo:jj-cli");
+  });
+
+  describe("an Ollama model", () => {
+    const model = (name: string) =>
+      fixture.toolIconKey(key("ollama:http://127.0.0.1:11434", "Model", name), "ollama");
+
+    it("takes the longest family in the pack that its name starts with", () => {
+      expect(model("phind-codellama:34b")).toBe("ollama:phind");
+      expect(model("phi4:14b")).toBe("ollama:phi");
+      expect(model("qwen2.5-coder:7b")).toBe("ollama:qwen");
+      expect(model("llama3.2:3b")).toBe("ollama:llama");
+      expect(model("qwen")).toBe("ollama:qwen");
+    });
+
+    it("reads a registry-namespaced name after its last /, in lower case, without its tag", () => {
+      expect(model("modelscope.cn/Qwen/Qwen2.5-Coder:7b")).toBe("ollama:qwen");
+      expect(model("hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M")).toBe("ollama:llama");
+    });
+
+    it("has no key when no family matches", () => {
+      expect(model("mistral:7b")).toBeNull();
+      // A family matches the start of the name, not any part of it.
+      expect(model("tinyllama:1.1b")).toBeNull();
+    });
+  });
+
+  it("keys a tool with its own installer by its adapter id", () => {
+    for (const tool of ["claude", "rustup", "agy", "grok"]) {
+      expect(fixture.toolIconKey(key(`standalone-${tool}`, "Binary", tool), `standalone-${tool}`)).toBe(
+        `standalone:${tool}`,
+      );
+    }
+  });
+
+  it("has no key for a source it does not know", () => {
+    expect(fixture.toolIconKey(key("gem", "Package", "rails"), "gem")).toBeNull();
+    expect(fixture.toolIconKey(key("standalone-", "Binary", ""), "standalone-")).toBeNull();
+  });
+});
+
+describe("resolveToolIcon and resolveSourceIcon", () => {
+  const brew = "brew:/opt/homebrew";
+
+  it("gives a glyph's path, colour and title", () => {
+    expect(fixture.resolveToolIcon(key(brew, "Formula", "git"), "brew")).toEqual({
+      kind: "glyph",
+      path: "M0 0h24v24H0z",
+      hex: "F03C2E",
+      title: "Git",
+    });
+    expect(fixture.resolveSourceIcon("brew")).toEqual(fixture.resolveToolIcon(key(brew, "Formula", "git"), "brew"));
+  });
+
+  it("gives a raster's URL and title", () => {
+    const raster = { kind: "raster", url: "/assets/gh-openai.webp", title: "openai" };
+    expect(fixture.resolveToolIcon(key("npm:/opt/homebrew", "Package", "@openai/codex"), "npm")).toEqual(raster);
+    expect(fixture.resolveSourceIcon("npm")).toEqual(raster);
+  });
+
+  it("gives an Ollama model its longest family's logo", () => {
+    const ollama = "ollama:http://127.0.0.1:11434";
+    expect(fixture.resolveToolIcon(key(ollama, "Model", "phind-codellama:34b"), "ollama")).toMatchObject({
+      kind: "raster",
+      title: "openai",
+    });
+    expect(fixture.resolveToolIcon(key(ollama, "Model", "phi4:14b"), "ollama")).toMatchObject({ kind: "glyph" });
+  });
+
+  it("gives nothing where the pack has nothing to draw", () => {
+    // No entry for the tool, or for the source.
+    expect(fixture.resolveToolIcon(key(brew, "Formula", "mtr"), "brew")).toBeNull();
+    expect(fixture.resolveToolIcon(key("ollama:http://127.0.0.1:11434", "Model", "mistral"), "ollama")).toBeNull();
+    expect(fixture.resolveSourceIcon("uv")).toBeNull();
+    // An entry whose raster has no file to serve.
+    expect(fixture.resolveToolIcon(key(brew, "Formula", "wget"), "brew")).toBeNull();
+    expect(fixture.resolveSourceIcon("cargo")).toBeNull();
+    // A name every object has a property for is not an entry.
+    expect(fixture.resolveSourceIcon("toString")).toBeNull();
+  });
+});
+
+describe("glyphInk", () => {
+  it("draws a glyph white on a dark colour and near-black on a light one", () => {
+    expect(glyphInk("000000")).toBe(GLYPH_INK_LIGHT);
+    expect(glyphInk("CB3837")).toBe(GLYPH_INK_LIGHT); // npm's red
+    expect(glyphInk("3776AB")).toBe(GLYPH_INK_LIGHT); // Python's blue
+    expect(glyphInk("FFFFFF")).toBe(GLYPH_INK_DARK);
+    expect(glyphInk("FBB040")).toBe(GLYPH_INK_DARK); // Homebrew's amber
+  });
+
+  it("picks by WCAG contrast, not by brightness", () => {
+    // Pure red's brightness (luma) is 76 of 255, and a cut-off at half
+    // would put white on it; the near-black has the higher contrast with
+    // it, 4.2:1 against white's 4.0:1.
+    expect(glyphInk("FF0000")).toBe(GLYPH_INK_DARK);
+  });
+});
+
+/**
+ * The pack the app ships, whatever it lists: these hold for the seed
+ * mapping and for the reviewed one of hundreds that replaces it.
+ */
+describe("the built-in pack", () => {
+  const PACK_DIR = path.resolve(__dirname, "../assets/tool-icons");
+  const RASTER_DIR = path.join(PACK_DIR, "raster");
+  // 1000-based, as Finder counts and `formatBytes` shows.
+  const BUDGET_BYTES = 5_000_000;
+  const built: ToolIconPack = pack;
+  // What the folder holds, but the .DS_Store Finder leaves in a folder it
+  // has shown, which git ignores and the app never ships.
+  const listing = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f !== ".DS_Store");
+
+  it("names only logos it has", () => {
+    const logos = new Set([...Object.keys(built.glyphs), ...Object.keys(built.rasters)]);
+    const dangling = [
+      ...Object.entries(built.tools).map(([toolKey, id]) => [`tools["${toolKey}"]`, id]),
+      ...Object.entries(built.sources).map(([adapterId, id]) => [`sources["${adapterId}"]`, id]),
+    ]
+      .filter(([, id]) => !logos.has(id))
+      .map(([entry, id]) => `${entry} → ${id}`);
+    expect(dangling, `names a logo the pack does not have: ${dangling.join(", ")}`).toEqual([]);
+  });
+
+  it("holds well-formed glyphs", () => {
+    for (const [id, glyph] of Object.entries(built.glyphs)) {
+      expect(id, id).toMatch(/^si-[a-z0-9_]+$/);
+      expect(glyph.hex, id).toMatch(/^[0-9A-F]{6}$/);
+      expect(glyph.path, id).toMatch(/^[Mm]/);
+      expect(glyph.title, id).not.toBe("");
+    }
+  });
+
+  it("has every raster's file, and no file it does not name", () => {
+    const named = new Set<string>();
+    for (const [id, raster] of Object.entries(built.rasters)) {
+      expect(id, id).toMatch(/^gh-[a-z0-9-]+$/);
+      expect(raster.file, id).toBe(`${id}.webp`);
+      expect(existsSync(path.join(RASTER_DIR, raster.file)), `${raster.file} is missing`).toBe(true);
+      named.add(raster.file);
+    }
+    const orphans = listing(RASTER_DIR).filter((file) => !named.has(file));
+    expect(orphans, `raster/ has files pack.json does not name: ${orphans.join(", ")}`).toEqual([]);
+  });
+
+  it("resolves every source's logo, for a source Canager knows", () => {
+    for (const adapterId of Object.keys(built.sources)) {
+      expect(Object.keys(ADAPTER_LABEL_KEYS), adapterId).toContain(adapterId);
+      expect(resolveSourceIcon(adapterId), adapterId).not.toBeNull();
+    }
+  });
+
+  it("resolves every tool's logo, under a key toolIconKey can give", () => {
+    // Each key back to a tool it is the key of: a key toolIconKey never
+    // gives -- `pypi:Foo_Bar`, `brew:python@3.13`, an unknown prefix --
+    // would be a logo no row ever shows.
+    const toolFor = (toolKey: string): [ArtifactKey, string] | null => {
+      const colon = toolKey.indexOf(":");
+      const name = toolKey.slice(colon + 1);
+      switch (toolKey.slice(0, colon)) {
+        case "brew":
+          return [key("brew:/opt/homebrew", "Formula", name), "brew"];
+        case "cask":
+          return [key("brew:/opt/homebrew", "Cask", name), "brew"];
+        case "npm":
+          return [key("npm:/opt/homebrew", "Package", name), "npm"];
+        case "pypi":
+          return [key("pipx", "Tool", name), "pipx"];
+        case "cargo":
+          return [key("cargo:/Users/you/.cargo", "Binary", name), "cargo"];
+        case "ollama":
+          return [key("ollama:http://127.0.0.1:11434", "Model", `${name}:latest`), "ollama"];
+        case "standalone":
+          return [key(`standalone-${name}`, "Binary", name), `standalone-${name}`];
+        default:
+          return null;
+      }
+    };
+    const unreachable = Object.keys(built.tools).filter((toolKey) => {
+      const tool = toolFor(toolKey);
+      return tool === null || toolIconKey(...tool) !== toolKey || resolveToolIcon(...tool) === null;
+    });
+    expect(unreachable, `no tool resolves to: ${unreachable.join(", ")}`).toEqual([]);
+  });
+
+  it("gives mtr no logo: Simple Icons' MTR is Hong Kong's railway, not the network tool", () => {
+    expect(Object.keys(built.tools)).not.toContain("brew:mtr");
+    expect(resolveToolIcon(key("brew:/opt/homebrew", "Formula", "mtr"), "brew")).toBeNull();
+  });
+
+  it("fits in its 5 MB budget", () => {
+    const bytes = (dir: string): number =>
+      listing(dir).reduce((sum, entry) => {
+        const full = path.join(dir, entry);
+        return sum + (statSync(full).isDirectory() ? bytes(full) : statSync(full).size);
+      }, 0);
+    expect(bytes(PACK_DIR)).toBeLessThanOrEqual(BUDGET_BYTES);
+  });
+});
