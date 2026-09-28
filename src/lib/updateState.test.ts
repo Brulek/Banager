@@ -464,6 +464,24 @@ describe("updatesSummary", () => {
       updatesSummary({ instances: [brew], updates: [glib], errors: [failed] }, hiding()),
     ).toEqual({ kind: "updates", actionable: [glib] });
   });
+
+  it("counts two Homebrews whose checks both failed as the one Homebrew the banner names", () => {
+    // An Apple-silicon Mac with Homebrew in /opt/homebrew and /usr/local,
+    // offline: the banner said "Homebrew didn't finish this check", and
+    // the line under the headline "2 checks didn't finish".
+    const intel: ManagerInstance = { ...brew, id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" };
+    const errors = [
+      { instance_id: brew.id, message: "brew update failed" },
+      { instance_id: intel.id, message: "brew update failed" },
+    ];
+    expect(updatesSummary({ instances: [brew, intel], updates: [], errors }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+      everyChecked: false,
+      cantUpdateHere: 0,
+      hidden: 0,
+      checksUnfinished: 1,
+    });
+  });
 });
 
 describe("withSkippedVersion", () => {

@@ -18,7 +18,7 @@ import type {
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
-import { canWrite, failedSourceCount, isAvailable } from "./sources";
+import { canWrite, failedSourceAdapters, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
 /**
@@ -317,9 +317,11 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   installing or has just installed -- `hidden`, the updates it leaves
  *   out because the user hid them (`hidingRule`; a skip or a never-remind
  *   that hides no update this check found is not counted), and
- *   `checksUnfinished`, the sources whose check failed this round, as the
- *   "Some checks didn't finish" banner counts them (`failedSourceCount`). A source not checked in full says
- *   so in the Overview's "Needs attention", and is not counted here.
+ *   `checksUnfinished`, the sources whose check failed this round, each
+ *   once, as the "Some checks didn't finish" banner names them
+ *   (`failedSourceAdapters`): two Homebrews that both failed are the one
+ *   Homebrew it names. A source not checked in full says so in the
+ *   Overview's "Needs attention", and is not counted here.
  * - `updating`: none left to start, and some are being installed right
  *   now (`underway`: queued, running, being cancelled or read back) --
  *   `count` of them, in the words the Updates page's header uses for them.
@@ -358,7 +360,7 @@ export function updatesSummary(
     everyChecked,
     cantUpdateHere: listed - actionable.length,
     hidden: snapshot.updates.length - listed,
-    checksUnfinished: failedSourceCount(snapshot.errors),
+    checksUnfinished: failedSourceAdapters(snapshot.errors, snapshot.instances).length,
   };
 }
 

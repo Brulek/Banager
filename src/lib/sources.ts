@@ -1189,55 +1189,49 @@ export function settingsSaveErrorMessage(t: Translate, raw: string): string {
 }
 
 /**
- * How many distinct sources a refresh failed for -- the count of checks
- * the stale banner's "{{count}} checks didn't finish" copy promises, one
- * check a source.
- * `Snapshot.errors` is not that count: `refresh()`
- * (`session/refresh.rs`) can push more than one `SourceError` for the
- * same instance in one round -- inventory and check-updates fail
- * independently, and each failure gets its own entry -- so a single
- * broken Homebrew reads as two failed sources, or four for two broken
- * prefixes. Deduplicating by `instance_id` is what turns "failed calls"
- * back into "failed sources".
+ * The sources a refresh failed for, by adapter id, each once, in the order
+ * `errors` first names them: the one list both the stale banner's names
+ * (`failedSourceNames`) and the Overview's "N checks didn't finish"
+ * (`updatesSummary`) come from, one check a source, so the two cannot
+ * disagree about how many did not finish.
  *
- * One `instance_id` here is not always a `ManagerInstance.id`: when an
- * adapter's own `detect()` panics or is cancelled, `refresh()` has no
- * instance to blame yet (detect is what produces instances) and pushes
- * the error against the bare adapter id instead (e.g. `"brew"`, not
- * `"brew:/opt/homebrew"`). That is still one distinct failed source --
- * the whole adapter, this round -- and every real `ManagerInstance.id`
- * is namespaced as `"<adapter_id>:<path>"` (see `InstanceId` in
- * `model.rs`), so a bare adapter id can never collide with one and
- * double-count or merge with it. Counting distinct `instance_id` values
- * is therefore correct across both shapes without telling them apart.
+ * `Snapshot.errors` is not that list: `refresh()` (`session/refresh.rs`)
+ * can push more than one `SourceError` for the same instance in one round
+ * -- inventory and check-updates fail independently, and each failure
+ * gets its own entry -- and two instances of one adapter, a Homebrew in
+ * /opt/homebrew and another in /usr/local, are one source to the person
+ * reading the banner, named once. An error goes to its instance's
+ * adapter, or -- for an instance the snapshot no longer lists, or an
+ * error against a bare adapter id -- to the adapter its id names
+ * (`adapterIdOf`). A bare adapter id is what `refresh()` blames when an
+ * adapter's own `detect()` panics or is cancelled: it has no instance to
+ * blame yet (detect is what produces instances), and pushes the error
+ * against `"brew"`, not `"brew:/opt/homebrew"` (see `InstanceId` in
+ * `model.rs`).
  */
-export function failedSourceCount(errors: SourceError[]): number {
-  return new Set(errors.map((e) => e.instance_id)).size;
+export function failedSourceAdapters(errors: SourceError[], instances: ManagerInstance[]): string[] {
+  const adapters: string[] = [];
+  for (const error of errors) {
+    const adapterId =
+      instances.find((instance) => instance.id === error.instance_id)?.adapter_id ??
+      adapterIdOf(error.instance_id);
+    if (!adapters.includes(adapterId)) adapters.push(adapterId);
+  }
+  return adapters;
 }
 
 /**
- * The sources a refresh failed for, by name, in the user's language, each
- * once, in the order `errors` first names them: what the stale banner says
- * did not finish, in place of a count that did not say which. A source is
- * named by its instance's adapter, or -- for an error against a bare
- * adapter id (its `detect` failed) or an instance the snapshot no longer
- * lists -- by the adapter its id names (`adapterIdOf`). Two instances of
- * one adapter, two Homebrews, are one name.
+ * The sources a refresh failed for (`failedSourceAdapters`), by name, in
+ * the user's language: what the stale banner says did not finish, in
+ * place of a count that did not say which. Each adapter has a name of its
+ * own in both languages, so no name comes twice.
  */
 export function failedSourceNames(
   t: Translate,
   errors: SourceError[],
   instances: ManagerInstance[],
 ): string[] {
-  const names: string[] = [];
-  for (const error of errors) {
-    const adapterId =
-      instances.find((instance) => instance.id === error.instance_id)?.adapter_id ??
-      adapterIdOf(error.instance_id);
-    const name = adapterLabel(t, adapterId);
-    if (!names.includes(name)) names.push(name);
-  }
-  return names;
+  return failedSourceAdapters(errors, instances).map((adapterId) => adapterLabel(t, adapterId));
 }
 
 /**

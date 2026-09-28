@@ -416,6 +416,30 @@ describe("OverviewPage", () => {
     }
   });
 
+  it("counts the checks that did not finish as the banner names them: two Homebrews are one", async () => {
+    // An Apple-silicon Mac with Homebrew in /opt/homebrew and /usr/local,
+    // offline, nothing listed: the banner named Homebrew once, and the
+    // line under the headline said "2 checks didn't finish".
+    const intel = instance("brew:/usr/local", "brew");
+    served = snapshotWith({
+      instances: [brew, intel, pip],
+      stale: true,
+      errors: [
+        { instance_id: brew.id, message: "brew update failed" },
+        { instance_id: intel.id, message: "brew update failed" },
+      ],
+    });
+    const { findByText, getByRole } = renderOverview();
+
+    expect(
+      await findByText("Homebrew didn't finish this check, so what Canager shows for it wasn't refreshed."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(getByRole("heading", { level: 2, name: NOT_CHECKED })).toBeInTheDocument());
+    expect(getByRole("heading", { level: 2, name: NOT_CHECKED }).nextElementSibling?.textContent).toBe(
+      "1 check didn't finish",
+    );
+  });
+
   it("says under Nothing to update what the Updates page has instead, in its numbers, and Review updates opens it", async () => {
     // jq is pinned and urllib3's source is read-only: listed, under "Can't
     // update here". glib is never to be reminded about and gh's version is

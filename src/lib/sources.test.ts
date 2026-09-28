@@ -5,7 +5,7 @@ import {
   adapterLabel,
   canWrite,
   describeTool,
-  failedSourceCount,
+  failedSourceAdapters,
   failedSourceNames,
   hasSourceNotice,
   isAvailable,
@@ -880,16 +880,16 @@ describe("failedSourceNames and namesInSentence", () => {
   });
 });
 
-describe("failedSourceCount", () => {
+describe("failedSourceAdapters", () => {
   function err(instance_id: string, message = "boom"): SourceError {
     return { instance_id, message };
   }
 
-  it("is 0 for no errors", () => {
-    expect(failedSourceCount([])).toBe(0);
+  it("is empty for no errors", () => {
+    expect(failedSourceAdapters([], [instance()])).toEqual([]);
   });
 
-  it("counts one source once even when inventory and check-updates both failed for it", () => {
+  it("puts one source down once even when inventory and check-updates both failed for it", () => {
     // The exact shape session/refresh.rs produces for one broken Homebrew:
     // one SourceError from the inventory fetch, one from check_updates,
     // same instance_id. The banner says "sources", not "calls".
@@ -897,25 +897,56 @@ describe("failedSourceCount", () => {
       err("brew:/opt/homebrew", "brew list failed"),
       err("brew:/opt/homebrew", "brew outdated failed"),
     ];
-    expect(failedSourceCount(errors)).toBe(1);
+    expect(failedSourceAdapters(errors, [instance()])).toEqual(["brew"]);
   });
 
-  it("counts two broken prefixes as two, not four, when each fails both calls", () => {
+  it("puts two instances of one source down as that one source, as the banner names it", () => {
+    // An Apple-silicon Mac with a second Homebrew in /usr/local, offline:
+    // the banner said "Homebrew didn't finish this check" over "2 checks
+    // didn't finish".
+    const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
+    expect(
+      failedSourceAdapters(
+        [err("brew:/opt/homebrew", "brew update failed"), err("brew:/usr/local", "brew update failed")],
+        [instance(), intel],
+      ),
+    ).toEqual(["brew"]);
+    // Two npm prefixes, each failing both calls: one npm, not four.
     const errors = [
       err("npm:/opt/homebrew/lib", "npm ls failed"),
       err("npm:/opt/homebrew/lib", "npm outdated failed"),
       err("npm:/usr/local/lib", "npm ls failed"),
       err("npm:/usr/local/lib", "npm outdated failed"),
     ];
-    expect(failedSourceCount(errors)).toBe(2);
+    expect(failedSourceAdapters(errors, [])).toEqual(["npm"]);
   });
 
-  it("counts a detect-stage failure (bare adapter id) as its own distinct source", () => {
+  it("puts a detect-stage failure (bare adapter id) down to its adapter, in the order the errors come", () => {
     // refresh.rs pushes the detect-panic error with instance_id set to the
     // adapter id alone (e.g. "cargo"), not a "<adapter_id>:<path>"
-    // instance id -- real instance ids can never collide with it.
+    // instance id.
     const errors = [err("cargo", "internal error detecting this source"), err("brew:/opt/homebrew")];
-    expect(failedSourceCount(errors)).toBe(2);
+    expect(failedSourceAdapters(errors, [instance()])).toEqual(["cargo", "brew"]);
+  });
+
+  it("is the list the banner's names come from, one name each", () => {
+    const errors = [
+      err("brew:/opt/homebrew"),
+      err("brew:/usr/local"),
+      err("npm"),
+      err("uv:/Users/you/.local/share/uv/tools"),
+    ];
+    const adapters = failedSourceAdapters(errors, [instance()]);
+    expect(failedSourceNames(fakeT, errors, [instance()])).toEqual(
+      adapters.map((adapterId) => fakeT(ADAPTER_LABEL_KEYS[adapterId])),
+    );
+    // No two sources share a name in either language, so the banner names
+    // as many sources as the Overview counts.
+    for (const locale of [en, zhCN]) {
+      const names = Object.values(locale.adapters);
+      expect(new Set(names).size).toBe(names.length);
+      expect(Object.keys(locale.adapters).sort()).toEqual(Object.keys(ADAPTER_LABEL_KEYS).sort());
+    }
   });
 });
 
