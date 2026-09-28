@@ -1944,7 +1944,7 @@ describe("UpdatesPage", () => {
     expect(zhCN.updates.skipVersionHint).toBe("你会在它出下一个版本时再看到提醒。");
     expect(zhCN.updates.neverRemind).toBe("不再提醒这个软件");
     expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个软件的任何更新，可在设置里撤销。");
-    expect(zhCN.common.copyCommand).toBe("复制命令");
+    expect(zhCN.common.copyCommand).toBe("拷贝命令");
   });
 
   it("disables both hiding items on every row while a save is pending so a second choice cannot overwrite the first", async () => {
