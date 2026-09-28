@@ -8,7 +8,7 @@ import { updatesSummary } from "../lib/updateState";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance } from "../lib/types";
 import { useUiStore } from "../store/ui";
-import { holdsRow, useUpdateOperationFor } from "../components/UpdateProgress";
+import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { CheckIcon, DashIcon, InfoIcon, UnknownIcon, WarningIcon } from "../components/icons";
 
@@ -30,6 +30,8 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
       return t("overview.updatesAvailable", { count: summary.actionable.length });
     case "upToDate":
       return t("overview.upToDate");
+    case "updating":
+      return t("overview.updating", { count: summary.count });
     case "nothingToUpdate":
       return summary.everyChecked ? t("overview.nothingToUpdate") : t("overview.nothingToUpdateChecked");
   }
@@ -71,7 +73,8 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * for them under it; a calm green round a check when everything is up to
  * date; a grey ring with a dash when there is nothing to update but that
  * is not the same as up to date; a faint ring with a quarter of it
- * turning while the first check runs -- only without "reduce motion".
+ * turning while the first check runs, or while the updates it offered are
+ * being installed -- only without "reduce motion".
  * Decorative: the headline under it says the same in words, so it is
  * hidden from screen readers. `data-ring` names its state.
  */
@@ -101,7 +104,7 @@ function StatusRing({ state }: { state: RingState }) {
           ring("stroke-hover")
         )}
       </svg>
-      {state.kind === "checking" ? (
+      {state.kind === "checking" || state.kind === "updating" ? (
         <svg
           viewBox="0 0 160 160"
           className="absolute inset-0 h-full w-full motion-safe:animate-spin motion-safe:[animation-duration:1.6s]"
@@ -199,7 +202,12 @@ export function OverviewPage() {
     installedByInstance.set(id, (installedByInstance.get(id) ?? 0) + 1);
   }
 
-  const summary = updatesSummary(snapshot, settings, (candidate) => holdsRow(operationFor(candidate)));
+  const summary = updatesSummary(
+    snapshot,
+    settings,
+    (candidate) => holdsRow(operationFor(candidate)),
+    (candidate) => isUnderway(operationFor(candidate)),
+  );
   const whyNothing = summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary) : null;
 
   const tiles: SourceTile[] = snapshot.instances.flatMap((instance) => {
@@ -233,6 +241,16 @@ export function OverviewPage() {
             className="h-9 rounded-button border border-border bg-surface px-6 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
           >
             {t("overview.reviewUpdates")}
+          </button>
+        ) : null}
+        {summary.kind === "updating" ? (
+          // Where each one's progress is: in its own row.
+          <button
+            type="button"
+            onClick={() => setPage("updates")}
+            className="h-9 rounded-button border border-border bg-surface px-6 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {t("overview.seeProgress")}
           </button>
         ) : null}
         {summary.kind === "updates" ? (

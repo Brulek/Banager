@@ -318,10 +318,16 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   `checksUnfinished`, the sources whose check failed this round, as the
  *   "Some checks didn't finish" banner counts them (`failedSourceCount`). A source not checked in full says
  *   so in the Overview's "Needs attention", and is not counted here.
+ * - `updating`: none left to start, and some are being installed right
+ *   now (`underway`: queued, running, being cancelled or read back) --
+ *   `count` of them. Not "Nothing to update" while the Updates page shows
+ *   them updating and the sidebar still counts them. An update that has
+ *   finished and waits for the refresh that drops its row is not counted.
  */
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[] }
   | { kind: "upToDate" }
+  | { kind: "updating"; count: number }
   | {
       kind: "nothingToUpdate";
       everyChecked: boolean;
@@ -334,10 +340,13 @@ export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
   settings: HidingSettings,
   holdsRow: (candidate: UpdateCandidate) => boolean = () => false,
+  underway: (candidate: UpdateCandidate) => boolean = () => false,
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
   const startable = actionable.filter((candidate) => !holdsRow(candidate));
   if (startable.length > 0) return { kind: "updates", actionable: startable };
+  const updating = actionable.filter(underway).length;
+  if (updating > 0) return { kind: "updating", count: updating };
   const everyChecked = everySourceChecked(snapshot.instances, snapshot.errors);
   if (snapshot.updates.length === 0 && everyChecked) return { kind: "upToDate" };
   const listed = notHidden(snapshot.updates, settings).length;

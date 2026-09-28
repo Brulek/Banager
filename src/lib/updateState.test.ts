@@ -351,7 +351,13 @@ describe("updatesSummary", () => {
     const snapshot = { instances: [brew], updates: [glib, jq, wget], errors: [] };
     // glib's update is under way: jq alone is left for Review updates.
     expect(updatesSummary(snapshot, hiding(), (u) => u === glib)).toEqual({ kind: "updates", actionable: [jq] });
-    // Both taken: nothing to start, and wget alone is under "Can't update here".
+    // Both taken and glib still going: updating one, not "Nothing to update".
+    expect(updatesSummary(snapshot, hiding(), (u) => u !== wget, (u) => u === glib)).toEqual({
+      kind: "updating",
+      count: 1,
+    });
+    // Both taken and both done, waiting for the refresh that drops them:
+    // nothing to start, and wget alone is under "Can't update here".
     expect(updatesSummary(snapshot, hiding(), (u) => u !== wget)).toEqual({
       kind: "nothingToUpdate",
       everyChecked: true,

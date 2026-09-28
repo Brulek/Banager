@@ -226,6 +226,35 @@ describe("OverviewPage", () => {
     expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(formula("wget"))]);
   });
 
+  it("says it is updating while every update it offered is under way, and See progress opens the Updates page", async () => {
+    served = snapshotWith({
+      updates: [candidate(formula("glib")), candidate(formula("jq"))],
+    });
+    const upgrade = (id: number, name: string, fields: Partial<OpSummary>): OpSummary => ({
+      id,
+      kind: "Upgrade",
+      instance_id: brew.id,
+      artifact_kind: "Formula",
+      name,
+      status: "Running",
+      outcome: null,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+      ...fields,
+    });
+    // jq is done and waits for the refresh; glib is still going.
+    operations = [upgrade(9, "jq", { status: "Done", outcome: "Succeeded" }), upgrade(8, "glib", {})];
+    useUiStore.setState({ page: "overview", selectedUpdates: [], updateTargets: { 9: "1.1.0" } });
+    const { findByRole, queryByRole, container } = renderOverview();
+
+    expect(await findByRole("heading", { level: 2, name: "Updating 1 tool" })).toBeInTheDocument();
+    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("updating");
+    expect(queryByRole("button", { name: "Review updates" })).toBeNull();
+    fireEvent.click(await findByRole("button", { name: "See progress" }));
+    expect(useUiStore.getState().page).toBe("updates");
+    expect(useUiStore.getState().selectedUpdates).toEqual([]);
+  });
+
   it("keeps a row the user had already selected when Review updates adds the rest", async () => {
     served = snapshotWith({
       updates: [candidate(formula("glib")), candidate(formula("wget"))],

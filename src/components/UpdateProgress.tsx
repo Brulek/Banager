@@ -70,6 +70,11 @@ export function holdsRow(op: OpSummary | null): boolean {
   return op !== null && !isRetryable(progressOf(op));
 }
 
+/** Whether an update is still going: queued, running, being cancelled or read back. */
+export function isUnderway(op: OpSummary | null): boolean {
+  return op !== null && op.status !== "Done";
+}
+
 /** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
 export function progressOf(op: OpSummary): RowProgress {
   switch (op.status) {
