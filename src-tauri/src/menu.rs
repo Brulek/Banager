@@ -5,11 +5,12 @@
 //! without a running app -- tauri's menu items can only be made on the
 //! main thread of a running one -- and `build` turns that into tauri's
 //! menu. Where macOS provides an item's action (About and its panel,
-//! Services, Hide, Quit, the Edit menu's, the Window menu's), the item is
-//! macOS's own (`MacItem`), shortcut and all, and Canager gives only its
-//! label. The three items that act in the page -- Settings…, Check Again,
-//! Search -- tell the window, one event each (`PageCommand`), and the page
-//! runs the code its own controls run (src/lib/menu.ts).
+//! Services, Hide, Quit, Close Window, the Edit menu's, the Window
+//! menu's), the item is macOS's own (`MacItem`), shortcut and all, and
+//! Canager gives only its label. The three items that act in the page --
+//! Settings…, Check Again, Search -- tell the window, one event each
+//! (`PageCommand`), and the page runs the code its own controls run
+//! (src/lib/menu.ts).
 //!
 //! The page says which language: `set_menu_language`, at startup and at
 //! every change of language. Until it has, the menu bar is built in the
@@ -96,7 +97,7 @@ impl PageCommand {
 /// An item whose action macOS provides (tauri's `PredefinedMenuItem`):
 /// AppKit carries it out -- About's panel, Hide's hiding, the Edit
 /// menu's Undo to Select All in a text field -- with the shortcut a Mac
-/// app has for it (⌘H, ⌥⌘H, ⌘Q, ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘M).
+/// app has for it (⌘H, ⌥⌘H, ⌘Q, ⌘W, ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘M).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MacItem {
     About,
@@ -105,6 +106,8 @@ pub enum MacItem {
     HideOthers,
     ShowAll,
     Quit,
+    /// ⌘W: AppKit's `performClose:`, what the window's red button does.
+    CloseWindow,
     Undo,
     Redo,
     Cut,
@@ -125,7 +128,7 @@ pub enum Item {
 }
 
 /// One menu of the menu bar: Canager's own (the one macOS titles with the
-/// app's name), Edit, View, Window, Help.
+/// app's name), File, Edit, View, Window, Help.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TopMenu {
     /// The Window and Help menus carry tauri's ids for them, by which it
@@ -149,6 +152,8 @@ struct Words {
     hide_others: &'static str,
     show_all: &'static str,
     quit: &'static str,
+    file: &'static str,
+    close_window: &'static str,
     edit: &'static str,
     undo: &'static str,
     redo: &'static str,
@@ -175,6 +180,8 @@ const ENGLISH: Words = Words {
     hide_others: "Hide Others",
     show_all: "Show All",
     quit: "Quit {app}",
+    file: "File",
+    close_window: "Close Window",
     edit: "Edit",
     undo: "Undo",
     redo: "Redo",
@@ -200,6 +207,8 @@ const SIMPLIFIED_CHINESE: Words = Words {
     hide_others: "隐藏其他",
     show_all: "全部显示",
     quit: "退出 {app}",
+    file: "文件",
+    close_window: "关闭窗口",
     edit: "编辑",
     undo: "撤销",
     redo: "重做",
@@ -219,9 +228,9 @@ const SIMPLIFIED_CHINESE: Words = Words {
 
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
 /// Settings…, Services, the three Hide items and Quit, each group apart;
-/// the Edit menu a text field needs; View with the page's two; the Window
-/// menu; and Help, which has no item of Canager's -- only the search field
-/// macOS puts there.
+/// File, with Close Window; the Edit menu a text field needs; View with the
+/// page's two; the Window menu; and Help, which has no item of Canager's --
+/// only the search field macOS puts there.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
@@ -247,6 +256,11 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
                 Item::Separator,
                 mac(MacItem::Quit, &named(words.quit)),
             ],
+        },
+        TopMenu {
+            id: "file",
+            label: words.file.to_string(),
+            items: vec![mac(MacItem::CloseWindow, words.close_window)],
         },
         TopMenu {
             id: "edit",
@@ -359,6 +373,7 @@ fn mac_item<R: Runtime>(
         MacItem::HideOthers => PredefinedMenuItem::hide_others(app, label),
         MacItem::ShowAll => PredefinedMenuItem::show_all(app, label),
         MacItem::Quit => PredefinedMenuItem::quit(app, label),
+        MacItem::CloseWindow => PredefinedMenuItem::close_window(app, label),
         MacItem::Undo => PredefinedMenuItem::undo(app, label),
         MacItem::Redo => PredefinedMenuItem::redo(app, label),
         MacItem::Cut => PredefinedMenuItem::cut(app, label),
@@ -514,6 +529,7 @@ mod tests {
                         "Quit Canager",
                     ],
                 ),
+                ("File", &["Close Window"]),
                 (
                     "Edit",
                     &["Undo", "Redo", "—", "Cut", "Copy", "Paste", "Select All"],
@@ -547,6 +563,7 @@ mod tests {
                         "退出 Canager",
                     ],
                 ),
+                ("文件", &["关闭窗口"]),
                 (
                     "编辑",
                     &["撤销", "重做", "—", "剪切", "拷贝", "粘贴", "全选"],
@@ -567,7 +584,14 @@ mod tests {
         );
         assert_eq!(
             english.iter().map(|menu| menu.id).collect::<Vec<_>>(),
-            ["app", "edit", "view", WINDOW_SUBMENU_ID, HELP_SUBMENU_ID]
+            [
+                "app",
+                "file",
+                "edit",
+                "view",
+                WINDOW_SUBMENU_ID,
+                HELP_SUBMENU_ID
+            ]
         );
     }
 
@@ -599,6 +623,7 @@ mod tests {
                 MacItem::HideOthers,
                 MacItem::ShowAll,
                 MacItem::Quit,
+                MacItem::CloseWindow,
                 MacItem::Undo,
                 MacItem::Redo,
                 MacItem::Cut,
