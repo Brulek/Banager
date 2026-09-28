@@ -22,12 +22,15 @@
 //! under way states the window in which a refresh's version read can
 //! still overlap it, that the never-list holds a moved path to the tool's
 //! uninstall list, not to vendor instructions, which Antigravity CLI and
-//! Grok Build do not publish, and that the document names each permission
-//! of the opener plugin the window is given
+//! Grok Build do not publish, that the document names each permission of
+//! the opener plugin the window is given
 //! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
-//! makes, saying it runs nothing else. A source, host, variable, limit,
-//! path, check, pause, icon size or opener permission added or changed, or
-//! that look shortened, without its line in the document fails here.
+//! makes, saying it runs nothing else, and that the daily check's section
+//! says it is off by default, states its tick and how long after a check it
+//! checks again, and says it never installs. A source, host, variable,
+//! limit, path, check, pause, icon size, opener permission or daily-check
+//! number added or changed, or that look shortened, without its line in
+//! the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::cargo::CargoAdapter;
@@ -638,6 +641,46 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
         assert!(
             folded.contains("on down `PATH`"),
             "the `## {section}` section of docs/what-we-run.md does not say the look goes on down `PATH` past the first executable `claude`, which route::shadow_note does"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_it_never_installs(
+) {
+    // The daily check's section states the two numbers `auto_check::tick`
+    // and the shell's task run on -- a look every `TICK`, a check once
+    // `DUE_AFTER_SECS` have passed since the last one ended -- that
+    // `Settings::default()` leaves it off, and that it installs nothing
+    // (it runs the refresh Check again runs, and no refresh runs a write
+    // command). A number changed, or the default turned on, without the
+    // section following fails here.
+    use canager_core::auto_check::{DUE_AFTER_SECS, TICK};
+    use canager_core::settings::Settings;
+    assert!(
+        !Settings::default().auto_check,
+        "the daily check is off by default today; if that has changed, the section's \"off by default\" is now false and must go with it"
+    );
+    assert_eq!(TICK.as_secs() % 60, 0, "TICK is a whole number of minutes");
+    assert_eq!(
+        DUE_AFTER_SECS % 3600,
+        0,
+        "DUE_AFTER_SECS is a whole number of hours"
+    );
+    let doc = read_doc();
+    let body = section_body(&doc, "The daily check")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## The daily check` section"));
+    // Hard-wrapped prose: compare with the line breaks folded away.
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "off by default".to_string(),
+        format!("every {} minutes", TICK.as_secs() / 60),
+        format!("{} hours", DUE_AFTER_SECS / 3600),
+        "never installs".to_string(),
+    ] {
+        assert!(
+            folded.contains(&phrase),
+            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS and Settings::default() make true"
         );
     }
 }

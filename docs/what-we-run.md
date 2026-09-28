@@ -21,9 +21,11 @@ state they keep, that Grok Build's section shows the update check it runs
 on every refresh and says it installs nothing, that the Trash section
 names the call and states the pause after each move, that the app icons
 section names the call, the size an icon is drawn at, and that no
-command runs for it, and that this file names each permission of the
+command runs for it, that this file names each permission of the
 opener plugin the window has and the unknown-source scan's section the
-call Show in Finder makes, saying it runs nothing else.
+call Show in Finder makes, saying it runs nothing else, and that the daily
+check's section says it is off by default, states how often it looks and
+how long after a check it checks again, and says it never installs.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -110,9 +112,11 @@ or asks to check again — the page header's Check again, or Check Again
 (⌘R) in the menu bar's View menu, neither of which starts one while one
 runs (`useCheckAgain` in `src/lib/queries.ts`) — after every operation
 finishes, when the "include self-updating apps" setting changes, after
-Ollama is opened from its notice, and whenever a `brew update` a refresh
+Ollama is opened from its notice, whenever a `brew update` a refresh
 left running in the background ends
-(`refresh_on_background_change` in `src-tauri/src/ipc.rs`). The window
+(`refresh_on_background_change` in `src-tauri/src/ipc.rs`), and, with
+Settings' daily check turned on, once a day while Canager runs (next
+section). The window
 opens once a launch: closing it only hides it (`src-tauri/src/window.rs`),
 and bringing it back starts no refresh. Within a
 refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
@@ -162,6 +166,50 @@ succeeded, and one the user cancelled that did not take effect as
 cancelled; an upgrade stopped partway is never settled either way
 (`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
 `run_operation`).
+
+## The daily check: off unless turned on
+
+Settings → Updates has a switch, "Check for updates every day"
+(「每天自动检查」), which is off by default (`Settings::auto_check` in
+`crates/canager-core/src/settings.rs`). While it is off, the daily check
+starts nothing. Turned on:
+
+- **When.** A task Canager starts at launch (`check_automatically` in
+  `src-tauri/src/auto_check.rs`) looks every 15 minutes the Mac is awake
+  (`auto_check::TICK` in `crates/canager-core/src/auto_check.rs`), the
+  first time 15 minutes after launch. A look starts a check only when 24
+  hours (`auto_check::DUE_AFTER_SECS`) have passed on the Mac's clock since
+  the last check ended, whatever started it — the one at launch, Check
+  again or ⌘R, the one after an operation, the refresh a finished `brew
+  update` sets off, a daily one — or when none has ended since launch
+  (`auto_check::tick`, over the snapshot's `refreshed_at`). So a check of
+  the user's own moves the next daily one 24 hours on, and one in which a
+  source failed counts too: a source that keeps failing is not asked again
+  every 15 minutes, and the window shows the failure as it does after any
+  check. Time the Mac spends asleep counts toward the 24 hours, so a Mac
+  that slept for two days checks once, at the first look after it wakes.
+  When the Mac's clock has been set back to before the last check ended,
+  the next look checks, once.
+- **Not while something is under way.** A look that finds a refresh
+  running or waiting, or an operation queued, running, being cancelled or
+  being verified (`Session::busy`), starts nothing; the next look asks
+  again.
+- **Only while Canager runs.** When the last check ended is kept in
+  memory, so after Canager is quit and opened again, the check at launch
+  is the day's. Nothing checks while Canager is not running. Closing the
+  window leaves Canager running (`src-tauri/src/window.rs`), and the task
+  with it.
+
+**What it runs** is the refresh Check again runs, through the same
+function (`ipc::refresh_as`), and nothing else: the commands a refresh
+runs, in each source's read-only table, and the requests a refresh makes,
+to the hosts in "Network". So it does to the Mac what those commands do:
+Homebrew's `brew update`, when its six hours are up, rewrites Homebrew's
+local catalogue (Homebrew's section) — and when it outlasts the check,
+the refresh its end sets off follows — and Grok Build's update check
+writes inside `~/.grok` ("Files Canager writes"). It never installs,
+upgrades or uninstalls anything: every write command runs only after a
+preview the user confirmed.
 
 ## Homebrew
 
