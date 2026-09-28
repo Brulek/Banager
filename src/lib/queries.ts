@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import {
   useMutation,
   useQuery,
@@ -21,6 +21,7 @@ import {
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
 import { queryKeys } from "./queryKeys";
 import { isAvailable } from "./sources";
+import { actionableUpdatesOf } from "./updateState";
 import type {
   ArtifactKey,
   IssuedPlan,
@@ -55,6 +56,22 @@ export function useSnapshot(): UseQueryResult<Snapshot> {
 
 export function useSettings(): UseQueryResult<Settings> {
   return useQuery({ queryKey: queryKeys.settings, queryFn: getSettings });
+}
+
+/**
+ * How many updates the Updates page offers to install
+ * (`actionableUpdatesOf`), those an update is installing now included, or
+ * undefined until both the snapshot and the settings have arrived: the
+ * number beside the sidebar's Updates. One hook, so that whatever else
+ * shows it cannot show another.
+ */
+export function useUpdateCount(): number | undefined {
+  const { data: snapshot } = useSnapshot();
+  const { data: settings } = useSettings();
+  return useMemo(
+    () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings).length : undefined),
+    [snapshot, settings],
+  );
 }
 
 export function useOperations(): UseQueryResult<OpSummary[]> {

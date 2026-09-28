@@ -2,8 +2,7 @@ import { useId, useMemo } from "react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
-import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
-import { actionableUpdatesOf } from "../lib/updateState";
+import { useSnapshot, useUnknownScan, useUpdateCount } from "../lib/queries";
 import { InstalledIcon, OverviewIcon, SettingsIcon, UnknownIcon, UpdatesIcon } from "./icons";
 
 interface SidebarProps {
@@ -45,7 +44,7 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
  * The number beside each entry, or nothing:
  *
  * - Updates: the updates the Updates page offers to install
- *   (`actionableUpdatesOf`), those an update is installing now included.
+ *   (`useUpdateCount`), those an update is installing now included.
  * - Installed: everything the Installed page lists, components other
  *   software brought in included.
  * - Unknown: what the last scan found, once one has run. Nothing here
@@ -54,16 +53,16 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
  * Zero shows nothing, like no count at all.
  */
 function useCounts(): Partial<Record<Page, number>> {
+  const updates = useUpdateCount();
   const { data: snapshot } = useSnapshot();
-  const { data: settings } = useSettings();
   const { data: scan } = useUnknownScan();
   return useMemo(
     () => ({
-      updates: snapshot && settings ? actionableUpdatesOf(snapshot, settings).length : undefined,
+      updates,
       installed: snapshot?.artifacts.length,
       unknown: scan?.entries.length,
     }),
-    [snapshot, settings, scan],
+    [updates, snapshot, scan],
   );
 }
 
