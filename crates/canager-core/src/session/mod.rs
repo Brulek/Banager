@@ -41,15 +41,15 @@ use crate::adapters::Adapter;
 use crate::events::{EventSink, OpId};
 use crate::http::{HttpClient, RealHttpClient};
 use crate::model::{
-    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, Plan, ReadOnlyReason, Unavailable,
-    UninstallBlocked, UpdateBlocked, UpdateCandidate,
+    AdapterId, InstalledArtifact, InstanceId, ManagerInstance, OpStatus, Plan, ReadOnlyReason,
+    Unavailable, UninstallBlocked, UpdateBlocked, UpdateCandidate,
 };
 use crate::ops::{CancelRefused, OpSummary, OperationManager};
 use crate::runner::{CommandRunner, RealRunner};
 use crate::trash::RealTrasher;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +232,10 @@ pub struct Session {
     /// `generation` instead would miss a round that found nothing new (M5
     /// in the design review) and make the waiter run a redundant one.
     last_committed_round: AtomicU64,
+    /// How many `refresh` calls are under way: counted from the moment one
+    /// arrives, before it queues on `refresh_gate`, until it returns or is
+    /// dropped (`UnderWay`, in `refresh.rs`). Read by `busy`.
+    refreshes_under_way: AtomicUsize,
     /// Plans handed out by `issue_plan` (in `plans.rs`) but not yet
     /// consumed by `submit`, keyed by `PlanId`. The stored value is
     /// `plans::StoredPlan`, not the `IssuedPlan` the caller previews: the
@@ -347,6 +351,7 @@ impl Session {
             snapshot: Mutex::new(Snapshot::empty()),
             rounds_started: AtomicU64::new(0),
             last_committed_round: AtomicU64::new(0),
+            refreshes_under_way: AtomicUsize::new(0),
             issued_plans: Mutex::new(HashMap::new()),
             now_fn,
             background_change,
@@ -394,6 +399,21 @@ impl Session {
 
     pub fn operations(&self) -> Vec<OpSummary> {
         self.ops.summaries()
+    }
+
+    /// Whether a refresh or an operation is under way: a `refresh` call
+    /// running a round or queued behind one, or an operation that is not
+    /// `Done` -- queued, running, being cancelled or being verified. The
+    /// daily check does nothing while this holds and asks again at its next
+    /// tick (`auto_check::tick`). It claims nothing stronger: a refresh can
+    /// arrive the moment after this answered.
+    pub fn busy(&self) -> bool {
+        self.refreshes_under_way.load(Ordering::SeqCst) > 0
+            || self
+                .ops
+                .summaries()
+                .iter()
+                .any(|op| op.status != OpStatus::Done)
     }
 
     /// Sorted ids of every adapter this Session has registered, regardless
@@ -585,5 +605,64 @@ mod tests {
             assert!(Instant::now() < deadline, "operation never finished");
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+    }
+
+    #[tokio::test]
+    async fn test_busy_while_an_operation_is_not_done() {
+        // The daily check skips its tick while this holds
+        // (`auto_check::tick`): an operation queued, running, being
+        // cancelled or verified counts, a finished one does not.
+        let (adapter, state) = FakeAdapter::new();
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![test_support::make_instance("fake", "fake:1")];
+            s.block_execute = true;
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        session
+            .refresh(&test_support::non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(
+            !session.busy(),
+            "the refresh returned and nothing else runs"
+        );
+
+        let req = OpRequest {
+            kind: OpKind::Install,
+            instance_id: "fake:1".to_string(),
+            artifact_kind: ArtifactKind::Formula,
+            name: "jq".to_string(),
+        };
+        let issued = session.issue_plan(&req).await.expect("issue_plan");
+        assert!(!session.busy(), "a plan being previewed is not under way");
+        let op_id = session.submit(issued.id).expect("submit");
+        assert!(
+            session.busy(),
+            "queued or running from the moment it is submitted"
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status == OpStatus::Running)
+        {
+            assert!(Instant::now() < deadline, "operation never reached Running");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(session.busy(), "running");
+
+        session.cancel(op_id).expect("cancel a Running op");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while session
+            .operations()
+            .iter()
+            .any(|o| o.id == op_id && o.status != OpStatus::Done)
+        {
+            assert!(Instant::now() < deadline, "operation never finished");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!session.busy(), "the operation is done");
     }
 }

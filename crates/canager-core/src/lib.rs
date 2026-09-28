@@ -51,6 +51,10 @@ compile_error!(
 );
 
 pub mod adapters;
+/// The daily check's decision -- whether a tick starts a refresh round --
+/// and the record of who asked for each round. Pure: the shell runs the
+/// task and the round.
+pub mod auto_check;
 pub mod events;
 pub mod http;
 /// The icon Finder shows for a cask's app, drawn by macOS for the window

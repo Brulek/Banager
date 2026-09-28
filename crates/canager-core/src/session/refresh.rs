@@ -10,7 +10,7 @@ use crate::model::{
 };
 use crate::runner::HostEnv;
 use std::collections::HashSet;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_util::task::AbortOnDropHandle;
 
 /// One adapter's part in a round's detection: spawned, or skipped with
@@ -20,6 +20,26 @@ use tokio_util::task::AbortOnDropHandle;
 enum Detection {
     Spawned(AbortOnDropHandle<Vec<ManagerInstance>>),
     Skipped(Vec<ManagerInstance>),
+}
+
+/// One `refresh` call counted in `Session::refreshes_under_way` for as long
+/// as it lives: from `enter`, as the call arrives, until the call returns
+/// or is dropped. A guard rather than a decrement at the end, so a refresh
+/// dropped mid-round -- which cancels its workers (`refresh_round`) --
+/// does not leave `Session::busy` answering yes for the rest of the run.
+struct UnderWay<'a>(&'a AtomicUsize);
+
+impl<'a> UnderWay<'a> {
+    fn enter(count: &'a AtomicUsize) -> UnderWay<'a> {
+        count.fetch_add(1, Ordering::SeqCst);
+        UnderWay(count)
+    }
+}
+
+impl Drop for UnderWay<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl Session {
@@ -76,6 +96,23 @@ impl Session {
         env: &HostEnv,
         opts: &CheckOptions,
     ) -> Snapshot {
+        self.refresh_with_round(env, opts).await.1
+    }
+
+    /// `refresh`, with the number of the round whose snapshot it hands
+    /// back: the round this call ran, or the one it shared. Two calls
+    /// answered with one round get the same number, and a later round a
+    /// higher one. The shell records who asked for each round by this
+    /// number (`auto_check::RoundLog`).
+    ///
+    /// Counted in `busy` from the moment it arrives until it returns or is
+    /// dropped, the wait for the gate included.
+    pub async fn refresh_with_round(
+        self: &std::sync::Arc<Self>,
+        env: &HostEnv,
+        opts: &CheckOptions,
+    ) -> (u64, Snapshot) {
+        let _under_way = UnderWay::enter(&self.refreshes_under_way);
         // Read before queueing on the gate: any round numbered above this
         // began after this call arrived (`refresh_round` bumps the counter
         // under the gate, before it reads anything).
@@ -85,21 +122,23 @@ impl Session {
         // the clone. `last_committed_round`, not `rounds_started`: a round
         // that began after this call but was dropped before committing
         // left no snapshot behind to share.
-        if self.last_committed_round.load(Ordering::SeqCst) > arrived_after {
-            return self.snapshot.lock().unwrap().clone();
+        let committed = self.last_committed_round.load(Ordering::SeqCst);
+        if committed > arrived_after {
+            return (committed, self.snapshot.lock().unwrap().clone());
         }
         self.refresh_round(gate, env, opts).await
     }
 
-    /// One real refresh round, the body of `refresh`. Takes the
-    /// `refresh_gate` guard by value so no round can run without holding
-    /// it, and holds it until the round has committed.
+    /// One real refresh round, the body of `refresh`, handing back its own
+    /// number with its snapshot. Takes the `refresh_gate` guard by value so
+    /// no round can run without holding it, and holds it until the round
+    /// has committed.
     async fn refresh_round(
         self: &std::sync::Arc<Self>,
         _gate: tokio::sync::MutexGuard<'_, ()>,
         env: &HostEnv,
         opts: &CheckOptions,
-    ) -> Snapshot {
+    ) -> (u64, Snapshot) {
         // Numbered before anything is read, under the gate: a caller that
         // read `rounds_started` below this number arrived before this round
         // read a thing, and may share it (`refresh`'s check).
@@ -617,7 +656,7 @@ impl Session {
             stale,
             errors,
         };
-        self.commit(round, previous, candidate)
+        (round, self.commit(round, previous, candidate))
     }
 
     /// Assigns the real generation number (bumping only on a content
@@ -2773,6 +2812,144 @@ mod tests {
             snapshot.refreshed_at,
             Some(1_700_000_000),
             "a refresh that ran is stamped; `stale` is what says the data may be old"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_round_whose_source_failed_is_the_days_check_for_the_daily_check() {
+        // The daily check is due a day after the last round *ended*, and
+        // the shell hands `auto_check::tick` this stamp as that end. A
+        // round whose source failed stamps it too, so a source that keeps
+        // failing is not asked again at every 15-minute tick.
+        use crate::auto_check::{tick, Tick, DUE_AFTER_SECS};
+        let (adapter, state) = FakeAdapter::new("fake");
+        {
+            let mut s = state.lock().unwrap();
+            s.instances = vec![make_instance("fake", "fake:1")];
+            s.failing.push("fake:1".to_string());
+        }
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], Some(|| 1_700_000_000));
+        let snapshot = session
+            .refresh(&non_root_env(), &CheckOptions::default())
+            .await;
+        assert!(snapshot.stale, "precondition: the round failed");
+
+        let ended = session.snapshot().refreshed_at;
+        assert!(!session.busy(), "precondition: nothing under way");
+        assert_eq!(
+            tick(1_700_000_000 + 15 * 60, ended, session.busy(), true),
+            Tick::NotDue
+        );
+        assert_eq!(
+            tick(1_700_000_000 + DUE_AFTER_SECS, ended, session.busy(), true),
+            Tick::Check
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_with_round_numbers_each_round_and_gives_the_callers_who_share_one_its_number(
+    ) {
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        let (first, _) = session.refresh_with_round(&env, &opts).await;
+        let (second, _) = session.refresh_with_round(&env, &opts).await;
+        assert!(second > first, "a later round has a higher number");
+
+        // A round in flight, and three calls arriving during it: they share
+        // the one round after it, so all three get that round's number.
+        state.lock().unwrap().detect_delay = Duration::from_millis(100);
+        let in_flight = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh_with_round(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let behind: Vec<_> = (0..3)
+            .map(|_| {
+                let session = session.clone();
+                tokio::spawn(async move {
+                    session
+                        .refresh_with_round(&non_root_env(), &CheckOptions::default())
+                        .await
+                })
+            })
+            .collect();
+        let (in_flight_round, _) = in_flight.await.expect("in-flight task");
+        let mut rounds = Vec::new();
+        for handle in behind {
+            let (round, snapshot) = handle.await.expect("caller task");
+            assert_eq!(snapshot, session.snapshot(), "the shared round's snapshot");
+            rounds.push(round);
+        }
+        assert_eq!(in_flight_round, second + 1);
+        assert_eq!(rounds, vec![second + 2; 3], "one shared round, one number");
+        assert_eq!(state.lock().unwrap().detect_calls, 4);
+    }
+
+    #[tokio::test]
+    async fn test_busy_counts_a_refresh_from_its_arrival_until_it_returns_or_is_dropped() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        assert!(!session.busy(), "nothing under way yet");
+
+        state.lock().unwrap().blocking_inventory = vec!["fake:1".to_string()];
+        let running = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while state.lock().unwrap().inventory_blocked == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the worker never reached inventory"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(session.busy(), "a round in flight");
+
+        // A second call queues on the gate behind it.
+        let queued = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh(&non_root_env(), &CheckOptions::default())
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(
+            session.busy(),
+            "a round in flight and a call waiting for it"
+        );
+
+        // The first is dropped mid-round; the second then runs its own.
+        state.lock().unwrap().blocking_inventory.clear();
+        running.abort();
+        assert!(running.await.expect_err("aborted").is_cancelled());
+        let snapshot = tokio::time::timeout(Duration::from_secs(2), queued)
+            .await
+            .expect("the queued call runs once the dropped one lets go")
+            .expect("queued task");
+        assert!(snapshot.errors.is_empty(), "{:?}", snapshot.errors);
+        assert!(
+            !session.busy(),
+            "one call dropped and one returned: nothing is under way, and the \
+             dropped one is not counted for the rest of the run"
         );
     }
 
