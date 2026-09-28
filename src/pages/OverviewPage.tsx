@@ -1,4 +1,5 @@
-import { useId } from "react";
+import { Fragment, useId } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
@@ -37,26 +38,47 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
   }
 }
 
+/** A link in a line of text: its words in the accent, underlined under the pointer. */
+const LINK_BUTTON =
+  "rounded-sm font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
+
 /**
  * The line under "Nothing to update": what there is instead, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
  * hid, the ones under its "Can't update here", the checks that did not
  * finish -- or null when there is none of that. A source not checked in
  * full says so under "Needs attention" instead.
+ *
+ * The Updates page lists no hidden update, and Settings lists them all,
+ * under 「已隐藏的更新」: their count is the way there (`showHidden`), a
+ * link in the line. The rest of it is text.
  */
 function nothingToUpdateLine(
   t: Translate,
   summary: Extract<UpdatesSummary, { kind: "nothingToUpdate" }>,
-): string | null {
-  const parts: string[] = [];
-  if (summary.hidden > 0) parts.push(t("overview.hiddenCount", { count: summary.hidden }));
+  showHidden: () => void,
+): ReactNode {
+  const parts: ReactNode[] = [];
+  if (summary.hidden > 0) {
+    parts.push(
+      <button type="button" onClick={showHidden} className={LINK_BUTTON}>
+        {t("overview.hiddenCount", { count: summary.hidden })}
+      </button>,
+    );
+  }
   if (summary.cantUpdateHere > 0) {
     parts.push(t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }));
   }
   if (summary.checksUnfinished > 0) {
     parts.push(t("overview.checksUnfinished", { count: summary.checksUnfinished }));
   }
-  return parts.length === 0 ? null : parts.join(t("overview.listSeparator"));
+  if (parts.length === 0) return null;
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 ? t("overview.listSeparator") : null}
+      {part}
+    </Fragment>
+  ));
 }
 
 /** What the ring shows: the headline's verdict, or that the first check is still running. */
@@ -175,6 +197,7 @@ export function OverviewPage() {
   const { data: scan } = useUnknownScan();
   const setPage = useUiStore((s) => s.setPage);
   const openInstalled = useUiStore((s) => s.openInstalled);
+  const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const operationFor = useUpdateOperationFor();
   const toolsHeadingId = useId();
@@ -208,7 +231,8 @@ export function OverviewPage() {
     (candidate) => holdsRow(operationFor(candidate)),
     (candidate) => isUnderway(operationFor(candidate)),
   );
-  const whyNothing = summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary) : null;
+  const whyNothing =
+    summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary, showHiddenUpdates) : null;
 
   const tiles: SourceTile[] = snapshot.instances.flatMap((instance) => {
     const count = installedByInstance.get(instance.id) ?? 0;

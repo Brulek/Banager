@@ -504,9 +504,48 @@ describe("OverviewPage", () => {
       const headline = await findByRole("heading", { level: 2, name: "没有要更新的工具" });
       expect(headline.nextElementSibling?.textContent).toBe("2 个已隐藏，1 个不能在这里更新");
       expect(await findByRole("button", { name: "查看更新" })).toBeInTheDocument();
+      expect(within(headline.nextElementSibling as HTMLElement).getByRole("button")).toHaveAccessibleName(
+        "2 个已隐藏",
+      );
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+
+  it("makes the count of hidden updates the way to them in Settings, and the rest of its line text", async () => {
+    // The Updates page lists no hidden update: Settings lists them all.
+    served = snapshotWith({
+      updates: [
+        candidate(formula("jq"), { blocked: "Pinned" }),
+        candidate(formula("glib")),
+        candidate(formula("wget")),
+      ],
+    });
+    settings.ignored_updates = [formula("glib"), formula("wget")];
+    useUiStore.setState({ page: "overview" });
+    const { findByRole } = renderOverview();
+
+    const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+    const line = headline.nextElementSibling as HTMLElement;
+    expect(line.textContent).toBe("2 hidden, 1 can't be updated here");
+    // One control in the line, and it is the count of hidden ones.
+    const [hidden, ...others] = within(line).getAllByRole("button");
+    expect(others).toEqual([]);
+    expect(hidden).toHaveAccessibleName("2 hidden");
+
+    fireEvent.click(hidden);
+    expect(useUiStore.getState().page).toBe("settings");
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(true);
+  });
+
+  it("gives a line with nothing hidden no control at all", async () => {
+    served = snapshotWith({ updates: [candidate(formula("jq"), { blocked: "Pinned" })] });
+    const { findByRole } = renderOverview();
+
+    const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+    const line = headline.nextElementSibling as HTMLElement;
+    expect(line.textContent).toBe("1 can't be updated here");
+    expect(within(line).queryByRole("button")).toBeNull();
   });
 
   it("shows each source with something installed and how much, and a tile opens Installed on that source", async () => {

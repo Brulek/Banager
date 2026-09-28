@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
 import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, settingsSaveErrorMessage } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
 import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
-import { artifactKeyId } from "../store/ui";
+import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
 
@@ -24,13 +24,28 @@ const ROW_BUTTON =
 /**
  * One group of settings: its title in the section style, over a card that
  * holds its rows, a hairline between each two -- the Overview's panels'
- * look. A region, named by its title.
+ * look. A region, named by its title. With `headingRef`, a group the page
+ * can be opened at: its title can then take the focus from a script
+ * (`tabIndex` -1), and draws no ring for it, as the page's title does.
  */
-function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+function SettingsGroup({
+  title,
+  headingRef,
+  children,
+}: {
+  title: string;
+  headingRef?: Ref<HTMLHeadingElement>;
+  children: ReactNode;
+}) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="mb-2 px-1 text-section text-foreground">
+      <h2
+        id={headingId}
+        ref={headingRef}
+        tabIndex={headingRef === undefined ? undefined : -1}
+        className="mb-2 px-1 text-section text-foreground outline-none"
+      >
         {title}
       </h2>
       <div className="divide-y divide-border rounded-panel border border-border bg-surface">{children}</div>
@@ -84,8 +99,9 @@ function EntryName({ name, source }: { name: string; source: string | undefined 
  * Settings, in four cards: 「通用」 -- the language, and whether to show
  * technical details -- 「更新」 -- whether Homebrew's self-updating apps
  * are listed -- 「已隐藏的更新」, the versions skipped and the software
- * never to be reminded about, each with the button that takes it back --
- * and 「关于」, whose 「图标来源」 row opens the credits for the logos
+ * never to be reminded about, each with the button that takes it back,
+ * where the Overview's count of hidden updates opens the page -- and
+ * 「关于」, whose 「图标来源」 row opens the credits for the logos
  * built into the app (`IconCreditsDrawer`). Every change is saved at
  * once; one that cannot be saved is undone on screen and said at the top.
  */
@@ -118,6 +134,21 @@ export function SettingsPage() {
   }, [snapshot]);
 
   const current = draft ?? settingsQuery.data;
+  const loaded = !settingsQuery.isLoading && current !== undefined;
+
+  // Opened from the Overview's 「2 个已隐藏」 (`showHiddenUpdates`): the
+  // group of hidden updates -- its title and the card under it -- in view,
+  // and the focus on its title, as soon as it is on screen.
+  const hiddenHeading = useRef<HTMLHeadingElement>(null);
+  const hiddenUpdatesRequested = useUiStore((s) => s.hiddenUpdatesRequested);
+  const hiddenUpdatesShown = useUiStore((s) => s.hiddenUpdatesShown);
+  useEffect(() => {
+    const heading = hiddenHeading.current;
+    if (!hiddenUpdatesRequested || heading === null) return;
+    heading.parentElement?.scrollIntoView?.({ block: "nearest" });
+    heading.focus({ preventScroll: true });
+    hiddenUpdatesShown();
+  }, [hiddenUpdatesRequested, loaded, hiddenUpdatesShown]);
 
   if (settingsQuery.isLoading || !current) {
     return <p className="px-6 text-body text-muted">{t("common.loading")}</p>;
@@ -295,7 +326,7 @@ export function SettingsPage() {
           list back as it is, so an entry leaves it only when the user
           presses Stop skipping on it, or skips that package's next version
           on the Updates page, which replaces it (`withSkippedVersion`). */}
-      <SettingsGroup title={t("settings.groups.hidden")}>
+      <SettingsGroup title={t("settings.groups.hidden")} headingRef={hiddenHeading}>
         <section aria-labelledby={skippedTitleId} className="px-4 py-3">
           <h3 id={skippedTitleId} className="text-small font-semibold text-muted">
             {t("settings.skippedVersions.title")}

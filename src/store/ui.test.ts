@@ -108,6 +108,35 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().page).toBe("installed");
   });
 
+  it("opens Settings at its hidden updates, and drops that once they are shown or another page is chosen", () => {
+    // The Overview's count of hidden updates.
+    useUiStore.getState().showHiddenUpdates();
+    expect(useUiStore.getState().page).toBe("settings");
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(true);
+    useUiStore.getState().hiddenUpdatesShown();
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+    expect(useUiStore.getState().page).toBe("settings");
+
+    // Left before Settings could show them: coming back to Settings by
+    // any other way must not move it.
+    useUiStore.getState().showHiddenUpdates();
+    useUiStore.getState().setPage("updates");
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+
+    useUiStore.getState().showHiddenUpdates();
+    useUiStore.getState().openInstalled(null);
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+
+    useUiStore.getState().showHiddenUpdates();
+    useUiStore.getState().searchInstalled();
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+
+    // Nor does a search not yet focused outlive it.
+    useUiStore.getState().searchInstalled();
+    useUiStore.getState().showHiddenUpdates();
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
+  });
+
   it("toggleDependencies expands one source at a time", () => {
     // It used to be a single boolean, so unfolding pip's dependencies also
     // unfolded Homebrew's. Every row already carries the instance it came

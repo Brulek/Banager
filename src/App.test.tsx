@@ -65,10 +65,10 @@ const emptyScan: UnknownScan = {
   stopped: null,
 };
 
-function mockBackend(snap: Snapshot) {
+function mockBackend(snap: Snapshot, settings: Settings = defaultSettings) {
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_snapshot" || cmd === "refresh") return Promise.resolve(snap);
-    if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+    if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "list_operations") return Promise.resolve([]);
     if (cmd === "scan_unknown") return Promise.resolve(emptyScan);
     return Promise.resolve(undefined);
@@ -265,6 +265,42 @@ describe("App", () => {
     fireEvent.keyDown(log, { key: "Escape" });
 
     await waitFor(() => expect(document.activeElement).toBe(uninstall));
+  });
+
+  it("opens Settings at the hidden updates from the Overview's count of them, the focus on their title", async () => {
+    // jq's update, which the user asked never to be reminded about: the
+    // Updates page lists nothing, and Settings lists it.
+    const jq = snapshot.artifacts[0].key;
+    mockBackend(
+      {
+        ...snapshot,
+        updates: [
+          { key: jq, current: "1.8.2", target: "1.8.3", channel: "Native", checkable: true, warnings: [], blocked: null },
+        ],
+      },
+      { ...defaultSettings, ignored_updates: [jq] },
+    );
+    // jsdom lays nothing out and has no `scrollIntoView`: what is scrolled
+    // into view is noted.
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      const { findByRole, getByRole } = renderWithProviders(<App />);
+      const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+
+      fireEvent.click(within(headline.nextElementSibling as HTMLElement).getByRole("button", { name: "1 hidden" }));
+
+      expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+      expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+      const hidden = getByRole("region", { name: "Hidden updates" });
+      await waitFor(() => expect(getByRole("heading", { level: 2, name: "Hidden updates" })).toHaveFocus());
+      expect(scrolled).toEqual([hidden]);
+      expect(within(hidden).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
   });
 
   it("keeps Settings reachable when no source is installed", async () => {

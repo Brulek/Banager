@@ -1,9 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { act, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SettingsPage } from "./SettingsPage";
+import { useUiStore } from "../store/ui";
 import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
@@ -681,5 +682,72 @@ describe("SettingsPage's icon credits", () => {
     expect(zhCN.settings.iconCredits.title).toBe("图标来源");
     expect(zhCN.settings.iconCredits.open).toBe("查看");
     expect(zhCN.settings.iconCredits.openAriaLabel).toBe("查看图标来源");
+  });
+});
+
+describe("SettingsPage, opened at its hidden updates", () => {
+  // jsdom lays nothing out and has no `scrollIntoView`: each element
+  // scrolled into view is noted, with how.
+  let scrolledIntoView: Array<{ element: Element; options: boolean | ScrollIntoViewOptions | undefined }>;
+  beforeEach(() => {
+    scrolledIntoView = [];
+    Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+      scrolledIntoView.push({ element: this, options });
+    };
+  });
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  // What `get_settings` answers, with a snapshot that lists jq.
+  function serve(settings: () => Promise<Settings>) {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return settings();
+      if (cmd === "get_snapshot") return Promise.resolve(snapshotOf([artifact(jqKey, "jq")]));
+      return Promise.reject(new Error(`unexpected command ${cmd}`));
+    });
+  }
+
+  it("brings them into view and puts the focus on their title, from the Overview's count of them", async () => {
+    serve(async () => baseSettings({ ignored_updates: [jqKey] }));
+    useUiStore.getState().showHiddenUpdates();
+
+    renderWithProviders(<SettingsPage />);
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    // The whole group, its title and the card under it, as little moved as will show it.
+    expect(scrolledIntoView).toEqual([
+      { element: screen.getByRole("region", { name: "Hidden updates" }), options: { block: "nearest" } },
+    ]);
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+  });
+
+  it("does it once its settings have loaded, when they had not yet", async () => {
+    let answer: (settings: Settings) => void = () => {};
+    serve(() => new Promise<Settings>((resolve) => (answer = resolve)));
+    useUiStore.getState().showHiddenUpdates();
+
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(true);
+    await act(async () => answer(baseSettings()));
+    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+  });
+
+  it("moves nothing and takes no focus, opened any other way", async () => {
+    serve(async () => baseSettings({ ignored_updates: [jqKey] }));
+    useUiStore.getState().setPage("settings");
+
+    renderWithProviders(<SettingsPage />);
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    expect(await screen.findByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+    expect(heading).not.toHaveFocus();
+    expect(scrolledIntoView).toEqual([]);
   });
 });

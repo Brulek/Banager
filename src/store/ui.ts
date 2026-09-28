@@ -41,6 +41,14 @@ export interface UiState {
   searchFocusRequested: boolean;
   searchInstalled(): void;
   searchFocused(): void;
+  // The Overview's 「2 个已隐藏」: the Settings page, which brings its
+  // 「已隐藏的更新」 into view and puts the focus on its heading as soon as
+  // it is on screen -- at once, or once its settings have loaded -- and
+  // says so (`hiddenUpdatesShown`). Going to any page by any other way
+  // drops it, as it drops a search not yet focused.
+  hiddenUpdatesRequested: boolean;
+  showHiddenUpdates(): void;
+  hiddenUpdatesShown(): void;
   // The ids of the sources whose dependencies are unfolded. This used to
   // be one boolean for the whole page, so unfolding pip's "N components
   // installed by other software" unfolded Homebrew's and npm's too --
@@ -115,7 +123,7 @@ let logSeq = 0;
 export const useUiStore = create<UiState>((set) => ({
   // The Overview: what the Mac looks like at a glance, before any list.
   page: "overview",
-  setPage: (p) => set({ page: p, searchFocusRequested: false }),
+  setPage: (p) => set({ page: p, searchFocusRequested: false, hiddenUpdatesRequested: false }),
   query: "",
   setQuery: (q) => set({ query: q }),
   installedFilter: null,
@@ -123,15 +131,30 @@ export const useUiStore = create<UiState>((set) => ({
   installedSort: "name",
   setInstalledSort: (sort) => set({ installedSort: sort }),
   openInstalled: (instanceId) =>
-    set({ page: "installed", installedFilter: instanceId, query: "", searchFocusRequested: false }),
+    set({
+      page: "installed",
+      installedFilter: instanceId,
+      query: "",
+      searchFocusRequested: false,
+      hiddenUpdatesRequested: false,
+    }),
   searchFocusRequested: false,
   searchInstalled: () =>
     set((s) =>
       s.page === "installed"
         ? { searchFocusRequested: true }
-        : { page: "installed", installedFilter: null, query: "", searchFocusRequested: true },
+        : {
+            page: "installed",
+            installedFilter: null,
+            query: "",
+            searchFocusRequested: true,
+            hiddenUpdatesRequested: false,
+          },
     ),
   searchFocused: () => set({ searchFocusRequested: false }),
+  hiddenUpdatesRequested: false,
+  showHiddenUpdates: () => set({ page: "settings", searchFocusRequested: false, hiddenUpdatesRequested: true }),
+  hiddenUpdatesShown: () => set({ hiddenUpdatesRequested: false }),
   expandedDependencies: [],
   toggleDependencies: (instanceId) =>
     set((s) => ({
