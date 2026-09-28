@@ -59,8 +59,8 @@ mod tests {
     use canager_core::adapters::{Adapter, AdapterError, AdapterMeta, CheckOptions, CheckOutcome};
     use canager_core::events::{EventSink, OpId};
     use canager_core::model::{
-        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, ManagerInstance, OpKind,
-        OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
+        ArtifactKey, ArtifactKind, CancelPolicy, InstalledArtifact, InstanceNote, ManagerInstance,
+        OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, SearchHit,
     };
     use canager_core::runner::HostEnv;
     use canager_core::session::Session;
@@ -79,14 +79,17 @@ mod tests {
     /// rounds by its `detect`, which every round calls once, and its reads
     /// of its packages; says its catalogue is being rewritten -- a `brew
     /// update` Canager started still running -- while `index_updating` is
-    /// set; fails to read its packages while `failing` is; waits, reading
-    /// them, while `slow` is, until `unblocked`; and holds every operation
-    /// until `release`.
+    /// set; says its catalogue update failed, and checks its updates
+    /// against the catalogue it had -- Homebrew offline -- while
+    /// `index_stale` is; fails to read its packages while `failing` is;
+    /// waits, reading them, while `slow` is, until `unblocked`; and holds
+    /// every operation until `release`.
     struct Fake {
         meta: AdapterMeta,
         rounds: AtomicUsize,
         reads: AtomicUsize,
         index_updating: AtomicBool,
+        index_stale: AtomicBool,
         failing: AtomicBool,
         slow: AtomicBool,
         unblocked: tokio::sync::Notify,
@@ -114,6 +117,7 @@ mod tests {
                 rounds: AtomicUsize::new(0),
                 reads: AtomicUsize::new(0),
                 index_updating: AtomicBool::new(false),
+                index_stale: AtomicBool::new(false),
                 failing: AtomicBool::new(false),
                 slow: AtomicBool::new(false),
                 unblocked: tokio::sync::Notify::new(),
@@ -167,7 +171,11 @@ mod tests {
             _inst: &ManagerInstance,
             _opts: &CheckOptions,
         ) -> Result<CheckOutcome, AdapterError> {
-            Ok(CheckOutcome::default())
+            let mut outcome = CheckOutcome::default();
+            if self.index_stale.load(Ordering::SeqCst) {
+                outcome.notes.push(InstanceNote::IndexMayBeStale);
+            }
+            Ok(outcome)
         }
 
         async fn search(
@@ -357,6 +365,60 @@ mod tests {
         })
         .await;
         assert!(answered.is_ok(), "a round that reached the source counted");
+        let after = fake.rounds();
+        tokio::time::sleep(TICK * 6).await;
+        assert_eq!(
+            fake.rounds(),
+            after,
+            "a counted check: no more rounds today"
+        );
+        task.abort();
+    }
+
+    static CLOCK_STALE: AtomicI64 = AtomicI64::new(T0);
+    fn clock_stale() -> i64 {
+        CLOCK_STALE.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_a_daily_round_whose_homebrew_could_not_update_its_catalogue_is_run_again_at_the_next_tick(
+    ) {
+        let fake = Fake::new();
+        let state = state_on(&fake, clock_stale, true);
+        // The window's check at launch, ending at T0.
+        ipc::refresh_impl(&state).await.expect("refresh");
+        let task = start(&state, TICK, clock_stale);
+
+        // Two days on, offline: the one source, Homebrew-like, could not
+        // update its catalogue, and answers from the one it had.
+        fake.index_stale.store(true, Ordering::SeqCst);
+        CLOCK_STALE.store(T0 + 2 * DAY, Ordering::SeqCst);
+        wait_for_rounds(&fake, 3).await;
+        assert_eq!(recorded(&state, 2).await, RoundTrigger::Automatic);
+        assert_eq!(recorded(&state, 3).await, RoundTrigger::Automatic);
+        let snapshot = state.session.snapshot();
+        assert!(
+            snapshot.errors.is_empty(),
+            "precondition: no error, only the note"
+        );
+        assert_eq!(
+            snapshot.instances[0].status.notes,
+            [InstanceNote::IndexMayBeStale]
+        );
+        assert_eq!(state.rounds.lock().unwrap().last_check_ended(), Some(T0));
+
+        // Online again: the next round counts, and is the last.
+        fake.index_stale.store(false, Ordering::SeqCst);
+        let answered = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if state.rounds.lock().unwrap().last_check_ended() == Some(T0 + 2 * DAY) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        assert!(answered.is_ok(), "a round whose update worked counted");
         let after = fake.rounds();
         tokio::time::sleep(TICK * 6).await;
         assert_eq!(

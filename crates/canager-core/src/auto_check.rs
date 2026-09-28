@@ -110,26 +110,31 @@ pub fn wall_clock_now() -> i64 {
 
 /// Whether a round counts as a check for the daily one: every round does
 /// but a daily one (`RoundTrigger::Automatic`) in which every source failed
-/// (`every_source_failed`) -- a round that learned nothing new, after which
-/// the check is due again at the next tick, 15 minutes on. A round that
-/// failed only in part counts, and so does one of the window's however it
-/// went: the user saw it, and asks again when they like.
+/// (`every_source_failed`), after which the check is due again at the next
+/// tick, 15 minutes on. A round that failed only in part counts, and so
+/// does one of the window's however it went: the user saw it, and asks
+/// again when they like.
 pub fn counts_as_check(trigger: RoundTrigger, snapshot: &Snapshot) -> bool {
     trigger == RoundTrigger::Window || !every_source_failed(snapshot)
 }
 
 /// Whether every source `snapshot` has failed in its round: at least one
-/// source, and an error in `Snapshot::errors` against each. A source that
-/// is unavailable (`status.unavailable`) or whose catalogue was being
-/// rewritten (`InstanceNote::IndexUpdating`) did not fail -- neither is an
-/// error -- and a round that found no source failed nothing.
+/// source, and each with an error in `Snapshot::errors` against it or with
+/// its catalogue update failed (`InstanceNote::IndexMayBeStale`,
+/// Homebrew's: a `brew outdated` that answers after a failed `brew
+/// update`, as it does on a Mac that is offline, reads the catalogue that
+/// update could not renew, and the source carries the note and no error).
+/// A source that is unavailable (`status.unavailable`) or whose catalogue
+/// was being rewritten (`InstanceNote::IndexUpdating`) did not fail, and a
+/// round that found no source failed nothing.
 fn every_source_failed(snapshot: &Snapshot) -> bool {
     !snapshot.instances.is_empty()
         && snapshot.instances.iter().all(|inst| {
-            snapshot
-                .errors
-                .iter()
-                .any(|error| error.instance_id == inst.id)
+            inst.status.notes.contains(&InstanceNote::IndexMayBeStale)
+                || snapshot
+                    .errors
+                    .iter()
+                    .any(|error| error.instance_id == inst.id)
         })
 }
 
@@ -633,6 +638,45 @@ mod tests {
         );
         let clean = round_at(NINE_AM, &[("fake:1", false)]);
         assert!(counts_as_check(RoundTrigger::Automatic, &clean));
+    }
+
+    #[test]
+    fn test_a_homebrew_whose_brew_update_failed_counts_as_failed_for_the_daily_check() {
+        // Offline, Homebrew's `brew update` fails and its `brew outdated`
+        // answers from the catalogue it already had: no error, a note.
+        let mut offline = round_at(NINE_AM, &[("brew:/opt/homebrew", false)]);
+        offline.instances[0]
+            .status
+            .notes
+            .push(InstanceNote::IndexMayBeStale);
+        assert!(offline.errors.is_empty(), "precondition: no error");
+        assert!(!counts_as_check(RoundTrigger::Automatic, &offline));
+        assert!(
+            counts_as_check(RoundTrigger::Window, &offline),
+            "a round of the window's counts however it went"
+        );
+        // With every other source failed too, the round still does not
+        // count; with one that answered, it does.
+        let mut with_a_failed_one =
+            round_at(NINE_AM, &[("brew:/opt/homebrew", false), ("fake:1", true)]);
+        with_a_failed_one.instances[0]
+            .status
+            .notes
+            .push(InstanceNote::IndexMayBeStale);
+        assert!(!counts_as_check(
+            RoundTrigger::Automatic,
+            &with_a_failed_one
+        ));
+        let mut with_one_that_answered =
+            round_at(NINE_AM, &[("brew:/opt/homebrew", false), ("fake:1", false)]);
+        with_one_that_answered.instances[0]
+            .status
+            .notes
+            .push(InstanceNote::IndexMayBeStale);
+        assert!(counts_as_check(
+            RoundTrigger::Automatic,
+            &with_one_that_answered
+        ));
     }
 
     #[test]

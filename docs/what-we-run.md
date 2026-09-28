@@ -191,7 +191,10 @@ starts nothing. Turned on:
   that keeps failing is not asked again every 15 minutes, and the window
   shows the failure as it does after any check. A daily check in which every
   source failed does not count (`auto_check::counts_as_check`), so the
-  next look, 15 minutes on, checks again. Time the Mac spends asleep
+  next look, 15 minutes on, checks again. A Homebrew whose `brew update`
+  failed is a source that failed, for this, even when its `brew outdated`
+  then answered from the catalogue it had, as it does on a Mac that is
+  offline. Time the Mac spends asleep
   counts toward the 24 hours, so a Mac that slept for two days checks at
   the first look after it wakes — and, should every source fail then,
   again at each look after that, until a check in which not every source
@@ -499,8 +502,9 @@ can leave Homebrew's git checkout locked; only after thirty minutes
 all (`AdapterError::IndexUpdating`): the pages keep the previous answer
 and say the index is updating, and refresh again when it ends. A `brew
 update` that failed is reported as a note on the source (the list may be
-out of date), not as a failed source. The search query passes
-`validate_package_name`.
+out of date), not as a failed source; only the daily check counts that
+Homebrew as failed, when it decides whether it has checked ("The daily
+check"). The search query passes `validate_package_name`.
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):
