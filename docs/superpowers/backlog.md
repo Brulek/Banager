@@ -441,6 +441,23 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - `src/components/UninstallDialog.tsx:36` 带着一个 eslint 抑制注释，而本仓库并未配置 eslint。
 - `crates/canager-core/src/settings.rs:57` 用了 `Ordering::SeqCst`，`Relaxed` 就够。
 
+## 界面重构终审推迟项（2026-09-28 立，分支 feat/ui-redesign）
+
+来源：GPT-6 Astra 的小白视角复审（`~/dev/Canager/.superpowers/phase4/astra/review-ui.md`）与 Claude 的行为/文案复审。
+下面几条是核实过、但这一轮没做的：
+
+- **npm 等卸载确认没说删什么、留什么**（Astra 2）。npm 的计划没有任何 warnings，确认框只有名字、版本和折叠的命令。
+  要加"卸载范围"一行，必须先查清每个来源的卸载命令到底碰不碰用户的设置文件，没查清的不许写"会保留"。
+- **不能更新的原因藏得深**（Astra 7）：断网原因默认折叠；解除固定的命令要打开「显示技术细节」才能复制；
+  Antigravity CLI 的"打开它一次"没说怎么打开。
+- **来源不明页只列文件、不帮辨认**（Astra 8）：缺「在访达中显示」和复制路径（需要新的 IPC）；Docker 这类已知归属
+  藏在「链接」标签的 ⓘ 里。另可考虑把入口改叫「未识别的工具」，免得用户以为是危险软件清单。
+- **中文界面里的英文简介**（Astra 10）：Homebrew 的 formula 简介是上游英文（git、jq 等），需要一份常用工具的中文用途表。
+- **失败行挤掉名字**：一行同时有「会自动更新」标签和「更新失败 / 查看日志」时，800px 窗口下名字只剩几个字母（Claude Code）。
+  结果出现时可以收起次要标签。
+- **全部取消遇到不能取消的 rustup**：按钮仍叫「全部取消」，rustup 那一项会继续跑完；操作条会接着显示它，但按钮文字与结果不完全一致。
+- **概览「2 个已隐藏」没有去处**：更新页不列出隐藏项，可以让这句话带用户去设置里的「已隐藏的更新」。
+
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
 - 任务 3：创建 Developer ID Application 证书并导出 .p12、生成 App 专用密码、查 Team ID、`pnpm tauri signer generate -w ~/.tauri/canager.key` 并把公钥填入 `tauri.conf.json`（替换 `REPLACE_WITH_UPDATER_PUBKEY`）、逐个 `gh secret set`；然后打 `v0.0.1` 标签验证公证。
