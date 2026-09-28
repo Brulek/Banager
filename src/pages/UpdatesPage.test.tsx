@@ -598,36 +598,58 @@ describe("UpdatesPage", () => {
     );
   });
 
-  it("says an update ends in Homebrew's clean-up when brew.env turns it back on", async () => {
-    // `Warning::HomebrewPeriodicCleanup`: `brew upgrade` runs Homebrew's
-    // periodic clean-up when one is due, which deletes older versions and
-    // old downloads, once a brew.env takes back Canager's
-    // HOMEBREW_NO_INSTALL_CLEANUP=1
-    // (crates/canager-core/src/adapters/brew/brew_env.rs).
+  it("says an update ends in Homebrew's clean-up when brew.env turns it back on, with the why behind its ⓘ", async () => {
+    // `Warning::HomebrewPeriodicCleanup`, once a brew.env takes back
+    // Canager's HOMEBREW_NO_INSTALL_CLEANUP=1
+    // (crates/canager-core/src/adapters/brew/brew_env.rs): after every
+    // `brew upgrade`, Homebrew deletes the older versions and old downloads
+    // of the package it upgrades (`Cleanup.install_clean!`), and, when its
+    // periodic clean-up is due, those of all its software (`Cleanup#clean!`).
     planWarnings.glib = ["HomebrewPeriodicCleanup"];
     const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
-    await within(dialog).findByText(
-      "When Homebrew's periodic clean-up is due, it runs after this command and deletes older versions of Homebrew software and old downloads in its cache.",
-    );
+    const line =
+      "After installing or updating, Homebrew deletes this software's older versions and old downloads, and, when its periodic clean-up is due, those of all Homebrew software.";
+    await within(dialog).findByText(line);
+    const why =
+      "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
+    expect(within(dialog).queryByText(why)).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: `Details: ${line}` }));
+    expect(screen.getByText(why)).toBeInTheDocument();
     expect(
       within(dialog).queryByText(/installed only as dependencies/),
     ).not.toBeInTheDocument();
   });
 
+  it("says in Chinese that Homebrew cleans up after every update, and more when its periodic clean-up is due", async () => {
+    planWarnings.glib = ["HomebrewPeriodicCleanup"];
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+      fireEvent.click((await findAllByRole("button", { name: "更新" }))[0]);
+      const dialog = await findByRole("dialog");
+      await within(dialog).findByText(
+        "安装或更新后，Homebrew 会删除这个软件的旧版本和旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says an update ends in Homebrew's clean-up and its autoremove when brew.env turns both back on", async () => {
     // `Warning::HomebrewCleanupAutoremoves` follows it when a brew.env
-    // takes back HOMEBREW_NO_AUTOREMOVE=1 as well: that clean-up then also
-    // autoremoves.
+    // takes back HOMEBREW_NO_AUTOREMOVE=1 as well: the periodic clean-up
+    // then also autoremoves.
     planWarnings.glib = ["HomebrewPeriodicCleanup", "HomebrewCleanupAutoremoves"];
     const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
-      "When Homebrew's periodic clean-up is due, it runs after this command and deletes older versions of Homebrew software and old downloads in its cache.",
+      "After installing or updating, Homebrew deletes this software's older versions and old downloads, and, when its periodic clean-up is due, those of all Homebrew software.",
     );
     await within(dialog).findByText(
       "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",

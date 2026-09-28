@@ -581,24 +581,35 @@ pub enum Warning {
     /// `BrewAdapter::plan` for an `Uninstall`; read by `warningKey` and
     /// `warningDetailKey` in src/lib/warnings.ts.
     HomebrewAutoremoves,
-    /// After this `brew install` or `brew upgrade`, Homebrew runs a full
-    /// `brew cleanup` whenever one is due -- the last one it recorded is
+    /// After this `brew install` or `brew upgrade`, Homebrew cleans up
+    /// every time (`Install.finish_installation`, `install.rb:325-329`,
+    /// which both commands end in). `Cleanup.install_clean!`
+    /// (`cleanup.rb:361-389`) deletes, for the formula the command names and
+    /// each dependent Homebrew upgraded with it -- not the dependencies it
+    /// installed or upgraded on the way -- its older installed versions that
+    /// are not linked, pinned or still needed and its downloads in
+    /// Homebrew's cache that are outdated or older than
+    /// `HOMEBREW_CLEANUP_MAX_AGE_DAYS`, 120 unless set (`cleanup_formula`,
+    /// `cleanup.rb:564-571`, `:736-773`; `Formula#eligible_kegs_for_cleanup`);
+    /// for the cask the command names, its downloads there that are outdated
+    /// or that old (`cleanup_cask`, `cleanup.rb:581-588`); and every download
+    /// nothing in the cache refers to any more (`cleanup.rb:705-730`). Then,
+    /// whenever a full `brew cleanup` is due -- the last one it recorded is
     /// more than `HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days old, 30 unless
-    /// set (`install.rb:325-328`, `cleanup.rb:418-445`) -- and that cleanup
-    /// deletes the older installed versions of every installed formula that
-    /// are not linked, pinned or still needed (`Cleanup#clean!`,
-    /// `cleanup.rb:448-459`; `Formula#eligible_kegs_for_cleanup`) and the
-    /// downloads in Homebrew's cache that are outdated or older than
-    /// `HOMEBREW_CLEANUP_MAX_AGE_DAYS`, 120 unless set (`cleanup.rb:473`,
-    /// `:736-773`). Canager's `HOMEBREW_NO_INSTALL_CLEANUP=1` keeps it from
-    /// starting, so this is produced only when a `brew.env` file sets that
-    /// to nothing (`adapters/brew/brew_env.rs`). Produced by
-    /// `BrewAdapter::plan` for an `Install` or an `Upgrade`; read by
-    /// `warningKey` and `warningDetailKey` in src/lib/warnings.ts.
+    /// set (`cleanup.rb:418-445`) -- it runs one, which does the same for
+    /// every installed formula and cask and the whole cache
+    /// (`Cleanup#clean!`, `cleanup.rb:448-465`, `:473`). The variant is named
+    /// for the periodic clean-up; its line says both. Canager's
+    /// `HOMEBREW_NO_INSTALL_CLEANUP=1` keeps both from starting
+    /// (`cleanup.rb:341`, `:363`, `:419`), so this is produced only when a
+    /// `brew.env` file sets that to nothing (`adapters/brew/brew_env.rs`).
+    /// Produced by `BrewAdapter::plan` for an `Install` or an `Upgrade`;
+    /// read by `warningKey` and `warningDetailKey` in src/lib/warnings.ts.
     HomebrewPeriodicCleanup,
-    /// That cleanup (`HomebrewPeriodicCleanup`) also ends in the same
-    /// autoremove as `HomebrewAutoremoves` (`cleanup.rb:471`) unless
-    /// `HOMEBREW_NO_AUTOREMOVE` is set, so this is produced only when
+    /// The periodic clean-up (`HomebrewPeriodicCleanup`) also ends in the
+    /// same autoremove as `HomebrewAutoremoves` (`cleanup.rb:471`) unless
+    /// `HOMEBREW_NO_AUTOREMOVE` is set; the clean-up after every install or
+    /// upgrade does not autoremove. So this is produced only when
     /// `brew.env` files take back both of Canager's variables -- the first
     /// set to nothing, the second to a value Homebrew reads as unset
     /// (`adapters/brew/brew_env.rs`) -- and always right after

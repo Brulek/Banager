@@ -174,11 +174,12 @@ impl BrewAdapter {
     /// of Canager's own. `HOMEBREW_NO_AUTOREMOVE` keeps Homebrew's
     /// autoremove from uninstalling every formula installed only as a
     /// dependency that nothing needs any more -- packages no preview names
-    /// -- after an uninstall, and in the cleanup an install or upgrade runs
-    /// if `HOMEBREW_NO_INSTALL_CLEANUP` does not keep it from starting, a
-    /// cleanup that also deletes older versions of every formula and old
-    /// downloads. A `brew.env` file can take either back, which the plan
-    /// then says (`brew_env_warnings`).
+    /// -- after an uninstall, and in the periodic cleanup an install or
+    /// upgrade runs; `HOMEBREW_NO_INSTALL_CLEANUP` keeps an install or
+    /// upgrade from cleaning up at all: from deleting the older versions and
+    /// old downloads of the package it names, every time, and those of
+    /// every formula when the periodic cleanup is due. A `brew.env` file
+    /// can take either back, which the plan then says (`brew_env_warnings`).
     pub const ENV: [(&'static str, &'static str); 5] = [
         ("HOMEBREW_NO_AUTO_UPDATE", "1"),
         ("HOMEBREW_NO_AUTOREMOVE", "1"),
@@ -400,10 +401,11 @@ impl BrewAdapter {
     /// for a plan of `kind` on `inst` whose environment is `env`, in the
     /// order it is said -- nothing when Canager's variables hold
     /// (`brew_env::after_brew_env`). An uninstall autoremoves unless
-    /// `HOMEBREW_NO_AUTOREMOVE` holds. An install or upgrade runs the
-    /// periodic cleanup when one is due unless `HOMEBREW_NO_INSTALL_CLEANUP`
-    /// holds, and that cleanup deletes old versions and downloads, and
-    /// autoremoves too unless `HOMEBREW_NO_AUTOREMOVE` holds.
+    /// `HOMEBREW_NO_AUTOREMOVE` holds. Unless `HOMEBREW_NO_INSTALL_CLEANUP`
+    /// holds, an install or upgrade deletes the older versions and old
+    /// downloads of the package it names, every time, and runs the
+    /// periodic cleanup when one is due, which deletes those of every
+    /// formula and autoremoves too unless `HOMEBREW_NO_AUTOREMOVE` holds.
     fn brew_env_warnings(
         &self,
         inst: &ManagerInstance,
@@ -2921,8 +2923,10 @@ mod plan_execute_tests {
     async fn test_an_install_or_upgrade_plan_says_so_when_brew_env_turns_cleanup_and_autoremove_back_on(
     ) {
         // `brew upgrade` and `brew install` end in `Install.finish_installation`
-        // (`cmd/upgrade.rb:363`, `cmd/install.rb:504`), whose periodic
-        // cleanup (`cleanup.rb:431-445`) deletes old versions and downloads
+        // (`cmd/upgrade.rb:363`, `cmd/install.rb:504`), which deletes the
+        // older versions and old downloads of the package they name
+        // (`cleanup.rb:361-389`), and whose periodic cleanup
+        // (`cleanup.rb:431-445`) deletes those of every formula
         // (`cleanup.rb:448-473`) and autoremoves (`cleanup.rb:471`) -- once
         // neither of Canager's two variables holds.
         let runner = Arc::new(MockRunner::new());
@@ -2950,12 +2954,14 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
-    async fn test_an_install_or_upgrade_plan_says_the_periodic_cleanup_runs_when_brew_env_turns_only_it_back_on(
+    async fn test_an_install_or_upgrade_plan_says_homebrew_cleans_up_when_brew_env_turns_only_its_cleanup_back_on(
     ) {
         // With `HOMEBREW_NO_INSTALL_CLEANUP` set to nothing and
-        // `HOMEBREW_NO_AUTOREMOVE=1` still in force, the periodic cleanup
-        // runs when it is due and deletes the older versions of every
-        // installed formula and old downloads (`Cleanup#clean!`,
+        // `HOMEBREW_NO_AUTOREMOVE=1` still in force, every install or
+        // upgrade deletes the older versions and old downloads of the
+        // package it names (`Cleanup.install_clean!`,
+        // `cleanup.rb:361-389`), and the periodic cleanup, when it is due,
+        // those of every installed formula (`Cleanup#clean!`,
         // `cleanup.rb:448-473`), without its autoremove; an uninstall runs
         // no cleanup, so its plan says nothing more.
         let runner = Arc::new(MockRunner::new());

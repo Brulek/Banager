@@ -15,15 +15,18 @@
 //!   were installed only as dependencies and that nothing installed needs
 //!   any more -- any on the system, not only the uninstalled package's own
 //!   (`cleanup.rb:1038-1077`).
-//! - After `brew install` and `brew upgrade` (`cmd/install.rb:504`,
-//!   `cmd/upgrade.rb:363`), Homebrew runs a full `brew cleanup` when the
-//!   last one it recorded (`$HOMEBREW_CACHE/.cleaned`) is more than
+//! - After `brew install` and `brew upgrade` (`cmd/install.rb:504-509`,
+//!   `cmd/upgrade.rb:363-368`, `install.rb:325-329`), unless
+//!   `HOMEBREW_NO_INSTALL_CLEANUP` is set, Homebrew deletes the older
+//!   installed versions and old downloads of the package the command names,
+//!   every time (`Cleanup.install_clean!`, `cleanup.rb:361-389`),
+//!   and runs a full `brew cleanup` when the last one it recorded
+//!   (`$HOMEBREW_CACHE/.cleaned`) is more than
 //!   `HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days old, 30 unless set
-//!   (`install.rb:325-328`, `cleanup.rb:418-445`) -- unless
-//!   `HOMEBREW_NO_INSTALL_CLEANUP` is set. That cleanup deletes the older
-//!   installed versions of every installed formula and old downloads in
-//!   Homebrew's cache (`cleanup.rb:448-459`, `:473`), and ends in the same
-//!   autoremove unless `HOMEBREW_NO_AUTOREMOVE` is set (`cleanup.rb:471`).
+//!   (`cleanup.rb:418-445`). That one deletes the older installed versions
+//!   of every installed formula and old downloads in Homebrew's cache
+//!   (`cleanup.rb:448-465`, `:473`), and ends in the same autoremove unless
+//!   `HOMEBREW_NO_AUTOREMOVE` is set (`cleanup.rb:471`).
 //!
 //! `after_brew_env` replays what `bin/brew` does to those variables for one
 //! plan's environment and says what Homebrew's Ruby then makes of them;
@@ -75,7 +78,8 @@ pub(crate) struct HomebrewSwitches {
     /// autoremoves after an uninstall, and in a cleanup.
     pub(crate) no_autoremove: bool,
     /// `Homebrew::EnvConfig.no_install_cleanup?`: false means an install or
-    /// upgrade ends in a full cleanup when one is due.
+    /// upgrade cleans up after the package it names, and ends in a full
+    /// cleanup when one is due.
     pub(crate) no_install_cleanup: bool,
 }
 

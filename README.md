@@ -71,10 +71,11 @@ This app runs package managers on your behalf, so the boundary matters more than
   in its confirmation, or open from the start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
-  so only when a Homebrew `brew.env` file turns Homebrew's periodic clean-up back on, since that
-  clean-up, whenever it is due, then deletes older versions of Homebrew software and old downloads
-  in its cache — and, when the file turns its autoremove back on too, also uninstalls the packages
-  that were installed only as dependencies and that nothing needs any more.
+  so only when a Homebrew `brew.env` file turns Homebrew's clean-up back on, since Homebrew then
+  deletes, after every update, that software's older versions and old downloads, and, whenever
+  its periodic clean-up is due, those of all Homebrew software — and, when the file turns its
+  autoremove back on too, that periodic clean-up also uninstalls the packages that were installed
+  only as dependencies and that nothing needs any more.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language. Canager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
