@@ -109,7 +109,8 @@ export function useRefresh(): UseMutationResult<Snapshot, Error, void> {
  * Check again, wherever it is asked for: the page header's button
  * (`CheckAgain`), and the menu bar's Check Again (⌘R, src/lib/menu.ts).
  * It is the refresh every other trigger runs -- the one at startup, the
- * one after an operation, the Try again of a failed one -- through
+ * one after an operation, the Check again of a page that could not load
+ * or of a Homebrew list that could not be updated -- through
  * `useRefresh`, and it does nothing while a refresh runs, whoever started
  * it: one asked for then would be folded into the running one and then run
  * once more after it (`refreshIntoCache`'s follow-up), a second check
