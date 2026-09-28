@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as simpleIcons from "simple-icons";
 import pack from "../assets/tool-icons/pack.json";
 import { ADAPTER_LABEL_KEYS } from "./sources";
 import {
@@ -223,6 +224,44 @@ describe("the built-in pack", () => {
       expect(glyph.path, id).toMatch(/^[Mm]/);
       expect(glyph.title, id).not.toBe("");
     }
+  });
+
+  describe("a logo's own license", () => {
+    // The licenses a logo may carry of its own, besides none at all (Simple
+    // Icons' CC0), as the maintainer set them: attribution and share-alike
+    // in any version, CC0, MIT, Apache 2.0, BSD and ISC. Nothing NC or ND,
+    // no GPL, LGPL or AGPL, no "custom" license, nothing else.
+    // scripts/tool-icons/build.mjs refuses the rest too.
+    const SHIPPABLE_LICENSE =
+      /^(?:CC0-1\.0|MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|CC-BY-\d+\.\d+|CC-BY-SA-\d+\.\d+)$/;
+    // Every glyph is a Simple Icons logo: the pinned devDependency's, the
+    // one `icons:build` reads.
+    const simpleIconsById = new Map(Object.values(simpleIcons).map((icon) => [`si-${icon.slug}`, icon]));
+    const simpleIconOf = (id: string) => {
+      const icon = simpleIconsById.get(id);
+      if (icon === undefined) throw new Error(`simple-icons has no logo for ${id}`);
+      return icon;
+    };
+
+    it("is the one Simple Icons gives the logo, and one Canager may ship", () => {
+      for (const [id, glyph] of Object.entries(built.glyphs)) {
+        // None where Simple Icons gives none: the logo is then under its CC0.
+        expect(glyph.license, id).toEqual(simpleIconOf(id).license);
+        if (glyph.license !== undefined) expect(glyph.license.type, id).toMatch(SHIPPABLE_LICENSE);
+      }
+    });
+
+    it("keeps the logo exactly as Simple Icons draws it, with its source", () => {
+      for (const [id, glyph] of Object.entries(built.glyphs)) {
+        if (glyph.license === undefined) {
+          expect(glyph.source, id).toBeUndefined();
+          continue;
+        }
+        const icon = simpleIconOf(id);
+        expect(glyph.path, id).toBe(icon.path);
+        expect(glyph.source, id).toBe(icon.source);
+      }
+    });
   });
 
   it("has every raster's file, and no file it does not name", () => {

@@ -17,13 +17,29 @@
 import packJson from "../assets/tool-icons/pack.json";
 import type { ArtifactKey } from "./types";
 
+/** A license a logo carries of its own: its SPDX identifier, and the URL of its text. */
+export interface ToolIconLicense {
+  type: string;
+  url: string;
+}
+
+/**
+ * A glyph as the pack holds it: path data on a 24×24 grid, and the brand
+ * colour as `RRGGBB`. Simple Icons is CC0, but some of its logos carry a
+ * license of their own; such a glyph has that `license` and Simple Icons'
+ * `source` for the logo, and its path is exactly Simple Icons', unrounded.
+ */
+export type ToolIconGlyph = { path: string; hex: string; title: string } & (
+  | { license?: undefined; source?: undefined }
+  | { license: ToolIconLicense; source: string }
+);
+
 /** pack.json, version 1. Ids are `si-<slug>` for a glyph, `gh-<login>` for a raster. */
 export interface ToolIconPack {
   version: number;
   /** The day `icons:build` wrote it. */
   generated: string;
-  /** Path data on a 24×24 grid; the brand colour as `RRGGBB`. */
-  glyphs: Record<string, { path: string; hex: string; title: string }>;
+  glyphs: Record<string, ToolIconGlyph>;
   /** `file` is the WebP's name in raster/. */
   rasters: Record<string, { file: string; title: string }>;
   /** A tool's key (`toolIconKey`) → the id of its logo. */
