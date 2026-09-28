@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 939 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 949
+> **Status: pre-release.** The core and the UI work and are covered by 1020 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 977
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -53,14 +53,19 @@ off until you turn it on — Canager also runs the same check once a day while i
 nothing is checked after you quit (`docs/what-we-run.md`, "The daily check"). Turn on **Notify me
 when there are updates** under it as well, and a daily check that finds an update you haven't been
 shown, while another app is in front, not Canager, posts a notification saying how many tools can
-be updated. Canager does not hear a click on it, so a click does not open the Updates page.
+be updated. A click on it brings Canager to the front, and if Canager's window is closed or
+minimized into the Dock and hasn't been in front since the notification, the window comes back on
+the Updates page. Canager isn't told of the click itself, only that it has come to the front, so
+until the window has been in front again, anything else that brings Canager to the front with the
+window closed or minimized — ⌘-Tab, its Dock icon — does the same.
 The Unknown page's header has *Scan again* in its place, with how
 long ago that page last scanned: it re-runs only that page's scan of your bin folders, against the
 sources' last known state — it does not refresh the sources. Settings' header has neither.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Canager running, and an operation under way carries on; its icon in the Dock brings the window back
-as you left it, without a new check. Quit Canager (⌘Q) quits it.
+as you left it — or on the Updates page after a notification, as above — without a new check. Quit
+Canager (⌘Q) quits it.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -278,8 +283,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 939 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 949 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1020 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 977 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -334,7 +339,10 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 Canager 开着时还会每天做一次同样的检查（所有来源都失败时，15 分钟后再查），只检查不安装，
 退出后不检查（见 `docs/what-we-run.md` 的“The daily check”一节）。再打开它下面的“有可更新时通知我”，
 每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Canager 时，会发一条通知，说有几个
-工具可以更新；Canager 收不到对它的点击，点它不会打开“更新”页。
+工具可以更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
+而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了
+最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Canager 切到前面——⌘-Tab、
+点程序坞图标——也会这样。
 “来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
@@ -343,4 +351,5 @@ Canager 开着时还会每天做一次同样的检查（所有来源都失败时
 其余的（如 `cargo-binstall` 的 `detect-targets`）会留在那一页，直到它能把全部报出来。）
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Canager 仍在运行，进行中的操作照常
-继续；点程序坞里的图标，窗口按你离开时的样子回来，不会重新检查。选“退出 Canager”（⌘Q）才会退出。
+继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。
+选“退出 Canager”（⌘Q）才会退出。

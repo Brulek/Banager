@@ -265,13 +265,29 @@ posts through, on a thread of its own (`post` and `hand_off` in
 Canager writes no file for it. That thread waits only for macOS to
 confirm the delivery, two seconds at most, and learns nothing either way:
 Canager is told of no delivery that failed, and hears no click on the
-notification, so a click does not open the Updates page. The updates it
-counts are marked as told once it is handed over, so one that macOS does
-not show — System Settings → Notifications can turn Canager's off — is
-not posted again for the same updates. Only when that thread cannot be
-started is nothing handed over: that is logged, and the next daily check
-that finds those updates tries again. What has been told is kept in
-memory only, so after Canager is quit and opened again, nothing has been.
+notification. The updates it counts are marked as told once it is handed
+over, so one that macOS does not show — System Settings → Notifications
+can turn Canager's off — is not posted again for the same updates. Only
+when that thread cannot be started is nothing handed over: that is
+logged, and the next daily check that finds those updates tries again.
+What has been told is kept in memory only, so after Canager is quit and
+opened again, nothing has been.
+
+**A click on the notification** brings Canager to the front. Canager is
+told only that it has come to the front, not what brought it there: it
+watches for AppKit's `NSApplicationDidBecomeActiveNotification` from
+launch (`observe_activation` in `src-tauri/src/window.rs`). From its
+hand-over, a notification waits on the window until the window is next
+in front — brought back by Canager, or given the focus any other way
+(`NotificationPending`). When Canager comes to the front while one
+waits, with its window closed or minimized into the Dock, it brings the
+window back and tells the page to open Updates (`on_activate`, then
+`open_updates` in `src-tauri/src/notify.rs`), whatever brought it there:
+a click on the notification, ⌘-Tab, or its Dock icon, a click on which
+Canager also hears as such and decides the same way (`on_run_event`).
+With the window on screen, or nothing waiting, Canager comes to the front
+as it always has. No command runs for it, nothing connects, and Canager
+writes no file.
 
 The window is given one of the plugin's commands, `is_permission_granted`
 (`notification:allow-is-permission-granted` in
