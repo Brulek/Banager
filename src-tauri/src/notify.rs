@@ -16,7 +16,7 @@
 use crate::menu::{self, MenuBar, MenuLanguage};
 use crate::state::AppState;
 use crate::window::MAIN_WINDOW;
-use canager_core::notify_updates::{self, Focus, Notice, UpdatePair};
+use canager_core::notify_updates::{self, Focus, Notice, ReportedRound, UpdatePair};
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
@@ -53,15 +53,16 @@ pub async fn report_update_set(
     Ok(())
 }
 
-/// A report's whole effect: `notify_updates::report` over who asked for
-/// `round` (`AppState::rounds`), whether notifications are on as the
-/// settings are saved now (`notify_updates::notifications_on`), `focus`,
-/// and what this run has told or the user has seen (`AppState::notified`),
-/// with `post` to post a notification saying how many tools can be
-/// updated. The lock on what has been told is held until the post has
-/// returned, so two reports cannot both post the same news. `post`
-/// returns once the notification is handed off (`hand_off`), and that is
-/// when its pairs are marked as told: nothing confirms a delivery.
+/// A report's whole effect: `notify_updates::report` over what the log
+/// knows of `round` (`AppState::rounds`) -- who asked for it, and whether
+/// it awaits a follow-up of the daily check's -- whether notifications are
+/// on as the settings are saved now (`notify_updates::notifications_on`),
+/// `focus`, and what this run has told or the user has seen
+/// (`AppState::notified`), with `post` to post a notification saying how
+/// many tools can be updated. The lock on what has been told is held until
+/// the post has returned, so two reports cannot both post the same news.
+/// `post` returns once the notification is handed off (`hand_off`), and
+/// that is when its pairs are marked as told: nothing confirms a delivery.
 pub(crate) fn report(
     state: &AppState,
     round: u64,
@@ -69,10 +70,16 @@ pub(crate) fn report(
     focus: Focus,
     post: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<Notice, String> {
-    let trigger = state.rounds.lock().unwrap().trigger_of(round);
+    let round = {
+        let rounds = state.rounds.lock().unwrap();
+        ReportedRound {
+            trigger: rounds.trigger_of(round),
+            awaits_follow_up: rounds.awaits_follow_up(round),
+        }
+    };
     let on = notify_updates::notifications_on(&state.get_settings());
     let mut notified = state.notified.lock().unwrap();
-    notify_updates::report(&mut notified, trigger, on, focus, updates, post)
+    notify_updates::report(&mut notified, round, on, focus, updates, post)
 }
 
 /// Where the focus is now: `focus_of` over whether the window has the
@@ -264,6 +271,7 @@ mod tests {
     use super::*;
     use crate::events::ChannelSink;
     use canager_core::auto_check::RoundTrigger;
+    use canager_core::model::InstanceNote;
     use canager_core::session::{DetectOutcome, Session, Snapshot};
     use canager_core::settings::Settings;
     use std::cell::RefCell;
@@ -287,6 +295,19 @@ mod tests {
             refreshed_at: Some(1_790_586_000),
             stale: false,
             errors: Vec::new(),
+        }
+    }
+
+    /// Round `round`'s snapshot, reporting a `brew update` Canager started
+    /// as still running when `brew_updating`.
+    fn snapshot_with_homebrew(round: u64, brew_updating: bool) -> Snapshot {
+        let mut brew = canager_core::testing::manager_instance("brew", "brew:/opt/homebrew");
+        if brew_updating {
+            brew.status.notes.push(InstanceNote::IndexUpdating);
+        }
+        Snapshot {
+            instances: vec![brew],
+            ..snapshot(round)
         }
     }
 
@@ -347,6 +368,47 @@ mod tests {
             Ok(Notice::Nothing)
         );
         assert_eq!(*posted.borrow(), [2]);
+    }
+
+    #[test]
+    fn test_a_daily_check_whose_brew_update_outlasts_it_posts_once_for_it_and_its_follow_up() {
+        let state = state(notifications_on());
+        // Round 3, the daily check's, leaves its `brew update` running;
+        // the refresh its end sets off, round 4, is the daily check's too
+        // (`ipc::refresh_on_background_change`).
+        state.rounds.lock().unwrap().record(
+            3,
+            RoundTrigger::Automatic,
+            &snapshot_with_homebrew(3, true),
+        );
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(
+                &state,
+                3,
+                &[pair("jq", "1.8.1")],
+                Focus::Away,
+                recording(&posted)
+            ),
+            Ok(Notice::Deferred)
+        );
+        let follow_up = state.rounds.lock().unwrap().take_follow_up_trigger();
+        assert_eq!(follow_up, RoundTrigger::Automatic);
+        state
+            .rounds
+            .lock()
+            .unwrap()
+            .record(4, follow_up, &snapshot_with_homebrew(4, false));
+        let offered = [pair("jq", "1.8.1"), pair("gh", "2.102.0")];
+        assert_eq!(
+            report(&state, 4, &offered, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 2 })
+        );
+        assert_eq!(
+            *posted.borrow(),
+            [2],
+            "one notification, counting what both rounds found"
+        );
     }
 
     #[test]

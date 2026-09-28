@@ -14,7 +14,7 @@
 
 use crate::model::InstanceNote;
 use crate::session::Snapshot;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 /// How often the shell's task asks [`tick`] whether the daily check is due.
@@ -162,7 +162,10 @@ pub enum RoundTrigger {
 /// it that the update outlasts reports it too, and leaves the owner as it
 /// is; a round that reports none ends it. So a daily check whose `brew
 /// update` outlasted it has its follow-up counted as automatic, and a
-/// check of the user's as the window's.
+/// check of the user's as the window's -- and a round that reports the
+/// update running while its follow-up is the daily check's waits for that
+/// follow-up to say what the daily check found
+/// ([`RoundLog::awaits_follow_up`]).
 #[derive(Debug, Default)]
 pub struct RoundLog {
     triggers: BTreeMap<u64, RoundTrigger>,
@@ -175,6 +178,9 @@ pub struct RoundLog {
     /// When the newest round that counts as a check ended
     /// ([`counts_as_check`]): what [`tick`] measures the day from.
     last_check_ended: Option<i64>,
+    /// The rounds that reported a `brew update` still running whose
+    /// follow-up is the daily check's ([`RoundLog::awaits_follow_up`]).
+    awaiting: BTreeSet<u64>,
 }
 
 impl RoundLog {
@@ -184,10 +190,12 @@ impl RoundLog {
     pub const KEPT: u64 = 64;
 
     /// Records that round `round`, whose result is `snapshot`, was handed
-    /// to a caller that asked as `trigger`. When it is the newest round and
-    /// counts as a check ([`counts_as_check`]), its end is the last check's
+    /// to a caller that asked as `trigger`. When it is the newest round, it
+    /// also says whether it awaits a follow-up of the daily check's
+    /// ([`RoundLog::awaits_follow_up`]) and, when it counts as a check
+    /// ([`counts_as_check`]), its end is the last check's
     /// ([`RoundLog::last_check_ended`]); an older round's record, arriving
-    /// late, moves nothing.
+    /// late, moves neither.
     pub fn record(&mut self, round: u64, trigger: RoundTrigger, snapshot: &Snapshot) {
         let shared = match self.triggers.get(&round) {
             Some(RoundTrigger::Window) => RoundTrigger::Window,
@@ -202,13 +210,24 @@ impl RoundLog {
                 self.follow_up_owner = Some(round);
             }
         }
-        if round == self.newest && counts_as_check(shared, snapshot) {
-            self.last_check_ended = snapshot.refreshed_at;
+        if round == self.newest {
+            if counts_as_check(shared, snapshot) {
+                self.last_check_ended = snapshot.refreshed_at;
+            }
+            let follow_up = self
+                .follow_up_owner
+                .and_then(|owner| self.trigger_of(owner));
+            if reports_brew_update_running(snapshot) && follow_up == Some(RoundTrigger::Automatic) {
+                self.awaiting.insert(round);
+            } else {
+                self.awaiting.remove(&round);
+            }
         }
         let oldest_kept = self.newest.saturating_sub(Self::KEPT);
         let owner = self.follow_up_owner;
         self.triggers
             .retain(|&r, _| r >= oldest_kept || Some(r) == owner);
+        self.awaiting.retain(|&r| r >= oldest_kept);
     }
 
     /// Who asked for round `round`, when it was recorded and is still
@@ -222,6 +241,17 @@ impl RoundLog {
     /// shell hands [`tick`]. `None` until one has been recorded.
     pub fn last_check_ended(&self) -> Option<i64> {
         self.last_check_ended
+    }
+
+    /// Whether round `round` reported a `brew update` still running whose
+    /// follow-up -- the refresh that update's end sets off
+    /// (`take_follow_up_trigger`) -- is the daily check's: a follow-up of
+    /// the daily check's will come, and report what the daily check found,
+    /// the update's new catalogue included. The update notification waits
+    /// for it (`notify_updates::decide`), so that a daily check posts one
+    /// notification at most. False for a round not remembered.
+    pub fn awaits_follow_up(&self, round: u64) -> bool {
+        self.awaiting.contains(&round)
     }
 
     /// Who the refresh a background change is setting off runs for: the
@@ -658,5 +688,46 @@ mod tests {
             Tick::Check,
             "and the next is a day after it"
         );
+    }
+
+    #[test]
+    fn test_a_daily_round_whose_brew_update_outlasts_it_awaits_its_follow_up() {
+        let mut log = RoundLog::default();
+        log.record(1, RoundTrigger::Window, &snapshot(false));
+        // The daily check starts a `brew update` that outlasts it: a
+        // follow-up of the daily check's will come.
+        log.record(2, RoundTrigger::Automatic, &snapshot(true));
+        assert!(log.awaits_follow_up(2));
+        assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Automatic);
+        // The follow-up reports no update running, and awaits nothing.
+        log.record(3, RoundTrigger::Automatic, &snapshot(false));
+        assert!(!log.awaits_follow_up(3));
+        assert!(log.awaits_follow_up(2), "what round 2 was told stays");
+        assert!(!log.awaits_follow_up(1));
+        assert!(!log.awaits_follow_up(99), "a round never recorded");
+    }
+
+    #[test]
+    fn test_a_round_whose_follow_up_is_the_windows_awaits_nothing() {
+        // The user's check started the update; the daily check's round
+        // that finds it still running has no follow-up of its own to wait
+        // for -- the follow-up is the window's, and posts nothing.
+        let mut log = RoundLog::default();
+        log.record(1, RoundTrigger::Window, &snapshot(true));
+        log.record(2, RoundTrigger::Automatic, &snapshot(true));
+        assert!(!log.awaits_follow_up(2));
+        assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Window);
+    }
+
+    #[test]
+    fn test_a_daily_round_the_window_shared_awaits_nothing() {
+        // Shared with the window, the round and its follow-up are the
+        // window's.
+        let mut log = RoundLog::default();
+        log.record(4, RoundTrigger::Automatic, &snapshot(true));
+        assert!(log.awaits_follow_up(4));
+        log.record(4, RoundTrigger::Window, &snapshot(true));
+        assert!(!log.awaits_follow_up(4));
+        assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Window);
     }
 }

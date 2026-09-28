@@ -1,10 +1,10 @@
 //! Settings → Updates' 「有可更新时通知我」 (`Settings::notify_updates`),
 //! under the daily check: one notification after a round of the daily
 //! check, when the updates the Updates page offers to start include one
-//! the user has not been told about. What is decided here is pure -- who
-//! asked for the round, the settings, where the focus is ([`Focus`]), the
-//! updates the page offers and those told or seen before -- so every case
-//! is tested without a notification. The shell hands them in each
+//! the user has not been told about. What is decided here is pure -- what
+//! is known of the round ([`ReportedRound`]), the settings, where the focus
+//! is ([`Focus`]), the updates the page offers and those told or seen
+//! before -- so every case is tested without a notification. The shell hands them in each
 //! time the page reports what it offers (`report_update_set` in
 //! `src-tauri/src/notify.rs`), and posts.
 
@@ -64,6 +64,18 @@ pub enum Focus {
     Away,
 }
 
+/// What is known of the round a report came from, which the shell reads
+/// off its `RoundLog` by the round's number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReportedRound {
+    /// Who asked for it (`RoundLog::trigger_of`); `None` when it is no
+    /// longer remembered.
+    pub trigger: Option<RoundTrigger>,
+    /// Whether it reported a `brew update` still running whose follow-up
+    /// refresh is the daily check's (`RoundLog::awaits_follow_up`).
+    pub awaits_follow_up: bool,
+}
+
 /// What one report of the updates the page offers does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Notice {
@@ -72,6 +84,13 @@ pub enum Notice {
     /// The window has the focus, so the user sees what it offers: every
     /// pair of the report is marked, and nothing is posted.
     Seen,
+    /// A notification was due, but the round's `brew update` is still
+    /// running and the refresh its end sets off is the daily check's too
+    /// ([`ReportedRound::awaits_follow_up`]): nothing is posted now, and
+    /// nothing marked, so that the daily check posts once, when that
+    /// refresh reports -- the updates offered then, which are those offered
+    /// now and those the update's new catalogue adds.
+    Deferred,
     /// A notification was due, but Canager is the app in front without its
     /// window focused ([`Focus::App`]), where macOS would show no banner:
     /// nothing is posted, and nothing marked, so the next round of the
@@ -91,7 +110,7 @@ pub fn notifications_on(settings: &Settings) -> bool {
 }
 
 /// What the page's report of `updates` does: the rows Update all would
-/// take after a round, whose trigger is `round_trigger`.
+/// take after `round`.
 ///
 /// - Nothing, when it offers no update.
 /// - `Seen`, whenever the window has the focus ([`Focus::Window`]): the
@@ -100,14 +119,17 @@ pub fn notifications_on(settings: &Settings) -> bool {
 /// - `Post`, when the round was the daily check's
 ///   (`RoundTrigger::Automatic`), notifications are on
 ///   (`notifications_on`), a pair of `updates` has been neither told nor
-///   seen in this run, and another app is in front ([`Focus::Away`]).
+///   seen in this run, the round awaits no follow-up of the daily check's,
+///   and another app is in front ([`Focus::Away`]).
+/// - `Deferred`, when all that holds but the round awaits such a
+///   follow-up ([`ReportedRound::awaits_follow_up`]).
 /// - `Withheld`, when all that holds but Canager is the app in front
 ///   without its window focused ([`Focus::App`]).
 /// - Nothing otherwise: a round the window asked for, or one no longer
-///   remembered (`round_trigger` `None`), never posts; nor does one
-///   offering only what the user was told about or saw.
+///   remembered (`trigger` `None`), never posts; nor does one offering
+///   only what the user was told about or saw.
 pub fn decide(
-    round_trigger: Option<RoundTrigger>,
+    round: ReportedRound,
     notifications_on: bool,
     focus: Focus,
     updates: &[UpdatePair],
@@ -119,11 +141,14 @@ pub fn decide(
     if focus == Focus::Window {
         return Notice::Seen;
     }
-    if round_trigger != Some(RoundTrigger::Automatic) || !notifications_on {
+    if round.trigger != Some(RoundTrigger::Automatic) || !notifications_on {
         return Notice::Nothing;
     }
     if updates.iter().all(|pair| notified.contains(pair)) {
         return Notice::Nothing;
+    }
+    if round.awaits_follow_up {
+        return Notice::Deferred;
     }
     if focus == Focus::App {
         return Notice::Withheld;
@@ -133,22 +158,22 @@ pub fn decide(
 }
 
 /// A report's whole effect on `notified`: what `decide` answers, carried
-/// out. `Seen` marks every pair of `updates`; `Nothing` and `Withheld`
-/// mark none. `Post` calls `post` with its count, and marks every pair once
+/// out. `Seen` marks every pair of `updates`; `Nothing`, `Deferred` and
+/// `Withheld` mark none. `Post` calls `post` with its count, and marks every pair once
 /// `post` returns `Ok`; when it fails, nothing is marked, so the next round
 /// of the daily check that offers them posts again, and its error is
 /// handed back for the caller to log.
 pub fn report(
     notified: &mut Notified,
-    round_trigger: Option<RoundTrigger>,
+    round: ReportedRound,
     notifications_on: bool,
     focus: Focus,
     updates: &[UpdatePair],
     post: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<Notice, String> {
-    let notice = decide(round_trigger, notifications_on, focus, updates, notified);
+    let notice = decide(round, notifications_on, focus, updates, notified);
     match notice {
-        Notice::Nothing | Notice::Withheld => {}
+        Notice::Nothing | Notice::Deferred | Notice::Withheld => {}
         Notice::Seen => notified.mark(updates),
         Notice::Post { count } => {
             post(count)?;
@@ -178,8 +203,24 @@ mod tests {
         pair("brew:/opt/homebrew|Formula|gh", "2.102.0")
     }
 
-    const AUTOMATIC: Option<RoundTrigger> = Some(RoundTrigger::Automatic);
-    const WINDOW: Option<RoundTrigger> = Some(RoundTrigger::Window);
+    const AUTOMATIC: ReportedRound = ReportedRound {
+        trigger: Some(RoundTrigger::Automatic),
+        awaits_follow_up: false,
+    };
+    const WINDOW: ReportedRound = ReportedRound {
+        trigger: Some(RoundTrigger::Window),
+        awaits_follow_up: false,
+    };
+    /// A round no longer remembered.
+    const FORGOTTEN: ReportedRound = ReportedRound {
+        trigger: None,
+        awaits_follow_up: false,
+    };
+    /// A round of the daily check's whose `brew update` outlasted it.
+    const AWAITING: ReportedRound = ReportedRound {
+        trigger: Some(RoundTrigger::Automatic),
+        awaits_follow_up: true,
+    };
 
     #[test]
     fn test_update_pair_is_the_json_the_page_sends() {
@@ -227,7 +268,7 @@ mod tests {
             Notice::Nothing
         );
         assert_eq!(
-            decide(None, true, Focus::Away, &[jq()], &notified),
+            decide(FORGOTTEN, true, Focus::Away, &[jq()], &notified),
             Notice::Nothing,
             "a round no longer remembered is not known to be the daily check's"
         );
@@ -244,7 +285,7 @@ mod tests {
     #[test]
     fn test_with_the_window_focused_the_updates_are_seen_whoever_asked_and_nothing_is_posted() {
         let notified = Notified::default();
-        for trigger in [AUTOMATIC, WINDOW, None] {
+        for trigger in [AUTOMATIC, WINDOW, FORGOTTEN, AWAITING] {
             for on in [true, false] {
                 assert_eq!(
                     decide(trigger, on, Focus::Window, &[jq()], &notified),
@@ -298,6 +339,67 @@ mod tests {
             decide(AUTOMATIC, true, Focus::App, &[jq()], &notified),
             Notice::Nothing,
             "nothing new"
+        );
+    }
+
+    #[test]
+    fn test_a_daily_check_whose_brew_update_outlasts_it_posts_once_after_its_follow_up() {
+        // The daily check's round finds jq; its `brew update` is still
+        // running, and the refresh that update's end sets off is the daily
+        // check's too. That round waits, the follow-up finds gh besides,
+        // and one notification counts both.
+        let mut notified = Notified::default();
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(
+                &mut notified,
+                AWAITING,
+                true,
+                Focus::Away,
+                &[jq()],
+                recording(&posted)
+            ),
+            Ok(Notice::Deferred)
+        );
+        assert!(!notified.contains(&jq()), "deferred, so not marked");
+        assert_eq!(
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                &[jq(), gh()],
+                recording(&posted)
+            ),
+            Ok(Notice::Post { count: 2 })
+        );
+        assert_eq!(
+            *posted.borrow(),
+            [2],
+            "one notification for the daily check"
+        );
+        assert!(notified.contains(&jq()) && notified.contains(&gh()));
+    }
+
+    #[test]
+    fn test_a_deferred_round_still_marks_what_the_focused_window_shows() {
+        let mut notified = Notified::default();
+        assert_eq!(
+            report(
+                &mut notified,
+                AWAITING,
+                true,
+                Focus::Window,
+                &[jq()],
+                |_| { panic!("posted while the window had the focus") }
+            ),
+            Ok(Notice::Seen)
+        );
+        assert!(notified.contains(&jq()));
+        // Nothing new, nothing deferred.
+        assert_eq!(
+            decide(AWAITING, true, Focus::Away, &[jq()], &notified),
+            Notice::Nothing
         );
     }
 
