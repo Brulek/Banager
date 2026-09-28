@@ -328,7 +328,10 @@
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
       "description": "This copy of {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again."
-    }
+    },
+    "more_one": "{{count}} more",
+    "more_other": "{{count}} more",
+    "showFewer": "Show fewer"
   },
   "planRefused": {
     "sourceGone": "Canager can't find the tool that manages this, so nothing started. Press Check again.",

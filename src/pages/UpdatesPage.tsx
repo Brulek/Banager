@@ -20,7 +20,7 @@ import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../component
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
-import { SourceNotices } from "../components/SourceNotices";
+import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
 import { holdsRow, isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
@@ -355,6 +355,8 @@ export function UpdatesPage() {
       sourceNoticesFor(instance, sourceLabelFor(instance.id), rowsByInstance.get(instance.id) ?? 0),
     );
   }, [snapshot, visibleUpdates, sourceLabelFor]);
+  // Two lines or more fold into one (`SourceNotices`).
+  const noticeFold = useNoticeFold(notices.length);
 
   // How many rows can only say that Canager could not check them, the
   // tool's own words being hidden while "Show technical details" is off:
@@ -604,7 +606,7 @@ export function UpdatesPage() {
   const noticeLines =
     notices.length > 0 ? (
       <div className="flex flex-col gap-1.5 px-6 pb-3">
-        <SourceNotices notices={notices} layout="line" />
+        <SourceNotices notices={notices} layout="line" fold={noticeFold} />
       </div>
     ) : null;
 

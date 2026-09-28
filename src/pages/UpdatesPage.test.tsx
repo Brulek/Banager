@@ -2619,6 +2619,39 @@ describe("UpdatesPage", () => {
       ).toHaveTextContent("Open Ollama to see what it has and check for updates.");
     });
 
+    it("folds two lines into one, the warning first, and keeps them unfolded while the page changes under them, until their number does", async () => {
+      const brewUpdating = {
+        ...snapshot.instances[0],
+        status: { unavailable: null, notes: ["IndexUpdating" as const] },
+      };
+      instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
+      const { queryClient } = renderWithProviders(<UpdatesPage />);
+
+      // Ollama's line, with its button, though Homebrew's comes first.
+      await screen.findByText("Ollama isn't running");
+      expect(screen.getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
+      expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "1 more" }));
+      expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+
+      // The updates go, and the page says so under the same two lines.
+      updates = [];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      await screen.findByText("No updates in the sources Canager could check");
+      expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show fewer" })).toBeInTheDocument();
+
+      // One line, then two again: folded.
+      instances = [...snapshot.instances, stoppedOllama];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      await waitFor(() => expect(screen.queryByText("Homebrew is updating its software list")).toBeNull());
+      expect(screen.queryByRole("button", { name: "Show fewer" })).toBeNull();
+      instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+      expect(await screen.findByRole("button", { name: "1 more" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Homebrew is updating its software list")).toBeNull();
+    });
+
     it("names the silent source in its notice, and every row names its own, so the notice is never read as another source's", async () => {
       // The critical case, now that the list is not grouped by source.
       // Homebrew answered with three updates; Ollama did not answer and its

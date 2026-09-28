@@ -307,7 +307,9 @@
     "launcherOnly": {
       "title": "{{source}} 的程序文件不见了",
       "description": "这一份 {{command}} 已经无法运行，点「卸载」可以清理掉它。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后重新检查。"
-    }
+    },
+    "more_other": "还有 {{count}} 条",
+    "showFewer": "收起"
   },
   "planRefused": {
     "sourceGone": "找不到管理它的工具了，没有开始。请点「重新检查」。",

@@ -2,7 +2,11 @@ import type { ReactNode } from "react";
 import { InfoIcon, WarningIcon } from "./icons";
 import { Popover } from "./ui/Popover";
 
-/** The look of a "Details" button beside a sentence: a notice's, or its error's. */
+/**
+ * The look of a "Details" button beside a sentence: a notice's, or its
+ * error's -- and of the other words-only buttons in a notice line, the
+ * fold's 「还有 N 条」 and 「收起」 (`SourceNotices`).
+ */
 export const DETAILS_TRIGGER_CLASS =
   "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
 
@@ -80,6 +84,11 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
   detailsLabel: string;
   /** That button's accessible name, which says which notice it belongs to. */
   detailsAriaLabel: string;
+  /**
+   * Last in the line, after the notice's own button: 「还有 N 条」 on the
+   * one line a page's notices fold into (`SourceNotices`).
+   */
+  trailing?: ReactNode;
 }
 
 /**
@@ -97,6 +106,7 @@ export function SourceNoticeLine({
   error,
   detailsLabel,
   detailsAriaLabel,
+  trailing,
 }: SourceNoticeLineProps) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -123,6 +133,7 @@ export function SourceNoticeLine({
             {action.label}
           </button>
         ) : null}
+        {trailing}
       </div>
       {/* A <div>: the error's own "Details" panel is one. */}
       {error ? (
