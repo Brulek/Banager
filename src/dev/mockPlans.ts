@@ -14,6 +14,7 @@ import type {
   PlanAction,
   RemovedWhat,
   Stream,
+  UninstallScope,
   UpdateCandidate,
   Warning,
 } from "../lib/types";
@@ -65,6 +66,25 @@ const BREW_DEPENDENTS: Record<string, string[]> = {
 /** A formula whose `brew uses` did not finish: the preview says it could
  *  not check, rather than claiming nothing depends on it. */
 const BREW_DEPENDENTS_UNKNOWN = new Set(["htop"]);
+
+/**
+ * What the preview's casks recorded at install beyond what Homebrew put
+ * down (`uninstall_artifacts` in each one's INSTALL_RECEIPT.json, as the
+ * catalogue for Homebrew 7.0.6 defines them): `visual-studio-code`'s
+ * `launchctl` and `quit`. The others record only apps, links, fonts and a
+ * `quit`, so their uninstall is plain (`cask_receipt::classify`).
+ */
+const CASK_STEPS: Record<string, Warning[]> = {
+  "visual-studio-code": [
+    { CaskUninstallStep: { step: "RemovesServices", items: ["com.microsoft.VSCode.ShipIt"] } },
+    { CaskUninstallStep: { step: "QuitsApps", items: ["com.microsoft.VSCode"] } },
+  ],
+};
+
+/** The sentence an uninstall says under the tool (`Warning::UninstallScope`). */
+function scope(what: UninstallScope): Warning {
+  return { UninstallScope: { what } };
+}
 
 /** Ollama's own registries (`DEFAULT_REGISTRIES` in the ollama adapter). */
 const OLLAMA_REGISTRIES = ["registry.ollama.ai", "hf.co"];
@@ -231,20 +251,32 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         world.artifacts.some((a) => a.key.instance_id === inst.id && a.key.name === formula);
       const unknown = BREW_DEPENDENTS_UNKNOWN.has(name);
       const affected = unknown ? [] : (BREW_DEPENDENTS[name] ?? []).filter(installed);
+      const steps = cask ? (CASK_STEPS[name] ?? []) : [];
+      const what: UninstallScope = !cask
+        ? "HomebrewFormulaOnly"
+        : steps.length > 0
+          ? "HomebrewCaskSteps"
+          : "HomebrewCaskPlain";
       return {
         ...plan,
         action: command(inst.exe_path, ["uninstall", flag, name], BREW_ENV),
         needs_password: cask,
-        warnings: unknown
-          ? ["DependentsUnknown"]
-          : affected.length > 0
-            ? [{ WouldBreak: { names: affected } }]
-            : [],
+        warnings: [
+          scope(what),
+          ...(unknown
+            ? (["DependentsUnknown"] as Warning[])
+            : affected.length > 0
+              ? [{ WouldBreak: { names: affected } }]
+              : []),
+          ...steps,
+        ],
         affected,
         timeout_secs: 1800,
       };
     }
-    case "npm":
+    case "npm": {
+      // Said only by an npm of 7 or later (`uninstall_scope` in the npm adapter).
+      const major = Number.parseInt((inst.version ?? "").split(".")[0] ?? "", 10);
       return {
         ...plan,
         action: command(
@@ -252,13 +284,20 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
           upgrade ? ["install", "-g", `${name}@latest`] : ["uninstall", "-g", name],
           NPM_ENV,
         ),
+        warnings: !upgrade && major >= 7 ? [scope("Npm")] : [],
       };
+    }
     case "pipx":
-      return { ...plan, action: command(inst.exe_path, [upgrade ? "upgrade" : "uninstall", name]) };
+      return {
+        ...plan,
+        action: command(inst.exe_path, [upgrade ? "upgrade" : "uninstall", name]),
+        warnings: upgrade ? [] : [scope("Pipx")],
+      };
     case "uv":
       return {
         ...plan,
         action: command(inst.exe_path, ["tool", upgrade ? "upgrade" : "uninstall", name]),
+        warnings: upgrade ? [] : [scope("Uv")],
       };
     case "cargo":
       // No cargo-binstall on this Mac: `cargo install` builds from source.
@@ -272,6 +311,7 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
         : {
             ...plan,
             action: command(inst.exe_path, ["uninstall", name], CARGO_ENV),
+            warnings: [scope("Cargo")],
             timeout_secs: 300,
           };
     case "ollama": {
@@ -280,8 +320,8 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       return {
         ...plan,
         action: command(inst.exe_path, [upgrade ? "pull" : "rm", name]),
-        // Said on the download only, never on an uninstall.
-        warnings: upgrade && thirdParty ? [{ ThirdPartyRegistry: { host } }] : [],
+        // The registry is said on the download only, never on an uninstall.
+        warnings: upgrade ? (thirdParty ? [{ ThirdPartyRegistry: { host } }] : []) : [scope("Ollama")],
         timeout_secs: 3600,
       };
     }

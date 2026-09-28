@@ -7,7 +7,8 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, ReadOnlyReason, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, UpdateCandidate, UpdateChannel,
+    Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -66,6 +67,24 @@ fn path_is_writable(path: &Path) -> bool {
         Ok(c_path) => unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 },
         Err(_) => false,
     }
+}
+
+/// The sentence an uninstall says under the tool (`UninstallScope::Npm`),
+/// for the npm `version` Canager detected (`npm --version`), only when that
+/// is 7 or later. npm 7 and later run no script of the package's on
+/// `uninstall -g` (npm 10.9.9: arborist's `reify.js:1308-1341` runs scripts
+/// only for added and changed packages, and for `-g` it loads only the
+/// named one, `reify.js:372-395`; npm 12.0.2 the same), so its settings and
+/// data outside its folder stay; npm 6 ran the package's `preuninstall`,
+/// `uninstall` and `postuninstall` scripts (npm 10.9.9's
+/// `docs/content/using-npm/scripts.md:216-228`), which could do anything.
+/// A version Canager could not read, or whose major number does not parse,
+/// gets no sentence.
+fn uninstall_scope(version: Option<&str>) -> Option<Warning> {
+    let major: u64 = version?.trim().split('.').next()?.parse().ok()?;
+    (major >= 7).then_some(Warning::UninstallScope {
+        what: UninstallScope::Npm,
+    })
 }
 
 pub struct NpmAdapter {
@@ -370,6 +389,12 @@ impl NpmAdapter {
             });
         }
         let lock = ResourceLock(inst.id.clone());
+        let warnings = match req.kind {
+            OpKind::Uninstall => uninstall_scope(inst.version.as_deref())
+                .into_iter()
+                .collect(),
+            OpKind::Install | OpKind::Upgrade => Vec::new(),
+        };
         let args = match req.kind {
             OpKind::Install => vec!["install".to_string(), "-g".to_string(), req.name.clone()],
             OpKind::Uninstall => vec!["uninstall".to_string(), "-g".to_string(), req.name.clone()],
@@ -389,7 +414,7 @@ impl NpmAdapter {
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
-            warnings: Vec::new(),
+            warnings,
             affected: Vec::new(),
             timeout_secs: 600,
         })
@@ -1165,6 +1190,82 @@ mod tests {
         };
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert_eq!(command_args(&plan), vec!["uninstall", "-g", "jq"]);
+    }
+
+    fn uninstall_jq(inst: &ManagerInstance) -> OpRequest {
+        OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Package,
+            name: "jq".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_an_uninstall_by_npm_7_or_later_says_what_goes_and_what_stays() {
+        // npm 7 and later run none of a package's scripts on `uninstall -g`,
+        // so its settings and data outside its folder stay. The version is
+        // the one `detect` read from `npm --version`.
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        for version in ["7.0.0", "10.9.9", "12.0.2", " 12.0.2\n"] {
+            let inst = ManagerInstance {
+                version: Some(version.to_string()),
+                ..test_instance()
+            };
+            let plan = adapter
+                .plan(&inst, &uninstall_jq(&inst))
+                .await
+                .expect("plan");
+            assert_eq!(
+                plan.warnings,
+                vec![Warning::UninstallScope {
+                    what: UninstallScope::Npm
+                }],
+                "{version:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_an_uninstall_by_npm_6_or_of_an_unread_version_says_nothing_of_what_stays() {
+        // npm 6 ran the package's `preuninstall`, `uninstall` and
+        // `postuninstall` scripts, which could do anything; a version
+        // Canager could not read might be that.
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        for version in [
+            Some("6.14.18"),
+            Some("5.6.0"),
+            Some(""),
+            Some("v-next"),
+            None,
+        ] {
+            let inst = ManagerInstance {
+                version: version.map(str::to_string),
+                ..test_instance()
+            };
+            let plan = adapter
+                .plan(&inst, &uninstall_jq(&inst))
+                .await
+                .expect("plan");
+            assert!(plan.warnings.is_empty(), "{version:?}: {:?}", plan.warnings);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_no_install_or_upgrade_plan_says_what_an_uninstall_would() {
+        let adapter =
+            NpmAdapter::new(Arc::new(MockRunner::new())).with_prefix_writable_fn(|_| true);
+        let inst = test_instance();
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            let req = OpRequest {
+                kind,
+                ..uninstall_jq(&inst)
+            };
+            let plan = adapter.plan(&inst, &req).await.expect("plan");
+            assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
+        }
     }
 
     #[tokio::test]

@@ -9,7 +9,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, CancelPolicy, InstalledArtifact, InstanceStatus, ManagerInstance, OpKind,
     OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope, SearchHit, Unavailable,
-    UpdateCandidate, UpdateChannel, Warning,
+    UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -531,7 +531,16 @@ impl OllamaAdapter {
                     })
                     .unwrap_or_default(),
             ),
-            OpKind::Uninstall => (vec!["rm".to_string(), req.name.clone()], Vec::new()),
+            // What `ollama rm` removes and leaves (Ollama 0.34.1
+            // `server/routes.go:1249-1299`: the model's manifest and the
+            // layers no other model uses), said under the tool -- not under
+            // "Before you continue:", which is `warningGroup`'s to decide.
+            OpKind::Uninstall => (
+                vec!["rm".to_string(), req.name.clone()],
+                vec![Warning::UninstallScope {
+                    what: UninstallScope::Ollama,
+                }],
+            ),
         };
         Ok(Plan {
             request: req.clone(),
@@ -1746,12 +1755,16 @@ mod tests {
         // warning used to be computed before `match req.kind`, so it rode
         // onto the uninstall plan too -- and `UninstallDialog` renders
         // `plan.warnings` under "Before you continue:", the one
-        // destructive confirmation screen in the app.
+        // destructive confirmation screen in the app. All the uninstall
+        // carries is its sentence about what goes and what stays, which the
+        // dialog says under the model itself (`warningGroup`'s `scope`).
         let plan = plan_for_kind("modelscope.cn/Qwen/Qwen3-8B", OpKind::Uninstall).await;
-        assert!(
-            plan.warnings.is_empty(),
-            "the uninstall confirmation must carry no registry warning, got {:?}",
-            plan.warnings
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::UninstallScope {
+                what: UninstallScope::Ollama
+            }],
+            "the uninstall confirmation must carry no registry warning"
         );
         assert_eq!(
             command_args(&plan),

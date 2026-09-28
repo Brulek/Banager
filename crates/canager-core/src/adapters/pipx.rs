@@ -8,7 +8,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UpdateBlocked, UpdateCandidate, UpdateChannel,
+    SearchHit, Unavailable, UninstallScope, UpdateBlocked, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -419,6 +419,15 @@ impl PipxAdapter {
             OpKind::Uninstall => vec!["uninstall".to_string(), req.name.clone()],
             OpKind::Upgrade => vec!["upgrade".to_string(), req.name.clone()],
         };
+        // What `pipx uninstall` removes and leaves (pipx 1.17.3
+        // `commands/uninstall.py:67-125`: the tool's venv and the links
+        // into it, nothing else of the tool's), said under the tool.
+        let warnings = match req.kind {
+            OpKind::Uninstall => vec![Warning::UninstallScope {
+                what: UninstallScope::Pipx,
+            }],
+            OpKind::Install | OpKind::Upgrade => Vec::new(),
+        };
         Ok(Plan {
             request: req.clone(),
             action: PlanAction::Command {
@@ -429,7 +438,7 @@ impl PipxAdapter {
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
-            warnings: Vec::new(),
+            warnings,
             affected: Vec::new(),
             timeout_secs: 600,
         })
@@ -915,6 +924,15 @@ mod tests {
                 .expect("plan");
             assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
+            // Only an uninstall says, under the tool, what goes and what
+            // stays: pipx deletes the tool's own venv and the links into it.
+            let scope = match kind {
+                OpKind::Uninstall => vec![Warning::UninstallScope {
+                    what: UninstallScope::Pipx,
+                }],
+                OpKind::Install | OpKind::Upgrade => vec![],
+            };
+            assert_eq!(plan.warnings, scope, "{kind:?}");
         }
     }
 

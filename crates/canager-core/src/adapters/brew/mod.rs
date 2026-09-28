@@ -1,4 +1,5 @@
 mod brew_env;
+mod cask_receipt;
 pub mod parse;
 
 use crate::adapters::{
@@ -9,10 +10,11 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, Fault, InstalledArtifact, InstanceId, InstanceNote,
     InstanceStatus, ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled,
-    ResourceLock, Scope, SearchHit, Unavailable, Warning,
+    ResourceLock, Scope, SearchHit, Unavailable, UninstallScope, Warning,
 };
 use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
+use cask_receipt::{Classified, Recorded};
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -122,6 +124,13 @@ pub struct BrewAdapter {
     /// test installs a reader (`with_brew_env_fn`), so that no test answers
     /// differently for the brew.env files of the Mac running it.
     brew_env_fn: fn(&Path) -> Option<Vec<u8>>,
+    /// How to read what Homebrew recorded at install about a cask's
+    /// uninstall, under a prefix, for the cask uninstall preview:
+    /// `cask_receipt::read_recorded` outside this crate's unit tests;
+    /// inside them nothing is recorded unless a test installs the reader
+    /// (`with_recorded_uninstall_fn`), so that no test answers differently
+    /// for the casks installed on the Mac running it.
+    recorded_uninstall_fn: fn(&Path, &str) -> Option<Recorded>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -150,6 +159,15 @@ const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |_| None;
 const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = brew_env::read_brew_env_file;
 #[cfg(test)]
 const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = |_| None;
+
+/// `BrewAdapter::recorded_uninstall_fn` as `BrewAdapter::new` sets it: the
+/// real Caskroom in every build but this crate's unit tests, where nothing
+/// is recorded.
+#[cfg(not(test))]
+const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> =
+    cask_receipt::read_recorded;
+#[cfg(test)]
+const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> = |_, _| None;
 
 impl BrewAdapter {
     /// The environment every `brew` command Canager runs is given, on top
@@ -231,6 +249,7 @@ impl BrewAdapter {
             update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
             env_var_fn: DEFAULT_ENV_VAR_FN,
             brew_env_fn: DEFAULT_BREW_ENV_FN,
+            recorded_uninstall_fn: DEFAULT_RECORDED_UNINSTALL_FN,
         }
     }
 
@@ -317,6 +336,61 @@ impl BrewAdapter {
     fn with_brew_env_fn(mut self, brew_env_fn: fn(&Path) -> Option<Vec<u8>>) -> BrewAdapter {
         self.brew_env_fn = brew_env_fn;
         self
+    }
+
+    /// Test-only hook to read casks' recorded uninstalls (see
+    /// `recorded_uninstall_fn`) -- the real reader, over a Caskroom a test
+    /// made under its own prefix.
+    #[cfg(test)]
+    fn with_recorded_uninstall_fn(
+        mut self,
+        recorded_uninstall_fn: fn(&Path, &str) -> Option<Recorded>,
+    ) -> BrewAdapter {
+        self.recorded_uninstall_fn = recorded_uninstall_fn;
+        self
+    }
+
+    /// What an uninstall of `req` says under the tool
+    /// (`Warning::UninstallScope`), and, for a cask whose recorded uninstall
+    /// takes extra steps, one `Warning::CaskUninstallStep` per kind.
+    /// `autoremoves` is whether the `brew.env` files take Homebrew's
+    /// autoremove back (`brew_env_warning`): a formula's sentence says
+    /// "only" when they do not. A cask's comes from what Homebrew recorded
+    /// when it installed the cask (`cask_receipt`), the home folder read
+    /// from Canager's environment, as Homebrew's is (`env_var_fn`).
+    fn uninstall_scope(
+        &self,
+        inst: &ManagerInstance,
+        req: &OpRequest,
+        autoremoves: bool,
+    ) -> (Warning, Vec<Warning>) {
+        let scope = |what| Warning::UninstallScope { what };
+        if req.artifact_kind != ArtifactKind::Cask {
+            let what = if autoremoves {
+                UninstallScope::HomebrewFormula
+            } else {
+                UninstallScope::HomebrewFormulaOnly
+            };
+            return (scope(what), Vec::new());
+        }
+        let home = (self.env_var_fn)("HOME")
+            .filter(|home| !home.is_empty())
+            .map(PathBuf::from);
+        let classified = match (self.recorded_uninstall_fn)(&inst.prefix, &req.name) {
+            Some(recorded) => cask_receipt::classify(&recorded, home.as_deref()),
+            None => Classified::Unknown,
+        };
+        match classified {
+            Classified::Plain => (scope(UninstallScope::HomebrewCaskPlain), Vec::new()),
+            Classified::Unknown => (scope(UninstallScope::HomebrewCask), Vec::new()),
+            Classified::Steps(steps) => (
+                scope(UninstallScope::HomebrewCaskSteps),
+                steps
+                    .into_iter()
+                    .map(|(step, items)| Warning::CaskUninstallStep { step, items })
+                    .collect(),
+            ),
+        }
     }
 
     /// What the `brew.env` files make Homebrew do beyond a plan's command,
@@ -1339,7 +1413,10 @@ impl BrewAdapter {
                 if self.catalogue_stamp(inst) != Some(stamp) {
                     return Err(AdapterError::IndexUpdating);
                 }
-                let mut warnings = Vec::new();
+                let env = self.env_vec();
+                let autoremoves = self.brew_env_warning(inst, req.kind, &env);
+                let (scope, cask_steps) = self.uninstall_scope(inst, req, autoremoves.is_some());
+                let mut warnings = vec![scope];
                 let affected = if uses_output.exit_code == Some(0) {
                     parse_uses(&uses_output.stdout)
                 } else {
@@ -1354,8 +1431,8 @@ impl BrewAdapter {
                         names: affected.clone(),
                     });
                 }
-                let env = self.env_vec();
-                warnings.extend(self.brew_env_warning(inst, req.kind, &env));
+                warnings.extend(cask_steps);
+                warnings.extend(autoremoves);
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -2339,6 +2416,7 @@ mod tests {
 mod plan_execute_tests {
     use super::*;
     use crate::events::VecSink;
+    use crate::model::CaskStep;
     use crate::runner::MockRunner;
     use crate::testing::{command_args, command_env};
 
@@ -2448,9 +2526,14 @@ mod plan_execute_tests {
         assert_eq!(plan.affected, vec!["python@3.13".to_string()]);
         assert_eq!(
             plan.warnings,
-            vec![Warning::WouldBreak {
-                names: vec!["python@3.13".to_string()]
-            }]
+            vec![
+                Warning::UninstallScope {
+                    what: UninstallScope::HomebrewFormulaOnly
+                },
+                Warning::WouldBreak {
+                    names: vec!["python@3.13".to_string()]
+                }
+            ]
         );
     }
 
@@ -2492,7 +2575,7 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
-    async fn test_plan_uninstall_without_dependents_has_no_warning() {
+    async fn test_plan_uninstall_without_dependents_says_only_what_goes() {
         let runner = Arc::new(MockRunner::new());
         runner.respond(
             vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
@@ -2515,7 +2598,13 @@ mod plan_execute_tests {
         let plan = adapter.plan(&inst, &req).await.expect("plan");
         assert_eq!(command_args(&plan), vec!["uninstall", "--formula", "jq"]);
         assert!(plan.affected.is_empty());
-        assert!(plan.warnings.is_empty());
+        // Nothing to warn of: only the sentence under the tool.
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::UninstallScope {
+                what: UninstallScope::HomebrewFormulaOnly
+            }]
+        );
     }
 
     /// (F10 / M8) Uninstalling a cask can require a password (e.g. a
@@ -2744,6 +2833,18 @@ mod plan_execute_tests {
         plans
     }
 
+    /// The sentence an uninstall of `artifact_kind` says under the tool
+    /// when nothing is recorded for a cask (these tests' default) and
+    /// `autoremoves` says whether a brew.env took autoremove back.
+    fn scope_of(artifact_kind: ArtifactKind, autoremoves: bool) -> Warning {
+        let what = match (artifact_kind, autoremoves) {
+            (ArtifactKind::Cask, _) => UninstallScope::HomebrewCask,
+            (_, false) => UninstallScope::HomebrewFormulaOnly,
+            (_, true) => UninstallScope::HomebrewFormula,
+        };
+        Warning::UninstallScope { what }
+    }
+
     /// Homebrew autoremoves after every `brew uninstall`, formula or cask,
     /// unless `HOMEBREW_NO_AUTOREMOVE` is set (`cmd/uninstall.rb:129-136`
     /// in Homebrew 7.0.6-70), and in the cleanup an install or upgrade
@@ -2763,10 +2864,17 @@ mod plan_execute_tests {
                 plan.request.name,
                 command_env(&plan)
             );
-            assert!(
-                plan.warnings.is_empty(),
-                "with no brew.env, nothing more happens: {:?}",
-                plan.warnings
+            // With no brew.env, nothing more happens: an uninstall says
+            // only what goes -- for a formula, "only" this version -- and
+            // an install or upgrade says nothing.
+            let expected = match plan.request.kind {
+                OpKind::Uninstall => vec![scope_of(plan.request.artifact_kind, false)],
+                OpKind::Install | OpKind::Upgrade => vec![],
+            };
+            assert_eq!(
+                plan.warnings, expected,
+                "{:?} {}",
+                plan.request.kind, plan.request.name
             );
         }
     }
@@ -2789,8 +2897,12 @@ mod plan_execute_tests {
         let adapter =
             BrewAdapter::new(runner.clone()).with_brew_env_fn(system_brew_env_autoremoves);
         for plan in every_plan(&runner, &adapter).await {
+            // A formula's sentence loses its "only".
             let expected = match plan.request.kind {
-                OpKind::Uninstall => vec![Warning::HomebrewAutoremoves],
+                OpKind::Uninstall => vec![
+                    scope_of(plan.request.artifact_kind, true),
+                    Warning::HomebrewAutoremoves,
+                ],
                 OpKind::Install | OpKind::Upgrade => vec![],
             };
             assert_eq!(
@@ -2815,15 +2927,16 @@ mod plan_execute_tests {
         });
         for plan in every_plan(&runner, &adapter).await {
             let expected = match plan.request.kind {
-                OpKind::Uninstall => Warning::HomebrewAutoremoves,
-                OpKind::Install | OpKind::Upgrade => Warning::HomebrewCleanupAutoremoves,
+                OpKind::Uninstall => vec![
+                    scope_of(plan.request.artifact_kind, true),
+                    Warning::HomebrewAutoremoves,
+                ],
+                OpKind::Install | OpKind::Upgrade => vec![Warning::HomebrewCleanupAutoremoves],
             };
             assert_eq!(
-                plan.warnings,
-                vec![expected],
+                plan.warnings, expected,
                 "{:?} {}",
-                plan.request.kind,
-                plan.request.name
+                plan.request.kind, plan.request.name
             );
         }
     }
@@ -2895,6 +3008,187 @@ mod plan_execute_tests {
                 "{:?}",
                 plan.warnings
             );
+        }
+    }
+
+    /// A Homebrew prefix of a test's own whose `Caskroom` holds each cask's
+    /// install receipt beside a saved caskfile of `{}`, as Homebrew 7 leaves
+    /// them (`cask_receipt`). Removed when dropped.
+    struct CaskroomPrefix(PathBuf);
+
+    impl CaskroomPrefix {
+        fn new(label: &str, receipts: &[(&str, &str)]) -> CaskroomPrefix {
+            let dir = std::env::temp_dir().join(format!(
+                "canager-brew-caskroom-{label}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            for (token, receipt) in receipts {
+                let metadata = dir.join("Caskroom").join(token).join(".metadata");
+                let casks = metadata
+                    .join("1.0")
+                    .join("20260928000000.000")
+                    .join("Casks");
+                std::fs::create_dir_all(&casks).expect("create the Caskroom");
+                std::fs::write(metadata.join("INSTALL_RECEIPT.json"), receipt).unwrap();
+                std::fs::write(casks.join(format!("{token}.json")), "{}").unwrap();
+            }
+            CaskroomPrefix(dir)
+        }
+    }
+
+    impl Drop for CaskroomPrefix {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// `adapter`'s uninstall plan for the cask `name` on `inst`, with
+    /// `brew uses` answering that nothing depends on it.
+    async fn cask_uninstall(
+        runner: &MockRunner,
+        adapter: &BrewAdapter,
+        inst: &ManagerInstance,
+        name: &str,
+    ) -> Plan {
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        let req = OpRequest {
+            kind: OpKind::Uninstall,
+            instance_id: inst.id.clone(),
+            artifact_kind: ArtifactKind::Cask,
+            name: name.to_string(),
+        };
+        adapter.plan(inst, &req).await.expect("plan")
+    }
+
+    /// The home folder the fixtures' constructed receipts were built for.
+    fn someones_home(name: &str) -> Option<OsString> {
+        (name == "HOME").then(|| OsString::from("/Users/someone"))
+    }
+
+    const CLAUDEBAR_RECEIPT: &str =
+        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/claudebar.json");
+    const WORD_RECEIPT: &str =
+        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/microsoft-word.json");
+    const TWELITE_RECEIPT: &str =
+        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/twelite-stage.json");
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_says_what_its_install_receipt_records() {
+        // What `brew uninstall --cask` runs is what Homebrew recorded at
+        // install, not what `brew info` says of the cask today: the plan
+        // reads the receipt under the prefix it runs against.
+        let prefix = CaskroomPrefix::new(
+            "scope",
+            &[
+                ("claudebar", CLAUDEBAR_RECEIPT),
+                ("microsoft-word", WORD_RECEIPT),
+                ("twelite-stage", TWELITE_RECEIPT),
+            ],
+        );
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let scope = |what| Warning::UninstallScope { what };
+        let step = |step, items: &[&str]| Warning::CaskUninstallStep {
+            step,
+            items: items.iter().map(|item| item.to_string()).collect(),
+        };
+
+        // Recorded on this Mac: `quit`, `app`, `zap`. The tapped cask's
+        // full name finds its Caskroom folder.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "gautham-v/tap/claudebar").await;
+        assert_eq!(
+            plan.warnings,
+            vec![scope(UninstallScope::HomebrewCaskPlain)]
+        );
+
+        // One line per kind of extra step, in `CaskStep`'s order.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "microsoft-word").await;
+        let word = vec![
+            scope(UninstallScope::HomebrewCaskSteps),
+            step(
+                CaskStep::RemovesPackages,
+                &[
+                    "com.microsoft.package.Microsoft_Word.app",
+                    "com.microsoft.pkg.licensing",
+                ],
+            ),
+            step(
+                CaskStep::RemovesServices,
+                &["com.microsoft.office.licensingV2.helper"],
+            ),
+            step(CaskStep::QuitsApps, &["com.microsoft.autoupdate2"]),
+        ];
+        assert_eq!(plan.warnings, word);
+
+        // An `artifact` Homebrew placed in the home folder.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "twelite-stage").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                scope(UninstallScope::HomebrewCaskSteps),
+                step(CaskStep::Deletes, &["~/MWSTAGE"]),
+            ]
+        );
+
+        // Nothing recorded for it: says so rather than guess.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "docker").await;
+        assert_eq!(plan.warnings, vec![scope(UninstallScope::HomebrewCask)]);
+
+        // With a brew.env that brings autoremove back, that comes last.
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home)
+            .with_brew_env_fn(system_brew_env_autoremoves);
+        let plan = cask_uninstall(&runner, &adapter, &inst, "microsoft-word").await;
+        assert_eq!(
+            plan.warnings,
+            word.into_iter()
+                .chain([Warning::HomebrewAutoremoves])
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_install_or_upgrade_plan_says_what_an_uninstall_would() {
+        // The sentence is an uninstall's; a receipt that would give a cask
+        // steps changes nothing about installing or upgrading it.
+        let prefix = CaskroomPrefix::new("no-scope", &[("microsoft-word", WORD_RECEIPT)]);
+        let adapter = BrewAdapter::new(Arc::new(MockRunner::new()))
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            for artifact_kind in [ArtifactKind::Cask, ArtifactKind::Formula] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: inst.id.clone(),
+                    artifact_kind,
+                    name: "microsoft-word".to_string(),
+                };
+                let plan = adapter.plan(&inst, &req).await.expect("plan");
+                assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
+            }
         }
     }
 

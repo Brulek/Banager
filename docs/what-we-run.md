@@ -233,6 +233,45 @@ periodic clean-up is due, it runs after the command and removes them too
 (`Warning::HomebrewCleanupAutoremoves`). Canager changes nothing in those
 files.
 
+**What an uninstall says it removes.** Under the tool, the uninstall
+confirmation says in one sentence what the command removes and what it
+leaves (`Warning::UninstallScope`, built with the plan by
+`BrewAdapter::uninstall_scope`). A formula's says that only this installed
+version and the links to it go, and that config and data kept elsewhere
+are not deleted — without "only" when the `brew.env` files bring
+autoremove back, beside the line above. A cask's comes from what Homebrew
+recorded when it installed the cask, which is what `brew uninstall --cask`
+runs, never from `brew info`, which reads the cask's current definition
+(`crates/canager-core/src/adapters/brew/cask_receipt.rs`; Homebrew
+7.0.6-70, `cask/installer.rb:987-1045`): the caskfile Homebrew saved,
+`<prefix>/Caskroom/<token>/.metadata/<version>/<timestamp>/Casks/<token>.json`
+(of every version's, the timestamp with the greatest name), with its own
+`artifacts` when it has them, else the `uninstall_artifacts` listed in
+`<prefix>/Caskroom/<token>/.metadata/INSTALL_RECEIPT.json`, which also
+says whether the cask has Ruby that runs before or after its uninstall
+(`uninstall_flight_blocks`); a saved `.rb` caskfile is read through that
+receipt. When everything listed is something Homebrew put down or linked,
+an app to quit, a folder removed only once nothing but empty folders is
+left in it, a step that changes a path's owner or permissions or ends a
+process, or the `zap` stanza, which runs only with `--zap`, and the
+receipt says there is no such Ruby, the sentence says the cask's settings
+and data stay. Otherwise it says Homebrew also runs the uninstall steps it
+recorded, and "Before you continue" lists one line per kind, with what the
+record names, the home folder spelled `~`: paths deleted for good
+(`delete:`, and an `artifact` placed in the home folder) or moved to the
+Trash (`trash:`), installer packages whose every file is deleted
+(`pkgutil:`), programs run (`early_script:`, `script:`, an uninstall step
+of type `run`), background services removed (`launchctl:`), kernel
+extensions (`kext:`), keychain certificates (an uninstall step), login
+items (`login_item:`), the apps quit (`quit:`, `signal:`), and, naming
+nothing, Ruby blocks and other uninstall steps. When Canager finds no such
+list — no Caskroom folder for the cask or one that is a link, no saved
+caskfile, a legacy `.internal.json` one, a file that does not parse, or
+neither `artifacts` of its own nor a receipt that lists any, when Homebrew
+would read the cask's current definition — or the list holds a stanza or
+directive it does not read, the sentence says Canager could not read what
+else the uninstall does.
+
 **Read-only commands** (background checks; never need a password):
 
 | Purpose | Argv | Timeout |
@@ -266,7 +305,7 @@ preview):
 | Install a formula | `<brew> install --formula {name}` | 1800 s | No |
 | Install a cask | `<brew> install --cask {name}` | 1800 s | Sometimes — some cask installers invoke `sudo`; `SUDO_ASKPASS` is passed through when set |
 | Uninstall a formula | `<brew> uninstall --formula {name}` | 1800 s | No |
-| Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — some cask uninstalls invoke `sudo` (removing a `pkgutil` receipt, a launch daemon, a kernel extension) |
+| Uninstall a cask | `<brew> uninstall --cask {name}` | 1800 s | Sometimes — Homebrew runs `sudo`, for example when the cask's recorded uninstall deletes paths (`delete:`), removes a background service (`launchctl:`) or a kernel extension (`kext:`), removes an installer package that is installed (`pkgutil:`), or runs a program the cask marks to run as root |
 | Upgrade one formula | `<brew> upgrade --formula {name}` | 1800 s | No |
 | Upgrade one cask | `<brew> upgrade --cask {name}` | 1800 s | Sometimes — as for install |
 
@@ -300,7 +339,16 @@ preview also reads the `brew.env` files named above
 regular file (links followed), checked again once open, and read whole;
 only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
 `HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME` or
-`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` are used.
+`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` are used. A cask's uninstall preview
+also reads, under `<prefix>/Caskroom/<token>` — the last part of the
+cask's name, and only when that is a folder and not a link
+(`read_recorded`) — the names in its `.metadata` folder and in each folder
+there, whether `Casks/<token>.json`, `Casks/<token>.internal.json` or
+`Casks/<token>.rb` exists in the newest, then `.metadata/INSTALL_RECEIPT.json`
+and, when it is the one there, the `.json` caskfile: each is opened only
+when `stat` says it is a regular file (links followed), checked again once
+open, read whole and parsed as JSON. The `.internal.json` and `.rb`
+caskfiles are never opened.
 
 ## npm
 
@@ -351,6 +399,13 @@ search query passes `validate_search_query`.
 
 A plan is refused at click time if the prefix has stopped being writable
 since the refresh that listed it.
+
+Under the package, the uninstall confirmation says that its folder in
+npm's global folder and its commands go, that npm runs none of its code,
+and that its settings and data outside that folder are not deleted
+(`Warning::UninstallScope`) — only when the npm `detect` found reports
+version 7 or later (`uninstall_scope` in `npm.rs`): npm 6 ran a package's
+own `uninstall` scripts. Nothing more is read or run to say it.
 
 ## pipx
 
@@ -1364,7 +1419,10 @@ All read-only, none saved anywhere else, none uploaded:
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
   the uninstall preview; its `brew.env` files, during every install,
-  uninstall and upgrade preview (Homebrew's section).
+  uninstall and upgrade preview; during a cask's uninstall preview, the
+  names in its `<prefix>/Caskroom/<token>/.metadata` folder and in the
+  folders there, the caskfile Homebrew saved when it is JSON, and
+  `INSTALL_RECEIPT.json` (Homebrew's section).
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Canager opens no file in the app

@@ -8,7 +8,7 @@ use crate::http::{HttpClient, HttpRequest};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UpdateCandidate, UpdateChannel, Warning,
+    SearchHit, Unavailable, UninstallScope, UpdateCandidate, UpdateChannel, Warning,
 };
 use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -488,7 +488,12 @@ impl CargoAdapter {
                 needs_password: false,
                 locks: vec![lock],
                 cancel_policy: CancelPolicy::KillThenReconcile,
-                warnings: Vec::new(),
+                // What `cargo uninstall` removes and leaves (cargo 1.98.1
+                // `src/cargo/ops/cargo_uninstall.rs`: the binaries its
+                // install record lists for the crate), said under the tool.
+                warnings: vec![Warning::UninstallScope {
+                    what: UninstallScope::Cargo,
+                }],
                 affected: Vec::new(),
                 timeout_secs: 300,
             }),
@@ -1151,6 +1156,14 @@ mod tests {
             PathBuf::from("/Users/brulek/.cargo/bin/cargo")
         );
         assert_eq!(command_args(&plan), vec!["uninstall", "hexyl"]);
+        // Said under the tool: cargo deletes the binaries its install
+        // record lists for the crate, and nothing else.
+        assert_eq!(
+            plan.warnings,
+            vec![Warning::UninstallScope {
+                what: UninstallScope::Cargo
+            }]
+        );
     }
 
     #[tokio::test]

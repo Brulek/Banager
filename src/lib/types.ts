@@ -97,6 +97,46 @@ export type KeptWhat =
   | "NotOurs"
   | "InstallerCache";
 /**
+ * Which sentence an uninstall says under the tool about what goes and what
+ * stays, the payload of `Warning.UninstallScope`. Mirrors `UninstallScope`
+ * in crates/canager-core/src/model.rs: bare-string unit variants. Homebrew's
+ * formula sentence says "only" unless a brew.env file brought autoremove
+ * back (`HomebrewFormula`, beside `HomebrewAutoremoves`); a cask's is
+ * `HomebrewCaskPlain`, `HomebrewCaskSteps` (with a `CaskUninstallStep` per
+ * kind of extra step) or `HomebrewCask` (its record could not be read).
+ * Read through `UNINSTALL_SCOPE_KEYS` in src/lib/warnings.ts, a `Record`
+ * over this union, so a variant added here without copy fails `tsc`.
+ */
+export type UninstallScope =
+  | "HomebrewFormulaOnly"
+  | "HomebrewFormula"
+  | "HomebrewCaskPlain"
+  | "HomebrewCaskSteps"
+  | "HomebrewCask"
+  | "Npm"
+  | "Pipx"
+  | "Uv"
+  | "Cargo"
+  | "Ollama";
+/**
+ * One kind of extra step a cask's recorded uninstall takes, the `step` of
+ * `Warning.CaskUninstallStep`. Mirrors `CaskStep` in
+ * crates/canager-core/src/model.rs: bare-string unit variants, declared in
+ * the order the lines are said. Read through `CASK_STEP_KEYS` in
+ * src/lib/warnings.ts, a `Record` over this union.
+ */
+export type CaskStep =
+  | "Deletes"
+  | "Trashes"
+  | "RemovesPackages"
+  | "RunsScript"
+  | "RunsOwnSteps"
+  | "RemovesServices"
+  | "RemovesKexts"
+  | "DeletesCertificates"
+  | "RemovesLoginItems"
+  | "QuitsApps";
+/**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
@@ -111,7 +151,12 @@ export type KeptWhat =
  * that uninstall's two bare-string ones), Homebrew's two bare-string
  * autoremove warnings (`HomebrewAutoremoves` on an uninstall,
  * `HomebrewCleanupAutoremoves` on an install or upgrade, produced only when
- * a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`), and a `Message`
+ * a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`), an
+ * uninstall's one sentence about what goes and what stays
+ * (`UninstallScope`, whose `what` picks the key and whose `{{name}}` is the
+ * row's, given by the uninstall confirmation) and a cask's extra steps
+ * (`CaskUninstallStep`, whose `step` picks the key and whose `items`
+ * interpolate it), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
  * carries, same as before this type existed. A variant added here without
@@ -136,6 +181,8 @@ export type Warning =
   | { LeavesShellConfigLine: { path: string; certain: boolean } }
   | "HomebrewAutoremoves"
   | "HomebrewCleanupAutoremoves"
+  | { UninstallScope: { what: UninstallScope } }
+  | { CaskUninstallStep: { step: CaskStep; items: string[] } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

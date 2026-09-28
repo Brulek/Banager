@@ -1,0 +1,69 @@
+{
+  "homebrew_version": "7.0.6",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1790484495,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "0000000000000000000000000000000000000000",
+    "version": "0.1.38",
+    "path": "/Users/someone/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall": [
+        {
+          "launchctl": "io.appvolume.daemon",
+          "quit": "io.appvolume",
+          "pkgutil": [
+            "io.appvolume.app",
+            "io.appvolume.daemon",
+            "io.appvolume.driver",
+            "io.appvolume.ui"
+          ],
+          "delete": [
+            "/Library/Audio/Plug-Ins/HAL/AppVolumeAudioDevice.driver",
+            "~/Library/LaunchAgents/io.appvolume.daemon.plist"
+          ]
+        }
+      ]
+    },
+    {
+      "uninstall_postflight_steps": [
+        {
+          "steps": [
+            {
+              "name": "coreaudiod",
+              "sudo": true,
+              "must_succeed": true,
+              "type": "terminate_process"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/Library/Application Support/AppVolume",
+            "~/Library/Caches/io.appvolume",
+            "~/Library/Preferences/io.appvolume.plist"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

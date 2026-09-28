@@ -1,0 +1,54 @@
+{
+  "homebrew_version": "7.0.6",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1790484495,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "0000000000000000000000000000000000000000",
+    "version": "16.113.26092012",
+    "path": "/Users/someone/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "uninstall": [
+        {
+          "launchctl": "com.microsoft.office.licensingV2.helper",
+          "quit": "com.microsoft.autoupdate2",
+          "pkgutil": [
+            "com.microsoft.package.Microsoft_Word.app",
+            "com.microsoft.pkg.licensing"
+          ]
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/Library/Application Scripts/com.microsoft.Word*",
+            "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.microsoft.word.sfl*",
+            "~/Library/Application Support/CrashReporter/Microsoft Word_*.plist",
+            "~/Library/Application Support/Microsoft",
+            "~/Library/Containers/com.microsoft.Word*",
+            "~/Library/Group Containers/UBF8T346G9.ms/Microsoft Word.MERP.params.txt",
+            "~/Library/Preferences/com.microsoft.Word.plist",
+            "~/Library/Saved Application State/com.microsoft.Word.savedState"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

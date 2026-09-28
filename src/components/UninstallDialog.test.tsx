@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import i18n from "../i18n";
 import { UninstallDialog } from "./UninstallDialog";
 import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot } from "../lib/types";
 
@@ -430,6 +431,165 @@ describe("UninstallDialog", () => {
       "Homebrew's rustup shares these folders, so its toolchains go too.",
     ]) {
       expect(screen.queryByRole("button", { name: `Details: ${line}` })).toBeNull();
+    }
+  });
+
+  it("says under the tool, not behind an ⓘ, what the uninstall removes and what it leaves", async () => {
+    // `Warning::UninstallScope`: one sentence per source, true for the
+    // exact command the plan runs (crates/canager-core/src/model.rs).
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({ warnings: [{ UninstallScope: { what: "HomebrewFormulaOnly" } }] }),
+    );
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    const sentence = await screen.findByText(
+      "Deletes only this installed version of jq and the links to it; config and data kept elsewhere are not deleted.",
+    );
+    // In the tool's own item, under its name.
+    const item = sentence.closest("[data-sheet-tool]");
+    expect(item).not.toBeNull();
+    expect(within(item as HTMLElement).getByText("jq")).toBeInTheDocument();
+    // Not a note: with nothing else to say there is no "Before you
+    // continue", and nothing is behind an ⓘ.
+    expect(screen.queryByRole("region", { name: "Before you continue" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Details:/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
+  it("says each source's sentence with the name the row has, in either language", async () => {
+    const cases: [Plan["warnings"][number], string, string, string][] = [
+      [
+        { UninstallScope: { what: "HomebrewCaskPlain" } },
+        "Claudebar",
+        "Deletes what Homebrew installed for Claudebar; its settings and data stay.",
+        "删除 Homebrew 为 Claudebar 装的文件；它的设置和数据不动。",
+      ],
+      [
+        { UninstallScope: { what: "Npm" } },
+        "typescript",
+        "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
+        "删除 npm 全局目录里的 typescript 文件夹和命令，不运行它的代码；它在别处的设置和数据不删。",
+      ],
+      [
+        { UninstallScope: { what: "Uv" } },
+        "ruff",
+        "Deletes the Python environment uv made just for ruff and the commands it recorded; its settings and data outside that environment are not deleted.",
+        "删除 uv 为 ruff 单独建的 Python 环境和它记下的命令；它在环境以外的设置和数据不删。",
+      ],
+      [
+        { UninstallScope: { what: "Ollama" } },
+        "qwen3:8b",
+        "Deletes the model qwen3:8b; data other models still use is kept, and Ollama itself and your other models stay.",
+        "删除模型 qwen3:8b；其他模型还在用的数据会保留，Ollama 本身和其他模型不动。",
+      ],
+    ];
+    for (const [warning, name, english, chinese] of cases) {
+      vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ warnings: [warning] }));
+      const en = renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
+      );
+      expect((await screen.findByText(english)).closest("[data-sheet-tool]")).not.toBeNull();
+      en.unmount();
+
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const zh = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
+        );
+        expect((await screen.findByText(chinese)).closest("[data-sheet-tool]")).not.toBeNull();
+        zh.unmount();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    }
+  });
+
+  it("lists a cask's extra uninstall steps under Before you continue, one line per kind, naming what it recorded", async () => {
+    // `Warning::CaskUninstallStep`s from the cask's install receipt
+    // (crates/canager-core/src/adapters/brew/cask_receipt.rs), after the
+    // sentence under the tool that says there are steps.
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "microsoft-word" };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: cask,
+        action: {
+          Command: { program: "/opt/homebrew/bin/brew", args: ["uninstall", "--cask", "microsoft-word"], env: [] },
+        },
+        needs_password: true,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          {
+            CaskUninstallStep: {
+              step: "RemovesPackages",
+              items: ["com.microsoft.package.Microsoft_Word.app", "com.microsoft.pkg.licensing"],
+            },
+          },
+          { CaskUninstallStep: { step: "RemovesServices", items: ["com.microsoft.office.licensingV2.helper"] } },
+          { CaskUninstallStep: { step: "RunsOwnSteps", items: [] } },
+          { CaskUninstallStep: { step: "QuitsApps", items: ["com.microsoft.autoupdate2"] } },
+        ],
+      }),
+    );
+
+    renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Microsoft Word" />,
+    );
+
+    const sentence = await screen.findByText(
+      "Deletes what Homebrew installed for Microsoft Word and runs the uninstall steps it recorded.",
+    );
+    expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
+    expect(linesOf("Before you continue")).toEqual([
+      "Also deletes every file these installer packages put on this Mac, whether or not other apps use them: com.microsoft.package.Microsoft_Word.app, com.microsoft.pkg.licensing.",
+      "Also stops and removes the background service com.microsoft.office.licensingV2.helper.",
+      "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
+      "Also quits com.microsoft.autoupdate2 if it is running.",
+      "Some apps ask for your Mac password at this step.",
+    ]);
+    // Nothing it lists is deleted for good in so many words.
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
+  it("says Uninstall permanently where a cask's recorded steps delete paths, and says them in Chinese too", async () => {
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "duckietv" };
+    const plan = issuedPlanFor({
+      request: cask,
+      needs_password: true,
+      warnings: [
+        { UninstallScope: { what: "HomebrewCaskSteps" } },
+        {
+          CaskUninstallStep: {
+            step: "Deletes",
+            items: ["/Applications/duckieTV.app", "~/Library/Application Support/DuckieTV-Standalone"],
+          },
+        },
+        { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
+      ],
+    });
+    vi.mocked(invoke).mockResolvedValue(plan);
+
+    const en = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />,
+    );
+    expect(await screen.findByRole("button", { name: "Uninstall permanently" })).toBeEnabled();
+    expect(linesOf("Before you continue").slice(0, 2)).toEqual([
+      "Also permanently deletes these: /Applications/duckieTV.app, ~/Library/Application Support/DuckieTV-Standalone.",
+      "Also moves ~/.nvs to the Trash.",
+    ]);
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />);
+      expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
+      expect(await screen.findByText("删除 Homebrew 为 DuckieTV 装的文件，并执行它记下的卸载步骤。")).toBeInTheDocument();
+      expect(linesOf("请注意").slice(0, 2)).toEqual([
+        "还会永久删除：/Applications/duckieTV.app, ~/Library/Application Support/DuckieTV-Standalone。",
+        "还会把这些移到废纸篓：~/.nvs。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
     }
   });
 

@@ -32,9 +32,12 @@ export interface UninstallDialogProps {
 
 /**
  * The uninstall confirmation, as a sheet: 「卸载 Claude Code？」, the tool
- * with its avatar, what the uninstall does in three groups, then Cancel
- * and a red Uninstall -- 「永久卸载」 where a line says the uninstall
- * deletes something for good (`deletesForGood`): rustup's own.
+ * with its avatar and, under it, the one sentence its source's uninstall
+ * has about what goes and what stays (`Warning.UninstallScope`), what the
+ * uninstall does in three groups, then Cancel and a red Uninstall --
+ * 「永久卸载」 where a line says the uninstall deletes something for good
+ * (`deletesForGood`): rustup's own, and a cask whose recorded uninstall
+ * deletes paths.
  *
  * It plans the operation itself, so everything that would change is on
  * screen before anything can be submitted (spec §6), in the copy table's
@@ -122,8 +125,9 @@ export function UninstallDialog({
   const hasAffected = affected.length > 0;
   // `warningLines` is the one rule for turning `plan.warnings` into lines
   // and groups; with the plan's `affected` list shown once below, a
-  // `WouldBreak` naming the same packages is not said a second time.
-  const lines = warningLines(t, plan?.warnings ?? [], affected);
+  // `WouldBreak` naming the same packages is not said a second time, and
+  // the scope sentence names the tool as the title does.
+  const lines = warningLines(t, plan?.warnings ?? [], affected, displayName);
   const trashPlan = plan !== undefined && "TrashPaths" in plan.action;
   // Said on the button too, where a line says it: what goes is deleted
   // for good, not moved to the Trash.
@@ -255,7 +259,15 @@ export function UninstallDialog({
           iconKey={{ instance_id: request.instance_id, kind: request.artifact_kind, name: request.name }}
           name={displayName}
           aside={version}
-        />
+        >
+          {/* What goes and what stays, directly under the tool rather than
+              behind an ⓘ: the sentence the plan's source has for it. */}
+          {lines.scope.map((line) => (
+            <p key={line.text} className="mt-1 break-words text-body text-foreground">
+              {line.text}
+            </p>
+          ))}
+        </SheetTool>
       </ul>
 
       {planMutation.isPending ? <SheetPending text={t("uninstall.checking")} /> : null}

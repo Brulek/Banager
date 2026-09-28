@@ -274,7 +274,40 @@
     "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
     "homebrewAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "homebrewCleanupAutoremoves": "When Homebrew's periodic clean-up is due, it runs after this command and also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
-    "homebrewCleanupAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins."
+    "homebrewCleanupAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "uninstallScope": {
+      "HomebrewFormulaOnly": "Deletes only this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
+      "HomebrewFormula": "Deletes this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
+      "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}; its settings and data stay.",
+      "HomebrewCaskSteps": "Deletes what Homebrew installed for {{name}} and runs the uninstall steps it recorded.",
+      "HomebrewCask": "Deletes what Homebrew installed for {{name}}; Canager could not read what else its uninstall does.",
+      "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
+      "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",
+      "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded; its settings and data outside that environment are not deleted.",
+      "Cargo": "Deletes the program files cargo installed for {{name}}; the download cache, Cargo's settings and the program's own settings stay.",
+      "Ollama": "Deletes the model {{name}}; data other models still use is kept, and Ollama itself and your other models stay."
+    },
+    "caskStep": {
+      "Deletes_one": "Also permanently deletes {{items}}.",
+      "Deletes_other": "Also permanently deletes these: {{items}}.",
+      "Trashes_one": "Also moves {{items}} to the Trash.",
+      "Trashes_other": "Also moves these to the Trash: {{items}}.",
+      "RemovesPackages_one": "Also deletes every file the installer package {{items}} put on this Mac, whether or not other apps use them.",
+      "RemovesPackages_other": "Also deletes every file these installer packages put on this Mac, whether or not other apps use them: {{items}}.",
+      "RunsScript_one": "Also runs {{items}}.",
+      "RunsScript_other": "Also runs these programs: {{items}}.",
+      "RunsOwnSteps": "Before or after uninstalling, it also runs other steps Homebrew recorded for it.",
+      "RemovesServices_one": "Also stops and removes the background service {{items}}.",
+      "RemovesServices_other": "Also stops and removes these background services: {{items}}.",
+      "RemovesKexts_one": "Also unloads and deletes the kernel extension {{items}}.",
+      "RemovesKexts_other": "Also unloads and deletes these kernel extensions: {{items}}.",
+      "DeletesCertificates_one": "Also deletes the certificate {{items}} from your keychain.",
+      "DeletesCertificates_other": "Also deletes these certificates from your keychain: {{items}}.",
+      "RemovesLoginItems_one": "Also removes the login item {{items}}.",
+      "RemovesLoginItems_other": "Also removes these login items: {{items}}.",
+      "QuitsApps_one": "Also quits {{items}} if it is running.",
+      "QuitsApps_other": "Also quits these apps if they are running: {{items}}."
+    }
   },
   "standalone": {
     "summary": {

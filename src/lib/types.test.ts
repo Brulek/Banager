@@ -315,6 +315,19 @@ describe("types", () => {
     expect(JSON.stringify([autoremoves, cleanupAutoremoves])).toBe(
       '["HomebrewAutoremoves","HomebrewCleanupAutoremoves"]',
     );
+
+    // Round 2: an uninstall's sentence about what goes and what stays, and
+    // a cask's extra steps. Pinned against the same Rust test.
+    const scope: Warning = { UninstallScope: { what: "HomebrewCaskPlain" } };
+    expect(JSON.stringify(scope)).toBe('{"UninstallScope":{"what":"HomebrewCaskPlain"}}');
+    expect(roundTrip(scope)).toEqual(scope);
+    const step: Warning = {
+      CaskUninstallStep: { step: "RemovesPackages", items: ["com.microsoft.pkg.licensing"] },
+    };
+    expect(JSON.stringify(step)).toBe(
+      '{"CaskUninstallStep":{"step":"RemovesPackages","items":["com.microsoft.pkg.licensing"]}}',
+    );
+    expect(roundTrip(step)).toEqual(step);
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

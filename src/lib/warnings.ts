@@ -5,7 +5,7 @@
  * only as a parameter, so both confirmations and the updates page share
  * one rule and it is testable without rendering anything.
  */
-import type { KeptWhat, RemovedWhat, Warning } from "./types";
+import type { CaskStep, KeptWhat, RemovedWhat, UninstallScope, Warning } from "./types";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -41,6 +41,43 @@ const KEPT_WHAT_DETAIL_KEYS: Record<KeptWhat, string | null> = {
   OutsideHome: "warnings.willKeep.OutsideHomeDetail",
   NotOurs: "warnings.willKeep.NotOursDetail",
   InstallerCache: "warnings.willKeep.InstallerCacheDetail",
+};
+
+/**
+ * The sentence for each source's uninstall: what goes and what stays. A
+ * `Record` over `UninstallScope`, so a kind without copy fails `tsc`. Each
+ * interpolates `{{name}}`, the row's name, which the uninstall
+ * confirmation gives (`warningLines`' `subject`).
+ */
+const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
+  HomebrewFormulaOnly: "warnings.uninstallScope.HomebrewFormulaOnly",
+  HomebrewFormula: "warnings.uninstallScope.HomebrewFormula",
+  HomebrewCaskPlain: "warnings.uninstallScope.HomebrewCaskPlain",
+  HomebrewCaskSteps: "warnings.uninstallScope.HomebrewCaskSteps",
+  HomebrewCask: "warnings.uninstallScope.HomebrewCask",
+  Npm: "warnings.uninstallScope.Npm",
+  Pipx: "warnings.uninstallScope.Pipx",
+  Uv: "warnings.uninstallScope.Uv",
+  Cargo: "warnings.uninstallScope.Cargo",
+  Ollama: "warnings.uninstallScope.Ollama",
+};
+
+/**
+ * The line for each kind of extra step a cask's recorded uninstall takes.
+ * A `Record` over `CaskStep`. Each but `RunsOwnSteps`, which names nothing,
+ * interpolates `{{items}}` and pluralises on `{{count}}`.
+ */
+const CASK_STEP_KEYS: Record<CaskStep, string> = {
+  Deletes: "warnings.caskStep.Deletes",
+  Trashes: "warnings.caskStep.Trashes",
+  RemovesPackages: "warnings.caskStep.RemovesPackages",
+  RunsScript: "warnings.caskStep.RunsScript",
+  RunsOwnSteps: "warnings.caskStep.RunsOwnSteps",
+  RemovesServices: "warnings.caskStep.RemovesServices",
+  RemovesKexts: "warnings.caskStep.RemovesKexts",
+  DeletesCertificates: "warnings.caskStep.DeletesCertificates",
+  RemovesLoginItems: "warnings.caskStep.RemovesLoginItems",
+  QuitsApps: "warnings.caskStep.QuitsApps",
 };
 
 /**
@@ -101,6 +138,8 @@ export function warningKey(warning: Warning): string | null {
       ? "warnings.leavesShellConfigLine"
       : "warnings.leavesShellConfigLineMaybe";
   }
+  if ("UninstallScope" in warning) return UNINSTALL_SCOPE_KEYS[warning.UninstallScope.what];
+  if ("CaskUninstallStep" in warning) return CASK_STEP_KEYS[warning.CaskUninstallStep.step];
   if ("Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
@@ -134,6 +173,12 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
     return { count: names.length, names: names.join(", ") };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
+  // Its `{{name}}` is the row's, which only the page has (`warningText`).
+  if ("UninstallScope" in warning) return {};
+  if ("CaskUninstallStep" in warning) {
+    const items = warning.CaskUninstallStep.items;
+    return items.length > 0 ? { count: items.length, items: items.join(", ") } : {};
+  }
   if ("Message" in warning) return {};
   const unhandled: never = warning;
   return unhandled;
@@ -162,12 +207,17 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * for a fixed warning, `warningMessage(warning)` for a `Message`. The
  * convenience wrapper every call site actually wants; `warningKey`/
  * `warningArgs`/`warningMessage` stay exported and `t()`-free for testing.
- * The return type keeps `null` for `warningLines`'s filter; with
+ * `subject` is the name of the tool the plan is about, as its row names
+ * it: an `UninstallScope` sentence says it, and without one has no line
+ * (`null`) rather than a line with an empty name in it. Otherwise, with
  * `warningKey` exhaustive, a fixed warning always has a key and a
- * `Message` always has its text, so it is never actually `null`.
+ * `Message` always has its text.
  */
-export function warningText(t: Translate, warning: Warning): string | null {
+export function warningText(t: Translate, warning: Warning, subject?: string): string | null {
   const key = warningKey(warning);
+  if (typeof warning !== "string" && "UninstallScope" in warning) {
+    return key === null || subject === undefined ? null : t(key, { name: subject });
+  }
   return key ? t(key, warningArgs(warning)) : warningMessage(warning);
 }
 
@@ -220,6 +270,8 @@ export function warningDetailKey(warning: Warning): string | null {
     "WillTrash" in warning ||
     "AlreadyGone" in warning ||
     "DeletesCargoHome" in warning ||
+    "UninstallScope" in warning ||
+    "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
     return null;
@@ -231,19 +283,22 @@ export function warningDetailKey(warning: Warning): string | null {
 
 /**
  * Where a warning goes in a confirmation (the copy table's C4 premise):
- * `trash`, what a path-list uninstall moves to the Trash, and what it
- * found already gone from there; `keep`, what it leaves where it is; and
- * `note`, everything else -- what to know before you continue, from a
- * dependency Canager could not check to rustup deleting a folder for good.
+ * `scope`, the one sentence an uninstall says directly under the tool
+ * about what goes and what stays; `trash`, what a path-list uninstall
+ * moves to the Trash, and what it found already gone from there; `keep`,
+ * what it leaves where it is; and `note`, everything else -- what to know
+ * before you continue, from a dependency Canager could not check to a
+ * cask's extra uninstall steps and rustup deleting a folder for good.
  *
  * Every payload variant is named, so one added to `Warning` fails `tsc`
  * here; at run time, a variant this build does not know is a `note`, the
  * group no one skims past. So is every bare-string variant.
  */
-export type WarningGroup = "trash" | "keep" | "note";
+export type WarningGroup = "scope" | "trash" | "keep" | "note";
 
 export function warningGroup(warning: Warning): WarningGroup {
   if (typeof warning === "string") return "note";
+  if ("UninstallScope" in warning) return "scope";
   if ("WillTrash" in warning || "AlreadyGone" in warning) return "trash";
   if ("WillKeep" in warning) return "keep";
   if (
@@ -253,6 +308,7 @@ export function warningGroup(warning: Warning): WarningGroup {
     "DeletesCargoHome" in warning ||
     "RemovesCargoInstalled" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "CaskUninstallStep" in warning ||
     "Message" in warning
   ) {
     return "note";
@@ -266,12 +322,13 @@ export function warningGroup(warning: Warning): WarningGroup {
  * Whether a warning says the uninstall deletes something for good, with
  * nothing moved to the Trash: rustup's own uninstall, which deletes the
  * rustup folder with its toolchains, the Cargo folder and the programs in
- * it (their sentences start "Permanently deletes"). The uninstall
- * confirmation's button then says so too (`uninstall.confirmPermanent`).
- * Only what a line says counts: a plan with no such line may well delete
- * files -- `brew uninstall` does, and so does the autoremove Homebrew's
- * two lines speak of -- but says nothing about the Trash, and neither
- * does its button.
+ * it (their sentences start "Permanently deletes"), and a cask whose
+ * recorded uninstall deletes paths (`CaskUninstallStep` `Deletes`: "Also
+ * permanently deletes"). The uninstall confirmation's button then says so
+ * too (`uninstall.confirmPermanent`). Only what a line says counts: a plan
+ * with no such line may well delete files -- `brew uninstall` does, and so
+ * does the autoremove Homebrew's two lines speak of -- but says nothing
+ * about the Trash, and neither does its button.
  *
  * Every variant is named, so one added to `Warning` fails `tsc` here; at
  * run time, a variant this build does not know is not one, and its line
@@ -298,6 +355,7 @@ export function deletesForGood(warning: Warning): boolean {
   if ("RemovesToolchains" in warning || "DeletesCargoHome" in warning || "RemovesCargoInstalled" in warning) {
     return true;
   }
+  if ("CaskUninstallStep" in warning) return warning.CaskUninstallStep.step === "Deletes";
   if (
     "WouldBreak" in warning ||
     "ThirdPartyRegistry" in warning ||
@@ -305,6 +363,7 @@ export function deletesForGood(warning: Warning): boolean {
     "WillKeep" in warning ||
     "AlreadyGone" in warning ||
     "LeavesShellConfigLine" in warning ||
+    "UninstallScope" in warning ||
     "Message" in warning
   ) {
     return false;
@@ -321,8 +380,8 @@ export interface WarningLine {
 }
 
 /** `warning`'s line, or null only for what `warningText` gives none. */
-export function warningLine(t: Translate, warning: Warning): WarningLine | null {
-  const text = warningText(t, warning);
+export function warningLine(t: Translate, warning: Warning, subject?: string): WarningLine | null {
+  const text = warningText(t, warning, subject);
   if (text === null) return null;
   const detailKey = warningDetailKey(warning);
   return { text, detail: detailKey === null ? null : t(detailKey) };
@@ -337,17 +396,20 @@ export type WarningLines = Record<WarningGroup, WarningLine[]>;
  * the uninstall confirmation shows once, as its own list -- a `WouldBreak`
  * naming the same packages is left out rather than said a second time:
  * Homebrew's preview fills both from one `brew uses`
- * (crates/canager-core/src/adapters/brew/mod.rs).
+ * (crates/canager-core/src/adapters/brew/mod.rs). With `subject`, the
+ * tool's name as its row shows it, an uninstall's scope sentence says it;
+ * without, there is no scope line (`warningText`).
  */
 export function warningLines(
   t: Translate,
   warnings: Warning[],
   affected: string[] = [],
+  subject?: string,
 ): WarningLines {
-  const lines: WarningLines = { trash: [], keep: [], note: [] };
+  const lines: WarningLines = { scope: [], trash: [], keep: [], note: [] };
   for (const warning of warnings) {
     if (affected.length > 0 && typeof warning !== "string" && "WouldBreak" in warning) continue;
-    const line = warningLine(t, warning);
+    const line = warningLine(t, warning, subject);
     if (line !== null) lines[warningGroup(warning)].push(line);
   }
   return lines;

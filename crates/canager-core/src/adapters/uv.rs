@@ -7,7 +7,8 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
+    SearchHit, Unavailable, UninstallBlocked, UninstallScope, UpdateCandidate, UpdateChannel,
+    Warning,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
@@ -319,6 +320,17 @@ impl UvAdapter {
             ],
             OpKind::Upgrade => vec!["tool".to_string(), "upgrade".to_string(), req.name.clone()],
         };
+        // What `uv tool uninstall` removes and leaves (uv 0.12.17
+        // `crates/uv/src/commands/tool/uninstall.rs:187-226`: the tool's
+        // environment and the executables its receipt records), said under
+        // the tool -- only here, past the refusal above: with `UV_TOOL_DIR`
+        // set there is no plan to say it of.
+        let warnings = match req.kind {
+            OpKind::Uninstall => vec![Warning::UninstallScope {
+                what: UninstallScope::Uv,
+            }],
+            OpKind::Install | OpKind::Upgrade => Vec::new(),
+        };
         Ok(Plan {
             request: req.clone(),
             action: PlanAction::Command {
@@ -329,7 +341,7 @@ impl UvAdapter {
             needs_password: false,
             locks: vec![lock],
             cancel_policy: CancelPolicy::KillThenReconcile,
-            warnings: Vec::new(),
+            warnings,
             affected: Vec::new(),
             timeout_secs: 600,
         })
@@ -590,6 +602,16 @@ mod tests {
             let plan = UvAdapter::plan(&adapter, &inst, &req).await.expect("plan");
             assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
+            // With `UV_TOOL_DIR` unset (these tests' default), an uninstall
+            // says under the tool what goes and what stays: the tool's
+            // environment and the executables its receipt records.
+            let scope = match kind {
+                OpKind::Uninstall => vec![Warning::UninstallScope {
+                    what: UninstallScope::Uv,
+                }],
+                OpKind::Install | OpKind::Upgrade => vec![],
+            };
+            assert_eq!(plan.warnings, scope, "{kind:?}");
         }
     }
 
@@ -665,6 +687,8 @@ mod tests {
         let adapter = UvAdapter::new(runner.clone())
             .with_tool_dir_fn(|| Some(OsString::from("/Users/someone/work/uv-tools")));
         let inst = test_instance();
+        // Refused, so no preview says what goes and what stays: the sentence
+        // would not hold under `UV_TOOL_DIR`.
         match UvAdapter::plan(&adapter, &inst, &request(OpKind::Uninstall)).await {
             Err(AdapterError::UninstallBlocked { reason }) => {
                 assert_eq!(reason, UninstallBlocked::UvToolDirSet)
@@ -672,9 +696,10 @@ mod tests {
             other => panic!("expected UninstallBlocked(UvToolDirSet), got {other:?}"),
         }
         for kind in [OpKind::Install, OpKind::Upgrade] {
-            UvAdapter::plan(&adapter, &inst, &request(kind))
+            let plan = UvAdapter::plan(&adapter, &inst, &request(kind))
                 .await
                 .unwrap_or_else(|e| panic!("{kind:?} still plans: {e}"));
+            assert!(plan.warnings.is_empty(), "{kind:?}: {:?}", plan.warnings);
         }
         assert!(runner.calls().is_empty(), "planning runs no uv command");
     }

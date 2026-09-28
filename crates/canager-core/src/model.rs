@@ -591,8 +591,142 @@ pub enum Warning {
     /// as unset (`adapters/brew/brew_env.rs`). Produced by
     /// `BrewAdapter::plan` for an `Install` or an `Upgrade`; same readers.
     HomebrewCleanupAutoremoves,
+    /// What this uninstall removes and what it leaves, in the one sentence
+    /// the uninstall confirmation shows under the tool: which sentence is
+    /// `what` (`UninstallScope`). At most one per plan, and only on an
+    /// `Uninstall` plan of a source whose sentence holds for the exact argv
+    /// and environment the plan runs -- the sources and conditions are
+    /// `UninstallScope`'s. Read by `warningGroup` in src/lib/warnings.ts,
+    /// which gives it its own group, and rendered by `UninstallDialog` with
+    /// the row's name in it.
+    UninstallScope { what: UninstallScope },
+    /// One kind of extra step a cask's recorded uninstall takes beyond
+    /// deleting what Homebrew installed for it (`CaskStep`), with what the
+    /// record names for it: paths (`~` for the home folder), installer
+    /// package ids, service labels, bundle ids, programs, certificate
+    /// names -- empty only for `CaskStep::RunsOwnSteps`, which names
+    /// nothing. One per kind, in `CaskStep`'s order, each name once.
+    /// Produced by `BrewAdapter::plan` for a cask `Uninstall` whose recorded
+    /// uninstall is not plain (`cask_receipt::classify`), beside
+    /// `UninstallScope { what: HomebrewCaskSteps }`; read by `warningKey`
+    /// and `warningArgs` in src/lib/warnings.ts.
+    CaskUninstallStep { step: CaskStep, items: Vec<String> },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
+}
+
+/// Which sentence `Warning::UninstallScope` says: what one source's
+/// uninstall removes and what it leaves. Each is true for every package the
+/// plan can name under the argv and environment that source's plan runs,
+/// on the conditions below -- where a condition does not hold, the plan
+/// carries no sentence, or a weaker one. Read by `UNINSTALL_SCOPE_KEYS` in
+/// src/lib/warnings.ts, a `Record` over the mirror, so a variant added here
+/// without copy fails `tsc`. Each variant names the tool's own source it
+/// rests on; `docs/what-we-run.md` says what each plan runs.
+///
+/// No sentence for pip (Canager never uninstalls from pip), for npm older
+/// than 7 or of an unknown version (npm 6 ran a package's uninstall
+/// scripts), for uv while `UV_TOOL_DIR` is set (the plan is refused), or for
+/// the four tools with their own installer, whose uninstall confirmation
+/// already lists what goes to the Trash, what stays and what rustup deletes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UninstallScope {
+    /// `brew uninstall --formula` with Homebrew's autoremove off: it removes
+    /// only one installed version -- the one `opt` links to, else the
+    /// linked one, else the only one, else the newest
+    /// (`cli/named_args.rb:567-593` in Homebrew 7.0.6-70) -- and the links
+    /// into it (`keg.rb:325-393`), and leaves its config under `etc`
+    /// (`uninstall.rb:72-80`) and its data under `var`, which is outside
+    /// the keg. Produced when the `brew.env` files leave
+    /// `HOMEBREW_NO_AUTOREMOVE=1` in force (`brew_env::after_brew_env`).
+    HomebrewFormulaOnly,
+    /// The same uninstall with autoremove back on through a `brew.env`
+    /// file: the same sentence without "only", beside
+    /// `Warning::HomebrewAutoremoves`, which says what else goes.
+    HomebrewFormula,
+    /// `brew uninstall --cask` whose recorded uninstall is plain: nothing but
+    /// what Homebrew itself put down and linked, apps quit, folders removed
+    /// once nothing but empty folders is left in them, and steps that
+    /// change a path's owner or permissions or end a process
+    /// (`cask_receipt::classify`). Its settings and data stay: the cask's
+    /// `zap` stanza runs only with `--zap` (`cmd/uninstall.rb:90-117`),
+    /// which Canager never passes.
+    HomebrewCaskPlain,
+    /// `brew uninstall --cask` whose recorded uninstall takes extra steps,
+    /// each kind of which the plan names in a `Warning::CaskUninstallStep`.
+    HomebrewCaskSteps,
+    /// `brew uninstall --cask` whose recorded uninstall Canager could not
+    /// read (`cask_receipt::read_recorded`): no receipt, a caskfile saved in
+    /// a form it does not read, a record Homebrew would replace with the
+    /// cask's current definition, or a kind of artifact it does not know.
+    /// Says so rather than guess.
+    HomebrewCask,
+    /// `npm uninstall -g`, when the npm Canager detected is 7 or later: npm
+    /// deletes the package's folder, with the dependencies inside it, and
+    /// its command and man-page links, and runs no script of the package's
+    /// (npm 10.9.9 `lib/commands/uninstall.js:38-52`, arborist's
+    /// `reify.js:1308-1341`; npm 12.0.2 the same). npm 6 ran the package's
+    /// `uninstall` scripts (`docs/content/using-npm/scripts.md:216-228`).
+    Npm,
+    /// `pipx uninstall`: pipx deletes the tool's own virtual environment
+    /// and the links into it, and nothing else of the tool's (pipx 1.17.3
+    /// `commands/uninstall.py:67-125`).
+    Pipx,
+    /// `uv tool uninstall`, while `UV_TOOL_DIR` is unset: uv deletes the
+    /// tool's environment and the executables its receipt records (uv
+    /// 0.12.17 `crates/uv/src/commands/tool/uninstall.rs:187-226`).
+    Uv,
+    /// `cargo uninstall`: cargo deletes the binaries its install record
+    /// lists for the crate and rewrites that record, and runs no crate code
+    /// (cargo 1.98.1 `src/cargo/ops/cargo_uninstall.rs`).
+    Cargo,
+    /// `ollama rm`: Ollama deletes the model's manifest and each of its
+    /// layers no other model uses (Ollama 0.34.1
+    /// `server/routes.go:1249-1299`, `manifest/manifest.go:74-115`).
+    Ollama,
+}
+
+/// One kind of extra step a cask's recorded uninstall takes, for the line
+/// `Warning::CaskUninstallStep` puts under 「请注意」. Declared in the order
+/// the lines are said. Each maps to directives of the cask's `uninstall`
+/// stanza or its `uninstall_*` steps as Homebrew 7.0.6 runs them
+/// (`cask/artifact/abstract_uninstall.rb`, `install_steps.rb`); produced by
+/// `cask_receipt::classify`; read by `CASK_STEP_KEYS` in
+/// src/lib/warnings.ts, a `Record` over the mirror.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CaskStep {
+    /// `delete:` (`sudo rm -r -f`, globs expanded, `~` the home folder), and
+    /// an `artifact` Homebrew placed in the home folder, which its uninstall
+    /// deletes again: gone for good, not to the Trash.
+    Deletes,
+    /// `trash:`: moved to the Trash.
+    Trashes,
+    /// `pkgutil:`: every file each matching installer package recorded is
+    /// deleted, whatever else uses it, and the package is forgotten
+    /// (`cask/pkg.rb`). The items are the ids or patterns the cask names.
+    RemovesPackages,
+    /// `early_script:` and `script:`, and an uninstall step of type `run`
+    /// whose program the record names: a program the cask names is run.
+    RunsScript,
+    /// An `uninstall_preflight`/`uninstall_postflight` block of Ruby, or an
+    /// uninstall step Canager does not name (anything but the ones that set
+    /// ownership or permissions or end a process, which stay plain, and the
+    /// ones the other kinds name). Names nothing.
+    RunsOwnSteps,
+    /// `launchctl:`: each service is removed with `launchctl remove` and
+    /// its plist deleted from the LaunchAgents and LaunchDaemons folders.
+    RemovesServices,
+    /// `kext:`: each kernel extension is unloaded and deleted.
+    RemovesKexts,
+    /// An uninstall step of type `delete_keychain_certificate`.
+    DeletesCertificates,
+    /// `login_item:`: those login items are deleted, and so are the
+    /// cask's own apps' (`uninstall_login_item`).
+    RemovesLoginItems,
+    /// `quit:` and `signal:`: running apps with those bundle ids (`*` a
+    /// wildcard) are quit or signalled. Plain on its own; said only beside
+    /// another kind.
+    QuitsApps,
 }
 
 /// Why the tool itself will refuse to update this one package, although
@@ -1380,6 +1514,60 @@ mod tests {
             serde_json::to_string(&Warning::HomebrewCleanupAutoremoves).unwrap(),
             r#""HomebrewCleanupAutoremoves""#
         );
+
+        // Round 2: an uninstall's one sentence about what goes and what
+        // stays, and a cask's extra steps. Two externally tagged objects
+        // whose `what` and `step` are bare strings, as `UNINSTALL_SCOPE_KEYS`
+        // and `CASK_STEP_KEYS` in src/lib/warnings.ts spell them.
+        assert_eq!(
+            serde_json::to_string(&Warning::UninstallScope {
+                what: UninstallScope::HomebrewCaskPlain
+            })
+            .unwrap(),
+            r#"{"UninstallScope":{"what":"HomebrewCaskPlain"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::CaskUninstallStep {
+                step: CaskStep::RemovesPackages,
+                items: vec!["com.microsoft.pkg.licensing".to_string()]
+            })
+            .unwrap(),
+            r#"{"CaskUninstallStep":{"step":"RemovesPackages","items":["com.microsoft.pkg.licensing"]}}"#
+        );
+        for what in [
+            UninstallScope::HomebrewFormulaOnly,
+            UninstallScope::HomebrewFormula,
+            UninstallScope::HomebrewCaskPlain,
+            UninstallScope::HomebrewCaskSteps,
+            UninstallScope::HomebrewCask,
+            UninstallScope::Npm,
+            UninstallScope::Pipx,
+            UninstallScope::Uv,
+            UninstallScope::Cargo,
+            UninstallScope::Ollama,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&what).unwrap(),
+                format!("\"{what:?}\"")
+            );
+        }
+        for step in [
+            CaskStep::Deletes,
+            CaskStep::Trashes,
+            CaskStep::RemovesPackages,
+            CaskStep::RunsScript,
+            CaskStep::RunsOwnSteps,
+            CaskStep::RemovesServices,
+            CaskStep::RemovesKexts,
+            CaskStep::DeletesCertificates,
+            CaskStep::RemovesLoginItems,
+            CaskStep::QuitsApps,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&step).unwrap(),
+                format!("\"{step:?}\"")
+            );
+        }
     }
 
     #[test]

@@ -9,7 +9,7 @@ import {
   warningMessage,
   warningText,
 } from "./warnings";
-import type { KeptWhat, Warning } from "./types";
+import type { CaskStep, KeptWhat, UninstallScope, Warning } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 
@@ -102,13 +102,26 @@ describe("warningKey", () => {
     expect(warningKey("HomebrewCleanupAutoremoves")).toBe("warnings.homebrewCleanupAutoremoves");
   });
 
+  it("gives each source's scope sentence and each kind of cask step its own key", () => {
+    expect(warningKey({ UninstallScope: { what: "HomebrewFormulaOnly" } })).toBe(
+      "warnings.uninstallScope.HomebrewFormulaOnly",
+    );
+    expect(warningKey({ UninstallScope: { what: "Npm" } })).toBe("warnings.uninstallScope.Npm");
+    expect(warningKey({ CaskUninstallStep: { step: "RemovesPackages", items: ["a"] } })).toBe(
+      "warnings.caskStep.RemovesPackages",
+    );
+    expect(warningKey({ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } })).toBe(
+      "warnings.caskStep.RunsOwnSteps",
+    );
+  });
+
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these seventeen, and the only one
+    // variant of `Warning` is one of these nineteen, and the only one
     // without a `warnings.*` key is the raw-text catch-all. A variant this
     // list does not name is a `never` in `warningKey`'s default branches
     // and does not compile, so there is no "unrecognised variant" to test.
@@ -129,6 +142,8 @@ describe("warningKey", () => {
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       "HomebrewAutoremoves",
       "HomebrewCleanupAutoremoves",
+      { UninstallScope: { what: "Pipx" } },
+      { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
       { Message: "boom" },
     ];
     const keyless = all.filter((warning) => warningKey(warning) === null);
@@ -201,7 +216,20 @@ describe("warningArgs", () => {
     });
   });
 
+  it("interpolates what a cask step names, counted for pluralisation, and nothing for one that names nothing", () => {
+    expect(warningArgs({ CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } })).toEqual({
+      count: 1,
+      items: "~/.nvs",
+    });
+    expect(
+      warningArgs({ CaskUninstallStep: { step: "RemovesPackages", items: ["a.pkg", "b.pkg"] } }),
+    ).toEqual({ count: 2, items: "a.pkg, b.pkg" });
+    expect(warningArgs({ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } })).toEqual({});
+  });
+
   it("is empty for every other variant", () => {
+    // A scope sentence's `{{name}}` is the row's, which `warningText` is given.
+    expect(warningArgs({ UninstallScope: { what: "Cargo" } })).toEqual({});
     expect(warningArgs("DependentsUnknown")).toEqual({});
     expect(warningArgs("CompilesLocally")).toEqual({});
     expect(warningArgs("NonRegistrySource")).toEqual({});
@@ -236,6 +264,15 @@ describe("warningText", () => {
   it("reads a Message's text directly, bypassing t()", () => {
     expect(warningText(fakeT, { Message: "boom" })).toBe("boom");
   });
+
+  it("says a scope sentence with the name it is given, and has none without one", () => {
+    expect(warningText(fakeT, { UninstallScope: { what: "Ollama" } }, "qwen3:8b")).toBe(
+      'warnings.uninstallScope.Ollama({"name":"qwen3:8b"})',
+    );
+    expect(warningText(fakeT, { UninstallScope: { what: "Ollama" } })).toBeNull();
+    // Every other warning has no use for it.
+    expect(warningText(fakeT, "DependentsUnknown", "jq")).toBe("warnings.dependentsUnknown");
+  });
 });
 
 /** Every variant of `Warning` once, for the checks that go over them all. */
@@ -256,7 +293,37 @@ const EVERY_VARIANT: Warning[] = [
   { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
   "HomebrewAutoremoves",
   "HomebrewCleanupAutoremoves",
+  { UninstallScope: { what: "HomebrewCaskPlain" } },
+  { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
   { Message: "boom" },
+];
+
+/** Every `UninstallScope`, as the Rust wire-shape test lists them. */
+const EVERY_SCOPE: UninstallScope[] = [
+  "HomebrewFormulaOnly",
+  "HomebrewFormula",
+  "HomebrewCaskPlain",
+  "HomebrewCaskSteps",
+  "HomebrewCask",
+  "Npm",
+  "Pipx",
+  "Uv",
+  "Cargo",
+  "Ollama",
+];
+
+/** Every `CaskStep`, in its declared order. */
+const EVERY_STEP: CaskStep[] = [
+  "Deletes",
+  "Trashes",
+  "RemovesPackages",
+  "RunsScript",
+  "RunsOwnSteps",
+  "RemovesServices",
+  "RemovesKexts",
+  "DeletesCertificates",
+  "RemovesLoginItems",
+  "QuitsApps",
 ];
 
 /** A key's text in one locale, or undefined when it has none. */
@@ -288,14 +355,27 @@ describe("warningGroup", () => {
     }
   });
 
+  it("puts an uninstall's sentence about what goes and what stays in a group of its own", () => {
+    for (const what of EVERY_SCOPE) expect(warningGroup({ UninstallScope: { what } })).toBe("scope");
+  });
+
   it("puts everything else under what to know before going on", () => {
     const notes = EVERY_VARIANT.filter(
       (warning) =>
         typeof warning === "string" ||
-        !("WillTrash" in warning || "AlreadyGone" in warning || "WillKeep" in warning),
+        !(
+          "WillTrash" in warning ||
+          "AlreadyGone" in warning ||
+          "WillKeep" in warning ||
+          "UninstallScope" in warning
+        ),
     );
-    expect(notes).toHaveLength(14);
+    expect(notes).toHaveLength(15);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
+    // Every kind of a cask's extra steps.
+    for (const step of EVERY_STEP) {
+      expect(warningGroup({ CaskUninstallStep: { step, items: ["x"] } })).toBe("note");
+    }
   });
 
   it("makes a variant this build does not know something to note, not something to drop", () => {
@@ -373,8 +453,42 @@ describe("warningDetailKey", () => {
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
       { AlreadyGone: { path: "~/.local/share/claude" } },
       { Message: "boom" },
+      ...EVERY_SCOPE.map((what): Warning => ({ UninstallScope: { what } })),
+      ...EVERY_STEP.map((step): Warning => ({ CaskUninstallStep: { step, items: ["x"] } })),
     ] as Warning[]) {
       expect(warningDetailKey(warning)).toBeNull();
+    }
+  });
+
+  it("has copy in both languages for every scope sentence and every kind of cask step", () => {
+    // `{{name}}` in every scope sentence, `{{items}}` in every step that
+    // names anything; English says one and several apart, Chinese needs
+    // only `_other`.
+    for (const what of EVERY_SCOPE) {
+      const key = warningKey({ UninstallScope: { what } }) ?? "";
+      for (const locale of [en, zhCN]) {
+        const text = lookUp(locale, key);
+        expect(typeof text, key).toBe("string");
+        expect(text as string, key).toContain("{{name}}");
+      }
+    }
+    for (const step of EVERY_STEP) {
+      const key = warningKey({ CaskUninstallStep: { step, items: [] } }) ?? "";
+      if (step === "RunsOwnSteps") {
+        expect(typeof lookUp(en, key), key).toBe("string");
+        expect(typeof lookUp(zhCN, key), key).toBe("string");
+        continue;
+      }
+      for (const [locale, forms] of [
+        [en, ["_one", "_other"]],
+        [zhCN, ["_other"]],
+      ] as const) {
+        for (const form of forms) {
+          const text = lookUp(locale, `${key}${form}`);
+          expect(typeof text, `${key}${form}`).toBe("string");
+          expect(text as string, `${key}${form}`).toContain("{{items}}");
+        }
+      }
     }
   });
 
@@ -397,16 +511,21 @@ describe("warningDetailKey", () => {
 });
 
 describe("deletesForGood", () => {
-  it("is true of rustup's permanent deletions, and of nothing else", () => {
+  it("is true of rustup's permanent deletions and a cask's recorded deletions, and of nothing else", () => {
     const forGood = EVERY_VARIANT.filter(deletesForGood);
     expect(forGood).toEqual([
       { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
       { DeletesCargoHome: { path: "~/.cargo" } },
       { RemovesCargoInstalled: { names: ["hexyl"] } },
+      { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
     ]);
     expect(deletesForGood({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(true);
     // What goes to the Trash can be dragged back out.
     expect(deletesForGood({ WillTrash: { path: "~/.local/share/claude", what: "Program" } })).toBe(false);
+    // Only the step whose line says "permanently".
+    for (const step of EVERY_STEP) {
+      expect(deletesForGood({ CaskUninstallStep: { step, items: ["x"] } })).toBe(step === "Deletes");
+    }
   });
 
   it("is false of a variant this build does not know", () => {
@@ -426,6 +545,7 @@ describe("warningLines", () => {
       { WillKeep: { path: "~/.claude.json", what: "Settings" } },
     ]);
     expect(lines).toEqual({
+      scope: [],
       trash: [
         { text: 'warnings.willTrash.Program({"path":"~/.local/share/claude"})', detail: null },
         { text: 'warnings.alreadyGone({"path":"~/.grok/downloads"})', detail: null },
@@ -458,7 +578,25 @@ describe("warningLines", () => {
     ]);
   });
 
+  it("says the scope sentence apart, with the tool's name, and the cask's steps as notes", () => {
+    const warnings: Warning[] = [
+      { UninstallScope: { what: "HomebrewCaskSteps" } },
+      { CaskUninstallStep: { step: "RemovesPackages", items: ["com.microsoft.pkg.licensing"] } },
+      "HomebrewAutoremoves",
+    ];
+    const lines = warningLines(fakeT, warnings, [], "Microsoft Word");
+    expect(lines.scope).toEqual([
+      { text: 'warnings.uninstallScope.HomebrewCaskSteps({"name":"Microsoft Word"})', detail: null },
+    ]);
+    expect(lines.note.map((line) => line.text)).toEqual([
+      'warnings.caskStep.RemovesPackages({"count":1,"items":"com.microsoft.pkg.licensing"})',
+      "warnings.homebrewAutoremoves",
+    ]);
+    // Without a name there is no sentence to say it in.
+    expect(warningLines(fakeT, warnings).scope).toEqual([]);
+  });
+
   it("is empty for an empty list", () => {
-    expect(warningLines(fakeT, [])).toEqual({ trash: [], keep: [], note: [] });
+    expect(warningLines(fakeT, [])).toEqual({ scope: [], trash: [], keep: [], note: [] });
   });
 });

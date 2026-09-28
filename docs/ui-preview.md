@@ -142,8 +142,10 @@ Paths are under a generic home folder, `/Users/you`.
   pages "Loading…") for a moment. Check again in the header runs one at
   any time.
 - Update and Uninstall show the preview the real adapter would build
-  (warnings, what would break, password and "can't cancel" notices, and
-  the command behind "Show the command"), then run for about five seconds with the same event sequence
+  (an uninstall's sentence under the tool about what goes and what stays,
+  Visual Studio Code's recorded uninstall steps, warnings, what would
+  break, password and "can't cancel" notices, and the command behind
+  "Show the command"), then run for about five seconds with the same event sequence
   the backend sends: queued, running, the tool's log lines, verifying,
   finished. Operations on the same source run one after another, at most
   three at once.
