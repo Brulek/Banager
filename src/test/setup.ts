@@ -6,6 +6,8 @@ import { render, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../i18n";
+import { loadToolIcons, type ToolIcons } from "../lib/toolIcons";
+import { ToolIconsContext } from "../lib/toolIconsContext";
 import { useUiStore } from "../store/ui";
 
 beforeEach(() => {
@@ -43,7 +45,23 @@ vi.mock("@tauri-apps/api/core", () => {
   };
 });
 
-export function renderWithProviders(ui: ReactElement) {
+/**
+ * A logo pack with no logos: what the avatars draw from under
+ * `renderWithProviders` unless a test hands it a pack of its own, so that
+ * every avatar is its source's coloured initial whatever the built-in
+ * pack lists -- a seed today, the reviewed mapping's hundreds later.
+ */
+const NO_TOOL_ICONS: ToolIcons = loadToolIcons(
+  { version: 1, generated: "", glyphs: {}, rasters: {}, tools: {}, sources: {} },
+  new Map(),
+);
+
+export interface RenderOptions {
+  /** The logos the avatars draw (`loadToolIcons` over a test's own pack); none unless given. */
+  toolIcons?: ToolIcons;
+}
+
+export function renderWithProviders(ui: ReactElement, { toolIcons = NO_TOOL_ICONS }: RenderOptions = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -55,7 +73,11 @@ export function renderWithProviders(ui: ReactElement) {
     return React.createElement(
       QueryClientProvider,
       { client: queryClient },
-      React.createElement(I18nextProvider, { i18n }, children),
+      React.createElement(
+        I18nextProvider,
+        { i18n },
+        React.createElement(ToolIconsContext.Provider, { value: toolIcons }, children),
+      ),
     );
   }
 

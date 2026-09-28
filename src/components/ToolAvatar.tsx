@@ -18,7 +18,7 @@ const ICON_CLASSES = {
 } as const;
 
 export interface ToolAvatarProps {
-  /** The source's adapter id and name: the coloured initial, until an icon arrives or when there is none. */
+  /** The source's adapter id and name: its avatar, until an icon arrives or when there is none. */
   adapterId: string;
   sourceLabel: string;
   /**
@@ -35,10 +35,10 @@ export interface ToolAvatarProps {
  * The avatar at the start of a tool's row, sheet line or drawer: the app's
  * own icon -- the one Finder shows -- for an app Homebrew installed, once
  * it has arrived, drawn as macOS draws it, with no coloured square behind
- * it; the source's coloured initial while it is on its way and wherever
- * there is none. It is asked for only when an avatar is drawn, so a
- * virtualized list asks for the rows on screen and no others. Decorative,
- * like the initial: the name is always beside it.
+ * it; the source's avatar -- its logo, or its coloured initial -- while it
+ * is on its way and wherever there is none. It is asked for only when an
+ * avatar is drawn, so a virtualized list asks for the rows on screen and
+ * no others. Decorative, like the source's: the name is always beside it.
  */
 export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: ToolAvatarProps) {
   const { data: icon } = useArtifactIcon(iconKey ?? NO_KEY, iconKey !== undefined);

@@ -45,9 +45,9 @@ export interface ToolRowSelectable {
 /**
  * What stands at the start of a row: the tool's avatar (`ToolAvatar`) --
  * its app's own icon for a cask, by `iconKey`, and otherwise the source's,
- * by its adapter id and name, the colour and the letter -- or, for a row
- * that belongs to no source, such as the Unknown page's, an avatar of its
- * own.
+ * by its adapter id and name, the logo or the colour and the letter -- or,
+ * for a row that belongs to no source, such as the Unknown page's, an
+ * avatar of its own.
  */
 export type ToolRowAvatarProps =
   | { adapterId: string; sourceLabel: string; iconKey?: ArtifactKey; avatar?: never }

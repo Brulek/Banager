@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import { renderWithProviders } from "../test/setup";
+import { renderWithProviders, type RenderOptions } from "../test/setup";
+import { loadToolIcons } from "../lib/toolIcons";
 import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
@@ -144,11 +145,12 @@ function ringOf(container: HTMLElement): HTMLElement {
   return ring;
 }
 
-function renderOverview() {
+function renderOverview(options?: RenderOptions) {
   return renderWithProviders(
     <SnapshotStatus showsFirstCheck>
       <OverviewPage />
     </SnapshotStatus>,
+    options,
   );
 }
 
@@ -609,6 +611,30 @@ describe("OverviewPage", () => {
     const avatar = homebrew.querySelector('[aria-hidden="true"]');
     expect(avatar).toHaveTextContent("H");
     // The 32px avatar, the one a tool's row has.
+    expect(avatar?.className).toContain("h-8");
+  });
+
+  it("shows the source's logo on its tile, where the logo pack has one", async () => {
+    // A pack of this test's own, with Homebrew's logo in it.
+    const toolIcons = loadToolIcons(
+      {
+        version: 1,
+        generated: "2026-09-28",
+        glyphs: { "si-homebrew": { path: "M3 3h18v18H3z", hex: "FBB040", title: "Homebrew" } },
+        rasters: {},
+        tools: {},
+        sources: { brew: "si-homebrew" },
+      },
+      new Map(),
+    );
+    const { findByRole } = renderOverview({ toolIcons });
+
+    const list = await findByRole("list", { name: "Your tools" });
+    const avatar = within(list)
+      .getByRole("button", { name: "Homebrew 3 items" })
+      .querySelector('[aria-hidden="true"]');
+    expect(avatar).toHaveAttribute("data-logo", "glyph");
+    expect(avatar?.querySelector("path")).toHaveAttribute("d", "M3 3h18v18H3z");
     expect(avatar?.className).toContain("h-8");
   });
 

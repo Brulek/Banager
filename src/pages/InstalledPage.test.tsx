@@ -7,6 +7,7 @@ import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
+import { loadToolIcons } from "../lib/toolIcons";
 import type {
   InstalledArtifact,
   ManagerInstance,
@@ -1784,6 +1785,53 @@ describe("InstalledPage", () => {
       } finally {
         Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
       }
+    });
+  });
+
+  describe("logos", () => {
+    // A pack of this test's own: Homebrew's logo, and nothing for glib or
+    // pip.
+    const HOMEBREW = "M3 3h18v18H3z";
+    const toolIcons = loadToolIcons(
+      {
+        version: 1,
+        generated: "2026-09-28",
+        glyphs: {
+          "si-homebrew": { path: HOMEBREW, hex: "FBB040", title: "Homebrew" },
+        },
+        rasters: {},
+        tools: {},
+        sources: { brew: "si-homebrew" },
+      },
+      new Map(),
+    );
+    const glyph = (path: string) => `path[d="${path}"]`;
+
+    it("shows the source's logo on a tool with none of its own, on its filter and over its group, and the initial where the source has none", async () => {
+      served = {
+        ...snapshot,
+        instances: [brew, pip],
+        artifacts: [...snapshot.artifacts, ...pipSnapshot.artifacts],
+      };
+      renderWithProviders(<InstalledPage />, { toolIcons });
+
+      fireEvent.click(await screen.findByRole("button", { name: /^1 more component came with other software/ }));
+      const glib = await findRow("glib");
+      expect(glib.querySelector(glyph(HOMEBREW))).not.toBeNull();
+      expect(glib.querySelector("[data-source-badge]")).toBeNull();
+      expect(within(await findRow("requests")).getByText("P")).toHaveAttribute("aria-hidden", "true");
+
+      const filters = screen.getByRole("group", { name: "Filter by source" });
+      expect(within(filters).getByRole("button", { name: "Homebrew 2" }).querySelector(glyph(HOMEBREW))).not.toBeNull();
+      expect(within(within(filters).getByRole("button", { name: "pip 1" })).getByText("P")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+
+      const sortBy = screen.getByRole("group", { name: "Sort by" });
+      fireEvent.click(within(sortBy).getByRole("button", { name: "Source" }));
+      const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew 2" });
+      expect(heading.querySelector(glyph(HOMEBREW))).not.toBeNull();
     });
   });
 });
