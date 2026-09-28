@@ -9,7 +9,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1026 Rust tests (plus 4 more
+> **Status: pre-release.** The core and the UI work and are covered by 1037 Rust tests (plus 4 more
 > that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 977
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
@@ -47,16 +47,21 @@ last check finished, or choose **Check Again** (⌘R) in the menu bar's View men
 a check runs, neither starts another. The "Try again" of a failed refresh, or of a Homebrew index
 Canager couldn't update, runs the same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
-`src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, at most once every six
-hours; it updates Homebrew and its index, and when Homebrew has moved a package you have between a
-formula and a cask, or renamed one, it can install, move or uninstall Homebrew packages by itself
-(`docs/what-we-run.md`, "Homebrew"). With **Check for updates every day** turned on in Settings — it
-is off until you turn it on — Canager also runs the same check once a day while it is running (again
-15 minutes later when every source failed, a Homebrew whose index couldn't be updated counting as
-failed), installs none of the updates it finds, and checks nothing after you quit
-(`docs/what-we-run.md`, "The daily check"). Turn on **Notify me when there are updates** under it as
-well, and a daily check that finds an update you haven't been shown, while another app is in front,
-not Canager, posts a notification saying how many tools can be updated. A click on it brings Canager
+`src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
+its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
+one, can install, move or uninstall Homebrew packages by itself (`docs/what-we-run.md`,
+"Homebrew"). After one that succeeded, checks skip it for six hours; after one that failed, the next
+check runs it again — or, when a check had stopped waiting for it, the check after the one its end
+sets off. With **Check for updates every day** turned on in Settings — it is off until you turn it
+on — Canager also runs the same check once a day while it is running, installs none of the updates
+it finds, and checks nothing after you quit. A daily check in which every source failed — a
+Homebrew whose index couldn't be updated counting as failed — doesn't count: the next runs 15
+minutes later, and each more that fails in a row doubles the wait (30, 60, 120, 240 minutes) up to
+six hours. A check of yours, or a daily one in which not every source failed, counts, and starts
+the waits over (`docs/what-we-run.md`, "The daily check"). Turn on **Notify me when there are
+updates** under that switch as well, and a daily check that finds an update you haven't been
+shown, while another app is in front, not Canager, posts a notification saying how many tools can
+be updated. A click on it brings Canager
 to the front, and if Canager's window is closed or minimized into the Dock and hasn't been in front
 since the notification, the window comes back on the Updates page. Canager isn't told of the click
 itself, only that it has come to the front, so until the window has been in front again, anything
@@ -286,7 +291,7 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1026 个 Rust 测试（另有 4 个要连着真实的
+**目前处于发布前阶段**，核心与界面已经可用、有 1037 个 Rust 测试（另有 4 个要连着真实的
 Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 977 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
@@ -338,13 +343,17 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
 再按也不会多查一遍。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
-`src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`（最多每六小时一次），
+`src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
 它还能自己安装、移动或卸载 Homebrew 软件（见 `docs/what-we-run.md` 的“Homebrew”一节）。
+上一次 `brew update` 成功后，六小时内的检查都不再运行它；上一次失败了，下一次检查就会再运行——
+如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。
 在“设置”里打开“每天自动检查”后（默认关闭），
-Canager 开着时还会每天做一次同样的检查（所有来源都失败时——Homebrew 的索引没能更新也算失败——
-15 分钟后再查），查到的更新都不安装，退出后不检查（见 `docs/what-we-run.md` 的“The daily check”一节）。
-再打开它下面的“有可更新时通知我”，
+Canager 开着时还会每天做一次同样的检查，查到的更新都不安装，退出后不检查。
+所有来源都失败的那次每天检查——Homebrew 的索引没能更新也算失败——不算数：15 分钟后再查，
+之后每连续失败一次，等的时间就翻一倍（30、60、120、240 分钟），最长六小时。你自己检查一次，
+或者某次每天检查不是所有来源都失败，就算数，等待也从头算起（见 `docs/what-we-run.md` 的“The daily check”一节）。
+再打开“每天自动检查”下面的“有可更新时通知我”，
 每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Canager 时，会发一条通知，说有几个
 工具可以更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了

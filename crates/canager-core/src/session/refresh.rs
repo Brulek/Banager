@@ -121,7 +121,7 @@ impl Session {
     /// snapshot is committed -- so before `snapshot()`, or any other call,
     /// can hand that round to anyone -- and when it shares a round another
     /// call ran, as it takes that round. The shell records who asked for
-    /// each round this way (`ipc::refresh_as`), so that a reader of the
+    /// each round this way (`ipc::refresh_for`), so that a reader of the
     /// snapshot never finds a round not yet recorded. Not called when this
     /// call is dropped before a round answers it.
     pub async fn refresh_recording(
@@ -2852,8 +2852,9 @@ mod tests {
         // shell hands `auto_check::tick`. A round in which a source failed
         // is stamped too, and counts -- so a source that keeps failing is
         // not asked again at every 15-minute tick -- unless it was a daily
-        // one in which every source failed.
-        use crate::auto_check::{tick, RoundLog, RoundTrigger, Tick, DUE_AFTER_SECS};
+        // one in which every source failed, which is one more failed daily
+        // check instead (`RoundLog::failed_checks`).
+        use crate::auto_check::{tick, FailedChecks, RoundLog, RoundTrigger, Tick, DUE_AFTER_SECS};
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
@@ -2872,16 +2873,23 @@ mod tests {
         // One of two sources failed, in a daily round: it counts.
         let (round, snapshot) = session.refresh_with_round(&env, &opts).await;
         assert!(snapshot.stale, "precondition: the round failed in part");
-        log.record(round, RoundTrigger::Automatic, &snapshot);
+        log.record_daily(round, 1_700_000_000 - 20, &snapshot);
         let ended = log.last_check_ended();
         assert_eq!(ended, snapshot.refreshed_at);
+        assert_eq!(log.failed_checks(), None);
         assert!(!session.busy(), "precondition: nothing under way");
         assert_eq!(
-            tick(1_700_000_000 + 15 * 60, ended, session.busy(), true),
+            tick(1_700_000_000 + 15 * 60, ended, None, session.busy(), true),
             Tick::NotDue
         );
         assert_eq!(
-            tick(1_700_000_000 + DUE_AFTER_SECS, ended, session.busy(), true),
+            tick(
+                1_700_000_000 + DUE_AFTER_SECS,
+                ended,
+                None,
+                session.busy(),
+                true
+            ),
             Tick::Check
         );
 
@@ -2891,8 +2899,15 @@ mod tests {
         let mut daily = RoundLog::default();
         let (round, snapshot) = session.refresh_with_round(&env, &opts).await;
         assert_eq!(snapshot.errors.len(), 2, "precondition: both failed");
-        daily.record(round, RoundTrigger::Automatic, &snapshot);
+        daily.record_daily(round, 1_700_000_000 - 20, &snapshot);
         assert_eq!(daily.last_check_ended(), None);
+        assert_eq!(
+            daily.failed_checks(),
+            Some(FailedChecks {
+                looked_at: 1_700_000_000 - 20,
+                in_a_row: 1
+            })
+        );
         let mut window = RoundLog::default();
         window.record(round, RoundTrigger::Window, &snapshot);
         assert_eq!(window.last_check_ended(), snapshot.refreshed_at);

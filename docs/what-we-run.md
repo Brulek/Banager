@@ -24,8 +24,9 @@ section names the call, the size an icon is drawn at, and that no
 command runs for it, that this file names each permission of the
 opener plugin the window has and the unknown-source scan's section the
 call Show in Finder makes, saying it runs nothing else, that the daily
-check's section says it is off by default, states how often it looks and
-how long after a check it checks again, says Canager itself runs no
+check's section says it is off by default, states how often it looks,
+how long after a check it checks again and how long it waits after
+checks in which every source failed, says Canager itself runs no
 install from it and that `brew update` can install a package Homebrew
 moved between a formula and a cask, and names each permission of the
 notification plugin the window has, and that Homebrew's section keeps
@@ -197,44 +198,67 @@ starts nothing. Turned on:
   the user's own moves the next daily one 24 hours on, however it went,
   and a daily one in which only some sources failed counts too: a source
   that keeps failing is not asked again every 15 minutes, and the window
-  shows the failure as it does after any check. A daily check in which every
-  source failed does not count (`auto_check::counts_as_check`), so the
-  next look, 15 minutes on, checks again. A Homebrew whose `brew update`
-  failed is a source that failed, for this, even when its `brew outdated`
-  then answered from the catalogue it had, as it does on a Mac that is
-  offline. Time the Mac spends asleep
-  counts toward the 24 hours, so a Mac that slept for two days checks at
-  the first look after it wakes — and, should every source fail then,
-  again at each look after that, until a check in which not every source
-  fails. When the Mac's clock has been set back to a minute or more
-  before the last check ended, the next look checks as though 24 hours
-  had passed; a look that finds the clock less than a minute before it —
-  a small correction of the clock, or a check that ended as the look read
-  the time — starts nothing (`auto_check::SET_BACK_SLACK_SECS`).
+  shows the failure as it does after any check. A Homebrew whose `brew
+  update` failed is a source that failed, for this, even when its `brew
+  outdated` then answered from the catalogue it had, as it does on a Mac
+  that is offline.
+- **After a daily check in which every source failed.** It does not
+  count (`auto_check::counts_as_check`): the check stays due, but the
+  next one waits (`auto_check::retry_after_secs`, over
+  `RoundLog::failed_checks`). After the first such check in a row, the
+  look 15 minutes after the one that started it checks again; after each
+  more, the wait from the look that started the last doubles — 30, 60,
+  120 and 240 minutes — up to 360 minutes (six hours,
+  `auto_check::RETRY_CAP_SECS`), where it stays. So a Mac on which every
+  source keeps failing — one that stays offline, say, or has no source
+  but a Homebrew that cannot update — is checked 8 times in the 24 hours
+  from the first check that fails and 4 times a day after that, not at
+  every look, and the daily check runs `brew update` no more often than
+  that. A check that counts, a daily one or any of the user's, ends the
+  waits: the next daily check that fails is followed 15 minutes on again.
+  The refresh a daily check's `brew update` sets off when it ends is no
+  daily check of its own, and adds no wait when every source fails in it
+  (`RoundLog::record_daily`).
+- **Asleep, and a clock set back.** Time the Mac spends asleep counts
+  toward the 24 hours, and toward those waits, which are measured on the
+  Mac's clock too, so a Mac that slept for two days checks at the first
+  look after it wakes — and, should every source fail then, again 15
+  minutes on, then after the waits above, until a check in which not
+  every source fails. A look that finds up to a minute of a wait left
+  checks all the same: the looks follow the time the Mac is awake and the
+  waits its clock, which a time sync can slow or step back by a little
+  (`auto_check::RETRY_SLACK_SECS`). When the Mac's clock has been set
+  back to a minute or more before the last check ended, the next look
+  checks as though 24 hours had passed, and when it has been set back
+  that far before the look that started the last daily check that
+  failed, the next look takes the wait after it to have passed; a look
+  that finds the clock less than a minute before either — a small
+  correction of the clock, or a check that ended as the look read the
+  time — takes no time to have passed (`auto_check::SET_BACK_SLACK_SECS`).
 - **Not while something is under way.** A look that finds a refresh
   running or waiting, or an operation queued, running, being cancelled or
   being verified (`Session::busy`), starts nothing; the next look asks
   again.
-- **Only while Canager runs.** When the last check ended is kept in
-  memory, so after Canager is quit and opened again, the check at launch
-  is the day's. Nothing checks while Canager is not running. Closing the
-  window leaves Canager running (`src-tauri/src/window.rs`), and the task
-  with it.
+- **Only while Canager runs.** When the last check ended, and how many
+  daily checks have failed since, are kept in memory, so after Canager is
+  quit and opened again, the check at launch is the day's. Nothing checks
+  while Canager is not running. Closing the window leaves Canager running
+  (`src-tauri/src/window.rs`), and the task with it.
 
 **What it runs** is the refresh Check again runs, through the same
-function (`ipc::refresh_as`), and nothing else: the commands a refresh
+function (`ipc::refresh_for`), and nothing else: the commands a refresh
 runs, in each source's read-only table and Homebrew's `brew update`, and
 the requests a refresh makes, to the hosts in "Network". So it does to
-the Mac what those commands do: Homebrew's `brew update`, when its six
-hours are up, updates Homebrew and rewrites its local catalogue, and when
-Homebrew has moved a package this Mac has installed between a formula
-and a cask, or renamed one, it can install, move or uninstall Homebrew
-packages by itself (Homebrew's section) — and when the check stops
-waiting for it, the refresh its end sets off follows — and Grok Build's
-update check writes inside `~/.grok` ("Files Canager writes"). Canager
-itself runs no install, upgrade or uninstall from it, and installs none
-of the updates it finds: every write command runs only after a preview
-the user confirmed.
+the Mac what those commands do: Homebrew's `brew update`, when the check
+runs one (Homebrew's section says when), updates Homebrew and rewrites
+its local catalogue, and when Homebrew has moved a package this Mac has
+installed between a formula and a cask, or renamed one, it can install,
+move or uninstall Homebrew packages by itself (Homebrew's section) — and
+when the check stops waiting for it, the refresh its end sets off follows
+— and Grok Build's update check writes inside `~/.grok` ("Files Canager
+writes"). Canager itself runs no install, upgrade or uninstall from it,
+and installs none of the updates it finds: every write command runs only
+after a preview the user confirmed.
 
 **The notification.** Under the switch is another, "Notify me when there
 are updates" (「有可更新时通知我」), off by default too
@@ -547,18 +571,28 @@ install, upgrade or uninstall of its own from it. That refresh read the
 installed packages before `brew update` ran (`inventory` comes first), so
 the next refresh is the first to show all it changed.
 
-`brew update` runs at most once per six hours per prefix (`update_ttl`).
-A refresh waits up to two minutes for it (`UPDATE_PATIENCE`) and then
-leaves it running rather than killing it — a `brew update` stopped halfway
-can leave Homebrew's git checkout locked; only after thirty minutes
+A refresh runs `brew update` for a prefix only when none is running there
+and none has succeeded there in the last six hours (`update_ttl`, counted
+from when that one ended, `UpdateRecord::succeeded_at`). One that failed
+starts no such wait: the next refresh runs it again. A refresh waits up
+to two minutes for it (`UPDATE_PATIENCE`) and then leaves it running
+rather than killing it — a `brew update` stopped halfway can leave
+Homebrew's git checkout locked; only after thirty minutes
 (`UPDATE_BACKSTOP`) is it stopped. While one is running, `inventory`,
 `check_updates` and the uninstall preview do not read the catalogue at
 all (`AdapterError::IndexUpdating`): the pages keep the previous answer
-and say the index is updating, and refresh again when it ends. A `brew
-update` that failed is reported as a note on the source (the list may be
-out of date), not as a failed source; only the daily check counts that
-Homebrew as failed, when it decides whether it has checked ("The daily
-check"). The search query passes `validate_package_name`.
+and say the index is updating, and refresh again when it ends. When one
+that a refresh stopped waiting for fails, the first refresh begun after
+it failed — normally the one its end sets off — reports the failure and
+runs none (`UpdateRecord::unreported_failure`); the refresh after that
+runs it again. So on a Mac that is offline, or whose Homebrew cannot
+update (a broken git checkout, say), the six hours never begin, and
+checks keep running `brew update`; the daily check spaces its own out
+when every source fails ("The daily check"). A `brew update` that failed
+is reported as a note on the source (the list may be out of date), not as
+a failed source; only the daily check counts that Homebrew as failed,
+when it decides whether it has checked ("The daily check"). The search
+query passes `validate_package_name`.
 
 **Write commands** (only run after the user reviews and confirms a plan
 preview):

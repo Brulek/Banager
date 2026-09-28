@@ -27,9 +27,12 @@ pub struct AppState {
     /// it (`Session::refresh_recording`) -- for the refresh a finished
     /// `brew update` sets off (`ipc::refresh_on_background_change`), with
     /// whose round started that update read then
-    /// (`RoundLog::record_follow_up`); read by `notify::report` for the
-    /// round the page reports, and by `auto_check::tick_at` for when the
-    /// last round that counts as a check ended. In memory only.
+    /// (`RoundLog::record_follow_up`), and for the daily check's own, with
+    /// the look that started it (`RoundLog::record_daily`); read by
+    /// `notify::report` for the round the page reports, and by
+    /// `auto_check::tick_at` for when the last round that counts as a check
+    /// ended and the daily checks in which every source failed since. In
+    /// memory only.
     pub rounds: Mutex<RoundLog>,
     /// The (row, version) pairs this run has told the user about in the
     /// update notification, or that the user saw in the window: what

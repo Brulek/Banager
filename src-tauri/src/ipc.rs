@@ -21,27 +21,30 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
     get_snapshot_impl(&state)
 }
 
-/// The window's refresh, the `refresh` command's body: `refresh_as` for
-/// `RoundTrigger::Window`.
+/// The window's refresh, the `refresh` command's body, through
+/// `refresh_for`, recorded as `RoundTrigger::Window`.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
-    refresh_as(state, RoundTrigger::Window).await
+    refresh_for(state, Asker::Window).await
 }
 
-/// A refresh asked for as `trigger`: the window's (`refresh_impl`) or the
-/// daily check's (`auto_check::check_automatically`), through
-/// `refresh_for`.
-pub(crate) async fn refresh_as(
-    state: &AppState,
-    trigger: RoundTrigger,
-) -> Result<Snapshot, String> {
-    refresh_for(state, Asker::Trigger(trigger)).await
+/// The daily check's refresh (`auto_check::check_automatically`), started
+/// by its look at `looked_at` -- the wall-clock `now` at which
+/// `auto_check::tick` answered `Tick::Check` -- through `refresh_for`,
+/// recorded as `RoundTrigger::Automatic` by `RoundLog::record_daily`, which
+/// counts a round that does not count as a check as one more daily check
+/// failed in a row, started at `looked_at`: the wait before the next one
+/// is measured from there.
+pub(crate) async fn refresh_daily(state: &AppState, looked_at: i64) -> Result<Snapshot, String> {
+    refresh_for(state, Asker::Daily { looked_at }).await
 }
 
 /// Who a refresh the shell runs is recorded as asked for by.
 #[derive(Clone, Copy)]
 enum Asker {
-    /// The window or the daily check (`refresh_as`).
-    Trigger(RoundTrigger),
+    /// The window (`refresh_impl`).
+    Window,
+    /// The daily check, at its look at `looked_at` (`refresh_daily`).
+    Daily { looked_at: i64 },
     /// Whoever asked for the round that started the `brew update` whose end
     /// set this refresh off (`refresh_on_background_change`), read as its
     /// round is recorded (`RoundLog::record_follow_up`).
@@ -49,11 +52,11 @@ enum Asker {
 }
 
 /// Every refresh the shell runs goes through here: the window's
-/// (`refresh_impl`), the daily check's (`auto_check::check_automatically`)
-/// and the one a finished `brew update` sets off
-/// (`refresh_on_background_change`). Records who asked for the round that
-/// answered (`RoundLog::record`, or `RoundLog::record_follow_up` for the
-/// last of the three) before that round's snapshot is committed
+/// (`refresh_impl`), the daily check's (`refresh_daily`, from
+/// `auto_check::check_automatically`) and the one a finished `brew update`
+/// sets off (`refresh_on_background_change`). Records who asked for the
+/// round that answered (`RoundLog::record`, `RoundLog::record_daily` or
+/// `RoundLog::record_follow_up`) before that round's snapshot is committed
 /// (`Session::refresh_recording`) -- so before the page can fetch it
 /// (`get_snapshot`, which it may do at any time, a refetch as the window
 /// comes back included) and report it (`notify::report_update_set`, which
@@ -71,8 +74,8 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
     // Who this call asks as, which `announce` reads: for a follow-up, what
     // the record callback reads from the log.
     let mut trigger = match asker {
-        Asker::Trigger(trigger) => trigger,
-        Asker::FollowUp => RoundTrigger::Window,
+        Asker::Window | Asker::FollowUp => RoundTrigger::Window,
+        Asker::Daily { .. } => RoundTrigger::Automatic,
     };
     let (_, snapshot) = state
         .session
@@ -82,7 +85,8 @@ async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String>
             |round, snapshot| {
                 let mut rounds = state.rounds.lock().unwrap();
                 match asker {
-                    Asker::Trigger(asked) => rounds.record(round, asked, snapshot),
+                    Asker::Window => rounds.record(round, RoundTrigger::Window, snapshot),
+                    Asker::Daily { looked_at } => rounds.record_daily(round, looked_at, snapshot),
                     Asker::FollowUp => trigger = rounds.record_follow_up(round, snapshot),
                 }
             },
@@ -1494,7 +1498,7 @@ mod tests {
         });
         subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
 
-        let daily = refresh_as(&state, RoundTrigger::Automatic)
+        let daily = refresh_daily(&state, 1_790_586_000)
             .await
             .expect("the daily check's refresh");
         assert_eq!(
@@ -1521,7 +1525,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_refresh_as_records_who_asked_before_the_round_can_be_seen() {
+    async fn test_the_daily_checks_refresh_records_who_asked_before_the_round_can_be_seen() {
         // The page may fetch the snapshot at any moment (`get_snapshot`)
         // and report its round (`notify::report_update_set`), which looks
         // up who asked for it. So the round is recorded before it is
@@ -1542,7 +1546,7 @@ mod tests {
 
         let refreshing = {
             let state = state.clone();
-            tokio::spawn(async move { refresh_as(&state, RoundTrigger::Automatic).await })
+            tokio::spawn(async move { refresh_daily(&state, 1_790_586_000).await })
         };
         // Long past the fake source's answer: the round has run as far as
         // it can.
@@ -1555,7 +1559,10 @@ mod tests {
 
         release.send(()).expect("the holder is waiting");
         holder.join().expect("holder thread");
-        let snapshot = refreshing.await.expect("refresh task").expect("refresh_as");
+        let snapshot = refreshing
+            .await
+            .expect("refresh task")
+            .expect("refresh_daily");
         assert_eq!(snapshot.round, 1);
         assert_eq!(state.session.snapshot().round, 1);
         assert_eq!(

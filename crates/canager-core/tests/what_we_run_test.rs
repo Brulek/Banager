@@ -26,8 +26,10 @@
 //! the opener plugin the window is given
 //! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
 //! makes, saying it runs nothing else, that the daily check's section
-//! says it is off by default, states its tick and how long after a check it
-//! checks again, says Canager itself runs no install from it and that
+//! says it is off by default, states its tick, how long after a check it
+//! checks again, the waits after daily checks in which every source failed
+//! and how many checks they come to a day, says Canager itself runs no
+//! install from it and that
 //! `brew update` can install a package Homebrew moved between a formula
 //! and a cask, names exactly the notification plugin's permissions the
 //! window is given, and says the notification's switch is off by default,
@@ -653,16 +655,21 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
 #[test]
 fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_canager_runs_no_install_from_it(
 ) {
-    // The daily check's section states the two numbers `auto_check::tick`
-    // and the shell's task run on -- a look every `TICK`, a check once
-    // `DUE_AFTER_SECS` have passed since the last one ended -- that
-    // `Settings::default()` leaves it off, and that Canager itself runs no
-    // install from it (it runs the refresh Check again runs, and no
-    // refresh runs a write command of Canager's), with the exception
-    // Homebrew's `brew update` makes: it can install a package Homebrew
-    // moved between a formula and a cask. A number changed, or the default
-    // turned on, without the section following fails here.
-    use canager_core::auto_check::{DUE_AFTER_SECS, TICK};
+    // The daily check's section states the numbers `auto_check::tick` and
+    // the shell's task run on -- a look every `TICK`, a check once
+    // `DUE_AFTER_SECS` have passed since the last one ended, and after a
+    // daily check in which every source failed the waits
+    // `retry_after_secs` gives, from the first up to the cap, with the
+    // minute of `RETRY_SLACK_SECS` and how many checks those waits come to
+    // a day -- that `Settings::default()` leaves it off, and that Canager
+    // itself runs no install from it (it runs the refresh Check again
+    // runs, and no refresh runs a write command of Canager's), with the
+    // exception Homebrew's `brew update` makes: it can install a package
+    // Homebrew moved between a formula and a cask. A number changed, or
+    // the default turned on, without the section following fails here.
+    use canager_core::auto_check::{
+        retry_after_secs, DUE_AFTER_SECS, RETRY_CAP_SECS, RETRY_FIRST_SECS, RETRY_SLACK_SECS, TICK,
+    };
     use canager_core::settings::Settings;
     assert!(
         !Settings::default().auto_check,
@@ -674,6 +681,58 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
         0,
         "DUE_AFTER_SECS is a whole number of hours"
     );
+    assert_eq!(
+        RETRY_SLACK_SECS, 60,
+        "the section says a look up to a minute short of a wait checks"
+    );
+    // The waits after 1, 2, 3... failed daily checks in a row, in minutes,
+    // short of the cap: the first, then each doubling.
+    let waits: Vec<i64> = (1..)
+        .map(retry_after_secs)
+        .take_while(|&wait| wait < RETRY_CAP_SECS)
+        .map(|wait| {
+            assert_eq!(wait % 60, 0, "every wait is a whole number of minutes");
+            wait / 60
+        })
+        .collect();
+    assert_eq!(
+        waits.first().copied(),
+        Some(RETRY_FIRST_SECS / 60),
+        "the first wait is RETRY_FIRST_SECS"
+    );
+    let (last, between) = waits[1..]
+        .split_last()
+        .expect("at least two doublings before the cap");
+    let doublings = format!(
+        "{} and {last} minutes",
+        between
+            .iter()
+            .map(|minutes| minutes.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    // How many checks those waits come to, on a Mac that stays awake and
+    // offline: in the 24 hours from the first that fails, and in each 24
+    // hours once the waits are at the cap.
+    let day = 24 * 60 * 60;
+    let mut checks = vec![0_i64];
+    for in_a_row in 1.. {
+        let next = checks.last().copied().unwrap_or(0) + retry_after_secs(in_a_row);
+        if next >= 3 * day {
+            break;
+        }
+        checks.push(next);
+    }
+    let first_day = checks.iter().filter(|&&at| at < day).count();
+    let later_day = checks
+        .iter()
+        .filter(|&&at| (2 * day..3 * day).contains(&at))
+        .count();
+    assert_eq!(
+        later_day as i64,
+        day / RETRY_CAP_SECS,
+        "at the cap, a day holds as many checks as it holds caps"
+    );
     let doc = read_doc();
     let body = section_body(&doc, "The daily check")
         .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## The daily check` section"));
@@ -683,12 +742,22 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
         "off by default".to_string(),
         format!("every {} minutes", TICK.as_secs() / 60),
         format!("{} hours", DUE_AFTER_SECS / 3600),
+        format!(
+            "the look {} minutes after the one that started it checks again",
+            RETRY_FIRST_SECS / 60
+        ),
+        doublings,
+        format!("up to {} minutes", RETRY_CAP_SECS / 60),
+        "up to a minute of a wait left".to_string(),
+        format!(
+            "{first_day} times in the 24 hours from the first check that fails and {later_day} times a day after that"
+        ),
         "Canager itself runs no install".to_string(),
         "between a formula and a cask".to_string(),
     ] {
         assert!(
             folded.contains(&phrase),
-            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS, Settings::default() and the refresh it runs make true"
+            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS, auto_check::retry_after_secs, Settings::default() and the refresh it runs make true"
         );
     }
 }

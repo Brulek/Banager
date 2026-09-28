@@ -1,16 +1,18 @@
 //! The daily check, Settings → Updates' 「每天自动检查」
 //! (`Settings::auto_check`): Canager, left running, refreshes by itself
-//! once a day. What is decided here is pure -- the clock, the last check
-//! and whether anything is under way are handed in -- so every case can be
-//! tested without waiting a day. The task that asks every [`TICK`] and runs
-//! the round is the shell's (`check_automatically` in
-//! `src-tauri/src/auto_check.rs`), since only the shell can announce a
-//! refresh to the window.
+//! once a day. What is decided here is pure -- the clock, the last check,
+//! the daily checks that have failed since it and whether anything is
+//! under way are handed in -- so every case can be tested without waiting
+//! a day. The task that asks every [`TICK`] and runs the round is the
+//! shell's (`check_automatically` in `src-tauri/src/auto_check.rs`), since
+//! only the shell can announce a refresh to the window.
 //!
 //! Also here: [`RoundTrigger`] and [`RoundLog`], which remember who asked
 //! for each refresh round, so that code after a round can tell one the
-//! daily check ran from one the window asked for, and when the last round
-//! that counts as a check ended ([`counts_as_check`]).
+//! daily check ran from one the window asked for, when the last round
+//! that counts as a check ended ([`counts_as_check`]), and how many daily
+//! checks in which every source failed have run in a row since
+//! ([`FailedChecks`]).
 
 use crate::model::InstanceNote;
 use crate::session::Snapshot;
@@ -29,12 +31,63 @@ pub const TICK: Duration = Duration::from_secs(15 * 60);
 /// check ended ([`counts_as_check`]) the daily check is due.
 pub const DUE_AFTER_SECS: i64 = 24 * 60 * 60;
 
-/// A minute, in seconds: how far before the last check's end the wall
-/// clock may read and still be taken as no time at all, not as a clock set
-/// back ([`tick`]). A time sync can step the clock back by a little, and a
-/// round can end between a tick reading `now` and reading when the last
-/// check ended.
+/// A minute, in seconds: how far before the last check's end, or before
+/// the look that started the last daily check that failed
+/// ([`FailedChecks::looked_at`]), the wall clock may read and still be
+/// taken as no time at all, not as a clock set back ([`tick`]). A time sync
+/// can step the clock back by a little, and a round can end between a tick
+/// reading `now` and reading when the last check ended.
 pub const SET_BACK_SLACK_SECS: i64 = 60;
+
+/// Fifteen minutes, in seconds: how long after the look that started a
+/// daily check in which every source failed ([`counts_as_check`]) the next
+/// may start, when it is the first such check in a row. Each more in a row
+/// doubles the wait, up to [`RETRY_CAP_SECS`] ([`retry_after_secs`]). It is
+/// one [`TICK`], so the first retry is the next look.
+pub const RETRY_FIRST_SECS: i64 = 15 * 60;
+
+/// Six hours, in seconds: the longest wait between two daily checks in a
+/// row in which every source failed ([`retry_after_secs`]), reached after
+/// the sixth. A Mac on which every source keeps failing -- one that stays
+/// offline, say -- is then checked four times a day, not at every look.
+pub const RETRY_CAP_SECS: i64 = 6 * 60 * 60;
+
+/// A minute, in seconds: how far short of a retry's wait
+/// ([`retry_after_secs`]) the time since the look that started the failed
+/// check may fall, at the look meant to start the retry, and still start
+/// it ([`tick`]). The looks come every [`TICK`] of the Mac being awake,
+/// while the wait is measured on the wall clock, which a time sync can slow
+/// or step back by a little: the look one wait after the failed check's
+/// can find a second or so less than the wait gone, and would otherwise put
+/// the retry off by a whole look.
+pub const RETRY_SLACK_SECS: i64 = 60;
+
+/// How long after the look that started the last of `in_a_row` daily
+/// checks in a row in which every source failed ([`counts_as_check`]) the
+/// next may start, in seconds: [`RETRY_FIRST_SECS`] after the first,
+/// doubling with each more -- 15, 30, 60, 120, 240 minutes -- and
+/// [`RETRY_CAP_SECS`] from the sixth on. `in_a_row` is 1 or more; 0 is
+/// taken as 1.
+pub fn retry_after_secs(in_a_row: u32) -> i64 {
+    // Bounded before shifting: 15 minutes doubled 32 times is far past the
+    // cap, and still far inside an `i64`.
+    let doublings = in_a_row.saturating_sub(1).min(32);
+    (RETRY_FIRST_SECS << doublings).min(RETRY_CAP_SECS)
+}
+
+/// The daily checks in which every source failed ([`counts_as_check`])
+/// that have run in a row since the last round that counts as a check:
+/// what [`tick`] spaces the next daily check out by. Kept by [`RoundLog`]
+/// ([`RoundLog::failed_checks`]), in memory like the rest, so a relaunch
+/// forgets them with the last check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FailedChecks {
+    /// When the look that started the last of them ran: the `now` at which
+    /// [`tick`] answered [`Tick::Check`], Unix seconds on the wall clock.
+    pub looked_at: i64,
+    /// How many have run in a row: 1 or more.
+    pub in_a_row: u32,
+}
 
 /// What one tick of the daily check does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +96,10 @@ pub enum Tick {
     Off,
     /// The last check ended less than [`DUE_AFTER_SECS`] ago: nothing.
     NotDue,
+    /// Due by the day, but daily checks in which every source failed have
+    /// run since the last check, and the wait after the last of them
+    /// ([`retry_after_secs`]) has not passed: nothing now.
+    BackingOff,
     /// Due, but a refresh or an operation is under way
     /// (`Session::busy`): nothing now, and the next tick asks again.
     Busy,
@@ -64,37 +121,70 @@ pub enum Tick {
 /// check: a source that keeps failing is not asked again every 15 minutes,
 /// and the window already says it failed. A daily round in which every
 /// source failed leaves `last_check_ended` where it was, so the check is
-/// still due at the next tick. `None` -- no round has counted since
-/// Canager started -- is due. The stamp lives in memory, so after a
-/// relaunch the window's check at launch is the day's.
+/// still due; `failed` -- the daily checks in which every source failed
+/// that have run in a row since (`RoundLog::failed_checks`) -- spaces the
+/// next one out: it starts at the first tick at which the wait after as
+/// many ([`retry_after_secs`]), less [`RETRY_SLACK_SECS`], has passed
+/// since the look that started the last of them -- the look 15 minutes
+/// after it, then 30, 60, 120 and 240 minutes after, and 360 from then on.
+/// The wait is measured on the wall clock, so time the Mac spends asleep
+/// counts toward it as it does toward the day. A round that counts clears
+/// `failed`. `None` for `last_check_ended` -- no round has counted since
+/// Canager started -- is due. Both live in memory, so after a relaunch the
+/// window's check at launch is the day's.
 ///
 /// A `now` [`SET_BACK_SLACK_SECS`] or more before `last_check_ended` is
 /// due as well: the clock was set back past the last check, and waiting
 /// for it to reach that check again plus a day could take as long as it
-/// was set back. The round that runs then stamps the corrected time, and
-/// once one that counts has, the day is measured from there: a clock set
-/// back costs an extra check, not one per tick. A `now` less than that
-/// before it is not due: the clock stepped back by a little, or a round
-/// ended between the tick reading `now` and reading `last_check_ended`,
-/// and in neither is a day gone.
+/// was set back. So is a `now` that far before the look that started the
+/// last failed daily check, whatever the wait after it. The round that
+/// runs then stamps the corrected time -- its end, when it counts, which
+/// the day is measured from, and its look, when it fails, which the wait
+/// is -- so a clock set back costs an extra check, not one per tick. A
+/// `now` less than that before either is not due: the clock stepped back
+/// by a little, or a round ended between the tick reading `now` and
+/// reading `last_check_ended`, and in neither is a day, or a wait, gone.
 ///
 /// `busy` wins only over a check that is due, so that `Tick` says why
 /// nothing ran.
-pub fn tick(now: i64, last_check_ended: Option<i64>, busy: bool, auto_check: bool) -> Tick {
+pub fn tick(
+    now: i64,
+    last_check_ended: Option<i64>,
+    failed: Option<FailedChecks>,
+    busy: bool,
+    auto_check: bool,
+) -> Tick {
     if !auto_check {
         return Tick::Off;
     }
-    let due = match last_check_ended {
-        None => true,
-        Some(ended) if now < ended => ended.saturating_sub(now) >= SET_BACK_SLACK_SECS,
-        Some(ended) => now.saturating_sub(ended) >= DUE_AFTER_SECS,
-    };
-    if !due {
-        Tick::NotDue
+    if !last_check_ended.is_none_or(|ended| waited(now, ended, DUE_AFTER_SECS)) {
+        return Tick::NotDue;
+    }
+    let retry_due = failed.is_none_or(|failed| {
+        waited(
+            now,
+            failed.looked_at,
+            retry_after_secs(failed.in_a_row) - RETRY_SLACK_SECS,
+        )
+    });
+    if !retry_due {
+        Tick::BackingOff
     } else if busy {
         Tick::Busy
     } else {
         Tick::Check
+    }
+}
+
+/// Whether `wait` seconds have passed on the wall clock from `then` to
+/// `now`. A `now` [`SET_BACK_SLACK_SECS`] or more before `then` has them:
+/// the clock was set back past `then` ([`tick`]). One less than that
+/// before it has not.
+fn waited(now: i64, then: i64, wait: i64) -> bool {
+    if now < then {
+        then.saturating_sub(now) >= SET_BACK_SLACK_SECS
+    } else {
+        now.saturating_sub(then) >= wait
     }
 }
 
@@ -110,10 +200,11 @@ pub fn wall_clock_now() -> i64 {
 
 /// Whether a round counts as a check for the daily one: every round does
 /// but a daily one (`RoundTrigger::Automatic`) in which every source failed
-/// (`every_source_failed`), after which the check is due again at the next
-/// tick, 15 minutes on. A round that failed only in part counts, and so
-/// does one of the window's however it went: the user saw it, and asks
-/// again when they like.
+/// (`every_source_failed`), after which the check is still due, but waits:
+/// 15 minutes after the look that started that round, when it is the first
+/// such in a row, and longer after each more ([`retry_after_secs`]). A
+/// round that failed only in part counts, and so does one of the window's
+/// however it went: the user saw it, and asks again when they like.
 pub fn counts_as_check(trigger: RoundTrigger, snapshot: &Snapshot) -> bool {
     trigger == RoundTrigger::Window || !every_source_failed(snapshot)
 }
@@ -194,6 +285,10 @@ pub struct RoundLog {
     /// When the newest round that counts as a check ended
     /// ([`counts_as_check`]): what [`tick`] measures the day from.
     last_check_ended: Option<i64>,
+    /// The daily checks in which every source failed that have run in a
+    /// row since the newest round that counts ([`RoundLog::failed_checks`]):
+    /// what [`tick`] spaces the next one out by.
+    failed: Option<FailedChecks>,
     /// The rounds that reported a `brew update` still running whose
     /// follow-up is the daily check's ([`RoundLog::awaits_follow_up`]).
     awaiting: BTreeSet<u64>,
@@ -211,8 +306,13 @@ impl RoundLog {
     /// also says whether it awaits a follow-up of the daily check's
     /// ([`RoundLog::awaits_follow_up`]) and, when it counts as a check
     /// ([`counts_as_check`]), its end is the last check's
-    /// ([`RoundLog::last_check_ended`]); an older round's record, arriving
-    /// late, moves neither.
+    /// ([`RoundLog::last_check_ended`]) and the daily checks that failed
+    /// before it are forgotten ([`RoundLog::failed_checks`]); an older
+    /// round's record, arriving late, moves none of these.
+    ///
+    /// A round recorded here adds no failed daily check, whoever asked for
+    /// it: the daily check's own rounds are recorded by
+    /// [`RoundLog::record_daily`], which knows the look that started them.
     pub fn record(&mut self, round: u64, trigger: RoundTrigger, snapshot: &Snapshot) {
         let shared = match self.triggers.get(&round) {
             Some(RoundTrigger::Window) => RoundTrigger::Window,
@@ -230,6 +330,7 @@ impl RoundLog {
         if round == self.newest {
             if counts_as_check(shared, snapshot) {
                 self.last_check_ended = snapshot.refreshed_at;
+                self.failed = None;
             }
             let follow_up = self
                 .follow_up_owner
@@ -253,11 +354,48 @@ impl RoundLog {
         self.triggers.get(&round).copied()
     }
 
+    /// Records round `round`, whose result is `snapshot`, as the daily
+    /// check's, started by the look at `looked_at` -- the `now` at which
+    /// [`tick`] answered [`Tick::Check`] (the shell's `check_automatically`)
+    /// -- that is, [`RoundLog::record`] as [`RoundTrigger::Automatic`], and,
+    /// when it is the newest round and does not count as a check
+    /// ([`counts_as_check`]: every source failed, and no call of the
+    /// window's shares the round), one more daily check failed in a row,
+    /// the last started at `looked_at` ([`RoundLog::failed_checks`]).
+    ///
+    /// The refresh a daily check's `brew update` sets off when it ends
+    /// ([`RoundLog::record_follow_up`]) is no daily check of its own, and
+    /// no look started it: when it counts, it clears the failed checks, as
+    /// any round that counts does, and when it does not, it adds none.
+    pub fn record_daily(&mut self, round: u64, looked_at: i64, snapshot: &Snapshot) {
+        self.record(round, RoundTrigger::Automatic, snapshot);
+        if round == self.newest
+            && self.trigger_of(round) == Some(RoundTrigger::Automatic)
+            && !counts_as_check(RoundTrigger::Automatic, snapshot)
+        {
+            let before = self.failed.map_or(0, |failed| failed.in_a_row);
+            self.failed = Some(FailedChecks {
+                looked_at,
+                in_a_row: before.saturating_add(1),
+            });
+        }
+    }
+
     /// When the last round that counts as a check ended
     /// ([`counts_as_check`]), on the wall clock: the `last_check_ended` the
     /// shell hands [`tick`]. `None` until one has been recorded.
     pub fn last_check_ended(&self) -> Option<i64> {
         self.last_check_ended
+    }
+
+    /// The daily checks in which every source failed that have run in a
+    /// row since the last round that counts as a check, recorded by
+    /// [`RoundLog::record_daily`]: the `failed` the shell hands [`tick`].
+    /// `None` when there have been none, and again once a round that counts
+    /// is recorded as the newest -- any of the window's, a daily one, or a
+    /// follow-up ([`RoundLog::record`]).
+    pub fn failed_checks(&self) -> Option<FailedChecks> {
+        self.failed
     }
 
     /// Whether round `round` reported a `brew update` still running whose
@@ -329,7 +467,7 @@ mod tests {
         // between the tick reading `now` and reading the last check.
         for behind in [1, 2, 30, SET_BACK_SLACK_SECS - 1] {
             assert_eq!(
-                tick(NINE_AM - behind, Some(NINE_AM), false, true),
+                tick(NINE_AM - behind, Some(NINE_AM), None, false, true),
                 Tick::NotDue,
                 "{behind} s before the last check"
             );
@@ -340,7 +478,7 @@ mod tests {
     fn test_a_now_a_minute_or_more_before_the_last_check_checks_once() {
         for behind in [SET_BACK_SLACK_SECS, 10 * 60, 365 * DAY] {
             assert_eq!(
-                tick(NINE_AM - behind, Some(NINE_AM), false, true),
+                tick(NINE_AM - behind, Some(NINE_AM), None, false, true),
                 Tick::Check,
                 "{behind} s before the last check"
             );
@@ -348,7 +486,7 @@ mod tests {
             // not due.
             let checked = NINE_AM - behind + 30;
             assert_eq!(
-                tick(checked + 15 * 60, Some(checked), false, true),
+                tick(checked + 15 * 60, Some(checked), None, false, true),
                 Tick::NotDue
             );
         }
@@ -358,16 +496,19 @@ mod tests {
     fn test_nothing_runs_while_the_setting_is_off_however_long_ago_the_last_round_was() {
         for last in [None, Some(NINE_AM - 30 * DAY), Some(NINE_AM - 60)] {
             for busy in [false, true] {
-                assert_eq!(tick(NINE_AM, last, busy, false), Tick::Off);
+                assert_eq!(tick(NINE_AM, last, None, busy, false), Tick::Off);
             }
         }
     }
 
     #[test]
     fn test_a_round_that_ended_less_than_a_day_ago_is_not_due() {
-        assert_eq!(tick(NINE_AM, Some(NINE_AM - 60), false, true), Tick::NotDue);
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - DAY + 1), false, true),
+            tick(NINE_AM, Some(NINE_AM - 60), None, false, true),
+            Tick::NotDue
+        );
+        assert_eq!(
+            tick(NINE_AM, Some(NINE_AM - DAY + 1), None, false, true),
             Tick::NotDue,
             "one second short of a day"
         );
@@ -375,9 +516,12 @@ mod tests {
 
     #[test]
     fn test_a_day_after_the_last_round_ended_the_check_is_due() {
-        assert_eq!(tick(NINE_AM, Some(NINE_AM - DAY), false, true), Tick::Check);
         assert_eq!(
-            tick(NINE_AM, Some(NINE_AM - DAY - 1), false, true),
+            tick(NINE_AM, Some(NINE_AM - DAY), None, false, true),
+            Tick::Check
+        );
+        assert_eq!(
+            tick(NINE_AM, Some(NINE_AM - DAY - 1), None, false, true),
             Tick::Check
         );
     }
@@ -386,7 +530,7 @@ mod tests {
     fn test_no_round_since_launch_is_due() {
         // The window's check at launch has not ended (it would be busy
         // then) and none ever ran: nothing has been checked in this run.
-        assert_eq!(tick(NINE_AM, None, false, true), Tick::Check);
+        assert_eq!(tick(NINE_AM, None, None, false, true), Tick::Check);
     }
 
     #[test]
@@ -397,15 +541,15 @@ mod tests {
         // tick after waking finds two days gone.
         let ended = NINE_AM;
         let woke = NINE_AM + 2 * DAY;
-        assert_eq!(tick(woke + 60, Some(ended), false, true), Tick::Check);
+        assert_eq!(tick(woke + 60, Some(ended), None, false, true), Tick::Check);
         // That round stamps its own end; the ticks after it are not due.
         let checked = woke + 90;
         assert_eq!(
-            tick(woke + 15 * 60, Some(checked), false, true),
+            tick(woke + 15 * 60, Some(checked), None, false, true),
             Tick::NotDue
         );
         assert_eq!(
-            tick(woke + 30 * 60, Some(checked), false, true),
+            tick(woke + 30 * 60, Some(checked), None, false, true),
             Tick::NotDue
         );
     }
@@ -413,14 +557,20 @@ mod tests {
     #[test]
     fn test_a_due_check_waits_while_something_is_under_way_and_runs_at_the_next_free_tick() {
         let last = Some(NINE_AM - 2 * DAY);
-        assert_eq!(tick(NINE_AM, last, true, true), Tick::Busy);
-        assert_eq!(tick(NINE_AM + 15 * 60, last, true, true), Tick::Busy);
-        assert_eq!(tick(NINE_AM + 30 * 60, last, false, true), Tick::Check);
+        assert_eq!(tick(NINE_AM, last, None, true, true), Tick::Busy);
+        assert_eq!(tick(NINE_AM + 15 * 60, last, None, true, true), Tick::Busy);
+        assert_eq!(
+            tick(NINE_AM + 30 * 60, last, None, false, true),
+            Tick::Check
+        );
     }
 
     #[test]
     fn test_busy_does_not_hide_that_nothing_was_due() {
-        assert_eq!(tick(NINE_AM, Some(NINE_AM - 60), true, true), Tick::NotDue);
+        assert_eq!(
+            tick(NINE_AM, Some(NINE_AM - 60), None, true, true),
+            Tick::NotDue
+        );
     }
 
     #[test]
@@ -430,12 +580,12 @@ mod tests {
         // would stop the daily check for a year.
         let stamped_by_the_fast_clock = NINE_AM + 365 * DAY;
         assert_eq!(
-            tick(NINE_AM, Some(stamped_by_the_fast_clock), false, true),
+            tick(NINE_AM, Some(stamped_by_the_fast_clock), None, false, true),
             Tick::Check
         );
         // The round that runs stamps the corrected time.
         assert_eq!(
-            tick(NINE_AM + 15 * 60, Some(NINE_AM + 60), false, true),
+            tick(NINE_AM + 15 * 60, Some(NINE_AM + 60), None, false, true),
             Tick::NotDue
         );
     }
@@ -748,7 +898,8 @@ mod tests {
     }
 
     #[test]
-    fn test_a_mac_that_wakes_offline_checks_at_every_tick_until_a_check_reaches_a_source() {
+    fn test_a_mac_that_wakes_offline_checks_again_at_the_next_look_until_a_check_reaches_a_source()
+    {
         // The last check ended at 9:00 on Monday; the Mac slept until
         // Wednesday 9:00, and wakes before its network does.
         let mut log = RoundLog::default();
@@ -757,45 +908,400 @@ mod tests {
             RoundTrigger::Window,
             &round_at(NINE_AM, &[("fake:1", false)]),
         );
-        let woke = NINE_AM + 2 * DAY;
-        assert_eq!(
-            tick(woke + 60, log.last_check_ended(), false, true),
-            Tick::Check
-        );
+        let look = NINE_AM + 2 * DAY + 60;
+        assert_eq!(tick_over(&log, look), Tick::Check);
         // Every source fails: not the day's check.
-        log.record(
+        log.record_daily(
             2,
-            RoundTrigger::Automatic,
-            &round_at(woke + 90, &[("fake:1", true), ("fake:2", true)]),
+            look,
+            &round_at(look + 30, &[("fake:1", true), ("fake:2", true)]),
+        );
+        assert_eq!(log.last_check_ended(), Some(NINE_AM));
+        assert_eq!(
+            log.failed_checks(),
+            Some(FailedChecks {
+                looked_at: look,
+                in_a_row: 1
+            })
         );
         assert_eq!(
-            tick(woke + 60 + 15 * 60, log.last_check_ended(), false, true),
+            tick_over(&log, look + 15 * MINUTE),
             Tick::Check,
-            "the next tick, 15 minutes on, checks again"
+            "the next look, 15 minutes on, checks again"
         );
         // The network is back for one of them: that check counts.
-        log.record(
+        let next = look + 15 * MINUTE;
+        log.record_daily(
             3,
-            RoundTrigger::Automatic,
-            &round_at(
-                woke + 60 + 15 * 60 + 30,
-                &[("fake:1", false), ("fake:2", true)],
-            ),
+            next,
+            &round_at(next + 30, &[("fake:1", false), ("fake:2", true)]),
         );
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(tick_over(&log, next + 15 * MINUTE), Tick::NotDue);
         assert_eq!(
-            tick(woke + 60 + 30 * 60, log.last_check_ended(), false, true),
-            Tick::NotDue
-        );
-        assert_eq!(
-            tick(
-                woke + 60 + 15 * 60 + 30 + DAY,
-                log.last_check_ended(),
-                false,
-                true
-            ),
+            tick_over(&log, next + 30 + DAY),
             Tick::Check,
             "and the next is a day after it"
         );
+    }
+
+    const MINUTE: i64 = 60;
+
+    /// How long a daily round takes in these tests, from its look to its
+    /// end: longer than [`RETRY_SLACK_SECS`], so that a wait measured from
+    /// a failed round's end, not from its look, would miss the look it is
+    /// meant for.
+    const TOOK: i64 = 150;
+
+    /// The tick at `now` over what `log` holds, with nothing under way and
+    /// the daily check on: what the shell's `tick_at` hands [`tick`].
+    fn tick_over(log: &RoundLog, now: i64) -> Tick {
+        tick(
+            now,
+            log.last_check_ended(),
+            log.failed_checks(),
+            false,
+            true,
+        )
+    }
+
+    /// Runs the daily check's looks over `log` as the shell's task does:
+    /// one every [`TICK`] from `from` until before `until`, on the wall
+    /// clock, the Mac awake and offline throughout. At each look at which
+    /// [`tick`] says [`Tick::Check`], a daily round runs, numbered on from
+    /// `round`, ends [`TOOK`] after its look, and fails for its one source.
+    /// Returns the looks at which a round ran.
+    fn run_looks(log: &mut RoundLog, round: &mut u64, from: i64, until: i64) -> Vec<i64> {
+        let mut ran = Vec::new();
+        let mut look = from;
+        while look < until {
+            if tick_over(log, look) == Tick::Check {
+                *round += 1;
+                log.record_daily(*round, look, &round_at(look + TOOK, &[("fake:1", true)]));
+                ran.push(look);
+            }
+            look += TICK.as_secs() as i64;
+        }
+        ran
+    }
+
+    /// Minutes from `from` to each of `looks`.
+    fn minutes_after(from: i64, looks: &[i64]) -> Vec<i64> {
+        looks.iter().map(|look| (look - from) / MINUTE).collect()
+    }
+
+    /// A log whose last check ended a day before `NINE_AM`, then the
+    /// failed daily checks started at `looks`, in that order, each ending
+    /// [`TOOK`] after its look.
+    fn failed_at(looks: &[i64]) -> RoundLog {
+        let mut log = RoundLog::default();
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM - DAY, &[("fake:1", false)]),
+        );
+        for (round, &look) in (2..).zip(looks) {
+            assert_eq!(tick_over(&log, look), Tick::Check, "precondition");
+            log.record_daily(round, look, &round_at(look + TOOK, &[("fake:1", true)]));
+        }
+        log
+    }
+
+    #[test]
+    fn test_the_wait_after_a_failed_daily_check_is_15_minutes_doubling_up_to_six_hours() {
+        assert_eq!(RETRY_FIRST_SECS, 15 * MINUTE);
+        assert_eq!(RETRY_FIRST_SECS, TICK.as_secs() as i64, "one look");
+        assert_eq!(RETRY_CAP_SECS, 6 * 60 * MINUTE);
+        assert_eq!(RETRY_SLACK_SECS, MINUTE);
+        let waits: Vec<i64> = (1..=8).map(|n| retry_after_secs(n) / MINUTE).collect();
+        assert_eq!(waits, [15, 30, 60, 120, 240, 360, 360, 360]);
+        assert_eq!(retry_after_secs(0), RETRY_FIRST_SECS, "0 is taken as 1");
+        for in_a_row in [9, 32, 33, 34, 1_000, u32::MAX] {
+            assert_eq!(
+                retry_after_secs(in_a_row),
+                RETRY_CAP_SECS,
+                "{in_a_row} in a row"
+            );
+        }
+    }
+
+    #[test]
+    fn test_failed_daily_checks_are_retried_15_30_60_120_and_240_minutes_apart_then_every_six_hours(
+    ) {
+        // The last check ended a day before 9:00; from 9:00 the Mac is
+        // offline for two days, awake and looking every 15 minutes.
+        let mut log = failed_at(&[]);
+        let mut round = 1;
+        let ran = run_looks(&mut log, &mut round, NINE_AM, NINE_AM + 2 * DAY);
+        assert_eq!(
+            minutes_after(NINE_AM, &ran),
+            [0, 15, 45, 105, 225, 465, 825, 1185, 1545, 1905, 2265, 2625],
+            "each wait from the look that started the last failed check: 15, 30, 60, 120, 240, then 360 minutes"
+        );
+        assert_eq!(
+            log.failed_checks(),
+            Some(FailedChecks {
+                looked_at: NINE_AM + 2625 * MINUTE,
+                in_a_row: 12
+            })
+        );
+        assert_eq!(
+            log.last_check_ended(),
+            Some(NINE_AM - DAY),
+            "none of them counted"
+        );
+        // Every look between two of them was told why it did nothing.
+        assert_eq!(tick_over(&log, NINE_AM + 2640 * MINUTE), Tick::BackingOff);
+        assert_eq!(
+            tick_over(&log, NINE_AM + 2985 * MINUTE),
+            Tick::Check,
+            "six hours after the last"
+        );
+    }
+
+    #[test]
+    fn test_a_daily_check_that_counts_ends_the_backoff() {
+        // Four in a row failed: the next is 120 minutes after the fourth's
+        // look, at 225.
+        let looks = [0, 15, 45, 105].map(|m| NINE_AM + m * MINUTE);
+        let mut log = failed_at(&looks);
+        assert_eq!(tick_over(&log, NINE_AM + 210 * MINUTE), Tick::BackingOff);
+        let retry = NINE_AM + 225 * MINUTE;
+        assert_eq!(tick_over(&log, retry), Tick::Check);
+        // A source answers: that check counts, and the backoff is over.
+        log.record_daily(6, retry, &round_at(retry + TOOK, &[("fake:1", false)]));
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(retry + TOOK));
+        assert_eq!(tick_over(&log, retry + 15 * MINUTE), Tick::NotDue);
+        // The next daily check is a day after it; when that one fails, the
+        // next is 15 minutes after its look, not 240.
+        let next_day = retry + DAY + 15 * MINUTE;
+        assert_eq!(tick_over(&log, next_day), Tick::Check);
+        log.record_daily(7, next_day, &round_at(next_day + TOOK, &[("fake:1", true)]));
+        assert_eq!(
+            log.failed_checks(),
+            Some(FailedChecks {
+                looked_at: next_day,
+                in_a_row: 1
+            })
+        );
+        assert_eq!(tick_over(&log, next_day + 15 * MINUTE), Tick::Check);
+    }
+
+    #[test]
+    fn test_a_check_of_the_users_between_failed_daily_checks_ends_the_backoff() {
+        // Three in a row failed: the next would be 60 minutes after the
+        // third's look.
+        let looks = [0, 15, 45].map(|m| NINE_AM + m * MINUTE);
+        let mut log = failed_at(&looks);
+        assert_eq!(tick_over(&log, NINE_AM + 90 * MINUTE), Tick::BackingOff);
+        // The user checks 20 minutes after the third, and every source
+        // fails for them too: a check of the window's counts however it
+        // went.
+        let theirs = NINE_AM + 65 * MINUTE;
+        log.record(
+            5,
+            RoundTrigger::Window,
+            &round_at(theirs, &[("fake:1", true)]),
+        );
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(theirs));
+        // So no daily check runs until a day after theirs, whatever the
+        // wait stood at...
+        assert_eq!(tick_over(&log, NINE_AM + 105 * MINUTE), Tick::NotDue);
+        assert_eq!(tick_over(&log, theirs + DAY - 60), Tick::NotDue);
+        // ... and one that fails then starts the waits from 15 minutes.
+        let next = theirs + DAY;
+        assert_eq!(tick_over(&log, next), Tick::Check);
+        log.record_daily(6, next, &round_at(next + TOOK, &[("fake:1", true)]));
+        assert_eq!(tick_over(&log, next + 15 * MINUTE), Tick::Check);
+    }
+
+    #[test]
+    fn test_time_asleep_counts_toward_the_wait_after_a_failed_daily_check() {
+        // Five in a row failed: the next is 240 minutes after the fifth's
+        // look, at 225.
+        let looks = [0, 15, 45, 105, 225].map(|m| NINE_AM + m * MINUTE);
+        let fifth = NINE_AM + 225 * MINUTE;
+        let mut log = failed_at(&looks);
+        // The Mac sleeps for three hours right after it. The looks stop
+        // while it sleeps, the wall clock does not: the first look after
+        // it wakes finds three hours of the four gone, and waits.
+        let woke = fifth + 3 * 60 * MINUTE;
+        assert_eq!(tick_over(&log, woke + 5 * MINUTE), Tick::BackingOff);
+        // Awake again, it checks at the first look four hours after the
+        // fifth's -- not four hours of looks after it woke.
+        let mut round = 6;
+        let ran = run_looks(
+            &mut log,
+            &mut round,
+            woke + 5 * MINUTE,
+            woke + 2 * 60 * MINUTE,
+        );
+        assert_eq!(minutes_after(fifth, &ran), [245]);
+        let sixth = ran[0];
+        // That one fails too, and the Mac sleeps for two days: the first
+        // look after it wakes checks, the six hours long gone.
+        assert_eq!(tick_over(&log, sixth + 60 * MINUTE), Tick::BackingOff);
+        assert_eq!(tick_over(&log, sixth + 2 * DAY), Tick::Check);
+    }
+
+    #[test]
+    fn test_a_look_a_little_short_of_the_wait_retries_and_the_look_before_it_does_not() {
+        // Two in a row failed, the last started at 9:00: the next is 30
+        // minutes after. The looks come every 15 minutes the Mac is awake,
+        // and the wall clock can read a second or so short at the one
+        // meant to retry.
+        let last = Some(NINE_AM - 2 * DAY);
+        let failed = Some(FailedChecks {
+            looked_at: NINE_AM,
+            in_a_row: 2,
+        });
+        let at = |now| tick(now, last, failed, false, true);
+        assert_eq!(at(NINE_AM + 15 * MINUTE), Tick::BackingOff);
+        assert_eq!(
+            at(NINE_AM + 30 * MINUTE - RETRY_SLACK_SECS - 1),
+            Tick::BackingOff
+        );
+        for short in [0, 1, 2, RETRY_SLACK_SECS] {
+            assert_eq!(
+                at(NINE_AM + 30 * MINUTE - short),
+                Tick::Check,
+                "{short} s short"
+            );
+        }
+        assert_eq!(at(NINE_AM + 30 * MINUTE + 1), Tick::Check);
+    }
+
+    #[test]
+    fn test_a_clock_set_back_past_a_failed_daily_checks_look_retries_once_instead_of_waiting_for_it(
+    ) {
+        // The last failed check's look was stamped by a clock a year fast,
+        // six hours to wait after it; the clock was then corrected.
+        let last = Some(NINE_AM - 2 * DAY);
+        let failed = Some(FailedChecks {
+            looked_at: NINE_AM + 365 * DAY,
+            in_a_row: 6,
+        });
+        assert_eq!(tick(NINE_AM, last, failed, false, true), Tick::Check);
+        // Less than a minute before it is a small correction, not a clock
+        // set back: the wait stands.
+        let stamped = NINE_AM + 365 * DAY;
+        for behind in [1, SET_BACK_SLACK_SECS - 1] {
+            assert_eq!(
+                tick(stamped - behind, last, failed, false, true),
+                Tick::BackingOff,
+                "{behind} s before the look"
+            );
+        }
+        // The retry stamps its own look, on the corrected clock: the wait
+        // after it runs from there.
+        let mut log = RoundLog::default();
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM - 2 * DAY, &[("fake:1", false)]),
+        );
+        log.record_daily(2, stamped, &round_at(stamped + TOOK, &[("fake:1", true)]));
+        assert_eq!(tick_over(&log, NINE_AM), Tick::Check);
+        log.record_daily(3, NINE_AM, &round_at(NINE_AM + TOOK, &[("fake:1", true)]));
+        assert_eq!(tick_over(&log, NINE_AM + 15 * MINUTE), Tick::BackingOff);
+        assert_eq!(tick_over(&log, NINE_AM + 30 * MINUTE), Tick::Check);
+    }
+
+    #[test]
+    fn test_off_and_not_due_say_why_before_a_backoff_does_and_a_backoff_before_busy() {
+        let failed = Some(FailedChecks {
+            looked_at: NINE_AM,
+            in_a_row: 1,
+        });
+        let due = Some(NINE_AM - 2 * DAY);
+        assert_eq!(tick(NINE_AM + 60, due, failed, true, false), Tick::Off);
+        assert_eq!(
+            tick(NINE_AM + 60, Some(NINE_AM - 60), failed, true, true),
+            Tick::NotDue
+        );
+        assert_eq!(
+            tick(NINE_AM + 60, due, failed, true, true),
+            Tick::BackingOff
+        );
+        assert_eq!(
+            tick(NINE_AM + 15 * MINUTE, due, failed, true, true),
+            Tick::Busy,
+            "the wait has passed, and busy says why nothing ran"
+        );
+    }
+
+    #[test]
+    fn test_a_failed_daily_round_the_window_shared_is_no_failed_check_whichever_records_first() {
+        let failed = round_at(NINE_AM, &[("fake:1", true)]);
+        let mut log = RoundLog::default();
+        log.record_daily(4, NINE_AM - 30, &failed);
+        assert_eq!(
+            log.failed_checks(),
+            Some(FailedChecks {
+                looked_at: NINE_AM - 30,
+                in_a_row: 1
+            })
+        );
+        log.record(4, RoundTrigger::Window, &failed);
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(NINE_AM));
+
+        let mut log = RoundLog::default();
+        log.record(4, RoundTrigger::Window, &failed);
+        log.record_daily(4, NINE_AM - 30, &failed);
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(NINE_AM));
+    }
+
+    #[test]
+    fn test_the_follow_up_of_a_daily_checks_brew_update_adds_no_failed_check_and_ends_them_when_it_counts(
+    ) {
+        // A daily round in which every source failed -- Homebrew's reading
+        // of its packages included -- though its `brew update` outlasted
+        // it: one failed check, and a follow-up of the daily check's to
+        // come.
+        let mut failing = round_at(NINE_AM, &[("brew:/opt/homebrew", true)]);
+        failing.instances[0]
+            .status
+            .notes
+            .push(InstanceNote::IndexUpdating);
+        let mut log = failed_at(&[]);
+        log.record_daily(2, NINE_AM - 40, &failing);
+        let one = Some(FailedChecks {
+            looked_at: NINE_AM - 40,
+            in_a_row: 1,
+        });
+        assert_eq!(log.failed_checks(), one);
+        // The update fails, and the follow-up with it: no look started it,
+        // and it adds no failed check.
+        let stale = round_at(NINE_AM + 300, &[("brew:/opt/homebrew", true)]);
+        assert_eq!(log.record_follow_up(3, &stale), RoundTrigger::Automatic);
+        assert_eq!(log.failed_checks(), one);
+        // A follow-up that counts ends them, as any round that counts does.
+        log.record_daily(4, NINE_AM + 15 * MINUTE, &failing);
+        let answered = round_at(NINE_AM + 20 * MINUTE, &[("brew:/opt/homebrew", false)]);
+        assert_eq!(log.record_follow_up(5, &answered), RoundTrigger::Automatic);
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(NINE_AM + 20 * MINUTE));
+    }
+
+    #[test]
+    fn test_a_late_record_of_an_older_daily_round_adds_no_failed_check() {
+        let mut log = failed_at(&[]);
+        log.record(
+            3,
+            RoundTrigger::Window,
+            &round_at(NINE_AM, &[("fake:1", false)]),
+        );
+        log.record_daily(
+            2,
+            NINE_AM - 60,
+            &round_at(NINE_AM - 30, &[("fake:1", true)]),
+        );
+        assert_eq!(log.failed_checks(), None);
+        assert_eq!(log.last_check_ended(), Some(NINE_AM));
     }
 
     #[test]
