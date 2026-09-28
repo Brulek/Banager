@@ -84,12 +84,12 @@ pub enum Notice {
     /// The window has the focus, so the user sees what it offers: every
     /// pair of the report is marked, and nothing is posted.
     Seen,
-    /// A notification was due, but the round's `brew update` is still
-    /// running and the refresh its end sets off is the daily check's too
-    /// ([`ReportedRound::awaits_follow_up`]): nothing is posted now, and
-    /// nothing marked, so that the daily check posts once, when that
-    /// refresh reports -- the updates offered then, which are those offered
-    /// now and those the update's new catalogue adds.
+    /// A notification was due, but the round reported its `brew update`
+    /// still running, and the refresh that update's end sets off is the
+    /// daily check's too ([`ReportedRound::awaits_follow_up`]): nothing is
+    /// posted now, and nothing marked, so that the daily check posts once,
+    /// when that refresh reports -- the updates offered then, which are
+    /// those offered now and those the update's new catalogue adds.
     Deferred,
     /// A notification was due, but Canager is the app in front without its
     /// window focused ([`Focus::App`]), where macOS would show no banner:

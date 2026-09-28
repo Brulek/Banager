@@ -161,12 +161,22 @@ pub enum RoundTrigger {
 /// (`InstanceNote::IndexUpdating`) after one that reported none, since
 /// only an update Canager started is reported that way. Every round after
 /// it that the update outlasts reports it too, and leaves the owner as it
-/// is; a round that reports none ends it. So a daily check whose `brew
-/// update` outlasted it has its follow-up counted as automatic, and a
-/// check of the user's as the window's -- and a round that reports the
-/// update running while its follow-up is the daily check's waits for that
-/// follow-up to say what the daily check found
+/// is; a round that reports none ends it. So a daily check that reports
+/// its `brew update` still running has its follow-up counted as automatic,
+/// and a check of the user's as the window's -- and a round that reports
+/// the update running while its follow-up is the daily check's waits for
+/// that follow-up to say what the daily check found
 /// ([`RoundLog::awaits_follow_up`]).
+///
+/// Who the follow-up belongs to is decided as the follow-up's own round is
+/// recorded ([`RoundLog::record_follow_up`]), not as the wake-up comes.
+/// The round that started the update is recorded only as it commits, and
+/// the update can end before that: its Homebrew stops waiting for the
+/// update after two minutes, and a slow source can keep the round going
+/// after that. The follow-up's round starts after the wake-up, and one
+/// round runs at a time (`Session::refresh`), so by the time the
+/// follow-up's round is recorded, the round that started the update has
+/// been.
 #[derive(Debug, Default)]
 pub struct RoundLog {
     triggers: BTreeMap<u64, RoundTrigger>,
@@ -186,8 +196,9 @@ pub struct RoundLog {
 
 impl RoundLog {
     /// How many rounds before the newest one are remembered, besides the
-    /// round `take_follow_up_trigger` will ask about, which is kept however
-    /// old it gets.
+    /// round that started the `brew update` still reported running, whose
+    /// trigger the next follow-up takes ([`RoundLog::record_follow_up`]),
+    /// which is kept however old it gets.
     pub const KEPT: u64 = 64;
 
     /// Records that round `round`, whose result is `snapshot`, was handed
@@ -246,21 +257,34 @@ impl RoundLog {
 
     /// Whether round `round` reported a `brew update` still running whose
     /// follow-up -- the refresh that update's end sets off
-    /// (`take_follow_up_trigger`) -- is the daily check's: a follow-up of
-    /// the daily check's will come, and report what the daily check found,
-    /// the update's new catalogue included. The update notification waits
-    /// for it (`notify_updates::decide`), so that a daily check posts one
-    /// notification at most. False for a round not remembered.
+    /// ([`RoundLog::record_follow_up`]) -- is the daily check's: a
+    /// follow-up of the daily check's will come, and report what the daily
+    /// check found, the update's new catalogue included. The update
+    /// notification waits for it (`notify_updates::decide`), so that a
+    /// daily check posts one notification at most. False for a round not
+    /// remembered.
     pub fn awaits_follow_up(&self, round: u64) -> bool {
         self.awaiting.contains(&round)
     }
 
-    /// Who the refresh a background change is setting off runs for: the
-    /// trigger of the round that started the `brew update` that ended, and
-    /// `Window` when no round reports one running. Taken, not read: the
-    /// wake-up is the update's end, and the refresh it sets off is its one
-    /// follow-up.
-    pub fn take_follow_up_trigger(&mut self) -> RoundTrigger {
+    /// Records round `round`, whose result is `snapshot`, as handed to the
+    /// refresh a background change set off (the shell's
+    /// `refresh_on_background_change`), and returns who that refresh was
+    /// asked for by: the trigger of the round that started the `brew
+    /// update` that ended, and `Window` when no round reports one running
+    /// -- read now, as the follow-up's round is recorded, when the round
+    /// that started the update has been recorded too, however long it ran
+    /// after the update ended.
+    pub fn record_follow_up(&mut self, round: u64, snapshot: &Snapshot) -> RoundTrigger {
+        let trigger = self.take_follow_up_trigger();
+        self.record(round, trigger, snapshot);
+        trigger
+    }
+
+    /// Who the refresh a background change set off runs for
+    /// ([`RoundLog::record_follow_up`]). Taken, not read: the wake-up is
+    /// the update's end, and the refresh it sets off is its one follow-up.
+    fn take_follow_up_trigger(&mut self) -> RoundTrigger {
         self.follow_up_owner
             .take()
             .and_then(|round| self.trigger_of(round))
@@ -484,6 +508,45 @@ mod tests {
         assert_eq!(log.trigger_of(4), Some(RoundTrigger::Automatic));
         // Taken: a second wake-up with no update reported is the window's.
         assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Window);
+    }
+
+    #[test]
+    fn test_a_follow_up_belongs_to_the_round_that_started_the_update_however_late_that_round_was_recorded(
+    ) {
+        let mut log = RoundLog::default();
+        log.record(1, RoundTrigger::Window, &snapshot(false));
+        // The daily check's round 2 reported its `brew update` running and
+        // then waited on a slow source; the update ended, and woke the
+        // shell, before round 2 committed. Round 2 is recorded as it
+        // commits, and the follow-up's round 3 after it.
+        log.record(2, RoundTrigger::Automatic, &snapshot(true));
+        assert!(log.awaits_follow_up(2));
+        assert_eq!(
+            log.record_follow_up(3, &snapshot(false)),
+            RoundTrigger::Automatic
+        );
+        assert_eq!(log.trigger_of(3), Some(RoundTrigger::Automatic));
+        // Taken: the follow-up of a wake-up with no update reported
+        // running is the window's.
+        assert_eq!(
+            log.record_follow_up(4, &snapshot(false)),
+            RoundTrigger::Window
+        );
+        assert_eq!(log.trigger_of(4), Some(RoundTrigger::Window));
+    }
+
+    #[test]
+    fn test_a_follow_up_that_shares_a_round_of_the_windows_is_the_windows() {
+        let mut log = RoundLog::default();
+        log.record(1, RoundTrigger::Automatic, &snapshot(true));
+        // A round of the window's read the new catalogue first, and the
+        // follow-up shares it.
+        log.record(2, RoundTrigger::Window, &snapshot(false));
+        assert_eq!(
+            log.record_follow_up(2, &snapshot(false)),
+            RoundTrigger::Window
+        );
+        assert_eq!(log.trigger_of(2), Some(RoundTrigger::Window));
     }
 
     #[test]

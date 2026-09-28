@@ -27,11 +27,33 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
     refresh_as(state, RoundTrigger::Window).await
 }
 
+/// A refresh asked for as `trigger`: the window's (`refresh_impl`) or the
+/// daily check's (`auto_check::check_automatically`), through
+/// `refresh_for`.
+pub(crate) async fn refresh_as(
+    state: &AppState,
+    trigger: RoundTrigger,
+) -> Result<Snapshot, String> {
+    refresh_for(state, Asker::Trigger(trigger)).await
+}
+
+/// Who a refresh the shell runs is recorded as asked for by.
+#[derive(Clone, Copy)]
+enum Asker {
+    /// The window or the daily check (`refresh_as`).
+    Trigger(RoundTrigger),
+    /// Whoever asked for the round that started the `brew update` whose end
+    /// set this refresh off (`refresh_on_background_change`), read as its
+    /// round is recorded (`RoundLog::record_follow_up`).
+    FollowUp,
+}
+
 /// Every refresh the shell runs goes through here: the window's
 /// (`refresh_impl`), the daily check's (`auto_check::check_automatically`)
 /// and the one a finished `brew update` sets off
 /// (`refresh_on_background_change`). Records who asked for the round that
-/// answered (`RoundLog::record`) before that round's snapshot is committed
+/// answered (`RoundLog::record`, or `RoundLog::record_follow_up` for the
+/// last of the three) before that round's snapshot is committed
 /// (`Session::refresh_recording`) -- so before the page can fetch it
 /// (`get_snapshot`, which it may do at any time, a refetch as the window
 /// comes back included) and report it (`notify::report_update_set`, which
@@ -45,21 +67,24 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
 /// `Session::refresh` itself cannot send this — the shell is the only
 /// layer that can, and `announce` below is the only place that does so
 /// outside a test.
-pub(crate) async fn refresh_as(
-    state: &AppState,
-    trigger: RoundTrigger,
-) -> Result<Snapshot, String> {
+async fn refresh_for(state: &AppState, asker: Asker) -> Result<Snapshot, String> {
+    // Who this call asks as, which `announce` reads: for a follow-up, what
+    // the record callback reads from the log.
+    let mut trigger = match asker {
+        Asker::Trigger(trigger) => trigger,
+        Asker::FollowUp => RoundTrigger::Window,
+    };
     let (_, snapshot) = state
         .session
         .refresh_recording(
             &HostEnv::discover(),
             &check_options(state),
             |round, snapshot| {
-                state
-                    .rounds
-                    .lock()
-                    .unwrap()
-                    .record(round, trigger, snapshot)
+                let mut rounds = state.rounds.lock().unwrap();
+                match asker {
+                    Asker::Trigger(asked) => rounds.record(round, asked, snapshot),
+                    Asker::FollowUp => trigger = rounds.record_follow_up(round, snapshot),
+                }
             },
         )
         .await;
@@ -158,23 +183,30 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// "still downloading" notice goes and the fresh catalogue shows without
 /// the user pressing anything. Nothing new crosses to the front end.
 ///
-/// Through `refresh_as`, so `Session::refresh`, like any other refresh.
+/// Through `refresh_for`, so `Session::refresh`, like any other refresh.
 /// The refresh in flight when this wakes can be the one that reported the
 /// update as running, still waiting on a slow source; `Session::refresh`
 /// never answers a call with a round that started before the call
 /// arrived, so this gets a round that starts after the wake-up, and so
-/// after the update ended. `refresh_as` never returns `Err`; a failed
+/// after the update ended. `refresh_for` never returns `Err`; a failed
 /// refresh is on screen through the snapshot's own `errors`.
 ///
 /// Recorded as asked for by whoever asked for the round that started the
-/// `brew update` that ended (`RoundLog::take_follow_up_trigger`): the
-/// follow-up of a daily check's update is the daily check's, and that of
-/// a check of the window's is the window's.
+/// `brew update` that ended, read as this refresh's round is recorded
+/// (`RoundLog::record_follow_up`): the follow-up of a daily check's
+/// update is the daily check's, and that of a check of the window's is
+/// the window's. It used to be read as the wake-up came. The round that
+/// started the update is recorded only as it commits, and a slow source
+/// can keep it going after the update has ended, so the wake-up could
+/// find it not yet recorded and count the daily check's follow-up as the
+/// window's, and the daily check's notification was then never posted.
+/// This refresh's round starts after the wake-up, and one round runs at a
+/// time, so the round in flight at the wake-up has committed, and been
+/// recorded, before this one is.
 pub(crate) async fn refresh_on_background_change(state: &AppState) {
     loop {
         state.session.background_change().await;
-        let trigger = state.rounds.lock().unwrap().take_follow_up_trigger();
-        let _ = refresh_as(state, trigger).await;
+        let _ = refresh_for(state, Asker::FollowUp).await;
     }
 }
 
@@ -1359,7 +1391,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_refresh_impl_broadcasts_snapshot_changed_when_the_generation_moves() {
-        // M9 in the design review: `refresh_as`, which `refresh_impl` runs
+        // M9 in the design review: `refresh_for`, which `refresh_impl` runs
         // for the window, is the only production code path in the whole
         // plan that ever sends `UiEvent::SnapshotChanged`, and for the
         // window only when the refresh actually moved `generation`. Subscribe *first*

@@ -75,25 +75,36 @@ mod tests {
     /// 2026-09-28 09:00 UTC.
     const T0: i64 = 1_790_586_000;
 
-    /// One source, answering at once. Counts its rounds by its `detect`,
-    /// which every round calls once; says its catalogue is being rewritten
-    /// -- a `brew update` Canager started still running -- while
-    /// `index_updating` is set; fails to read its packages while `failing`
-    /// is; and holds every operation until `release`.
+    /// One source, answering at once unless told to wait. Counts its
+    /// rounds by its `detect`, which every round calls once, and its reads
+    /// of its packages; says its catalogue is being rewritten -- a `brew
+    /// update` Canager started still running -- while `index_updating` is
+    /// set; fails to read its packages while `failing` is; waits, reading
+    /// them, while `slow` is, until `unblocked`; and holds every operation
+    /// until `release`.
     struct Fake {
         meta: AdapterMeta,
         rounds: AtomicUsize,
+        reads: AtomicUsize,
         index_updating: AtomicBool,
         failing: AtomicBool,
+        slow: AtomicBool,
+        unblocked: tokio::sync::Notify,
         release: tokio::sync::Notify,
     }
 
     impl Fake {
         fn new() -> Arc<Fake> {
+            Fake::named("fake")
+        }
+
+        /// A `Fake` whose adapter id is `id` and whose one instance is
+        /// `{id}:1`.
+        fn named(id: &str) -> Arc<Fake> {
             Arc::new(Fake {
                 meta: AdapterMeta {
-                    id: "fake".to_string(),
-                    name: "fake".to_string(),
+                    id: id.to_string(),
+                    name: id.to_string(),
                     kind: "fake".to_string(),
                     platforms: vec!["macos".to_string()],
                     homepage: "https://example.invalid".to_string(),
@@ -101,14 +112,21 @@ mod tests {
                     verified_versions: vec![],
                 },
                 rounds: AtomicUsize::new(0),
+                reads: AtomicUsize::new(0),
                 index_updating: AtomicBool::new(false),
                 failing: AtomicBool::new(false),
+                slow: AtomicBool::new(false),
+                unblocked: tokio::sync::Notify::new(),
                 release: tokio::sync::Notify::new(),
             })
         }
 
         fn rounds(&self) -> usize {
             self.rounds.load(Ordering::SeqCst)
+        }
+
+        fn reads(&self) -> usize {
+            self.reads.load(Ordering::SeqCst)
         }
     }
 
@@ -120,13 +138,21 @@ mod tests {
 
         async fn detect(&self, _env: &HostEnv) -> Vec<ManagerInstance> {
             self.rounds.fetch_add(1, Ordering::SeqCst);
-            vec![canager_core::testing::manager_instance("fake", "fake:1")]
+            let id = &self.meta.id;
+            vec![canager_core::testing::manager_instance(
+                id,
+                &format!("{id}:1"),
+            )]
         }
 
         async fn inventory(
             &self,
             _inst: &ManagerInstance,
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            if self.slow.load(Ordering::SeqCst) {
+                self.unblocked.notified().await;
+            }
             if self.index_updating.load(Ordering::SeqCst) {
                 return Err(AdapterError::IndexUpdating);
             }
@@ -462,6 +488,89 @@ mod tests {
         wait_for_rounds(&fake, 4).await;
         assert_eq!(recorded(&state, 3).await, RoundTrigger::Window);
         assert_eq!(recorded(&state, 4).await, RoundTrigger::Window);
+        follow_ups.abort();
+    }
+
+    #[tokio::test]
+    async fn test_a_brew_update_that_ends_while_a_slow_source_keeps_the_daily_round_going_has_the_daily_checks_follow_up(
+    ) {
+        // The daily check's round reads the brew-like source, whose update
+        // is still running, and then waits on a slow source. The update
+        // ends meanwhile, and wakes the follow-up loop before the round
+        // has committed -- so before it is recorded. The follow-up is
+        // still the daily check's, and its report posts the notification
+        // the daily round's own report leaves to it.
+        use canager_core::notify_updates::{Focus, Notice, UpdatePair};
+        let brew = Fake::named("fake");
+        let slow = Fake::named("slow");
+        let background_change = Arc::new(tokio::sync::Notify::new());
+        let sink = ChannelSink::new();
+        let adapters: Vec<Arc<dyn Adapter>> = vec![brew.clone(), slow.clone()];
+        let session = canager_core::testing::session_with_background_change(
+            sink.clone(),
+            adapters,
+            background_change.clone(),
+        );
+        let state = app_state(session, sink, true);
+        state.settings.lock().unwrap().notify_updates = true;
+        let follow_ups = {
+            let state = state.clone();
+            tokio::spawn(async move { ipc::refresh_on_background_change(&state).await })
+        };
+
+        brew.index_updating.store(true, Ordering::SeqCst);
+        slow.slow.store(true, Ordering::SeqCst);
+        let daily = {
+            let state = state.clone();
+            tokio::spawn(async move { ipc::refresh_as(&state, RoundTrigger::Automatic).await })
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while brew.reads() < 1 || slow.reads() < 1 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the daily round reads both sources");
+        // The update ends; the loop wakes and queues its refresh behind the
+        // round in flight.
+        brew.index_updating.store(false, Ordering::SeqCst);
+        background_change.notify_one();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            state.rounds.lock().unwrap().trigger_of(1),
+            None,
+            "precondition: the daily round has not committed when the loop wakes"
+        );
+
+        slow.slow.store(false, Ordering::SeqCst);
+        slow.unblocked.notify_one();
+        daily.await.expect("daily task").expect("daily refresh");
+        assert_eq!(recorded(&state, 1).await, RoundTrigger::Automatic);
+        assert!(state.rounds.lock().unwrap().awaits_follow_up(1));
+        assert_eq!(
+            recorded(&state, 2).await,
+            RoundTrigger::Automatic,
+            "the follow-up of the daily check's update is the daily check's"
+        );
+
+        let updates = [UpdatePair {
+            key_id: "fake:1|Formula|jq".to_string(),
+            target: "1.8.1".to_string(),
+        }];
+        let never = |_| -> Result<(), String> { panic!("the daily round posted for itself") };
+        assert_eq!(
+            crate::notify::report(&state, 1, &updates, Focus::Away, never),
+            Ok(Notice::Deferred)
+        );
+        let posted = Mutex::new(Vec::new());
+        assert_eq!(
+            crate::notify::report(&state, 2, &updates, Focus::Away, |count| {
+                posted.lock().unwrap().push(count);
+                Ok(())
+            }),
+            Ok(Notice::Post { count: 1 })
+        );
+        assert_eq!(*posted.lock().unwrap(), [1]);
         follow_ups.abort();
     }
 }

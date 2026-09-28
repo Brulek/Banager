@@ -215,8 +215,8 @@ function (`ipc::refresh_as`), and nothing else: the commands a refresh
 runs, in each source's read-only table, and the requests a refresh makes,
 to the hosts in "Network". So it does to the Mac what those commands do:
 Homebrew's `brew update`, when its six hours are up, rewrites Homebrew's
-local catalogue (Homebrew's section) — and when it outlasts the check,
-the refresh its end sets off follows — and Grok Build's update check
+local catalogue (Homebrew's section) — and when the check stops waiting
+for it, the refresh its end sets off follows — and Grok Build's update check
 writes inside `~/.grok` ("Files Canager writes"). It never installs,
 upgrades or uninstalls anything: every write command runs only after a
 preview the user confirmed.
@@ -245,12 +245,15 @@ banner for a notification of the app in front, and Rust asks macOS
 whether Canager is (`app_active` in `src-tauri/src/notify.rs`); and one of
 the pairs has been neither in a notification nor before the user in the
 focused window since Canager was opened (`notify_updates::decide` in
-`crates/canager-core/src/notify_updates.rs`). A daily check whose `brew
-update` is still running when it ends posts nothing itself: the refresh
-that update's end sets off is the daily check's too, and its report
-decides instead, counting every update offered then — what the check
-found and what the new catalogue adds (`RoundLog::awaits_follow_up`) — so
-a daily check posts one notification at most. A report that comes while
+`crates/canager-core/src/notify_updates.rs`). A daily check that stopped
+waiting for its `brew update` (Homebrew's section) posts nothing itself:
+the refresh that update's end sets off is the daily check's too, and its
+report decides instead, counting every update offered then — what the
+check found and what the new catalogue adds (`RoundLog::awaits_follow_up`)
+— so a daily check posts one notification at most. That refresh is the
+daily check's whether the update ends before the rest of the check does
+or after: which check it belongs to is read as its own round is recorded
+(`RoundLog::record_follow_up`), after the check's. A report that comes while
 the window has the focus marks its pairs as seen, and posts nothing. One
 that comes while Canager is in front with its window closed or in the
 Dock posts nothing and marks nothing, so its updates are still news to

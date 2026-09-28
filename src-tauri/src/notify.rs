@@ -406,13 +406,12 @@ mod tests {
             ),
             Ok(Notice::Deferred)
         );
-        let follow_up = state.rounds.lock().unwrap().take_follow_up_trigger();
-        assert_eq!(follow_up, RoundTrigger::Automatic);
-        state
+        let follow_up = state
             .rounds
             .lock()
             .unwrap()
-            .record(4, follow_up, &snapshot_with_homebrew(4, false));
+            .record_follow_up(4, &snapshot_with_homebrew(4, false));
+        assert_eq!(follow_up, RoundTrigger::Automatic);
         let offered = [pair("jq", "1.8.1"), pair("gh", "2.102.0")];
         assert_eq!(
             report(&state, 4, &offered, Focus::Away, recording(&posted)),
