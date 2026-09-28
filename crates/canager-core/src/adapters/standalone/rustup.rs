@@ -227,42 +227,55 @@ pub fn toolchain_names(rustup_home: &Path) -> Vec<String> {
 }
 
 /// The programs in `<cargo_home>/bin` that rustup 1.29.1's `self
-/// uninstall` deletes, sorted and named once: every entry whose name is
-/// not `rustup` or one of `RUSTUP_PROXIES` (self_update.rs:996-1022
-/// compares names only, so a program copied there by hand goes too),
-/// read with `read_dir` -- nothing is opened or run -- united with the
-/// binaries `.crates2.json` records (every crate's `bins`, through
-/// `parse_crates2_bins`, the parser cargo's own inventory uses). The
-/// listing is what rustup acts on; the record still names what cargo
-/// installed when the directory cannot be listed, and a record entry
-/// whose file is already gone is named although nothing is left to
-/// delete -- the safe direction. Not named: an entry starting with `.`
-/// (`.DS_Store`: deleted with the folder, but no program), and a name
-/// that is not UTF-8 -- deleted with the folder too (`remove_dir`,
-/// :1029, takes everything), but not spellable in a sentence. No
-/// directory, an unreadable one, no record or a broken one each add
-/// nothing: a name is better missing than invented, and
-/// `DeletesCargoHome` always says the whole folder goes.
+/// uninstall` deletes, by the names the Installed page gives them, sorted
+/// and each once. rustup deletes every entry whose name is not `rustup`
+/// or one of `RUSTUP_PROXIES` (self_update.rs:996-1022 compares names
+/// only, so a program copied there by hand goes too), read here with
+/// `read_dir` -- nothing is opened or run -- united with the binaries
+/// `.crates2.json` records (every crate's `bins`, through
+/// `parse_crates2_bins`, the parser cargo's own inventory uses). A
+/// recorded program is named by its crate, as cargo's inventory names
+/// that crate's row (`jj-cli`, whose program is `jj`; `ripgrep`, whose
+/// is `rg`), so the list can be matched to the rows the user knows, and
+/// a crate is named once however many programs it installed; a program
+/// no record lists is named by its file name. The listing is what rustup
+/// acts on; the record still names what cargo installed when the
+/// directory cannot be listed, and a crate whose programs are already
+/// gone is named although nothing is left to delete -- the safe
+/// direction. Not named: an entry starting with `.` (`.DS_Store`:
+/// deleted with the folder, but no program), and a name that is not
+/// UTF-8 -- deleted with the folder too (`remove_dir`, :1029, takes
+/// everything), but not spellable in a sentence. No directory, an
+/// unreadable one, no record or a broken one each add nothing: a name is
+/// better missing than invented, and `DeletesCargoHome` always says the
+/// whole folder goes.
 pub fn bin_programs_rustup_removes(cargo_home: &Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(cargo_home.join("bin"))
+    let removed =
+        |name: &str| !name.starts_with('.') && name != "rustup" && !RUSTUP_PROXIES.contains(&name);
+    let listed: Vec<String> = std::fs::read_dir(cargo_home.join("bin"))
         .map(|entries| {
             entries
                 .filter_map(Result::ok)
                 .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+                .filter(|name| removed(name))
                 .collect()
         })
         .unwrap_or_default();
-    if let Ok(json) = std::fs::read_to_string(cargo_home.join(".crates2.json")) {
-        names.extend(
-            parse_crates2_bins(&json)
-                .unwrap_or_default()
-                .into_iter()
-                .flat_map(|(_, bins)| bins),
-        );
-    }
-    names.retain(|name| {
-        !name.starts_with('.') && name != "rustup" && !RUSTUP_PROXIES.contains(&name.as_str())
-    });
+    let recorded: Vec<(String, Vec<String>)> =
+        std::fs::read_to_string(cargo_home.join(".crates2.json"))
+            .ok()
+            .and_then(|json| parse_crates2_bins(&json).ok())
+            .unwrap_or_default();
+    let mut names: Vec<String> = recorded
+        .iter()
+        .filter(|(_, bins)| bins.iter().any(|bin| removed(bin)))
+        .map(|(krate, _)| krate.clone())
+        .collect();
+    names.extend(
+        listed
+            .into_iter()
+            .filter(|name| !recorded.iter().any(|(_, bins)| bins.contains(name))),
+    );
     names.sort();
     names.dedup();
     names
@@ -1161,6 +1174,39 @@ mod tests {
     }
 
     #[test]
+    fn test_bin_programs_rustup_removes_names_a_recorded_program_by_its_crate() {
+        // The Installed page names a cargo row by its crate: `jj-cli`,
+        // whose program is `jj`, and `ripgrep`, whose is `rg`. The
+        // uninstall's list names them the same way, once a crate however
+        // many programs it installed, so that each can be matched to its
+        // row; `mytool`, which no record lists, keeps its file's name.
+        let home = TempHome::new("rustup-bins-by-crate");
+        let cargo_home = home.dir(".cargo");
+        rustup_layout(&cargo_home);
+        for program in ["jj", "rg", "mytool"] {
+            std::fs::write(cargo_home.join("bin").join(program), b"x").expect("write a program");
+        }
+        std::fs::write(
+            cargo_home.join(".crates2.json"),
+            r#"{"installs":{
+                "jj-cli 0.40.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["jj"]},
+                "ripgrep 15.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["rg"]},
+                "cargo-binstall 1.17.4 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["cargo-binstall","detect-targets"]}
+            }}"#,
+        )
+        .expect("write the record");
+        assert_eq!(
+            bin_programs_rustup_removes(&cargo_home),
+            vec![
+                "cargo-binstall".to_string(),
+                "jj-cli".to_string(),
+                "mytool".to_string(),
+                "ripgrep".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn test_bin_programs_rustup_removes_names_a_program_no_record_lists() {
         // rustup 1.29.1 deletes every entry of `bin/` whose *name* is not
         // one of its fourteen (self_update.rs:996-1022): a program copied
@@ -1184,9 +1230,9 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_programs_rustup_removes_flattens_sorts_and_dedups_the_records_binaries() {
-        // A crate's binaries by their file names (`rg`, not `ripgrep`),
-        // several per crate, united with the listing and each named once.
+    fn test_bin_programs_rustup_removes_names_each_recorded_crate_once_sorted() {
+        // A crate by its own name (`ripgrep`, not `rg`), once however many
+        // binaries it installed, whether or not the listing has them.
         let home = TempHome::new("rustup-bins-many");
         let cargo_home = home.dir(".cargo");
         rustup_layout(&cargo_home);
@@ -1206,9 +1252,8 @@ mod tests {
             bin_programs_rustup_removes(&cargo_home),
             vec![
                 "cargo-binstall".to_string(),
-                "detect-targets".to_string(),
                 "hexyl".to_string(),
-                "rg".to_string(),
+                "ripgrep".to_string(),
             ]
         );
     }

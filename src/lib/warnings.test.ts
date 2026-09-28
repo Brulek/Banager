@@ -316,10 +316,16 @@ describe("warningMessage", () => {
 });
 
 describe("warningText", () => {
-  it("looks a fixed warning up through t(), with its args", () => {
+  it("looks a fixed warning up through t(), with its args, a list joined in the window's language", () => {
     expect(warningText(fakeT, "DependentsUnknown")).toBe("warnings.dependentsUnknown");
-    expect(warningText(fakeT, { WouldBreak: { names: ["a", "b"] } })).toBe(
-      'warnings.wouldBreak({"count":2,"names":"a, b"})',
+    // 「还有 2 个软件要用它：a、b。」, never "a, b" inside a Chinese sentence.
+    const chineseT = (key: string, options?: Record<string, unknown>) =>
+      key === "common.listSeparator" ? "、" : fakeT(key, options);
+    expect(warningText(chineseT, { WouldBreak: { names: ["a", "b"] } })).toBe(
+      'warnings.wouldBreak({"count":2,"names":"a、b"})',
+    );
+    expect(warningText(chineseT, { RemovesCargoInstalled: { names: ["jj-cli", "tokei"] } })).toBe(
+      'warnings.removesCargoInstalled({"count":2,"names":"jj-cli、tokei"})',
     );
   });
 

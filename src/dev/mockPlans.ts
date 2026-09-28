@@ -186,9 +186,11 @@ function standalonePlan(plan: Plan, inst: ManagerInstance, world: World): Plan {
       if (kind === "Upgrade") {
         return { ...rustup, action: command(inst.exe_path, ["self", "update"]) };
       }
+      // By the name the Installed page gives each cargo row -- the crate's,
+      // as `bin_programs_rustup_removes` names a recorded program.
       const cargoBins = world.artifacts
         .filter((a) => a.key.instance_id === IDS.cargo && a.path !== null)
-        .map((a) => (a.path ?? "").slice((a.path ?? "").lastIndexOf("/") + 1));
+        .map((a) => a.display_name);
       const warnings: Warning[] = [
         {
           RemovesToolchains: {

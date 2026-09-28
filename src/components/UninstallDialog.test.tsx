@@ -619,7 +619,7 @@ describe("UninstallDialog", () => {
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
       expect(await screen.findByText("执行 Homebrew 为 DuckieTV 记下的卸载步骤；安装器装的其他文件不删。")).toBeInTheDocument();
       expect(linesOf("请注意").slice(0, 2)).toEqual([
-        "还会永久删除：/Applications/duckieTV.app, ~/Library/Application Support/DuckieTV-Standalone。",
+        "还会永久删除：/Applications/duckieTV.app、~/Library/Application Support/DuckieTV-Standalone。",
         "还会把这些移到废纸篓：~/.nvs。",
       ]);
     } finally {
@@ -717,7 +717,7 @@ describe("UninstallDialog", () => {
           "Also permanently deletes these, but only where they are links whose target contains “MacGPG2”: /usr/local/bin/gpg, /usr/local/bin/gpg2, /usr/local/bin/gpg-agent.",
         ],
         [
-          "还会永久删除下列路径，但只删其中指向的路径含有“MacGPG2”的链接：/usr/local/bin/gpg, /usr/local/bin/gpg2, /usr/local/bin/gpg-agent。",
+          "还会永久删除下列路径，但只删其中指向的路径含有“MacGPG2”的链接：/usr/local/bin/gpg、/usr/local/bin/gpg2、/usr/local/bin/gpg-agent。",
         ],
       ],
       [
@@ -789,7 +789,7 @@ describe("UninstallDialog", () => {
       [
         ["AutoFirma ROOT", "127.0.0.1"],
         "Also deletes every certificate in the keychain whose name contains any of these: AutoFirma ROOT, 127.0.0.1.",
-        "还会删除钥匙串里名称含有下列任一文字的所有证书：AutoFirma ROOT, 127.0.0.1。",
+        "还会删除钥匙串里名称含有下列任一文字的所有证书：AutoFirma ROOT、127.0.0.1。",
       ],
     ];
     for (const [items, english, chinese] of cases) {

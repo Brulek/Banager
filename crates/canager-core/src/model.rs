@@ -536,10 +536,13 @@ pub enum Warning {
     /// rustup 1.29.1's `self uninstall` deletes everything in the Cargo
     /// home's `bin/` whose name is not `rustup` or one of its thirteen
     /// proxies -- by name, so a program copied there by hand goes too:
-    /// `names` are the binaries `.crates2.json` lists (`rg`, not
-    /// `ripgrep`) united with a read-only listing of `bin/` minus those
-    /// fourteen names (`rustup::bin_programs_rustup_removes`) -- the
-    /// programs named where known. Only produced when there are any.
+    /// `names` are the crates `.crates2.json` lists with a program among
+    /// those, each by the crate's name, as cargo's inventory names its row
+    /// on the Installed page (`ripgrep`, whose program is `rg`), and the
+    /// other programs a read-only listing of `bin/` finds, minus those
+    /// fourteen names, by their file names
+    /// (`rustup::bin_programs_rustup_removes`) -- the programs named where
+    /// known. Only produced when there are any.
     /// (The research read a newer rustup that keeps them; the tag this
     /// recipe is verified against does not -- see the recipe's doc.)
     RemovesCargoInstalled { names: Vec<String> },

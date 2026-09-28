@@ -223,13 +223,17 @@ export function warningKey(warning: Warning): string | null {
  * is (`faultArgs` in `src/lib/format.ts` is the model): a payload variant
  * with a key but no values here would render its sentence with a literal
  * `{{path}}` in it. Bare-string variants carry nothing, so one `{}` covers
- * them all.
+ * them all. A list the sentence names -- what still needs a package,
+ * rustup's toolchains and the programs it deletes, a cask step's items --
+ * is joined with `separator`: the window's language's
+ * (`common.listSeparator`, 「、」 in Chinese) where `warningText` renders
+ * it, never an English comma inside a Chinese sentence.
  */
-export function warningArgs(warning: Warning): Record<string, unknown> {
+export function warningArgs(warning: Warning, separator = ", "): Record<string, unknown> {
   if (typeof warning === "string") return {};
   if ("WouldBreak" in warning) {
     const names = warning.WouldBreak.names;
-    return { count: names.length, names: names.join(", ") };
+    return { count: names.length, names: names.join(separator) };
   }
   if ("ThirdPartyRegistry" in warning) return { host: warning.ThirdPartyRegistry.host };
   if ("WillTrash" in warning) return { path: warning.WillTrash.path };
@@ -237,12 +241,12 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
   if ("AlreadyGone" in warning) return { path: warning.AlreadyGone.path };
   if ("RemovesToolchains" in warning) {
     const { path, names } = warning.RemovesToolchains;
-    return names.length > 0 ? { path, names: names.join(", ") } : { path };
+    return names.length > 0 ? { path, names: names.join(separator) } : { path };
   }
   if ("DeletesCargoHome" in warning) return { path: warning.DeletesCargoHome.path };
   if ("RemovesCargoInstalled" in warning) {
     const names = warning.RemovesCargoInstalled.names;
-    return { count: names.length, names: names.join(", ") };
+    return { count: names.length, names: names.join(separator) };
   }
   if ("LeavesShellConfigLine" in warning) return { path: warning.LeavesShellConfigLine.path };
   // Its `{{name}}` is the row's, which only the page has (`warningText`).
@@ -250,7 +254,7 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
   if ("CaskUninstallStep" in warning) {
     const { items, only_if: onlyIf } = warning.CaskUninstallStep;
     return {
-      ...(items.length > 0 ? { count: items.length, items: items.join(", ") } : {}),
+      ...(items.length > 0 ? { count: items.length, items: items.join(separator) } : {}),
       ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
     };
   }
@@ -293,7 +297,7 @@ export function warningText(t: Translate, warning: Warning, subject?: string): s
   if (typeof warning !== "string" && "UninstallScope" in warning) {
     return key === null || subject === undefined ? null : t(key, { name: subject });
   }
-  return key ? t(key, warningArgs(warning)) : warningMessage(warning);
+  return key ? t(key, warningArgs(warning, t("common.listSeparator"))) : warningMessage(warning);
 }
 
 /**

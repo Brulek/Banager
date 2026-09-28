@@ -1538,7 +1538,9 @@ path, with its downloads, its record of what `cargo install` installed,
 Cargo's own settings and saved login, and anything else kept there; the
 programs in its `bin/` by name where known (a listing of `~/.cargo/bin`
 minus rustup and its thirteen links, together with the binaries
-`~/.cargo/.crates2.json` records — the same file the Cargo source reads);
+`~/.cargo/.crates2.json` records — the same file the Cargo source reads —
+each recorded one by its crate's name, the one its row has on the
+Installed page, and the others by their file names);
 that rustup will edit your shell startup files; and each startup file that
 will still speak of Cargo's env file afterwards. It is not cancellable once
 running, for the same reason as the update, and holds the same two locks
