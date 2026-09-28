@@ -107,8 +107,9 @@ pub fn on_run_event<R: Runtime>(_app: &AppHandle<R>, _event: RunEvent) {}
 /// Minimize put it, and onto the screen, which closing it took it off --
 /// with the page as it was left, since closing only hid it. A window on
 /// screen already only comes to the front. For the Dock icon
-/// (`on_run_event`).
-fn show<R: Runtime>(app: &AppHandle<R>) {
+/// (`on_run_event`) and the menu bar's items that act in the page
+/// (`menu::forward_to_page`).
+pub fn show<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
     };

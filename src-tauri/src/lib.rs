@@ -78,8 +78,8 @@ pub fn run() {
         // builder, so that it is there before the page can name a language.
         .enable_macos_default_menu(false)
         .manage(menu::MenuBar::default())
-        // Its items that act in the page tell the window; macOS carries out
-        // the rest itself.
+        // Its items that act in the page bring the window back and tell it;
+        // macOS carries out the rest itself.
         .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
         // Closing the window hides it, and Canager keeps running until it
         // quits (window.rs).

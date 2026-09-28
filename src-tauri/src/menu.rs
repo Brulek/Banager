@@ -8,7 +8,8 @@
 //! Services, Hide, Quit, Close Window, the Edit menu's, the Window
 //! menu's), the item is macOS's own (`MacItem`), shortcut and all, and
 //! Canager gives only its label. The three items that act in the page --
-//! Settings…, Check Again, Search -- tell the window, one event each
+//! Settings…, Check Again, Search -- bring the window back if it was
+//! closed or minimized (`window::show`) and tell it, one event each
 //! (`PageCommand`), and the page runs the code its own controls run
 //! (src/lib/menu.ts).
 //!
@@ -24,7 +25,7 @@ use tauri::menu::{
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::window::MAIN_WINDOW;
+use crate::window::{self, MAIN_WINDOW};
 
 /// The languages the menu bar is written in: the window's two. The page
 /// names them as its i18n does, "en" and "zh-CN"; Tauri refuses any other
@@ -437,12 +438,15 @@ pub fn set_menu_language(app: AppHandle, language: MenuLanguage) -> Result<(), S
 }
 
 /// Tells the window that one of the items acting in the page was chosen:
-/// its event (`PageCommand::event`), to the window alone. Every other
-/// item's action is macOS's and needs nothing from here.
+/// its event (`PageCommand::event`), to the window alone, once the window
+/// is back on screen -- closed, or in the Dock, it would show nothing of
+/// what the item does. Every other item's action is macOS's and needs
+/// nothing from here.
 pub fn forward_to_page<R: Runtime>(app: &AppHandle<R>, id: &str) {
     let Some(command) = PageCommand::from_id(id) else {
         return;
     };
+    window::show(app);
     if let Err(e) = app.emit_to(MAIN_WINDOW, command.event(), ()) {
         eprintln!(
             "[canager] could not tell the window {} was chosen: {e}",
