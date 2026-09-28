@@ -105,7 +105,10 @@ export type KeptWhat =
  * `RemovesCargoInstalled` and `LeavesShellConfigLine`, whose `path` and
  * `names` interpolate it and whose empty `names` or `certain` pick the
  * key -- with `HomebrewRustupLosesToolchains` and `EditsShellConfig` as
- * that uninstall's two bare-string ones), and a `Message`
+ * that uninstall's two bare-string ones), Homebrew's two bare-string
+ * autoremove warnings (`HomebrewAutoremoves` on an uninstall,
+ * `HomebrewCleanupAutoremoves` on an install or upgrade, produced only when
+ * a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
  * carries, same as before this type existed. A variant added here without
@@ -128,6 +131,8 @@ export type Warning =
   | "HomebrewRustupLosesToolchains"
   | "EditsShellConfig"
   | { LeavesShellConfigLine: { path: string; certain: boolean } }
+  | "HomebrewAutoremoves"
+  | "HomebrewCleanupAutoremoves"
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

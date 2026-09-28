@@ -67,13 +67,17 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall lets you see the exact
-  command before it runs — one press on "Show the command" in its confirmation, or open from the
-  start with Settings' "Show technical details" on — and says whether it may ask for your
-  password; an uninstall that runs no command lists instead the exact paths it will move to the
-  Trash. An uninstall also says what it will affect — an update never touches anything else, so it
-  has nothing to report there.
+  command before it runs, with the variables Canager sets for it — one press on "Show the command"
+  in its confirmation, or open from the start with Settings' "Show technical details" on — and
+  says whether it may ask for your password; an uninstall that runs no command lists instead the
+  exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
+  so only when a Homebrew `brew.env` file turns Homebrew's periodic clean-up and its autoremove
+  back on, since that clean-up, whenever it is due, then also uninstalls the packages that were
+  installed only as dependencies and that nothing needs any more.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
-  in your language.
+  in your language. Canager runs Homebrew with its autoremove off, so a Homebrew uninstall does
+  not also uninstall the other packages that were installed only as dependencies and that nothing
+  needs any more; when a `brew.env` file turns autoremove back on, the preview says Homebrew will.
 - **A tool with no uninstall command goes to the Trash, not away.** Claude Code's makers document
   its removal as a list of paths. Canager moves those paths, plus its installer's download cache,
   to the Trash itself, with the call Finder uses, so until you empty the Trash you can drag them
@@ -261,7 +265,7 @@ default, so please don't build on it yet — and I can't accept contributions un
 
 Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个都配一个按钮。
 
-每次更新和卸载，都能在它运行之前看到确切的命令：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
+每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 889 个 Rust 测试（另有 4 个要连着真实的

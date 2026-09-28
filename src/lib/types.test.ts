@@ -307,6 +307,14 @@ describe("types", () => {
       '{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}',
     );
     expect(roundTrip(leavesShellConfigLine)).toEqual(leavesShellConfigLine);
+
+    // Round 2: Homebrew's autoremove, back on through a brew.env file.
+    // Pinned against the same Rust test.
+    const autoremoves: Warning = "HomebrewAutoremoves";
+    const cleanupAutoremoves: Warning = "HomebrewCleanupAutoremoves";
+    expect(JSON.stringify([autoremoves, cleanupAutoremoves])).toBe(
+      '["HomebrewAutoremoves","HomebrewCleanupAutoremoves"]',
+    );
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

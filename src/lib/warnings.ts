@@ -69,6 +69,10 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.homebrewRustupLosesToolchains";
       case "EditsShellConfig":
         return "warnings.editsShellConfig";
+      case "HomebrewAutoremoves":
+        return "warnings.homebrewAutoremoves";
+      case "HomebrewCleanupAutoremoves":
+        return "warnings.homebrewCleanupAutoremoves";
       default: {
         const unhandled: never = warning;
         return unhandled;
@@ -170,19 +174,37 @@ export function warningText(t: Translate, warning: Warning): string | null {
 /**
  * The key of a warning's longer why, which a confirmation puts behind the
  * line's ⓘ (the copy table's `<key>Detail`), or null when the line says
- * all there is: what a kept path is and why it stays, and what rustup's
+ * all there is: what a kept path is and why it stays, what rustup's
  * permanent deletions and the line it leaves in a startup file mean for
- * you. The line keeps what decides whether to go on -- "permanently
+ * you, and which Homebrew setting brings back an autoremove Canager turns
+ * off. The line keeps what decides whether to go on -- "permanently
  * deletes", the path, what goes with it; the ⓘ has the rest. The Cargo
  * folder's line has nothing behind it: that the whole folder goes, and
  * none of it to the Trash, is what decides.
  *
- * Every payload variant is named, so one added to `Warning` fails `tsc`
- * here; at run time, a variant this build does not know has nothing
- * behind its ⓘ. Every bare-string variant is one sentence already.
+ * Every variant is named, so one added to `Warning` fails `tsc` here; at
+ * run time, a variant this build does not know has nothing behind its ⓘ.
  */
 export function warningDetailKey(warning: Warning): string | null {
-  if (typeof warning === "string") return null;
+  if (typeof warning === "string") {
+    switch (warning) {
+      case "HomebrewAutoremoves":
+        return "warnings.homebrewAutoremovesDetail";
+      case "HomebrewCleanupAutoremoves":
+        return "warnings.homebrewCleanupAutoremovesDetail";
+      case "DependentsUnknown":
+      case "CompilesLocally":
+      case "NonRegistrySource":
+      case "HomebrewRustupLosesToolchains":
+      case "EditsShellConfig":
+        return null;
+      default: {
+        const unhandled: never = warning;
+        void unhandled;
+        return null;
+      }
+    }
+  }
   if ("WillKeep" in warning) return KEPT_WHAT_DETAIL_KEYS[warning.WillKeep.what];
   // The listed and the unlisted sentence share one why.
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
@@ -247,8 +269,9 @@ export function warningGroup(warning: Warning): WarningGroup {
  * it (their sentences start "Permanently deletes"). The uninstall
  * confirmation's button then says so too (`uninstall.confirmPermanent`).
  * Only what a line says counts: a plan with no such line may well delete
- * files -- `brew uninstall` does -- but says nothing about the Trash, and
- * neither does its button.
+ * files -- `brew uninstall` does, and so does the autoremove Homebrew's
+ * two lines speak of -- but says nothing about the Trash, and neither
+ * does its button.
  *
  * Every variant is named, so one added to `Warning` fails `tsc` here; at
  * run time, a variant this build does not know is not one, and its line
@@ -262,6 +285,8 @@ export function deletesForGood(warning: Warning): boolean {
       case "NonRegistrySource":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
+      case "HomebrewAutoremoves":
+      case "HomebrewCleanupAutoremoves":
         return false;
       default: {
         const unhandled: never = warning;

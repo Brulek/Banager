@@ -97,13 +97,18 @@ describe("warningKey", () => {
     );
   });
 
+  it("gives Homebrew's two autoremove warnings their keys", () => {
+    expect(warningKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremoves");
+    expect(warningKey("HomebrewCleanupAutoremoves")).toBe("warnings.homebrewCleanupAutoremoves");
+  });
+
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these fifteen, and the only one
+    // variant of `Warning` is one of these seventeen, and the only one
     // without a `warnings.*` key is the raw-text catch-all. A variant this
     // list does not name is a `never` in `warningKey`'s default branches
     // and does not compile, so there is no "unrecognised variant" to test.
@@ -122,6 +127,8 @@ describe("warningKey", () => {
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+      "HomebrewAutoremoves",
+      "HomebrewCleanupAutoremoves",
       { Message: "boom" },
     ];
     const keyless = all.filter((warning) => warningKey(warning) === null);
@@ -247,6 +254,8 @@ const EVERY_VARIANT: Warning[] = [
   { DeletesCargoHome: { path: "~/.cargo" } },
   { RemovesCargoInstalled: { names: ["hexyl"] } },
   { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+  "HomebrewAutoremoves",
+  "HomebrewCleanupAutoremoves",
   { Message: "boom" },
 ];
 
@@ -285,7 +294,7 @@ describe("warningGroup", () => {
         typeof warning === "string" ||
         !("WillTrash" in warning || "AlreadyGone" in warning || "WillKeep" in warning),
     );
-    expect(notes).toHaveLength(12);
+    expect(notes).toHaveLength(14);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
   });
 
@@ -332,6 +341,21 @@ describe("warningDetailKey", () => {
     expect(warningDetailKey({ LeavesShellConfigLine: { path: "~/.zshrc", certain: false } })).toBe(
       "warnings.leavesShellConfigLineMaybeDetail",
     );
+  });
+
+  it("keeps which Homebrew setting brought autoremove back behind the line", () => {
+    // The line says what else Homebrew removes; the ⓘ, that a brew.env
+    // took back the variable Canager runs Homebrew with.
+    expect(warningDetailKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremovesDetail");
+    expect(warningDetailKey("HomebrewCleanupAutoremoves")).toBe(
+      "warnings.homebrewCleanupAutoremovesDetail",
+    );
+    expect(en.warnings.homebrewAutoremovesDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
+    expect(zhCN.warnings.homebrewAutoremovesDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
+    for (const locale of [en, zhCN]) {
+      expect(locale.warnings.homebrewAutoremovesDetail).toContain("brew.env");
+      expect(locale.warnings.homebrewCleanupAutoremovesDetail).toContain("HOMEBREW_NO_INSTALL_CLEANUP=1");
+    }
   });
 
   it("has nothing behind a line that already says it all", () => {

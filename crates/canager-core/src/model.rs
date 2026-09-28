@@ -554,6 +554,28 @@ pub enum Warning {
     /// link) share what rustup leaves in it, and each is named
     /// (`rustup::shell_config_leftovers`).
     LeavesShellConfigLine { path: String, certain: bool },
+    /// After this `brew uninstall`, formula or cask, Homebrew also runs its
+    /// autoremove, which uninstalls the formulae that were installed only as
+    /// dependencies and that nothing installed needs any more -- any on the
+    /// system (`cmd/uninstall.rb:129-136`, `cleanup.rb:1038-1077` in
+    /// Homebrew 7.0.6-70). Canager runs every `brew` command with
+    /// `HOMEBREW_NO_AUTOREMOVE=1` (`BrewAdapter::ENV`), so this is produced
+    /// only when a `brew.env` file sets it back to a value Homebrew reads as
+    /// unset -- `0`, `false`, nothing -- which `bin/brew` exports over the
+    /// inherited one (`adapters/brew/brew_env.rs`). Produced by
+    /// `BrewAdapter::plan` for an `Uninstall`; read by `warningKey` and
+    /// `warningDetailKey` in src/lib/warnings.ts.
+    HomebrewAutoremoves,
+    /// After this `brew install` or `brew upgrade`, Homebrew runs a full
+    /// `brew cleanup` whenever one is due (`install.rb:325-328`,
+    /// `cleanup.rb:418-445`), and that cleanup ends in the same autoremove
+    /// as `HomebrewAutoremoves` (`cleanup.rb:471`). Canager's
+    /// `HOMEBREW_NO_INSTALL_CLEANUP=1` and `HOMEBREW_NO_AUTOREMOVE=1` each
+    /// prevent it, so this is produced only when `brew.env` files take back
+    /// both: the first set to nothing, the second to a value Homebrew reads
+    /// as unset (`adapters/brew/brew_env.rs`). Produced by
+    /// `BrewAdapter::plan` for an `Install` or an `Upgrade`; same readers.
+    HomebrewCleanupAutoremoves,
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -1324,6 +1346,18 @@ mod tests {
             })
             .unwrap(),
             r#"{"LeavesShellConfigLine":{"path":"~/.zshrc","certain":true}}"#
+        );
+
+        // Round 2: what a brew.env that takes Canager's switches back
+        // makes Homebrew do (adapters/brew/brew_env.rs). Two bare strings,
+        // as `warningKey` in src/lib/warnings.ts spells them.
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewAutoremoves).unwrap(),
+            r#""HomebrewAutoremoves""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::HomebrewCleanupAutoremoves).unwrap(),
+            r#""HomebrewCleanupAutoremoves""#
         );
     }
 

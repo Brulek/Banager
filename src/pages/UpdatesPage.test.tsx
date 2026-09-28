@@ -598,6 +598,21 @@ describe("UpdatesPage", () => {
     );
   });
 
+  it("says an update ends in Homebrew's clean-up and its autoremove when brew.env turns both back on", async () => {
+    // `Warning::HomebrewCleanupAutoremoves`: `brew upgrade` runs Homebrew's
+    // periodic clean-up when one is due, and that clean-up autoremoves,
+    // once a brew.env takes back both of Canager's variables
+    // (crates/canager-core/src/adapters/brew/brew_env.rs).
+    planWarnings.glib = ["HomebrewCleanupAutoremoves"];
+    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText(
+      "When Homebrew's periodic clean-up is due, it runs after this command and also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+    );
+  });
+
   it("offers no Update button and no checkbox for a candidate the adapter could not check, and says why behind its chip", async () => {
     // The whole point of UpdateCandidate.checkable. A git-sourced cargo
     // crate reports checkable:false because crates.io knows nothing about

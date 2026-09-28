@@ -433,6 +433,28 @@ describe("UninstallDialog", () => {
     }
   });
 
+  it("says Homebrew will also remove what nothing needs when a brew.env turns autoremove back on, with the why behind its ⓘ", async () => {
+    // `Warning::HomebrewAutoremoves`: every brew command runs with
+    // HOMEBREW_NO_AUTOREMOVE=1, and a brew.env took it back
+    // (crates/canager-core/src/adapters/brew/brew_env.rs), so after this
+    // uninstall Homebrew removes more than the command names.
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ warnings: ["HomebrewAutoremoves"] }));
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    await screen.findByRole("region", { name: "Before you continue" });
+    const line =
+      "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.";
+    expect(linesOf("Before you continue")).toEqual([line]);
+    const why =
+      "Canager runs Homebrew with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.";
+    expect(screen.queryByText(why)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `Details: ${line}` }));
+    expect(screen.getByText(why)).toBeInTheDocument();
+    // Said, not blocked: the button stays, and says nothing of the Trash.
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
   it("says Uninstall permanently where a line says something is deleted for good, and Uninstall everywhere else", async () => {
     // rustup's own uninstall deletes its folders outright; a path-list
     // uninstall moves what it lists to the Trash, and a Homebrew one says

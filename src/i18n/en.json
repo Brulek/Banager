@@ -265,7 +265,11 @@
     "leavesShellConfigLine": "{{path}} keeps a line that loads Cargo, so a terminal that reads this file shows an error each time it starts.",
     "leavesShellConfigLineDetail": "Delete that line to fix it.",
     "leavesShellConfigLineMaybe": "{{path}} has a line that mentions Cargo, which rustup won't remove.",
-    "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it."
+    "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
+    "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+    "homebrewAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "homebrewCleanupAutoremoves": "When Homebrew's periodic clean-up is due, it runs after this command and also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+    "homebrewCleanupAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins."
   },
   "standalone": {
     "summary": {

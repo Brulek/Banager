@@ -19,9 +19,19 @@ export interface CommandPreviewProps {
   plans: PlanPreview[];
 }
 
-/** The argv, one token per `displayToken`. */
-function argvText(action: Extract<PlanAction, { Command: unknown }>): string {
-  return [action.Command.program, ...action.Command.args].map(displayToken).join(" ");
+/**
+ * The command as Terminal would take it: the variables the plan sets on
+ * top of Canager's own environment, as `NAME=value` in the plan's order --
+ * so a setting that changes what the tool does, such as Homebrew's
+ * `HOMEBREW_NO_AUTOREMOVE=1`, is on screen -- then the argv, each value and
+ * token per `displayToken`.
+ */
+function commandText(action: Extract<PlanAction, { Command: unknown }>): string {
+  const { program, args, env } = action.Command;
+  return [
+    ...env.map(([name, value]) => `${name}=${displayToken(value)}`),
+    ...[program, ...args].map(displayToken),
+  ].join(" ");
 }
 
 /**
@@ -37,7 +47,8 @@ function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unkno
 /**
  * What a confirmation's plans will do, exactly, one click away.
  *
- * For a `Command`: the argv, behind a disclosure -- 「查看将执行的命令」/
+ * For a `Command`: the variables it is given and its argv
+ * (`commandText`), behind a disclosure -- 「查看将执行的命令」/
  * "Show the command", a button that says whether it is open
  * (`aria-expanded`) -- and open from the start while Settings' "Show
  * technical details" is on. One token per `displayToken`, since a plain
@@ -65,7 +76,7 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
   for (const plan of plans) {
     const { action } = plan;
     if ("Command" in action) {
-      commands.push({ id: plan.id, name: plan.name, text: argvText(action) });
+      commands.push({ id: plan.id, name: plan.name, text: commandText(action) });
     } else if ("TrashPaths" in action) {
       trash.push(
         <p key={plan.id} className="text-small text-muted">

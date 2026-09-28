@@ -66,7 +66,9 @@ Ollama button is pressed, and at the start of every Unknown-page scan,
 `HostEnv::discover`
 (`crates/canager-core/src/runner/path_env.rs`) reads `PATH`, `HOME`,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
-environment and the effective user id from the process. Every package manager
+environment and the effective user id from the process. Homebrew's
+install, uninstall and upgrade previews read four more, to find its
+`brew.env` files (its section). Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
@@ -123,8 +125,10 @@ asks for a password.
 for an uninstall that runs no command, the exact list of paths it will
 move to the Trash (the Claude Code, Antigravity CLI and Grok Build
 sections) — and the front end shows it: the paths in the confirmation,
-the argv one press away there ("Show the command"), open from the start
-with Settings' "Show technical details" on (`plan_operation` in
+the command one press away there ("Show the command") — the variables
+the plan sets on top of Canager's environment, as `NAME=value`, then the
+argv (`commandText` in `src/components/CommandPreview.tsx`) — open from
+the start with Settings' "Show technical details" on (`plan_operation` in
 `src-tauri/src/ipc.rs`; the front end never builds an argv and sends back
 only the id of a plan Rust issued). The plan can be confirmed for ten
 minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),
@@ -172,6 +176,7 @@ instance, with the prefix two directories up from the executable.
 including `--version`, `update` and every plan:
 
     HOMEBREW_NO_AUTO_UPDATE=1
+    HOMEBREW_NO_AUTOREMOVE=1
     HOMEBREW_NO_ENV_HINTS=1
     HOMEBREW_NO_INSTALL_CLEANUP=1
     NO_COLOR=1
@@ -180,6 +185,51 @@ Install and upgrade plans additionally carry `SUDO_ASKPASS` when it is
 already set in Canager's process environment (`askpass_fn`, read per
 plan). It only has any effect for casks whose installer scripts invoke
 `sudo`.
+
+**Autoremove.** After every `brew uninstall`, formula or cask, Homebrew
+runs its autoremove unless `HOMEBREW_NO_AUTOREMOVE` is set: it uninstalls
+the formulae that were installed only as dependencies and that nothing
+installed needs any more — any on the system, not only the uninstalled
+package's own (Homebrew 7.0.6-70, `cmd/uninstall.rb:129-136`,
+`cleanup.rb:1038-1077`). `brew install` and `brew upgrade` can do the
+same: both end in a full `brew cleanup` when the last one Homebrew
+recorded (`$HOMEBREW_CACHE/.cleaned`) is more than
+`HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days old (30 unless set), unless
+`HOMEBREW_NO_INSTALL_CLEANUP` is set (`cmd/install.rb:504`,
+`cmd/upgrade.rb:363`, `install.rb:325-328`, `cleanup.rb:418-445`), and
+that cleanup autoremoves unless `HOMEBREW_NO_AUTOREMOVE` is set
+(`cleanup.rb:471`). `HOMEBREW_NO_AUTOREMOVE=1` and
+`HOMEBREW_NO_INSTALL_CLEANUP=1` above keep all of it from running unless
+a `brew.env` file takes them back.
+
+**`brew.env`.** Homebrew's launcher, `bin/brew`, exports every
+`HOMEBREW_*` line of up to three `brew.env` files over the environment it
+was started with (`bin/brew:128-180`), so a line in one of them takes
+either variable back. Every install, uninstall and upgrade preview reads
+those files the way `bin/brew` does (`brew_env::after_brew_env` in
+`crates/canager-core/src/adapters/brew/brew_env.rs`):
+`/etc/homebrew/brew.env`; then `<prefix>/etc/homebrew/brew.env`; then
+`$XDG_CONFIG_HOME/homebrew/brew.env` when Canager's environment sets
+`XDG_CONFIG_HOME`, else `$HOMEBREW_XDG_CONFIG_HOME/homebrew/brew.env` when
+Canager's environment or one of the first two files sets that, else
+`~/.homebrew/brew.env`; and `/etc/homebrew/brew.env` again, last, when
+`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` is set once that file has been read.
+To find them it reads `HOME`, `XDG_CONFIG_HOME`,
+`HOMEBREW_XDG_CONFIG_HOME` and `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` from
+Canager's environment (`env_var_fn`, per preview). A file's lines count as
+bash reads them: the last line to set a variable wins, and a last line
+with no newline after it is not read. Homebrew counts
+`HOMEBREW_NO_AUTOREMOVE` as unset when it is empty, only whitespace, or
+`0`, `false`, `no`, `off` or `nil` in any case (`env_config.rb:871`,
+`:926`), and `HOMEBREW_NO_INSTALL_CLEANUP` only when it is empty or only
+whitespace. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
+uninstall preview says that Homebrew will also remove other Homebrew
+packages that were installed only as dependencies and that nothing needs
+any more (`Warning::HomebrewAutoremoves`); when they leave both variables
+unset, the install and upgrade previews say that, when Homebrew's
+periodic clean-up is due, it runs after the command and removes them too
+(`Warning::HomebrewCleanupAutoremoves`). Canager changes nothing in those
+files.
 
 **Read-only commands** (background checks; never need a password):
 
@@ -242,7 +292,13 @@ paths exist, the uninstall preview looks at Homebrew's own update lock,
 Canager's or anyone's — overlapped its `brew uses` read
 (`probe_homebrew_update_lock`): the directory is `stat`ed, the file is
 opened read-only and never created, and `fcntl(F_GETLK)` asks whether the
-lock is held without taking it.
+lock is held without taking it. Every install, uninstall and upgrade
+preview also reads the `brew.env` files named above
+(`read_brew_env_file`): each is opened only when `stat` says it is a
+regular file (links followed), checked again once open, and read whole;
+only the lines that set `HOMEBREW_NO_AUTOREMOVE`,
+`HOMEBREW_NO_INSTALL_CLEANUP`, `HOMEBREW_XDG_CONFIG_HOME` or
+`HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY` are used.
 
 ## npm
 
@@ -1289,7 +1345,8 @@ All read-only, none saved anywhere else, none uploaded:
 
 - Homebrew: whether the three candidate `brew` paths exist;
   `<prefix>/var/homebrew/locks` and the `update` lock file in it, during
-  the uninstall preview (Homebrew's section).
+  the uninstall preview; its `brew.env` files, during every install,
+  uninstall and upgrade preview (Homebrew's section).
 - A Homebrew cask's app, when the window asks for its icon: `lstat` of the
   `.app` Homebrew named for that cask, and the icon macOS finds for it
   through `NSWorkspace iconForFile:` — Canager opens no file in the app
@@ -1603,6 +1660,10 @@ Canager neither chooses nor sees them.
   installing; `grok update` runs only after a confirmed preview.
 - Never passes `--zap`, `--force` or `--ignore-dependencies` to Homebrew
   (the brew plan test), and never runs a bare `brew upgrade`.
+- Never runs a `brew` command without `HOMEBREW_NO_AUTOREMOVE=1`, which
+  keeps Homebrew from uninstalling packages the command does not name;
+  when a `brew.env` file takes it back, the preview says so (Homebrew's
+  section).
 - Never runs a `brew` command as root.
 - Never runs a write command from a refresh, and never runs one without a
   preview the user confirmed within the last ten minutes.

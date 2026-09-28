@@ -114,6 +114,39 @@ describe("CommandPreview", () => {
     expect(await screen.findByText("'/Users/Alice Smith/bin/brew' upgrade --cask onyx")).toBeInTheDocument();
   });
 
+  it("shows the variables a plan sets before its program, so Homebrew's autoremove switch is on screen", async () => {
+    // `BrewAdapter::ENV` goes on every brew command, and
+    // `HOMEBREW_NO_AUTOREMOVE=1` is what keeps `brew uninstall` from also
+    // uninstalling what nothing needs any more: pasted into Terminal
+    // without it, the same argv does more. A value is quoted as a token is.
+    settings.show_technical_details = true;
+    renderWithProviders(
+      <CommandPreview
+        plans={[
+          {
+            id: "1",
+            action: {
+              Command: {
+                program: "/opt/homebrew/bin/brew",
+                args: ["uninstall", "--formula", "jq"],
+                env: [
+                  ["HOMEBREW_NO_AUTOREMOVE", "1"],
+                  ["SUDO_ASKPASS", "/Users/Alice Smith/askpass"],
+                ],
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "HOMEBREW_NO_AUTOREMOVE=1 SUDO_ASKPASS='/Users/Alice Smith/askpass' /opt/homebrew/bin/brew uninstall --formula jq",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("lists several commands behind one press, each under what it is for", async () => {
     settings.show_technical_details = true;
     renderWithProviders(

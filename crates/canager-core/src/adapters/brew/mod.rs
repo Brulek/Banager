@@ -1,3 +1,4 @@
+mod brew_env;
 pub mod parse;
 
 use crate::adapters::{
@@ -14,6 +15,7 @@ use crate::runner::{CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUs
 use async_trait::async_trait;
 use parse::{parse_info_installed, parse_outdated, parse_search, parse_uses, parse_version};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -106,6 +108,20 @@ pub struct BrewAdapter {
     /// test here answers differently because the Mac running it happens to
     /// be in the middle of a `brew update`.
     update_lock_fn: fn(&Path) -> HomebrewUpdateLock,
+    /// How to read one variable of Canager's own environment, which every
+    /// `brew` command inherits under its plan's own: `HOME`,
+    /// `XDG_CONFIG_HOME`, `HOMEBREW_XDG_CONFIG_HOME` and
+    /// `HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY`, from which `bin/brew` finds and
+    /// orders its `brew.env` files (`brew_env::after_brew_env`). Read per
+    /// plan, as `askpass_fn` is. The same fn-pointer seam as
+    /// `update_lock_fn`: inside this crate's unit tests the environment is
+    /// empty unless a test installs one (`with_env_var_fn`).
+    env_var_fn: fn(&str) -> Option<OsString>,
+    /// How to read one `brew.env` file: `brew_env::read_brew_env_file`
+    /// outside this crate's unit tests; inside them there is none unless a
+    /// test installs a reader (`with_brew_env_fn`), so that no test answers
+    /// differently for the brew.env files of the Mac running it.
+    brew_env_fn: fn(&Path) -> Option<Vec<u8>>,
 }
 
 /// `BrewAdapter::update_lock_fn` as `BrewAdapter::new` sets it: the real
@@ -123,9 +139,30 @@ const DEFAULT_UPDATE_LOCK_FN: fn(&Path) -> HomebrewUpdateLock = |_| {
     })
 };
 
+/// `BrewAdapter::env_var_fn` and `brew_env_fn` as `BrewAdapter::new` sets
+/// them: Canager's real environment and the real files in every build but
+/// this crate's unit tests, where both are empty.
+#[cfg(not(test))]
+const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |name| std::env::var_os(name);
+#[cfg(test)]
+const DEFAULT_ENV_VAR_FN: fn(&str) -> Option<OsString> = |_| None;
+#[cfg(not(test))]
+const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = brew_env::read_brew_env_file;
+#[cfg(test)]
+const DEFAULT_BREW_ENV_FN: fn(&Path) -> Option<Vec<u8>> = |_| None;
+
 impl BrewAdapter {
-    pub const ENV: [(&'static str, &'static str); 4] = [
+    /// The environment every `brew` command Canager runs is given, on top
+    /// of Canager's own. `HOMEBREW_NO_AUTOREMOVE` keeps Homebrew's
+    /// autoremove from uninstalling every formula installed only as a
+    /// dependency that nothing needs any more -- packages no preview names
+    /// -- after an uninstall, and in the cleanup an install or upgrade runs
+    /// if `HOMEBREW_NO_INSTALL_CLEANUP` does not keep it from starting. A
+    /// `brew.env` file can take either back, which the plan then says
+    /// (`brew_env_warning`).
+    pub const ENV: [(&'static str, &'static str); 5] = [
         ("HOMEBREW_NO_AUTO_UPDATE", "1"),
+        ("HOMEBREW_NO_AUTOREMOVE", "1"),
         ("HOMEBREW_NO_ENV_HINTS", "1"),
         ("HOMEBREW_NO_INSTALL_CLEANUP", "1"),
         ("NO_COLOR", "1"),
@@ -192,6 +229,8 @@ impl BrewAdapter {
             askpass_fn: || std::env::var("SUDO_ASKPASS").ok(),
             path_exists_fn: |path| path.exists(),
             update_lock_fn: DEFAULT_UPDATE_LOCK_FN,
+            env_var_fn: DEFAULT_ENV_VAR_FN,
+            brew_env_fn: DEFAULT_BREW_ENV_FN,
         }
     }
 
@@ -262,6 +301,44 @@ impl BrewAdapter {
     ) -> BrewAdapter {
         self.update_lock_fn = update_lock_fn;
         self
+    }
+
+    /// Test-only hook to describe Canager's environment as `bin/brew` would
+    /// inherit it (see `env_var_fn`).
+    #[cfg(test)]
+    fn with_env_var_fn(mut self, env_var_fn: fn(&str) -> Option<OsString>) -> BrewAdapter {
+        self.env_var_fn = env_var_fn;
+        self
+    }
+
+    /// Test-only hook to put `brew.env` files on the disk the plan reads
+    /// (see `brew_env_fn`).
+    #[cfg(test)]
+    fn with_brew_env_fn(mut self, brew_env_fn: fn(&Path) -> Option<Vec<u8>>) -> BrewAdapter {
+        self.brew_env_fn = brew_env_fn;
+        self
+    }
+
+    /// What the `brew.env` files make Homebrew do beyond a plan's command,
+    /// for a plan of `kind` on `inst` whose environment is `env`, or `None`
+    /// when Canager's variables hold (`brew_env::after_brew_env`). An
+    /// uninstall autoremoves unless `HOMEBREW_NO_AUTOREMOVE` holds; an
+    /// install or upgrade does only in the cleanup it runs when one is due,
+    /// which needs `HOMEBREW_NO_INSTALL_CLEANUP` taken back as well.
+    fn brew_env_warning(
+        &self,
+        inst: &ManagerInstance,
+        kind: OpKind,
+        env: &[(String, String)],
+    ) -> Option<Warning> {
+        let switches =
+            brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn);
+        match kind {
+            OpKind::Uninstall => (!switches.no_autoremove).then_some(Warning::HomebrewAutoremoves),
+            OpKind::Install | OpKind::Upgrade => (!switches.no_autoremove
+                && !switches.no_install_cleanup)
+                .then_some(Warning::HomebrewCleanupAutoremoves),
+        }
     }
 
     /// The common root-refusal gate for every brew subprocess invocation
@@ -1205,6 +1282,10 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
+                let warnings = self
+                    .brew_env_warning(inst, req.kind, &env)
+                    .into_iter()
+                    .collect();
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -1215,7 +1296,7 @@ impl BrewAdapter {
                     needs_password,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
-                    warnings: Vec::new(),
+                    warnings,
                     affected: Vec::new(),
                     timeout_secs: 1800,
                 })
@@ -1273,12 +1354,14 @@ impl BrewAdapter {
                         names: affected.clone(),
                     });
                 }
+                let env = self.env_vec();
+                warnings.extend(self.brew_env_warning(inst, req.kind, &env));
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
                         program: inst.exe_path.clone(),
                         args: vec!["uninstall".to_string(), flag.to_string(), req.name.clone()],
-                        env: self.env_vec(),
+                        env,
                     },
                     needs_password: matches!(req.artifact_kind, ArtifactKind::Cask),
                     locks: vec![lock],
@@ -1298,6 +1381,10 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
+                let warnings = self
+                    .brew_env_warning(inst, req.kind, &env)
+                    .into_iter()
+                    .collect();
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -1308,7 +1395,7 @@ impl BrewAdapter {
                     needs_password,
                     locks: vec![lock],
                     cancel_policy: CancelPolicy::KillThenReconcile,
-                    warnings: Vec::new(),
+                    warnings,
                     affected: Vec::new(),
                     timeout_secs: 1800,
                 })
@@ -2619,6 +2706,195 @@ mod plan_execute_tests {
                     "brew {verb} {flag} {name} is exactly the verb, the kind flag and the name"
                 );
             }
+        }
+    }
+
+    /// Every plan brew builds -- jq, a formula, and docker, a cask, each to
+    /// install, uninstall and upgrade -- by `adapter` on `test_instance()`,
+    /// with `brew uses` answering that nothing depends on either.
+    async fn every_plan(runner: &MockRunner, adapter: &BrewAdapter) -> Vec<Plan> {
+        for name in ["jq", "docker"] {
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "uses", "--installed", name],
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+        }
+        let inst = test_instance();
+        let mut plans = Vec::new();
+        for (artifact_kind, name) in [
+            (ArtifactKind::Formula, "jq"),
+            (ArtifactKind::Cask, "docker"),
+        ] {
+            for kind in [OpKind::Install, OpKind::Uninstall, OpKind::Upgrade] {
+                let req = OpRequest {
+                    kind,
+                    instance_id: inst.id.clone(),
+                    artifact_kind,
+                    name: name.to_string(),
+                };
+                plans.push(adapter.plan(&inst, &req).await.expect("plan"));
+            }
+        }
+        plans
+    }
+
+    /// Homebrew autoremoves after every `brew uninstall`, formula or cask,
+    /// unless `HOMEBREW_NO_AUTOREMOVE` is set (`cmd/uninstall.rb:129-136`
+    /// in Homebrew 7.0.6-70), and in the cleanup an install or upgrade
+    /// runs (`cleanup.rb:471`): every plan's command says it is set, and
+    /// the preview shows it with the rest of the environment.
+    #[tokio::test]
+    async fn test_every_plan_runs_brew_with_autoremove_off() {
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone());
+        for plan in every_plan(&runner, &adapter).await {
+            assert!(
+                command_env(&plan)
+                    .contains(&("HOMEBREW_NO_AUTOREMOVE".to_string(), "1".to_string())),
+                "{:?} {:?} {} runs without HOMEBREW_NO_AUTOREMOVE=1: {:?}",
+                plan.request.kind,
+                plan.request.artifact_kind,
+                plan.request.name,
+                command_env(&plan)
+            );
+            assert!(
+                plan.warnings.is_empty(),
+                "with no brew.env, nothing more happens: {:?}",
+                plan.warnings
+            );
+        }
+    }
+
+    /// A Mac whose `/etc/homebrew/brew.env` turns autoremove back on.
+    fn system_brew_env_autoremoves(path: &Path) -> Option<Vec<u8>> {
+        (path == Path::new("/etc/homebrew/brew.env"))
+            .then(|| b"# set by an administrator\nHOMEBREW_NO_AUTOREMOVE=0\n".to_vec())
+    }
+
+    #[tokio::test]
+    async fn test_an_uninstall_plan_says_homebrew_will_autoremove_when_a_brew_env_turns_it_back_on()
+    {
+        // `bin/brew` exports the file's line over the plan's
+        // `HOMEBREW_NO_AUTOREMOVE=1`, so after the uninstall Homebrew
+        // removes what else nothing needs any more: formula and cask alike.
+        // An install or upgrade autoremoves only in a cleanup, which
+        // `HOMEBREW_NO_INSTALL_CLEANUP=1` still keeps from running.
+        let runner = Arc::new(MockRunner::new());
+        let adapter =
+            BrewAdapter::new(runner.clone()).with_brew_env_fn(system_brew_env_autoremoves);
+        for plan in every_plan(&runner, &adapter).await {
+            let expected = match plan.request.kind {
+                OpKind::Uninstall => vec![Warning::HomebrewAutoremoves],
+                OpKind::Install | OpKind::Upgrade => vec![],
+            };
+            assert_eq!(
+                plan.warnings, expected,
+                "{:?} {}",
+                plan.request.kind, plan.request.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_an_install_or_upgrade_plan_says_so_when_brew_env_turns_cleanup_and_autoremove_back_on(
+    ) {
+        // `brew upgrade` and `brew install` end in `Install.finish_installation`
+        // (`cmd/upgrade.rb:363`, `cmd/install.rb:504`), whose periodic
+        // cleanup (`cleanup.rb:431-445`) autoremoves (`cleanup.rb:471`) --
+        // once neither of Canager's two variables holds.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
+            (path == Path::new("/etc/homebrew/brew.env"))
+                .then(|| b"HOMEBREW_NO_INSTALL_CLEANUP=\nHOMEBREW_NO_AUTOREMOVE=off\n".to_vec())
+        });
+        for plan in every_plan(&runner, &adapter).await {
+            let expected = match plan.request.kind {
+                OpKind::Uninstall => Warning::HomebrewAutoremoves,
+                OpKind::Install | OpKind::Upgrade => Warning::HomebrewCleanupAutoremoves,
+            };
+            assert_eq!(
+                plan.warnings,
+                vec![expected],
+                "{:?} {}",
+                plan.request.kind,
+                plan.request.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_uninstall_preview_finds_the_prefix_and_xdg_brew_env_files() {
+        // The prefix's file is this instance's (`<prefix>/etc/homebrew`),
+        // and the user's is under `XDG_CONFIG_HOME` when Canager's
+        // environment sets it -- then `~/.homebrew/brew.env` is not read.
+        fn off_at(path: &Path, at: &str) -> Option<Vec<u8>> {
+            (path == Path::new(at)).then(|| b"HOMEBREW_NO_AUTOREMOVE=false\n".to_vec())
+        }
+        let with_xdg = |name: &str| match name {
+            "HOME" => Some(OsString::from("/Users/someone")),
+            "XDG_CONFIG_HOME" => Some(OsString::from("/Users/someone/.config")),
+            _ => None,
+        };
+        let without_xdg = |name: &str| (name == "HOME").then(|| OsString::from("/Users/someone"));
+        type Files = fn(&Path) -> Option<Vec<u8>>;
+        type Env = fn(&str) -> Option<OsString>;
+        let cases: [(Files, Env, bool); 4] = [
+            (
+                |p| off_at(p, "/opt/homebrew/etc/homebrew/brew.env"),
+                without_xdg,
+                true,
+            ),
+            (
+                |p| off_at(p, "/Users/someone/.config/homebrew/brew.env"),
+                with_xdg,
+                true,
+            ),
+            (
+                |p| off_at(p, "/Users/someone/.homebrew/brew.env"),
+                with_xdg,
+                false,
+            ),
+            (
+                |p| off_at(p, "/Users/someone/.homebrew/brew.env"),
+                without_xdg,
+                true,
+            ),
+        ];
+        for (files, env, autoremoves) in cases {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(
+                vec!["/opt/homebrew/bin/brew", "uses", "--installed", "jq"],
+                CommandOutput {
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    timed_out: false,
+                    cancelled: false,
+                },
+            );
+            let adapter = BrewAdapter::new(runner)
+                .with_brew_env_fn(files)
+                .with_env_var_fn(env);
+            let inst = test_instance();
+            let req = OpRequest {
+                kind: OpKind::Uninstall,
+                instance_id: inst.id.clone(),
+                artifact_kind: ArtifactKind::Formula,
+                name: "jq".to_string(),
+            };
+            let plan = adapter.plan(&inst, &req).await.expect("plan");
+            assert_eq!(
+                plan.warnings.contains(&Warning::HomebrewAutoremoves),
+                autoremoves,
+                "{:?}",
+                plan.warnings
+            );
         }
     }
 
