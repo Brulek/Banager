@@ -4,10 +4,12 @@ use canager_core::runner::{HostEnv, RealRunner};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Read-only smoke check: detects a real Homebrew install, runs `brew
-/// update` unconditionally (via `with_update_ttl(Duration::from_secs(0))`),
-/// then lists installed and outdated counts. Never installs, uninstalls, or
-/// upgrades anything.
+/// Smoke check: detects a real Homebrew install, runs `brew update`
+/// unconditionally (via `with_update_ttl(Duration::from_secs(0))`), then
+/// lists installed and outdated counts. It runs no install, uninstall or
+/// upgrade of its own; `brew update` itself can install, move or uninstall
+/// Homebrew packages Homebrew has moved or renamed (docs/what-we-run.md,
+/// Homebrew).
 #[tokio::main]
 async fn main() {
     let env = HostEnv::discover();

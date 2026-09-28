@@ -444,7 +444,7 @@ describe("SettingsPage", () => {
     const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
     expect(daily).not.toBeChecked();
     expect(daily).toHaveAccessibleDescription(
-      "Checks once a day while Canager is running. It only checks and installs nothing. Nothing is checked after you quit.",
+      "Checks once a day while Canager is running, and installs none of the updates it finds. Nothing is checked after you quit.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
@@ -657,9 +657,13 @@ describe("SettingsPage", () => {
     expect(notify).toBeDisabled();
   });
 
-  it("calls the daily check and its notification what the spec has them in Chinese", () => {
+  it("names the daily check and its notification in Chinese as the spec does, and says the check installs none of the updates it finds", () => {
+    // Not the spec's 只检查不安装: every check's `brew update` can install
+    // a package Homebrew moved between a formula and a cask
+    // (docs/what-we-run.md, Homebrew), so the subtitle claims only that no
+    // update the check finds is installed.
     expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
-    expect(zhCN.settings.autoCheck.description).toBe("Canager 开着时每天检查一次，只检查不安装。退出后不检查。");
+    expect(zhCN.settings.autoCheck.description).toBe("Canager 开着时每天检查一次，查到的更新都不安装。退出后不检查。");
     expect(zhCN.settings.notifyUpdates.label).toBe("有可更新时通知我");
     expect(zhCN.settings.notifyUpdates.refused).toBe("在系统设置 → 通知里允许 Canager");
   });

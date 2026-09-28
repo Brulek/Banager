@@ -1712,10 +1712,10 @@ mod tests {
     #[tokio::test]
     async fn test_detect_reads_the_version_with_the_autoupdater_off_and_a_thirty_second_timeout() {
         // Spec §3.4: Claude Code checks for updates on startup (doc text)
-        // and a refresh is read-only, so the documented switch for that
-        // background check goes on this read (and inventory's) whether or
-        // not a bare `--version` would reach the updater -- never on the
-        // upgrade plan.
+        // and a refresh must not set off its update, so the documented
+        // switch for that background check goes on this read (and
+        // inventory's) whether or not a bare `--version` would reach the
+        // updater -- never on the upgrade plan.
         let home = TempHome::new("detect-env");
         let layout = claude_layout(&home, "2.1.281");
         let runner = Arc::new(RecordingRunner {

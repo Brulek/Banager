@@ -3,8 +3,11 @@
 //! `canager_core::auto_check::tick` whether to check, and when the answer
 //! is `Tick::Check` runs the refresh the window's Check again runs
 //! (`ipc::refresh_as`), recorded as `RoundTrigger::Automatic`. That is all
-//! it does: the refresh runs what every refresh runs, which installs
-//! nothing, and the task ends with the app.
+//! it does: the refresh runs what every refresh runs -- no install,
+//! upgrade or uninstall of Canager's, though the `brew update` in it can
+//! install, move or uninstall Homebrew packages Homebrew has moved or
+//! renamed (docs/what-we-run.md, Homebrew) -- and the task ends with the
+//! app.
 
 use crate::ipc;
 use crate::state::AppState;

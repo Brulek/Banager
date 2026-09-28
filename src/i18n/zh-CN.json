@@ -478,7 +478,7 @@
     },
     "autoCheck": {
       "label": "每天自动检查",
-      "description": "Canager 开着时每天检查一次，只检查不安装。退出后不检查。"
+      "description": "Canager 开着时每天检查一次，查到的更新都不安装。退出后不检查。"
     },
     "notifyUpdates": {
       "label": "有可更新时通知我",

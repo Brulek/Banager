@@ -25,14 +25,17 @@
 //! Grok Build do not publish, that the document names each permission of
 //! the opener plugin the window is given
 //! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
-//! makes, saying it runs nothing else, and that the daily check's section
+//! makes, saying it runs nothing else, that the daily check's section
 //! says it is off by default, states its tick and how long after a check it
-//! checks again, says it never installs, names exactly the notification
-//! plugin's permissions the window is given, and says the notification's
-//! switch is off by default. A source, host, variable, limit, path, check,
-//! pause, icon size, opener or notification permission or daily-check
-//! number added or changed, or that look shortened, without its line in
-//! the document fails here.
+//! checks again, says Canager itself runs no install from it and that
+//! `brew update` can install a package Homebrew moved between a formula
+//! and a cask, names exactly the notification plugin's permissions the
+//! window is given, and says the notification's switch is off by default,
+//! and that Homebrew's read-only table leaves `brew update` out, whose own
+//! paragraph cites the Homebrew lines that install. A source, host,
+//! variable, limit, path, check, pause, icon size, opener or notification
+//! permission or daily-check number added or changed, or that look
+//! shortened, without its line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::cargo::CargoAdapter;
@@ -648,15 +651,17 @@ fn test_what_we_run_says_the_path_look_goes_on_past_the_first_claude_and_it_does
 }
 
 #[test]
-fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_it_never_installs(
+fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_checks_and_that_canager_runs_no_install_from_it(
 ) {
     // The daily check's section states the two numbers `auto_check::tick`
     // and the shell's task run on -- a look every `TICK`, a check once
     // `DUE_AFTER_SECS` have passed since the last one ended -- that
-    // `Settings::default()` leaves it off, and that it installs nothing
-    // (it runs the refresh Check again runs, and no refresh runs a write
-    // command). A number changed, or the default turned on, without the
-    // section following fails here.
+    // `Settings::default()` leaves it off, and that Canager itself runs no
+    // install from it (it runs the refresh Check again runs, and no
+    // refresh runs a write command of Canager's), with the exception
+    // Homebrew's `brew update` makes: it can install a package Homebrew
+    // moved between a formula and a cask. A number changed, or the default
+    // turned on, without the section following fails here.
     use canager_core::auto_check::{DUE_AFTER_SECS, TICK};
     use canager_core::settings::Settings;
     assert!(
@@ -678,11 +683,50 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
         "off by default".to_string(),
         format!("every {} minutes", TICK.as_secs() / 60),
         format!("{} hours", DUE_AFTER_SECS / 3600),
-        "never installs".to_string(),
+        "Canager itself runs no install".to_string(),
+        "between a formula and a cask".to_string(),
     ] {
         assert!(
             folded.contains(&phrase),
-            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS and Settings::default() make true"
+            "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS, Settings::default() and the refresh it runs make true"
+        );
+    }
+}
+
+#[test]
+fn test_what_we_run_keeps_brew_update_out_of_homebrews_read_only_table_and_cites_the_lines_that_install(
+) {
+    // `brew update` carries out what Homebrew's new index says has moved:
+    // a cask moved to a formula gets the formula installed, a formula moved
+    // to a cask gets unlinked, a `brew cleanup` and the cask installed
+    // (Homebrew 7.0.6, cmd/update_report/reporter.rb:257-261, :288-295).
+    // It is no read-only command, and Homebrew's section says what it
+    // installs, citing those lines.
+    let doc = read_doc();
+    let body = section_body(&doc, "Homebrew")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## Homebrew` section"));
+    let read_only = body
+        .split("**Read-only commands**")
+        .nth(1)
+        .and_then(|rest| rest.split("\n\n**").next())
+        .expect("Homebrew's section has a read-only table");
+    assert!(
+        read_only.contains("`<brew> outdated --json=v2`"),
+        "precondition: this is Homebrew's read-only table"
+    );
+    assert!(
+        !read_only.contains("`<brew> update`"),
+        "Homebrew's read-only table lists `brew update`, which can install"
+    );
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    for phrase in [
+        "`<brew> update`",
+        "`cmd/update_report/reporter.rb:257-261`",
+        "(`:288-295`)",
+    ] {
+        assert!(
+            folded.contains(phrase),
+            "the `## Homebrew` section of docs/what-we-run.md does not show {phrase:?}"
         );
     }
 }

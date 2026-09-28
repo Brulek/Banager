@@ -61,7 +61,10 @@ pub struct Settings {
     pub include_self_updating: bool,
     /// The daily check, Settings → Updates' 「每天自动检查」: whether
     /// Canager, while it runs, refreshes by itself once a day -- the same
-    /// refresh as Check again, which installs nothing. Read at every tick
+    /// refresh as Check again, which runs no install, upgrade or uninstall
+    /// of Canager's; the `brew update` in it can install, move or uninstall
+    /// Homebrew packages Homebrew has moved or renamed (docs/what-we-run.md,
+    /// Homebrew). Read at every tick
     /// of the shell's task (`check_automatically` in
     /// src-tauri/src/auto_check.rs), which hands it to `auto_check::tick`.
     /// Off by default. `#[serde(default)]` so a settings.json written

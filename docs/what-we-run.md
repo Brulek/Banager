@@ -23,10 +23,14 @@ names the call and states the pause after each move, that the app icons
 section names the call, the size an icon is drawn at, and that no
 command runs for it, that this file names each permission of the
 opener plugin the window has and the unknown-source scan's section the
-call Show in Finder makes, saying it runs nothing else, and that the daily
+call Show in Finder makes, saying it runs nothing else, that the daily
 check's section says it is off by default, states how often it looks and
-how long after a check it checks again, says it never installs, and names
-each permission of the notification plugin the window has.
+how long after a check it checks again, says Canager itself runs no
+install from it and that `brew update` can install a package Homebrew
+moved between a formula and a cask, and names each permission of the
+notification plugin the window has, and that Homebrew's section keeps
+`brew update` out of its read-only table and cites the lines of
+Homebrew's own code at which it installs.
 `src-tauri/src/notify.rs`'s tests check that the section quotes what a
 notification says in both languages.
 
@@ -125,9 +129,13 @@ and bringing it back starts no refresh. Within a
 refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,
 under that instance's lock, its inventory is read and then its update
-check runs. Everything a refresh runs is in the read-only tables below:
-no refresh runs a write command, moves a file, launches an application or
-asks for a password.
+check runs. Everything a refresh runs is in the read-only tables below,
+but for Homebrew's `brew update`, which Homebrew's section lists on its
+own: it updates Homebrew and its index, and when Homebrew has moved a
+package this Mac has installed between a formula and a cask, or renamed
+one, it can install, move or uninstall Homebrew packages by itself.
+Apart from what `brew update` does, no refresh runs a write command,
+moves a file, launches an application or asks for a password.
 
 **An operation** is previewed first: `plan` builds the exact argv — or,
 for an uninstall that runs no command, the exact list of paths it will
@@ -215,14 +223,18 @@ starts nothing. Turned on:
 
 **What it runs** is the refresh Check again runs, through the same
 function (`ipc::refresh_as`), and nothing else: the commands a refresh
-runs, in each source's read-only table, and the requests a refresh makes,
-to the hosts in "Network". So it does to the Mac what those commands do:
-Homebrew's `brew update`, when its six hours are up, rewrites Homebrew's
-local catalogue (Homebrew's section) — and when the check stops waiting
-for it, the refresh its end sets off follows — and Grok Build's update check
-writes inside `~/.grok` ("Files Canager writes"). It never installs,
-upgrades or uninstalls anything: every write command runs only after a
-preview the user confirmed.
+runs, in each source's read-only table and Homebrew's `brew update`, and
+the requests a refresh makes, to the hosts in "Network". So it does to
+the Mac what those commands do: Homebrew's `brew update`, when its six
+hours are up, updates Homebrew and rewrites its local catalogue, and when
+Homebrew has moved a package this Mac has installed between a formula
+and a cask, or renamed one, it can install, move or uninstall Homebrew
+packages by itself (Homebrew's section) — and when the check stops
+waiting for it, the refresh its end sets off follows — and Grok Build's
+update check writes inside `~/.grok` ("Files Canager writes"). Canager
+itself runs no install, upgrade or uninstall from it, and installs none
+of the updates it finds: every write command runs only after a preview
+the user confirmed.
 
 **The notification.** Under the switch is another, "Notify me when there
 are updates" (「有可更新时通知我」), off by default too
@@ -356,7 +368,13 @@ one (`cleanup.rb:418-445`): the same for every installed formula and cask
 and the whole cache (`Cleanup#clean!`, `cleanup.rb:448-465`, `:473`), and
 the autoremove unless `HOMEBREW_NO_AUTOREMOVE` is set (`cleanup.rb:471`).
 `HOMEBREW_NO_AUTOREMOVE=1` and `HOMEBREW_NO_INSTALL_CLEANUP=1` above keep
-all of it from running unless a `brew.env` file takes them back.
+all of it from running unless a `brew.env` file takes them back. Neither
+keeps `brew update` from running `brew cleanup` itself, Homebrew's full
+clean-up (`Cleanup#clean!`), when it moves an installed formula to a cask
+("The index update", below). `HOMEBREW_NO_AUTOREMOVE=1` reaches that
+clean-up — `bin/brew` passes every `HOMEBREW_*` variable it is started
+with on (`bin/brew:310`) — so it runs no autoremove unless a `brew.env`
+file takes that back.
 
 **`brew.env`.** Homebrew's launcher, `bin/brew`, exports every
 `HOMEBREW_*` line of up to three `brew.env` files over the environment it
@@ -486,12 +504,45 @@ list anything.
 |---|---|---|
 | Detect a Homebrew install | `<brew> --version` | 30 s |
 | List installed formulae + casks (`inventory`) | `<brew> info --installed --json=v2` | 120 s |
-| Refresh Homebrew's local package index (`maybe_update`) | `<brew> update` | see below |
 | List outdated formulae + casks (`check_updates`) | `<brew> outdated --json=v2`, plus `--greedy` when the "include self-updating apps" setting is on | 120 s |
 | Qualify the names `outdated` reported (once per `check_updates`) | `<brew> info --installed --json=v2` | 120 s |
 | Search by name | `<brew> search {query}` | 30 s |
 | Search by name + description | `<brew> search --desc {query}` | 30 s |
 | List installed formulae depending on a formula (uninstall preview) | `<brew> uses --installed {name}` | 120 s |
+
+**The index update** (a refresh runs it; not read-only):
+
+| Purpose | Argv | Timeout |
+|---|---|---|
+| Update Homebrew and its local package index (`maybe_update`) | `<brew> update` | see below |
+
+`brew update` fetches the newest Homebrew and the newest index of
+formulae and casks, and rewrites both on disk. When anything changed, it
+then carries out what the new index says has moved or been renamed, for
+the packages this Mac has installed (`cmd/update-report.rb:259-261` in
+Homebrew 7.0.6). Homebrew does this itself, not Canager, with no
+preview:
+
+- A cask that has moved to a formula: unless the formula is installed
+  already, it installs the formula, beside the cask (`brew install
+  --overwrite`, `cmd/update_report/reporter.rb:257-261`).
+- A formula that has moved to a cask: when the cask's tap is on this Mac
+  and Homebrew's `Caskroom` folder exists, it unlinks the formula, runs
+  Homebrew's clean-up (`brew cleanup`) and installs the cask
+  (`:288-295`); otherwise it prints the commands that would do it and
+  runs none of them (`:301-307`).
+- A formula that has moved to another tap: it taps that tap when
+  Homebrew trusts it, and records the formula as that tap's (`:310-314`).
+- A renamed formula or cask: it moves what is installed to the new name,
+  or, for a cask whose new name is installed already, uninstalls the one
+  under the old name (`migrate_formula_rename`, `migrate_cask_renames`,
+  `cask/migrator.rb:61-65`).
+
+So a refresh that runs `brew update`, the daily check's included, can
+install, move or uninstall Homebrew packages, although Canager runs no
+install, upgrade or uninstall of its own from it. That refresh read the
+installed packages before `brew update` ran (`inventory` comes first), so
+the next refresh is the first to show all it changed.
 
 `brew update` runs at most once per six hours per prefix (`update_ttl`).
 A refresh waits up to two minutes for it (`UPDATE_PATIENCE`) and then
@@ -1959,7 +2010,10 @@ Canager neither chooses nor sees them.
   folder above that one, with every file in it, when that folder holds no
   other folder (uv's section).
 - Never runs a write command from a refresh, and never runs one without a
-  preview the user confirmed within the last ten minutes.
+  preview the user confirmed within the last ten minutes. The `brew
+  update` a refresh runs is Homebrew's exception: it can install, move or
+  uninstall Homebrew packages by itself when Homebrew has moved a package
+  between a formula and a cask, or renamed one (Homebrew's section).
 - Never launches an application from a refresh; `open -a Ollama` runs
   only when the button is pressed.
 - Never opens a tool to make it update itself: a self-updating tool's row
@@ -1970,7 +2024,9 @@ Canager neither chooses nor sees them.
   on the Mac itself other than its own `settings.json` and
   `.window-state.json` (the programs it
   runs write their own files — Grok Build's update check writes inside
-  `~/.grok` on every refresh, as its section says), and moves files
+  `~/.grok` on every refresh, and the `brew update` a refresh runs
+  rewrites Homebrew and its index and can install, move, uninstall and
+  clean up Homebrew packages, as their sections say), and moves files
   only to the Trash, only for an uninstall the user confirmed, and only
   the paths its preview listed; never edits a shell startup file — rustup's
   own uninstall edits its startup line and deletes its two folders

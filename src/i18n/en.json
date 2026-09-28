@@ -515,7 +515,7 @@
     },
     "autoCheck": {
       "label": "Check for updates every day",
-      "description": "Checks once a day while Canager is running. It only checks and installs nothing. Nothing is checked after you quit."
+      "description": "Checks once a day while Canager is running, and installs none of the updates it finds. Nothing is checked after you quit."
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
