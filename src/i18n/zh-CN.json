@@ -86,6 +86,10 @@
     "sortBySource": "来源",
     "noMatches": "没有找到“{{query}}”",
     "uninstall": "卸载",
+    "uninstallHold": {
+      "label": "暂时不能卸载",
+      "IndexUpdating": "Homebrew 正在更新软件清单，等它更新完再卸载。"
+    },
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
     "updateIgnored": "不再提醒",

@@ -869,13 +869,14 @@ describe("InstalledPage", () => {
     });
 
     it.each([
-      ["IndexUpdating", "Homebrew is updating its software list"],
-      ["IndexMayBeStale", "Couldn't update Homebrew's software list"],
-    ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line) => {
+      // Its only chip is about its Uninstall, held while the list updates.
+      ["IndexUpdating", "Homebrew is updating its software list", ["Can't uninstall now"]],
+      ["IndexMayBeStale", "Couldn't update Homebrew's software list", []],
+    ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line, chips) => {
       served = { ...snapshot, instances: [{ ...brew, status: { unavailable: null, notes: [note] } }], updates: [] };
       const { queryByText } = renderWithProviders(<InstalledPage />);
 
-      expect(chipsOf(await findRow("jq"))).toEqual([]);
+      expect(chipsOf(await findRow("jq"))).toEqual(chips);
       expect(queryByText("Up to date")).toBeNull();
       expect(screen.getByText(line)).toBeInTheDocument();
     });
@@ -1153,6 +1154,54 @@ describe("InstalledPage", () => {
     await findByText("Ollama isn't running");
     expect(await findByText("qwen3:8b")).toBeInTheDocument();
     expect(queryByRole("button", { name: "Uninstall" })).toBeNull();
+  });
+
+  it("keeps Homebrew's Uninstall disabled while it updates its list, says why behind a chip, and gives it back after", async () => {
+    // Homebrew's uninstall preview is refused while its list is being
+    // rewritten (`AdapterError::IndexUpdating` in
+    // crates/canager-core/src/adapters/brew/mod.rs), so the button stays,
+    // disabled, rather than open a dialog that could only refuse. Another
+    // source's Uninstall is untouched, and the core's own refresh clears
+    // the note when the update ends.
+    const updating: Snapshot = {
+      ...snapshot,
+      instances: [{ ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } }, claudeInstance],
+      artifacts: [snapshot.artifacts[0], claudeArtifact],
+      updates: [],
+    };
+    served = updating;
+    const { queryClient } = renderWithProviders(<InstalledPage />);
+
+    const jq = await findRow("jq");
+    const held = within(jq).getByRole("button", { name: "Uninstall" });
+    expect(held).toBeDisabled();
+    fireEvent.click(held);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
+    expect(chipsOf(jq)).toEqual(["Can't uninstall now"]);
+    expect(chipDetail(jq, "Can't uninstall now")).toHaveTextContent(
+      "Homebrew is updating its software list. Uninstall once it's done.",
+    );
+    // The page's own line says what Homebrew is doing.
+    expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Uninstall" })).toBeEnabled();
+    expect(chipsOf(rowOf("Claude Code"))).not.toContain("Can't uninstall now");
+
+    // The drawer says the same: Uninstall disabled, and why under the chip.
+    const drawer = await openDetails("jq");
+    expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    expect(
+      within(drawer).getByText("Homebrew is updating its software list. Uninstall once it's done."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull());
+
+    served = { ...updating, instances: [brew, claudeInstance] };
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() => expect(within(rowOf("jq")).getByRole("button", { name: "Uninstall" })).toBeEnabled());
+    expect(chipsOf(rowOf("jq"))).toEqual(["Up to date"]);
+    fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "Uninstall" }));
+    expect(await screen.findByRole("dialog", { name: "Uninstall jq?" })).toBeInTheDocument();
   });
 
   it("unfolds one source's components without unfolding another's, each line naming its source", async () => {

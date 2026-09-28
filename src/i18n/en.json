@@ -95,6 +95,10 @@
     "sortBySource": "Source",
     "noMatches": "Nothing matches “{{query}}”",
     "uninstall": "Uninstall",
+    "uninstallHold": {
+      "label": "Can't uninstall now",
+      "IndexUpdating": "Homebrew is updating its software list. Uninstall once it's done."
+    },
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
     "updateIgnored": "Reminders off",

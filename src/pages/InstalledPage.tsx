@@ -11,6 +11,7 @@ import {
   sourceNoticesFor,
   toolDescription,
   uninstallBlockedCopy,
+  uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import { hidingRule, shownSkippedVersion, updateStateOf, upToDateIsKnown } from "../lib/updateState";
@@ -146,7 +147,8 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
  * 「另有 14 个被其它软件带来的组件」, which unfolds them under it.
  *
  * Each row: what it is, its version, its chips -- the why behind an ⓘ --
- * Uninstall where the source and the tool allow it, and a ⋯ menu.
+ * Uninstall where the source and the tool allow it (disabled, with a chip
+ * saying why, while the source refuses one for now), and a ⋯ menu.
  * Pressing the row itself opens its details in a drawer from the right:
  * everything a row has no room for, and its Update.
  */
@@ -416,6 +418,12 @@ export function InstalledPage() {
   // all three in Rust whatever this page shows (spec §2.5).
   const canUninstall = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
     canWrite(instance) && isAvailable(instance) && artifact.uninstall_blocked === null;
+  // Such an Uninstall stays, disabled, while the source refuses to plan
+  // one until a note of its goes away -- a Homebrew updating its list
+  // (`uninstallHoldKey`) -- with a chip saying why. It comes back with the
+  // refresh that clears the note.
+  const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
+    canUninstall(artifact, instance) && uninstallHoldKey(instance) !== null;
 
   // `opener` is the button pressed, passed rather than read off the focus:
   // a click in WebKit does not focus a button.
@@ -513,6 +521,16 @@ export function InstalledPage() {
         detail: detailLines([
           withCommand(t(copy.description, { command: COMMAND_SLOT, source: label }), copy.command(artifact.key, instance)),
         ]),
+        tone: "neutral",
+      });
+    }
+    // Why the row's Uninstall is disabled for now.
+    const holdKey = canUninstall(artifact, instance) ? uninstallHoldKey(instance) : null;
+    if (holdKey !== null) {
+      chips.push({
+        id: "uninstall-held",
+        label: t("installed.uninstallHold.label"),
+        detail: detailLines([t(holdKey)]),
         tone: "neutral",
       });
     }
@@ -624,7 +642,11 @@ export function InstalledPage() {
         action={
           canUninstall(artifact, instance) ? (
             // Offered, not recommended: the quiet look (`RowAction`).
-            <RowAction tone="quiet" onClick={(event) => uninstall(artifact, event.currentTarget)}>
+            <RowAction
+              tone="quiet"
+              disabled={uninstallHeld(artifact, instance)}
+              onClick={(event) => uninstall(artifact, event.currentTarget)}
+            >
               {t("installed.uninstall")}
             </RowAction>
           ) : null
@@ -709,8 +731,9 @@ export function InstalledPage() {
             <button
               type="button"
               data-tone="quiet"
+              disabled={uninstallHeld(artifact, instance)}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
-              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40"
+              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-surface disabled:hover:text-muted"
             >
               {t("installed.uninstall")}
             </button>

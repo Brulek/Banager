@@ -15,7 +15,7 @@ const ROW_ACTION_CLASSES: Record<RowActionTone, string> = {
   accent:
     "h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text",
   quiet:
-    "h-7 rounded-button border border-border px-3.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50",
+    "h-7 rounded-button border border-border px-3.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted",
 };
 
 export interface RowActionProps {

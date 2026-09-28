@@ -24,10 +24,11 @@ import {
   UNAVAILABLE_DETAIL_KEYS,
   UNINSTALL_BLOCKED_KEYS,
   uninstallBlockedCopy,
+  uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { DescribedTool } from "./sources";
-import type { ArtifactKey, ManagerInstance, SourceError } from "./types";
+import type { ArtifactKey, InstanceNote, ManagerInstance, SourceError } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 
@@ -456,6 +457,32 @@ describe("sourceNoticesFor", () => {
       expect(notice.title).not.toMatch(/[（(]|多半|可能/);
       expect(notice.description.match(/[。！？]/g)?.length ?? 0, notice.description).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+describe("uninstallHoldKey", () => {
+  it("holds an uninstall while Homebrew updates its list, the one note Rust refuses an uninstall's preview for", () => {
+    const key = uninstallHoldKey(instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }));
+    expect(key).toBe("installed.uninstallHold.IndexUpdating");
+    expect(typeof en.installed.uninstallHold.IndexUpdating).toBe("string");
+    expect(typeof zhCN.installed.uninstallHold.IndexUpdating).toBe("string");
+  });
+
+  it("holds nothing for any other note, none, or one this build does not know", () => {
+    const others: InstanceNote[] = [
+      "IndexMayBeStale",
+      "NotOnPath",
+      "ShadowedByHomebrew",
+      "ShadowedByNpm",
+      "ShadowedByOther",
+      "LauncherOnly",
+    ];
+    for (const note of others) {
+      expect(uninstallHoldKey(instance({ status: { unavailable: null, notes: [note] } })), note).toBeNull();
+    }
+    expect(uninstallHoldKey(instance())).toBeNull();
+    const unknown = "SomeFutureNote" as unknown as InstanceNote;
+    expect(uninstallHoldKey(instance({ status: { unavailable: null, notes: [unknown] } }))).toBeNull();
   });
 });
 

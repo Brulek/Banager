@@ -6,6 +6,7 @@
 import type {
   ArtifactKey,
   ArtifactKind,
+  InstanceNote,
   ManagerInstance,
   ReadOnlyReason,
   SourceError,
@@ -169,6 +170,44 @@ export function canWrite(instance: ManagerInstance): boolean {
  */
 export function isAvailable(instance: ManagerInstance): boolean {
   return instance.status.unavailable === null;
+}
+
+/**
+ * Why each note, while it stands, makes the source refuse to plan an
+ * uninstall -- the i18n key of the sentence that says so -- or null for a
+ * note that refuses nothing. Homebrew is rewriting the list `brew uses`
+ * reads (`IndexUpdating`), so its uninstall preview is refused rather than
+ * shown with dependents it may have missed (`AdapterError::IndexUpdating`
+ * in `plan`, crates/canager-core/src/adapters/brew/mod.rs). A list that
+ * could not be downloaded is still read, and a launcher left without its
+ * program is what Uninstall finishes. A `Record`, so a note added to
+ * `InstanceNote` without an answer here fails `tsc`.
+ */
+const UNINSTALL_HOLD_KEYS: Record<InstanceNote, string | null> = {
+  IndexMayBeStale: null,
+  IndexUpdating: "installed.uninstallHold.IndexUpdating",
+  NotOnPath: null,
+  ShadowedByHomebrew: null,
+  ShadowedByNpm: null,
+  ShadowedByOther: null,
+  LauncherOnly: null,
+};
+
+/**
+ * Why `instance` refuses an uninstall until a note of its goes away
+ * (`UNINSTALL_HOLD_KEYS`), or null when none does. The Installed page then
+ * shows Uninstall disabled, with this why, rather than one the dialog
+ * could only refuse; the core refreshes by itself when Homebrew's update
+ * ends (`Session::background_change`), which clears the note and brings
+ * the button back.
+ */
+export function uninstallHoldKey(instance: ManagerInstance): string | null {
+  for (const note of instance.status.notes) {
+    // A note this build does not know holds nothing: it has no entry.
+    const key = UNINSTALL_HOLD_KEYS[note];
+    if (key) return key;
+  }
+  return null;
 }
 
 /**
