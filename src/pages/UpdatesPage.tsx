@@ -23,7 +23,7 @@ import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
-import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import {
   blockedDetail,
   cannotCheckDetail,
@@ -655,7 +655,10 @@ export function UpdatesPage() {
   // must offer neither -- "Update" on a git-installed crate would run
   // `cargo install --force {name}` against the crates.io crate of the
   // same name, a different package. While an update of it is under way,
-  // or has just finished, its progress stands where the button was.
+  // or has just finished, its progress stands where the button was --
+  // except an update that ended without updating on a row that still
+  // offers Update: how it ended moves beside the chips, and Retry takes
+  // the button's place, opening the confirmation Update opens.
   const updateRow = (candidate: UpdateCandidate) => {
     const instance = instancesById.get(candidate.key.instance_id);
     // Resolved once per row: the chips and the row's own actionability
@@ -665,7 +668,11 @@ export function UpdatesPage() {
     const name = nameOf(candidate);
     const source = sourceLabelFor(candidate.key.instance_id);
     const op = operationFor(candidate);
-    const chips = statusChips(candidate, state, instance);
+    const progress = op !== null ? progressOf(op) : null;
+    const retry = progress !== null && actionable && isRetryable(progress);
+    const outcome =
+      progress !== null ? <UpdateProgress key="outcome" progress={progress} name={name} onViewLog={viewLog} /> : null;
+    const chips = [...statusChips(candidate, state, instance), ...(retry ? [outcome] : [])];
     const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     return (
@@ -699,15 +706,15 @@ export function UpdatesPage() {
         status={chips.length > 0 ? chips : undefined}
         version={versionOf(candidate)}
         action={
-          op !== null ? (
-            <UpdateProgress progress={progressOf(op)} name={name} onViewLog={viewLog} />
+          progress !== null && !retry ? (
+            outcome
           ) : actionable ? (
             <RowAction
               tone="accent"
               onClick={(event) => void openConfirm([candidate], event.currentTarget)}
               disabled={dialogOpen}
             >
-              {t("updates.update")}
+              {retry ? t("updates.retry") : t("updates.update")}
             </RowAction>
           ) : null
         }

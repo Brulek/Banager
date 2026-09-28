@@ -1513,6 +1513,37 @@ describe("InstalledPage", () => {
       expect(useUiStore.getState().updateTargets).toEqual({ 7: "2.90.0" });
     });
 
+    it("offers Retry beside a failed update, into the same confirmation", async () => {
+      operations = [
+        {
+          id: 9,
+          kind: "Upgrade",
+          instance_id: "brew:/opt/homebrew",
+          artifact_kind: "Formula",
+          name: "glib",
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } },
+          argv_preview: ["/opt/homebrew/bin/brew", "upgrade", "glib"],
+          cancel_policy: "KillThenReconcile",
+        },
+      ];
+      useUiStore.setState({ updateTargets: { 9: "2.90.0" } });
+      renderWithProviders(<InstalledPage />);
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const drawer = await openDetails("glib");
+      expect(await within(drawer).findByText("Failed")).toBeInTheDocument();
+      expect(within(drawer).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+
+      fireEvent.click(within(drawer).getByRole("button", { name: "Retry" }));
+      await screen.findByRole("dialog", { name: "Update glib?" });
+      expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
+        request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
+      });
+    });
+
     it("offers no Update for an update the Updates page does not offer", async () => {
       served = {
         ...snapshot,

@@ -2154,6 +2154,84 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().focusedOpId).toBe(11);
     });
 
+    const endings: Array<[string, OpSummary["outcome"], string]> = [
+      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Failed"],
+      ["was cancelled", "Cancelled", "Cancelled"],
+      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Check"],
+    ];
+
+    it.each(endings)(
+      "offers Retry where Update was once an update %s, with how it ended still in the row",
+      async (_name, outcome, text) => {
+        operations = [operation(glibKey, { id: 9, status: "Done", outcome })];
+        started(9, "2.90.0");
+        renderWithProviders(<UpdatesPage />);
+
+        const glib = await findRow("glib");
+        expect(await within(glib).findByText(text)).toBeInTheDocument();
+        const retry = within(glib).getByRole("button", { name: "Retry" });
+        expect(retry).toHaveAttribute("data-tone", "accent");
+        expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+        // Still a row it can update: its checkbox stays.
+        expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+        expect(within(rowOf("onyx")).queryByRole("button", { name: "Retry" })).toBeNull();
+      },
+    );
+
+    it("opens the confirmation for that row alone on Retry, and keeps the way to the failure's log", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { findByRole, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      const glib = await findRow("glib");
+      fireEvent.click(await within(glib).findByRole("button", { name: "Retry" }));
+      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      fireEvent.click(getByRole("button", { name: "View log: glib" }));
+      expect(useUiStore.getState().focusedOpId).toBe(9);
+      expect(useUiStore.getState().drawerOpen).toBe(true);
+    });
+
+    it("offers no Retry beside a tick", async () => {
+      operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
+      started(7, "2.90.0");
+      renderWithProviders(<UpdatesPage />);
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Updated")).toBeInTheDocument();
+      expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+    });
+
+    it("offers no Retry on a failed row it can no longer update, only how it ended and its log", async () => {
+      // Pinned since the update failed: Homebrew would refuse a second try.
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: glib is pinned" } },
+        }),
+      ];
+      started(9, "2.90.0");
+      renderWithProviders(<UpdatesPage />);
+
+      await showCantUpdate();
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Failed")).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
+      expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+    });
+
     it("goes by the newest update of the package, and by no other kind of operation", async () => {
       operations = [
         operation(onyxKey, { id: 14, kind: "Uninstall", status: "Running" }),

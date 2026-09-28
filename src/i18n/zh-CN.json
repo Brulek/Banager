@@ -130,6 +130,7 @@
     "updateSelectedCount": "更新所选（{{number}}）",
     "updateAll": "全部更新",
     "update": "更新",
+    "retry": "重试",
     "selectRow": "选择要更新的 {{name}}",
     "skipVersion": "跳过这个版本",
     "skipVersionHint": "你会在它出下一个版本时再看到提醒。",

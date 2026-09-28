@@ -28,7 +28,7 @@ import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
-import { progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import {
   blockedDetail,
   cannotCheckDetail,
@@ -663,7 +663,8 @@ export function InstalledPage() {
    * chip with its why in full, what its source had to say this time, and
    * what can be done -- Uninstall, and Update where the Updates page
    * offers one, through that page's own confirmation; while that update
-   * runs, its progress where the button was.
+   * runs, its progress where the button was, and once it has ended
+   * without updating, how it ended beside Retry.
    */
   const detailsDrawer = (artifact: InstalledArtifact, instance: ManagerInstance) => {
     const label = labelOf(instance);
@@ -674,6 +675,7 @@ export function InstalledPage() {
     const candidate = listed ?? hiddenUpdates.get(id)?.candidate;
     const updatable = listed !== undefined && updateStateOf(listed, instance).kind === "actionable";
     const op = listed !== undefined && updatable ? operationFor(listed) : null;
+    const progress = op !== null ? progressOf(op) : null;
     const version = versionOf(artifact);
     // The version a listed or hidden update would bring: said in numbers
     // only where it is one -- not a model's digest, not the installed
@@ -713,19 +715,18 @@ export function InstalledPage() {
               {t("installed.uninstall")}
             </button>
           ) : null}
-          {updatable && listed !== undefined ? (
-            op !== null ? (
-              <UpdateProgress progress={progressOf(op)} name={name} onViewLog={openLog} />
-            ) : (
-              <button
-                type="button"
-                onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
-                disabled={confirm.dialogOpen}
-                className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50"
-              >
-                {t("updates.update")}
-              </button>
-            )
+          {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
+          {/* As on the Updates page's row: an update that ended without
+              updating keeps how it ended, with Retry in Update's place. */}
+          {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
+            <button
+              type="button"
+              onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
+              disabled={confirm.dialogOpen}
+              className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50"
+            >
+              {progress === null ? t("updates.update") : t("updates.retry")}
+            </button>
           ) : null}
         </>
       ) : undefined;

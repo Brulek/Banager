@@ -48,6 +48,16 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
   return unhandled;
 }
 
+/**
+ * Whether an update ended without updating -- it failed, was cancelled, or
+ * asks to be checked -- so that its row, where it still offers Update,
+ * offers Retry beside how it ended. A tick asks for nothing, and one still
+ * under way has its own Cancel in the operation bar.
+ */
+export function isRetryable(progress: RowProgress): boolean {
+  return progress.kind === "failed" || progress.kind === "cancelled" || progress.kind === "check";
+}
+
 /** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
 export function progressOf(op: OpSummary): RowProgress {
   switch (op.status) {
@@ -116,7 +126,9 @@ export interface UpdateProgressProps {
 /**
  * The row's own progress, where its Update button was: 360's "the progress
  * is in the row". Waiting, updating with a spinner, a tick when it is
- * done; a failure, or an outcome to check, with the way to its log.
+ * done; a failure, or an outcome to check, with the way to its log. An
+ * ending the row can retry (`isRetryable`) stands beside the row's Retry,
+ * which takes the button's place.
  */
 export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProps) {
   const { t } = useTranslation();

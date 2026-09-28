@@ -142,6 +142,7 @@
     "updateSelectedCount": "Update selected ({{number}})",
     "updateAll": "Update all",
     "update": "Update",
+    "retry": "Retry",
     "selectRow": "Select {{name}} for update",
     "skipVersion": "Skip this version",
     "skipVersionHint": "You'll be reminded again when its next version is out.",
