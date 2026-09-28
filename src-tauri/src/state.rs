@@ -24,8 +24,9 @@ pub struct AppState {
     /// Who asked for each refresh round: the window or the daily check.
     /// Written by `ipc::refresh_as` after every round, read by
     /// `ipc::refresh_on_background_change` for the round its refresh
-    /// belongs to, and by `notify::report` for the round the page reports.
-    /// In memory only.
+    /// belongs to, by `notify::report` for the round the page reports, and
+    /// by `auto_check::tick_at` for when the last round that counts as a
+    /// check ended. In memory only.
     pub rounds: Mutex<RoundLog>,
     /// The (row, version) pairs this run has told the user about in the
     /// update notification, or that the user saw in the window: what

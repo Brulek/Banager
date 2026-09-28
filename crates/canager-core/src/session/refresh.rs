@@ -2817,26 +2817,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_a_round_whose_source_failed_is_the_days_check_for_the_daily_check() {
-        // The daily check is due a day after the last round *ended*, and
-        // the shell hands `auto_check::tick` this stamp as that end. A
-        // round whose source failed stamps it too, so a source that keeps
-        // failing is not asked again at every 15-minute tick.
-        use crate::auto_check::{tick, Tick, DUE_AFTER_SECS};
+    async fn test_a_round_whose_source_failed_is_the_days_check_unless_every_source_of_a_daily_one_did(
+    ) {
+        // The daily check is due a day after the last round that counts
+        // as a check *ended*: the stamp `RoundLog` keeps of it is what the
+        // shell hands `auto_check::tick`. A round in which a source failed
+        // is stamped too, and counts -- so a source that keeps failing is
+        // not asked again at every 15-minute tick -- unless it was a daily
+        // one in which every source failed.
+        use crate::auto_check::{tick, RoundLog, RoundTrigger, Tick, DUE_AFTER_SECS};
         let (adapter, state) = FakeAdapter::new("fake");
         {
             let mut s = state.lock().unwrap();
-            s.instances = vec![make_instance("fake", "fake:1")];
+            s.instances = vec![
+                make_instance("fake", "fake:1"),
+                make_instance("fake", "fake:2"),
+            ];
             s.failing.push("fake:1".to_string());
         }
         let sink = Arc::new(VecSink::new());
         let session = Session::with_adapters(sink, vec![adapter], Some(|| 1_700_000_000));
-        let snapshot = session
-            .refresh(&non_root_env(), &CheckOptions::default())
-            .await;
-        assert!(snapshot.stale, "precondition: the round failed");
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+        let mut log = RoundLog::default();
 
-        let ended = session.snapshot().refreshed_at;
+        // One of two sources failed, in a daily round: it counts.
+        let (round, snapshot) = session.refresh_with_round(&env, &opts).await;
+        assert!(snapshot.stale, "precondition: the round failed in part");
+        log.record(round, RoundTrigger::Automatic, &snapshot);
+        let ended = log.last_check_ended();
+        assert_eq!(ended, snapshot.refreshed_at);
         assert!(!session.busy(), "precondition: nothing under way");
         assert_eq!(
             tick(1_700_000_000 + 15 * 60, ended, session.busy(), true),
@@ -2846,6 +2856,18 @@ mod tests {
             tick(1_700_000_000 + DUE_AFTER_SECS, ended, session.busy(), true),
             Tick::Check
         );
+
+        // Both failed (`failing` is one-shot): a daily round does not
+        // count, one of the window's does.
+        state.lock().unwrap().failing = vec!["fake:1".to_string(), "fake:2".to_string()];
+        let mut daily = RoundLog::default();
+        let (round, snapshot) = session.refresh_with_round(&env, &opts).await;
+        assert_eq!(snapshot.errors.len(), 2, "precondition: both failed");
+        daily.record(round, RoundTrigger::Automatic, &snapshot);
+        assert_eq!(daily.last_check_ended(), None);
+        let mut window = RoundLog::default();
+        window.record(round, RoundTrigger::Window, &snapshot);
+        assert_eq!(window.last_check_ended(), snapshot.refreshed_at);
     }
 
     #[tokio::test]

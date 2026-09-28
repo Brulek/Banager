@@ -185,14 +185,18 @@ starts nothing. Turned on:
   the last check ended, whatever started it — the one at launch, Check
   again or ⌘R, the one after an operation, the refresh a finished `brew
   update` sets off, a daily one — or when none has ended since launch
-  (`auto_check::tick`, over the snapshot's `refreshed_at`). So a check of
-  the user's own moves the next daily one 24 hours on, and one in which a
-  source failed counts too: a source that keeps failing is not asked again
-  every 15 minutes, and the window shows the failure as it does after any
-  check. Time the Mac spends asleep counts toward the 24 hours, so a Mac
-  that slept for two days checks once, at the first look after it wakes.
-  When the Mac's clock has been set back to before the last check ended,
-  the next look checks, once.
+  (`auto_check::tick`, over `RoundLog::last_check_ended`). So a check of
+  the user's own moves the next daily one 24 hours on, however it went,
+  and a daily one in which some sources failed counts too: a source that
+  keeps failing is not asked again every 15 minutes, and the window shows
+  the failure as it does after any check. A daily check in which every
+  source failed does not count (`auto_check::counts_as_check`), so the
+  next look, 15 minutes on, checks again. Time the Mac spends asleep
+  counts toward the 24 hours, so a Mac that slept for two days checks at
+  the first look after it wakes — and, should every source fail then,
+  again at each look after that, until a check in which one answers. When
+  the Mac's clock has been set back to before the last check ended, the
+  next look checks, once.
 - **Not while something is under way.** A look that finds a refresh
   running or waiting, or an operation queued, running, being cancelled or
   being verified (`Session::busy`), starts nothing; the next look asks

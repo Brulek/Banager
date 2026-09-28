@@ -1,6 +1,6 @@
 //! The daily check, Settings → Updates' 「每天自动检查」
 //! (`Settings::auto_check`): Canager, left running, refreshes by itself
-//! once a day. What is decided here is pure -- the clock, the last round
+//! once a day. What is decided here is pure -- the clock, the last check
 //! and whether anything is under way are handed in -- so every case can be
 //! tested without waiting a day. The task that asks every [`TICK`] and runs
 //! the round is the shell's (`check_automatically` in
@@ -9,7 +9,8 @@
 //!
 //! Also here: [`RoundTrigger`] and [`RoundLog`], which remember who asked
 //! for each refresh round, so that code after a round can tell one the
-//! daily check ran from one the window asked for.
+//! daily check ran from one the window asked for, and when the last round
+//! that counts as a check ended ([`counts_as_check`]).
 
 use crate::model::InstanceNote;
 use crate::session::Snapshot;
@@ -24,8 +25,8 @@ use std::time::Duration;
 /// that slept through a day checks at the first tick after it wakes.
 pub const TICK: Duration = Duration::from_secs(15 * 60);
 
-/// A day, in seconds: how long after the last refresh round ended the
-/// daily check is due.
+/// A day, in seconds: how long after the last round that counts as a
+/// check ended ([`counts_as_check`]) the daily check is due.
 pub const DUE_AFTER_SECS: i64 = 24 * 60 * 60;
 
 /// What one tick of the daily check does.
@@ -33,7 +34,7 @@ pub const DUE_AFTER_SECS: i64 = 24 * 60 * 60;
 pub enum Tick {
     /// `Settings::auto_check` is off: nothing.
     Off,
-    /// The last round ended less than [`DUE_AFTER_SECS`] ago: nothing.
+    /// The last check ended less than [`DUE_AFTER_SECS`] ago: nothing.
     NotDue,
     /// Due, but a refresh or an operation is under way
     /// (`Session::busy`): nothing now, and the next tick asks again.
@@ -44,31 +45,35 @@ pub enum Tick {
 
 /// Whether the tick at `now` starts the daily check.
 ///
-/// `now` and `last_round_ended` are Unix seconds on the wall clock, the
-/// clock `Snapshot::refreshed_at` is stamped on -- and that stamp is what
-/// the shell hands in as `last_round_ended`: the end of the last round of
-/// any trigger (the window's check at launch, Check again, ⌘R, the check
-/// after an operation, a daily one), stamped whether or not every source
-/// answered. So a check the user runs moves the next daily one a day on,
-/// and a round that failed, in part or whole, counts as the day's check: a
-/// source that keeps failing is not asked again every 15 minutes, and the
-/// window already says it failed. `None` -- no round has ended since
+/// `now` and `last_check_ended` are Unix seconds on the wall clock, the
+/// clock `Snapshot::refreshed_at` is stamped on -- and the stamp of the
+/// last round that counts as a check is what the shell hands in as
+/// `last_check_ended` (`RoundLog::last_check_ended`). A round of any
+/// trigger counts (the window's check at launch, Check again, ⌘R, the
+/// check after an operation, a daily one), stamped whether or not every
+/// source answered, but for a daily one in which every source failed
+/// ([`counts_as_check`]). So a check the user runs moves the next daily
+/// one a day on, and a round that failed in part counts as the day's
+/// check: a source that keeps failing is not asked again every 15 minutes,
+/// and the window already says it failed. A daily round in which every
+/// source failed leaves `last_check_ended` where it was, so the check is
+/// still due at the next tick. `None` -- no round has counted since
 /// Canager started -- is due. The stamp lives in memory, so after a
 /// relaunch the window's check at launch is the day's.
 ///
-/// A `now` before `last_round_ended` is due as well: the clock was set
-/// back past the last round, and waiting for it to reach that round again
+/// A `now` before `last_check_ended` is due as well: the clock was set
+/// back past the last check, and waiting for it to reach that check again
 /// plus a day could take as long as it was set back. The round that runs
 /// then stamps the corrected time, so it is one extra check, not one per
 /// tick.
 ///
 /// `busy` wins only over a check that is due, so that `Tick` says why
 /// nothing ran.
-pub fn tick(now: i64, last_round_ended: Option<i64>, busy: bool, auto_check: bool) -> Tick {
+pub fn tick(now: i64, last_check_ended: Option<i64>, busy: bool, auto_check: bool) -> Tick {
     if !auto_check {
         return Tick::Off;
     }
-    let due = match last_round_ended {
+    let due = match last_check_ended {
         None => true,
         Some(ended) => now < ended || now.saturating_sub(ended) >= DUE_AFTER_SECS,
     };
@@ -89,6 +94,31 @@ pub fn wall_clock_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Whether a round counts as a check for the daily one: every round does
+/// but a daily one (`RoundTrigger::Automatic`) in which every source failed
+/// (`every_source_failed`) -- a round that reached nothing, after which the
+/// next tick, 15 minutes on, checks again. A round that failed only in part
+/// counts, and so does one of the window's however it went: the user saw
+/// it, and asks again when they like.
+pub fn counts_as_check(trigger: RoundTrigger, snapshot: &Snapshot) -> bool {
+    trigger == RoundTrigger::Window || !every_source_failed(snapshot)
+}
+
+/// Whether every source `snapshot` has failed in its round: at least one
+/// source, and an error in `Snapshot::errors` against each. A source that
+/// is unavailable (`status.unavailable`) or whose catalogue was being
+/// rewritten (`InstanceNote::IndexUpdating`) did not fail -- neither is an
+/// error -- and a round that found no source failed nothing.
+fn every_source_failed(snapshot: &Snapshot) -> bool {
+    !snapshot.instances.is_empty()
+        && snapshot.instances.iter().all(|inst| {
+            snapshot
+                .errors
+                .iter()
+                .any(|error| error.instance_id == inst.id)
+        })
 }
 
 /// Who asked for a refresh round.
@@ -129,6 +159,9 @@ pub struct RoundLog {
     newest: u64,
     /// The round that started the `brew update` still reported running.
     follow_up_owner: Option<u64>,
+    /// When the newest round that counts as a check ended
+    /// ([`counts_as_check`]): what [`tick`] measures the day from.
+    last_check_ended: Option<i64>,
 }
 
 impl RoundLog {
@@ -138,7 +171,10 @@ impl RoundLog {
     pub const KEPT: u64 = 64;
 
     /// Records that round `round`, whose result is `snapshot`, was handed
-    /// to a caller that asked as `trigger`.
+    /// to a caller that asked as `trigger`. When it is the newest round and
+    /// counts as a check ([`counts_as_check`]), its end is the last check's
+    /// ([`RoundLog::last_check_ended`]); an older round's record, arriving
+    /// late, moves nothing.
     pub fn record(&mut self, round: u64, trigger: RoundTrigger, snapshot: &Snapshot) {
         let shared = match self.triggers.get(&round) {
             Some(RoundTrigger::Window) => RoundTrigger::Window,
@@ -153,6 +189,9 @@ impl RoundLog {
                 self.follow_up_owner = Some(round);
             }
         }
+        if round == self.newest && counts_as_check(shared, snapshot) {
+            self.last_check_ended = snapshot.refreshed_at;
+        }
         let oldest_kept = self.newest.saturating_sub(Self::KEPT);
         let owner = self.follow_up_owner;
         self.triggers
@@ -163,6 +202,13 @@ impl RoundLog {
     /// remembered.
     pub fn trigger_of(&self, round: u64) -> Option<RoundTrigger> {
         self.triggers.get(&round).copied()
+    }
+
+    /// When the last round that counts as a check ended
+    /// ([`counts_as_check`]), on the wall clock: the `last_check_ended` the
+    /// shell hands [`tick`]. `None` until one has been recorded.
+    pub fn last_check_ended(&self) -> Option<i64> {
+        self.last_check_ended
     }
 
     /// Who the refresh a background change is setting off runs for: the
@@ -190,8 +236,8 @@ fn reports_brew_update_running(snapshot: &Snapshot) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{InstanceStatus, ManagerInstance};
-    use crate::session::DetectOutcome;
+    use crate::model::{InstanceStatus, ManagerInstance, Unavailable};
+    use crate::session::{DetectOutcome, SourceError};
 
     const DAY: i64 = DUE_AFTER_SECS;
     /// 2026-09-28 09:00 UTC, an arbitrary wall-clock "now".
@@ -413,5 +459,159 @@ mod tests {
         assert_eq!(log.take_follow_up_trigger(), RoundTrigger::Automatic);
         log.record(201, RoundTrigger::Window, &snapshot(false));
         assert_eq!(log.trigger_of(1), None, "no longer the owner, so forgotten");
+    }
+
+    /// The snapshot of a round that ended at `ended`, over `sources`: each
+    /// instance's id, and whether it failed in the round.
+    fn round_at(ended: i64, sources: &[(&str, bool)]) -> Snapshot {
+        Snapshot {
+            instances: sources
+                .iter()
+                .map(|(id, _)| crate::testing::manager_instance("fake", id))
+                .collect(),
+            refreshed_at: Some(ended),
+            stale: sources.iter().any(|(_, failed)| *failed),
+            errors: sources
+                .iter()
+                .filter(|(_, failed)| *failed)
+                .map(|(id, _)| SourceError {
+                    instance_id: id.to_string(),
+                    message: "could not reach it".to_string(),
+                })
+                .collect(),
+            ..snapshot(false)
+        }
+    }
+
+    #[test]
+    fn test_a_daily_round_in_which_every_source_failed_is_not_a_check() {
+        let every_one = round_at(NINE_AM, &[("fake:1", true), ("fake:2", true)]);
+        assert!(!counts_as_check(RoundTrigger::Automatic, &every_one));
+        let one_of_two = round_at(NINE_AM, &[("fake:1", true), ("fake:2", false)]);
+        assert!(
+            counts_as_check(RoundTrigger::Automatic, &one_of_two),
+            "a round that failed in part counts"
+        );
+        let clean = round_at(NINE_AM, &[("fake:1", false)]);
+        assert!(counts_as_check(RoundTrigger::Automatic, &clean));
+    }
+
+    #[test]
+    fn test_a_round_of_the_windows_counts_however_it_went() {
+        let every_one = round_at(NINE_AM, &[("fake:1", true), ("fake:2", true)]);
+        assert!(counts_as_check(RoundTrigger::Window, &every_one));
+    }
+
+    #[test]
+    fn test_a_source_that_did_not_answer_or_no_source_at_all_is_no_failure() {
+        // Unavailable (an Ollama not running) is a state the source
+        // reported, not an error; nor is a round with no source a failed
+        // one.
+        let mut asleep = round_at(NINE_AM, &[("fake:1", true), ("fake:2", false)]);
+        asleep.instances[1].status.unavailable = Some(Unavailable::NotRunning);
+        assert!(counts_as_check(RoundTrigger::Automatic, &asleep));
+        let none = round_at(NINE_AM, &[]);
+        assert!(counts_as_check(RoundTrigger::Automatic, &none));
+    }
+
+    #[test]
+    fn test_the_last_check_is_the_newest_round_that_counts() {
+        let mut log = RoundLog::default();
+        assert_eq!(log.last_check_ended(), None);
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM, &[("fake:1", true)]),
+        );
+        assert_eq!(
+            log.last_check_ended(),
+            Some(NINE_AM),
+            "the window's round counts even when its source failed"
+        );
+        log.record(
+            2,
+            RoundTrigger::Automatic,
+            &round_at(NINE_AM + DAY, &[("fake:1", true)]),
+        );
+        assert_eq!(
+            log.last_check_ended(),
+            Some(NINE_AM),
+            "a daily round in which every source failed moves nothing"
+        );
+        log.record(
+            3,
+            RoundTrigger::Automatic,
+            &round_at(NINE_AM + DAY + 900, &[("fake:1", false)]),
+        );
+        assert_eq!(log.last_check_ended(), Some(NINE_AM + DAY + 900));
+        // A late record of round 2, the window's second caller: it counts
+        // now, but it is not the newest round, so it moves nothing.
+        log.record(
+            2,
+            RoundTrigger::Window,
+            &round_at(NINE_AM + DAY, &[("fake:1", true)]),
+        );
+        assert_eq!(log.last_check_ended(), Some(NINE_AM + DAY + 900));
+    }
+
+    #[test]
+    fn test_a_failed_daily_round_the_window_shared_counts_as_the_windows() {
+        let mut log = RoundLog::default();
+        let failed = round_at(NINE_AM, &[("fake:1", true)]);
+        log.record(4, RoundTrigger::Automatic, &failed);
+        assert_eq!(log.last_check_ended(), None);
+        log.record(4, RoundTrigger::Window, &failed);
+        assert_eq!(log.last_check_ended(), Some(NINE_AM));
+    }
+
+    #[test]
+    fn test_a_mac_that_wakes_offline_checks_at_every_tick_until_a_check_reaches_a_source() {
+        // The last check ended at 9:00 on Monday; the Mac slept until
+        // Wednesday 9:00, and wakes before its network does.
+        let mut log = RoundLog::default();
+        log.record(
+            1,
+            RoundTrigger::Window,
+            &round_at(NINE_AM, &[("fake:1", false)]),
+        );
+        let woke = NINE_AM + 2 * DAY;
+        assert_eq!(
+            tick(woke + 60, log.last_check_ended(), false, true),
+            Tick::Check
+        );
+        // Every source fails: not the day's check.
+        log.record(
+            2,
+            RoundTrigger::Automatic,
+            &round_at(woke + 90, &[("fake:1", true), ("fake:2", true)]),
+        );
+        assert_eq!(
+            tick(woke + 60 + 15 * 60, log.last_check_ended(), false, true),
+            Tick::Check,
+            "the next tick, 15 minutes on, checks again"
+        );
+        // The network is back for one of them: that check counts.
+        log.record(
+            3,
+            RoundTrigger::Automatic,
+            &round_at(
+                woke + 60 + 15 * 60 + 30,
+                &[("fake:1", false), ("fake:2", true)],
+            ),
+        );
+        assert_eq!(
+            tick(woke + 60 + 30 * 60, log.last_check_ended(), false, true),
+            Tick::NotDue
+        );
+        assert_eq!(
+            tick(
+                woke + 60 + 15 * 60 + 30 + DAY,
+                log.last_check_ended(),
+                false,
+                true
+            ),
+            Tick::Check,
+            "and the next is a day after it"
+        );
     }
 }

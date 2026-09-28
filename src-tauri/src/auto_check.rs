@@ -37,13 +37,15 @@ async fn check_every(state: &AppState, tick: Duration, now: fn() -> i64) {
 }
 
 /// What the tick at `now` does: `auto_check::tick` over the end of the
-/// last round of any trigger (`Snapshot::refreshed_at`), whether a refresh
-/// or an operation is under way (`Session::busy`), and the setting as it
-/// is saved now.
+/// last round that counts as a check (`RoundLog::last_check_ended`: a round
+/// of any trigger, but a daily one in which every source failed), whether
+/// a refresh or an operation is under way (`Session::busy`), and the
+/// setting as it is saved now.
 fn tick_at(state: &AppState, now: i64) -> Tick {
+    let last_check_ended = state.rounds.lock().unwrap().last_check_ended();
     auto_check::tick(
         now,
-        state.session.snapshot().refreshed_at,
+        last_check_ended,
         state.session.busy(),
         state.get_settings().auto_check,
     )
@@ -76,11 +78,13 @@ mod tests {
     /// One source, answering at once. Counts its rounds by its `detect`,
     /// which every round calls once; says its catalogue is being rewritten
     /// -- a `brew update` Canager started still running -- while
-    /// `index_updating` is set; and holds every operation until `release`.
+    /// `index_updating` is set; fails to read its packages while `failing`
+    /// is; and holds every operation until `release`.
     struct Fake {
         meta: AdapterMeta,
         rounds: AtomicUsize,
         index_updating: AtomicBool,
+        failing: AtomicBool,
         release: tokio::sync::Notify,
     }
 
@@ -98,6 +102,7 @@ mod tests {
                 },
                 rounds: AtomicUsize::new(0),
                 index_updating: AtomicBool::new(false),
+                failing: AtomicBool::new(false),
                 release: tokio::sync::Notify::new(),
             })
         }
@@ -124,6 +129,9 @@ mod tests {
         ) -> Result<Vec<InstalledArtifact>, AdapterError> {
             if self.index_updating.load(Ordering::SeqCst) {
                 return Err(AdapterError::IndexUpdating);
+            }
+            if self.failing.load(Ordering::SeqCst) {
+                return Err(AdapterError::Parse("no network".to_string()));
             }
             Ok(Vec::new())
         }
@@ -282,6 +290,54 @@ mod tests {
             "one round: it stamps its end, and the next is a day after that"
         );
         assert_eq!(state.session.snapshot().refreshed_at, Some(T0 + DAY));
+        task.abort();
+    }
+
+    static CLOCK_OFFLINE: AtomicI64 = AtomicI64::new(T0);
+    fn clock_offline() -> i64 {
+        CLOCK_OFFLINE.load(Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn test_a_daily_round_in_which_every_source_failed_is_run_again_at_the_next_tick() {
+        let fake = Fake::new();
+        let state = state_on(&fake, clock_offline, true);
+        // The window's check at launch, ending at T0.
+        ipc::refresh_impl(&state).await.expect("refresh");
+        let task = start(&state, TICK, clock_offline);
+
+        // Two days on, the Mac wakes before its network: the daily check's
+        // round fails for its one source, and does not count.
+        fake.failing.store(true, Ordering::SeqCst);
+        CLOCK_OFFLINE.store(T0 + 2 * DAY, Ordering::SeqCst);
+        wait_for_rounds(&fake, 3).await;
+        assert_eq!(recorded(&state, 2).await, RoundTrigger::Automatic);
+        assert_eq!(recorded(&state, 3).await, RoundTrigger::Automatic);
+        assert!(
+            !state.session.snapshot().errors.is_empty(),
+            "precondition: the source failed"
+        );
+        assert_eq!(state.rounds.lock().unwrap().last_check_ended(), Some(T0));
+
+        // The network is back: the next round counts, and is the last.
+        fake.failing.store(false, Ordering::SeqCst);
+        let answered = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if state.rounds.lock().unwrap().last_check_ended() == Some(T0 + 2 * DAY) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        assert!(answered.is_ok(), "a round that reached the source counted");
+        let after = fake.rounds();
+        tokio::time::sleep(TICK * 6).await;
+        assert_eq!(
+            fake.rounds(),
+            after,
+            "a counted check: no more rounds today"
+        );
         task.abort();
     }
 
