@@ -44,7 +44,8 @@ export interface DrawerProps {
  * redesign.md, 原则 2: details on demand). A modal dialog, as Radix builds
  * one: the page under it is dimmed and out of reach, Tab stays inside it,
  * Escape, the close button or a click on the dimmed page closes it, and
- * the focus goes back to what opened it.
+ * the focus goes back to what opened it. Escape closes an ⓘ or Details
+ * open inside it first, and only that, as in the Dialog.
  *
  * That last part is the drawer's own: Radix gives the focus back to a
  * `Dialog.Trigger`, and a row that opens its details is not one -- the
@@ -84,6 +85,9 @@ export function Drawer({
             // focusable by script: Radix gives it `tabIndex={-1}`.
             event.preventDefault();
             panelRef.current?.focus();
+          }}
+          onEscapeKeyDown={(event) => {
+            if (panelRef.current?.querySelector("[data-popup-open]")) event.preventDefault();
           }}
           onCloseAutoFocus={(event) => {
             onCloseAutoFocus?.(event);
