@@ -160,7 +160,7 @@ value falls back to the default and logs a warning in the console.
 | | `uptodate` | Every source answered and nothing needs updating. |
 | | `hidden` | The only updates are the skipped and never-remind-me ones. |
 | | `stale` | The last refresh could not finish for two sources. |
-| | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program. |
+| | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program. The Updates and Installed pages fold them into one line, the first warning, with "N more" at its end to show them all. |
 | | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
 | `tech` | `1` | Show technical details on at startup. |
