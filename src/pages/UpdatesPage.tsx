@@ -27,6 +27,7 @@ import { Refusal } from "../components/SheetParts";
 import {
   holdsRow,
   isRetryable,
+  isUnderway,
   progressOf,
   UpdateProgress,
   useStartableUpdates,
@@ -244,8 +245,8 @@ export function UpdatesPage() {
   // in src/lib/updateState.ts, which the Installed page's chips read too,
   // so the two pages cannot disagree about whether a package can be
   // updated -- and it is kept there because the sidebar's count on this
-  // page's entry is this list's length, and the Overview's is it less the
-  // rows an update takes, as below; neither may disagree with the page.
+  // page's entry and the Overview's are it less the rows an update takes,
+  // as below; neither may disagree with the page.
   // `Session::issue_plan` applies the same conditions in Rust (spec §2.5
   // for the source, `blocked_upgrade` in
   // crates/canager-core/src/session/plans.rs for the package), so a stale
@@ -262,7 +263,8 @@ export function UpdatesPage() {
   // that shows a checkbox, the header's "N updates", and what Select all,
   // Invert selection and Update all hand to the store, so none of them can
   // tick a row the user could not tick by hand. `useStartableUpdates`,
-  // which the update notification's report reads too.
+  // which the update notification's report, the sidebar's count and the
+  // Dock's badge read too (`useUpdateCount`).
   const startableUpdates = useStartableUpdates() ?? NO_UPDATES;
 
   // The list's two parts, each by name: the rows with an Update button,
@@ -767,6 +769,13 @@ export function UpdatesPage() {
   };
 
   const startableCount = startableUpdates.length;
+  // The rows an update is installing now -- queued, running, being
+  // cancelled or read back (`isUnderway`) -- which have no checkbox and
+  // are not in `startableCount`, nor in the sidebar's count
+  // (`useUpdateCount`). The header says them in words, the Overview's
+  // 「正在更新 N 个工具」, so that it never reads 「这里没有可更新的」 over
+  // rows that are updating, nor a number beside the sidebar's other one.
+  const updatingCount = actionableRows.filter((candidate) => isUnderway(operationFor(candidate))).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -774,11 +783,16 @@ export function UpdatesPage() {
         <div className="flex min-w-0 items-baseline gap-3">
           {/* How many rows have a checkbox. With none, not "0 updates":
               the rows under "Can't update here" are real, and simply not
-              Canager's to update. */}
+              Canager's to update. While some are updating, how many, and
+              how many more have a checkbox. */}
           <p className="text-section text-foreground">
-            {startableCount === 0
-              ? t("updates.noneActionable")
-              : t("updates.count", { count: startableCount })}
+            {updatingCount > 0
+              ? startableCount > 0
+                ? `${t("overview.updating", { count: updatingCount })}${t("overview.listSeparator")}${t("updates.alsoCount", { count: startableCount })}`
+                : t("overview.updating", { count: updatingCount })
+              : startableCount === 0
+                ? t("updates.noneActionable")
+                : t("updates.count", { count: startableCount })}
           </p>
           <p role="status" className="text-small text-muted">
             {copyStatus === "copied"

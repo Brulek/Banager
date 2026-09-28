@@ -2,7 +2,8 @@ import { useId, useMemo } from "react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
-import { useSnapshot, useUnknownScan, useUpdateCount } from "../lib/queries";
+import { useSnapshot, useUnknownScan } from "../lib/queries";
+import { useUpdateCount } from "./UpdateProgress";
 import { InstalledIcon, OverviewIcon, SettingsIcon, UnknownIcon, UpdatesIcon } from "./icons";
 
 interface SidebarProps {
@@ -43,8 +44,9 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
 /**
  * The number beside each entry, or nothing:
  *
- * - Updates: the updates the Updates page offers to install
- *   (`useUpdateCount`), those an update is installing now included. The
+ * - Updates: the updates the Updates page offers to start now
+ *   (`useUpdateCount`), its 「N 个可更新」: those an update is installing
+ *   now are not counted, as the page's header does not count them. The
  *   Dock's badge shows the same number (`useDockBadge`).
  * - Installed: everything the Installed page lists, components other
  *   software brought in included.

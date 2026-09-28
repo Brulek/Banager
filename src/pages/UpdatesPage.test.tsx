@@ -1654,6 +1654,31 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
     });
 
+    it("says how many are updating, and never that nothing can be updated, while every row it could update is", async () => {
+      operations = [
+        operation(onyxKey, { id: 8, status: "Queued" }),
+        operation(glibKey, { id: 7, status: "Running" }),
+      ];
+      const { findByText, getByRole, queryByText } = renderWithProviders(<UpdatesPage />);
+
+      expect(await findByText("Updating 2 tools")).toBeInTheDocument();
+      expect(queryByText("Nothing to update here")).toBeNull();
+      expect(getByRole("button", { name: "Update all" })).toBeDisabled();
+    });
+
+    it("says it in Chinese in the Overview's words, and how many more can be updated", async () => {
+      await i18n.changeLanguage("zh-CN");
+      try {
+        updates = [...snapshot.updates, brewCandidate("jq")];
+        operations = [operation(glibKey, { id: 7, status: "Running" })];
+        const { findByText } = renderWithProviders(<UpdatesPage />);
+
+        expect(await findByText("正在更新 1 个工具，另有 2 个可更新")).toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
     it("offers Update all only when there is something it could update", async () => {
       updates = [{ ...snapshot.updates[0], blocked: "Pinned" }];
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
@@ -2137,12 +2162,14 @@ describe("UpdatesPage", () => {
       expect(within(rowOf("onyx")).getByRole("button", { name: "Update" })).toBeInTheDocument();
     });
 
-    const takesRow: Array<[string, Partial<OpSummary>]> = [
-      ["under way", { status: "Running" }],
-      ["that worked", { status: "Done", outcome: "Succeeded" }],
+    // What the header says: a row an update is installing is said in
+    // words, never counted as one more that can be updated.
+    const takesRow: Array<[string, Partial<OpSummary>, string]> = [
+      ["under way", { status: "Running" }, "Updating 1 tool, 1 more can be updated"],
+      ["that worked", { status: "Done", outcome: "Succeeded" }, "1 update"],
     ];
 
-    it.each(takesRow)("leaves a row with an update %s out of its checkbox, the count, Select all, Invert and Update all", async (_name, fields) => {
+    it.each(takesRow)("leaves a row with an update %s out of its checkbox, the count, Select all, Invert and Update all", async (_name, fields, header) => {
       operations = [operation(glibKey, fields)];
       started(7, "2.90.0");
       // Ticked before its update started.
@@ -2150,7 +2177,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       const glib = await findRow("glib");
-      expect(await findByText("1 update")).toBeInTheDocument();
+      expect(await findByText(header)).toBeInTheDocument();
       expect(within(glib).queryByRole("checkbox")).toBeNull();
       expect(within(rowOf("onyx")).getByRole("checkbox")).toBeInTheDocument();
       expect(getByRole("button", { name: "Update selected" })).toBeDisabled();

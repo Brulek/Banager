@@ -158,6 +158,19 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
   );
 }
 
+/**
+ * How many updates can be started now (`useStartableUpdates`), or
+ * undefined until the snapshot and the settings have both arrived: the
+ * number beside the sidebar's Updates and on the Dock's badge
+ * (`useDockBadge`), and the Updates page's 「N 个可更新」. Those an update
+ * is installing are not counted: the page says 「正在更新 N 个工具」 of them
+ * in words, and a number beside it that counted them too would disagree
+ * with its own. One rule, so no two of them can show different numbers.
+ */
+export function useUpdateCount(): number | undefined {
+  return useStartableUpdates()?.length;
+}
+
 export interface UpdateProgressProps {
   progress: RowProgress;
   /** The row's name, for "View log"'s accessible name. */

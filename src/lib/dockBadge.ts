@@ -1,12 +1,12 @@
 /**
  * The badge on Canager's icon in the Dock: how many updates the Updates
- * page offers, the number beside the sidebar's Updates. Both read it from
+ * page offers to start now, the number beside the sidebar's Updates. Both read it from
  * one hook (`useUpdateCount`), so the Dock cannot promise an update the
  * window does not offer.
  */
 import { useEffect } from "react";
 import { setDockBadge } from "./api";
-import { useUpdateCount } from "./queries";
+import { useUpdateCount } from "../components/UpdateProgress";
 
 /**
  * Mounted once, by `App`. No badge until the snapshot and the settings

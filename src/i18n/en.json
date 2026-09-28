@@ -155,6 +155,8 @@
     "count_one": "{{count}} update",
     "count_other": "{{count}} updates",
     "noneActionable": "Nothing to update here",
+    "alsoCount_one": "{{count}} more can be updated",
+    "alsoCount_other": "{{count}} more can be updated",
     "cantUpdateHere": "Can't update here ({{number}})",
     "selectAll": "Select all",
     "selectAllLabel": "Select all items that can be updated here",

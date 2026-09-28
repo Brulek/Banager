@@ -180,13 +180,13 @@ export function notHidden(
 /**
  * The updates Canager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
- * (`isUpdateActionable`, against the instance its key names). This is the
- * count on the sidebar's Updates entry and on the Dock's badge
- * (`useUpdateCount`), and, less the rows an update under way or just
- * finished takes (`holdsRow`), the Updates page's "N updates", the rows
- * its Select all and Update all tick and what the update notification's
- * report counts (`useStartableUpdates`) -- one function, so neither badge
- * nor the notification can promise a row the page does not list.
+ * (`isUpdateActionable`, against the instance its key names). Less the
+ * rows an update under way or just finished takes (`holdsRow`), this is
+ * the Updates page's "N updates", the rows its Select all and Update all
+ * tick, the count on the sidebar's Updates entry and on the Dock's badge
+ * (`useUpdateCount`) and what the update notification's report counts
+ * (`useStartableUpdates`) -- one function, so neither badge nor the
+ * notification can promise a row the page does not list.
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,
@@ -322,9 +322,10 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   so in the Overview's "Needs attention", and is not counted here.
  * - `updating`: none left to start, and some are being installed right
  *   now (`underway`: queued, running, being cancelled or read back) --
- *   `count` of them. Not "Nothing to update" while the Updates page shows
- *   them updating and the sidebar still counts them. An update that has
- *   finished and waits for the refresh that drops its row is not counted.
+ *   `count` of them, in the words the Updates page's header uses for them.
+ *   Not "Nothing to update" while that page shows them updating. An update
+ *   that has finished and waits for the refresh that drops its row is not
+ *   counted.
  */
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[] }

@@ -227,6 +227,42 @@ describe("Sidebar", () => {
     expect(updatesButton).toHaveAccessibleDescription("2 can be updated");
   });
 
+  it("leaves an update being installed out of its count, as the Updates page's header does", async () => {
+    // glib's update is running: the page says so in words, and counts wget
+    // alone among those that can be updated; the sidebar counts the same.
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") {
+        return Promise.resolve([
+          {
+            id: 7,
+            kind: "Upgrade",
+            instance_id: brew.id,
+            artifact_kind: "Formula",
+            name: "glib",
+            status: "Running",
+            outcome: null,
+            argv_preview: ["/opt/brew/bin/brew", "upgrade", "glib"],
+            cancel_policy: "KillThenReconcile",
+          },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+    const { getByRole, findByText } = renderWithProviders(
+      <>
+        <Sidebar page="updates" onSelectPage={vi.fn()} />
+        <UpdatesPage />
+      </>,
+    );
+
+    await findByText("Updating 1 tool, 1 more can be updated");
+    const updatesButton = getByRole("button", { name: "Updates" });
+    expect(within(updatesButton).getByText("1")).toBeInTheDocument();
+    expect(updatesButton).toHaveAccessibleDescription("1 can be updated");
+  });
+
   it("counts everything installed, components other software brought in included", async () => {
     const { getByRole, findByText } = renderWithProviders(
       <Sidebar page="updates" onSelectPage={vi.fn()} />,
