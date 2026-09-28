@@ -3,7 +3,7 @@
 //! `canager_core::auto_check::tick` whether to check, and when the answer
 //! is `Tick::Check` runs the refresh the window's Check again runs
 //! (`ipc::refresh_as`), recorded as `RoundTrigger::Automatic`. That is all
-//! it does: the refresh reads what every refresh reads and installs
+//! it does: the refresh runs what every refresh runs, which installs
 //! nothing, and the task ends with the app.
 
 use crate::ipc;

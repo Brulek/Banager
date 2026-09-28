@@ -132,8 +132,9 @@ pub struct RoundLog {
 }
 
 impl RoundLog {
-    /// How many rounds before the newest one are remembered. Code that
-    /// asks about a round asks right after it: a few would do.
+    /// How many rounds before the newest one are remembered, besides the
+    /// round `take_follow_up_trigger` will ask about, which is kept however
+    /// old it gets.
     pub const KEPT: u64 = 64;
 
     /// Records that round `round`, whose result is `snapshot`, was handed

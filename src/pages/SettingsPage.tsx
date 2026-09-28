@@ -297,7 +297,7 @@ export function SettingsPage() {
         {/* The daily check (src-tauri/src/auto_check.rs), off by default,
             and under it the notification that belongs to it: offered only
             while the daily check is on, shown off while it is not, and
-            turned off with it -- so what the switch shows is what is saved. */}
+            saved off when the daily check is turned off. */}
         <SettingRow
           label={
             <label htmlFor="settings-auto-check" className={ROW_LABEL}>
