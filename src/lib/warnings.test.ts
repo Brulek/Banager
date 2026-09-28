@@ -367,6 +367,7 @@ const EVERY_SCOPE: UninstallScope[] = [
   "HomebrewFormula",
   "HomebrewCaskPlain",
   "HomebrewCaskSteps",
+  "HomebrewCaskStepsAutoremoves",
   "HomebrewCaskStepsOnly",
   "HomebrewCask",
   "Npm",

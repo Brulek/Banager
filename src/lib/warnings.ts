@@ -54,6 +54,7 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
   HomebrewFormula: "warnings.uninstallScope.HomebrewFormula",
   HomebrewCaskPlain: "warnings.uninstallScope.HomebrewCaskPlain",
   HomebrewCaskSteps: "warnings.uninstallScope.HomebrewCaskSteps",
+  HomebrewCaskStepsAutoremoves: "warnings.uninstallScope.HomebrewCaskStepsAutoremoves",
   HomebrewCaskStepsOnly: "warnings.uninstallScope.HomebrewCaskStepsOnly",
   HomebrewCask: "warnings.uninstallScope.HomebrewCask",
   Npm: "warnings.uninstallScope.Npm",

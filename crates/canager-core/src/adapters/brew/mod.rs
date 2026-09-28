@@ -357,9 +357,11 @@ impl BrewAdapter {
     /// takes extra steps, one `Warning::CaskUninstallStep` per kind.
     /// `autoremoves` is whether the `brew.env` files take Homebrew's
     /// autoremove back (`brew_env_warnings`): a formula's sentence says
-    /// "only" when they do not. A cask's comes from what Homebrew recorded
-    /// when it installed the cask (`cask_receipt`), the home folder read
-    /// from Canager's environment, as Homebrew's is (`env_var_fn`).
+    /// "only", and that of a cask with steps beside what Homebrew placed
+    /// "nothing else is deleted", when they do not. A cask's comes from what
+    /// Homebrew recorded when it installed the cask (`cask_receipt`), the
+    /// home folder read from Canager's environment, as Homebrew's is
+    /// (`env_var_fn`).
     fn uninstall_scope(
         &self,
         inst: &ManagerInstance,
@@ -385,6 +387,9 @@ impl BrewAdapter {
         let (what, steps) = match classified {
             Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
+            Classified::Steps(steps) if autoremoves => {
+                (UninstallScope::HomebrewCaskStepsAutoremoves, steps)
+            }
             Classified::Steps(steps) => (UninstallScope::HomebrewCaskSteps, steps),
             Classified::OnlySteps(steps) => (UninstallScope::HomebrewCaskStepsOnly, steps),
         };
@@ -3217,6 +3222,28 @@ mod plan_execute_tests {
             word.into_iter()
                 .chain([Warning::HomebrewAutoremoves])
                 .collect::<Vec<_>>()
+        );
+        // And a cask whose files Homebrew placed no longer has "nothing else
+        // is deleted" under it (`cmd/uninstall.rb:133-136`): only that its
+        // own other files stay.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "twelite-stage").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                scope(UninstallScope::HomebrewCaskStepsAutoremoves),
+                step(CaskStep::Deletes, &["~/MWSTAGE"]),
+                Warning::HomebrewAutoremoves,
+            ]
+        );
+        // The plain sentence and the steps-only one claim nothing about
+        // other packages, so they stay as they are.
+        let plan = cask_uninstall(&runner, &adapter, &inst, "gautham-v/tap/claudebar").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                scope(UninstallScope::HomebrewCaskPlain),
+                Warning::HomebrewAutoremoves,
+            ]
         );
     }
 

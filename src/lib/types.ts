@@ -103,7 +103,8 @@ export type KeptWhat =
  * formula sentence says "only" unless a brew.env file brought autoremove
  * back (`HomebrewFormula`, beside `HomebrewAutoremoves`); a cask's is
  * `HomebrewCaskPlain`, `HomebrewCaskSteps` (with a `CaskUninstallStep` per
- * kind of extra step), `HomebrewCaskStepsOnly` (the same, for a cask whose
+ * kind of extra step; `HomebrewCaskStepsAutoremoves` when a brew.env file
+ * brought autoremove back), `HomebrewCaskStepsOnly` (the same, for a cask whose
  * record lists nothing Homebrew put down: a `pkg` or installer cask) or
  * `HomebrewCask` (its record could not be read, or lists nothing to go by).
  * Read through `UNINSTALL_SCOPE_KEYS` in src/lib/warnings.ts, a `Record`
@@ -114,6 +115,7 @@ export type UninstallScope =
   | "HomebrewFormula"
   | "HomebrewCaskPlain"
   | "HomebrewCaskSteps"
+  | "HomebrewCaskStepsAutoremoves"
   | "HomebrewCaskStepsOnly"
   | "HomebrewCask"
   | "Npm"

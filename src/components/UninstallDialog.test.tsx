@@ -465,11 +465,21 @@ describe("UninstallDialog", () => {
         "Deletes what Homebrew installed for Claudebar; its settings and data stay.",
         "删除 Homebrew 为 Claudebar 装的文件；它的设置和数据不动。",
       ],
+      // Placed files and recorded steps: not every file an installer put
+      // down, and nothing else while Homebrew's autoremove is off...
       [
         { UninstallScope: { what: "HomebrewCaskSteps" } },
         "Charles",
-        "Deletes what Homebrew installed for Charles and runs the uninstall steps it recorded.",
-        "删除 Homebrew 为 Charles 装的文件，并执行它记下的卸载步骤。",
+        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; nothing else is deleted.",
+        "删除 Homebrew 为 Charles 放置的文件，并执行它记下的卸载步骤；其他文件不删。",
+      ],
+      // ...and, with a brew.env that brings the autoremove back, whose own
+      // line says what else goes, only the cask's other files stay.
+      [
+        { UninstallScope: { what: "HomebrewCaskStepsAutoremoves" } },
+        "Charles",
+        "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; Charles's other files stay.",
+        "删除 Homebrew 为 Charles 放置的文件，并执行它记下的卸载步骤；Charles 的其他文件不删。",
       ],
       // A cask whose record lists nothing Homebrew put down: an installer
       // put it on the Mac, and only the recorded steps take any of it away.

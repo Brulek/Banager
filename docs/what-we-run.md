@@ -280,8 +280,21 @@ an app to quit, a folder removed only once nothing but empty folders is
 left in it, a step that changes a path's owner or permissions or ends a
 process, a link an install step made, or the `zap` stanza, which runs
 only with `--zap`, and the receipt says there is no such Ruby, the
-sentence says the cask's settings and data stay; when more is listed, it
-says Homebrew also runs the uninstall steps it recorded. When the list
+sentence says the cask's settings and data stay. When more is listed, it
+says Homebrew deletes the files it placed for the cask — what it moved into
+place, linked or generated, and its own copy and records in the Caskroom
+(`cask/installer.rb:622-640`, `:642-659`, `:814-835`, `:1049-1061`), not
+every file an installer beside them put down — and runs the uninstall
+steps it recorded, and that nothing else is deleted: `zap` runs only with
+`--zap` and the autoremove is off (`cmd/uninstall.rb:89-136`). (A cask
+still installed under an old token its current definition names is
+uninstalled first, all but what it shares with this one, and its Caskroom
+folder deleted, `cask/installer.rb:988`, `cask/migrator.rb:24-66`,
+`:85-119`: again files Homebrew placed for the cask and steps it recorded
+for it.) When the `brew.env` files bring the autoremove back, that
+sentence ends instead with the cask's other files staying, beside the
+autoremove's own line (`UninstallScope::HomebrewCaskStepsAutoremoves`).
+When the list
 holds nothing Homebrew put down but does hold a step — a cask installed
 with a `pkg` or an installer, such as `little-snitch@4`, whose one step
 removes its background services — the sentence says Homebrew runs the

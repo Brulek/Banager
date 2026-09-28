@@ -690,8 +690,28 @@ pub enum UninstallScope {
     HomebrewCaskPlain,
     /// `brew uninstall --cask` whose recorded uninstall deletes what
     /// Homebrew put down and linked and takes extra steps, each kind of
-    /// which the plan names in a `Warning::CaskUninstallStep`.
+    /// which the plan names in a `Warning::CaskUninstallStep`, with
+    /// Homebrew's autoremove off. The sentence says Homebrew deletes the
+    /// files it placed for the cask -- what it moved into place, linked or
+    /// generated, and its own copy and records in the Caskroom
+    /// (`Cask::Installer#uninstall`, `cask/installer.rb:622-640`, `:642-659`,
+    /// `:814-835`, `:1049-1061`) -- and not every file the cask's installer
+    /// put down: a `pkg` or an installer beside them is not in the record
+    /// (`cask/cask.rb:709-732`). It runs the recorded steps, and nothing
+    /// else is deleted: `zap` runs only with `--zap`, which Canager never
+    /// passes, and the autoremove is off (`cmd/uninstall.rb:89-136`). When
+    /// the current definition names an old token the cask still has another
+    /// installation under, Homebrew first uninstalls that one -- all but
+    /// what it shares with this one -- and deletes its Caskroom folder
+    /// (`Cask::Migrator.migrate_if_needed` from `cask/installer.rb:988`,
+    /// `cask/migrator.rb:24-66`, `:85-119`): again files Homebrew placed for
+    /// the cask and steps it recorded for it.
     HomebrewCaskSteps,
+    /// The same uninstall with autoremove back on through a `brew.env`
+    /// file: the same sentence with "the cask's other files stay" in place
+    /// of "nothing else is deleted", beside `Warning::HomebrewAutoremoves`,
+    /// which says what else goes.
+    HomebrewCaskStepsAutoremoves,
     /// `brew uninstall --cask` whose record lists nothing Homebrew put down
     /// or linked -- a cask installed with a `pkg` or an installer, neither
     /// of which the record lists (`cask/cask.rb:709-732`) -- but takes extra
@@ -1683,6 +1703,7 @@ mod tests {
             UninstallScope::HomebrewFormula,
             UninstallScope::HomebrewCaskPlain,
             UninstallScope::HomebrewCaskSteps,
+            UninstallScope::HomebrewCaskStepsAutoremoves,
             UninstallScope::HomebrewCaskStepsOnly,
             UninstallScope::HomebrewCask,
             UninstallScope::Npm,
