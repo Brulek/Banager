@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
+import { PageHeader } from "../PageHeader";
+import { renderWithProviders } from "../../test/setup";
 import { Menu, type MenuItem } from "./Menu";
 
 function items(overrides: Partial<Record<string, Partial<MenuItem>>> = {}): MenuItem[] {
@@ -111,5 +113,42 @@ describe("Menu", () => {
     fireEvent.click(skip);
     expect(list[0].onSelect).not.toHaveBeenCalled();
     expect(getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("gives the focus to the page's title when its row goes after an item is chosen", () => {
+    // ⋯ → Skip this version: the row, and its ⋯ button, leave the list.
+    const page = (shown: boolean) => (
+      <>
+        <PageHeader title="Updates" actions={null} />
+        {shown ? <Menu label="More actions for glib" items={items()} /> : null}
+        <button type="button">Elsewhere</button>
+      </>
+    );
+    const { getByRole, rerender } = renderWithProviders(page(true));
+    const button = getByRole("button", { name: "More actions for glib" });
+    fireEvent.click(button);
+    fireEvent.click(getByRole("menuitem", { name: "Skip this version" }));
+    expect(document.activeElement).toBe(button);
+
+    rerender(page(false));
+
+    expect(document.activeElement).toBe(getByRole("heading", { name: "Updates" }));
+  });
+
+  it("leaves the focus where it is when its row goes while something else has it", () => {
+    const page = (shown: boolean) => (
+      <>
+        <PageHeader title="Updates" actions={null} />
+        {shown ? <Menu label="More actions for glib" items={items()} /> : null}
+        <button type="button">Elsewhere</button>
+      </>
+    );
+    const { getByRole, rerender } = renderWithProviders(page(true));
+    const elsewhere = getByRole("button", { name: "Elsewhere" });
+    elsewhere.focus();
+
+    rerender(page(false));
+
+    expect(document.activeElement).toBe(elsewhere);
   });
 });

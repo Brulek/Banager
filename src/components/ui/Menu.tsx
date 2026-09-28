@@ -8,6 +8,7 @@ import {
 } from "react";
 import { MoreIcon } from "../icons";
 import { useDismiss, usePlacement } from "./floating";
+import { focusOrFallback } from "./focus";
 
 export interface MenuItem {
   /** Stable React key. */
@@ -52,6 +53,17 @@ export function Menu({ label, items }: MenuProps) {
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, wrapperRef, triggerRef);
   const placement = usePlacement(open, triggerRef, menuRef, "end");
+
+  // A row goes once its ⋯ → Skip this version or Don't remind me has done
+  // its work, and this button with it: the focus goes to the page's title
+  // rather than to the window's body (`focusOrFallback`). Run as the button
+  // leaves, while it still has the focus.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    return () => {
+      if (trigger !== null && document.activeElement === trigger) focusOrFallback(null);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!open) return;
