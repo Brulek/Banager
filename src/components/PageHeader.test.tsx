@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { dragsWindow } from "../test/dragRegion";
 import { CheckAgain, HeaderAction, PageHeader } from "./PageHeader";
 import { refreshIntoCache } from "../lib/events";
 import { queryKeys } from "../lib/queries";
@@ -74,6 +75,28 @@ describe("PageHeader", () => {
     expect(none.queryByText(/^Checked /)).toBeNull();
     // As tall with nothing on the right as with a button.
     expect(none.getByRole("heading", { level: 1 }).nextElementSibling?.className).toContain("min-h-8");
+  });
+
+  it("moves the window from anywhere but its controls, on the traffic lights' line", async () => {
+    const { getByRole, findByText } = renderWithProviders(<PageHeader title="Updates" />);
+    const title = getByRole("heading", { level: 1, name: "Updates" });
+    const header = title.closest("header") as HTMLElement;
+    const time = await findByText(/^Checked /);
+    const checkAgain = getByRole("button", { name: "Check again" });
+
+    // The title, the time and the space around them drag the window...
+    expect(dragsWindow(header)).toBe(true);
+    expect(dragsWindow(title)).toBe(true);
+    expect(dragsWindow(time)).toBe(true);
+    // ...and Check again, its icon too, stays a button.
+    expect(dragsWindow(checkAgain)).toBe(false);
+    expect(dragsWindow(checkAgain.querySelector("svg") as Element)).toBe(false);
+
+    // A double-click zooms the window and selects no word of the title.
+    expect(header.className).toContain("select-none");
+    // Its 32px row 10px down: centred 26px down, as the traffic lights are
+    // (src/test/windowChrome.test.ts).
+    expect(header.className).toContain("pt-2.5");
   });
 
   it("draws any page's look again the one way: when, then the button", () => {

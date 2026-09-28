@@ -159,8 +159,9 @@ export function ToolRow({
           <p title={name} className="truncate text-name font-semibold text-foreground">
             {name}
           </p>
-          {/* Gives way to the name on a narrow row -- the window's
-              default 800px -- where the avatar still shows the source.
+          {/* Gives way to the name on a narrow row -- a window under
+              928px, down to its narrowest, 800px; the default 960px has
+              room for it -- where the avatar still shows the source.
               Hidden from sight only: the avatar is decorative, so this is
               the only place a screen reader hears the source. */}
           {nameChip ? (

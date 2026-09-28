@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { dragsWindow } from "../test/dragRegion";
 import { Sidebar } from "./Sidebar";
 import { UpdatesPage } from "../pages/UpdatesPage";
 import { queryKeys } from "../lib/queries";
@@ -287,5 +288,27 @@ describe("Sidebar", () => {
         expect(button).not.toHaveAttribute("aria-describedby");
       }
     });
+  });
+
+  it("keeps its first row empty for the window's traffic lights, as a drag region, above the app's name", () => {
+    const { getByRole, getAllByRole, getByText } = renderWithProviders(
+      <Sidebar page="overview" onSelectPage={vi.fn()} />,
+    );
+
+    const firstRow = getByRole("navigation", { name: "Sections" }).firstElementChild as HTMLElement;
+    // Nothing under the lights: no text, no control.
+    expect(firstRow.childElementCount).toBe(0);
+    expect(firstRow.textContent).toBe("");
+    // 52px: the 14px lights with 19px above and below them, their centre
+    // 26px from the window's top (src/test/windowChrome.test.ts).
+    expect(firstRow.className).toContain("h-13");
+    expect(firstRow.nextElementSibling).toBe(getByText("Canager"));
+
+    // Pressing it drags the window; nothing else in the sidebar does.
+    expect(dragsWindow(firstRow)).toBe(true);
+    expect(dragsWindow(getByText("Canager"))).toBe(false);
+    for (const button of getAllByRole("button")) {
+      expect(dragsWindow(button)).toBe(false);
+    }
   });
 });

@@ -117,15 +117,27 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
   return (
     <nav
       aria-label={t("nav.label")}
-      className="flex w-52 shrink-0 flex-col bg-linear-to-b from-sidebar-top to-sidebar-bottom px-3 pb-3 pt-4 text-sidebar-text"
+      className="flex w-52 shrink-0 flex-col bg-linear-to-b from-sidebar-top to-sidebar-bottom pb-3 text-sidebar-text"
     >
-      <p className="px-3 pb-5 text-small font-semibold text-sidebar-muted">{t("app.name")}</p>
-      <ul className="flex flex-col gap-0.5">
+      {/* The window's title bar is an overlay (src-tauri/tauri.conf.json),
+          and this is the row of it the sidebar keeps for the traffic
+          lights macOS draws there: 52px tall, the sidebar's full width,
+          with nothing in it. `trafficLightPosition` puts the 14px lights
+          19px in from the left and from the top, where macOS 27 draws them
+          in a window with a toolbar (src/test/windowChrome.test.ts), so
+          19px of dark shows above, below and to the left of them; their
+          centre, 26px down, is the line the page header's title and
+          buttons are centred on (`PageHeader`). A drag region, as the rest
+          of a title bar is: dragging it moves the window, and a
+          double-click zooms it. */}
+      <div data-tauri-drag-region="" className="h-13 shrink-0" />
+      <p className="px-6 pb-5 text-small font-semibold text-sidebar-muted">{t("app.name")}</p>
+      <ul className="flex flex-col gap-0.5 px-3">
         {MAIN_PAGES.map((p) => (
           <li key={p}>{entry(p)}</li>
         ))}
       </ul>
-      <div className="mt-auto border-t border-white/10 pt-3">{entry("settings")}</div>
+      <div className="mx-3 mt-auto border-t border-white/10 pt-3">{entry("settings")}</div>
     </nav>
   );
 }

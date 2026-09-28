@@ -152,10 +152,25 @@ export interface PageHeaderProps {
  * again. As tall with nothing on the right as with a button, so the
  * pages under it start at one height. The title takes the focus when what
  * should get it back is gone (`focusOrFallback`).
+ *
+ * It is the top of the window too. The title bar is an overlay
+ * (src-tauri/tauri.conf.json), so the header's row is centred 26px down,
+ * on the traffic lights' centre (the Sidebar's first row), and the
+ * lights, the title and Check again read as one bar, as a Mac window's
+ * toolbar does. Like a toolbar, it moves the window from anywhere but its
+ * controls: with `deep`, a press anywhere inside it -- on the title, the
+ * time, the space between -- starts a drag, except on a button, a link or
+ * a field, which Tauri's drag script (`src/window/scripts/drag.js` in the
+ * tauri crate) leaves to the page. A double-click zooms the window, and
+ * selects nothing: on macOS the script lets a double-click's press through
+ * to the page, where it would select the word under it.
  */
 export function PageHeader({ title, actions }: PageHeaderProps) {
   return (
-    <header className="flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
+    <header
+      data-tauri-drag-region="deep"
+      className="flex shrink-0 select-none items-center justify-between gap-4 px-6 pb-3 pt-2.5"
+    >
       <h1 tabIndex={-1} data-focus-fallback="" className="min-w-0 truncate text-title text-foreground outline-none">
         {title}
       </h1>
