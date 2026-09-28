@@ -587,7 +587,6 @@
     "targetGone": "The file this link points to is gone.",
     "showInFinderFailed": "Couldn't show it in Finder",
     "copyPath": "Copy path",
-    "sizeAndDate": "{{size}} · {{date}}",
     "scanAgain": "Scan again",
     "scanning": "Scanning…",
     "scannedJustNow": "Scanned just now",

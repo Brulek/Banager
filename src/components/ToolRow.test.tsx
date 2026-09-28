@@ -110,12 +110,11 @@ describe("ToolRow", () => {
     // does not shrink, short of a row too narrow for it alone.
     expect(path).toHaveAttribute("title", "/usr/local/bin/docker");
     expect(atRest(path.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
-    expect(atRest((note.parentElement as HTMLElement).className)).toEqual(
-      expect.arrayContaining(["shrink-0", "max-w-full"]),
-    );
-    // Only the path selects; the dot between them is for the eye.
+    expect(atRest(note.className)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
+    // Only the path selects; space sets the note apart, with no dot between them.
     expect([...container.querySelectorAll(".select-text")]).toEqual([path]);
-    expect(container.querySelector('p [aria-hidden="true"]')?.textContent).toBe("·");
+    expect(note.previousElementSibling).toBe(path);
+    expect(path.closest("p")?.textContent).not.toContain("·");
   });
 
   it("ticks its checkbox through onToggle, named for what it selects", () => {

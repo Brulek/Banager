@@ -549,7 +549,6 @@
     "targetGone": "这个链接指向的文件已不存在。",
     "showInFinderFailed": "没能在访达中显示",
     "copyPath": "拷贝路径",
-    "sizeAndDate": "{{size}} · {{date}}",
     "scanAgain": "重新扫描",
     "scanning": "正在扫描…",
     "scannedJustNow": "上次扫描：刚刚",

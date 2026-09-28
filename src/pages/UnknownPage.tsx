@@ -60,15 +60,21 @@ function formatDate(seconds: number, language: string): string {
 }
 
 /**
- * The size and the date, in the column where a tool's version goes: what
- * a program has in place of one. A broken link has neither -- there is no
- * target to measure -- and its chip says why.
+ * The size over the date, a line each and nothing between them, in the
+ * column where a tool's version goes: what a program has in place of one.
+ * A broken link has neither -- there is no target to measure -- and its
+ * chip says why. As wide as the widest date, 「2026年10月18日」, so the
+ * chips before it line up down the list, a broken link's too.
  */
-function sizeAndDate(entry: UnknownEntry, t: Translate, language: string): string | null {
+function SizeAndDate({ entry, language }: { entry: UnknownEntry; language: string }) {
   const size = entry.size_bytes === null ? null : formatBytes(entry.size_bytes);
   const date = entry.modified_at === null ? null : formatDate(entry.modified_at, language);
-  if (size !== null && date !== null) return t("unknown.sizeAndDate", { size, date });
-  return size ?? date;
+  return (
+    <span className="block min-w-[6.25rem]">
+      {size !== null ? <span className="block">{size}</span> : null}
+      {date !== null ? <span className="block">{date}</span> : null}
+    </span>
+  );
 }
 
 /**
@@ -361,11 +367,7 @@ export function UnknownPage() {
                       selectableDescription
                       descriptionNote={app === null ? undefined : t("unknown.pointsInto", { app })}
                       status={<StatusChip label={t(KIND_KEYS[entry.kind])} detail={detail} />}
-                      // As wide as a size and a date, so the chips before it
-                      // line up down the list, a broken link's too.
-                      version={
-                        <span className="inline-block min-w-[9.5rem]">{sizeAndDate(entry, t, i18n.language)}</span>
-                      }
+                      version={<SizeAndDate entry={entry} language={i18n.language} />}
                       menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                     />
                   </div>

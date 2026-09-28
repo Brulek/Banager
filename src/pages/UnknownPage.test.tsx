@@ -210,14 +210,21 @@ describe("UnknownPage", () => {
     expect(within(tool).getByText("Program").tagName).toBe("SPAN");
   });
 
-  it("shows size and date where a tool's version would be, and nothing there for a broken link", async () => {
+  it("shows the size over the date where a tool's version would be, each its own item, and nothing there for a broken link", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
-    expect(
-      await findByText(`${formatBytes(144_300_000)} · ${dateOf(1_758_000_000)}`),
-    ).toBeInTheDocument();
-    expect(getByText(`${formatBytes(2_100_000)} · ${dateOf(1_700_000_000)}`)).toBeInTheDocument();
-    // A broken link has no size and no date, and no stray separator.
+    for (const [name, bytes, seconds] of [
+      ["standalone-tool", 144_300_000, 1_758_000_000],
+      ["helper-cli", 2_100_000, 1_700_000_000],
+    ] as const) {
+      const column = sizeAndDateOf(rowOf(await findByText(name)));
+      const size = within(column).getByText(formatBytes(bytes));
+      const date = within(column).getByText(dateOf(seconds));
+      // The size first, then the date, with nothing between them: no dot.
+      expect(size.compareDocumentPosition(date) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(column.textContent).toBe(`${formatBytes(bytes)}${dateOf(seconds)}`);
+    }
+    // A broken link has no size and no date.
     expect(sizeAndDateOf(rowOf(getByText("old-script"))).textContent).toBe("");
   });
 

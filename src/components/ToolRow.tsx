@@ -79,10 +79,10 @@ export interface ToolRowContentProps {
    */
   selectableDescription?: boolean;
   /**
-   * A few words after the description, on its line, that stay whole when
-   * the row is too narrow for both -- the description gives way to them:
-   * the Unknown page's "Points into Docker.app". Never selected with the
-   * description.
+   * A few words after the description, on its line and set apart from it
+   * by space alone, that stay whole when the row is too narrow for both --
+   * the description gives way to them: the Unknown page's "Points into
+   * Docker.app". Never selected with the description.
    */
   descriptionNote?: string;
   /** A checkbox before the avatar, for a list that acts on several rows. */
@@ -196,7 +196,8 @@ export function ToolRow({
           </p>
         ) : (
           // The description gives way to the note, cut short first; the
-          // note is cut short only on a row too narrow for it alone.
+          // note is cut short only on a row too narrow for it alone. Space
+          // sets the two apart, not a dot between them.
           <p className="flex min-w-0 text-small text-muted">
             <span
               title={description}
@@ -204,14 +205,7 @@ export function ToolRow({
             >
               {description}
             </span>
-            <span className="flex max-w-full shrink-0">
-              {/* The dot a size and a date have between them, in both
-                  languages; for the eye only. */}
-              <span aria-hidden="true" className="shrink-0 px-1">
-                ·
-              </span>
-              <span className="min-w-0 truncate">{descriptionNote}</span>
-            </span>
+            <span className="max-w-full shrink-0 truncate pl-3">{descriptionNote}</span>
           </p>
         )}
       </div>
