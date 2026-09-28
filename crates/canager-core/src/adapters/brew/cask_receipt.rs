@@ -207,8 +207,8 @@ pub(crate) enum Classified {
     /// value of a shape it does not know -- or one that lists neither any
     /// of `PLACED_STANZAS` nor any step: an empty list, which Homebrew saves
     /// for a cask with nothing to uninstall (`save_caskfile`,
-    /// `cask/installer.rb:594-607`), or `zap` alone. Says nothing it cannot
-    /// back.
+    /// `cask/installer.rb:594-607`), whatever the receipt says of Ruby
+    /// blocks, or `zap` alone. Says nothing it cannot back.
     Unknown,
 }
 
@@ -281,8 +281,15 @@ const PLAIN_STEP_TYPES: [&str; 3] = ["set_ownership", "set_permissions", "termin
 /// steps of the types in `PLAIN_STEP_TYPES`; and there are no Ruby flight
 /// blocks. Anything else is a kind of extra step, and then the apps quit
 /// are said too: `Steps` beside one of `PLACED_STANZAS`, `OnlySteps`
-/// without. A record with neither is `Unknown`.
+/// without. A record with neither is `Unknown`, and so is an empty list
+/// even when the receipt says the cask has Ruby flight blocks: an empty
+/// list comes only from a saved `.json` caskfile, which carries no Ruby --
+/// Homebrew saves a cask with such blocks as `.rb` (`save_caskfile`,
+/// `cask/installer.rb:599-600`) -- so Homebrew runs none.
 pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
+    if recorded.artifacts.is_empty() {
+        return Classified::Unknown;
+    }
     let mut steps = Steps::default();
     let mut placed = false;
     if recorded.flight_blocks {
@@ -1615,6 +1622,29 @@ mod tests {
         );
         let read = read_recorded(&prefix.0, "word").expect("recorded");
         assert!(read.artifacts.is_empty());
+        assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Unknown);
+    }
+
+    #[test]
+    fn an_empty_saved_list_is_unknown_whatever_the_receipt_says() {
+        // `save_caskfile` writes `"artifacts": []` into a `.json` caskfile,
+        // which carries no Ruby: a receipt that says the cask has flight
+        // blocks changes nothing Homebrew runs, so it is not a step.
+        let prefix = Prefix::new("empty-with-blocks");
+        prefix.receipt(
+            "app",
+            r#"{"uninstall_artifacts": [{"app": ["A.app"]}], "uninstall_flight_blocks": true}"#,
+        );
+        prefix.caskfile(
+            "app",
+            "1.0",
+            "20260101000000.000",
+            "app.json",
+            r#"{"artifacts": []}"#,
+        );
+        let read = read_recorded(&prefix.0, "app").expect("recorded");
+        assert!(read.artifacts.is_empty());
+        assert!(read.flight_blocks);
         assert_eq!(classify(&read, Some(Path::new(HOME))), Classified::Unknown);
     }
 

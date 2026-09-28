@@ -284,7 +284,7 @@
       "HomebrewCaskSteps": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; nothing else is deleted.",
       "HomebrewCaskStepsAutoremoves": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; {{name}}'s other files stay.",
       "HomebrewCaskStepsOnly": "Runs the uninstall steps Homebrew recorded for {{name}}; other files its installer put on this Mac stay.",
-      "HomebrewCask": "Deletes what Homebrew installed for {{name}}; Canager could not read what else its uninstall does.",
+      "HomebrewCask": "Canager could not read from Homebrew's records what uninstalling {{name}} deletes.",
       "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
       "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",
       "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded; its settings and data outside that environment are not deleted.",

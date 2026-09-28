@@ -489,6 +489,14 @@ describe("UninstallDialog", () => {
         "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay.",
         "执行 Homebrew 为 Little Snitch 记下的卸载步骤；安装器装的其他文件不删。",
       ],
+      // A record Canager could not read, or one that lists nothing to go
+      // by -- an empty list, for one: no deletion claimed.
+      [
+        { UninstallScope: { what: "HomebrewCask" } },
+        "Docker",
+        "Canager could not read from Homebrew's records what uninstalling Docker deletes.",
+        "Canager 没能从 Homebrew 的记录里读出卸载 Docker 会删除什么。",
+      ],
       [
         { UninstallScope: { what: "Npm" } },
         "typescript",

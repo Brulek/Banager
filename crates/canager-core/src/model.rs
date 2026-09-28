@@ -721,12 +721,18 @@ pub enum UninstallScope {
     /// background services).
     HomebrewCaskStepsOnly,
     /// `brew uninstall --cask` whose recorded uninstall Canager could not
-    /// read (`cask_receipt::read_recorded`): no receipt, a caskfile saved in
-    /// a form it does not read, a record Homebrew would replace with the
-    /// cask's current definition, or a kind of artifact it does not know;
-    /// or a record that lists neither anything Homebrew put down or linked
-    /// nor any step -- an empty list, or `zap` alone -- which cannot tell
-    /// what the install left. Says so rather than guess.
+    /// read (`cask_receipt::read_recorded`): no Caskroom folder, no saved
+    /// caskfile, one saved in a form it does not read, a record Homebrew
+    /// would replace with the cask's current definition -- no list of its
+    /// own and an empty one or none in the receipt -- or a kind of artifact
+    /// it does not know; or a record that lists neither anything Homebrew
+    /// put down or linked nor any step -- an empty list, whatever the
+    /// receipt says of Ruby blocks, or `zap` alone -- which cannot tell what
+    /// the install left. The sentence says only that Canager could not read
+    /// from Homebrew's records what the uninstall deletes, and claims no
+    /// deletion it cannot back: with an empty list Homebrew runs no
+    /// artifact's uninstall at all (`cask/installer.rb:714-761`), and a
+    /// record Canager does not read can list anything.
     HomebrewCask,
     /// `npm uninstall -g`, when the npm Canager detected is 7 or later: npm
     /// deletes the package's folder, with the dependencies inside it, and

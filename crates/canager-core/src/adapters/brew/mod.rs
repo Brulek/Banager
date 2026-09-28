@@ -3383,6 +3383,73 @@ mod plan_execute_tests {
     }
 
     #[tokio::test]
+    async fn test_a_cask_whose_record_is_empty_or_missing_gets_the_could_not_read_sentence() {
+        // Every way Canager ends up with no list to go by, or an empty one,
+        // gets the one sentence that claims no deletion (`HomebrewCask`).
+        const FLIGHT_BLOCK_RECEIPT: &str = include_str!(
+            "../../../../../adapters/fixtures/brew/7.0.6/receipts/uninstall-flight-block.json"
+        );
+        let prefix = CaskroomPrefix::new(
+            "empty-or-missing",
+            &[
+                ("caskfile-empty", CLAUDEBAR_RECEIPT),
+                ("caskfile-empty-with-blocks", FLIGHT_BLOCK_RECEIPT),
+                ("receipt-empty", r#"{"uninstall_artifacts": []}"#),
+            ],
+        );
+        let casks = |token: &str| {
+            prefix
+                .0
+                .join("Caskroom")
+                .join(token)
+                .join(".metadata/1.0/20260928000000.000/Casks")
+        };
+        // The saved caskfile's own empty list (`save_caskfile` writes one for
+        // a cask with nothing to uninstall), beside a receipt that lists an
+        // app, and beside one that says the cask has Ruby blocks, which a
+        // `.json` caskfile cannot carry.
+        for token in ["caskfile-empty", "caskfile-empty-with-blocks"] {
+            std::fs::write(
+                casks(token).join(format!("{token}.json")),
+                r#"{"artifacts": []}"#,
+            )
+            .unwrap();
+        }
+        // No list in the caskfile and none in the receipt: Homebrew would
+        // use the cask's current definition.
+        std::fs::create_dir_all(casks("both-missing")).unwrap();
+        std::fs::write(casks("both-missing").join("both-missing.json"), "{}").unwrap();
+        // Nothing saved at all.
+        std::fs::create_dir_all(prefix.0.join("Caskroom/nothing-saved/.metadata")).unwrap();
+
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        for token in [
+            "caskfile-empty",
+            "caskfile-empty-with-blocks",
+            "receipt-empty",
+            "both-missing",
+            "nothing-saved",
+            "not-in-the-caskroom",
+        ] {
+            let plan = cask_uninstall(&runner, &adapter, &inst, token).await;
+            assert_eq!(
+                plan.warnings,
+                vec![Warning::UninstallScope {
+                    what: UninstallScope::HomebrewCask
+                }],
+                "{token}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn test_no_install_or_upgrade_plan_says_what_an_uninstall_would() {
         // The sentence is an uninstall's; a receipt that would give a cask
         // steps changes nothing about installing or upgrading it.

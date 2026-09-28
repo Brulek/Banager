@@ -106,7 +106,8 @@ export type KeptWhat =
  * kind of extra step; `HomebrewCaskStepsAutoremoves` when a brew.env file
  * brought autoremove back), `HomebrewCaskStepsOnly` (the same, for a cask whose
  * record lists nothing Homebrew put down: a `pkg` or installer cask) or
- * `HomebrewCask` (its record could not be read, or lists nothing to go by).
+ * `HomebrewCask` (its record could not be read, or lists nothing to go by:
+ * the sentence claims no deletion).
  * Read through `UNINSTALL_SCOPE_KEYS` in src/lib/warnings.ts, a `Record`
  * over this union, so a variant added here without copy fails `tsc`.
  */

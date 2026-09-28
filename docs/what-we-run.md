@@ -332,8 +332,13 @@ neither `artifacts` of its own nor a receipt that lists any, when Homebrew
 would read the cask's current definition — or the list holds a stanza or
 directive it does not read, or it holds neither anything Homebrew put down
 nor any step (an empty list, which Homebrew saves for a cask with nothing
-to uninstall, `cask/installer.rb:594-607`, or `zap` alone), the sentence
-says Canager could not read what else the uninstall does.
+to uninstall, `cask/installer.rb:594-607`, whatever the receipt says of
+Ruby blocks, since a `.json` caskfile carries none, `:599-600`; or `zap`
+alone), the sentence says only that Canager could not read from
+Homebrew's records what uninstalling the cask deletes, and claims no
+deletion it cannot back: with an empty list Homebrew runs no artifact's
+uninstall at all (`:714-761`), and a record Canager does not read can
+list anything.
 
 **Read-only commands** (background checks; never need a password):
 
