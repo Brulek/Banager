@@ -107,7 +107,9 @@ runs (`useCheckAgain` in `src/lib/queries.ts`) — after every operation
 finishes, when the "include self-updating apps" setting changes, after
 Ollama is opened from its notice, and whenever a `brew update` a refresh
 left running in the background ends
-(`refresh_on_background_change` in `src-tauri/src/ipc.rs`). Within a
+(`refresh_on_background_change` in `src-tauri/src/ipc.rs`). The window
+opens once a launch: closing it only hides it (`src-tauri/src/window.rs`),
+and bringing it back starts no refresh. Within a
 refresh (`refresh_round` in `crates/canager-core/src/session/refresh.rs`)
 every source's detect runs concurrently; then, for each instance found,
 under that instance's lock, its inventory is read and then its update

@@ -10,6 +10,7 @@ mod menu;
 // and fixed the identical issue for `events` (see 26cb50c) by making that
 // module pub for the same reason.
 pub mod state;
+mod window;
 
 use state::AppState;
 use tauri::Manager;
@@ -32,7 +33,9 @@ pub fn run() {
         // at tauri.conf.json's size, centred. Saved as the app quits, to
         // `.window-state.json` in the app's config folder, on macOS the
         // folder `settings.json` is in (docs/what-we-run.md, "Files
-        // Canager writes"). Not whether the window is shown, or its title
+        // Canager writes"). A window closed before then was only hidden
+        // (window.rs), so it is still there to be saved, with the size and
+        // position it had. Not whether the window is shown, or its title
         // bar: it always opens shown, with the title bar tauri.conf.json
         // gives it. All in Rust -- restored as the window is created, saved
         // on quit -- so the page is given none of the plugin's commands:
@@ -78,6 +81,9 @@ pub fn run() {
         // Its items that act in the page tell the window; macOS carries out
         // the rest itself.
         .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
+        // Closing the window hides it, and Canager keeps running until it
+        // quits (window.rs).
+        .on_window_event(window::on_window_event)
         .invoke_handler(tauri::generate_handler![
             ipc::get_snapshot,
             ipc::refresh,
@@ -93,6 +99,9 @@ pub fn run() {
             ipc::artifact_icon,
             menu::set_menu_language,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // A click on Canager's icon in the Dock brings a closed window back
+        // (window.rs).
+        .run(window::on_run_event);
 }

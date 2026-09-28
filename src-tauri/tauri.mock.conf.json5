@@ -31,8 +31,9 @@
 //   the app's.
 //
 // `beforeDevCommand` starts only the server the window loads, and `tauri
-// dev` stops it with the window; `--strictPort` makes it fail rather than
-// move to another port while the window loads whatever answers on 1440.
+// dev` stops it as the app quits -- closing the window only hides it;
+// `--strictPort` makes it fail rather than move to another port while the
+// window loads whatever answers on 1440.
 // Plain JSON apart from these comments (src/test/windowChrome.test.ts
 // reads it so).
 {

@@ -39,7 +39,8 @@ side is the app's own, but none of Canager's commands reach it:
 starts nothing by itself -- the one refresh it runs unasked follows a
 `brew update` that a refresh left running, and only the page starts a
 refresh; the config's comments say more. The first run compiles the app.
-Stop it with Ctrl-C in its terminal, or by quitting the window.
+Stop it with Ctrl-C in its terminal, or by quitting it (⌘Q): closing the
+window only hides it, as it does in the app.
 
 The menu bar is the app's own too, and so is everything macOS does in
 it: About, Hide, Quit, Close Window, the Edit and Window menus. But the

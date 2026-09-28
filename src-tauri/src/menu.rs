@@ -24,9 +24,7 @@ use tauri::menu::{
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-/// The window's label: tauri.conf.json's one window, which gives none, so
-/// Tauri's default -- the label capabilities/default.json names too.
-const MAIN_WINDOW: &str = "main";
+use crate::window::MAIN_WINDOW;
 
 /// The languages the menu bar is written in: the window's two. The page
 /// names them as its i18n does, "en" and "zh-CN"; Tauri refuses any other
@@ -106,7 +104,8 @@ pub enum MacItem {
     HideOthers,
     ShowAll,
     Quit,
-    /// ⌘W: AppKit's `performClose:`, what the window's red button does.
+    /// ⌘W: AppKit's `performClose:`, what the window's red button does,
+    /// which hides the window rather than closing it (window.rs).
     CloseWindow,
     Undo,
     Redo,
