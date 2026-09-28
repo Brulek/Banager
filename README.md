@@ -45,7 +45,7 @@ Canager checks every source when it opens, after each operation, and whenever yo
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
 last check finished. The "Try again" of a failed refresh, or of a Homebrew index Canager couldn't
 update, runs the same check, and a Homebrew index update left running in the background starts one
-on its own when it ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:31-34`). The
+on its own when it ends (`ipc::refresh_on_background_change`, `src-tauri/src/lib.rs:58-61`). The
 Unknown page's header has *Scan again* in its place, with how long ago that page last scanned: it
 re-runs only that page's scan of your bin folders, against the sources' last known state — it does
 not refresh the sources. Settings' header has neither.
@@ -76,7 +76,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   each one it keeps (your settings and history, in `~/.claude` and `~/.claude.json`). Antigravity
   CLI and Grok Build publish no removal instructions at all, so their lists are Canager's own
   reading of how each was installed, and their paths go to the Trash the same way. Moving files to
-  the Trash is the only change Canager makes to a file itself besides saving its own settings;
+  the Trash is the only change Canager makes to a file itself besides saving its own settings and
+  its window's size and position;
   `docs/what-we-run.md` says how, and names every path each list moves or keeps and where it
   comes from.
 - **Only the paths you were shown are moved.** Each path must be inside your home folder — never
@@ -284,7 +285,7 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”时检查各来源，
 页头上也写着上次检查是多久以前。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
-`src-tauri/src/lib.rs:31-34`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
+`src-tauri/src/lib.rs:58-61`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo

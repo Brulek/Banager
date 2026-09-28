@@ -12,6 +12,7 @@ pub mod state;
 
 use state::AppState;
 use tauri::Manager;
+use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,27 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // The window opens as big as it was when Canager last quit, and
+        // where it was if a display is still there -- zoomed or in full
+        // screen, if it was -- as a Mac app's does; with nothing saved yet,
+        // at tauri.conf.json's size, centred. Saved as the app quits, to
+        // `.window-state.json` in the app's config folder, on macOS the
+        // folder `settings.json` is in (docs/what-we-run.md, "Files
+        // Canager writes"). Not whether the window is shown, or its title
+        // bar: it always opens shown, with the title bar tauri.conf.json
+        // gives it. All in Rust -- restored as the window is created, saved
+        // on quit -- so the page is given none of the plugin's commands:
+        // capabilities/default.json has no `window-state:` permission.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         // The cask icons `ipc::artifact_icon` hands the window, drawn by
         // macOS once per app folder and kept in memory until Canager quits.
         // Managed beside `AppState`, not in it: nothing but that command

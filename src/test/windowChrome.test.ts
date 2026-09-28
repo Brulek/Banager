@@ -51,4 +51,10 @@ describe("the window", () => {
     expect(capability.permissions).toContain("core:default");
     expect(capability.permissions).toContain("core:window:allow-start-dragging");
   });
+
+  it("gives the page none of the window-state plugin's commands", () => {
+    // Rust restores the window's size and position and saves them
+    // (`run()` in src-tauri/src/lib.rs); the page has no part in it.
+    expect(capability.permissions.filter((p) => p.startsWith("window-state:"))).toEqual([]);
+  });
 });

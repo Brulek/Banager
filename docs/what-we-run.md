@@ -1349,14 +1349,26 @@ All read-only, none saved anywhere else, none uploaded:
   a file's contents.
 - Canager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
+- Canager's own `.window-state.json` beside it, once, as the window opens:
+  the size and position the window had when Canager last quit, the
+  position used only if a display is still there (the Tauri window-state
+  plugin, registered in `run()` in `src-tauri/src/lib.rs`; a missing or
+  unreadable file means the window opens at its default size, centred).
 
 ## Files Canager writes
 
-One: `settings.json` in Canager's application data directory
+Two, both in Canager's application data directory. `settings.json`
 (`settings::save`, written to a `settings.json.tmp.<n>` beside it and
 renamed into place, so a crash mid-write cannot leave it corrupt; the
-directory is created if it is missing). Nothing else on the Mac is
-written or deleted by Canager itself. It moves files in one case: a
+directory is created if it is missing). And `.window-state.json`: the
+window's size and position, and whether it was zoomed or in full screen,
+written as Canager quits so that the window opens the same way next time
+(the Tauri window-state plugin, registered in `run()` in
+`src-tauri/src/lib.rs`, which keeps it in Tauri's config directory for the
+app — on macOS the same folder). That one is written in place, not renamed
+into place: a file a crash cut short is ignored at the next launch, and
+the window opens at its default size. Nothing else on the Mac is written
+or deleted by Canager itself. It moves files in one case: a
 confirmed uninstall of a tool that has no uninstall command (Claude Code,
 Antigravity CLI or Grok Build) moves the paths its preview listed to the
 Trash (next section). The programs Canager runs write their own files as
@@ -1566,7 +1578,8 @@ Canager neither chooses nor sees them.
 - Never asks for, stores or types a password; `SUDO_ASKPASS` is passed
   through to Homebrew only when it was already set.
 - Never deletes a file and never empties the Trash. Never writes a file
-  on the Mac itself other than its own `settings.json` (the programs it
+  on the Mac itself other than its own `settings.json` and
+  `.window-state.json` (the programs it
   runs write their own files — Grok Build's update check writes inside
   `~/.grok` on every refresh, as its section says), and moves files
   only to the Trash, only for an uninstall the user confirmed, and only
