@@ -12,7 +12,8 @@ use crate::runner::{resolve_exe, CommandRunner, CommandSpec, HostEnv, OutputUse}
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -58,7 +59,23 @@ fn parse_pip_outdated(json: &str, instance_id: &str) -> Result<Vec<UpdateCandida
 pub struct PipAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
+    /// Where the developer-tool shims are: `SHIM_DIR` (`/usr/bin`), and a
+    /// folder of the test's own in the tests below, which cannot put a
+    /// file in `/usr/bin`.
+    shim_dir: PathBuf,
 }
+
+/// The folder macOS keeps its developer-tool shims in: since macOS 10.9,
+/// programs in `/usr/bin` that run the tool of their name inside Xcode or
+/// the Command Line Tools (Apple's TN2339), `/usr/bin/python3` and
+/// `/usr/bin/pip3` among them (`man xcode-select`, FILES). With neither
+/// installed, a shim opens the system's dialog offering to install the
+/// Command Line Tools instead of running anything -- the reason Homebrew's
+/// own git shim (`Library/Homebrew/shims/shared/git`) never runs
+/// `/usr/bin/git` then -- which `detect`, running `/usr/bin/python3 -m pip
+/// --version` at every refresh on a Mac whose `PATH` has no other
+/// `python3`, would have done at every refresh.
+const SHIM_DIR: &str = "/usr/bin";
 
 impl PipAdapter {
     /// Interpreter names to probe on `PATH`, most-specific first, so a
@@ -75,10 +92,22 @@ impl PipAdapter {
         "python",
     ];
 
+    /// What `detect` asks before it runs an interpreter in `SHIM_DIR`:
+    /// which developer directory the shims run their tools from. `-p`
+    /// (`--print-path`) only prints it, for inspection; of xcode-select's
+    /// options only `--install` opens a dialog (`man xcode-select`), and
+    /// TN2339 gives `--print-path` as the way to see which Xcode the tools
+    /// use.
+    pub const XCODE_SELECT_ARGV: [&'static str; 2] = ["/usr/bin/xcode-select", "-p"];
+
     pub fn new(runner: Arc<dyn CommandRunner>) -> PipAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/pip.toml"))
             .expect("adapters/meta/pip.toml must parse");
-        PipAdapter { runner, meta }
+        PipAdapter {
+            runner,
+            meta,
+            shim_dir: PathBuf::from(SHIM_DIR),
+        }
     }
 
     /// One `ManagerInstance` per distinct Python interpreter on `PATH` that
@@ -86,17 +115,43 @@ impl PipAdapter {
     /// as `{python} -m pip`"). Interpreters are deduplicated by their
     /// canonicalized path so `python3` and `python3.14` naming the same
     /// binary do not produce two instances.
+    ///
+    /// An interpreter that is one of the developer-tool shims (`SHIM_DIR`)
+    /// is run only when the developer directory has its tool
+    /// (`shim_has_tool`); otherwise it is skipped as if it were not on
+    /// `PATH` -- no instance, no error, no note -- because running it would
+    /// open the system's dialog offering to install the Command Line Tools.
+    /// `xcode-select -p` is asked at most once a call, and only when such
+    /// an interpreter turns up; nothing keeps its answer past the call, so
+    /// the refresh after the tools are installed finds them.
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
         let mut seen = HashSet::new();
         let mut found = Vec::new();
+        // `Some(answer)` once xcode-select has been asked in this call.
+        let mut developer_dir: Option<Option<PathBuf>> = None;
         for name in Self::CANDIDATE_INTERPRETERS {
             let Some(python_path) = resolve_exe(name, env) else {
                 continue;
             };
             let canonical =
                 std::fs::canonicalize(&python_path).unwrap_or_else(|_| python_path.clone());
-            if !seen.insert(canonical) {
+            if !seen.insert(canonical.clone()) {
                 continue;
+            }
+            // By where it leads, so a link elsewhere on `PATH` to the shim
+            // is caught too; by where it was found as well, for a path
+            // that could not be resolved.
+            if let Some(shim) = [&canonical, &python_path]
+                .into_iter()
+                .find(|path| path.parent() == Some(self.shim_dir.as_path()))
+            {
+                if developer_dir.is_none() {
+                    developer_dir = Some(self.active_developer_dir().await);
+                }
+                let dir = developer_dir.as_ref().and_then(|dir| dir.as_deref());
+                if !self.shim_has_tool(shim, dir) {
+                    continue;
+                }
             }
             let output = self
                 .runner
@@ -164,6 +219,57 @@ impl PipAdapter {
             });
         }
         found
+    }
+
+    /// `xcode-select -p`'s answer: the developer directory the shims run
+    /// their tools from, or `None` when it names none -- it could not be
+    /// run, did not exit 0, or printed no absolute path.
+    async fn active_developer_dir(&self) -> Option<PathBuf> {
+        let [program, arg] = Self::XCODE_SELECT_ARGV;
+        let output = self
+            .runner
+            .run(
+                CommandSpec {
+                    program: PathBuf::from(program),
+                    args: vec![arg.to_string()],
+                    env: Vec::new(),
+                    cwd: None,
+                    timeout: Duration::from_secs(10),
+                    output_use: OutputUse::Parsed,
+                },
+                None,
+                CancellationToken::new(),
+            )
+            .await
+            .ok()?;
+        if output.exit_code != Some(0) {
+            return None;
+        }
+        let path = PathBuf::from(output.stdout.strip_suffix('\n').unwrap_or(&output.stdout));
+        path.is_absolute().then_some(path)
+    }
+
+    /// Whether the shim `shim` has a tool to run: `developer_dir` names a
+    /// folder whose `usr/bin` holds an executable file of the shim's name
+    /// that is not itself in `shim_dir`. xcode-select prints the folder
+    /// `DEVELOPER_DIR` names without checking that it is there
+    /// (`DEVELOPER_DIR=/nonexistent/dir xcode-select -p` prints
+    /// `/nonexistent/dir` and exits 0 on macOS 27), so its answer alone
+    /// does not say the tool is there; and a developer directory of `/`
+    /// would lead back to the shim. Homebrew's git shim goes by the same
+    /// two things (`Library/Homebrew/shims/shared/git`: the folder
+    /// `xcode-select -print-path` names, then the tool of its name under
+    /// `usr/bin` there, run only when it is an executable file).
+    fn shim_has_tool(&self, shim: &Path, developer_dir: Option<&Path>) -> bool {
+        let (Some(dir), Some(name)) = (developer_dir, shim.file_name()) else {
+            return false;
+        };
+        let Ok(tool) = std::fs::canonicalize(dir.join("usr/bin").join(name)) else {
+            return false;
+        };
+        tool.parent() != Some(self.shim_dir.as_path())
+            && std::fs::metadata(&tool)
+                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
     }
 
     async fn run_pip_list(
@@ -594,6 +700,256 @@ mod tests {
         assert_eq!(
             instances[0].read_only_reason,
             Some(ReadOnlyReason::ByDesign)
+        );
+    }
+
+    /// A fresh folder of the test's own, by its canonical path: `detect`
+    /// compares `shim_dir` with where an interpreter leads, and the temp
+    /// folder on a Mac is reached through a link (`/var` is `/private/var`).
+    fn temp_folder(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "canager-pip-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp folder");
+        std::fs::canonicalize(&dir).expect("canonicalize temp folder")
+    }
+
+    /// A file at `path` with the given mode, its folder created. Never run.
+    fn file_at(path: &Path, mode: u32) {
+        std::fs::create_dir_all(path.parent().expect("a folder")).expect("create folder");
+        std::fs::write(path, b"#!/bin/sh\nexit 1\n").expect("write file");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).expect("chmod");
+    }
+
+    fn path_of(dirs: &[&Path]) -> HostEnv {
+        HostEnv {
+            path_dirs: dirs.iter().map(|dir| dir.to_path_buf()).collect(),
+            home: PathBuf::from("/tmp"),
+            euid: 501,
+            cargo_home: None,
+            rustup_home: None,
+            zdotdir: None,
+            ollama_host: None,
+        }
+    }
+
+    fn exited(code: i32, stdout: &str) -> CommandOutput {
+        CommandOutput {
+            exit_code: Some(code),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        }
+    }
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|part| part.to_string()).collect()
+    }
+
+    /// `path`, as `MockRunner` keys and records it.
+    fn text(path: &Path) -> &str {
+        path.to_str().expect("utf8 path")
+    }
+
+    /// A pip adapter whose developer-tool shims are in `shim_dir` -- a
+    /// folder of the test's own, standing in for `/usr/bin`.
+    fn adapter_with_shims_in(runner: Arc<MockRunner>, shim_dir: &Path) -> PipAdapter {
+        PipAdapter {
+            shim_dir: shim_dir.to_path_buf(),
+            ..PipAdapter::new(runner)
+        }
+    }
+
+    const PIP_VERSION: &str =
+        "pip 21.2.4 from /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site-packages/pip (python 3.9)\n";
+
+    #[tokio::test]
+    async fn test_detect_never_runs_the_python3_shim_when_no_developer_tools_are_installed() {
+        // A Mac without the Command Line Tools or Xcode: `/usr/bin/python3`
+        // is the only `python3` on `PATH`, and running it opens the
+        // system's dialog offering to install the tools. xcode-select names
+        // no developer directory (here, it exits non-zero), so the shim is
+        // never run and pip is simply not there -- no instance, no error.
+        let shims = temp_folder("shims-no-tools");
+        let shim = shims.join("python3");
+        file_at(&shim, 0o755);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+            CommandOutput {
+                stderr: "xcode-select: error: unable to get active developer directory\n"
+                    .to_string(),
+                ..exited(2, "")
+            },
+        );
+        let adapter = adapter_with_shims_in(runner.clone(), &shims);
+        let instances = adapter.detect(&path_of(&[&shims])).await;
+        let _ = std::fs::remove_dir_all(&shims);
+
+        assert!(instances.is_empty(), "{instances:?}");
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&PipAdapter::XCODE_SELECT_ARGV)],
+            "only the read-only question, never the shim"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_skips_the_shim_when_the_developer_directory_has_no_tool_of_its_name() {
+        // xcode-select prints a directory it was told of without checking
+        // it is there (`DEVELOPER_DIR=/nonexistent/dir xcode-select -p`
+        // prints `/nonexistent/dir` and exits 0), so its answer counts only
+        // when the tool is really under `usr/bin` there, executable, and
+        // not the shim again; and an answer that is no absolute path
+        // counts for nothing.
+        let shims = temp_folder("shims-no-tool");
+        let shim = shims.join("python3");
+        file_at(&shim, 0o755);
+        let gone = temp_folder("developer-gone").join("Developer");
+        let not_executable = temp_folder("developer-not-executable");
+        file_at(&not_executable.join("usr/bin/python3"), 0o644);
+        let loops_back = temp_folder("developer-loops-back");
+        std::fs::create_dir_all(loops_back.join("usr/bin")).expect("create usr/bin");
+        std::os::unix::fs::symlink(&shim, loops_back.join("usr/bin/python3")).expect("link");
+        for answer in [
+            format!("{}\n", gone.display()),
+            format!("{}\n", not_executable.display()),
+            format!("{}\n", loops_back.display()),
+            "\n".to_string(),
+            "Developer\n".to_string(),
+        ] {
+            let runner = Arc::new(MockRunner::new());
+            runner.respond(PipAdapter::XCODE_SELECT_ARGV.to_vec(), exited(0, &answer));
+            let adapter = adapter_with_shims_in(runner.clone(), &shims);
+            let instances = adapter.detect(&path_of(&[&shims])).await;
+            assert!(instances.is_empty(), "{answer:?}: {instances:?}");
+            assert_eq!(
+                runner.calls(),
+                vec![argv(&PipAdapter::XCODE_SELECT_ARGV)],
+                "{answer:?}"
+            );
+        }
+        for dir in [&shims, &gone, &not_executable, &loops_back] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_runs_the_python3_shim_as_before_when_the_developer_tools_are_installed() {
+        let shims = temp_folder("shims-tools");
+        let shim = shims.join("python3");
+        file_at(&shim, 0o755);
+        let developer = temp_folder("developer");
+        file_at(&developer.join("usr/bin/python3"), 0o755);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+            exited(0, &format!("{}\n", developer.display())),
+        );
+        runner.respond(
+            vec![text(&shim), "-m", "pip", "--version"],
+            exited(0, PIP_VERSION),
+        );
+        let adapter = adapter_with_shims_in(runner.clone(), &shims);
+        let instances = adapter.detect(&path_of(&[&shims])).await;
+        let _ = std::fs::remove_dir_all(&shims);
+        let _ = std::fs::remove_dir_all(&developer);
+
+        assert_eq!(instances.len(), 1, "{instances:?}");
+        assert_eq!(instances[0].id, format!("pip:{}", shim.display()));
+        assert_eq!(instances[0].exe_path, shim);
+        assert_eq!(instances[0].version, Some("21.2.4".to_string()));
+        assert_eq!(instances[0].status.unavailable, None);
+        assert_eq!(
+            runner.calls(),
+            vec![
+                argv(&PipAdapter::XCODE_SELECT_ARGV),
+                argv(&[text(&shim), "-m", "pip", "--version"]),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_asks_xcode_select_nothing_for_a_python_outside_the_shim_folder() {
+        // The real shim folder, `/usr/bin`, and a Python elsewhere on
+        // `PATH`: run as it always was, and xcode-select is never asked.
+        let dir = temp_folder("python-elsewhere");
+        let python = dir.join("python3.14");
+        file_at(&python, 0o755);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec![text(&python), "-m", "pip", "--version"],
+            exited(0, "pip 26.2.1 from /opt/lib/pip (python 3.14)\n"),
+        );
+        let adapter = PipAdapter::new(runner.clone());
+        assert_eq!(adapter.shim_dir, PathBuf::from("/usr/bin"));
+        let instances = adapter.detect(&path_of(&[&dir])).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(instances.len(), 1, "{instances:?}");
+        assert_eq!(instances[0].version, Some("26.2.1".to_string()));
+        assert_eq!(
+            runner.calls(),
+            vec![argv(&[text(&python), "-m", "pip", "--version"])]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_asks_xcode_select_once_a_refresh_and_again_at_the_next() {
+        // Two shims on `PATH` (distinct files, so both are probed): one
+        // question for both in a refresh. Its answer is not kept past the
+        // refresh, so once the tools are installed the next refresh asks
+        // again, finds them, and lists both.
+        let shims = temp_folder("shims-twice");
+        let python3 = shims.join("python3");
+        let python = shims.join("python");
+        file_at(&python3, 0o755);
+        file_at(&python, 0o755);
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(PipAdapter::XCODE_SELECT_ARGV.to_vec(), exited(2, ""));
+        let adapter = adapter_with_shims_in(runner.clone(), &shims);
+        let env = path_of(&[&shims]);
+
+        let before = adapter.detect(&env).await;
+        assert!(before.is_empty(), "{before:?}");
+        assert_eq!(runner.calls(), vec![argv(&PipAdapter::XCODE_SELECT_ARGV)]);
+
+        // The user installs the Command Line Tools.
+        let developer = temp_folder("developer-installed");
+        file_at(&developer.join("usr/bin/python3"), 0o755);
+        file_at(&developer.join("usr/bin/python"), 0o755);
+        runner.respond(
+            PipAdapter::XCODE_SELECT_ARGV.to_vec(),
+            exited(0, &format!("{}\n", developer.display())),
+        );
+        for shim in [&python3, &python] {
+            runner.respond(
+                vec![text(shim), "-m", "pip", "--version"],
+                exited(0, PIP_VERSION),
+            );
+        }
+        let after = adapter.detect(&env).await;
+        let _ = std::fs::remove_dir_all(&shims);
+        let _ = std::fs::remove_dir_all(&developer);
+
+        assert_eq!(
+            after.iter().map(|i| i.exe_path.clone()).collect::<Vec<_>>(),
+            vec![python3.clone(), python.clone()]
+        );
+        assert_eq!(
+            runner.calls(),
+            vec![
+                argv(&PipAdapter::XCODE_SELECT_ARGV),
+                argv(&PipAdapter::XCODE_SELECT_ARGV),
+                argv(&[text(&python3), "-m", "pip", "--version"]),
+                argv(&[text(&python), "-m", "pip", "--version"]),
+            ]
         );
     }
 

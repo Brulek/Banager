@@ -12,21 +12,23 @@ a test can: a section per registered source, every host on the https
 allowlist, every environment variable Homebrew's and npm's commands are
 given, that Cargo's section says every Cargo command is given the
 variables in `CargoAdapter::ENV` and shows each one, the three Homebrew
-flags this file promises are never passed, that the unknown-source scan's
-section states the two limits the code enforces, that the sections of the
-three tools uninstalled by moving files to the Trash (Claude Code,
-Antigravity CLI, Grok Build) name every path those uninstalls move or
-keep and their time budget, and the never-list every path of settings or
-state they keep, that Grok Build's section shows the update check it runs
-on every refresh and says it installs nothing, that the Trash section
-names the call and states the pause after each move, that the app icons
-section names the call, the size an icon is drawn at, and that no
-command runs for it, that this file names each permission of the
-opener plugin the window has and the unknown-source scan's section the
-call Show in Finder makes, saying it runs nothing else, that the daily
-check's section says it is off by default, states how often it looks,
-how long after a check it checks again and how long it waits after
-checks in which every source failed, says Canager itself runs no
+flags this file promises are never passed, that pip's section shows the
+`xcode-select -p` it asks before running an interpreter in `/usr/bin` and
+says one with no developer tools behind it is skipped, that the
+unknown-source scan's section states the two limits the code enforces,
+that the sections of the three tools uninstalled by moving files to the
+Trash (Claude Code, Antigravity CLI, Grok Build) name every path those
+uninstalls move or keep and their time budget, and the never-list every
+path of settings or state they keep, that Grok Build's section shows the
+update check it runs on every refresh and says it installs nothing, that
+the Trash section names the call and states the pause after each move,
+that the app icons section names the call, the size an icon is drawn at,
+and that no command runs for it, that this file names each permission of
+the opener plugin the window has and the unknown-source scan's section
+the call Show in Finder makes, saying it runs nothing else, that the
+daily check's section says it is off by default, states how often it
+looks, how long after a check it checks again and how long it waits
+after checks in which every source failed, says Canager itself runs no
 install from it and that `brew update` can install a package Homebrew
 moved between a formula and a cask, and names each permission of the
 notification plugin the window has, and that Homebrew's section keeps
@@ -808,10 +810,27 @@ two names for one interpreter count once, and runs `<python> -m pip
 environment variables are added, and Canager makes no network request of
 its own for pip: `pip list --outdated` reaches PyPI itself.
 
+**The `/usr/bin` shim.** Canager takes an interpreter found in
+`/usr/bin`, or one that leads there, for one of the developer-tool shims
+`man xcode-select` lists — on a Mac, `/usr/bin/python3` — which run the
+tool of their name from Xcode or the Command Line Tools; with neither
+installed, running one opens the system's dialog offering to install the
+Command Line Tools instead. So before running it, Canager asks
+`/usr/bin/xcode-select -p` (10 s), which only prints the developer
+directory the shims use, at most once a refresh (`PipAdapter::detect`).
+It runs the interpreter only when that answer names a folder whose
+`usr/bin` holds an executable file of the interpreter's name that is not
+in `/usr/bin` itself — `xcode-select -p` prints a folder `DEVELOPER_DIR`
+names whether it is there or not (`shim_has_tool`). Otherwise the
+interpreter is skipped as if it were not on `PATH`: no pip is listed for
+it, and nothing says so. The next refresh asks again, so once the tools
+are installed, its pip is listed.
+
 **Read-only commands:**
 
 | Purpose | Argv | Timeout |
 |---|---|---|
+| Which developer directory the `/usr/bin` shims use (`detect`, before running an interpreter there; at most once a refresh) | `/usr/bin/xcode-select -p` | 10 s |
 | Version | `<python> -m pip --version` | 30 s |
 | List packages (`inventory`) | `<python> -m pip list --format=json` | 60 s |
 | List packages nothing else depends on (`inventory`, to tell dependencies apart) | `<python> -m pip list --format=json --not-required` | 60 s |
@@ -1736,7 +1755,10 @@ All read-only, none saved anywhere else, none uploaded:
   (App icons, above).
 - npm: whether `{prefix}/lib/node_modules`, `{prefix}/lib` or `{prefix}`
   is writable, via `access(2)`.
-- pip: the canonical path of each interpreter found, to count it once.
+- pip: the canonical path of each interpreter found, to count it once;
+  for one in `/usr/bin`, where `usr/bin/<its name>` in the developer
+  directory `xcode-select -p` names leads, and whether that is an
+  executable file (`realpath`, `stat`).
 - Cargo: `<CARGO_HOME>/.crates2.json`; whether `cargo-binstall` is on
   `PATH`.
 - Ollama: whether `/Applications/Ollama.app` or `~/Applications/Ollama.app`

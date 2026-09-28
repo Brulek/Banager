@@ -22,9 +22,11 @@
 //! under way states the window in which a refresh's version read can
 //! still overlap it, that the never-list holds a moved path to the tool's
 //! uninstall list, not to vendor instructions, which Antigravity CLI and
-//! Grok Build do not publish, that the document names each permission of
-//! the opener plugin the window is given
-//! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
+//! Grok Build do not publish, that pip's section shows the
+//! `xcode-select -p` it asks before running an interpreter in `/usr/bin`
+//! and says one with no developer tools behind it is skipped, that the
+//! document names each permission of the opener plugin the window is
+//! given (`src-tauri/capabilities/default.json`) and the one call Show in Finder
 //! makes, saying it runs nothing else, that the daily check's section
 //! says it is off by default, states its tick, how long after a check it
 //! checks again, the waits after daily checks in which every source failed
@@ -42,6 +44,7 @@
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::cargo::CargoAdapter;
 use canager_core::adapters::npm::NpmAdapter;
+use canager_core::adapters::pip::PipAdapter;
 use canager_core::adapters::standalone::recipe::{Latest, Uninstall};
 use canager_core::adapters::standalone::recipes::RECIPES;
 use canager_core::adapters::standalone::removal::{PUT_BACK_SETTLE, TIMEOUT_SECS};
@@ -354,6 +357,29 @@ fn test_what_we_run_has_the_unknown_scan_section_stating_both_of_its_limits() {
             "the `## Unknown-source scan` section of docs/what-we-run.md does not state the limit {limit:?}, which ScanBudget::default() enforces"
         );
     }
+}
+
+#[test]
+fn test_what_we_run_shows_the_question_pip_asks_before_running_a_usr_bin_shim() {
+    // `PipAdapter::detect` runs an interpreter in `/usr/bin` -- the
+    // developer-tool shim `/usr/bin/python3` -- only after asking
+    // `xcode-select -p` where the tools are, and skips it, saying nothing,
+    // when they are not there. pip's section has to show that command in
+    // its read-only table and say the interpreter is then skipped.
+    let doc = read_doc();
+    let body =
+        section_body(&doc, "pip").expect("docs/what-we-run.md has no `## pip` section for pip");
+    let argv = PipAdapter::XCODE_SELECT_ARGV.join(" ");
+    assert!(
+        body.lines()
+            .any(|line| line.starts_with('|') && line.contains(&format!("| `{argv}` |"))),
+        "pip's read-only table in docs/what-we-run.md does not show `{argv}`, which PipAdapter::detect runs"
+    );
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        folded.contains("the interpreter is skipped as if it were not on `PATH`"),
+        "pip's section of docs/what-we-run.md does not say an interpreter in /usr/bin with no developer tools behind it is skipped"
+    );
 }
 
 #[test]
