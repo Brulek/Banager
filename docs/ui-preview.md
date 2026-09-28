@@ -20,13 +20,35 @@ background). Reloading the page starts the pretend Mac over: everything
 it remembers -- operations, settings, what was updated or uninstalled --
 lives in the page's memory and nowhere else.
 
+## In the app's own window
+
+```bash
+pnpm tauri:mock
+```
+
+The same mock front end in Canager's real window, for what a browser
+cannot show: the title bar drawn over the page, the traffic lights in the
+sidebar, dragging the window by its top, the size it opens at and the one
+it remembers. It is `pnpm tauri dev` with `src-tauri/tauri.mock.conf.json5`
+merged over the app's config: the page is Vite in mock mode on port 1440
+(so a preview on 1430 can stay open beside it), and the app has an
+identifier of its own, `com.brulek.canager.mock`, so it keeps its window's
+size apart from the app's and never reads the app's settings. The Rust
+side is the app's own, but none of Canager's commands reach it:
+`src/lib/api.ts`, the page's only way to them, talks to the mock. And it
+starts nothing by itself -- the one refresh it runs unasked follows a
+`brew update` that a refresh left running, and only the page starts a
+refresh; the config's comments say more. The first run compiles the app.
+Stop it with Ctrl-C in its terminal, or by quitting the window.
+
 ## How it works, and why it never ships
 
 - `src/lib/api.ts` is the only production module that imports Tauri
   (`invoke` and `Channel` from `@tauri-apps/api/core`).
 - `vite.config.ts` aliases `@tauri-apps/api/core` to
   `src/dev/mockTauri.ts` in `--mode mock` only, and serves that mode on
-  port 1430 (`pnpm tauri dev` keeps 1420). In every other mode -- `pnpm dev`
+  port 1430 (`pnpm tauri dev` keeps 1420, and `pnpm tauri:mock` asks for
+  1440). In every other mode -- `pnpm dev`
   under `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, and
   vitest -- the config resolves exactly as it did before this mode existed.
 - Nothing outside `src/dev/` imports anything in it, so a production
