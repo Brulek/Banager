@@ -572,9 +572,15 @@ installed packages before `brew update` ran (`inventory` comes first), so
 the next refresh is the first to show all it changed.
 
 A refresh runs `brew update` for a prefix only when none is running there
-and none has succeeded there in the last six hours (`update_ttl`, counted
-from when that one ended, `UpdateRecord::succeeded_at`). One that failed
-starts no such wait: the next refresh runs it again. A refresh waits up
+and none has succeeded there in the last six hours on the clock
+(`UPDATE_TTL`, counted from when that one ended,
+`UpdateRecord::succeeded_at`, by `update_is_fresh`). Time the Mac spends
+asleep counts toward them, as it does toward the daily check's 24 hours,
+so a Mac that slept through them runs it at the first refresh after it
+wakes; a clock set back to before that one ended counts as the six hours
+gone, and the update that refresh runs, if it succeeds, starts them again
+on the corrected clock. One that failed starts no such wait: the next
+refresh runs it again. A refresh waits up
 to two minutes for it (`UPDATE_PATIENCE`) and then leaves it running
 rather than killing it — a `brew update` stopped halfway can leave
 Homebrew's git checkout locked; only after thirty minutes

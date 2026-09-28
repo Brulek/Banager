@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1037 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 977
+> **Status: pre-release.** The core and the UI work and are covered by 1040 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 978
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -50,9 +50,11 @@ background starts one on its own when it ends (`ipc::refresh_on_background_chang
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
 its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
 one, can install, move or uninstall Homebrew packages by itself (`docs/what-we-run.md`,
-"Homebrew"). After one that succeeded, checks skip it for six hours; after one that failed, the next
-check runs it again — or, when a check had stopped waiting for it, the check after the one its end
-sets off. With **Check for updates every day** turned on in Settings — it is off until you turn it
+"Homebrew"). After one that succeeded, checks skip it for six hours on the clock (time the Mac spends
+asleep counts, and a clock set back to before it ended counts as the six hours gone); after one that
+failed, the next check runs it again — or, when a check had stopped waiting for it, the check after
+the one its end sets off. With **Check for updates every day** turned on in Settings — it is off
+until you turn it
 on — Canager also runs the same check once a day while it is running, installs none of the updates
 it finds, and checks nothing after you quit. A daily check in which every source failed — a
 Homebrew whose index couldn't be updated counting as failed — doesn't count: the next runs 15
@@ -291,8 +293,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1037 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 977 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1040 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 978 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -346,7 +348,8 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 `src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
 它还能自己安装、移动或卸载 Homebrew 软件（见 `docs/what-we-run.md` 的“Homebrew”一节）。
-上一次 `brew update` 成功后，六小时内的检查都不再运行它；上一次失败了，下一次检查就会再运行——
+上一次 `brew update` 成功后，六小时内的检查都不再运行它（按时钟算，Mac 睡眠的时间也算在内；
+时钟被调回到它结束之前，就当六小时已过）；上一次失败了，下一次检查就会再运行——
 如果当时的检查没等它结束，那就是它结束时引发的那次检查之后的下一次。
 在“设置”里打开“每天自动检查”后（默认关闭），
 Canager 开着时还会每天做一次同样的检查，查到的更新都不安装，退出后不检查。

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tokio_util::sync::CancellationToken;
 
 pub struct BrewAdapter {
@@ -60,7 +60,19 @@ pub struct BrewAdapter {
     /// this Homebrew waits for a `brew update` still finishing in the
     /// background instead of running alongside it.
     update_locks: Mutex<HashMap<InstanceId, Arc<tokio::sync::Mutex<()>>>>,
+    /// How long after a `brew update` that succeeded refreshes skip the
+    /// next one: `UPDATE_TTL` unless a caller sets another
+    /// (`with_update_ttl`). Measured on the wall clock (`wall_clock_fn`,
+    /// `update_is_fresh`).
     update_ttl: Duration,
+    /// How to read the wall clock `update_ttl` is measured on.
+    /// `SystemTime::now` outside this crate's unit tests; inside them a
+    /// clock that stands still unless a test installs one of its own
+    /// (`with_wall_clock_fn`, `DEFAULT_WALL_CLOCK_FN`). The same fn-pointer
+    /// seam as `euid_fn`: a Mac asleep moves the wall clock while `Instant`
+    /// stands still, and moving this clock alone is how a test shows that
+    /// time counting.
+    wall_clock_fn: fn() -> SystemTime,
     /// How long `check_updates` waits for the `brew update` it starts
     /// before giving up on this round's update check and returning
     /// `AdapterError::IndexUpdating` without running `brew outdated`.
@@ -169,6 +181,17 @@ const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> =
 #[cfg(test)]
 const DEFAULT_RECORDED_UNINSTALL_FN: fn(&Path, &str) -> Option<Recorded> = |_, _| None;
 
+/// `BrewAdapter::wall_clock_fn` as `BrewAdapter::new` sets it: the real
+/// clock in every build but this crate's unit tests, where it stands still
+/// at 2026-09-29 00:00 UTC, so that no test answers differently because
+/// the clock of the Mac running it was stepped between two of its checks.
+/// The tests that are about the clock install one they move.
+#[cfg(not(test))]
+const DEFAULT_WALL_CLOCK_FN: fn() -> SystemTime = SystemTime::now;
+#[cfg(test)]
+const DEFAULT_WALL_CLOCK_FN: fn() -> SystemTime =
+    || SystemTime::UNIX_EPOCH + Duration::from_secs(1_790_640_000);
+
 impl BrewAdapter {
     /// The environment every `brew` command Canager runs is given, on top
     /// of Canager's own. `HOMEBREW_NO_AUTOREMOVE` keeps Homebrew's
@@ -193,6 +216,14 @@ impl BrewAdapter {
     /// network takes no longer than it did; what changed is that running
     /// out of it no longer kills the update.
     const UPDATE_PATIENCE: Duration = Duration::from_secs(120);
+
+    /// How long after a `brew update` that succeeded refreshes skip the
+    /// next one: six hours on the wall clock, time the Mac spends asleep
+    /// included (`update_is_fresh`). It used to be six hours of `Instant`,
+    /// which on macOS reads `CLOCK_UPTIME_RAW` and stops while the Mac
+    /// sleeps, so after a night asleep a morning check skipped `brew
+    /// update` and listed updates from a catalogue fifteen hours old.
+    const UPDATE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
     /// The one bound on how long `brew update` itself may run before it is
     /// killed: long enough that only a Homebrew that has genuinely hung
@@ -242,7 +273,8 @@ impl BrewAdapter {
             updates: Arc::new(Mutex::new(HashMap::new())),
             background_change: Arc::new(tokio::sync::Notify::new()),
             update_locks: Mutex::new(HashMap::new()),
-            update_ttl: Duration::from_secs(6 * 3600),
+            update_ttl: Self::UPDATE_TTL,
+            wall_clock_fn: DEFAULT_WALL_CLOCK_FN,
             update_patience: Self::UPDATE_PATIENCE,
             op_update_wait: Self::OP_UPDATE_WAIT,
             euid_fn: || unsafe { libc::geteuid() },
@@ -282,6 +314,14 @@ impl BrewAdapter {
     #[cfg(test)]
     fn with_op_update_wait(mut self, wait: Duration) -> BrewAdapter {
         self.op_update_wait = wait;
+        self
+    }
+
+    /// Test-only hook to install a wall clock the test moves (see
+    /// `wall_clock_fn`).
+    #[cfg(test)]
+    fn with_wall_clock_fn(mut self, wall_clock_fn: fn() -> SystemTime) -> BrewAdapter {
+        self.wall_clock_fn = wall_clock_fn;
         self
     }
 
@@ -604,10 +644,9 @@ impl BrewAdapter {
                 }
                 return IndexFreshness::MayBeStale;
             }
-            if record
-                .succeeded_at
-                .is_some_and(|t| t.elapsed() < self.update_ttl)
-            {
+            if record.succeeded_at.is_some_and(|succeeded| {
+                update_is_fresh((self.wall_clock_fn)(), succeeded.wall, self.update_ttl)
+            }) {
                 return IndexFreshness::Current;
             }
             // Set while holding the update lock, so a refresh that finds
@@ -620,6 +659,7 @@ impl BrewAdapter {
                 self.updates.clone(),
                 inst.id.clone(),
                 self.background_change.clone(),
+                self.wall_clock_fn,
             )
         };
         let spec = CommandSpec {
@@ -663,7 +703,7 @@ impl BrewAdapter {
                 // It ended between the timeout and here.
                 let updates = self.updates.lock().unwrap();
                 match updates.get(&inst.id).and_then(|r| r.succeeded_at) {
-                    Some(t) if t >= started => IndexFreshness::Current,
+                    Some(t) if t.monotonic >= started => IndexFreshness::Current,
                     _ => IndexFreshness::MayBeStale,
                 }
             }
@@ -1208,12 +1248,45 @@ fn probe_homebrew_update_lock(prefix: &Path) -> HomebrewUpdateLock {
     }
 }
 
+/// A moment read on both clocks, since each answers what the other cannot.
+#[derive(Clone, Copy, Debug)]
+struct Moment {
+    /// On the wall clock (`BrewAdapter::wall_clock_fn`), which keeps going
+    /// while the Mac sleeps: how long ago it was.
+    wall: SystemTime,
+    /// On `Instant`, which never goes back: whether it came after another
+    /// moment of this run of the app, which a wall clock that can be set
+    /// back cannot say.
+    monotonic: Instant,
+}
+
+impl Moment {
+    fn now(wall_clock_fn: fn() -> SystemTime) -> Moment {
+        Moment {
+            wall: wall_clock_fn(),
+            monotonic: Instant::now(),
+        }
+    }
+}
+
+/// Whether a `brew update` that succeeded at `succeeded` spares a refresh
+/// at `now` one of its own: less than `ttl` has passed between them on the
+/// wall clock, time the Mac spent asleep included. A `now` before
+/// `succeeded` does not spare one: the clock was set back past it, and how
+/// long ago the update ran is then unknown. The update the refresh runs
+/// instead is stamped on the corrected clock when it succeeds, so a clock
+/// set back costs one more `brew update`, not one per refresh.
+fn update_is_fresh(now: SystemTime, succeeded: SystemTime, ttl: Duration) -> bool {
+    now.duration_since(succeeded).is_ok_and(|since| since < ttl)
+}
+
 /// What `BrewAdapter` knows about one instance's `brew update`s.
 #[derive(Debug, Default)]
 struct UpdateRecord {
     /// When the last `brew update` that exited 0 ended. The TTL runs from
-    /// here.
-    succeeded_at: Option<Instant>,
+    /// its wall-clock reading (`update_is_fresh`); `maybe_update` asks the
+    /// monotonic one whether it ended after its round's own update began.
+    succeeded_at: Option<Moment>,
     /// A `brew update` is running now, in the task `maybe_update` spawned.
     running: bool,
     /// How many `brew update`s have begun for this instance, counted by
@@ -1277,6 +1350,8 @@ struct UpdateFinish {
     inst_id: InstanceId,
     succeeded: bool,
     background_change: Arc<tokio::sync::Notify>,
+    /// The adapter's `wall_clock_fn`, which a success is stamped on.
+    wall_clock_fn: fn() -> SystemTime,
 }
 
 impl UpdateFinish {
@@ -1289,6 +1364,7 @@ impl UpdateFinish {
         updates: Arc<Mutex<HashMap<InstanceId, UpdateRecord>>>,
         inst_id: InstanceId,
         background_change: Arc<tokio::sync::Notify>,
+        wall_clock_fn: fn() -> SystemTime,
     ) -> UpdateFinish {
         record.running = true;
         record.started += 1;
@@ -1297,6 +1373,7 @@ impl UpdateFinish {
             inst_id,
             succeeded: false,
             background_change,
+            wall_clock_fn,
         }
     }
 }
@@ -1313,7 +1390,7 @@ impl Drop for UpdateFinish {
             let record = updates.entry(self.inst_id.clone()).or_default();
             record.running = false;
             if self.succeeded {
-                record.succeeded_at = Some(Instant::now());
+                record.succeeded_at = Some(Moment::now(self.wall_clock_fn));
             }
             let announced = std::mem::take(&mut record.announced);
             if announced && !self.succeeded {
@@ -1623,6 +1700,7 @@ mod tests {
     use super::*;
     use crate::model::ArtifactKind;
     use crate::runner::MockRunner;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
 
     fn test_instance() -> ManagerInstance {
@@ -1952,7 +2030,13 @@ mod tests {
             },
         );
         let mock_ref = runner.clone();
-        let adapter = BrewAdapter::new(runner).with_update_ttl(Duration::from_secs(3600));
+        static NOW: AtomicU64 = AtomicU64::new(T0);
+        fn now() -> SystemTime {
+            wall_clock(&NOW)
+        }
+        let adapter = BrewAdapter::new(runner)
+            .with_update_ttl(Duration::from_secs(3600))
+            .with_wall_clock_fn(now);
         let inst = test_instance();
 
         let first = adapter
@@ -1961,6 +2045,8 @@ mod tests {
             .expect("first check_updates")
             .candidates;
         assert_eq!(first.len(), 1);
+        // 59 minutes later on the wall clock: within the hour.
+        NOW.store(T0 + 59 * 60, Ordering::SeqCst);
         let second = adapter
             .check_updates(&inst, &CheckOptions::default())
             .await
@@ -1979,9 +2065,164 @@ mod tests {
             .count();
         assert_eq!(
             update_calls, 1,
-            "brew update should run once within the TTL window"
+            "brew update should run once within the TTL window on the wall clock"
         );
         assert_eq!(outdated_calls, 2);
+    }
+
+    /// 2026-09-29 00:00 UTC, in Unix seconds: where the update gate's tests
+    /// start the wall clocks they move.
+    const T0: u64 = 1_790_640_000;
+    const HOUR: u64 = 60 * 60;
+
+    /// The wall clock kept in `secs`, in Unix seconds, as `wall_clock_fn`
+    /// reads it. A test that moves its clock keeps its own `static`: the
+    /// tests run in parallel and the adapter's clock is a plain `fn`, so a
+    /// clock two tests shared would be one test setting another's time.
+    fn wall_clock(secs: &AtomicU64) -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(secs.load(Ordering::SeqCst))
+    }
+
+    /// A Homebrew whose `brew update` succeeds at once and whose `brew
+    /// outdated` lists nothing.
+    fn runner_with_quick_update() -> Arc<MockRunner> {
+        let ok = CommandOutput {
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: false,
+            cancelled: false,
+        };
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(vec!["/opt/homebrew/bin/brew", "update"], ok.clone());
+        runner.respond(
+            vec!["/opt/homebrew/bin/brew", "outdated", "--json=v2"],
+            CommandOutput {
+                stdout: r#"{"formulae":[],"casks":[]}"#.to_string(),
+                ..ok
+            },
+        );
+        runner
+    }
+
+    /// How many `brew <subcommand>`s `runner` was asked to run.
+    fn calls_to(runner: &MockRunner, subcommand: &str) -> usize {
+        runner
+            .calls()
+            .iter()
+            .filter(|c| c.get(1).map(String::as_str) == Some(subcommand))
+            .count()
+    }
+
+    /// One `check_updates` of `inst`, which must answer from a catalogue
+    /// it takes as current: brought up to date just now, or within the six
+    /// hours.
+    async fn check_current(adapter: &BrewAdapter, inst: &ManagerInstance) {
+        let outcome = adapter
+            .check_updates(inst, &CheckOptions::default())
+            .await
+            .expect("check_updates");
+        assert!(outcome.notes.is_empty(), "got {:?}", outcome.notes);
+    }
+
+    #[tokio::test]
+    async fn test_within_six_hours_on_the_clock_of_a_brew_update_checks_skip_it_and_at_six_run_it()
+    {
+        static NOW: AtomicU64 = AtomicU64::new(T0);
+        fn now() -> SystemTime {
+            wall_clock(&NOW)
+        }
+        let runner = runner_with_quick_update();
+        // `BrewAdapter::new`'s own six hours, not a TTL of the test's.
+        let adapter = BrewAdapter::new(runner.clone()).with_wall_clock_fn(now);
+        let inst = test_instance();
+
+        check_current(&adapter, &inst).await;
+        assert_eq!(calls_to(&runner, "update"), 1);
+        NOW.store(T0 + 6 * HOUR - 1, Ordering::SeqCst);
+        check_current(&adapter, &inst).await;
+        assert_eq!(
+            calls_to(&runner, "update"),
+            1,
+            "a second short of six hours on the clock after the last `brew update` \
+             ended, a check must skip it"
+        );
+        NOW.store(T0 + 6 * HOUR, Ordering::SeqCst);
+        check_current(&adapter, &inst).await;
+        assert_eq!(
+            calls_to(&runner, "update"),
+            2,
+            "six hours on the clock after the last `brew update` ended, a check must run it"
+        );
+        assert_eq!(
+            calls_to(&runner, "outdated"),
+            3,
+            "every check reads the catalogue, whether it updated it or not"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_night_asleep_counts_toward_the_six_hours_so_the_morning_check_runs_brew_update()
+    {
+        // The bug: the six hours were counted on `Instant`, which on macOS
+        // stops while the Mac sleeps. Checked at 18:00 and asleep from
+        // 18:05 to 09:00, the Mac had been awake five minutes since, so the
+        // morning's check skipped `brew update` and listed updates from a
+        // catalogue fifteen hours old. Sleep moves the wall clock and
+        // nothing else, and so does this test: between the two checks
+        // `Instant` moves by the milliseconds the test takes.
+        static NOW: AtomicU64 = AtomicU64::new(T0 + 18 * HOUR);
+        fn now() -> SystemTime {
+            wall_clock(&NOW)
+        }
+        let runner = runner_with_quick_update();
+        let adapter = BrewAdapter::new(runner.clone()).with_wall_clock_fn(now);
+        let inst = test_instance();
+
+        check_current(&adapter, &inst).await;
+        assert_eq!(calls_to(&runner, "update"), 1);
+        NOW.store(T0 + 33 * HOUR, Ordering::SeqCst);
+        check_current(&adapter, &inst).await;
+        assert_eq!(
+            calls_to(&runner, "update"),
+            2,
+            "fifteen hours on the clock after the last `brew update`, all but minutes \
+             of them asleep, the morning's check must run it"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_clock_set_back_to_before_the_last_brew_update_ended_runs_it_once() {
+        // Once the clock reads a time before the last update ended, how long
+        // ago it ran is unknown, so the six hours count as gone: waiting for
+        // the clock to reach that update's six hours again could take as
+        // long as it was set back. The update that check runs is stamped on
+        // the corrected clock, so a clock set back costs one more update,
+        // not one per check.
+        static NOW: AtomicU64 = AtomicU64::new(T0);
+        fn now() -> SystemTime {
+            wall_clock(&NOW)
+        }
+        let runner = runner_with_quick_update();
+        let adapter = BrewAdapter::new(runner.clone()).with_wall_clock_fn(now);
+        let inst = test_instance();
+
+        check_current(&adapter, &inst).await;
+        assert_eq!(calls_to(&runner, "update"), 1);
+        NOW.store(T0 - 1, Ordering::SeqCst);
+        check_current(&adapter, &inst).await;
+        assert_eq!(
+            calls_to(&runner, "update"),
+            2,
+            "a clock set back to before the last `brew update` ended must run it"
+        );
+        check_current(&adapter, &inst).await;
+        assert_eq!(
+            calls_to(&runner, "update"),
+            2,
+            "the update run then was stamped on the corrected clock, so the next \
+             check within six hours of it must skip it"
+        );
     }
 
     /// (F7 / M6) `last_update` used to be a single `Option<Instant>` shared
@@ -2016,7 +2257,13 @@ mod tests {
             );
         }
         let mock_ref = runner.clone();
-        let adapter = BrewAdapter::new(runner).with_update_ttl(Duration::from_secs(3600));
+        static NOW: AtomicU64 = AtomicU64::new(T0);
+        fn now() -> SystemTime {
+            wall_clock(&NOW)
+        }
+        let adapter = BrewAdapter::new(runner)
+            .with_update_ttl(Duration::from_secs(3600))
+            .with_wall_clock_fn(now);
 
         let inst_opt = test_instance();
         let inst_local = ManagerInstance {
@@ -2045,6 +2292,8 @@ mod tests {
             "each instance must run its own `brew update` once, not share one TTL"
         );
 
+        // 59 minutes later on the wall clock: within the hour for both.
+        NOW.store(T0 + 59 * 60, Ordering::SeqCst);
         adapter
             .check_updates(&inst_opt, &CheckOptions::default())
             .await
