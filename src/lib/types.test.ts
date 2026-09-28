@@ -20,6 +20,7 @@ import type {
   EntryKind,
   ScanStop,
   UnknownScan,
+  UpdatePair,
 } from "./types";
 
 // Every fixture below is a *typed* literal rather than a JSON string. vitest
@@ -505,6 +506,13 @@ describe("types", () => {
     expect(JSON.stringify(defaults)).toBe(
       '{"language":"System","show_technical_details":false,"ignored_updates":[],"skipped_versions":[],"include_self_updating":false,"auto_check":false,"notify_updates":false}',
     );
+  });
+
+  it("spells UpdatePair as notify_updates.rs's shape test reads it", () => {
+    // `test_update_pair_is_the_json_the_page_sends` in
+    // crates/canager-core/src/notify_updates.rs parses this exact string.
+    const pair: UpdatePair = { key_id: "brew:/opt/homebrew|Formula|jq", target: "1.8.1" };
+    expect(JSON.stringify(pair)).toBe('{"key_id":"brew:/opt/homebrew|Formula|jq","target":"1.8.1"}');
   });
 
   it("spells PlanAction as two externally tagged arms, as model.rs's shape test does", () => {

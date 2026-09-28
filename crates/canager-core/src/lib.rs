@@ -61,6 +61,10 @@ pub mod http;
 /// and remembered in memory -- read-only, behind a seam like `trash`.
 pub mod icon;
 pub mod model;
+/// The update notification's decision -- whether the page's report of the
+/// updates it offers posts one -- and the record of what was told. Pure:
+/// the shell reads the window's focus and posts.
+pub mod notify_updates;
 pub mod ops;
 pub mod runner;
 pub mod scan;

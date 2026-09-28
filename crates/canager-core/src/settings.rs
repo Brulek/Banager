@@ -71,10 +71,11 @@ pub struct Settings {
     pub auto_check: bool,
     /// Settings → Updates' 「有可更新时通知我」, under the daily check: the
     /// Settings page offers it only while `auto_check` is on, and turning
-    /// the daily check off turns this off with it. Only the Settings page
-    /// reads it so far; nothing in Rust does, and no notification is posted
-    /// yet. Off by default, and `#[serde(default)]` for the same reason as
-    /// `auto_check`.
+    /// the daily check off turns this off with it. Read, with `auto_check`,
+    /// each time the page reports the updates it offers
+    /// (`notify_updates::notifications_on`), which decides whether a round
+    /// of the daily check posts a notification. Off by default, and
+    /// `#[serde(default)]` for the same reason as `auto_check`.
     #[serde(default)]
     pub notify_updates: bool,
 }

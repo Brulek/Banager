@@ -458,6 +458,16 @@ export interface Settings {
    */
   notify_updates: boolean;
 }
+/**
+ * Rust `UpdatePair` (crates/canager-core/src/notify_updates.rs): one row
+ * the Updates page's Update all would take, as the page reports it after
+ * each snapshot for the update notification -- the row's key as
+ * `artifactKeyId` spells it, and the version the row offers.
+ */
+export interface UpdatePair {
+  key_id: string;
+  target: string;
+}
 export type Stream = "Stdout" | "Stderr";
 // A line of Canager's own in an operation's log (Rust `LogNote`): a key the
 // front end localises, never text. `Log` lines are the tool's verbatim words.
