@@ -4,8 +4,8 @@ import { Popover } from "./ui/Popover";
 
 /**
  * The look of a "Details" button beside a sentence: a notice's, or its
- * error's -- and of the other words-only buttons in a notice line, the
- * fold's 「还有 N 条」 and 「收起」 (`SourceNotices`).
+ * error's. Not of the fold's 「还有 N 条」 and 「收起」, which have a look
+ * of their own, a disclosure's (`SourceNotices`).
  */
 export const DETAILS_TRIGGER_CLASS =
   "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";

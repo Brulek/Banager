@@ -4,7 +4,23 @@ import { useTranslation } from "react-i18next";
 import { useOpenOllamaApp, useRefresh } from "../lib/queries";
 import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
 import { DETAILS_TRIGGER_CLASS, SourceNotice, SourceNoticeLine } from "./SourceNotice";
+import { ChevronIcon } from "./icons";
 import { Popover } from "./ui/Popover";
+
+/**
+ * The look of the fold's own buttons, 「还有 N 条」 and 「收起」: a
+ * disclosure, not a link. The muted colour and a chevron -- pointing
+ * right while the lines are folded, turned down once they show, as the
+ * lists' other folds do -- where each line's "Details" has the accent, so
+ * the two never read as one more link of the same kind side by side.
+ */
+const FOLD_TOGGLE_CLASS =
+  "inline-flex shrink-0 items-center rounded-sm text-small text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent";
+
+/** The fold's chevron: › while the lines are folded, ˅ once they show. */
+function FoldChevron({ expanded }: { expanded: boolean }) {
+  return <ChevronIcon size={14} className={expanded ? "shrink-0 rotate-90" : "shrink-0"} />;
+}
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */
 export interface NoticeFold {
@@ -154,14 +170,17 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
       <div id={linesId} className="flex flex-col gap-1.5">
         {noticeView(
           shown,
+          // Set apart from the line's own "Details" and button by more
+          // than the gap between those two: it is not one of them.
           <button
             ref={toggleRef}
             type="button"
             aria-expanded={false}
             aria-controls={linesId}
             onClick={() => toggle(true)}
-            className={DETAILS_TRIGGER_CLASS}
+            className={`${FOLD_TOGGLE_CLASS} ml-3 gap-0.5`}
           >
+            <FoldChevron expanded={false} />
             {t("sourceNotice.more", { count: notices.length - 1 })}
           </button>,
         )}
@@ -174,16 +193,20 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
       <div id={linesId} className="flex flex-col gap-1.5">
         {notices.map((notice) => noticeView(notice))}
       </div>
-      {/* Under the titles, past the icons. */}
-      <div className="pl-6">
+      {/* Its own line under the last: the chevron in the icons' column,
+          the words under the titles. */}
+      <div>
         <button
           ref={toggleRef}
           type="button"
           aria-expanded={true}
           aria-controls={linesId}
           onClick={() => toggle(false)}
-          className={DETAILS_TRIGGER_CLASS}
+          className={`${FOLD_TOGGLE_CLASS} gap-2`}
         >
+          <span className="flex w-4 shrink-0 justify-center">
+            <FoldChevron expanded={true} />
+          </span>
           {t("sourceNotice.showFewer")}
         </button>
       </div>

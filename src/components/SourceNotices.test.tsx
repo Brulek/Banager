@@ -135,6 +135,23 @@ describe("SourceNotices, folded", () => {
     expect(lines).toContainElement(screen.getByText("uv isn't responding"));
   });
 
+  it("looks like a disclosure, not like the line's Details: muted, with a chevron that turns down once the lines show", () => {
+    renderWithProviders(<Folded notices={[brewUpdating, uvSilent]} />);
+
+    expect(screen.getByRole("button", { name: "Details: uv isn't responding" })).toHaveClass("text-accent-text");
+    const more = screen.getByRole("button", { name: "1 more" });
+    expect(more).toHaveClass("text-muted");
+    expect(more).not.toHaveClass("text-accent-text");
+    expect(more.querySelector("svg")).not.toHaveClass("rotate-90");
+
+    fireEvent.click(more);
+
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    expect(fewer).toHaveClass("text-muted");
+    expect(fewer).not.toHaveClass("text-accent-text");
+    expect(fewer.querySelector("svg")).toHaveClass("rotate-90");
+  });
+
   it("gives the focus to the button that now says the other thing, so Enter folds straight back", async () => {
     const user = userEvent.setup();
     renderWithProviders(<Folded notices={[brewUpdating, uvSilent, claudeUntested]} />);
