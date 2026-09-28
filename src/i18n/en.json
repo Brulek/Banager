@@ -229,7 +229,7 @@
       "Settings": "Your settings: {{path}}",
       "SettingsAndHistory": "Settings, login and history: {{path}}",
       "ToolState": "Conversations and history: {{path}}",
-      "ToolStateDetail": "Some program files are in there too, so Canager keeps it whole.",
+      "ToolStateDetail": "Keeps the whole folder, including the program files in it.",
       "ShellConfigLines": "Terminal settings file: {{path}}",
       "ShellConfigLinesDetail": "Canager never edits this file; lines the installer added are harmless.",
       "OutsideHome": "Link that will stop working: {{path}}",

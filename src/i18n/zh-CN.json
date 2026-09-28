@@ -213,7 +213,7 @@
       "Settings": "你的设置：{{path}}",
       "SettingsAndHistory": "设置、登录和历史记录：{{path}}",
       "ToolState": "对话和历史记录：{{path}}",
-      "ToolStateDetail": "里面也有部分程序文件，所以整个保留。",
+      "ToolStateDetail": "保留整个文件夹，包括里面的程序文件。",
       "ShellConfigLines": "终端配置文件：{{path}}",
       "ShellConfigLinesDetail": "Canager 不改这个文件，安装器加过的行留着也无害。",
       "OutsideHome": "会失效的链接：{{path}}",

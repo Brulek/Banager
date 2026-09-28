@@ -416,7 +416,7 @@ describe("UninstallDialog", () => {
       ],
       [
         "Conversations and history: ~/.gemini/antigravity-cli",
-        "Some program files are in there too, so Canager keeps it whole.",
+        "Keeps the whole folder, including the program files in it.",
       ],
     ];
     for (const [line, why] of whys) {
