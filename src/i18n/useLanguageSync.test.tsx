@@ -56,6 +56,20 @@ describe("useLanguageSync", () => {
     await waitFor(() => expect(i18n.resolvedLanguage).toBe("en"));
   });
 
+  it("keeps <html lang> on the language in use, override and system alike", async () => {
+    let language: Language = "ZhCn";
+    vi.mocked(invoke).mockImplementation(async () => baseSettings({ language }));
+
+    const { queryClient } = renderWithProviders(<Probe />);
+    await waitFor(() => expect(document.documentElement.lang).toBe("zh-CN"));
+
+    language = "System";
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+
+    await screen.findByText("System");
+    await waitFor(() => expect(document.documentElement.lang).toBe("en"));
+  });
+
   it("falls back to the detected system language once the override is switched off again", async () => {
     let language: Language = "ZhCn";
     vi.mocked(invoke).mockImplementation(async () => baseSettings({ language }));
