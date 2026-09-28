@@ -95,7 +95,7 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
  * The same notice as one compact line, for the top of a list -- the
  * Updates page's and the Installed page's: an icon, the short title, and
  * "Details" -- a popover with the description -- then the notice's own
- * button, if it has one (Open Ollama, Try again), which stays in the line
+ * button, if it has one (Open Ollama, Check again), which stays in the line
  * rather than behind the popover. A failed press says so under the line.
  */
 export function SourceNoticeLine({

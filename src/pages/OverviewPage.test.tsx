@@ -614,7 +614,7 @@ describe("OverviewPage", () => {
     expect(useUiStore.getState().page).toBe("unknown");
   });
 
-  it("gives each source that needs attention one line, its title and nothing more", async () => {
+  it("gives each source that needs attention one line, with its Details and its own button, as the lists do", async () => {
     served = snapshotWith({
       instances: [
         { ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } },
@@ -625,17 +625,28 @@ describe("OverviewPage", () => {
     const { findByRole, getByRole, queryByText } = renderOverview();
 
     const list = await findByRole("list", { name: "Needs attention" });
-    expect(
-      [...list.querySelectorAll("li")].map((line) => line.textContent),
-    ).toEqual(["Homebrew is updating its software list", "Ollama isn't running"]);
+    const lines = within(list).getAllByRole("listitem");
+    expect(lines).toHaveLength(2);
+    expect(within(lines[0]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
+    expect(within(lines[1]).getByText("Ollama isn't running")).toBeInTheDocument();
     // Each with an icon: information, and a warning.
-    const icons = [...list.querySelectorAll("li")].map((line) => line.querySelector("svg"));
+    const icons = lines.map((line) => line.querySelector("svg"));
     expect(icons[0]?.getAttribute("class")).toContain("text-muted");
     expect(icons[1]?.getAttribute("class")).toContain("text-warning");
     // In a panel of its own, apart from the tools.
     expect(getByRole("heading", { level: 2, name: "Needs attention" })).toBeInTheDocument();
-    // Titles only: the explanations stay on the Installed and Updates pages.
+    // Not a dead end: the explanation behind Details, and Ollama's own
+    // button, which starts it, in the line.
     expect(queryByText("Open Ollama to see what it has and check for updates.")).not.toBeInTheDocument();
+    const details = within(lines[1]).getByRole("button", { name: "Details: Ollama isn't running" });
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Open Ollama to see what it has and check for updates.",
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    fireEvent.click(within(lines[1]).getByRole("button", { name: "Open Ollama" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
+    expect(within(lines[0]).queryByRole("button", { name: "Open Ollama" })).toBeNull();
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
     expect(

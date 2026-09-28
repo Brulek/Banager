@@ -372,8 +372,8 @@
       "description": "The update list shows the last results. Canager checks again by itself when it's done."
     },
     "notOnPath": {
-      "title": "Terminal won't find this copy of {{source}} when you type {{command}}",
-      "description": "None of the places Terminal looks in for {{command}} leads to this copy. Open a new Terminal window first; if that doesn't help, follow its install guide."
+      "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
+      "description": "None of the places Terminal looks in for {{command}} leads to it. Open a new Terminal window first; if that doesn't help, follow its install guide."
     },
     "shadowedByHomebrew": {
       "title": "Typing {{command}} runs a same-named program from Homebrew first",
@@ -389,7 +389,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "This copy of {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again."
+      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and press Check again."
     },
     "more_one": "{{count}} more",
     "more_other": "{{count}} more",

@@ -11,7 +11,8 @@ import type { ManagerInstance } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { SourceAvatar } from "../components/SourceAvatar";
-import { CheckIcon, DashIcon, InfoIcon, UnknownIcon, WarningIcon } from "../components/icons";
+import { SourceNotices } from "../components/SourceNotices";
+import { CheckIcon, DashIcon, UnknownIcon } from "../components/icons";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -183,12 +184,13 @@ const TILE =
  * with something installed and how much, which opens the Installed page on
  * that source's tools, and one for the programs the Unknown page's last
  * scan could not place, once a scan has found some (nothing starts one
- * here). "Needs attention": one line for each source that needs it -- the
- * title of its first notice (`sourceNoticesFor`: not running, not
- * answering, a list it could not download, another copy that runs
- * instead). What a source lets Canager do at all, pip being read-only, is
- * not news here; both lists say it on each of its rows. Each line is a
- * title only; the explanation stays with the source on those pages.
+ * here). "Needs attention": one line for each source that needs it -- its
+ * first notice (`sourceNoticesFor`: not running, not answering, a list it
+ * could not download, another program that runs instead), as the lists
+ * draw it (`SourceNotices`): its title, its Details, and its own button
+ * where it has one -- Open Ollama, Check again. A line with nothing to
+ * press was a dead end. What a source lets Canager do at all, pip being
+ * read-only, is not news here; both lists say it on each of its rows.
  */
 export function OverviewPage() {
   const { t } = useTranslation();
@@ -354,16 +356,10 @@ export function OverviewPage() {
             </h2>
             <ul aria-labelledby={attentionHeadingId} className="flex flex-col">
               {attention.map((notice) => (
-                <li
-                  key={notice.id}
-                  className="flex items-center gap-2.5 px-2.5 py-1.5 text-body text-foreground"
-                >
-                  {notice.variant === "warning" ? (
-                    <WarningIcon size={16} className="shrink-0 text-warning" />
-                  ) : (
-                    <InfoIcon size={16} className="shrink-0 text-muted" />
-                  )}
-                  {t(notice.titleKey, notice.values)}
+                // The line the Updates and Installed pages give the same
+                // notice: its Details, and its own button where it has one.
+                <li key={notice.id} className="px-2.5 py-1.5">
+                  <SourceNotices notices={[notice]} layout="line" />
                 </li>
               ))}
             </ul>

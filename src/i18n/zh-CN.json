@@ -336,8 +336,8 @@
       "description": "更新列表显示的是上次的结果。更新完会自动重新检查。"
     },
     "notOnPath": {
-      "title": "在终端输入 {{command}} 找不到这一份 {{source}}",
-      "description": "终端查找 {{command}} 的位置里，没有一处通向这一份。先新开一个终端窗口试试，不行就按它的安装说明操作。"
+      "title": "{{source}} 已安装，但在终端输入 {{command}} 打不开它",
+      "description": "终端查找 {{command}} 的位置里，没有一处通向它。先新开一个终端窗口试试，不行就按它的安装说明操作。"
     },
     "shadowedByHomebrew": {
       "title": "输入 {{command}} 先运行的是 Homebrew 里的同名程序",
@@ -353,7 +353,7 @@
     },
     "launcherOnly": {
       "title": "{{source}} 的程序文件不见了",
-      "description": "这一份 {{command}} 已经无法运行，点「卸载」可以清理掉它。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后重新检查。"
+      "description": "{{source}} 的 {{command}} 已经无法运行，点「卸载」可以清理掉。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后点「重新检查」。"
     },
     "more_other": "还有 {{count}} 条",
     "showFewer": "收起"

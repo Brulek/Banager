@@ -326,20 +326,22 @@ describe("sourceNoticesFor", () => {
     }
   });
 
-  it("says this copy can't be found by typing its name, never that nothing runs, in both locales (T6)", () => {
+  it("says typing its name doesn't run the one installed, never that nothing runs, in both locales (T6)", () => {
     // NotOnPath is also the note when another executable with the tool's
     // name is on PATH and this copy is not (route::shadow_note): typing the
     // name then runs that other program, which may even be another copy
     // of the tool -- so "Terminal won't find Claude Code" would be false
-    // there. The title says it is *this copy* that won't be found. What
-    // happens in Terminal is judged by the PATH Canager sees, which it
+    // there. The title says it is the one installed -- "it" -- that typing
+    // the name does not run, in plain words: 「找不到这一份」 meant nothing
+    // to someone who does not know there can be several copies of a tool.
+    // What happens in Terminal is judged by the PATH Canager sees, which it
     // takes from a login shell when opened from Finder
     // (src-tauri/src/lib.rs); the detail's first step, a new Terminal
     // window, covers a shell whose PATH has not caught up.
     expect(en.sourceNotice.notOnPath.title).toBe(
-      "Terminal won't find this copy of {{source}} when you type {{command}}",
+      "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
     );
-    expect(zhCN.sourceNotice.notOnPath.title).toBe("在终端输入 {{command}} 找不到这一份 {{source}}");
+    expect(zhCN.sourceNotice.notOnPath.title).toBe("{{source}} 已安装，但在终端输入 {{command}} 打不开它");
     expect(en.sourceNotice.notOnPath.description).toContain("Open a new Terminal window first");
     expect(zhCN.sourceNotice.notOnPath.description).toContain("先新开一个终端窗口试试");
     for (const locale of [en, zhCN]) {
@@ -353,13 +355,14 @@ describe("sourceNoticesFor", () => {
     // folder is on PATH but the file it links to has no executable bit
     // (route.rs, test_shadow_note_says_not_on_path_when_the_launcher_is_on_path_but_its_target_is_not_executable).
     // So the detail says that none of the places Terminal looks leads to
-    // this copy, and not that its folder is missing from them (step-B
-    // review finding B-5) -- nor "probably", "most likely" or PATH.
+    // this copy -- "it", the one the title says is installed -- and not
+    // that its folder is missing from them (step-B review finding B-5) --
+    // nor "probably", "most likely" or PATH.
     expect(en.sourceNotice.notOnPath.description).toContain(
-      "None of the places Terminal looks in for {{command}} leads to this copy.",
+      "None of the places Terminal looks in for {{command}} leads to it.",
     );
     expect(zhCN.sourceNotice.notOnPath.description).toContain(
-      "终端查找 {{command}} 的位置里，没有一处通向这一份。",
+      "终端查找 {{command}} 的位置里，没有一处通向它。",
     );
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.notOnPath.description).not.toMatch(
@@ -402,17 +405,20 @@ describe("sourceNoticesFor", () => {
   it("says it is this copy that can no longer run when the launcher is left without its program, in both locales (T7)", () => {
     // Another installation -- a Homebrew or npm command of the same name --
     // may run in Terminal as before, so the detail speaks of this copy
-    // only. The row offers Uninstall (its artifact carries no
+    // only: the source's own command, never 「这一份」, which means nothing
+    // to someone who does not know there can be several. The row offers
+    // Uninstall (its artifact carries no
     // `uninstall_blocked` since step C), which cleans it up; to keep the
     // tool, reinstall it, or drag its files back if an earlier uninstall
     // that stopped partway moved them to the Trash -- "if", as spec §9.2
     // says: the Trash can have been emptied since.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "This copy of {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again.",
+      "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and press Check again.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
-      "这一份 {{command}} 已经无法运行，点「卸载」可以清理掉它。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后重新检查。",
+      "{{source}} 的 {{command}} 已经无法运行，点「卸载」可以清理掉。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后点「重新检查」。",
     );
+    expect(JSON.stringify(zhCN.sourceNotice)).not.toContain("这一份");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.launcherOnly.description).not.toMatch(
         /typing .* in Terminal fails|输入 .* 会失败|website|same page|网站|同一页/,

@@ -3824,7 +3824,7 @@ describe("UpdatesPage", () => {
   // The four PATH notes (spec §七), each with the title of the notice it
   // puts at the top of the page.
   const pathNotes: [InstanceNote, string][] = [
-    ["NotOnPath", "Terminal won't find this copy of Claude Code when you type claude"],
+    ["NotOnPath", "Claude Code is installed, but typing claude in Terminal doesn't run it"],
     ["ShadowedByHomebrew", "Typing claude runs a same-named program from Homebrew first"],
     ["ShadowedByNpm", "Typing claude runs a same-named program from npm first"],
     ["ShadowedByOther", "Typing claude runs another program with the same name first"],
