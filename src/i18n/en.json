@@ -67,6 +67,7 @@
     "reviewUpdates": "Review updates",
     "upToDate": "Everything is up to date",
     "nothingToUpdate": "Nothing to update",
+    "nothingToUpdateChecked": "No updates in the sources Canager could check",
     "hiddenCount_one": "{{count}} hidden",
     "hiddenCount_other": "{{count}} hidden",
     "cantUpdateHereCount_one": "{{count}} can't be updated here",

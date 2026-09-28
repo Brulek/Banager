@@ -354,6 +354,7 @@ describe("updatesSummary", () => {
     // Both taken: nothing to start, and wget alone is under "Can't update here".
     expect(updatesSummary(snapshot, hiding(), (u) => u !== wget)).toEqual({
       kind: "nothingToUpdate",
+      everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
       checksUnfinished: 0,
@@ -371,6 +372,7 @@ describe("updatesSummary", () => {
     // Not checked in full, and nothing else to say: "Needs attention" says why.
     expect(updatesSummary({ instances: [stopped], updates: [], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
       checksUnfinished: 0,
@@ -378,6 +380,7 @@ describe("updatesSummary", () => {
     const pinned = candidate({ blocked: "Pinned" });
     expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
       checksUnfinished: 0,
@@ -388,7 +391,7 @@ describe("updatesSummary", () => {
         { instances: [brew], updates: [glib], errors: [] },
         hiding({ ignored_updates: [glib.key] }),
       ),
-    ).toEqual({ kind: "nothingToUpdate", cantUpdateHere: 0, hidden: 1, checksUnfinished: 0 });
+    ).toEqual({ kind: "nothingToUpdate", everyChecked: true, cantUpdateHere: 0, hidden: 1, checksUnfinished: 0 });
   });
 
   it("counts, with nothing to install, what the Updates page lists, what the user hid and the checks that failed", () => {
@@ -416,6 +419,7 @@ describe("updatesSummary", () => {
 
     expect(updatesSummary(snapshot, settings)).toEqual({
       kind: "nothingToUpdate",
+      everyChecked: false,
       // jq, urllib3 and wget: what the Updates page lists, every row
       // under "Can't update here".
       cantUpdateHere: 3,
@@ -426,10 +430,23 @@ describe("updatesSummary", () => {
     expect(notHidden(snapshot.updates, settings)).toEqual([jq, urllib3, wget]);
   });
 
+  it("says whether every source was checked, with nothing to install", () => {
+    // Homebrew's list is still downloading: its updates were not checked.
+    const updating: ManagerInstance = { ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } };
+    expect(updatesSummary({ instances: [updating], updates: [], errors: [] }, hiding())).toEqual({
+      kind: "nothingToUpdate",
+      everyChecked: false,
+      cantUpdateHere: 0,
+      hidden: 0,
+      checksUnfinished: 0,
+    });
+  });
+
   it("is not up to date when a check failed this round, even with nothing listed", () => {
     const failed = { instance_id: brew.id, message: "brew outdated exited 1" };
     expect(updatesSummary({ instances: [brew], updates: [], errors: [failed] }, hiding())).toEqual({
       kind: "nothingToUpdate",
+      everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
       checksUnfinished: 1,

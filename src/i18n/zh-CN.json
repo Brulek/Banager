@@ -59,6 +59,7 @@
     "reviewUpdates": "查看更新",
     "upToDate": "所有工具都是最新的",
     "nothingToUpdate": "没有要更新的工具",
+    "nothingToUpdateChecked": "已检查的来源里没有要更新的工具",
     "hiddenCount_other": "{{count}} 个已隐藏",
     "cantUpdateHereCount_other": "{{count}} 个不能在这里更新",
     "checksUnfinished_other": "{{count}} 项检查没完成",

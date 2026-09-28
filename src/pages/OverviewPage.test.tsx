@@ -257,7 +257,10 @@ describe("OverviewPage", () => {
   // "Everything is up to date" over any of them. Under the headline, the
   // line that says what there is instead, or none; and Review updates
   // only where the Updates page lists a row.
-  const notUpToDate: Array<[string, () => void, string | null, boolean]> = [
+  // The headline says nothing to update only of the sources Canager could
+  // check where one was not checked in full, as the Updates page does.
+  const NOT_CHECKED = "No updates in the sources Canager could check";
+  const notUpToDate: Array<[string, () => void, string | null, boolean, string]> = [
     [
       "a source that is not running",
       () => {
@@ -266,6 +269,7 @@ describe("OverviewPage", () => {
       // "Needs attention" says it.
       null,
       false,
+      NOT_CHECKED,
     ],
     [
       "Homebrew still updating its list of software",
@@ -277,6 +281,7 @@ describe("OverviewPage", () => {
       },
       null,
       false,
+      NOT_CHECKED,
     ],
     [
       "only updates Canager cannot install",
@@ -287,6 +292,7 @@ describe("OverviewPage", () => {
       },
       "2 can't be updated here",
       true,
+      "Nothing to update",
     ],
     [
       "only updates the user hid",
@@ -297,6 +303,7 @@ describe("OverviewPage", () => {
       // The Updates page lists no row of it: nothing there to review.
       "1 hidden",
       false,
+      "Nothing to update",
     ],
     // Homebrew still reads as answering, with no note: `refresh` keeps a
     // source whose update check failed as it was, and carries its last
@@ -311,6 +318,7 @@ describe("OverviewPage", () => {
       },
       "1 check didn't finish",
       false,
+      NOT_CHECKED,
     ],
     [
       "a source whose detection failed this round",
@@ -322,10 +330,11 @@ describe("OverviewPage", () => {
       },
       "1 check didn't finish",
       false,
+      NOT_CHECKED,
     ],
   ];
 
-  it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange, line, review) => {
+  it.each(notUpToDate)("says nothing to update, not up to date, with %s", async (_name, arrange, line, review, title) => {
     arrange();
     const { getByRole, getByText, queryByRole, queryByText, container } = renderWithProviders(
       <>
@@ -339,9 +348,7 @@ describe("OverviewPage", () => {
     // Waited for rather than found once: over a snapshot with errors the
     // page is drawn again under the "some checks didn't finish" banner,
     // and the heading found first is not the one that stays.
-    await waitFor(() =>
-      expect(getByRole("heading", { level: 2, name: "Nothing to update" })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(getByRole("heading", { level: 2, name: title })).toBeInTheDocument());
     expect(queryByRole("heading", { name: "Everything is up to date" })).not.toBeInTheDocument();
     // Neither the green ring nor its check: a grey ring with a dash.
     expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");
@@ -361,7 +368,7 @@ describe("OverviewPage", () => {
       ).toBeInTheDocument(),
     );
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
-    const headline = getByRole("heading", { level: 2, name: "Nothing to update" });
+    const headline = getByRole("heading", { level: 2, name: title });
     if (line === null) {
       expect(headline.nextElementSibling).toBeNull();
     } else {
@@ -414,7 +421,11 @@ describe("OverviewPage", () => {
         </>,
       );
 
-      const headline = await findByRole("heading", { level: 2, name: "Nothing to update" });
+      // The stopped Ollama was not checked: the headline says so.
+      const headline = await findByRole("heading", {
+        level: 2,
+        name: "No updates in the sources Canager could check",
+      });
       expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
       // The same number the Updates page gives its folded rows.
       expect(await findByRole("button", { name: "Can't update here (2)" })).toBeInTheDocument();
@@ -428,6 +439,21 @@ describe("OverviewPage", () => {
     } finally {
       height.mockRestore();
       width.mockRestore();
+    }
+  });
+
+  it("says in Chinese, on a first launch whose Homebrew list is still downloading, only what it checked", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const note: InstanceNote = "IndexUpdating";
+      served = snapshotWith({ instances: [{ ...brew, status: { unavailable: null, notes: [note] } }] });
+      const { findByRole, queryByRole } = renderOverview();
+
+      const headline = await findByRole("heading", { level: 2, name: "已检查的来源里没有要更新的工具" });
+      expect(headline.nextElementSibling).toBeNull();
+      expect(queryByRole("heading", { level: 2, name: "没有要更新的工具" })).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
     }
   });
 
@@ -538,7 +564,9 @@ describe("OverviewPage", () => {
     expect(queryByText("Open Ollama to see what it has and check for updates.")).not.toBeInTheDocument();
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
-    expect(getByRole("heading", { level: 2, name: "Nothing to update" })).toBeInTheDocument();
+    expect(
+      getByRole("heading", { level: 2, name: "No updates in the sources Canager could check" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the tiles under Your tools, in a grid, the source's avatar and how many", async () => {

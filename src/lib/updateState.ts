@@ -284,7 +284,11 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  *   from a source not answering), the user hid the rest, a source was not
  *   checked in full, or a check failed this round. Calling that up to date
  *   is the lie the Updates page stopped telling; the Overview does not
- *   start. It carries what the Overview says under its headline, in the
+ *   start. It carries whether every source was checked in full
+ *   (`everyChecked`): where one was not, the headline says nothing to
+ *   update only of the sources Canager could check, as the Updates page's
+ *   "No updates in the sources Canager could check" does. And it carries
+ *   what the Overview says under its headline, in the
  *   Updates page's own numbers: `cantUpdateHere`, the updates under its
  *   "Can't update here (N)" -- every one it lists but those an update is
  *   installing or has just installed -- `hidden`, the updates it leaves
@@ -297,7 +301,13 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
 export type UpdatesSummary =
   | { kind: "updates"; actionable: UpdateCandidate[] }
   | { kind: "upToDate" }
-  | { kind: "nothingToUpdate"; cantUpdateHere: number; hidden: number; checksUnfinished: number };
+  | {
+      kind: "nothingToUpdate";
+      everyChecked: boolean;
+      cantUpdateHere: number;
+      hidden: number;
+      checksUnfinished: number;
+    };
 
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
@@ -307,12 +317,12 @@ export function updatesSummary(
   const actionable = actionableUpdatesOf(snapshot, settings);
   const startable = actionable.filter((candidate) => !holdsRow(candidate));
   if (startable.length > 0) return { kind: "updates", actionable: startable };
-  if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors)) {
-    return { kind: "upToDate" };
-  }
+  const everyChecked = everySourceChecked(snapshot.instances, snapshot.errors);
+  if (snapshot.updates.length === 0 && everyChecked) return { kind: "upToDate" };
   const listed = notHidden(snapshot.updates, settings).length;
   return {
     kind: "nothingToUpdate",
+    everyChecked,
     cantUpdateHere: listed - actionable.length,
     hidden: snapshot.updates.length - listed,
     checksUnfinished: failedSourceCount(snapshot.errors),

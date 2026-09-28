@@ -31,7 +31,7 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
     case "upToDate":
       return t("overview.upToDate");
     case "nothingToUpdate":
-      return t("overview.nothingToUpdate");
+      return summary.everyChecked ? t("overview.nothingToUpdate") : t("overview.nothingToUpdateChecked");
   }
 }
 
@@ -147,7 +147,8 @@ const TILE =
  * install, with one button that opens it with all of them selected;
  * "Everything is up to date" only when that page would say so; and a
  * plain "Nothing to update" when there is nothing to install but that is
- * not the same thing, with a line under it saying what there is instead
+ * not the same thing -- "No updates in the sources Canager could check"
+ * where a source was not checked in full -- with a line under it saying what there is instead
  * (`nothingToUpdateLine`) and, when the Updates page lists any of it, a
  * quieter Review updates that opens it. Before the first check has
  * answered, "Checking…" -- the startup placeholder is not an answer
