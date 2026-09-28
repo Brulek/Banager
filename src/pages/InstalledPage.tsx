@@ -14,7 +14,13 @@ import {
   uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
-import { hidingRule, shownSkippedVersion, updateStateOf, upToDateIsKnown } from "../lib/updateState";
+import {
+  hidingRule,
+  leftOutOfUpdateCheck,
+  shownSkippedVersion,
+  updateStateOf,
+  upToDateIsKnown,
+} from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
@@ -496,6 +502,8 @@ export function InstalledPage() {
    * failed, a Homebrew still updating its list or one that could not,
    * leave last round's rows and updates, which no one checked this time.
    * Such a row says nothing about updates; its source's notice says why.
+   * Nor on a cask Homebrew's check left out because Settings' "Show apps
+   * that update themselves" is off (`leftOutOfUpdateCheck`).
    */
   const chipsOf = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): RowChip[] => {
     const chips: RowChip[] = [];
@@ -582,7 +590,10 @@ export function InstalledPage() {
       }
     } else if (hidden !== undefined) {
       chips.push(hiddenChip(hidden));
-    } else if (upToDateIsKnown(instance, snapshot.errors)) {
+    } else if (
+      upToDateIsKnown(instance, snapshot.errors) &&
+      !leftOutOfUpdateCheck(artifact, settings?.include_self_updating ?? false)
+    ) {
       chips.push({ id: "up-to-date", label: t("installed.upToDate"), tone: "upToDate" });
     }
     return chips;

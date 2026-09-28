@@ -893,6 +893,31 @@ describe("InstalledPage", () => {
       expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
       expect(screen.getByText("Claude Code's program files are missing")).toBeInTheDocument();
     });
+
+    // Without --greedy, `brew outdated` leaves out a cask that updates
+    // itself and one declared `version :latest`, so no update listed for
+    // either is no news.
+    it.each([
+      [false, []],
+      [true, ["Up to date"]],
+    ] as const)(
+      "with Show apps that update themselves %s, says it over a self-updating or always-latest cask only when Homebrew checked it",
+      async (includeSelfUpdating, leftOut) => {
+        const cask = (name: string, over: Partial<InstalledArtifact> = {}) =>
+          formula(name, { key: { instance_id: brew.id, kind: "Cask", name }, ...over });
+        servedSettings = { ...settings, include_self_updating: includeSelfUpdating };
+        served = {
+          ...snapshot,
+          artifacts: [cask("onyx"), cask("zoom", { auto_updates: true }), cask("chromium", { version: "latest" })],
+          updates: [],
+        };
+        renderWithProviders(<InstalledPage />);
+
+        expect(chipsOf(await findRow("onyx"))).toEqual(["Up to date"]);
+        expect(chipsOf(rowOf("zoom"))).toEqual(leftOut);
+        expect(chipsOf(rowOf("chromium"))).toEqual(leftOut);
+      },
+    );
   });
 
   it("marks a read-only source's rows View only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {

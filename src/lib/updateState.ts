@@ -8,6 +8,7 @@
  * conditions, did not offer.
  */
 import type {
+  InstalledArtifact,
   InstanceNote,
   ManagerInstance,
   Settings,
@@ -266,6 +267,26 @@ export function everySourceChecked(instances: ManagerInstance[], errors: SourceE
  */
 export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]): boolean {
   return checkedInFull(instance) && !errors.some((error) => error.instance_id === instance.id);
+}
+
+/**
+ * Whether Homebrew's update check leaves `artifact` out while Settings'
+ * "Show apps that update themselves" (`include_self_updating`) is off: a
+ * cask that updates itself (`auto_updates`, from `brew info`'s
+ * `auto_updates: true`) or one declared `version :latest`, which Homebrew
+ * installs as "latest". Canager passes `--greedy` to `brew outdated
+ * --json=v2` only while that switch is on
+ * (crates/canager-core/src/adapters/brew/mod.rs), and without it Homebrew
+ * lists neither kind whatever version it has, so no update listed is no
+ * news: the Installed page's row says nothing about updates rather than
+ * 「已是最新」. With the switch on, `--greedy` checks both.
+ */
+export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpdating: boolean): boolean {
+  return (
+    !includeSelfUpdating &&
+    artifact.key.kind === "Cask" &&
+    (artifact.auto_updates || artifact.version === "latest")
+  );
 }
 
 /**
