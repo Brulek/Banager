@@ -39,6 +39,12 @@ lives in the page's memory and nowhere else.
   `pnpm typecheck` like the rest of `src/`; `src/dev/mockBackend.test.ts`
   (run by `pnpm test`) checks that it answers every command `api.ts` sends
   and that an operation runs the way the real backend reports one.
+- The logos are not mocked: the avatars draw from the logo pack built
+  into the app (`src/assets/tool-icons/`, read by `src/lib/toolIcons.ts`,
+  which asks the backend for nothing), so a tool or a source the pack has
+  a logo for shows it here as it does in the app. A cask's app icon still
+  comes first: iTerm2 and Visual Studio Code show the generated one
+  described below.
 
 The files: `mockTauri.ts` (the stand-in module), `mockBackend.ts` (the
 commands), `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps'

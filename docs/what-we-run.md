@@ -1216,12 +1216,12 @@ cask whose `brew info` entry carries no absolute `target` for its `app`.
 
 ## App icons: read through macOS, no command runs
 
-The window can ask for the icon of the app a Homebrew cask installed, the
+The window asks for the icon of the app a Homebrew cask installed, the
 icon Finder shows for it (`artifactIcon` in `src/lib/api.ts`, through
-`useArtifactIcon` in `src/lib/queries.ts`). Nothing in the window asks
-yet: its rows still show a letter; when they show icons, this paragraph
-changes. Getting an icon runs no command, and Canager reads nothing else
-for it:
+`useArtifactIcon` in `src/lib/queries.ts`), when it draws that cask's
+avatar (`ToolAvatar` in `src/components/ToolAvatar.tsx`), and shows it
+in place of the cask's logo, if it has one (Network, below). Getting an
+icon runs no command, and Canager reads nothing else for it:
 
 - The window sends the row's key — which source, which kind of package,
   which name — and nothing else (`artifact_icon` in
@@ -1504,6 +1504,15 @@ plugin is compiled in and configured with the endpoint
 (`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Canager
 calls it yet, so no request to it is made; when app self-update ships,
 this paragraph changes.
+
+Showing a logo makes no network request either. The logos Canager shows
+for tools and sources are built into the app: `pnpm icons:build`
+(`scripts/tool-icons/build.mjs`) writes them into `src/assets/tool-icons/`
+at development time, downloading the GitHub avatars among them, and
+`src/lib/toolIcons.ts` imports that folder, so the app's build carries
+it — `pack.json` inside the window's script, each avatar as a file of its
+own that the window loads from the app, as it loads the rest of itself.
+The window's content security policy was not changed for them.
 
 The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
 `pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull`, `claude update`,
