@@ -78,6 +78,13 @@ export interface ToolRowContentProps {
    * the row's text.
    */
   selectableDescription?: boolean;
+  /**
+   * A few words after the description, on its line, that stay whole when
+   * the row is too narrow for both -- the description gives way to them:
+   * the Unknown page's "Points into Docker.app". Never selected with the
+   * description.
+   */
+  descriptionNote?: string;
   /** A checkbox before the avatar, for a list that acts on several rows. */
   selectable?: ToolRowSelectable;
   /** Status chips (`StatusChip`), just before the version. */
@@ -128,6 +135,7 @@ export function ToolRow({
   nameChip,
   description,
   selectableDescription = false,
+  descriptionNote,
   selectable,
   status,
   version,
@@ -179,12 +187,33 @@ export function ToolRow({
             </span>
           ) : null}
         </div>
-        <p
-          title={description}
-          className={`truncate text-small text-muted ${selectableDescription ? "select-text" : ""}`}
-        >
-          {description}
-        </p>
+        {descriptionNote === undefined ? (
+          <p
+            title={description}
+            className={`truncate text-small text-muted ${selectableDescription ? "select-text" : ""}`}
+          >
+            {description}
+          </p>
+        ) : (
+          // The description gives way to the note, cut short first; the
+          // note is cut short only on a row too narrow for it alone.
+          <p className="flex min-w-0 text-small text-muted">
+            <span
+              title={description}
+              className={`min-w-0 truncate ${selectableDescription ? "select-text" : ""}`}
+            >
+              {description}
+            </span>
+            <span className="flex max-w-full shrink-0">
+              {/* The dot a size and a date have between them, in both
+                  languages; for the eye only. */}
+              <span aria-hidden="true" className="shrink-0 px-1">
+                ·
+              </span>
+              <span className="min-w-0 truncate">{descriptionNote}</span>
+            </span>
+          </p>
+        )}
       </div>
       {status !== undefined ? (
         <div data-status="" className="relative z-10 flex shrink-0 items-center gap-1.5">

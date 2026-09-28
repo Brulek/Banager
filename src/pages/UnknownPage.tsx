@@ -93,6 +93,24 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
 }
 
 /**
+ * The app a link leads into, by its folder's name -- "Docker.app" -- for
+ * the row's line under its name: "Points into Docker.app", which its
+ * chip's ⓘ says at more length. Only for a link, and only when the app the
+ * scan found (`app_bundle`) is on the way the link leads -- where it
+ * resolves, or what a broken link says -- not merely around the folder the
+ * link is in. A program that is no link points nowhere: the ⓘ says whose
+ * part it is.
+ */
+function linkedApp(entry: UnknownEntry): string | null {
+  if (entry.kind === "File" || entry.app_bundle === null) return null;
+  const app = `${entry.app_bundle}.app`;
+  const leadsInto = [entry.resolved, entry.link_target].some(
+    (path) => path !== null && path.split("/").includes(app),
+  );
+  return leadsInto ? app : null;
+}
+
+/**
  * What Show in Finder says of itself, by kind, as its hint: a link shows
  * the file it points to, where Finder opens, not the folder the link is
  * in; a broken link has no file to show, and the item is off. A program
@@ -167,12 +185,13 @@ export function ScanAgain() {
 /**
  * The command-line programs on this Mac that no source accounts for, as
  * rows like every other list's: a neutral avatar, the name with the path
- * it was found at, a chip for what kind of entry it is -- whose ⓘ says
- * the rest, where there is more to say -- its size and date where a
- * tool's version would be, and a ⋯ menu to show it in Finder or copy its
- * path. Canager only lists them: nothing here runs or removes anything,
- * which the page says once, at its top, above the folders it looked in;
- * Scan again is in the page header (`ScanAgain`).
+ * it was found at -- and, after it, the app a link points into -- a chip
+ * for what kind of entry it is, whose ⓘ says the rest, where there is more
+ * to say, its size and date where a tool's version would be, and a ⋯ menu
+ * to show it in Finder or copy its path. Canager only lists them: nothing
+ * here runs or removes anything, which the page says once, at its top,
+ * above the folders it looked in; Scan again is in the page header
+ * (`ScanAgain`).
  *
  * Its paths select (`select-text`), to be copied into Terminal or into
  * Finder's Go to Folder: each row's, the folders it looked in, and the
@@ -318,6 +337,7 @@ export function UnknownPage() {
             <div className="px-3 pb-2">
               {result.entries.map((entry) => {
                 const name = fileName(entry.path);
+                const app = linkedApp(entry);
                 const facts = factsOf(entry, t, technical);
                 const detail =
                   facts.length === 0
@@ -339,6 +359,7 @@ export function UnknownPage() {
                       // Home abbreviated as Rust sent it (`UnknownEntry.path`).
                       description={entry.path}
                       selectableDescription
+                      descriptionNote={app === null ? undefined : t("unknown.pointsInto", { app })}
                       status={<StatusChip label={t(KIND_KEYS[entry.kind])} detail={detail} />}
                       // As wide as a size and a date, so the chips before it
                       // line up down the list, a broken link's too.

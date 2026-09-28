@@ -517,6 +517,7 @@
     "linksTo": "Links to {{path}}",
     "partOfApp": "Part of {{app}}",
     "adminOwned": "Owned by the system or another account",
+    "pointsInto": "Points into {{app}}",
     "showInFinder": "Show in Finder",
     "showsLinkTarget": "Shows the file this link points to.",
     "targetGone": "The file this link points to is gone.",

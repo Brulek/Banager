@@ -9,7 +9,7 @@ import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { formatBytes } from "../lib/format";
 import { queryKeys } from "../lib/queryKeys";
-import type { Settings, Snapshot, UnknownScan } from "../lib/types";
+import type { Settings, Snapshot, UnknownEntry, UnknownScan } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
 // Show in Finder's one call (src/test/setup.ts mocks the plugin).
@@ -680,6 +680,78 @@ describe("Copy path", () => {
       fireEvent.click(within(tool).getByRole("button", { name: "standalone-tool 的更多操作" }));
       fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "拷贝路径" }));
       await waitFor(() => expect(notice()).toHaveTextContent(new RegExp(`^${zhCN.common.copied}$`)));
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+});
+
+describe("the app a link points into", () => {
+  it("is on the row's line under its name, after the path, and still behind the ⓘ at more length", async () => {
+    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+
+    const helper = rowOf(await findByText("helper-cli"));
+    const note = within(helper).getByText("Points into Helper.app");
+    const path = within(helper).getByText("/usr/local/bin/helper-cli");
+    // One line, the path first; only the path selects.
+    expect(note.closest("p")).toBe(path.closest("p"));
+    expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
+    // The ⓘ says it at more length, as it did.
+    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
+
+    // A broken link's: the app it pointed into.
+    expect(within(rowOf(getByText("old-script"))).getByText("Points into Removed.app")).toBeInTheDocument();
+    // A program of the user's own, in no app: nothing more.
+    expect(within(rowOf(getByText("standalone-tool"))).queryByText(/^Points into/)).toBeNull();
+  });
+
+  it("is said only of a link that leads into the app, not of a program that is part of one", async () => {
+    const entry = (over: Partial<UnknownEntry>): UnknownEntry => ({
+      path: "",
+      kind: "File",
+      resolved: null,
+      link_target: null,
+      size_bytes: 1_000,
+      modified_at: 1_700_000_000,
+      owned_by_me: true,
+      app_bundle: "Kit",
+      ...over,
+    });
+    scan = {
+      ...baseScan,
+      entries: [
+        // Inside the app, not pointing into it.
+        entry({
+          path: "~/Applications/Kit.app/Contents/bin/kit",
+          resolved: "/Users/someone/Applications/Kit.app/Contents/bin/kit",
+        }),
+        // A link in the app's folder that leads out of it.
+        entry({
+          path: "~/Applications/Kit.app/Contents/bin/kit-helper",
+          kind: "Symlink",
+          resolved: "/opt/kit/bin/kit-helper",
+          link_target: "/opt/kit/bin/kit-helper",
+        }),
+      ],
+    };
+    const { findByText, getByText, queryByText } = renderWithProviders(<UnknownPage />);
+
+    const kit = rowOf(await findByText("kit"));
+    expect(queryByText(/^Points into/)).toBeNull();
+    // Its chip's ⓘ still says whose part it is.
+    fireEvent.click(within(kit).getByRole("button", { name: "Program" }));
+    expect(within(kit).getByText("Part of Kit")).toBeInTheDocument();
+    expect(getByText("kit-helper")).toBeInTheDocument();
+  });
+
+  it("says 指向 in Chinese, as its ⓘ does of where a link leads", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+      expect(within(rowOf(await findByText("helper-cli"))).getByText("指向 Helper.app")).toBeInTheDocument();
+      expect(within(rowOf(getByText("old-script"))).getByText("指向 Removed.app")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

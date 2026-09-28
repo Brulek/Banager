@@ -91,6 +91,33 @@ describe("ToolRow", () => {
     expect(getByText("helper-cli")).not.toHaveClass("select-text");
   });
 
+  it("puts a note after its description, on its line, that the description gives way to and never selects with it", () => {
+    const { container, getByText } = renderWithProviders(
+      <ToolRow
+        avatar={<span />}
+        name="docker"
+        description="/usr/local/bin/docker"
+        selectableDescription
+        descriptionNote="Points into Docker.app"
+      />,
+    );
+
+    const path = getByText("/usr/local/bin/docker");
+    const note = getByText("Points into Docker.app");
+    expect(note.closest("p")).toBe(path.closest("p"));
+    expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The path is cut short first, its whole text in its tooltip; the note
+    // does not shrink, short of a row too narrow for it alone.
+    expect(path).toHaveAttribute("title", "/usr/local/bin/docker");
+    expect(atRest(path.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(atRest((note.parentElement as HTMLElement).className)).toEqual(
+      expect.arrayContaining(["shrink-0", "max-w-full"]),
+    );
+    // Only the path selects; the dot between them is for the eye.
+    expect([...container.querySelectorAll(".select-text")]).toEqual([path]);
+    expect(container.querySelector('p [aria-hidden="true"]')?.textContent).toBe("·");
+  });
+
   it("ticks its checkbox through onToggle, named for what it selects", () => {
     const onToggle = vi.fn();
     const { getByRole } = renderWithProviders(
