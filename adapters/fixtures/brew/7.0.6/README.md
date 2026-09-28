@@ -109,6 +109,8 @@ above have:
 | `appvolume.json` | `appvolume` 0.1.38 | `launchctl`, `quit`, `pkgutil`, `delete`, an uninstall step `terminate_process` |
 | `pycharm-edu.json` | `pycharm-edu` 2022.2.2,222.4345.35 | an uninstall step `remove` and nothing else: `charm` in each folder Homebrew looks for commands in (`base: search_path`), where the file holds a given text |
 | `playdate-simulator.json` | `playdate-simulator` 3.1.2 | an uninstall step `remove` (`/usr/local/bin/arm-*`, where each is a link whose target holds `playdate`), `pkgutil`, `delete`, `trash`, `rmdir` |
+| `autofirma.json` | `autofirma` 1.9.2 | `quit`, `pkgutil`, `delete`, two uninstall steps `delete_keychain_certificate` (`AutoFirma ROOT`, `127.0.0.1`) |
+| `betwixt.json` | `betwixt` 1.6.1 | an uninstall step `delete_keychain_certificate` with a `matching_certificate` file |
 | `twelite-stage.json` | `twelite-stage` 202508,R2 | an `artifact` placed at `~/MWSTAGE` |
 | `touchosc-editor.json` | `touchosc-editor` 1.8.9 | an `artifact` placed under `/$HOME`, so the home folder's absolute path |
 | `graalvm-jdk.json` | `graalvm-jdk` 25.0.4 | an `artifact` placed in `/Library/Java/JavaVirtualMachines` |

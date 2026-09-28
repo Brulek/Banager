@@ -268,10 +268,15 @@ for commands in, relative, or with a `{{…}}` template: one line that names
 nothing), paths moved to the Trash (`trash:`), installer packages whose
 every file is deleted (`pkgutil:`), programs run (`early_script:`,
 `script:`, an uninstall step of type `run`), background services removed
-(`launchctl:`), kernel
-extensions (`kext:`), keychain certificates (an uninstall step), login
-items (`login_item:`), the apps quit (`quit:`, `signal:`), and, naming
-nothing, Ruby blocks and other uninstall steps. When Canager finds no such
+(`launchctl:`), kernel extensions (`kext:`), the text whose every
+certificate in the keychain goes (an uninstall step of type
+`delete_keychain_certificate` runs `security find-certificate -a -c <name>`
+with `sudo` and deletes each certificate it lists, every one whose name
+contains that text, `install_steps.rb:1179-1210`; one that also names a
+`matching_certificate` file deletes only the certificate with that file's
+hash, and counts among the other uninstall steps), login items
+(`login_item:`), the apps quit (`quit:`, `signal:`), and, naming nothing,
+Ruby blocks and other uninstall steps. When Canager finds no such
 list — no Caskroom folder for the cask or one that is a link, no saved
 caskfile, a legacy `.internal.json` one, a file that does not parse, or
 neither `artifacts` of its own nor a receipt that lists any, when Homebrew

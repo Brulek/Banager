@@ -729,7 +729,15 @@ pub enum CaskStep {
     RemovesServices,
     /// `kext:`: each kernel extension is unloaded and deleted.
     RemovesKexts,
-    /// An uninstall step of type `delete_keychain_certificate`.
+    /// An uninstall step of type `delete_keychain_certificate`, which runs
+    /// `security find-certificate -a -c <name> -Z` with `sudo` and deletes
+    /// each certificate it lists (`install_steps.rb:1179-1210`): every
+    /// certificate in the keychain whose name contains the item, not only
+    /// the cask's own -- `-a` lists all that match, and `-c` matches a
+    /// name that includes it (security(1), `find-certificate`). A step
+    /// that also names a `matching_certificate` file deletes only the one
+    /// certificate with that file's hash, which this line would overstate:
+    /// it is `RunsOwnSteps`.
     DeletesCertificates,
     /// `login_item:`: those login items are deleted, and so are the
     /// cask's own apps' (`uninstall_login_item`).

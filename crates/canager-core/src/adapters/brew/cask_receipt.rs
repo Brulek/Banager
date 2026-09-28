@@ -547,9 +547,18 @@ fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool
                     Some(program) => steps.add(CaskStep::RunsScript, [program], home),
                     None => steps.flag(CaskStep::RunsOwnSteps),
                 },
+                // `security find-certificate -a -c <name> -Z`, then
+                // `delete-certificate -Z` for each certificate it finds
+                // (`install_steps.rb:1179-1210`): every one whose name
+                // contains `name` (security(1): `-c` matches "every
+                // certificate ... whose common name includes" it). With
+                // `matching_certificate`, only the one whose hash is that
+                // file's, which the line for the name would overstate.
                 "delete_keychain_certificate" => match untemplated(step.get("name")) {
-                    Some(name) => steps.add(CaskStep::DeletesCertificates, [name], home),
-                    None => steps.flag(CaskStep::RunsOwnSteps),
+                    Some(name) if !step.contains_key("matching_certificate") => {
+                        steps.add(CaskStep::DeletesCertificates, [name], home)
+                    }
+                    _ => steps.flag(CaskStep::RunsOwnSteps),
                 },
                 "remove" => {
                     // `step_paths(step, "paths")`: a list of path specs,
@@ -1037,6 +1046,27 @@ mod tests {
             ])),
             steps(&[(RunsScript, &["~/bin/tool"]), (RunsOwnSteps, &[])])
         );
+    }
+
+    #[test]
+    fn a_certificate_step_names_the_text_every_deleted_certificates_name_contains() {
+        // Each step deletes every certificate `security find-certificate -a
+        // -c <name>` lists: here, every one whose name contains
+        // `127.0.0.1` too.
+        let (_, autofirma) = receipt!("autofirma");
+        assert_eq!(
+            classified(autofirma),
+            steps(&[
+                (Deletes, &["/Applications/AutoFirma.app"]),
+                (RemovesPackages, &["es.gob.afirma"]),
+                (DeletesCertificates, &["AutoFirma ROOT", "127.0.0.1"]),
+                (QuitsApps, &["es.gob.afirma"]),
+            ])
+        );
+        // One that deletes only the certificate matching a file is not
+        // that line.
+        let (_, betwixt) = receipt!("betwixt");
+        assert_eq!(classified(betwixt), steps(&[(RunsOwnSteps, &[])]));
     }
 
     #[test]

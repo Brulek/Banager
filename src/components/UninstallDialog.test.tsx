@@ -628,6 +628,54 @@ describe("UninstallDialog", () => {
     }
   });
 
+  it("says a cask's certificate step deletes every certificate whose name contains the text, in either language", async () => {
+    // `security find-certificate -a -c NAME` lists every certificate whose
+    // name contains NAME, and Homebrew deletes each (install_steps.rb in
+    // Homebrew 7.0.6-70): autofirma's steps take every `127.0.0.1` one.
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "autofirma" };
+    const planWith = (items: string[]) =>
+      issuedPlanFor({
+        request: cask,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          { CaskUninstallStep: { step: "DeletesCertificates", items } },
+        ],
+      });
+    const cases: [string[], string, string][] = [
+      [
+        ["Charles"],
+        "Also deletes every certificate in the keychain whose name contains Charles.",
+        "还会删除钥匙串里名称含有下列任一文字的所有证书：Charles。",
+      ],
+      [
+        ["AutoFirma ROOT", "127.0.0.1"],
+        "Also deletes every certificate in the keychain whose name contains any of these: AutoFirma ROOT, 127.0.0.1.",
+        "还会删除钥匙串里名称含有下列任一文字的所有证书：AutoFirma ROOT, 127.0.0.1。",
+      ],
+    ];
+    for (const [items, english, chinese] of cases) {
+      vi.mocked(invoke).mockResolvedValue(planWith(items));
+      const en = renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="AutoFirma" />,
+      );
+      await screen.findByRole("button", { name: "Uninstall" });
+      expect(linesOf("Before you continue")).toEqual([english]);
+      en.unmount();
+
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const zh = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="AutoFirma" />,
+        );
+        await screen.findByRole("button", { name: "卸载" });
+        expect(linesOf("请注意")).toEqual([chinese]);
+        zh.unmount();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    }
+  });
+
   it("says Homebrew will also remove what nothing needs when a brew.env turns autoremove back on, with the why behind its ⓘ", async () => {
     // `Warning::HomebrewAutoremoves`: every brew command runs with
     // HOMEBREW_NO_AUTOREMOVE=1, and a brew.env took it back
