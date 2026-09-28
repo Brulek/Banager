@@ -29,6 +29,13 @@ pub const TICK: Duration = Duration::from_secs(15 * 60);
 /// check ended ([`counts_as_check`]) the daily check is due.
 pub const DUE_AFTER_SECS: i64 = 24 * 60 * 60;
 
+/// A minute, in seconds: how far before the last check's end the wall
+/// clock may read and still be taken as no time at all, not as a clock set
+/// back ([`tick`]). A time sync can step the clock back by a little, and a
+/// round can end between a tick reading `now` and reading when the last
+/// check ended.
+pub const SET_BACK_SLACK_SECS: i64 = 60;
+
 /// What one tick of the daily check does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tick {
@@ -61,11 +68,14 @@ pub enum Tick {
 /// Canager started -- is due. The stamp lives in memory, so after a
 /// relaunch the window's check at launch is the day's.
 ///
-/// A `now` before `last_check_ended` is due as well: the clock was set
-/// back past the last check, and waiting for it to reach that check again
-/// plus a day could take as long as it was set back. The round that runs
-/// then stamps the corrected time, so it is one extra check, not one per
-/// tick.
+/// A `now` [`SET_BACK_SLACK_SECS`] or more before `last_check_ended` is
+/// due as well: the clock was set back past the last check, and waiting
+/// for it to reach that check again plus a day could take as long as it
+/// was set back. The round that runs then stamps the corrected time, so it
+/// is one extra check, not one per tick. A `now` less than that before it
+/// is not due: the clock stepped back by a little, or a round ended
+/// between the tick reading `now` and reading `last_check_ended`, and in
+/// neither is a day gone.
 ///
 /// `busy` wins only over a check that is due, so that `Tick` says why
 /// nothing ran.
@@ -75,7 +85,8 @@ pub fn tick(now: i64, last_check_ended: Option<i64>, busy: bool, auto_check: boo
     }
     let due = match last_check_ended {
         None => true,
-        Some(ended) => now < ended || now.saturating_sub(ended) >= DUE_AFTER_SECS,
+        Some(ended) if now < ended => ended.saturating_sub(now) >= SET_BACK_SLACK_SECS,
+        Some(ended) => now.saturating_sub(ended) >= DUE_AFTER_SECS,
     };
     if !due {
         Tick::NotDue
@@ -247,6 +258,38 @@ mod tests {
     fn test_tick_is_fifteen_minutes_and_due_is_a_day() {
         assert_eq!(TICK, Duration::from_secs(900));
         assert_eq!(DUE_AFTER_SECS, 86_400);
+        assert_eq!(SET_BACK_SLACK_SECS, 60);
+    }
+
+    #[test]
+    fn test_a_now_less_than_a_minute_before_the_last_check_is_not_due() {
+        // A time sync stepped the clock back a little, or a round ended
+        // between the tick reading `now` and reading the last check.
+        for behind in [1, 2, 30, SET_BACK_SLACK_SECS - 1] {
+            assert_eq!(
+                tick(NINE_AM - behind, Some(NINE_AM), false, true),
+                Tick::NotDue,
+                "{behind} s before the last check"
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_now_a_minute_or_more_before_the_last_check_checks_once() {
+        for behind in [SET_BACK_SLACK_SECS, 10 * 60, 365 * DAY] {
+            assert_eq!(
+                tick(NINE_AM - behind, Some(NINE_AM), false, true),
+                Tick::Check,
+                "{behind} s before the last check"
+            );
+            // That check stamps the corrected clock: the ticks after it are
+            // not due.
+            let checked = NINE_AM - behind + 30;
+            assert_eq!(
+                tick(checked + 15 * 60, Some(checked), false, true),
+                Tick::NotDue
+            );
+        }
     }
 
     #[test]

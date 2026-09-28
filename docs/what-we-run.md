@@ -195,8 +195,11 @@ starts nothing. Turned on:
   counts toward the 24 hours, so a Mac that slept for two days checks at
   the first look after it wakes — and, should every source fail then,
   again at each look after that, until a check in which one answers. When
-  the Mac's clock has been set back to before the last check ended, the
-  next look checks, once.
+  the Mac's clock has been set back to a minute or more before the last
+  check ended, the next look checks, once; a look that finds the clock
+  less than a minute before it — a small correction of the clock, or a
+  check that ended as the look read the time — starts nothing
+  (`auto_check::SET_BACK_SLACK_SECS`).
 - **Not while something is under way.** A look that finds a refresh
   running or waiting, or an operation queued, running, being cancelled or
   being verified (`Session::busy`), starts nothing; the next look asks
