@@ -509,7 +509,11 @@ line) — paths moved to the Trash (`trash:`), installer packages whose
 every file is deleted (`pkgutil:`), programs run (`early_script:`,
 `script:`, an uninstall step of type `run`), background services removed
 (`launchctl:`) — counted, their labels behind the line's ⓘ, since a
-label such as `com.microsoft.VSCode.ShipIt` tells a person nothing —
+label such as `com.microsoft.VSCode.ShipIt` tells a person nothing; with
+no number where a label has a `*` in it, a pattern Homebrew matches
+against every running service (`abstract_uninstall.rb:173-181`), so
+that `adobe-creative-cloud`'s six labels and `com.adobe.CCXProcess.*`
+are not said to be seven services —
 kernel extensions (`kext:`), the text whose every
 certificate in the keychain goes (an uninstall step of type
 `delete_keychain_certificate` runs `security find-certificate -a -c <name>`
@@ -526,7 +530,9 @@ puts it — at that target when it is absolute or under `~`, else in
 the bundle id the step names (`CFBundleIdentifier`; the file is parsed,
 and nothing is opened or run). An app it does not find — one kept in an
 `--appdir` of its own, or a bundle id with a `*` in it — is counted
-instead, its bundle id behind the line's ⓘ. When Canager finds no such
+instead, its bundle id behind the line's ⓘ; a line with a `*` bundle id,
+a pattern Homebrew matches against every running app (`expand_bundle_id`,
+`abstract_uninstall.rb:371-384`), gives no number. When Canager finds no such
 list — no Caskroom folder for the cask or one that is a link, no saved
 caskfile, a legacy `.internal.json` one, a file that does not parse, or
 neither `artifacts` of its own nor a receipt that lists any, when Homebrew

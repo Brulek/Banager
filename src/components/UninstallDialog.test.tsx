@@ -644,6 +644,60 @@ describe("UninstallDialog", () => {
     }
   });
 
+  it("gives no number of background services where a pattern matches some, in either language", async () => {
+    // adobe-creative-cloud's recorded `launchctl:` (cask_receipt.rs's
+    // fixture): six names and `com.adobe.CCXProcess.*`, which Homebrew
+    // matches against every running service. 「还会停止并删除 7 个后台服务。」
+    // counted the pattern as one service.
+    const services = [
+      "Adobe_Genuine_Software_Integrity_Service",
+      "com.adobe.acc.installer",
+      "com.adobe.acc.installer.v2",
+      "com.adobe.AdobeCreativeCloud",
+      "com.adobe.AdobeDesktopService",
+      "com.adobe.ccxprocess",
+      "com.adobe.CCXProcess.*",
+    ];
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "adobe-creative-cloud" };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: cask,
+        action: {
+          Command: { program: "/opt/homebrew/bin/brew", args: ["uninstall", "--cask", "adobe-creative-cloud"], env: [] },
+        },
+        needs_password: true,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          { CaskUninstallStep: { step: "RemovesServices", items: services } },
+        ],
+      }),
+    );
+
+    const english = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Adobe Creative Cloud" />,
+    );
+    await screen.findByRole("button", { name: "Uninstall" });
+    const line = "Also stops and removes background services, including every running one whose name matches a pattern.";
+    expect(linesOf("Before you continue")).toEqual([line, "Some apps ask for your Mac password at this step."]);
+    fireEvent.click(screen.getByRole("button", { name: `Details: ${line}` }));
+    expect(screen.getByText(`As macOS names them: ${services.join(", ")}`)).toBeInTheDocument();
+    english.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Adobe Creative Cloud" />,
+      );
+      await screen.findByRole("button", { name: "卸载" });
+      const chinese = "还会停止并删除后台服务，包括名称符合某个规则、正在运行的全部服务。";
+      expect(linesOf("请注意")).toEqual([chinese, "部分 App 在这一步会要求输入 Mac 密码。"]);
+      fireEvent.click(screen.getByRole("button", { name: `详情：${chinese}` }));
+      expect(screen.getByText(`macOS 里的名称：${services.join("、")}`)).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says Uninstall permanently where a cask's recorded steps delete paths, and says them in Chinese too", async () => {
     const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "duckietv" };
     const plan = issuedPlanFor({

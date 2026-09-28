@@ -287,10 +287,12 @@
       "RunsScript_other": "还会运行：{{items}}。",
       "RunsOwnSteps": "卸载前后还会执行 Homebrew 为它记下的其他步骤。",
       "RemovesServices_other": "还会停止并删除 {{count}} 个后台服务。",
+      "RemovesServicesMatching": "还会停止并删除后台服务，包括名称符合某个规则、正在运行的全部服务。",
       "RemovesKexts_other": "还会停用并删除内核扩展：{{items}}。",
       "DeletesCertificates_other": "还会删除钥匙串里名称含有下列任一文字的所有证书：{{items}}。",
       "RemovesLoginItems_other": "还会删除登录项：{{items}}。",
       "QuitsApps_other": "还会退出 {{count}} 个正在运行的 App。",
+      "QuitsAppsMatching": "还会退出正在运行的相关 App，包括名称符合某个规则的全部 App。",
       "QuitsNamedApps_other": "还会退出正在运行的 {{items}}。",
       "systemNames_other": "macOS 里的名称：{{items}}"
     }

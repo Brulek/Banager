@@ -72,8 +72,10 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
  * count what they would name: a background service's label and an app
  * Canager did not find on the Mac are reverse-DNS ids
  * (`com.microsoft.VSCode.ShipIt`) that tell a person nothing, so the line
- * says how many, and the ids are behind its ⓘ (`warningDetailKey`). An
- * app it did find is named, as Finder names it (`QuitsNamedApps`).
+ * says how many -- unless one of the ids is a pattern
+ * (`MATCHING_STEP_KEYS`) -- and the ids are behind its ⓘ
+ * (`warningDetailKey`). An app it did find is named, as Finder names it
+ * (`QuitsNamedApps`).
  */
 const CASK_STEP_KEYS: Record<CaskStep, string> = {
   Deletes: "warnings.caskStep.Deletes",
@@ -89,6 +91,29 @@ const CASK_STEP_KEYS: Record<CaskStep, string> = {
   QuitsApps: "warnings.caskStep.QuitsApps",
   QuitsNamedApps: "warnings.caskStep.QuitsNamedApps",
 };
+
+/**
+ * The line for a counted step one of whose ids has a `*` in it. Homebrew
+ * 7.0.6-70 takes such an id as a pattern: `launchctl:` stops and removes
+ * every running service whose name matches it
+ * (`abstract_uninstall.rb:173-181` and `:247-255`), and `quit:` and
+ * `signal:` quit or signal every running app whose id matches it
+ * (`expand_bundle_id`, `:371-384`, called at `:92` and `:477`). How many
+ * that is shows only as the uninstall runs, so the number of ids would be
+ * wrong either way -- Adobe Creative Cloud's six service names and
+ * `com.adobe.CCXProcess.*` are not seven services. The line gives no
+ * number; the ids, the pattern with them, stay behind its ⓘ
+ * (`warningDetailKey`).
+ */
+const MATCHING_STEP_KEYS: Record<"RemovesServices" | "QuitsApps", string> = {
+  RemovesServices: "warnings.caskStep.RemovesServicesMatching",
+  QuitsApps: "warnings.caskStep.QuitsAppsMatching",
+};
+
+/** Whether a counted step's id is a pattern Homebrew matches against what is running. */
+function isPattern(id: string): boolean {
+  return id.includes("*");
+}
 
 /** Which check a `remove` step makes of each path before it deletes it. */
 type RemoveCheckKind = "LinkTargetContains" | "ContentContains" | "LinkTargetAndContentContain";
@@ -141,15 +166,19 @@ function removeCheckArgs(check: RemoveCheck): Record<string, string> {
 
 /**
  * A cask step's key: its kind's, or, for the paths a `remove` step deletes
- * only where they pass a check, that check's line. The core sets `only_if`
- * on `Deletes` and `DeletesUnnamed` alone (`cask_receipt::classify`); a
- * check this build does not know gets its kind's line, which says more
- * goes, not less.
+ * only where they pass a check, that check's line, or, for services it
+ * stops or apps it quits one of whose ids is a pattern, the line with no
+ * number (`MATCHING_STEP_KEYS`). The core sets `only_if` on `Deletes` and
+ * `DeletesUnnamed` alone (`cask_receipt::classify`); a check this build
+ * does not know gets its kind's line, which says more goes, not less.
  */
-function caskStepKey(step: CaskStep, onlyIf: RemoveCheck | undefined): string {
+function caskStepKey(step: CaskStep, items: string[], onlyIf: RemoveCheck | undefined): string {
   const kind = onlyIf === undefined ? null : removeCheckKind(onlyIf);
   if (kind !== null && (step === "Deletes" || step === "DeletesUnnamed")) {
     return CHECKED_DELETE_KEYS[kind][step];
+  }
+  if ((step === "RemovesServices" || step === "QuitsApps") && items.some(isPattern)) {
+    return MATCHING_STEP_KEYS[step];
   }
   return CASK_STEP_KEYS[step];
 }
@@ -216,7 +245,8 @@ export function warningKey(warning: Warning): string | null {
   }
   if ("UninstallScope" in warning) return UNINSTALL_SCOPE_KEYS[warning.UninstallScope.what];
   if ("CaskUninstallStep" in warning) {
-    return caskStepKey(warning.CaskUninstallStep.step, warning.CaskUninstallStep.only_if);
+    const { step, items, only_if: onlyIf } = warning.CaskUninstallStep;
+    return caskStepKey(step, items, onlyIf);
   }
   if ("Message" in warning) return null;
   const unhandled: never = warning;
@@ -313,11 +343,11 @@ export function warningText(t: Translate, warning: Warning, subject?: string): s
  * permanent deletions and the line it leaves in a startup file mean for
  * you, which Homebrew setting brings back a clean-up or an autoremove
  * Canager turns off, and the ids a cask's background services and the apps
- * Canager did not find go by, which their lines count instead of naming.
- * The line keeps what decides whether to go on -- "permanently
- * deletes", the path, what goes with it; the ⓘ has the rest. The Cargo
- * folder's line has nothing behind it: that the whole folder goes, and
- * none of it to the Trash, is what decides.
+ * Canager did not find go by, which their lines count, or say a pattern
+ * matches, instead of naming. The line keeps what decides whether to go
+ * on -- "permanently deletes", the path, what goes with it; the ⓘ has the
+ * rest. The Cargo folder's line has nothing behind it: that the whole
+ * folder goes, and none of it to the Trash, is what decides.
  *
  * Every variant is named, so one added to `Warning` fails `tsc` here; at
  * run time, a variant this build does not know has nothing behind its ⓘ.

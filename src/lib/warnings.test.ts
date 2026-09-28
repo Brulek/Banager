@@ -150,6 +150,29 @@ describe("warningKey", () => {
     );
   });
 
+  it("gives a line of services or apps no number when one of their ids is a pattern", () => {
+    // Homebrew stops every running service, and quits every running app,
+    // a `*` id matches: 「还会停止并删除 7 个后台服务。」 counted
+    // `com.adobe.CCXProcess.*` as one.
+    expect(warningKey({ CaskUninstallStep: { step: "RemovesServices", items: ADOBE_SERVICES } })).toBe(
+      "warnings.caskStep.RemovesServicesMatching",
+    );
+    expect(
+      warningKey({ CaskUninstallStep: { step: "QuitsApps", items: ["com.adobe.accmac", "com.adobe.acc.*"] } }),
+    ).toBe("warnings.caskStep.QuitsAppsMatching");
+    // Names alone are counted.
+    expect(
+      warningKey({ CaskUninstallStep: { step: "RemovesServices", items: ADOBE_SERVICES.slice(0, 6) } }),
+    ).toBe("warnings.caskStep.RemovesServices");
+    expect(warningKey({ CaskUninstallStep: { step: "QuitsApps", items: ["com.adobe.accmac"] } })).toBe(
+      "warnings.caskStep.QuitsApps",
+    );
+    // A path's `*` is part of the path the line shows, not a count.
+    expect(
+      warningKey({ CaskUninstallStep: { step: "Deletes", items: ["/Applications/Utilities/Adobe Creative Cloud*"] } }),
+    ).toBe("warnings.caskStep.Deletes");
+  });
+
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
@@ -394,6 +417,21 @@ const CHECKS: [RemoveCheck, string][] = [
 /** The cask steps whose line counts what it would name, the ids behind its ⓘ. */
 const COUNTED_STEPS: CaskStep[] = ["RemovesServices", "QuitsApps"];
 
+/**
+ * adobe-creative-cloud's `launchctl:`, as `cask_receipt::classify` reads
+ * it from its receipt (cask_receipt.rs's fixture): six names and a
+ * pattern.
+ */
+const ADOBE_SERVICES = [
+  "Adobe_Genuine_Software_Integrity_Service",
+  "com.adobe.acc.installer",
+  "com.adobe.acc.installer.v2",
+  "com.adobe.AdobeCreativeCloud",
+  "com.adobe.AdobeDesktopService",
+  "com.adobe.ccxprocess",
+  "com.adobe.CCXProcess.*",
+];
+
 /** Every `CaskStep`, in its declared order. */
 const EVERY_STEP: CaskStep[] = [
   "Deletes",
@@ -570,6 +608,39 @@ describe("warningDetailKey", () => {
     });
     // An app Canager found is named on the line itself, with nothing behind it.
     expect(warningDetailKey({ CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } })).toBeNull();
+  });
+
+  it("keeps the ids behind the ⓘ of a line a pattern leaves uncounted, the pattern among them", () => {
+    const pattern = ["com.adobe.ccxprocess", "com.adobe.CCXProcess.*"];
+    for (const step of COUNTED_STEPS) {
+      expect(warningDetailKey({ CaskUninstallStep: { step, items: pattern } })).toBe(
+        "warnings.caskStep.systemNames",
+      );
+    }
+    const chineseT = (key: string, options?: Record<string, unknown>) =>
+      key === "common.listSeparator" ? "、" : fakeT(key, options);
+    expect(warningLine(chineseT, { CaskUninstallStep: { step: "RemovesServices", items: pattern } })).toEqual({
+      text: 'warnings.caskStep.RemovesServicesMatching({"count":2,"items":"com.adobe.ccxprocess、com.adobe.CCXProcess.*"})',
+      detail: 'warnings.caskStep.systemNames({"count":2,"items":"com.adobe.ccxprocess、com.adobe.CCXProcess.*"})',
+    });
+  });
+
+  it("has copy in both languages for a line of services or apps a pattern leaves uncounted", () => {
+    // No number and no ids on the line: it says a pattern matches some.
+    for (const step of COUNTED_STEPS) {
+      const key = warningKey({ CaskUninstallStep: { step, items: ["com.example.*"] } }) ?? "";
+      expect(key).toBe(`warnings.caskStep.${step}Matching`);
+      for (const [locale, pattern] of [
+        [en, /pattern/],
+        [zhCN, /规则/],
+      ] as const) {
+        const text = lookUp(locale, key);
+        expect(typeof text, key).toBe("string");
+        expect(text as string, key).not.toContain("{{");
+        expect(text as string, key).not.toMatch(/\d/);
+        expect(text as string, key).toMatch(pattern);
+      }
+    }
   });
 
   it("has copy in both languages for every scope sentence and every kind of cask step", () => {
