@@ -1,5 +1,6 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { focusOrFallback } from "./focus";
 
 export interface DialogProps {
   open: boolean;
@@ -59,6 +60,8 @@ export const SHEET_BUTTON = {
  * layout effect, which runs ahead of Radix's own, as the Drawer does --
  * but only when the focus went with the sheet. When something else took
  * it meanwhile, such as the log drawer an uninstall opens, it stays there.
+ * When the opener is gone or off by then, such as a row's Update that gave
+ * way to its progress, it goes to the page's title (`focusOrFallback`).
  */
 export function Dialog({
   open,
@@ -104,7 +107,7 @@ export function Dialog({
             const opener = [returnFocusTo?.current, noted.current].find(
               (element): element is HTMLElement => element instanceof HTMLElement && element.isConnected,
             );
-            if (lost && opener !== undefined) opener.focus();
+            if (lost) focusOrFallback(opener);
             onClosed?.();
           }}
           className="fixed left-1/2 top-14 flex max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[460px] -translate-x-1/2 flex-col rounded-panel border border-border bg-surface text-foreground shadow-2xl shadow-black/25 outline-none motion-safe:animate-sheet-in"

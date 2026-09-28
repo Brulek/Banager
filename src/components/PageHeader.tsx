@@ -150,12 +150,15 @@ export interface PageHeaderProps {
 /**
  * The strip over every page: its title, and the page's own way to look
  * again. As tall with nothing on the right as with a button, so the
- * pages under it start at one height.
+ * pages under it start at one height. The title takes the focus when what
+ * should get it back is gone (`focusOrFallback`).
  */
 export function PageHeader({ title, actions }: PageHeaderProps) {
   return (
     <header className="flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
-      <h1 className="min-w-0 truncate text-title text-foreground">{title}</h1>
+      <h1 tabIndex={-1} data-focus-fallback="" className="min-w-0 truncate text-title text-foreground outline-none">
+        {title}
+      </h1>
       <div className="flex min-h-8 shrink-0 items-center">{actions === undefined ? <CheckAgain /> : actions}</div>
     </header>
   );

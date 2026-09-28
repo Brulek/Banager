@@ -4,6 +4,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../test/setup";
 import { InfoDetail } from "../InfoDetail";
+import { PageHeader } from "../PageHeader";
 import { Dialog } from "./Dialog";
 import { Menu } from "./Menu";
 
@@ -238,16 +239,21 @@ describe("Dialog", () => {
     await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
-  it("does not give the focus to an opener that is gone from the page", async () => {
+  it.each([
+    ["gone from the page", "removed"],
+    ["turned off", "disabled"],
+  ] as const)("gives the focus to the page's title when the opener is %s", async (_what, how) => {
     function Vanishing() {
       const [open, setOpen] = useState(false);
-      const [shown, setShown] = useState(true);
+      const [started, setStarted] = useState(false);
       const opener = useRef<HTMLElement | null>(null);
       return (
         <>
-          {shown ? (
+          <PageHeader title="Updates" actions={null} />
+          {how === "removed" && started ? null : (
             <button
               type="button"
+              disabled={started}
               onClick={(event) => {
                 opener.current = event.currentTarget;
                 setOpen(true);
@@ -255,13 +261,14 @@ describe("Dialog", () => {
             >
               Update glib
             </button>
-          ) : null}
+          )}
           <Dialog open={open} onOpenChange={setOpen} title="Update glib?" returnFocusTo={opener}>
             <button
               type="button"
               onClick={() => {
-                // The row's button gives way to its progress as the update starts.
-                setShown(false);
+                // The row's button gives way to its progress as the update
+                // starts; Update selected turns off with nothing ticked.
+                setStarted(true);
                 setOpen(false);
               }}
             >
@@ -281,9 +288,8 @@ describe("Dialog", () => {
     });
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.queryByRole("button", { name: "Update glib" })).toBeNull();
-    // Nowhere to go back to: the focus is left on the page, not thrown at
-    // a detached button.
-    await waitFor(() => expect(document.activeElement).toBe(document.body));
+    // Not thrown at a button that cannot take it, nor left on the window's
+    // body, from where the next Tab starts over at the top.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Updates" })));
   });
 });
