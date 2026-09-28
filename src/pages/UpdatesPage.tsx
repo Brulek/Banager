@@ -676,7 +676,7 @@ export function UpdatesPage() {
   // same name, a different package. While an update of it is under way,
   // or has just finished, its progress stands where the button was --
   // except an update that ended without updating on a row that still
-  // offers Update: how it ended moves beside the chips, and Retry takes
+  // offers Update: how it ended takes the chips' place, and Retry takes
   // the button's place, opening the confirmation Update opens.
   const updateRow = (candidate: UpdateCandidate) => {
     const instance = instancesById.get(candidate.key.instance_id);
@@ -691,7 +691,11 @@ export function UpdatesPage() {
     const retry = progress !== null && actionable && isRetryable(progress);
     const outcome =
       progress !== null ? <UpdateProgress key="outcome" progress={progress} name={name} onViewLog={viewLog} /> : null;
-    const chips = [...statusChips(candidate, state, instance), ...(retry ? [outcome] : [])];
+    // How it ended has the chips' column to itself: beside a chip -- the
+    // only one an updatable row has, "Updates itself" -- it left the name
+    // a few letters at the window's default width ("Clau…"). The chips
+    // come back once it clears: a Retry under way, a newer version offered.
+    const chips = retry ? [outcome] : statusChips(candidate, state, instance);
     const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     return (

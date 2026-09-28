@@ -3275,6 +3275,68 @@ describe("UpdatesPage", () => {
     expect(within(claude).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
+  const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
+    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Failed", true],
+    ["was cancelled", "Cancelled", "Cancelled", false],
+    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention", true],
+  ];
+
+  it.each(claudeEndings)(
+    "gives its chip's place to how its update ended when it %s, and takes it back once a Retry runs",
+    async (_name, outcome, words, logged) => {
+      // Beside the chip, how it ended left the name a few letters at the
+      // window's default width: 「Clau…」.
+      instances = [...snapshot.instances, claudeInstance];
+      updates = [claudeUpdate];
+      artifacts = [claudeArtifact];
+      operations = [operation(claudeKey, { id: 9, status: "Done", outcome })];
+      useUiStore.setState({ updateTargets: { 9: claudeUpdate.target } });
+      const { queryClient } = renderWithProviders(<UpdatesPage />);
+
+      const claude = await findRow("Claude Code");
+      const chips = claude.querySelector<HTMLElement>("[data-status]");
+      if (chips === null) throw new Error("the row has no chips' column");
+      expect(await within(chips).findByText(words)).toBeInTheDocument();
+      expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
+      expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+      expect(within(claude).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+      // Retried: the update under way stands where the button was, and
+      // the chip is back.
+      operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
+      expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByRole("button", { name: "Updates itself" })).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
+    },
+  );
+
+  it("takes the chip back from a failed update once the source offers a newer version", async () => {
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [claudeUpdate];
+    artifacts = [claudeArtifact];
+    operations = [
+      operation(claudeKey, {
+        id: 9,
+        status: "Done",
+        outcome: { Failed: { exit_code: 1, summary: "Error: download failed" } },
+      }),
+    ];
+    useUiStore.setState({ updateTargets: { 9: claudeUpdate.target } });
+    const { queryClient } = renderWithProviders(<UpdatesPage />);
+
+    const claude = await findRow("Claude Code");
+    expect(await within(claude).findByText("Failed")).toBeInTheDocument();
+    expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+
+    // "Failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
+    updates = [{ ...claudeUpdate, target: "2.1.291" }];
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
+    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Failed")).toBeNull());
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Updates itself" })).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
+  });
+
   it("keeps a self-updating Homebrew cask a plain row: the chip is for tools that update themselves, not for --greedy", async () => {
     // A cask listed through `include_self_updating` carries
     // `auto_updates: true` too, but Homebrew, not the app, is what the
