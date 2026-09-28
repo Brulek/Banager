@@ -244,9 +244,10 @@ uninstall preview says that Homebrew will also remove other Homebrew
 packages that were installed only as dependencies and that nothing needs
 any more (`Warning::HomebrewAutoremoves`). When they leave
 `HOMEBREW_NO_INSTALL_CLEANUP` unset, the install and upgrade previews say
-that after installing or updating, Homebrew deletes this software's older
-versions and old downloads, and, when its periodic clean-up is due, those
-of all Homebrew software (`Warning::HomebrewPeriodicCleanup`); when they
+that after installing or updating, Homebrew deletes the older versions of
+this software and of any it updates along with it, and stray old
+downloads, and, when its periodic clean-up is due, those of all Homebrew
+software (`Warning::HomebrewPeriodicCleanup`); when they
 leave both variables unset, the next line adds that the periodic clean-up
 also removes those packages (`Warning::HomebrewCleanupAutoremoves`).
 Canager changes nothing in those files.
@@ -1807,8 +1808,9 @@ Canager neither chooses nor sees them.
 - Never runs a `brew` command without `HOMEBREW_NO_AUTOREMOVE=1`, which
   keeps Homebrew from uninstalling packages the command does not name,
   and `HOMEBREW_NO_INSTALL_CLEANUP=1`, which keeps an install or upgrade
-  from ending in Homebrew's clean-up, which deletes the older versions and
-  old downloads of the package it names every time, and those of all
+  from ending in Homebrew's clean-up, which deletes the older versions of the
+  package it names and of any it updates along with it, and stray old
+  downloads, every time, and those of all
   Homebrew software when its periodic clean-up is due; when a `brew.env`
   file takes either back, the preview says so (Homebrew's section).
 - Never runs a `brew` command as root.

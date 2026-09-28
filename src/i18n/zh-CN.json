@@ -252,7 +252,7 @@
     "leavesShellConfigLineMaybeDetail": "卸载后检查这一行，终端启动报错就删掉它。",
     "homebrewAutoremoves": "Homebrew 还会删除只作为依赖装上、现已没有软件需要的其他软件包。",
     "homebrewAutoremovesDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_AUTOREMOVE=1，但你的 brew.env 把它设成了 Homebrew 当作未设置的值，比如 0 或 false，以 brew.env 为准。",
-    "homebrewPeriodicCleanup": "安装或更新后，Homebrew 会删除这个软件的旧版本和旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
+    "homebrewPeriodicCleanup": "安装或更新后，Homebrew 会删除这个软件及一起更新的软件的旧版本，和残留的旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
     "homebrewPeriodicCleanupDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_INSTALL_CLEANUP=1，但你的 brew.env 把它设成了空值，以 brew.env 为准。",
     "homebrewCleanupAutoremoves": "Homebrew 的定期清理还会删除只作为依赖装上、现已没有软件需要的其他软件包。",
     "homebrewCleanupAutoremovesDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_INSTALL_CLEANUP=1 和 HOMEBREW_NO_AUTOREMOVE=1，但你的 brew.env 把前者设成了空值，把后者设成了 Homebrew 当作未设置的值，比如 0 或 false，以 brew.env 为准。",

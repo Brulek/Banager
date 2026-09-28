@@ -611,7 +611,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
     const line =
-      "After installing or updating, Homebrew deletes this software's older versions and old downloads, and, when its periodic clean-up is due, those of all Homebrew software.";
+      "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
     await within(dialog).findByText(line);
     const why =
       "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
@@ -632,7 +632,7 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("button", { name: "更新" }))[0]);
       const dialog = await findByRole("dialog");
       await within(dialog).findByText(
-        "安装或更新后，Homebrew 会删除这个软件的旧版本和旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
+        "安装或更新后，Homebrew 会删除这个软件及一起更新的软件的旧版本，和残留的旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -649,7 +649,7 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
-      "After installing or updating, Homebrew deletes this software's older versions and old downloads, and, when its periodic clean-up is due, those of all Homebrew software.",
+      "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
     );
     await within(dialog).findByText(
       "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",

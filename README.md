@@ -72,7 +72,8 @@ This app runs package managers on your behalf, so the boundary matters more than
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
   so only when a Homebrew `brew.env` file turns Homebrew's clean-up back on, since Homebrew then
-  deletes, after every update, that software's older versions and old downloads, and, whenever
+  deletes, after every update, the older versions of that software and of any it updates along
+  with it, and stray old downloads, and, whenever
   its periodic clean-up is due, those of all Homebrew software — and, when the file turns its
   autoremove back on too, that periodic clean-up also uninstalls the packages that were installed
   only as dependencies and that nothing needs any more.

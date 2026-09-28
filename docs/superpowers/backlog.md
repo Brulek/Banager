@@ -472,3 +472,16 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - 任务 1：在 Terminal.app 里跑一次 `pnpm tauri build` 确认 .dmg 打包（自动化会话里 Finder AppleEvent 超时 -1712，属 TCC 自动化权限问题）。
 - 任务 6：`pnpm tauri dev` 目视确认窗口打开且日志里 `[canager] discovered PATH dirs` 含 `/opt/homebrew/bin`。
 - 任务 13：按 `docs/spikes/2026-09-askpass.md` 亲自跑 `sudo -A` 对话框试验并填结果表。
+
+## 卸载说明的残留边角（2026-09-29 立，分支 feat/ui-round-2）
+
+三轮对抗式核对后仍剩的少见情况，都不会把"会删"说成"不删"，只是说得不够全（证据见
+`~/dev/Canager/.superpowers/round2/uninstall-scope.md` 与各轮 review）：
+- 第三方 tap 的 cask 装好后 tap 被取消信任：Homebrew 只按记录卸载放置的文件，不执行记下的卸载步骤
+  （`cask/installer.rb:999-1031`），确认框却说"并执行它记下的卸载步骤"。
+- 旧 `.rb` caskfile 读不出来时 Homebrew 改用当前定义（`installer.rb:1040-1042`），执行的是今天的卸载步骤，
+  不是记录里的。
+- `HomebrewCaskPlain` 仍写"删除 Homebrew 为 X 装的文件"：目前 7,763 个官方 cask 里没有带 pkg/installer 又被判为
+  plain 的，第三方 tap 可能有。
+- `HOMEBREW_NO_CLEANUP_FORMULAE` 点名的软件不会被安装后清理，`brew_env.rs` 没读这个变量，提示仍说会清理。
+- `brew uninstall` 还会删掉该 cask 自己在 `~/.homebrew/trust.json` 里的信任条目（`cmd/uninstall.rb:122-127`）。
