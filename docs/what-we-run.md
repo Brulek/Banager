@@ -25,7 +25,10 @@ command runs for it, that this file names each permission of the
 opener plugin the window has and the unknown-source scan's section the
 call Show in Finder makes, saying it runs nothing else, and that the daily
 check's section says it is off by default, states how often it looks and
-how long after a check it checks again, and says it never installs.
+how long after a check it checks again, says it never installs, and names
+each permission of the notification plugin the window has.
+`src-tauri/src/notify.rs`'s tests check that the section quotes what a
+notification says in both languages.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -210,6 +213,48 @@ the refresh its end sets off follows — and Grok Build's update check
 writes inside `~/.grok` ("Files Canager writes"). It never installs,
 upgrades or uninstalls anything: every write command runs only after a
 preview the user confirmed.
+
+**The notification.** Under the switch is another, "Notify me when there
+are updates" (「有可更新时通知我」), off by default too
+(`Settings::notify_updates`), which Settings offers only while the daily
+check is on and turns off with it. Turning it on asks for permission to
+post first (`request_notification_permission` in
+`src-tauri/src/notify.rs`), through the Tauri notification plugin's
+`request_permission`. The plugin, at the 2.4 line `src-tauri/Cargo.toml`
+pins, answers yes on a Mac without asking macOS, so there the switch
+always turns on, and whether a notification shows is up to System
+Settings → Notifications → Canager. Were the answer no, the switch would
+turn back off with "Allow Canager in System Settings → Notifications."
+(「在系统设置 → 通知里允许 Canager」) under it.
+
+Each time the window receives a check's result — every daily check's
+included, which Rust announces to it even when nothing changed
+(`announce` in `src-tauri/src/ipc.rs`) — it tells Rust which updates
+Update all would take, as tool-and-version pairs, and which check it was
+(`report_update_set`). Rust posts one notification only when that check
+was a daily one, or the refresh a daily one's `brew update` set off; both
+switches are on; Canager's window does not have the focus; and one of the
+pairs has been neither in a notification nor before the user in the
+focused window since Canager was opened (`notify_updates::decide` in
+`crates/canager-core/src/notify_updates.rs`). A report that comes while
+the window has the focus marks its pairs as seen, and posts nothing.
+
+The notification is titled Canager and says "N tools can be updated"
+(「有 N 个工具可以更新」) in the window's language, N being every update
+Update all would take. It is handed to macOS's Notification Center
+(`NSUserNotificationCenter`) through notify-rust, the crate the plugin
+posts through: no command runs, nothing connects, and Canager writes no
+file for it. Clicking it brings the window back on the Updates page. One
+that could not be posted is logged, and tried again at the next daily
+check that finds its updates. What has been told is kept in memory only,
+so after Canager is quit and opened again, nothing has been.
+
+The window is given one of the plugin's commands, `is_permission_granted`
+(`notification:allow-is-permission-granted` in
+`src-tauri/capabilities/default.json`), which the plugin's own script
+calls as the page loads, and which answers yes on a Mac. Asking for
+permission and posting go through Canager's own commands, so the page
+cannot post a notification itself.
 
 ## Homebrew
 

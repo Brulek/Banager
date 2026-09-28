@@ -367,7 +367,8 @@ export interface Snapshot {
   /**
    * The number of the refresh round that committed this snapshot (Rust
    * `Snapshot::round`): 0 before any has, and higher each round, whether
-   * or not `generation` moved.
+   * or not `generation` moved. The update notification's report names the
+   * round it is about by it (`useUpdateNotification`).
    */
   round: number;
   detect: DetectOutcome;

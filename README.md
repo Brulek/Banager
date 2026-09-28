@@ -50,7 +50,10 @@ background starts one on its own when it ends (`ipc::refresh_on_background_chang
 `src-tauri/src/lib.rs:69-72`). With **Check for updates every day** turned on in Settings — it is
 off until you turn it on — Canager also runs the same check once a day while it is running, and
 only checks: it installs nothing, and nothing is checked after you quit (`docs/what-we-run.md`,
-"The daily check"). The Unknown page's header has *Scan again* in its place, with how
+"The daily check"). Turn on **Notify me when there are updates** under it as well, and a daily
+check that finds an update you haven't been shown, while Canager's window isn't the one in front,
+posts a notification saying how many tools can be updated; clicking it opens the Updates page.
+The Unknown page's header has *Scan again* in its place, with how
 long ago that page last scanned: it re-runs only that page's scan of your bin folders, against the
 sources' last known state — it does not refresh the sources. Settings' header has neither.
 
@@ -328,7 +331,9 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
 `src-tauri/src/lib.rs:69-72`，不需要用户动手）。在“设置”里打开“每天自动检查”后（默认关闭），
 Canager 开着时还会每天做一次同样的检查，只检查不安装，退出后不检查（见 `docs/what-we-run.md` 的
-“The daily check”一节）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
+“The daily check”一节）。再打开它下面的“有可更新时通知我”，每天的检查发现你还没看到过的更新、而
+Canager 的窗口不在最前面时，会发一条通知，说有几个工具可以更新；点它打开“更新”页。
+“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo

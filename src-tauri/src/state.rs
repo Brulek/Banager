@@ -17,7 +17,9 @@ pub struct AppState {
     /// reading of `session.snapshot()`, so that when two `refresh_impl`
     /// calls coalesce inside `Session::refresh` and both receive the same
     /// resulting Snapshot, only one of them ever wins the swap and
-    /// broadcasts -- never both.
+    /// broadcasts -- never both. The one exception is `ipc::announce`'s:
+    /// a caller that ran for the daily check broadcasts whether or not it
+    /// won.
     pub last_broadcast_generation: std::sync::atomic::AtomicU64,
     /// Who asked for each refresh round: the window or the daily check.
     /// Written by `ipc::refresh_as` after every round, read by

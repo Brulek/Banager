@@ -114,7 +114,9 @@ fn announce(state: &AppState, snapshot: Snapshot, trigger: RoundTrigger) -> Snap
 /// - the counter ends at the highest generation any caller offered, since
 ///   `fetch_max` cannot move it backwards and cannot be lost;
 /// - exactly one caller sees a return value below its own generation, so
-///   each generation is announced at most once;
+///   each generation is announced at most once on its account -- a round
+///   of the daily check is announced besides, whatever its generation
+///   (`announce`);
 /// - a caller whose generation is higher than every generation claimed
 ///   before it always announces.
 ///
@@ -1350,8 +1352,8 @@ mod tests {
     async fn test_refresh_impl_broadcasts_snapshot_changed_when_the_generation_moves() {
         // M9 in the design review: `refresh_as`, which `refresh_impl` runs
         // for the window, is the only production code path in the whole
-        // plan that ever sends `UiEvent::SnapshotChanged`, and only when
-        // the refresh actually moved `generation`. Subscribe *first*
+        // plan that ever sends `UiEvent::SnapshotChanged`, and for the
+        // window only when the refresh actually moved `generation`. Subscribe *first*
         // (every other test that refreshes either has no subscriber or
         // subscribes after its last refresh, which is why inverting or
         // dropping the generation-diff branch used to leave the whole

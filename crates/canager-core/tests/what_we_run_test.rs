@@ -27,8 +27,10 @@
 //! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
 //! makes, saying it runs nothing else, and that the daily check's section
 //! says it is off by default, states its tick and how long after a check it
-//! checks again, and says it never installs. A source, host, variable,
-//! limit, path, check, pause, icon size, opener permission or daily-check
+//! checks again, says it never installs, names exactly the notification
+//! plugin's permissions the window is given, and says the notification's
+//! switch is off by default. A source, host, variable, limit, path, check,
+//! pause, icon size, opener or notification permission or daily-check
 //! number added or changed, or that look shortened, without its line in
 //! the document fails here.
 
@@ -683,4 +685,49 @@ fn test_what_we_run_says_the_daily_check_is_off_how_often_it_looks_when_it_check
             "the `## The daily check` section of docs/what-we-run.md does not say {phrase:?}, which auto_check::TICK, auto_check::DUE_AFTER_SECS and Settings::default() make true"
         );
     }
+}
+
+#[test]
+fn test_what_we_run_names_the_notification_plugins_permissions_and_says_the_switch_is_off_by_default(
+) {
+    // The daily check's section names every permission of the notification
+    // plugin the window has (`src-tauri/capabilities/default.json`) and no
+    // other, and says that "Notify me when there are updates" is off by
+    // default, which `Settings::default()` makes true.
+    use canager_core::settings::Settings;
+    assert!(
+        !Settings::default().notify_updates,
+        "notifications are off by default today; if that has changed, the section's \"off by default too\" is now false and must go with it"
+    );
+    let path = Path::new("../../src-tauri/capabilities/default.json");
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let capability: serde_json::Value = serde_json::from_str(&text).expect("default.json is JSON");
+    let given: std::collections::BTreeSet<&str> = capability["permissions"]
+        .as_array()
+        .expect("default.json lists its permissions")
+        .iter()
+        .filter_map(|p| p.as_str().or_else(|| p["identifier"].as_str()))
+        .filter(|p| p.starts_with("notification:"))
+        .collect();
+    let doc = read_doc();
+    let body = section_body(&doc, "The daily check")
+        .unwrap_or_else(|| panic!("docs/what-we-run.md has no `## The daily check` section"));
+    // Hard-wrapped prose: compare with the line breaks folded away. What
+    // sits between backticks is every odd piece.
+    let folded = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let named: std::collections::BTreeSet<&str> = folded
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|quoted| quoted.starts_with("notification:"))
+        .collect();
+    assert_eq!(
+        named, given,
+        "the `## The daily check` section of docs/what-we-run.md must name exactly the notification plugin's permissions src-tauri/capabilities/default.json gives the window"
+    );
+    assert!(
+        folded.contains("\"Notify me when there are updates\" (「有可更新时通知我」), off by default too (`Settings::notify_updates`)"),
+        "the `## The daily check` section of docs/what-we-run.md does not say the notification's switch is off by default"
+    );
 }

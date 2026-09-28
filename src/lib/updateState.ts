@@ -183,9 +183,10 @@ export function notHidden(
  * (`isUpdateActionable`, against the instance its key names). This is the
  * count on the sidebar's Updates entry and on the Dock's badge
  * (`useUpdateCount`), and, less the rows an update under way or just
- * finished takes (`holdsRow`), the Updates page's "N updates" and the rows
- * its Select all and Update all tick -- one function, so neither badge can
- * promise a row the page does not list.
+ * finished takes (`holdsRow`), the Updates page's "N updates", the rows
+ * its Select all and Update all tick and what the update notification's
+ * report counts (`useStartableUpdates`) -- one function, so neither badge
+ * nor the notification can promise a row the page does not list.
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,

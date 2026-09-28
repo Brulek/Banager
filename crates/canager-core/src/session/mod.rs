@@ -86,7 +86,10 @@ pub struct Snapshot {
     /// `Snapshot::empty()`, before any round has. Each round has a higher
     /// one than the last, whether or not it moved `generation`, so unlike
     /// `generation` it names the round a snapshot came from -- the number
-    /// `auto_check::RoundLog` records who asked for each round by.
+    /// `auto_check::RoundLog` records who asked for each round by. The page
+    /// reports the updates it offers with it after each snapshot
+    /// (`report_update_set` in src-tauri/src/notify.rs), which looks up
+    /// whether the daily check asked for that round.
     pub round: u64,
     pub detect: DetectOutcome,
     pub instances: Vec<ManagerInstance>,
