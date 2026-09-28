@@ -5,19 +5,26 @@
  * repository and fetches nothing to do so, and no test runs this.
  *
  * - A glyph, `si:<slug>` in the mapping, is Simple Icons' logo of that
- *   slug from the pinned devDependency `simple-icons` (CC0): its path,
- *   rounded to 2 decimals (./path.mjs), its brand colour and its title.
- *   Pack id `si-<slug>`.
+ *   slug from the pinned devDependency `simple-icons`: its path, its brand
+ *   colour and its title. Simple Icons is CC0, and a logo with no license
+ *   of its own in Simple Icons' data has its path rounded to 2 decimals
+ *   (./path.mjs). A logo with one keeps it: under a license Canager ships
+ *   (`SHIPPABLE_LICENSE`) it is written exactly as Simple Icons draws it,
+ *   unrounded -- an attribution or share-alike logo stays unmodified --
+ *   with that license and Simple Icons' source for it, which Settings
+ *   credits. Pack id `si-<slug>`.
  * - A raster, `gh:<login>`, is that GitHub account's avatar, downloaded at
  *   192 px and written by `sharp` as a 96 px WebP. Pack id
  *   `gh-<login, lower case>`, file raster/<id>.webp.
  *
  * It fails loudly, and writes nothing, on a slug Simple Icons does not
- * have, a download that does not arrive, or a mapping entry it cannot
- * read; it fails after writing when the pack is over its 5 MB budget, so
- * the files are there to look at. The only files it deletes are rasters
- * an earlier run wrote -- the ones the pack.json it replaces names -- that
- * the mapping no longer names, and only inside raster/.
+ * have, a logo under a license Canager does not ship (naming the mapping
+ * entries that name it), a download that does not arrive, or a mapping
+ * entry it cannot read; it fails after writing when the pack is over its
+ * 5 MB budget, so the files are there to look at. The only files it
+ * deletes are rasters an earlier run wrote -- the ones the pack.json it
+ * replaces names -- that the mapping no longer names, and only inside
+ * raster/.
  */
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -49,6 +56,17 @@ const WEBP_QUALITY = 85;
 const DOWNLOADS_AT_ONCE = 6;
 const DOWNLOAD_ATTEMPTS = 3;
 
+/**
+ * The licenses a Simple Icons logo may carry of its own and still ship:
+ * attribution (CC-BY) and share-alike (CC-BY-SA) in any version, CC0,
+ * MIT, Apache 2.0, BSD and ISC. Nothing noncommercial (NC) or
+ * no-derivatives (ND), no GPL, LGPL or AGPL, no "custom" license, nothing
+ * else. A logo with no license in Simple Icons' data is under its CC0.
+ * src/lib/toolIcons.test.ts holds the committed pack to the same list.
+ */
+const SHIPPABLE_LICENSE =
+  /^(?:CC0-1\.0|MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|CC-BY-\d+\.\d+|CC-BY-SA-\d+\.\d+)$/;
+
 const SLUG = /^[a-z0-9_]+$/;
 /** A GitHub login: letters, digits and single hyphens, which also makes `gh-<login>.webp` a safe file name. */
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
@@ -77,16 +95,15 @@ async function main() {
   const pack = {
     version: 1,
     generated: new Date().toISOString().slice(0, 10),
-    glyphs: sorted(
-      Object.fromEntries([...glyphs].map(([id, g]) => [id, { path: g.path, hex: g.hex, title: g.title }])),
-    ),
+    glyphs: sorted(Object.fromEntries([...glyphs].map(([id, g]) => [id, glyphEntry(g)]))),
     rasters: sorted(Object.fromEntries([...rasters].map(([id, r]) => [id, { file: r.file, title: r.title }]))),
     tools: sorted(tools),
     sources: sorted(sources),
   };
   await writeFile(PACK, `${JSON.stringify(pack, null, 2)}\n`);
 
-  const unrounded = [...glyphs].filter(([, g]) => !g.rounded).map(([id]) => id);
+  const unrounded = [...glyphs].filter(([, g]) => !g.rounded && g.license === undefined).map(([id]) => id);
+  const licensed = [...glyphs].filter(([, g]) => g.license !== undefined).map(([id, g]) => `${id} (${g.license.type})`);
   const packBytes = (await stat(PACK)).size;
   const rasterBytes = [...rasters.values()].reduce((sum, r) => sum + r.webp.length, 0);
   const total = await directoryBytes(PACK_DIR);
@@ -94,6 +111,9 @@ async function main() {
     `tool-icons: ${count(tools, "tool")} and ${count(sources, "source")}, ` +
       `drawn with ${count(glyphs, "glyph")} and ${count(rasters, "raster")}`,
   );
+  if (licensed.length > 0) {
+    console.log(`  kept as Simple Icons draws them, under their own license: ${licensed.join(", ")}`);
+  }
   if (unrounded.length > 0) {
     console.log(`  kept unrounded, rounding changed them at ${CHECK_PX} px: ${unrounded.join(", ")}`);
   }
@@ -111,11 +131,12 @@ async function main() {
 
 /**
  * The mapping as the pack's `tools` and `sources` (key → icon id) and the
- * icons they name, by id. A tool entry is `{ icon, relation }`, with
- * `relation` "same" (the tool's own logo) or "maker" (its maker's); an
- * `icon` of null is a reviewed "no logo" and is left out. A source entry
- * is the icon itself, or null. Every problem is collected, then thrown at
- * once.
+ * icons they name, by id, each with the entries that name it (`namedBy`,
+ * such as `tools["brew:git"]`), for an error to point at. A tool entry
+ * is `{ icon, relation }`, with `relation` "same" (the tool's own logo)
+ * or "maker" (its maker's); an `icon` of null is a reviewed "no logo" and
+ * is left out. A source entry is the icon itself, or null. Every problem
+ * is collected, then thrown at once.
  */
 function readMapping(mapping) {
   const problems = [];
@@ -143,8 +164,12 @@ function readMapping(mapping) {
     }
     const id = scheme === "si" ? `si-${name}` : `gh-${name.toLowerCase()}`;
     if (!icons.has(id)) {
-      icons.set(id, scheme === "si" ? { kind: "glyph", slug: name } : { kind: "raster", login: name });
+      icons.set(
+        id,
+        scheme === "si" ? { kind: "glyph", slug: name, namedBy: [] } : { kind: "raster", login: name, namedBy: [] },
+      );
     }
+    icons.get(id).namedBy.push(where);
     return id;
   };
   for (const [key, entry] of Object.entries(mapping.tools)) {
@@ -172,11 +197,17 @@ function readMapping(mapping) {
 }
 
 /**
- * Every glyph the mapping names, by id: `{ path, hex, title, rounded }`.
- * The rounded path is drawn at 64 px next to the original; where any
- * pixel's coverage moves by more than a quarter the original is kept
- * (`rounded: false`). Of Simple Icons 16.32.0's 3461 logos only KNIME's
- * and THE FINALS' do, by one pixel each, on a sharp point.
+ * Every glyph the mapping names, by id: `{ path, hex, title, rounded }`,
+ * plus `license` (`{ type, url }`) and `source` for a logo with a license
+ * of its own in Simple Icons' data. Such a logo is kept exactly as Simple
+ * Icons draws it. One under a license Canager does not ship
+ * (`SHIPPABLE_LICENSE`) fails the build before anything is downloaded or
+ * written, with every other such logo and the mapping entries naming each.
+ * Any other logo's path is rounded and drawn at 64 px next to the
+ * original; where any pixel's coverage moves by more than a quarter the
+ * original is kept (`rounded: false`). Of Simple Icons 16.32.0's 3461
+ * logos only KNIME's and THE FINALS' do, by one pixel each, on a sharp
+ * point.
  */
 async function buildGlyphs(icons) {
   const bySlug = new Map(
@@ -189,9 +220,30 @@ async function buildGlyphs(icons) {
   if (unknown.length > 0) {
     throw new Error(`simple-icons has no icon with the slug: ${unknown.join(", ")}`);
   }
+  const refused = [];
+  for (const [, { slug, namedBy }] of wanted) {
+    const { license, source } = bySlug.get(slug);
+    if (license === undefined) continue;
+    const named = `named by ${namedBy.join(", ")}`;
+    if (!SHIPPABLE_LICENSE.test(license.type)) {
+      refused.push(`si:${slug} is under ${license.type}, which Canager does not ship; ${named}`);
+    } else if (typeof license.url !== "string" || typeof source !== "string") {
+      refused.push(
+        `si:${slug} is under ${license.type}, but simple-icons links no license text or source to credit; ${named}`,
+      );
+    }
+  }
+  if (refused.length > 0) {
+    throw new Error(`the mapping names ${refused.length} logo(s) Canager cannot ship:\n  ${refused.join("\n  ")}`);
+  }
   const glyphs = new Map();
   for (const [id, { slug }] of wanted) {
     const icon = bySlug.get(slug);
+    if (icon.license !== undefined) {
+      const license = { type: icon.license.type, url: icon.license.url };
+      glyphs.set(id, { path: icon.path, hex: icon.hex, title: icon.title, license, source: icon.source });
+      continue;
+    }
     const rounded = roundPath(icon.path, PATH_DIGITS);
     const same = await drawsTheSame(icon.path, rounded);
     glyphs.set(id, { path: same ? rounded : icon.path, hex: icon.hex, title: icon.title, rounded: same });
@@ -304,6 +356,14 @@ async function directoryBytes(dir) {
     total += entry.isDirectory() ? await directoryBytes(path) : (await stat(path)).size;
   }
   return total;
+}
+
+/**
+ * A glyph as pack.json holds it: `license` and `source` only on a logo
+ * with a license of its own, which Settings lists with them.
+ */
+function glyphEntry({ path, hex, title, license, source }) {
+  return license === undefined ? { path, hex, title } : { path, hex, title, license, source };
 }
 
 function sorted(object) {
