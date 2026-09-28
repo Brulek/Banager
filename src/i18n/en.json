@@ -127,7 +127,7 @@
         "refused": "It's pinned in {{source}}, so Canager didn't uninstall or change anything. Run {{command}} in Terminal to unpin it first."
       },
       "NoSafeMethod": {
-        "badge": "Uninstall manually",
+        "badge": "Manual uninstall",
         "description": "{{source}} has no uninstall command, and Canager can't yet remove its files safely. Follow {{source}}'s official documentation to uninstall it.",
         "refused": "Canager can't uninstall {{source}} yet. Nothing changed.",
         "standalone-rustup": {
@@ -184,7 +184,7 @@
       "succeeded": "Updated",
       "failed": "Failed",
       "cancelled": "Cancelled",
-      "check": "Check",
+      "check": "Needs attention",
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {

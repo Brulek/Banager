@@ -2149,7 +2149,7 @@ describe("UpdatesPage", () => {
       started(11, "2.90.0");
       const { getByRole } = renderWithProviders(<UpdatesPage />);
 
-      expect(await within(await findRow("glib")).findByText("Check")).toBeInTheDocument();
+      expect(await within(await findRow("glib")).findByText("Needs attention")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "View log: glib" }));
       expect(useUiStore.getState().focusedOpId).toBe(11);
     });
@@ -2157,7 +2157,7 @@ describe("UpdatesPage", () => {
     const endings: Array<[string, OpSummary["outcome"], string]> = [
       ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Failed"],
       ["was cancelled", "Cancelled", "Cancelled"],
-      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Check"],
+      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
     ];
 
     it.each(endings)(
@@ -2376,7 +2376,7 @@ describe("UpdatesPage", () => {
       renderWithProviders(<UpdatesPage />);
 
       expect(await within(await findRow("glib")).findByText("Failed")).toBeInTheDocument();
-      expect(within(rowOf("onyx")).getByText("Check")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Needs attention")).toBeInTheDocument();
       expect(justUpdated()).toBeNull();
     });
 

@@ -168,7 +168,7 @@
       "succeeded": "已更新",
       "failed": "更新失败",
       "cancelled": "已取消",
-      "check": "请查看",
+      "check": "需要留意",
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {

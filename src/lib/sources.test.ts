@@ -1151,7 +1151,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, claude)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, undefined)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge).toBe("installed.blocked.NoSafeMethod.badge");
-    expect(en.installed.blocked.NoSafeMethod.badge).toBe("Uninstall manually");
+    expect(en.installed.blocked.NoSafeMethod.badge).toBe("Manual uninstall");
     expect(zhCN.installed.blocked.NoSafeMethod.badge).toBe("需手动卸载");
   });
 
