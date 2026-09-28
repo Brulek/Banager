@@ -174,13 +174,16 @@ describe("ToolRow", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the source's chip give way to the name on a narrow row, where the avatar still says it", () => {
+  it("lets the source's chip give way to the name on a narrow row, and still says it to a screen reader", () => {
     const { container, getByText } = renderWithProviders(
       <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" nameChip="Homebrew" description="A JSON processor" />,
     );
     // A container query: the row measures itself, not the window.
     expect((container.querySelector("[data-tool-row]") as HTMLElement).className).toContain("@container");
-    expect(getByText("Homebrew", { selector: "span" }).className).toContain("@max-2xl:hidden");
+    // Visually hidden, not removed: the avatar is aria-hidden, so the chip
+    // is all a screen reader has of the source.
+    expect(getByText("Homebrew", { selector: "span" }).className).toContain("@max-2xl:sr-only");
+    expect(getByText("Homebrew", { selector: "span" }).className).not.toContain("hidden");
   });
 
   it("draws an avatar of its own in place of a source's, for a row that belongs to no source", () => {

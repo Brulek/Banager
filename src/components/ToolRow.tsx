@@ -160,9 +160,11 @@ export function ToolRow({
             {name}
           </p>
           {/* Gives way to the name on a narrow row -- the window's
-              default 800px -- where the avatar still says the source. */}
+              default 800px -- where the avatar still shows the source.
+              Hidden from sight only: the avatar is decorative, so this is
+              the only place a screen reader hears the source. */}
           {nameChip ? (
-            <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted @max-2xl:hidden">
+            <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted @max-2xl:sr-only">
               {nameChip}
             </span>
           ) : null}
