@@ -206,6 +206,7 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(Default::default()),
+            notified: Mutex::new(Default::default()),
         })
     }
 

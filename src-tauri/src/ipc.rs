@@ -35,10 +35,12 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
 /// `UiEvent::SnapshotChanged` on `state.channel_sink` whenever the
 /// refreshed snapshot's `generation` is newer than any this process has
 /// already announced (M9 in the design review; see `claim_broadcast` below
-/// for exactly what that means under concurrent callers). `canager-core`
-/// must never depend on `tauri`, so `Session::refresh` itself cannot send
-/// this — the shell is the only layer that can, and `announce` below is
-/// the only place that does so outside a test.
+/// for exactly what that means under concurrent callers), and after every
+/// round asked for as `RoundTrigger::Automatic` whatever its generation
+/// (`announce`). `canager-core` must never depend on `tauri`, so
+/// `Session::refresh` itself cannot send this — the shell is the only
+/// layer that can, and `announce` below is the only place that does so
+/// outside a test.
 pub(crate) async fn refresh_as(
     state: &AppState,
     trigger: RoundTrigger,
@@ -52,7 +54,7 @@ pub(crate) async fn refresh_as(
         .lock()
         .unwrap()
         .record(round, trigger, &snapshot);
-    Ok(announce(state, snapshot))
+    Ok(announce(state, snapshot, trigger))
 }
 
 fn check_options(state: &AppState) -> CheckOptions {
@@ -64,9 +66,21 @@ fn check_options(state: &AppState) -> CheckOptions {
 
 /// Broadcasts `SnapshotChanged` for `snapshot` if this caller is the one
 /// that claims its generation (`claim_broadcast`), and hands it back.
-fn announce(state: &AppState, snapshot: Snapshot) -> Snapshot {
+///
+/// A round of the daily check (`RoundTrigger::Automatic`) is announced
+/// whatever its generation: one that found nothing new keeps the
+/// generation it read, and without the event the window would never
+/// fetch it. With it, the page takes the snapshot of that round -- the
+/// same generation, a later `refreshed_at`, which `isNewerSnapshot` in
+/// src/lib/events.ts lets in -- so its header's last check moves, and it
+/// reports the updates the round offers with the round's number
+/// (`notify::report_update_set`), which is how a notification that
+/// failed, or pairs nobody has seen, are tried again at the next daily
+/// check.
+fn announce(state: &AppState, snapshot: Snapshot, trigger: RoundTrigger) -> Snapshot {
     let generation = snapshot.generation;
-    if claim_broadcast(&state.last_broadcast_generation, generation) {
+    let claimed = claim_broadcast(&state.last_broadcast_generation, generation);
+    if claimed || trigger == RoundTrigger::Automatic {
         state
             .channel_sink
             .broadcast(UiEvent::SnapshotChanged { generation });
@@ -921,6 +935,7 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
         };
         (state, execute_calls, check_options_calls)
     }
@@ -961,6 +976,7 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
         })
     }
 
@@ -1013,6 +1029,7 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
         });
         (state, check_options_calls)
     }
@@ -1416,6 +1433,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_a_round_of_the_daily_check_is_announced_even_when_its_generation_is_unchanged() {
+        // The exception to the test above: the page must fetch every round
+        // of the daily check, one that found nothing new included, to
+        // report the updates it offers with its round's number
+        // (`notify::report_update_set`).
+        let state = state_with_fake_adapter();
+        let first = refresh_impl(&state).await.expect("first refresh_impl");
+
+        let received: Arc<std::sync::Mutex<Vec<UiEvent>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+        let channel: Channel<UiEvent> = Channel::new(move |body| {
+            let event: UiEvent = body.deserialize().expect("deserialize UiEvent");
+            r.lock().unwrap().push(event);
+            Ok(())
+        });
+        subscribe_events_impl(&state, channel).expect("subscribe_events_impl");
+
+        let daily = refresh_as(&state, RoundTrigger::Automatic)
+            .await
+            .expect("the daily check's refresh");
+        assert_eq!(
+            first.generation, daily.generation,
+            "precondition: identical content must not move the generation"
+        );
+        assert!(daily.round > first.round, "a round of its own");
+        // And a round of the window's that changes nothing is still quiet.
+        refresh_impl(&state).await.expect("third refresh_impl");
+
+        let events = received.lock().unwrap();
+        let generations: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                UiEvent::SnapshotChanged { generation } => Some(*generation),
+                UiEvent::Operation(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            generations,
+            vec![daily.generation],
+            "the daily check's round, and it alone, announced: {events:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_plan_operation_impl_delegates_to_session_issue_plan() {
         let state = state_with_fake_adapter();
         refresh_impl(&state).await.expect("refresh_impl");
@@ -1656,6 +1718,7 @@ mod tests {
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: std::sync::Mutex::new(Default::default()),
+            notified: std::sync::Mutex::new(Default::default()),
         }
     }
 

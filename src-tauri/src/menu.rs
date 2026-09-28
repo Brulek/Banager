@@ -9,9 +9,9 @@
 //! menu's), the item is macOS's own (`MacItem`), shortcut and all, and
 //! Canager gives only its label. The three items that act in the page --
 //! Settings…, Check Again, Search -- bring the window back if it was
-//! closed or minimized (`window::show`) and tell it, one event each
-//! (`PageCommand`), and the page runs the code its own controls run
-//! (src/lib/menu.ts).
+//! closed or minimized and tell it, one event each (`PageCommand`,
+//! through `window::show_and_tell`), and the page runs the code its own
+//! controls run (src/lib/menu.ts).
 //!
 //! The page says which language: `set_menu_language`, at startup and at
 //! every change of language. Until it has, the menu bar is built in the
@@ -23,9 +23,9 @@ use std::sync::Mutex;
 use tauri::menu::{
     AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
 };
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
-use crate::window::{self, MAIN_WINDOW};
+use crate::window;
 
 /// The languages the menu bar is written in: the window's two. The page
 /// names them as its i18n does, "en" and "zh-CN"; Tauri refuses any other
@@ -409,6 +409,15 @@ pub struct MenuBar {
     language: Mutex<Option<MenuLanguage>>,
 }
 
+impl MenuBar {
+    /// The language the menu bar is in, once it is up: the window's, once
+    /// the page has said which. The update notification is written in it
+    /// too (`notify::report_update_set`).
+    pub fn language(&self) -> Option<MenuLanguage> {
+        *self.language.lock().unwrap()
+    }
+}
+
 /// Puts up the menu bar in `language`, unless it is in it already.
 /// `run()` manages `MenuBar` on the builder, before any of this can run.
 pub fn show<R: Runtime>(app: &AppHandle<R>, language: MenuLanguage) -> tauri::Result<()> {
@@ -439,15 +448,14 @@ pub fn set_menu_language(app: AppHandle, language: MenuLanguage) -> Result<(), S
 
 /// Tells the window that one of the items acting in the page was chosen:
 /// its event (`PageCommand::event`), to the window alone, once the window
-/// is back on screen -- closed, or in the Dock, it would show nothing of
-/// what the item does. Every other item's action is macOS's and needs
-/// nothing from here.
+/// is back on screen (`window::show_and_tell`) -- closed, or in the Dock,
+/// it would show nothing of what the item does. Every other item's action
+/// is macOS's and needs nothing from here.
 pub fn forward_to_page<R: Runtime>(app: &AppHandle<R>, id: &str) {
     let Some(command) = PageCommand::from_id(id) else {
         return;
     };
-    window::show(app);
-    if let Err(e) = app.emit_to(MAIN_WINDOW, command.event(), ()) {
+    if let Err(e) = window::show_and_tell(app, command.event()) {
         eprintln!(
             "[canager] could not tell the window {} was chosen: {e}",
             command.id()

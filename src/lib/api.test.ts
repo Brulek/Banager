@@ -280,3 +280,16 @@ describe("Show in Finder", () => {
     ]);
   });
 });
+
+describe("the notification plugin", () => {
+  it("gives the page one command, the one the plugin's own script calls as the page loads", () => {
+    // tauri-plugin-notification's script asks whether notifications are
+    // allowed as the page loads; refused, the call would end in an
+    // unhandled rejection. Asking for permission and posting are
+    // Canager's own commands (src-tauri/src/notify.rs), so the page can
+    // post nothing itself: not `notification:default`, which would let it.
+    expect(capability.permissions.filter((p) => p.startsWith("notification:"))).toEqual([
+      "notification:allow-is-permission-granted",
+    ]);
+  });
+});

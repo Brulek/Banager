@@ -1,5 +1,6 @@
 use crate::events::ChannelSink;
 use canager_core::auto_check::RoundLog;
+use canager_core::notify_updates::Notified;
 use canager_core::session::Session;
 use canager_core::settings::{self, Settings};
 use std::path::PathBuf;
@@ -21,8 +22,13 @@ pub struct AppState {
     /// Who asked for each refresh round: the window or the daily check.
     /// Written by `ipc::refresh_as` after every round, read by
     /// `ipc::refresh_on_background_change` for the round its refresh
-    /// belongs to. In memory only.
+    /// belongs to, and by `notify::report` for the round the page reports.
+    /// In memory only.
     pub rounds: Mutex<RoundLog>,
+    /// The (row, version) pairs this run has told the user about in the
+    /// update notification, or that the user saw in the window: what
+    /// `notify::report` goes by. In memory only.
+    pub notified: Mutex<Notified>,
 }
 
 impl AppState {
@@ -39,6 +45,7 @@ impl AppState {
             channel_sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
             rounds: Mutex::new(RoundLog::default()),
+            notified: Mutex::new(Notified::default()),
         }
     }
 

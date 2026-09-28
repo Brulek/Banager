@@ -8,6 +8,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-badge-count",
     "opener:allow-reveal-item-in-dir",
+    "notification:allow-is-permission-granted",
     "updater:default"
   ]
 }

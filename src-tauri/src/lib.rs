@@ -2,6 +2,7 @@ mod auto_check;
 pub mod events;
 mod ipc;
 mod menu;
+mod notify;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
 // `get_settings`/`set_settings` methods are only exercised by this module's
@@ -28,6 +29,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Permission to post the update notification (notify.rs). The page
+        // is given one of its commands, the one the plugin's own script
+        // calls as the page loads (capabilities/default.json); Canager's
+        // commands in notify.rs do the rest.
+        .plugin(tauri_plugin_notification::init())
         // The window opens as big as it was when Canager last quit, and
         // where it was if a display is still there -- zoomed or in full
         // screen, if it was -- as a Mac app's does; with nothing saved yet,
@@ -105,6 +111,8 @@ pub fn run() {
             ipc::scan_unknown,
             ipc::artifact_icon,
             menu::set_menu_language,
+            notify::report_update_set,
+            notify::request_notification_permission,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

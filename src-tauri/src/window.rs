@@ -15,7 +15,7 @@
 //! so closing the window closes it, and Canager quits with its last
 //! window, as tauri has it.
 
-use tauri::{AppHandle, Manager, RunEvent, Runtime, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, Window, WindowEvent};
 
 /// The window's label: tauri.conf.json's one window, which gives none, so
 /// Tauri's default -- the label capabilities/default.json names too.
@@ -113,8 +113,8 @@ pub fn on_run_event<R: Runtime>(_app: &AppHandle<R>, _event: RunEvent) {}
 /// Minimize put it, and onto the screen, which closing it took it off --
 /// with the page as it was left, since closing only hid it. A window on
 /// screen already only comes to the front. For the Dock icon
-/// (`on_run_event`) and the menu bar's items that act in the page
-/// (`menu::forward_to_page`).
+/// (`on_run_event`), and through `show_and_tell` for the menu bar's items
+/// that act in the page and a click on the update notification.
 pub fn show<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
         return;
@@ -126,6 +126,17 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = shown {
         eprintln!("[canager] could not show the window: {e}");
     }
+}
+
+/// Brings the window back (`show`), then tells the page `event`, to the
+/// window alone: closed, or in the Dock, it would show nothing of what the
+/// page does for it. What the menu bar's items that act in the page do
+/// (`menu::forward_to_page`), and a click on the update notification
+/// (`notify::open_updates`). An error is the event's: the window is shown
+/// whatever becomes of it.
+pub fn show_and_tell<R: Runtime>(app: &AppHandle<R>, event: &str) -> tauri::Result<()> {
+    show(app);
+    app.emit_to(MAIN_WINDOW, event, ())
 }
 
 #[cfg(test)]
