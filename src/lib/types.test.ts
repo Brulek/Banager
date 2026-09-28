@@ -136,8 +136,8 @@ describe("types", () => {
     // in crates/canager-core/src/model.rs, whose
     // `test_uninstall_blocked_is_a_bare_string_on_the_wire_and_null_when_absent`
     // asserts these exact spellings from the Rust side.
-    const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod"];
-    expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod"]');
+    const reasons: UninstallBlocked[] = ["Pinned", "NoSafeMethod", "UvToolDirSet"];
+    expect(JSON.stringify(reasons)).toBe('["Pinned","NoSafeMethod","UvToolDirSet"]');
     const removable: UninstallBlocked | null = null;
     expect(roundTrip(removable)).toBeNull();
   });

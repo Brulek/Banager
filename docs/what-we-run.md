@@ -68,7 +68,8 @@ Ollama button is pressed, and at the start of every Unknown-page scan,
 `CARGO_HOME`, `RUSTUP_HOME`, `ZDOTDIR` and `OLLAMA_HOST` from Canager's
 environment and the effective user id from the process. Homebrew's
 install, uninstall and upgrade previews read four more, to find its
-`brew.env` files (its section). Every package manager
+`brew.env` files, and uv's inventory and uninstall preview read
+`UV_TOOL_DIR` (their sections). Every package manager
 but Homebrew finds its executable with `resolve_exe`: the first directory
 on that `PATH` containing a regular file of that name. Homebrew is looked
 for at three fixed paths instead (its section), and so is a tool with its
@@ -135,9 +136,10 @@ minutes (`PLAN_LIFETIME` in `crates/canager-core/src/session/plans.rs`),
 after which it has to be previewed again. Before a plan is built,
 `Session::issue_plan` refuses an operation on a source that is read-only
 or not answering, an upgrade or uninstall the tool itself reports it will
-refuse (a pinned package), and an update of a tool that installs its
+refuse (a pinned package), an update of a tool that installs its
 updates itself and has no update command Canager may run (Antigravity
-CLI's section) — the buttons the pages hide are backed by that refusal,
+CLI's section), and an uninstall of a uv tool while `UV_TOOL_DIR` is set
+(uv's section) — the buttons the pages hide are backed by that refusal,
 not only by the page. On confirmation
 `run_operation` (`crates/canager-core/src/ops/mod.rs`) takes the plan's
 locks, runs the command (or moves the listed paths to the
@@ -414,6 +416,22 @@ path only. uv has no tool-search command Canager uses.
 | Install | `<uv> tool install {name}` | 600 s | No |
 | Uninstall | `<uv> tool uninstall {name}` | 600 s | No |
 | Upgrade | `<uv> tool upgrade {name}` | 600 s | No |
+
+**No uninstall while `UV_TOOL_DIR` is set.** uv keeps its tools in the
+folder `UV_TOOL_DIR` names when it is set and not empty
+(`InstalledTools::from_settings`, uv 0.12.17
+`crates/uv-tool/src/lib.rs:132-140`). When `uv tool uninstall` removes
+the last tool, it deletes that folder, and then the folder above it, with
+every file in it, when that holds no folder but ones named `.tmp…`
+(`crates/uv/src/commands/tool/uninstall.rs:40-52`,
+`crates/uv-fs/src/lib.rs:795-815`). In uv's own layout that is uv's data
+folder; under `UV_TOOL_DIR` it is one of the user's. So every inventory
+reads `UV_TOOL_DIR` from Canager's environment, which every uv command
+inherits (`tool_dir_fn` in `UvAdapter`), and while it is set and not
+empty no uv tool offers Uninstall: each row says why and to uninstall it
+in Terminal (`UninstallBlocked::UvToolDirSet`), `Session::issue_plan`
+refuses the uninstall, and `UvAdapter::plan` reads the variable again and
+refuses it too. Install and upgrade plan as before.
 
 ## pip (read-only)
 
@@ -1665,6 +1683,10 @@ Canager neither chooses nor sees them.
   when a `brew.env` file takes it back, the preview says so (Homebrew's
   section).
 - Never runs a `brew` command as root.
+- Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Canager's
+  environment: removing the last tool, uv would then also delete the
+  folder above that one, with every file in it, when that folder holds no
+  other folder (uv's section).
 - Never runs a write command from a refresh, and never runs one without a
   preview the user confirmed within the last ten minutes.
 - Never launches an application from a refresh; `open -a Ollama` runs

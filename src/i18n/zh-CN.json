@@ -125,6 +125,11 @@
           "description": "这台 Mac 上的 Rust 不全在 ~/.cargo 和 ~/.rustup 里，Canager 只卸载这两个位置的 Rust。请按 rustup 官方文档运行 rustup self uninstall。",
           "refused": "Rust 不全在 ~/.cargo 和 ~/.rustup 里，所以没有卸载，也没有改动。"
         }
+      },
+      "UvToolDirSet": {
+        "badge": "需在终端卸载",
+        "description": "设置了 UV_TOOL_DIR 时，卸载最后一个 uv 工具还会删除 UV_TOOL_DIR 所指文件夹的上一层文件夹和其中所有文件，只要那一层里没有别的文件夹。请在终端里卸载。",
+        "refused": "设置了 UV_TOOL_DIR 时，卸载最后一个 uv 工具还会删除 UV_TOOL_DIR 所指文件夹的上一层文件夹，只要那一层里没有别的文件夹，所以没有卸载，也没有改动。请在终端里卸载。"
       }
     }
   },

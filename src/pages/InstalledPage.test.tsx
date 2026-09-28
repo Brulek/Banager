@@ -613,6 +613,41 @@ describe("InstalledPage", () => {
     expect(container.querySelector("code")).toBeNull();
   });
 
+  it("offers no Uninstall on a uv tool while UV_TOOL_DIR is set, and says why behind its chip", async () => {
+    // `UninstallBlocked::UvToolDirSet` (uv's inventory): with UV_TOOL_DIR
+    // set, `uv tool uninstall` of the last tool also deletes the folder
+    // above the tools folder when that holds no other folder, so the row
+    // hides the button and its chip says why, with nothing set apart to
+    // copy. `Session::issue_plan` and uv's own plan refuse it in Rust too.
+    const uv: ManagerInstance = {
+      ...brew,
+      id: "uv",
+      adapter_id: "uv",
+      exe_path: "/opt/homebrew/bin/uv",
+      prefix: "/opt/homebrew/bin",
+      version: "0.12.17",
+    };
+    served = {
+      ...snapshot,
+      instances: [uv],
+      artifacts: [
+        formula("ruff", {
+          key: { instance_id: "uv", kind: "Tool", name: "ruff" },
+          uninstall_blocked: "UvToolDirSet",
+        }),
+      ],
+      updates: [],
+    };
+    const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
+
+    const ruff = await findRow("ruff");
+    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(chipDetail(ruff, "Uninstall in Terminal")).toHaveTextContent(
+      "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names, with every file in it, when that folder holds no other folder. Uninstall it in Terminal.",
+    );
+    expect(container.querySelector("code")).toBeNull();
+  });
+
   it("shows the standalone summary beside its chip, and a Homebrew package with no description what Homebrew says it is", async () => {
     // A standalone artifact carries `description: null` (the line has to
     // be localised, so its key lives in `STANDALONE_SUMMARY_KEYS`); a

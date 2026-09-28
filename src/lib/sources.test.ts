@@ -1181,6 +1181,28 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
       expect(locale.installed.blocked.NoSafeMethod.description).not.toMatch(/website|网站/);
     }
   });
+
+  it("says why a uv tool has no Uninstall while UV_TOOL_DIR is set, and hands over no command to copy", () => {
+    // `UninstallBlocked::UvToolDirSet`: `uv tool uninstall` of the last
+    // tool deletes the folder above the one UV_TOOL_DIR names when that
+    // holds no other folder. The command that would do it is not set
+    // apart to be copied.
+    const uv = instance({ id: "uv", adapter_id: "uv", exe_path: "/opt/homebrew/bin/uv" });
+    const key: ArtifactKey = { instance_id: "uv", kind: "Tool", name: "ruff" };
+    expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.command(key, uv)).toBe("");
+    expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.badge).toBe("installed.blocked.UvToolDirSet.badge");
+    expect(uninstallBlockedCopy("UvToolDirSet", "uv")).toBe(UNINSTALL_BLOCKED_KEYS.UvToolDirSet);
+    expect(en.installed.blocked.UvToolDirSet.badge).toBe("Uninstall in Terminal");
+    expect(zhCN.installed.blocked.UvToolDirSet.badge).toBe("需在终端卸载");
+    for (const locale of [en, zhCN]) {
+      for (const copy of [locale.installed.blocked.UvToolDirSet.description, locale.installed.blocked.UvToolDirSet.refused]) {
+        expect(copy).toContain("UV_TOOL_DIR");
+        expect(copy).not.toContain("{{command}}");
+      }
+    }
+    expect(en.installed.blocked.UvToolDirSet.refused).toContain("didn't uninstall or change anything");
+    expect(zhCN.installed.blocked.UvToolDirSet.refused).toContain("没有卸载，也没有改动");
+  });
 });
 
 describe("parseUninstallBlocked", () => {
@@ -1188,6 +1210,9 @@ describe("parseUninstallBlocked", () => {
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"Pinned"}')).toBe("Pinned");
     expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"NoSafeMethod"}')).toBe(
       "NoSafeMethod",
+    );
+    expect(parseUninstallBlocked('{"kind":"uninstall_blocked","reason":"UvToolDirSet"}')).toBe(
+      "UvToolDirSet",
     );
     // The upgrade gate's payload is a different refusal with different copy.
     expect(parseUninstallBlocked('{"kind":"update_blocked","reason":"Pinned"}')).toBeNull();

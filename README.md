@@ -23,7 +23,7 @@ Canager puts all of it in one window: what you have, what has an update, and a b
 | Homebrew — formulae and casks | yes | yes |
 | npm — global packages | yes | yes, when the prefix is yours to write |
 | pipx | yes | yes |
-| uv — tools | yes | yes |
+| uv — tools | yes | yes, but no uninstall while `UV_TOOL_DIR` is set in Canager's environment: removing the last tool, uv would then also delete the folder above that one, with every file in it, when that folder holds no other folder; the row says so, and to uninstall it in Terminal |
 | pip | yes | **no** — Canager will not drive pip's installer; it points you at pipx or uv |
 | cargo | yes | yes, with a warning that it compiles locally |
 | Ollama — models | yes | yes |

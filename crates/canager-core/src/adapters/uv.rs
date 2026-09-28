@@ -7,10 +7,11 @@ use crate::events::{EventSink, OpId};
 use crate::model::{
     ArtifactKey, ArtifactKind, CancelPolicy, InstallReason, InstalledArtifact, InstanceStatus,
     ManagerInstance, OpKind, OpRequest, Outcome, Plan, PlanAction, Reconciled, ResourceLock, Scope,
-    SearchHit, Unavailable, UpdateCandidate, UpdateChannel,
+    SearchHit, Unavailable, UninstallBlocked, UpdateCandidate, UpdateChannel,
 };
 use crate::runner::{resolve_exe, CommandOutput, CommandRunner, CommandSpec, HostEnv, OutputUse};
 use async_trait::async_trait;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,13 +102,52 @@ fn parse_tool_list_outdated(text: &str, instance_id: &str) -> Vec<UpdateCandidat
 pub struct UvAdapter {
     runner: Arc<dyn CommandRunner>,
     meta: AdapterMeta,
+    /// How to read `UV_TOOL_DIR` from Canager's own environment, which
+    /// every `uv` command inherits (a uv plan adds no variables): read at
+    /// every inventory and every uninstall preview (`uninstall_blocked`).
+    /// The same fn-pointer seam as `BrewAdapter::askpass_fn`; inside this
+    /// crate's unit tests it reads as unset unless a test sets it
+    /// (`with_tool_dir_fn`), so that no test answers differently on a Mac
+    /// whose environment sets it.
+    tool_dir_fn: fn() -> Option<OsString>,
 }
+
+/// `UvAdapter::tool_dir_fn` as `UvAdapter::new` sets it: Canager's real
+/// environment in every build but this crate's unit tests.
+#[cfg(not(test))]
+const DEFAULT_TOOL_DIR_FN: fn() -> Option<OsString> = || std::env::var_os("UV_TOOL_DIR");
+#[cfg(test)]
+const DEFAULT_TOOL_DIR_FN: fn() -> Option<OsString> = || None;
 
 impl UvAdapter {
     pub fn new(runner: Arc<dyn CommandRunner>) -> UvAdapter {
         let meta = AdapterMeta::from_toml(include_str!("../../../../adapters/meta/uv.toml"))
             .expect("adapters/meta/uv.toml must parse");
-        UvAdapter { runner, meta }
+        UvAdapter {
+            runner,
+            meta,
+            tool_dir_fn: DEFAULT_TOOL_DIR_FN,
+        }
+    }
+
+    /// Test-only hook to set what `UV_TOOL_DIR` reads as (see
+    /// `tool_dir_fn`).
+    #[cfg(test)]
+    fn with_tool_dir_fn(mut self, tool_dir_fn: fn() -> Option<OsString>) -> UvAdapter {
+        self.tool_dir_fn = tool_dir_fn;
+        self
+    }
+
+    /// Why Canager uninstalls no uv tool here, or `None`: `UV_TOOL_DIR` set
+    /// and not empty, which is how uv reads it (`InstalledTools::from_settings`
+    /// filters an empty one out, uv 0.12.17 `crates/uv-tool/src/lib.rs:133`).
+    /// uv then keeps its tools in that folder, and removing the last one
+    /// deletes the folder above it too, with every file in it, when that
+    /// holds no other folder (`UninstallBlocked::UvToolDirSet`).
+    fn uninstall_blocked(&self) -> Option<UninstallBlocked> {
+        (self.tool_dir_fn)()
+            .filter(|dir| !dir.is_empty())
+            .map(|_| UninstallBlocked::UvToolDirSet)
     }
 
     pub async fn detect(&self, env: &HostEnv) -> Vec<ManagerInstance> {
@@ -202,7 +242,14 @@ impl UvAdapter {
                 stderr: output.stderr,
             });
         }
-        Ok(parse_tool_list_show_paths(&output.stdout, &inst.id))
+        let uninstall_blocked = self.uninstall_blocked();
+        Ok(parse_tool_list_show_paths(&output.stdout, &inst.id)
+            .into_iter()
+            .map(|artifact| InstalledArtifact {
+                uninstall_blocked,
+                ..artifact
+            })
+            .collect())
     }
 
     pub async fn check_updates(
@@ -253,6 +300,15 @@ impl UvAdapter {
     ) -> Result<Plan, AdapterError> {
         ensure_instance_match(req, inst)?;
         validate_package_name(&req.name)?;
+        // The gate's late twin (`blocked_uninstall` in session/plans.rs
+        // refuses the same row from the snapshot): read again here, so no
+        // preview of `uv tool uninstall` is ever built while uv would take
+        // the folder above its tools folder with it.
+        if req.kind == OpKind::Uninstall {
+            if let Some(reason) = self.uninstall_blocked() {
+                return Err(AdapterError::UninstallBlocked { reason });
+            }
+        }
         let lock = ResourceLock(inst.id.clone());
         let args = match req.kind {
             OpKind::Install => vec!["tool".to_string(), "install".to_string(), req.name.clone()],
@@ -535,6 +591,92 @@ mod tests {
             assert_eq!(command_args(&plan), expected);
             assert!(!plan.needs_password);
         }
+    }
+
+    /// A runner that answers `uv tool list --show-paths` with the recorded
+    /// fixture (one tool, ruff).
+    fn show_paths_runner() -> Arc<MockRunner> {
+        let text =
+            std::fs::read_to_string("../../adapters/fixtures/uv/0.12.17/tool-list-show-paths.txt")
+                .expect("read uv tool-list-show-paths.txt fixture");
+        let runner = Arc::new(MockRunner::new());
+        runner.respond(
+            vec!["/opt/homebrew/bin/uv", "tool", "list", "--show-paths"],
+            CommandOutput {
+                exit_code: Some(0),
+                stdout: text,
+                stderr: String::new(),
+                timed_out: false,
+                cancelled: false,
+            },
+        );
+        runner
+    }
+
+    fn request(kind: OpKind) -> OpRequest {
+        OpRequest {
+            kind,
+            instance_id: test_instance().id,
+            artifact_kind: ArtifactKind::Tool,
+            name: "ruff".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_with_uv_tool_dir_set_no_tool_offers_an_uninstall() {
+        // `uv tool uninstall` of the last tool deletes the tools folder and
+        // then its parent with every file in it, when the parent holds no
+        // folder but `.tmp*` ones (uv 0.12.17
+        // `crates/uv/src/commands/tool/uninstall.rs:40-52`); under
+        // `UV_TOOL_DIR` that parent is one of the user's own folders. Every
+        // row says why it has no Uninstall button, from the inventory.
+        let adapter = UvAdapter::new(show_paths_runner())
+            .with_tool_dir_fn(|| Some(OsString::from("/Users/someone/work/uv-tools")));
+        let artifacts = adapter
+            .inventory(&test_instance())
+            .await
+            .expect("inventory");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(
+            artifacts[0].uninstall_blocked,
+            Some(UninstallBlocked::UvToolDirSet)
+        );
+
+        // Unset -- or set to nothing, which uv reads as unset
+        // (`InstalledTools::from_settings`) -- every row keeps its button.
+        for tool_dir_fn in [(|| None) as fn() -> Option<OsString>, || {
+            Some(OsString::new())
+        }] {
+            let adapter = UvAdapter::new(show_paths_runner()).with_tool_dir_fn(tool_dir_fn);
+            let artifacts = adapter
+                .inventory(&test_instance())
+                .await
+                .expect("inventory");
+            assert_eq!(artifacts[0].uninstall_blocked, None);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_with_uv_tool_dir_set_plan_refuses_the_uninstall_and_nothing_else() {
+        // The gate refuses the row from the snapshot; the plan refuses it
+        // too, for a snapshot older than the environment it reads. Install
+        // and upgrade delete no folder, so they still plan.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = UvAdapter::new(runner.clone())
+            .with_tool_dir_fn(|| Some(OsString::from("/Users/someone/work/uv-tools")));
+        let inst = test_instance();
+        match UvAdapter::plan(&adapter, &inst, &request(OpKind::Uninstall)).await {
+            Err(AdapterError::UninstallBlocked { reason }) => {
+                assert_eq!(reason, UninstallBlocked::UvToolDirSet)
+            }
+            other => panic!("expected UninstallBlocked(UvToolDirSet), got {other:?}"),
+        }
+        for kind in [OpKind::Install, OpKind::Upgrade] {
+            UvAdapter::plan(&adapter, &inst, &request(kind))
+                .await
+                .unwrap_or_else(|e| panic!("{kind:?} still plans: {e}"));
+        }
+        assert!(runner.calls().is_empty(), "planning runs no uv command");
     }
 
     #[tokio::test]

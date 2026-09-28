@@ -140,6 +140,11 @@
           "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. rustup's documentation explains rustup self uninstall.",
           "refused": "Rust isn't entirely in ~/.cargo and ~/.rustup, so Canager didn't uninstall or change anything."
         }
+      },
+      "UvToolDirSet": {
+        "badge": "Uninstall in Terminal",
+        "description": "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names, with every file in it, when that folder holds no other folder. Uninstall it in Terminal.",
+        "refused": "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names when that folder holds no other folder, so Canager didn't uninstall or change anything. Uninstall it in Terminal."
       }
     }
   },

@@ -68,11 +68,14 @@ export interface InstalledArtifact {
  * the standalone adapter's inventory for a tool with no uninstall command
  * and no safe way yet to remove its files (a recipe with no uninstall
  * method: none in the first batch since phase 4 step C gave Claude Code
- * its path list; the second batch's Ollama.app). Read through
- * `UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts, a `Record` over this
- * union, so a variant added here without copy fails `tsc`.
+ * its path list; the second batch's Ollama.app); `UvToolDirSet` by uv's
+ * inventory for every tool while `UV_TOOL_DIR` is set in Canager's
+ * environment, since removing the last one would also delete the folder
+ * above that one. Read through `UNINSTALL_BLOCKED_KEYS` in
+ * src/lib/sources.ts, a `Record` over this union, so a variant added here
+ * without copy fails `tsc`.
  */
-export type UninstallBlocked = "Pinned" | "NoSafeMethod";
+export type UninstallBlocked = "Pinned" | "NoSafeMethod" | "UvToolDirSet";
 /**
  * What one path a path-list uninstall moves to the Trash is. Mirrors
  * `RemovedWhat` in crates/canager-core/src/model.rs: bare-string unit

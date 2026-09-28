@@ -311,6 +311,21 @@ pub enum UninstallBlocked {
     /// session/plans.rs), the Installed page hides the button and says why
     /// (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
     NoSafeMethod,
+    /// `UV_TOOL_DIR` is set, and not empty, in Canager's environment, which
+    /// every `uv` command inherits, so uv keeps its tools there
+    /// (`InstalledTools::from_settings`, uv 0.12.17
+    /// `crates/uv-tool/src/lib.rs:132-140`). When `uv tool uninstall`
+    /// removes the last tool it deletes that folder, and then its parent,
+    /// with every file in it, when the parent holds no folder but `.tmp*`
+    /// ones (`crates/uv/src/commands/tool/uninstall.rs:40-52`,
+    /// `crates/uv-fs/src/lib.rs:795-815`). In uv's own layout that parent
+    /// is uv's data folder; under `UV_TOOL_DIR` it is whatever folder holds
+    /// the user's, so Canager uninstalls no uv tool then. Produced by
+    /// `UvAdapter::inventory` for every tool, and refused by
+    /// `UvAdapter::plan` as well; the gate refuses it (`blocked_uninstall`
+    /// in session/plans.rs), and the Installed page hides the button and
+    /// says why (`UNINSTALL_BLOCKED_KEYS` in src/lib/sources.ts).
+    UvToolDirSet,
 }
 
 /// Why a path-list uninstall's preview refused one of the paths its
@@ -1203,6 +1218,12 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<InstalledArtifact>(&json).expect("deserialize"),
             no_safe_method
+        );
+
+        // Round 2: a uv tool while `UV_TOOL_DIR` is set. A third spelling.
+        assert_eq!(
+            serde_json::to_string(&UninstallBlocked::UvToolDirSet).unwrap(),
+            r#""UvToolDirSet""#
         );
     }
 

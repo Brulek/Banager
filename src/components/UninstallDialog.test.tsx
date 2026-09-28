@@ -902,6 +902,38 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
+  it("says why a uv tool was not uninstalled while UV_TOOL_DIR is set, with no command to copy", async () => {
+    // A stale Installed page can still offer Uninstall on a uv tool after
+    // UV_TOOL_DIR was set; `Session::issue_plan` (or uv's own plan)
+    // refuses it and `uninstall_blocked_json` in src-tauri/src/ipc.rs
+    // sends this.
+    const uv = brewInstance({ id: "uv", adapter_id: "uv", exe_path: "/opt/homebrew/bin/uv", prefix: "/opt/homebrew/bin" });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshotWith([uv]);
+      if (cmd === "plan_operation") throw '{"kind":"uninstall_blocked","reason":"UvToolDirSet"}';
+      return undefined;
+    });
+
+    renderWithProviders(
+      <UninstallDialog
+        open
+        onOpenChange={() => {}}
+        request={{ kind: "Uninstall", instance_id: "uv", artifact_kind: "Tool", name: "ruff" }}
+        displayName="ruff"
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names when that folder holds no other folder, so Canager didn't uninstall or change anything. Uninstall it in Terminal.",
+      ),
+    );
+    expect(alert.querySelector("code")).toBeNull();
+    expect(alert.textContent).not.toMatch(/uninstall_blocked|Couldn't check/);
+    expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
+  });
+
   it("words a refused path-list preview with the path and the reason, never the payload, and keeps the why behind its ⓘ", async () => {
     // One of the checks a path-list uninstall runs at preview time refused
     // a path (`removal::plan_removal` in
