@@ -1621,7 +1621,7 @@ describe("InstalledPage", () => {
 
     it("shows an update that could not start in its own tool's drawer, not in another's", async () => {
       const answer = mockInvoke.getMockImplementation()!;
-      mockInvoke.mockImplementation((cmd: string, args?: unknown) =>
+      mockInvoke.mockImplementation((cmd, args) =>
         cmd === "plan_operation" ? Promise.reject("brew is busy") : answer(cmd, args),
       );
       renderWithProviders(<InstalledPage />);
