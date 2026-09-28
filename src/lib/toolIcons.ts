@@ -82,9 +82,11 @@ export interface ToolIcons {
    *   each run of `-`, `_` and `.` one `-` -- as PyPI itself does.
    * - Cargo: `cargo:<crate>`.
    * - Ollama: `ollama:<family>`, for the longest family the pack lists that
-   *   the model's name starts with (`qwen2.5-coder` → `ollama:qwen`), the
-   *   name read after its last `/` (a registry and a namespace go), in
-   *   lower case, without its `:tag`; `null` when no family matches.
+   *   the model's name starts with and goes on from with nothing, a digit,
+   *   `-`, `.`, `_` or `:` (`qwen2.5-coder` → `ollama:qwen`, `phi3` →
+   *   `ollama:phi`; `phind-codellama` is not Phi), the name read after its
+   *   last `/` (a registry and a namespace go), in lower case, without its
+   *   `:tag`; `null` when no family matches.
    * - A tool with its own installer: `standalone:<tool>`, from its
    *   adapter id `standalone-<tool>`.
    */
@@ -104,6 +106,21 @@ const OLLAMA = "ollama:";
 const STANDALONE = "standalone-";
 
 /**
+ * What may come next in a model's name after its family's, for the model
+ * to be of that family: a digit (`phi3`, `qwen2.5-coder`) or one of `-`,
+ * `.`, `_` and `:` (`deepseek-r1`). A letter makes it another name:
+ * `phind-codellama` is not a Phi.
+ */
+const AFTER_FAMILY = /^[0-9._:-]/;
+
+/** Whether `model` is of `family`: it starts with it, and goes on from it with nothing or `AFTER_FAMILY`. */
+function isOfFamily(model: string, family: string): boolean {
+  if (!model.startsWith(family)) return false;
+  const rest = model.slice(family.length);
+  return rest === "" || AFTER_FAMILY.test(rest);
+}
+
+/**
  * `pack`, ready to look logos up in. `rasterUrls` maps a raster's file
  * name to the URL it is served at; a raster without one resolves to
  * `null`, like a tool the pack has no logo for. Maps rather than the
@@ -120,7 +137,7 @@ export function loadToolIcons(pack: ToolIconPack, rasterUrls: ReadonlyMap<string
   }
   const tools = new Map(Object.entries(pack.tools));
   const sources = new Map(Object.entries(pack.sources));
-  // Longest first: the first family a model's name starts with is then the longest.
+  // Longest first: the first family a model is of is then the longest.
   const ollamaFamilies = [...tools.keys()]
     .filter((key) => key.startsWith(OLLAMA) && key.length > OLLAMA.length)
     .map((key) => key.slice(OLLAMA.length))
@@ -142,7 +159,7 @@ export function loadToolIcons(pack: ToolIconPack, rasterUrls: ReadonlyMap<string
       case "ollama": {
         const afterSlash = key.name.slice(key.name.lastIndexOf("/") + 1).toLowerCase();
         const model = afterSlash.split(":")[0];
-        const family = ollamaFamilies.find((f) => model.startsWith(f));
+        const family = ollamaFamilies.find((f) => isOfFamily(model, f));
         return family === undefined ? null : `${OLLAMA}${family}`;
       }
       default:

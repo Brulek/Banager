@@ -100,7 +100,7 @@ describe("toolIconKey", () => {
     const model = (name: string) =>
       fixture.toolIconKey(key("ollama:http://127.0.0.1:11434", "Model", name), "ollama");
 
-    it("takes the longest family in the pack that its name starts with", () => {
+    it("takes the longest family in the pack it is of", () => {
       expect(model("phind-codellama:34b")).toBe("ollama:phind");
       expect(model("phi4:14b")).toBe("ollama:phi");
       expect(model("qwen2.5-coder:7b")).toBe("ollama:qwen");
@@ -117,6 +117,40 @@ describe("toolIconKey", () => {
       expect(model("mistral:7b")).toBeNull();
       // A family matches the start of the name, not any part of it.
       expect(model("tinyllama:1.1b")).toBeNull();
+    });
+
+    /** A model's key, by its name, in a pack with these Ollama families and no other tool. */
+    const inPackOf = (...families: string[]) => {
+      const icons = loadToolIcons(
+        { ...FIXTURE, tools: Object.fromEntries(families.map((family) => [`ollama:${family}`, "si-git"])) },
+        new Map(),
+      );
+      return (name: string) => icons.toolIconKey(key("ollama:http://127.0.0.1:11434", "Model", name), "ollama");
+    };
+
+    it("is of a family only where its name goes on from the family's with nothing, a digit, -, ., _ or :", () => {
+      // Phi and no Phind, Llama and no LLaVA, Mistral and no MistralLite.
+      const of = inPackOf("phi", "llama", "mistral", "qwen", "deepseek");
+      expect(of("phi")).toBe("ollama:phi");
+      expect(of("phi:latest")).toBe("ollama:phi");
+      expect(of("phi3:mini")).toBe("ollama:phi");
+      expect(of("qwen2.5-coder:7b")).toBe("ollama:qwen");
+      expect(of("deepseek-r1:8b")).toBe("ollama:deepseek");
+      expect(of("llama.custom")).toBe("ollama:llama");
+      expect(of("mistral_custom:latest")).toBe("ollama:mistral");
+      // A letter after the family's name makes it another model's name.
+      expect(of("phind-codellama:34b")).toBeNull();
+      expect(of("mistrallite:7b")).toBeNull();
+      expect(of("llava:7b")).toBeNull();
+    });
+
+    it("passes over a longer family its name goes on from with a letter", () => {
+      const of = inPackOf("command", "command-r");
+      expect(of("command-r-plus:104b")).toBe("ollama:command-r");
+      expect(of("command-r7b")).toBe("ollama:command-r");
+      expect(of("command-a:111b")).toBe("ollama:command");
+      // It starts with `command-r`, and goes on from it with an "e".
+      expect(of("command-reasoning")).toBe("ollama:command");
     });
   });
 
