@@ -11,7 +11,7 @@ import {
   uninstallBlockedCopy,
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
-import { warningLines, type WarningLine } from "../lib/warnings";
+import { deletesForGood, warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
 import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
 import { WarningIcon } from "./icons";
@@ -33,7 +33,8 @@ export interface UninstallDialogProps {
 /**
  * The uninstall confirmation, as a sheet: 「卸载 Claude Code？」, the tool
  * with its avatar, what the uninstall does in three groups, then Cancel
- * and a red Uninstall.
+ * and a red Uninstall -- 「永久卸载」 where a line says the uninstall
+ * deletes something for good (`deletesForGood`): rustup's own.
  *
  * It plans the operation itself, so everything that would change is on
  * screen before anything can be submitted (spec §6), in the copy table's
@@ -124,6 +125,9 @@ export function UninstallDialog({
   // `WouldBreak` naming the same packages is not said a second time.
   const lines = warningLines(t, plan?.warnings ?? [], affected);
   const trashPlan = plan !== undefined && "TrashPaths" in plan.action;
+  // Said on the button too, where a line says it: what goes is deleted
+  // for good, not moved to the Trash.
+  const permanent = plan?.warnings.some(deletesForGood) ?? false;
   // What to know before going on, after the lines the plan carries: that
   // it cannot be stopped once it starts -- the one policy the operation
   // bar offers no Cancel for once the command is Running
@@ -239,7 +243,7 @@ export function UninstallDialog({
             disabled={!plan || hasAffected || submitMutation.isPending}
             className={SHEET_BUTTON.danger}
           >
-            {t("uninstall.confirm")}
+            {t(permanent ? "uninstall.confirmPermanent" : "uninstall.confirm")}
           </button>
         </>
       }

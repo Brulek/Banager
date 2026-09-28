@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deletesForGood,
   warningArgs,
   warningDetailKey,
   warningGroup,
@@ -322,7 +323,6 @@ describe("warningDetailKey", () => {
     expect(warningDetailKey({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(
       "warnings.removesToolchainsDetail",
     );
-    expect(warningDetailKey({ DeletesCargoHome: { path: "~/.cargo" } })).toBe("warnings.deletesCargoHomeDetail");
     expect(warningDetailKey({ RemovesCargoInstalled: { names: ["hexyl"] } })).toBe(
       "warnings.removesCargoInstalledDetail",
     );
@@ -336,6 +336,9 @@ describe("warningDetailKey", () => {
 
   it("has nothing behind a line that already says it all", () => {
     for (const warning of [
+      // That the whole Cargo folder goes, and none of it to the Trash, is
+      // on the line itself.
+      { DeletesCargoHome: { path: "~/.cargo" } },
       "DependentsUnknown",
       "CompilesLocally",
       "NonRegistrySource",
@@ -366,6 +369,25 @@ describe("warningDetailKey", () => {
       expect(typeof lookUp(en, key), `en: ${key}`).toBe("string");
       expect(typeof lookUp(zhCN, key), `zh-CN: ${key}`).toBe("string");
     }
+  });
+});
+
+describe("deletesForGood", () => {
+  it("is true of rustup's permanent deletions, and of nothing else", () => {
+    const forGood = EVERY_VARIANT.filter(deletesForGood);
+    expect(forGood).toEqual([
+      { RemovesToolchains: { path: "~/.rustup", names: ["stable-aarch64-apple-darwin"] } },
+      { DeletesCargoHome: { path: "~/.cargo" } },
+      { RemovesCargoInstalled: { names: ["hexyl"] } },
+    ]);
+    expect(deletesForGood({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(true);
+    // What goes to the Trash can be dragged back out.
+    expect(deletesForGood({ WillTrash: { path: "~/.local/share/claude", what: "Program" } })).toBe(false);
+  });
+
+  it("is false of a variant this build does not know", () => {
+    expect(deletesForGood("SomeFutureVariant" as unknown as Warning)).toBe(false);
+    expect(deletesForGood({ SomeFutureVariant: {} } as unknown as Warning)).toBe(false);
   });
 });
 

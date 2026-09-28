@@ -173,7 +173,9 @@ export function warningText(t: Translate, warning: Warning): string | null {
  * all there is: what a kept path is and why it stays, and what rustup's
  * permanent deletions and the line it leaves in a startup file mean for
  * you. The line keeps what decides whether to go on -- "permanently
- * deletes", the path, what goes with it; the ⓘ has the rest.
+ * deletes", the path, what goes with it; the ⓘ has the rest. The Cargo
+ * folder's line has nothing behind it: that the whole folder goes, and
+ * none of it to the Trash, is what decides.
  *
  * Every payload variant is named, so one added to `Warning` fails `tsc`
  * here; at run time, a variant this build does not know has nothing
@@ -184,7 +186,6 @@ export function warningDetailKey(warning: Warning): string | null {
   if ("WillKeep" in warning) return KEPT_WHAT_DETAIL_KEYS[warning.WillKeep.what];
   // The listed and the unlisted sentence share one why.
   if ("RemovesToolchains" in warning) return "warnings.removesToolchainsDetail";
-  if ("DeletesCargoHome" in warning) return "warnings.deletesCargoHomeDetail";
   if ("RemovesCargoInstalled" in warning) return "warnings.removesCargoInstalledDetail";
   if ("LeavesShellConfigLine" in warning) {
     return warning.LeavesShellConfigLine.certain
@@ -196,6 +197,7 @@ export function warningDetailKey(warning: Warning): string | null {
     "ThirdPartyRegistry" in warning ||
     "WillTrash" in warning ||
     "AlreadyGone" in warning ||
+    "DeletesCargoHome" in warning ||
     "Message" in warning
   ) {
     return null;
@@ -236,6 +238,55 @@ export function warningGroup(warning: Warning): WarningGroup {
   const unhandled: never = warning;
   void unhandled;
   return "note";
+}
+
+/**
+ * Whether a warning says the uninstall deletes something for good, with
+ * nothing moved to the Trash: rustup's own uninstall, which deletes the
+ * rustup folder with its toolchains, the Cargo folder and the programs in
+ * it (their sentences start "Permanently deletes"). The uninstall
+ * confirmation's button then says so too (`uninstall.confirmPermanent`).
+ * Only what a line says counts: a plan with no such line may well delete
+ * files -- `brew uninstall` does -- but says nothing about the Trash, and
+ * neither does its button.
+ *
+ * Every variant is named, so one added to `Warning` fails `tsc` here; at
+ * run time, a variant this build does not know is not one, and its line
+ * is still said as a note (`warningGroup`).
+ */
+export function deletesForGood(warning: Warning): boolean {
+  if (typeof warning === "string") {
+    switch (warning) {
+      case "DependentsUnknown":
+      case "CompilesLocally":
+      case "NonRegistrySource":
+      case "HomebrewRustupLosesToolchains":
+      case "EditsShellConfig":
+        return false;
+      default: {
+        const unhandled: never = warning;
+        void unhandled;
+        return false;
+      }
+    }
+  }
+  if ("RemovesToolchains" in warning || "DeletesCargoHome" in warning || "RemovesCargoInstalled" in warning) {
+    return true;
+  }
+  if (
+    "WouldBreak" in warning ||
+    "ThirdPartyRegistry" in warning ||
+    "WillTrash" in warning ||
+    "WillKeep" in warning ||
+    "AlreadyGone" in warning ||
+    "LeavesShellConfigLine" in warning ||
+    "Message" in warning
+  ) {
+    return false;
+  }
+  const unhandled: never = warning;
+  void unhandled;
+  return false;
 }
 
 /** One line of a confirmation: its sentence, and its longer why for an ⓘ, if it has one. */

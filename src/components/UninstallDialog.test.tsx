@@ -367,7 +367,8 @@ describe("UninstallDialog", () => {
   it("keeps each line's longer why behind its ⓘ, and says rustup's permanent deletions out loud", async () => {
     // The copy table's `<key>Detail`s: the line keeps what decides whether
     // to go on -- "permanently deletes", the path, what goes with it --
-    // and the ⓘ has the rest.
+    // and the ⓘ has the rest. The Cargo folder's line keeps all of it:
+    // everything in the folder goes, and none of it to the Trash.
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({
         action: { Command: { program: "/Users/someone/.cargo/bin/rustup", args: ["self", "uninstall", "-y"], env: [] } },
@@ -388,7 +389,7 @@ describe("UninstallDialog", () => {
     await screen.findByRole("region", { name: "Before you continue" });
     expect(linesOf("Before you continue")).toEqual([
       "Permanently deletes ~/.rustup: toolchains stable-aarch64-apple-darwin and everything rustup downloaded.",
-      "Permanently deletes ~/.cargo: Cargo's cache, settings and saved login.",
+      "Permanently deletes ~/.cargo and everything in it, including Cargo's cache, settings and saved login. Nothing goes to the Trash.",
       "Also permanently deletes tokei from the Cargo folder.",
       "Homebrew's rustup shares these folders, so its toolchains go too.",
       "~/.zprofile has a line that mentions Cargo, which rustup won't remove.",
@@ -400,10 +401,6 @@ describe("UninstallDialog", () => {
       [
         "Permanently deletes ~/.rustup: toolchains stable-aarch64-apple-darwin and everything rustup downloaded.",
         "Nothing goes to the Trash. Projects that need Rust won't build until you reinstall it.",
-      ],
-      [
-        "Permanently deletes ~/.cargo: Cargo's cache, settings and saved login.",
-        "Nothing goes to the Trash, and everything else in the folder goes too.",
       ],
       [
         "Also permanently deletes tokei from the Cargo folder.",
@@ -428,11 +425,58 @@ describe("UninstallDialog", () => {
       expect(screen.getByText(why)).toBeInTheDocument();
     }
     // A line that says it all has no ⓘ.
-    expect(
-      screen.queryByRole("button", {
-        name: "Details: Homebrew's rustup shares these folders, so its toolchains go too.",
+    for (const line of [
+      "Permanently deletes ~/.cargo and everything in it, including Cargo's cache, settings and saved login. Nothing goes to the Trash.",
+      "Homebrew's rustup shares these folders, so its toolchains go too.",
+    ]) {
+      expect(screen.queryByRole("button", { name: `Details: ${line}` })).toBeNull();
+    }
+  });
+
+  it("says Uninstall permanently where a line says something is deleted for good, and Uninstall everywhere else", async () => {
+    // rustup's own uninstall deletes its folders outright; a path-list
+    // uninstall moves what it lists to the Trash, and a Homebrew one says
+    // nothing about the Trash either way.
+    const rustup = issuedPlanFor({
+      action: { Command: { program: "/Users/someone/.cargo/bin/rustup", args: ["self", "uninstall", "-y"], env: [] } },
+      cancel_policy: "NoCancel",
+      warnings: [
+        { RemovesToolchains: { path: "~/.rustup", names: [] } },
+        { DeletesCargoHome: { path: "~/.cargo" } },
+        "EditsShellConfig",
+      ],
+    });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plan_operation") return rustup;
+      if (cmd === "submit_operation") return 7;
+      return undefined;
+    });
+    const onSubmitted = vi.fn();
+    const first = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={request} displayName="rustup" onSubmitted={onSubmitted} />,
+    );
+
+    const permanent = await screen.findByRole("button", { name: "Uninstall permanently" });
+    expect(screen.queryByRole("button", { name: "Uninstall" })).toBeNull();
+    fireEvent.click(permanent);
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(7));
+    first.unmount();
+
+    for (const plan of [
+      issuedPlanFor(),
+      issuedPlanFor({
+        action: { TrashPaths: { paths: ["/Users/someone/.local/bin/claude"] } },
+        warnings: [{ WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } }],
       }),
-    ).toBeNull();
+    ]) {
+      vi.mocked(invoke).mockResolvedValue(plan);
+      const { unmount } = renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+      );
+      await waitFor(() => expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled());
+      expect(screen.queryByRole("button", { name: "Uninstall permanently" })).toBeNull();
+      unmount();
+    }
   });
 
   it("renders a warning variant the mirror lacks as its raw key rather than dropping it", async () => {

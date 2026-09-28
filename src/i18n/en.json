@@ -239,8 +239,7 @@
     "removesToolchains": "Permanently deletes {{path}}: toolchains {{names}} and everything rustup downloaded.",
     "removesToolchainsUnlisted": "Permanently deletes {{path}}: every toolchain and everything rustup downloaded.",
     "removesToolchainsDetail": "Nothing goes to the Trash. Projects that need Rust won't build until you reinstall it.",
-    "deletesCargoHome": "Permanently deletes {{path}}: Cargo's cache, settings and saved login.",
-    "deletesCargoHomeDetail": "Nothing goes to the Trash, and everything else in the folder goes too.",
+    "deletesCargoHome": "Permanently deletes {{path}} and everything in it, including Cargo's cache, settings and saved login. Nothing goes to the Trash.",
     "removesCargoInstalled_one": "Also permanently deletes {{names}} from the Cargo folder.",
     "removesCargoInstalled_other": "Also permanently deletes {{count}} programs from the Cargo folder: {{names}}.",
     "removesCargoInstalledDetail": "After you reinstall Rust, cargo install can put back the ones it installed.",
@@ -417,6 +416,7 @@
     "keepListTitle": "Stays where it is",
     "affectedTitle": "These still need it",
     "confirm": "Uninstall",
+    "confirmPermanent": "Uninstall permanently",
     "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
     "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
     "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out."

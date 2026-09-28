@@ -223,8 +223,7 @@
     "removesToolchains": "永久删除 {{path}}：工具链 {{names}} 和 rustup 下载的所有内容。",
     "removesToolchainsUnlisted": "永久删除 {{path}}：所有工具链和 rustup 下载的内容。",
     "removesToolchainsDetail": "不进废纸篓。重装 Rust 之前，需要 Rust 的项目无法编译。",
-    "deletesCargoHome": "永久删除 {{path}}：Cargo 的缓存、设置和登录信息。",
-    "deletesCargoHomeDetail": "不进废纸篓，文件夹里的其它文件也一起删掉。",
+    "deletesCargoHome": "永久删除 {{path}} 和里面的所有文件，包括 Cargo 的缓存、设置和登录信息。不进废纸篓。",
     "removesCargoInstalled_other": "也会永久删除 Cargo 里的 {{count}} 个程序：{{names}}。",
     "removesCargoInstalledDetail": "用 cargo install 装的，重装 Rust 后可以再装回来。",
     "homebrewRustupLosesToolchains": "Homebrew 装的 rustup 共用这些文件夹，它的工具链也会删除。",
@@ -398,6 +397,7 @@
     "keepListTitle": "保留不动",
     "affectedTitle": "这些软件还要用它",
     "confirm": "卸载",
+    "confirmPermanent": "永久卸载",
     "affectedBlocksConfirm": "先卸载上面这些，才能卸载 {{name}}。",
     "trashPreview_other": "这 {{count}} 项会移到废纸篓，可以从那里拖回来。"
   },
