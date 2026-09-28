@@ -598,18 +598,39 @@ describe("UpdatesPage", () => {
     );
   });
 
-  it("says an update ends in Homebrew's clean-up and its autoremove when brew.env turns both back on", async () => {
-    // `Warning::HomebrewCleanupAutoremoves`: `brew upgrade` runs Homebrew's
-    // periodic clean-up when one is due, and that clean-up autoremoves,
-    // once a brew.env takes back both of Canager's variables
+  it("says an update ends in Homebrew's clean-up when brew.env turns it back on", async () => {
+    // `Warning::HomebrewPeriodicCleanup`: `brew upgrade` runs Homebrew's
+    // periodic clean-up when one is due, which deletes older versions and
+    // old downloads, once a brew.env takes back Canager's
+    // HOMEBREW_NO_INSTALL_CLEANUP=1
     // (crates/canager-core/src/adapters/brew/brew_env.rs).
-    planWarnings.glib = ["HomebrewCleanupAutoremoves"];
+    planWarnings.glib = ["HomebrewPeriodicCleanup"];
     const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
-      "When Homebrew's periodic clean-up is due, it runs after this command and also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+      "When Homebrew's periodic clean-up is due, it runs after this command and deletes older versions of Homebrew software and old downloads in its cache.",
+    );
+    expect(
+      within(dialog).queryByText(/installed only as dependencies/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says an update ends in Homebrew's clean-up and its autoremove when brew.env turns both back on", async () => {
+    // `Warning::HomebrewCleanupAutoremoves` follows it when a brew.env
+    // takes back HOMEBREW_NO_AUTOREMOVE=1 as well: that clean-up then also
+    // autoremoves.
+    planWarnings.glib = ["HomebrewPeriodicCleanup", "HomebrewCleanupAutoremoves"];
+    const { findAllByRole, findByRole } = renderWithProviders(<UpdatesPage />);
+
+    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    const dialog = await findByRole("dialog");
+    await within(dialog).findByText(
+      "When Homebrew's periodic clean-up is due, it runs after this command and deletes older versions of Homebrew software and old downloads in its cache.",
+    );
+    await within(dialog).findByText(
+      "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
     );
   });
 

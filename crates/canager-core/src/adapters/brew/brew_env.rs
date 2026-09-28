@@ -1,6 +1,6 @@
 //! What Homebrew's own launcher does to the environment Canager hands it,
 //! for the two variables that decide whether a `brew` command Canager runs
-//! also uninstalls software its preview never named.
+//! also deletes or uninstalls software its preview never named.
 //!
 //! Every `brew` command Canager runs carries `HOMEBREW_NO_AUTOREMOVE=1` and
 //! `HOMEBREW_NO_INSTALL_CLEANUP=1` (`BrewAdapter::ENV`). Before any of
@@ -20,15 +20,18 @@
 //!   last one it recorded (`$HOMEBREW_CACHE/.cleaned`) is more than
 //!   `HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS` days old, 30 unless set
 //!   (`install.rb:325-328`, `cleanup.rb:418-445`) -- unless
-//!   `HOMEBREW_NO_INSTALL_CLEANUP` is set -- and that cleanup ends in the
-//!   same autoremove unless `HOMEBREW_NO_AUTOREMOVE` is set
-//!   (`cleanup.rb:471`).
+//!   `HOMEBREW_NO_INSTALL_CLEANUP` is set. That cleanup deletes the older
+//!   installed versions of every installed formula and old downloads in
+//!   Homebrew's cache (`cleanup.rb:448-459`, `:473`), and ends in the same
+//!   autoremove unless `HOMEBREW_NO_AUTOREMOVE` is set (`cleanup.rb:471`).
 //!
 //! `after_brew_env` replays what `bin/brew` does to those variables for one
 //! plan's environment and says what Homebrew's Ruby then makes of them;
-//! `BrewAdapter::plan` turns the answer into `Warning::HomebrewAutoremoves`
-//! or `Warning::HomebrewCleanupAutoremoves`. Everything it reads -- Canager's
-//! environment, the files -- comes through the two functions it is handed.
+//! `BrewAdapter::plan` turns the answer into `Warning::HomebrewAutoremoves`,
+//! or `Warning::HomebrewPeriodicCleanup` and then, with autoremove back
+//! too, `Warning::HomebrewCleanupAutoremoves`. Everything it reads --
+//! Canager's environment, the files -- comes through the two functions it
+//! is handed.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};

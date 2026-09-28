@@ -97,8 +97,9 @@ describe("warningKey", () => {
     );
   });
 
-  it("gives Homebrew's two autoremove warnings their keys", () => {
+  it("gives Homebrew's three brew.env warnings their keys", () => {
     expect(warningKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremoves");
+    expect(warningKey("HomebrewPeriodicCleanup")).toBe("warnings.homebrewPeriodicCleanup");
     expect(warningKey("HomebrewCleanupAutoremoves")).toBe("warnings.homebrewCleanupAutoremoves");
   });
 
@@ -124,7 +125,7 @@ describe("warningKey", () => {
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these nineteen, and the only one
+    // variant of `Warning` is one of these twenty, and the only one
     // without a `warnings.*` key is the raw-text catch-all. A variant this
     // list does not name is a `never` in `warningKey`'s default branches
     // and does not compile, so there is no "unrecognised variant" to test.
@@ -144,6 +145,7 @@ describe("warningKey", () => {
       "EditsShellConfig",
       { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
       "HomebrewAutoremoves",
+      "HomebrewPeriodicCleanup",
       "HomebrewCleanupAutoremoves",
       { UninstallScope: { what: "Pipx" } },
       { CaskUninstallStep: { step: "Trashes", items: ["~/.nvs"] } },
@@ -296,6 +298,7 @@ const EVERY_VARIANT: Warning[] = [
   { RemovesCargoInstalled: { names: ["hexyl"] } },
   { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
   "HomebrewAutoremoves",
+  "HomebrewPeriodicCleanup",
   "HomebrewCleanupAutoremoves",
   { UninstallScope: { what: "HomebrewCaskPlain" } },
   { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Application Support/Foo"] } },
@@ -376,7 +379,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(15);
+    expect(notes).toHaveLength(16);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -429,10 +432,11 @@ describe("warningDetailKey", () => {
     );
   });
 
-  it("keeps which Homebrew setting brought autoremove back behind the line", () => {
+  it("keeps which Homebrew setting brought a clean-up or autoremove back behind the line", () => {
     // The line says what else Homebrew removes; the ⓘ, that a brew.env
     // took back the variable Canager runs Homebrew with.
     expect(warningDetailKey("HomebrewAutoremoves")).toBe("warnings.homebrewAutoremovesDetail");
+    expect(warningDetailKey("HomebrewPeriodicCleanup")).toBe("warnings.homebrewPeriodicCleanupDetail");
     expect(warningDetailKey("HomebrewCleanupAutoremoves")).toBe(
       "warnings.homebrewCleanupAutoremovesDetail",
     );
@@ -440,6 +444,8 @@ describe("warningDetailKey", () => {
     expect(zhCN.warnings.homebrewAutoremovesDetail).toContain("HOMEBREW_NO_AUTOREMOVE=1");
     for (const locale of [en, zhCN]) {
       expect(locale.warnings.homebrewAutoremovesDetail).toContain("brew.env");
+      expect(locale.warnings.homebrewPeriodicCleanupDetail).toContain("HOMEBREW_NO_INSTALL_CLEANUP=1");
+      expect(locale.warnings.homebrewPeriodicCleanupDetail).toContain("brew.env");
       expect(locale.warnings.homebrewCleanupAutoremovesDetail).toContain("HOMEBREW_NO_INSTALL_CLEANUP=1");
     }
   });

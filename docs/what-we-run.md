@@ -200,9 +200,14 @@ recorded (`$HOMEBREW_CACHE/.cleaned`) is more than
 `HOMEBREW_NO_INSTALL_CLEANUP` is set (`cmd/install.rb:504`,
 `cmd/upgrade.rb:363`, `install.rb:325-328`, `cleanup.rb:418-445`), and
 that cleanup autoremoves unless `HOMEBREW_NO_AUTOREMOVE` is set
-(`cleanup.rb:471`). `HOMEBREW_NO_AUTOREMOVE=1` and
-`HOMEBREW_NO_INSTALL_CLEANUP=1` above keep all of it from running unless
-a `brew.env` file takes them back.
+(`cleanup.rb:471`). Whether or not it autoremoves, that cleanup also
+deletes the older installed versions of every installed formula that are
+not linked, pinned or still needed, and the downloads in Homebrew's cache
+that are outdated or older than `HOMEBREW_CLEANUP_MAX_AGE_DAYS` days,
+120 unless set (`Cleanup#clean!`, `cleanup.rb:448-459`, `:473`,
+`:736-773`).
+`HOMEBREW_NO_AUTOREMOVE=1` and `HOMEBREW_NO_INSTALL_CLEANUP=1` above keep
+all of it from running unless a `brew.env` file takes them back.
 
 **`brew.env`.** Homebrew's launcher, `bin/brew`, exports every
 `HOMEBREW_*` line of up to three `brew.env` files over the environment it
@@ -227,9 +232,12 @@ with no newline after it is not read. Homebrew counts
 whitespace. When the files leave `HOMEBREW_NO_AUTOREMOVE` unset, the
 uninstall preview says that Homebrew will also remove other Homebrew
 packages that were installed only as dependencies and that nothing needs
-any more (`Warning::HomebrewAutoremoves`); when they leave both variables
-unset, the install and upgrade previews say that, when Homebrew's
-periodic clean-up is due, it runs after the command and removes them too
+any more (`Warning::HomebrewAutoremoves`). When they leave
+`HOMEBREW_NO_INSTALL_CLEANUP` unset, the install and upgrade previews say
+that, when Homebrew's periodic clean-up is due, it runs after the command
+and deletes older versions of Homebrew software and old downloads in its
+cache (`Warning::HomebrewPeriodicCleanup`); when they leave both variables
+unset, the next line adds that the clean-up also removes those packages
 (`Warning::HomebrewCleanupAutoremoves`). Canager changes nothing in those
 files.
 
@@ -1763,9 +1771,11 @@ Canager neither chooses nor sees them.
 - Never passes `--zap`, `--force` or `--ignore-dependencies` to Homebrew
   (the brew plan test), and never runs a bare `brew upgrade`.
 - Never runs a `brew` command without `HOMEBREW_NO_AUTOREMOVE=1`, which
-  keeps Homebrew from uninstalling packages the command does not name;
-  when a `brew.env` file takes it back, the preview says so (Homebrew's
-  section).
+  keeps Homebrew from uninstalling packages the command does not name,
+  and `HOMEBREW_NO_INSTALL_CLEANUP=1`, which keeps an install or upgrade
+  from ending in Homebrew's periodic clean-up, which deletes older versions
+  and old downloads; when a `brew.env` file takes either back, the preview
+  says so (Homebrew's section).
 - Never runs a `brew` command as root.
 - Never uninstalls a uv tool while `UV_TOOL_DIR` is set in Canager's
   environment: removing the last tool, uv would then also delete the

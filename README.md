@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 889 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 858
+> **Status: pre-release.** The core and the UI work and are covered by 936 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 943
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -71,9 +71,10 @@ This app runs package managers on your behalf, so the boundary matters more than
   in its confirmation, or open from the start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
-  so only when a Homebrew `brew.env` file turns Homebrew's periodic clean-up and its autoremove
-  back on, since that clean-up, whenever it is due, then also uninstalls the packages that were
-  installed only as dependencies and that nothing needs any more.
+  so only when a Homebrew `brew.env` file turns Homebrew's periodic clean-up back on, since that
+  clean-up, whenever it is due, then deletes older versions of Homebrew software and old downloads
+  in its cache — and, when the file turns its autoremove back on too, also uninstalls the packages
+  that were installed only as dependencies and that nothing needs any more.
 - **Nothing is deleted quietly.** An uninstall that would break other packages says which ones,
   in your language. Canager runs Homebrew with its autoremove off, so a Homebrew uninstall does
   not also uninstall the other packages that were installed only as dependencies and that nothing
@@ -268,8 +269,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看将执行的命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 889 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 858 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 936 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 943 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——

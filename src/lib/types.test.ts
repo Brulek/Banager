@@ -311,9 +311,10 @@ describe("types", () => {
     // Round 2: Homebrew's autoremove, back on through a brew.env file.
     // Pinned against the same Rust test.
     const autoremoves: Warning = "HomebrewAutoremoves";
+    const periodicCleanup: Warning = "HomebrewPeriodicCleanup";
     const cleanupAutoremoves: Warning = "HomebrewCleanupAutoremoves";
-    expect(JSON.stringify([autoremoves, cleanupAutoremoves])).toBe(
-      '["HomebrewAutoremoves","HomebrewCleanupAutoremoves"]',
+    expect(JSON.stringify([autoremoves, periodicCleanup, cleanupAutoremoves])).toBe(
+      '["HomebrewAutoremoves","HomebrewPeriodicCleanup","HomebrewCleanupAutoremoves"]',
     );
 
     // Round 2: an uninstall's sentence about what goes and what stays, and

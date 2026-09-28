@@ -152,10 +152,12 @@ export type CaskStep =
  * `RemovesCargoInstalled` and `LeavesShellConfigLine`, whose `path` and
  * `names` interpolate it and whose empty `names` or `certain` pick the
  * key -- with `HomebrewRustupLosesToolchains` and `EditsShellConfig` as
- * that uninstall's two bare-string ones), Homebrew's two bare-string
- * autoremove warnings (`HomebrewAutoremoves` on an uninstall,
- * `HomebrewCleanupAutoremoves` on an install or upgrade, produced only when
- * a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`), an
+ * that uninstall's two bare-string ones), Homebrew's three bare-string
+ * brew.env warnings (`HomebrewAutoremoves` on an uninstall, produced only
+ * when a brew.env file takes back Canager's `HOMEBREW_NO_AUTOREMOVE=1`;
+ * `HomebrewPeriodicCleanup` on an install or upgrade, when one takes back
+ * `HOMEBREW_NO_INSTALL_CLEANUP=1`, and `HomebrewCleanupAutoremoves` right
+ * after it when one takes back both), an
  * uninstall's one sentence about what goes and what stays
  * (`UninstallScope`, whose `what` picks the key and whose `{{name}}` is the
  * row's, given by the uninstall confirmation) and a cask's extra steps
@@ -184,6 +186,7 @@ export type Warning =
   | "EditsShellConfig"
   | { LeavesShellConfigLine: { path: string; certain: boolean } }
   | "HomebrewAutoremoves"
+  | "HomebrewPeriodicCleanup"
   | "HomebrewCleanupAutoremoves"
   | { UninstallScope: { what: UninstallScope } }
   | { CaskUninstallStep: { step: CaskStep; items: string[] } }

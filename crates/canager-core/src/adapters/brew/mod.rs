@@ -175,9 +175,10 @@ impl BrewAdapter {
     /// autoremove from uninstalling every formula installed only as a
     /// dependency that nothing needs any more -- packages no preview names
     /// -- after an uninstall, and in the cleanup an install or upgrade runs
-    /// if `HOMEBREW_NO_INSTALL_CLEANUP` does not keep it from starting. A
-    /// `brew.env` file can take either back, which the plan then says
-    /// (`brew_env_warning`).
+    /// if `HOMEBREW_NO_INSTALL_CLEANUP` does not keep it from starting, a
+    /// cleanup that also deletes older versions of every formula and old
+    /// downloads. A `brew.env` file can take either back, which the plan
+    /// then says (`brew_env_warnings`).
     pub const ENV: [(&'static str, &'static str); 5] = [
         ("HOMEBREW_NO_AUTO_UPDATE", "1"),
         ("HOMEBREW_NO_AUTOREMOVE", "1"),
@@ -354,7 +355,7 @@ impl BrewAdapter {
     /// (`Warning::UninstallScope`), and, for a cask whose recorded uninstall
     /// takes extra steps, one `Warning::CaskUninstallStep` per kind.
     /// `autoremoves` is whether the `brew.env` files take Homebrew's
-    /// autoremove back (`brew_env_warning`): a formula's sentence says
+    /// autoremove back (`brew_env_warnings`): a formula's sentence says
     /// "only" when they do not. A cask's comes from what Homebrew recorded
     /// when it installed the cask (`cask_receipt`), the home folder read
     /// from Canager's environment, as Homebrew's is (`env_var_fn`).
@@ -396,24 +397,31 @@ impl BrewAdapter {
     }
 
     /// What the `brew.env` files make Homebrew do beyond a plan's command,
-    /// for a plan of `kind` on `inst` whose environment is `env`, or `None`
-    /// when Canager's variables hold (`brew_env::after_brew_env`). An
-    /// uninstall autoremoves unless `HOMEBREW_NO_AUTOREMOVE` holds; an
-    /// install or upgrade does only in the cleanup it runs when one is due,
-    /// which needs `HOMEBREW_NO_INSTALL_CLEANUP` taken back as well.
-    fn brew_env_warning(
+    /// for a plan of `kind` on `inst` whose environment is `env`, in the
+    /// order it is said -- nothing when Canager's variables hold
+    /// (`brew_env::after_brew_env`). An uninstall autoremoves unless
+    /// `HOMEBREW_NO_AUTOREMOVE` holds. An install or upgrade runs the
+    /// periodic cleanup when one is due unless `HOMEBREW_NO_INSTALL_CLEANUP`
+    /// holds, and that cleanup deletes old versions and downloads, and
+    /// autoremoves too unless `HOMEBREW_NO_AUTOREMOVE` holds.
+    fn brew_env_warnings(
         &self,
         inst: &ManagerInstance,
         kind: OpKind,
         env: &[(String, String)],
-    ) -> Option<Warning> {
+    ) -> Vec<Warning> {
         let switches =
             brew_env::after_brew_env(env, &inst.prefix, &self.env_var_fn, &self.brew_env_fn);
         match kind {
-            OpKind::Uninstall => (!switches.no_autoremove).then_some(Warning::HomebrewAutoremoves),
-            OpKind::Install | OpKind::Upgrade => (!switches.no_autoremove
-                && !switches.no_install_cleanup)
-                .then_some(Warning::HomebrewCleanupAutoremoves),
+            OpKind::Uninstall if !switches.no_autoremove => vec![Warning::HomebrewAutoremoves],
+            OpKind::Install | OpKind::Upgrade if !switches.no_install_cleanup => {
+                let mut warnings = vec![Warning::HomebrewPeriodicCleanup];
+                if !switches.no_autoremove {
+                    warnings.push(Warning::HomebrewCleanupAutoremoves);
+                }
+                warnings
+            }
+            _ => Vec::new(),
         }
     }
 
@@ -1358,10 +1366,7 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
-                let warnings = self
-                    .brew_env_warning(inst, req.kind, &env)
-                    .into_iter()
-                    .collect();
+                let warnings = self.brew_env_warnings(inst, req.kind, &env);
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -1416,8 +1421,8 @@ impl BrewAdapter {
                     return Err(AdapterError::IndexUpdating);
                 }
                 let env = self.env_vec();
-                let autoremoves = self.brew_env_warning(inst, req.kind, &env);
-                let (scope, cask_steps) = self.uninstall_scope(inst, req, autoremoves.is_some());
+                let autoremoves = self.brew_env_warnings(inst, req.kind, &env);
+                let (scope, cask_steps) = self.uninstall_scope(inst, req, !autoremoves.is_empty());
                 let mut warnings = vec![scope];
                 let affected = if uses_output.exit_code == Some(0) {
                     parse_uses(&uses_output.stdout)
@@ -1460,10 +1465,7 @@ impl BrewAdapter {
                 if let Some(askpass) = (self.askpass_fn)() {
                     env.push(("SUDO_ASKPASS".to_string(), askpass));
                 }
-                let warnings = self
-                    .brew_env_warning(inst, req.kind, &env)
-                    .into_iter()
-                    .collect();
+                let warnings = self.brew_env_warnings(inst, req.kind, &env);
                 Ok(Plan {
                     request: req.clone(),
                     action: PlanAction::Command {
@@ -2920,8 +2922,9 @@ mod plan_execute_tests {
     ) {
         // `brew upgrade` and `brew install` end in `Install.finish_installation`
         // (`cmd/upgrade.rb:363`, `cmd/install.rb:504`), whose periodic
-        // cleanup (`cleanup.rb:431-445`) autoremoves (`cleanup.rb:471`) --
-        // once neither of Canager's two variables holds.
+        // cleanup (`cleanup.rb:431-445`) deletes old versions and downloads
+        // (`cleanup.rb:448-473`) and autoremoves (`cleanup.rb:471`) -- once
+        // neither of Canager's two variables holds.
         let runner = Arc::new(MockRunner::new());
         let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
             (path == Path::new("/etc/homebrew/brew.env"))
@@ -2933,7 +2936,37 @@ mod plan_execute_tests {
                     scope_of(plan.request.artifact_kind, true),
                     Warning::HomebrewAutoremoves,
                 ],
-                OpKind::Install | OpKind::Upgrade => vec![Warning::HomebrewCleanupAutoremoves],
+                OpKind::Install | OpKind::Upgrade => vec![
+                    Warning::HomebrewPeriodicCleanup,
+                    Warning::HomebrewCleanupAutoremoves,
+                ],
+            };
+            assert_eq!(
+                plan.warnings, expected,
+                "{:?} {}",
+                plan.request.kind, plan.request.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_an_install_or_upgrade_plan_says_the_periodic_cleanup_runs_when_brew_env_turns_only_it_back_on(
+    ) {
+        // With `HOMEBREW_NO_INSTALL_CLEANUP` set to nothing and
+        // `HOMEBREW_NO_AUTOREMOVE=1` still in force, the periodic cleanup
+        // runs when it is due and deletes the older versions of every
+        // installed formula and old downloads (`Cleanup#clean!`,
+        // `cleanup.rb:448-473`), without its autoremove; an uninstall runs
+        // no cleanup, so its plan says nothing more.
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone()).with_brew_env_fn(|path| {
+            (path == Path::new("/etc/homebrew/brew.env"))
+                .then(|| b"HOMEBREW_NO_INSTALL_CLEANUP=\n".to_vec())
+        });
+        for plan in every_plan(&runner, &adapter).await {
+            let expected = match plan.request.kind {
+                OpKind::Uninstall => vec![scope_of(plan.request.artifact_kind, false)],
+                OpKind::Install | OpKind::Upgrade => vec![Warning::HomebrewPeriodicCleanup],
             };
             assert_eq!(
                 plan.warnings, expected,
