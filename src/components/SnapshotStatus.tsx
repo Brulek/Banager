@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useRefresh, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
 import { useUiStore } from "../store/ui";
@@ -19,7 +19,9 @@ export interface SnapshotStatusProps {
 export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
-  const refreshMutation = useRefresh();
+  // Both load-failed states' button is the header's Check again, and off
+  // when it is: pressed while a check runs, it would queue a second one.
+  const { checkAgain, checking, error: checkError } = useCheckAgain();
   const startupRefreshError = useUiStore((s) => s.startupRefreshError);
   const snapshot = snapshotQuery.data;
 
@@ -38,18 +40,15 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // so without this branch the user would face a blank page and no way
     // out. The message is the backend's own text (Task 10's call()); a
     // failed check from here replaces it with that check's message. Its
-    // button runs the check the header's does, and is called what that
-    // one is.
+    // button runs the check the header's does, is called what that one
+    // is, and is off while a check runs, as that one is.
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
         description={t("emptyStates.loadFailed.description", {
-          message: (refreshMutation.error ?? snapshotQuery.error).message,
+          message: (checkError ?? snapshotQuery.error).message,
         })}
-        action={{
-          label: t("header.checkAgain"),
-          onClick: () => refreshMutation.mutate(),
-        }}
+        action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );
   }
@@ -76,10 +75,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
         description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
-        action={{
-          label: t("header.checkAgain"),
-          onClick: () => refreshMutation.mutate(),
-        }}
+        action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );
   }

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import type { SourceNoticeSpec } from "../lib/sources";
+import type { Snapshot } from "../lib/types";
+import { CheckAgain } from "./PageHeader";
 import { SourceNotices, useNoticeFold } from "./SourceNotices";
 
 const mockInvoke = vi.mocked(invoke);
@@ -232,5 +234,68 @@ describe("SourceNotices, folded", () => {
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+});
+
+describe("SourceNotices' Check again", () => {
+  /** A snapshot of `generation`, checked a minute ago. */
+  function snapshotAt(generation: number): Snapshot {
+    return {
+      generation,
+      round: generation,
+      detect: "Found",
+      instances: [],
+      artifacts: [],
+      updates: [],
+      refreshed_at: Math.floor(Date.now() / 1000) - 60,
+      stale: false,
+      errors: [],
+    };
+  }
+
+  it("is the header's: off while a check runs, whoever started it, so none queues behind it", async () => {
+    // Homebrew's "may be out of date" line sits on the Overview just under
+    // the header, both buttons called Check again. Pressed while the
+    // header's check ran, this one queued a second full check after it.
+    let finish: (snapshot: Snapshot) => void = () => {};
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(snapshotAt(4));
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          finish = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const refreshes = () => mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
+    renderWithProviders(
+      <>
+        <CheckAgain />
+        <SourceNotices notices={[brewStale]} layout="line" />
+      </>,
+    );
+    await screen.findByText(/^Checked /);
+    const [header, notice] = screen.getAllByRole("button", { name: "Check again" });
+    expect(notice).toBeEnabled();
+
+    fireEvent.click(header);
+
+    await waitFor(() => expect(notice).toBeDisabled());
+    fireEvent.click(notice);
+    await act(async () => {
+      finish(snapshotAt(5));
+    });
+    await waitFor(() => expect(notice).toBeEnabled());
+    expect(refreshes()).toBe(1);
+
+    // Pressed itself, it runs the one check, the header's off with it.
+    fireEvent.click(notice);
+    await waitFor(() => expect(header).toBeDisabled());
+    expect(notice).toBeDisabled();
+    await act(async () => {
+      finish(snapshotAt(6));
+    });
+    await waitFor(() => expect(notice).toBeEnabled());
+    expect(refreshes()).toBe(2);
   });
 });

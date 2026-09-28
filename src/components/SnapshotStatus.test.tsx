@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { SnapshotStatus } from "./SnapshotStatus";
+import { refreshIntoCache } from "../lib/events";
 import { useSnapshot } from "../lib/queries";
 import { useUiStore } from "../store/ui";
 import type { Snapshot } from "../lib/types";
@@ -322,6 +323,82 @@ describe("SnapshotStatus", () => {
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true),
     );
+  });
+
+  it("keeps the load failure's Check again off while its check runs, and runs it once", async () => {
+    // Pressed again while the check ran, it queued a second full check
+    // behind it, which the header's Check again never does.
+    let fail: (reason: string) => void = () => {};
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") {
+        return Promise.resolve(baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }));
+      }
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((_resolve, reject) => {
+          fail = reject;
+        });
+      }
+      return Promise.reject(new Error(`unexpected command ${cmd}`));
+    });
+    useUiStore.setState({ startupRefreshError: "refresh timed out" });
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Check again" });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    await act(async () => {
+      fail("the session is gone");
+    });
+
+    // It failed again: its words, and the button back on.
+    expect(await screen.findByText(/the session is gone/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check again" })).toBeEnabled();
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
+  });
+
+  it("keeps the Check again of a snapshot that could not be read off while a check it did not start runs", async () => {
+    let finish: (snapshot: Snapshot) => void = () => {};
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.reject("brew: command not found");
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          finish = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected command ${cmd}`));
+    });
+
+    const { queryClient } = renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Check again" });
+    expect(button).toBeEnabled();
+
+    // The startup's check, or the one after an operation.
+    let run: Promise<void> = Promise.resolve();
+    act(() => {
+      run = refreshIntoCache(queryClient, "test");
+    });
+    await waitFor(() => expect(button).toBeDisabled());
+
+    await act(async () => {
+      finish(baseSnapshot({ generation: 2 }));
+      await run;
+    });
+    // The check read what the snapshot could not.
+    await waitFor(() => expect(screen.queryByText("Couldn't load what's installed")).toBeNull());
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
   });
 
   it("shows the nothing-installed empty state when there are no artifacts", async () => {

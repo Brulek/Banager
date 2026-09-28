@@ -15,7 +15,13 @@ export type SourceNoticeVariant = "info" | "warning";
 export interface SourceNoticeAction {
   label: string;
   onClick: () => void;
+  /** Off, as Check again is while a check runs, whoever started it. */
+  disabled?: boolean;
 }
+
+/** The look of a notice's own button, in a line or whole: dimmed while it is off. */
+const ACTION_CLASS =
+  "rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface";
 
 export interface SourceNoticeProps {
   variant: SourceNoticeVariant;
@@ -63,7 +69,8 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
           <button
             type="button"
             onClick={action.onClick}
-            className="mt-2 rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            disabled={action.disabled}
+            className={`mt-2 ${ACTION_CLASS}`}
           >
             {action.label}
           </button>
@@ -128,7 +135,8 @@ export function SourceNoticeLine({
           <button
             type="button"
             onClick={action.onClick}
-            className="shrink-0 rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            disabled={action.disabled}
+            className={`shrink-0 ${ACTION_CLASS}`}
           >
             {action.label}
           </button>

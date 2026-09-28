@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useOpenOllamaApp, useRefresh } from "../lib/queries";
+import { useCheckAgain, useOpenOllamaApp } from "../lib/queries";
 import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
 import { DETAILS_TRIGGER_CLASS, SourceNotice, SourceNoticeLine } from "./SourceNotice";
 import { ChevronIcon } from "./icons";
@@ -63,7 +63,8 @@ export interface SourceNoticesProps {
 
 /**
  * Renders the notices `sourceNoticesFor` decided a source needs, and wires
- * each one's action to the mutation that carries it out.
+ * each one's action to what carries it out: Open Ollama to its mutation,
+ * Check again to the header's (`useCheckAgain`), off while a check runs.
  *
  * The split is deliberate: `sourceNoticesFor` (src/lib/sources.ts) decides
  * *what* to say from the instance alone and is pure, this decides how to
@@ -85,7 +86,9 @@ export interface SourceNoticesProps {
 export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesProps) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
-  const refresh = useRefresh();
+  // The header's Check again, and off when that one is: pressed while a
+  // check runs, it would queue a second one after it.
+  const { checkAgain, checking } = useCheckAgain();
   const linesId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   // Set by the fold's own button, and only by it: the lines folding up
@@ -130,13 +133,9 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
       title,
       description: t(notice.descriptionKey, notice.values),
       action: notice.action
-        ? {
-            label: t(notice.action.labelKey),
-            onClick:
-              notice.action.id === "openOllama"
-                ? () => openOllamaApp.mutate()
-                : () => refresh.mutate(),
-          }
+        ? notice.action.id === "openOllama"
+          ? { label: t(notice.action.labelKey), onClick: () => openOllamaApp.mutate() }
+          : { label: t(notice.action.labelKey), onClick: checkAgain, disabled: checking }
         : undefined,
       // Only the notice whose button failed says so.
       error: notice.action?.id === "openOllama" ? openOllamaError : undefined,

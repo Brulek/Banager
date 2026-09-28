@@ -107,23 +107,26 @@ export function useRefresh(): UseMutationResult<Snapshot, Error, void> {
 
 /**
  * Check again, wherever it is asked for: the page header's button
- * (`CheckAgain`), and the menu bar's Check Again (⌘R, src/lib/menu.ts).
- * It is the refresh every other trigger runs -- the one at startup, the
- * one after an operation, the Check again of a page that could not load
- * or of a Homebrew list that could not be updated -- through
+ * (`CheckAgain`), the menu bar's Check Again (⌘R, src/lib/menu.ts), and
+ * the buttons called what the header's is -- a page's that could not load
+ * (`SnapshotStatus`), and the one on a Homebrew list that could not be
+ * updated (`SourceNotices`). It is the refresh every other trigger runs
+ * -- the one at startup, the one after an operation -- through
  * `useRefresh`, and it does nothing while a refresh runs, whoever started
  * it: one asked for then would be folded into the running one and then run
  * once more after it (`refreshIntoCache`'s follow-up), a second check
- * nobody asked for. The button is off meanwhile; the menu bar's item,
- * which stays on, does nothing. `checking` says whether one runs.
+ * nobody asked for. Every such button is off meanwhile; the menu bar's
+ * item, which stays on, does nothing. `checking` says whether one runs;
+ * `error`, why the last one this caller started failed, until it starts
+ * another.
  */
-export function useCheckAgain(): { checkAgain: () => void; checking: boolean } {
-  const { mutate } = useRefresh();
+export function useCheckAgain(): { checkAgain: () => void; checking: boolean; error: Error | null } {
+  const { mutate, error } = useRefresh();
   const checking = useRefreshInFlight();
   const checkAgain = useCallback(() => {
     if (!isRefreshInFlight()) mutate();
   }, [mutate]);
-  return { checkAgain, checking };
+  return { checkAgain, checking, error };
 }
 
 export function useSaveSettings(): UseMutationResult<void, Error, Settings> {

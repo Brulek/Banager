@@ -5,6 +5,8 @@ import { DETAILS_TRIGGER_CLASS } from "./SourceNotice";
 export interface EmptyStateAction {
   label: string;
   onClick: () => void;
+  /** Off, as Check again is while a check runs, whoever started it. */
+  disabled?: boolean;
 }
 
 /** What the description leaves for "Details", and that button's words. */
@@ -69,7 +71,8 @@ export function EmptyState({
         <button
           type="button"
           onClick={action.onClick}
-          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)]"
+          disabled={action.disabled}
+          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
         >
           {action.label}
         </button>
