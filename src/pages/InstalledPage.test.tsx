@@ -474,6 +474,58 @@ describe("InstalledPage", () => {
     );
   });
 
+  it("folds a version not tested in with the sources' lines, a silent source's first, and unfolds them all in their order", async () => {
+    // After an update, 「Claude Code 2.1.290 版未经测试」 stacked up over
+    // the list with 「uv 没有应答」 and the rest, a line each.
+    const uv: ManagerInstance = {
+      ...brew,
+      id: "uv:/Users/someone/.local/share/uv/tools",
+      adapter_id: "uv",
+      exe_path: "/opt/homebrew/bin/uv",
+      prefix: "/Users/someone/.local/share/uv/tools",
+      version: "0.12.17",
+      status: { unavailable: "NotResponding", notes: [] },
+    };
+    served = {
+      ...snapshot,
+      instances: [
+        {
+          ...claudeInstance,
+          version: "2.1.290",
+          unverified_version: "2.1.290",
+          status: { unavailable: null, notes: ["ShadowedByNpm"] },
+        },
+        uv,
+      ],
+      artifacts: [
+        { ...claudeArtifact, version: "2.1.290" },
+        formula("ruff", { key: { instance_id: uv.id, kind: "Tool", name: "ruff" } }),
+      ],
+      updates: [],
+    };
+    renderWithProviders(<InstalledPage />);
+
+    await findRow("Claude Code");
+    expect(screen.getByText("uv isn't responding")).toBeInTheDocument();
+    expect(screen.queryByText("Typing claude runs a same-named program from npm first")).toBeNull();
+    expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "2 more" }));
+
+    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    const lines = document.getElementById(fewer.getAttribute("aria-controls") ?? "");
+    if (lines === null) throw new Error("Show fewer controls nothing");
+    expect(
+      within(lines)
+        .getAllByRole("button", { name: /^Details: / })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Details: Typing claude runs a same-named program from npm first",
+      "Details: uv isn't responding",
+      "Details: Claude Code 2.1.290 not tested",
+    ]);
+  });
+
   it("offers no Uninstall on a pinned package, keeps its description, and says how to release the pin behind its chip", async () => {
     // `brew uninstall jq` refuses a pinned formula without `--force` and
     // still exits 0 (`UninstallBlocked::Pinned` in
@@ -870,8 +922,10 @@ describe("InstalledPage", () => {
       for (const name of ["silent", "failed", "stopped"]) {
         expect(chipsOf(rowOf(name)), name).toEqual([]);
       }
-      // The two that did not answer say so in their own line.
+      // The two that did not answer say so in their own line, the second
+      // folded behind the first (`SourceNotices`).
       expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "1 more" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });
 

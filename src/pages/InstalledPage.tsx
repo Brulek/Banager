@@ -9,6 +9,7 @@ import {
   canWrite,
   isAvailable,
   sourceNoticesFor,
+  type SourceNoticeSpec,
   toolDescription,
   uninstallBlockedCopy,
   uninstallHoldKey,
@@ -29,8 +30,7 @@ import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { Drawer } from "../components/ui/Drawer";
 import { ChipRow } from "../components/ui/ChipRow";
-import { SourceNotices } from "../components/SourceNotices";
-import { SourceNoticeLine } from "../components/SourceNotice";
+import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
@@ -141,7 +141,8 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
  * however many sources there are, which scrolls sideways when they do not
  * fit (`ChipRow`), so the list keeps its room at 800×600. Under them,
  * one line per thing a source had to say this time (`SourceNoticeLine`,
- * as on the Updates page).
+ * as on the Updates page), folded into one while there are two or more
+ * (`SourceNotices`).
  *
  * Then one list. By name, it is one flat list, each row naming its source
  * with the avatar and, where the list mixes sources, a chip: a tool is
@@ -389,17 +390,28 @@ export function InstalledPage() {
   // of what its notice says -- "what's listed for uv is from the last time
   // it answered" over rows it has, "can't show what it has installed" over
   // none -- and a search that hides its rows does not make it have none.
-  // Then a source whose version Canager has not been tested with.
+  // Then a source with rows here whose version Canager has not been
+  // tested with. Two lines or more fold into one (`SourceNotices`).
   const notices = useMemo(
-    () =>
-      instancesInView.flatMap((instance) =>
+    () => [
+      ...instancesInView.flatMap((instance) =>
         sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
       ),
+      ...instancesInView
+        .filter((instance) => instance.unverified_version !== null && (countByInstance.get(instance.id) ?? 0) > 0)
+        .map(
+          (instance): SourceNoticeSpec => ({
+            id: `${instance.id}:untested`,
+            variant: "info",
+            titleKey: "installed.unverifiedVersion",
+            descriptionKey: "installed.unverifiedVersionDetail",
+            values: { source: labelOf(instance), version: instance.unverified_version ?? "" },
+          }),
+        ),
+    ],
     [instancesInView, labelOf, countByInstance],
   );
-  const untested = instancesInView.filter(
-    (instance) => instance.unverified_version !== null && (countByInstance.get(instance.id) ?? 0) > 0,
-  );
+  const noticeFold = useNoticeFold(notices.length);
 
   const getItemKey = useCallback((index: number) => listItemKey(items[index]), [items]);
   const virtualizer = useVirtualizer({
@@ -950,25 +962,9 @@ export function InstalledPage() {
           </ChipRow>
         ) : null}
       </div>
-      {notices.length > 0 || untested.length > 0 ? (
+      {notices.length > 0 ? (
         <div className="flex shrink-0 flex-col gap-1.5 px-6 pb-3">
-          <SourceNotices notices={notices} layout="line" />
-          {untested.map((instance) => {
-            const title = t("installed.unverifiedVersion", {
-              source: labelOf(instance),
-              version: instance.unverified_version ?? "",
-            });
-            return (
-              <SourceNoticeLine
-                key={`${instance.id}:untested`}
-                variant="info"
-                title={title}
-                description={t("installed.unverifiedVersionDetail")}
-                detailsLabel={t("common.details")}
-                detailsAriaLabel={t("common.detailsLabel", { title })}
-              />
-            );
-          })}
+          <SourceNotices notices={notices} layout="line" fold={noticeFold} />
         </div>
       ) : null}
       {/* Virtualized: a Mac with Homebrew's components unfolded lists
