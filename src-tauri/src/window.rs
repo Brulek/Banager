@@ -70,12 +70,18 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         return;
     }
     api.prevent_close();
-    let hidden = window
-        .is_fullscreen()
-        .and_then(|full_screen| match on_close(full_screen) {
-            Close::HideWindow => window.hide(),
-            Close::HideApp => window.app_handle().hide(),
-        });
+    // The close is already prevented, so a failure here must still end in
+    // something hidden: a window that ignores its red button can only be
+    // quit. Not knowing whether it is full screen counts as not; a window
+    // that will not hide hides the app instead.
+    let full_screen = window.is_fullscreen().unwrap_or_else(|e| {
+        eprintln!("[canager] could not ask whether the window is full screen: {e}");
+        false
+    });
+    let hidden = match on_close(full_screen) {
+        Close::HideWindow => window.hide().or_else(|_| window.app_handle().hide()),
+        Close::HideApp => window.app_handle().hide(),
+    };
     if let Err(e) = hidden {
         eprintln!("[canager] could not hide the window: {e}");
     }
