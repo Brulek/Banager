@@ -508,7 +508,7 @@ export function InstalledPage() {
       detail: cannotCheckDetail(t, candidate, showTechnicalDetails),
       tone: "neutral",
     });
-    // Read-only: the fact that no button ever appears on this row,
+    // View only: the fact that no button ever appears on this row,
     // whatever the next check finds.
     if (!canWrite(instance)) {
       chips.push({ id: "read-only", label: t("updates.readOnly"), detail: readOnlyDetail(t, instance), tone: "neutral" });
@@ -550,7 +550,7 @@ export function InstalledPage() {
           });
           break;
         case "readOnly":
-          // "Read-only" is said above; that this check found nothing is
+          // "View only" is said above; that this check found nothing is
           // its own news.
           if (!listed.checkable) chips.push(cannotCheck(listed));
           break;

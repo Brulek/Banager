@@ -323,7 +323,7 @@ export function UpdatesPage() {
   // at the top of the page: not running, not answering, a list it could
   // not download, another copy that runs when its name is typed. What a
   // source lets Canager do at all -- pip being read-only -- is not a
-  // notice: every row of such a source says it with its own "Read-only"
+  // notice: every row of such a source says it with its own "View only"
   // chip. How many rows a source has is part of what its notice says: a
   // silent source's "what's listed for it is last time's" is true only
   // over rows it actually has.
@@ -407,7 +407,7 @@ export function UpdatesPage() {
    * The row's status chips, one per `UpdateState`, each with its why
    * behind an ⓘ. A `switch` with no default, so a state added to
    * `UpdateState` without a chip here fails `tsc`. A read-only source's
-   * row that could not be checked either says both: "Read-only" is the
+   * row that could not be checked either says both: "View only" is the
    * fact that no button will ever appear on it, whatever the next check
    * finds, and that this check found nothing is its own news.
    */

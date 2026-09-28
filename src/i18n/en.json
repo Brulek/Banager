@@ -165,7 +165,7 @@
     "newBuild": "A newer build of this model is available",
     "selfUpdating": "Updates itself",
     "selfUpdatingDetail": "It usually updates itself. You can also update it now.",
-    "readOnly": "Read-only",
+    "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Canager can't find its latest version.",
     "cannotCheckSummary_one": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
@@ -443,7 +443,7 @@
       "description": "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start."
     },
     "includeSelfUpdating": {
-      "label": "Show self-updating apps",
+      "label": "Show apps that update themselves",
       "description": "Also list Homebrew apps that update themselves, like Chrome, under Updates."
     },
     "language": {

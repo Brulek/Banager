@@ -895,18 +895,19 @@ describe("InstalledPage", () => {
     });
   });
 
-  it("marks a read-only source's rows Read-only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {
+  it("marks a read-only source's rows View only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {
     served = pipSnapshot;
-    const { queryByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { queryByRole, queryAllByText } = renderWithProviders(<InstalledPage />);
 
     const requests = await findRow("requests");
     expect(queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
-    expect(chipsOf(requests)).toEqual(["Read-only", "Up to date"]);
-    expect(chipDetail(requests, "Read-only")).toHaveTextContent(
+    expect(chipsOf(requests)).toEqual(["View only", "Up to date"]);
+    expect(chipDetail(requests, "View only")).toHaveTextContent(
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     );
-    // Its row says it; no line of its own at the top.
-    expect(queryByText("View only")).toBeNull();
+    // Its row says it; no line of its own at the top: the words are on
+    // its chip and nowhere else.
+    expect(queryAllByText("View only").filter((text) => text.closest("button") === null)).toEqual([]);
   });
 
   it("gives a root-owned npm prefix's rows npm's own way out, and no Uninstall", async () => {
@@ -938,7 +939,7 @@ describe("InstalledPage", () => {
     };
     const { queryAllByRole } = renderWithProviders(<InstalledPage />);
 
-    const detail = chipDetail(await findRow("typescript"), "Read-only");
+    const detail = chipDetail(await findRow("typescript"), "View only");
     expect(detail).toHaveTextContent(
       "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
     );

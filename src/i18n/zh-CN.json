@@ -150,7 +150,7 @@
     "newBuild": "这个模型有新的版本可用",
     "selfUpdating": "会自动更新",
     "selfUpdatingDetail": "它平时会自己更新，也可以现在更新。",
-    "readOnly": "只读",
+    "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "查不到它的最新版本。",
     "cannotCheckSummary_other": "这里有 {{count}} 项没能检查更新。想看原因，在“设置”里打开“{{setting}}”。",
@@ -420,7 +420,7 @@
       "description": "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。"
     },
     "includeSelfUpdating": {
-      "label": "显示自更新 App",
+      "label": "显示会自动更新的 App",
       "description": "Homebrew 装的 Chrome 这类会自己更新的 App，也列进「更新」。"
     },
     "language": {

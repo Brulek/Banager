@@ -3,7 +3,7 @@ import { InfoIcon } from "./icons";
 import { Popover } from "./ui/Popover";
 
 export interface StatusChipProps {
-  /** One or two words: 「已固定」, "Read-only". */
+  /** One or two words: 「已固定」, "View only". */
   label: string;
   /**
    * Why, in at most two short sentences, behind the chip's ⓘ. A chip with

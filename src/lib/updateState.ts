@@ -24,7 +24,7 @@ import { artifactKeyId } from "../store/ui";
  * Why a listed update is or is not offered. The order of the checks in
  * `updateStateOf` is the order the Updates page's status chip has always
  * gone by:
- * what is true of the whole source first ("Read-only" holds whatever the
+ * what is true of the whole source first ("View only" holds whatever the
  * next refresh finds), then "could not check" (without a check there is no
  * update to block), then the package's own refusal, then a source that is
  * not answering right now.

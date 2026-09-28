@@ -388,7 +388,7 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const toggle = await screen.findByRole("switch", { name: "Show self-updating apps" });
+    const toggle = await screen.findByRole("switch", { name: "Show apps that update themselves" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);
 
@@ -514,7 +514,7 @@ describe("SettingsPage", () => {
     const hidden = screen.getByRole("region", { name: "Hidden updates" });
     expect(within(general).getByRole("radiogroup", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
-    expect(within(updates).getByRole("switch", { name: "Show self-updating apps" })).toHaveAccessibleDescription(
+    expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
       "Also list Homebrew apps that update themselves, like Chrome, under Updates.",
     );
     expect(within(hidden).getByRole("region", { name: "Skipped versions" })).toBeInTheDocument();
@@ -528,7 +528,7 @@ describe("SettingsPage", () => {
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
     expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新" });
-    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示自更新 App");
+    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自动更新的 App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
     // its line names Homebrew.
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");

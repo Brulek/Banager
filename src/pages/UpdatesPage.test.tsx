@@ -910,13 +910,13 @@ describe("UpdatesPage", () => {
     await findByText("1 update");
     await findByText("Can't update here (1)");
     await showCantUpdate();
-    const detail = chipDetail(await findRow("urllib3"), "Read-only");
+    const detail = chipDetail(await findRow("urllib3"), "View only");
     expect(detail).toHaveTextContent(
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     );
   });
 
-  it("marks each pip row Read-only in a word, keeps the why behind the chip, and leaves every row its own description", async () => {
+  it("marks each pip row View only in a word, keeps the why behind the chip, and leaves every row its own description", async () => {
     // Six outdated pip packages used to mean six copies of a
     // ~200-character paragraph, and the packages' own blurbs were displaced
     // by it, so the six rows read identically. Each row now says it in one
@@ -948,13 +948,13 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     await findRow("urllib3");
-    expect(getAllByRole("button", { name: "Read-only" })).toHaveLength(6);
+    expect(getAllByRole("button", { name: "View only" })).toHaveLength(6);
     expect(queryAllByText(/with pipx or uv/)).toHaveLength(0);
     // And each row can be told from the next again.
     for (const name of pipPackages) {
       expect(await findByText(`what ${name} is for`)).toBeInTheDocument();
     }
-    chipDetail(rowOf("idna"), "Read-only");
+    chipDetail(rowOf("idna"), "View only");
     expect(queryAllByText(/with pipx or uv/)).toHaveLength(1);
   });
 
@@ -965,7 +965,7 @@ describe("UpdatesPage", () => {
 
     await findRow("glib");
     expect(queryByText("View only")).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Read-only" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "View only" })).not.toBeInTheDocument();
   });
 
   it("does not count a row it could not check as an available update", async () => {
@@ -1014,7 +1014,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const urllib3 = await findRow("urllib3");
-    const advice = chipDetail(urllib3, "Read-only");
+    const advice = chipDetail(urllib3, "View only");
     expect(advice).toHaveTextContent(/with pipx or uv/);
     expect(advice.textContent).not.toMatch(/latest version/);
     const reason = chipDetail(urllib3, "Can't check");
@@ -1187,7 +1187,7 @@ describe("UpdatesPage", () => {
     const { queryAllByRole } = renderWithProviders(<UpdatesPage />);
 
     await showCantUpdate();
-    const npm = chipDetail(await findRow("typescript"), "Read-only");
+    const npm = chipDetail(await findRow("typescript"), "View only");
     // Only the packages installed with a Node from Homebrew: the ones in
     // this folder do not move over (T5).
     expect(npm).toHaveTextContent(
@@ -1195,7 +1195,7 @@ describe("UpdatesPage", () => {
     );
     expect(npm.textContent).not.toMatch(/pipx|uv/);
     // pip's row keeps pip's advice, right next to it.
-    const pip = chipDetail(rowOf("urllib3"), "Read-only");
+    const pip = chipDetail(rowOf("urllib3"), "View only");
     expect(pip).toHaveTextContent(/with pipx or uv/);
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
@@ -1714,7 +1714,7 @@ describe("UpdatesPage", () => {
             wholeSentence("它在 Homebrew 里固定了版本。要更新，先在终端运行 /opt/homebrew/bin/brew unpin glib。"),
           ),
         ).toBeInTheDocument();
-        expect(chipDetail(rowOf("urllib3"), "只读")).toHaveTextContent(
+        expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(
           "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。",
         );
       } finally {
@@ -2625,7 +2625,7 @@ describe("UpdatesPage", () => {
       }
     });
 
-    it("marks every row of a read-only source Read-only, and no row of another source", async () => {
+    it("marks every row of a read-only source View only, and no row of another source", async () => {
       // "Canager can only show what's installed with pip" used to sit
       // above nine rows, three of which were Homebrew's and perfectly
       // updatable.
@@ -2643,19 +2643,20 @@ describe("UpdatesPage", () => {
           blocked: null,
         })),
       ];
-      const { queryByText } = renderWithProviders(<UpdatesPage />);
+      const { queryAllByText } = renderWithProviders(<UpdatesPage />);
 
       await showCantUpdate();
       await findRow("urllib3");
       for (const name of ["glib", "onyx", "jq"]) {
-        expect(within(rowOf(name)).queryByRole("button", { name: "Read-only" })).toBeNull();
+        expect(within(rowOf(name)).queryByRole("button", { name: "View only" })).toBeNull();
       }
       for (const name of pipPackages) {
-        expect(within(rowOf(name)).getByRole("button", { name: "Read-only" })).toBeInTheDocument();
+        expect(within(rowOf(name)).getByRole("button", { name: "View only" })).toBeInTheDocument();
         expect(within(rowOf(name)).getByText("pip")).toBeInTheDocument();
       }
-      // Not a notice line of its own: the rows say it.
-      expect(queryByText("View only")).toBeNull();
+      // Not a notice line of its own: the rows say it, on their chips and
+      // nowhere else.
+      expect(queryAllByText("View only").filter((text) => text.closest("button") === null)).toEqual([]);
     });
 
     it("tells the truth about carried-forward rows on this page, both ways round", async () => {

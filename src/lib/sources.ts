@@ -230,7 +230,7 @@ export type SourceNoticeActionId = "openOllama" | "retry";
  * not answering, a list it could not download, another copy that runs
  * instead. What a source lets Canager do at all -- pip, or an npm whose
  * folder the account cannot write, being read-only -- is each of its
- * rows' "Read-only" chip, on both lists (`READ_ONLY_DETAIL_KEYS`).
+ * rows' "View only" chip, on both lists (`READ_ONLY_DETAIL_KEYS`).
  */
 export interface SourceNoticeSpec {
   /** Stable React key: one instance can need more than one notice. */
@@ -575,7 +575,7 @@ export const UPDATE_BLOCKED_KEYS: Record<UpdateBlocked, UpdateBlockedCopy> = {
 };
 
 /**
- * A read-only source's rows, in the detail of their "Read-only" chip on
+ * A read-only source's rows, in the detail of their "View only" chip on
  * both lists: two short sentences, different for each reason, and the
  * difference matters -- pip cannot be driven at all, so the way out is to
  * install Python tools with pipx or uv; an npm whose prefix is root-owned
