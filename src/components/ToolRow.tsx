@@ -44,10 +44,10 @@ export interface ToolRowSelectable {
 
 /**
  * What stands at the start of a row: the tool's avatar (`ToolAvatar`) --
- * its app's own icon for a cask, by `iconKey`, and otherwise the source's,
- * by its adapter id and name, the logo or the colour and the letter -- or,
- * for a row that belongs to no source, such as the Unknown page's, an
- * avatar of its own.
+ * its app's own icon for a cask or its logo, by `iconKey`, with the
+ * source's mark on its corner, and otherwise the source's, by its adapter
+ * id and name, the logo or the colour and the letter -- or, for a row that
+ * belongs to no source, such as the Unknown page's, an avatar of its own.
  */
 export type ToolRowAvatarProps =
   | { adapterId: string; sourceLabel: string; iconKey?: ArtifactKey; avatar?: never }
@@ -95,12 +95,12 @@ export interface ToolRowContentProps {
  * (docs/superpowers/2026-09-27-ui-redesign.md, 更新页 and 已安装页), and
  * the Unknown page's programs, with an avatar of their own.
  *
- * The avatar -- an app's own icon, or the source's -- the name with its
- * one line of description under it, then the columns on the right: status
- * chips, the version, the primary action and the ⋯ menu. A column is drawn
- * whenever its prop is given, even as `null`, so rows that leave one empty
- * still line up with rows that fill it; leave the prop out to drop the
- * column altogether.
+ * The avatar -- an app's own icon, the tool's logo, or the source's -- the
+ * name with its one line of description under it, then the columns on the
+ * right: status chips, the version, the primary action and the ⋯ menu. A
+ * column is drawn whenever its prop is given, even as `null`, so rows that
+ * leave one empty still line up with rows that fill it; leave the prop out
+ * to drop the column altogether.
  *
  * No borders between rows but a hairline, which gives way to the hover
  * background; `data-tool-row` marks the row for anything that needs to

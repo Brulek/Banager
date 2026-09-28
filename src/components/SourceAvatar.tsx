@@ -27,12 +27,15 @@ export const SOURCE_AVATAR_CLASSES: Record<string, string> = {
 const UNKNOWN_SOURCE_CLASSES = "bg-muted text-white";
 
 /**
- * `xs`, 16px: a source's mark inside a chip, such as the Installed page's
- * filters. `sm`, 24px: a tile's or a list's small mark. `md`, 32px: a
- * tool's row (`ToolRow`) and the Overview's tiles. The square and its
- * corners, whatever is drawn on it. Whole class names, for Tailwind.
+ * `badge`, 14px: the source's mark on the corner of a tool's own icon or
+ * logo (`ToolAvatar`). `xs`, 16px: a source's mark inside a chip, such as
+ * the Installed page's filters. `sm`, 24px: a tile's or a list's small
+ * mark. `md`, 32px: a tool's row (`ToolRow`) and the Overview's tiles.
+ * The square and its corners, whatever is drawn on it. Whole class names,
+ * for Tailwind.
  */
 const SIZE_CLASSES = {
+  badge: "h-3.5 w-3.5 rounded-[4px]",
   xs: "h-4 w-4 rounded-[5px]",
   sm: "h-6 w-6 rounded-[7px]",
   md: "h-8 w-8 rounded-[9px]",
@@ -42,6 +45,7 @@ export type SourceAvatarSize = keyof typeof SIZE_CLASSES;
 
 /** The initial's type, on each size of square. */
 const LETTER_CLASSES: Record<SourceAvatarSize, string> = {
+  badge: "text-[9px] leading-none",
   xs: "text-[10px] leading-none",
   sm: "text-small",
   md: "text-body",
@@ -50,15 +54,17 @@ const LETTER_CLASSES: Record<SourceAvatarSize, string> = {
 /**
  * A glyph's box on each size of square: at a row's 32px, the 18px the
  * Unknown page's program avatar draws its mark at, and about as much room
- * around it at the smaller sizes.
+ * around it at the smaller sizes. The badge leaves less: at the same
+ * share of 14px, a logo would be too small to tell.
  */
 const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
+  badge: "h-2.5 w-2.5",
   xs: "h-2.5 w-2.5",
   sm: "h-3.5 w-3.5",
   md: "h-[18px] w-[18px]",
 };
 
-interface PackLogoProps {
+export interface PackLogoProps {
   icon: ToolIcon;
   size: SourceAvatarSize;
 }
@@ -71,7 +77,7 @@ interface PackLogoProps {
  * hairline: some are black on transparent, and would vanish on dark mode's
  * surfaces. `data-logo` says which it is. Decorative, as the initial is.
  */
-function PackLogo({ icon, size }: PackLogoProps) {
+export function PackLogo({ icon, size }: PackLogoProps) {
   if (icon.kind === "raster") {
     return (
       <img

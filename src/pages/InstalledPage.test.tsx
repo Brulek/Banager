@@ -1789,23 +1789,39 @@ describe("InstalledPage", () => {
   });
 
   describe("logos", () => {
-    // A pack of this test's own: Homebrew's logo, and nothing for glib or
-    // pip.
+    // A pack of this test's own: jq's logo and Homebrew's, and nothing for
+    // glib or pip.
+    const JQ = "M1 1h22v22H1z";
     const HOMEBREW = "M3 3h18v18H3z";
     const toolIcons = loadToolIcons(
       {
         version: 1,
         generated: "2026-09-28",
         glyphs: {
+          "si-jq": { path: JQ, hex: "181717", title: "jq" },
           "si-homebrew": { path: HOMEBREW, hex: "FBB040", title: "Homebrew" },
         },
         rasters: {},
-        tools: {},
+        tools: { "brew:jq": "si-jq" },
         sources: { brew: "si-homebrew" },
       },
       new Map(),
     );
     const glyph = (path: string) => `path[d="${path}"]`;
+
+    it("shows a tool's logo with its source's on the corner, on its row and in its details", async () => {
+      renderWithProviders(<InstalledPage />, { toolIcons });
+      // jq's logo, not on the corner, and Homebrew's, on it.
+      const expectLogos = (avatarHolder: Element) => {
+        const logo = avatarHolder.querySelector(glyph(JQ));
+        expect(logo).toBeInstanceOf(Element);
+        expect(logo?.closest("[data-source-badge]")).toBeNull();
+        expect(avatarHolder.querySelector(`[data-source-badge] ${glyph(HOMEBREW)}`)).toBeInstanceOf(Element);
+      };
+
+      expectLogos(await findRow("jq"));
+      expectLogos(await openDetails("jq"));
+    });
 
     it("shows the source's logo on a tool with none of its own, on its filter and over its group, and the initial where the source has none", async () => {
       served = {

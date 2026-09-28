@@ -16,7 +16,7 @@ export interface SheetToolProps {
   /** The source's adapter id and name, for the avatar -- the one a row has (`ToolRow`). */
   adapterId: string;
   sourceLabel: string;
-  /** The tool's key, for a cask's app icon in place of the source's initial, as on its row. */
+  /** The tool's key, for its own icon -- a cask's app's, or its logo -- as on its row. */
   iconKey?: ArtifactKey;
   name: string;
   /** On the right: the version it has, or the one it moves to. */

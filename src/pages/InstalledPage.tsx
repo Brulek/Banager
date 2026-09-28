@@ -651,7 +651,7 @@ export function InstalledPage() {
       <ToolRow
         adapterId={instance.adapter_id}
         sourceLabel={label}
-        // A cask's row shows its app's own icon once it arrives.
+        // The tool's logo, and a cask's app's own icon once it arrives.
         iconKey={artifact.key}
         name={name}
         // A tool with its own installer is its own source: the chip would

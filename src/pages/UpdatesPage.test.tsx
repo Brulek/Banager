@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
+import { loadToolIcons } from "../lib/toolIcons";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import type {
@@ -2856,6 +2857,40 @@ describe("UpdatesPage", () => {
       expect(within(tools[0]).getByText("Homebrew")).toBeInTheDocument();
       expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+    });
+
+    it("shows a tool's logo, with its source's on the corner, on its row and on its line in the sheet", async () => {
+      // A pack of this test's own: glib's logo and Homebrew's.
+      const GLIB = "M1 1h22v22H1z";
+      const HOMEBREW = "M3 3h18v18H3z";
+      const toolIcons = loadToolIcons(
+        {
+          version: 1,
+          generated: "2026-09-28",
+          glyphs: {
+            "si-glib": { path: GLIB, hex: "4A86CF", title: "GLib" },
+            "si-homebrew": { path: HOMEBREW, hex: "FBB040", title: "Homebrew" },
+          },
+          rasters: {},
+          tools: { "brew:glib": "si-glib" },
+          sources: { brew: "si-homebrew" },
+        },
+        new Map(),
+      );
+      const { findByRole } = renderWithProviders(<UpdatesPage />, { toolIcons });
+      // The tool's logo, not on the corner, and its source's, on it.
+      const expectLogos = (avatarHolder: Element | null) => {
+        const logo = avatarHolder?.querySelector(`path[d="${GLIB}"]`);
+        expect(logo).toBeInstanceOf(Element);
+        expect(logo?.closest("[data-source-badge]")).toBeNull();
+        expect(avatarHolder?.querySelector(`[data-source-badge] path[d="${HOMEBREW}"]`)).toBeInstanceOf(Element);
+      };
+
+      const row = await findRow("glib");
+      expectLogos(row);
+
+      fireEvent.click(within(row).getByRole("button", { name: "Update" }));
+      expectLogos((await findByRole("dialog", { name: "Update glib?" })).querySelector("[data-sheet-tool]"));
     });
 
     it("keeps the commands one press away while Show technical details is off", async () => {

@@ -232,15 +232,18 @@ describe("ToolRow's app icon", () => {
 
     await act(async () => answer(ICON));
 
-    await waitFor(() => expect(avatarOf(container).tagName).toBe("IMG"));
-    const icon = avatarOf(container);
+    await waitFor(() => expect(avatarOf(container).querySelector("img[data-app-icon]")).not.toBeNull());
+    const icon = avatarOf(container).querySelector("img[data-app-icon]") as Element;
     expect(icon).toHaveAttribute("src", ICON);
     expect(icon).toHaveAttribute("alt", "");
     // A row avatar's size, rounded like an app icon, with nothing coloured behind it.
     expect(icon.className).toContain("h-8");
     expect(icon.className).toContain("rounded-[7px]");
     expect(icon.className).not.toMatch(/\bbg-/);
-    expect(container.textContent).not.toContain("H");
+    // The source's letter moves to the icon's corner, 14px.
+    const badge = avatarOf(container).querySelector("[data-source-badge]");
+    expect(badge).toHaveTextContent("H");
+    expect(badge?.firstElementChild?.className).toContain("h-3.5");
   });
 
   it("keeps the source's letter for a cask that has no icon", async () => {

@@ -162,8 +162,8 @@ describe("UninstallDialog", () => {
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("artifact_icon", {
       key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" },
     });
-    // In place of the source's initial, not beside it.
-    expect(within(item).queryByText("H")).toBeNull();
+    // In place of the source's initial, which moves to the icon's corner.
+    expect(within(item).getByText("H").closest("[data-source-badge]")).not.toBeNull();
   });
 
   it("puts the focus on Cancel as it opens, and gives Uninstall the danger colour", async () => {

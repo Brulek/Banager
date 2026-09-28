@@ -109,9 +109,9 @@ export function LogDrawer() {
 
   /** The header, the next step and the foot for one operation. */
   function partsOf(op: OpSummary) {
-    // The avatar the tool's row has -- its app's icon, or its source's:
-    // the adapter from the snapshot, or from the id for a source the
-    // snapshot no longer has.
+    // The avatar the tool's row has -- its app's icon, its logo, or its
+    // source's: the adapter from the snapshot, or from the id for a source
+    // the snapshot no longer has.
     const adapterId =
       snapshot?.instances?.find((instance) => instance.id === op.instance_id)?.adapter_id ??
       adapterIdOf(op.instance_id);
