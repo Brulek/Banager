@@ -158,7 +158,7 @@ export function ToolRow({
           aria-label={selectable.ariaLabel}
           checked={selectable.checked}
           onChange={selectable.onToggle}
-          className="relative z-10 h-4 w-4 shrink-0 cursor-pointer"
+          className="relative z-10 h-4 w-4 shrink-0"
         />
       ) : null}
       {avatar ?? <ToolAvatar adapterId={adapterId ?? ""} sourceLabel={sourceLabel ?? ""} iconKey={iconKey} />}

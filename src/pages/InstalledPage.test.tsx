@@ -370,6 +370,12 @@ describe("InstalledPage", () => {
     expect(getByText("Nothing matches “nonexistent”")).toBeInTheDocument();
   });
 
+  it("checks no spelling in the search box: a tool's name is no word", async () => {
+    const { findByRole } = renderWithProviders(<InstalledPage />);
+
+    expect(await findByRole("searchbox", { name: "Search installed items" })).toHaveAttribute("spellcheck", "false");
+  });
+
   it("opens the uninstall dialog and plans it when the row's Uninstall is pressed", async () => {
     const { findByRole } = renderWithProviders(<InstalledPage />);
 

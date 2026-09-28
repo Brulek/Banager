@@ -880,6 +880,10 @@ export function InstalledPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("installed.filterPlaceholder")}
               aria-label={t("installed.filterLabel")}
+              // A tool's name is no word: no red underline under "ffmpeg",
+              // as a web page's text field would draw, and nothing
+              // corrected as it is typed.
+              spellCheck={false}
               className="h-8 w-full rounded-button border border-border bg-surface pl-8 pr-2.5 text-body text-foreground outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent"
             />
           </div>

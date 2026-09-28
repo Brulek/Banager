@@ -175,6 +175,21 @@ textarea {
   background-color: var(--color-selection);
 }
 
+/* No image or link can be dragged out of the window, as a web page's can. */
+img,
+a {
+  -webkit-user-drag: none;
+}
+
+/* Scrolling past the top or the bottom does not pull the whole window's
+   contents after it, as it would a web page's; the lists inside scroll
+   in their own boxes as before (`overscroll-behavior` is not handed
+   down). */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 /*
  * A virtualized list gives every row a slot of its own, placed with a
  * transform, and a transform makes each slot its own stacking context: a
