@@ -1,0 +1,32 @@
+{
+  "note": "Seed mapping. Replaced by the reviewed mapping (two independent reviewers per entry) before merge.",
+  "tools": {
+    "brew:git": { "icon": "si:git", "relation": "same" },
+    "brew:ffmpeg": { "icon": "si:ffmpeg", "relation": "same" },
+    "brew:python": { "icon": "si:python", "relation": "same" },
+    "brew:node": { "icon": "si:nodedotjs", "relation": "same" },
+    "brew:ollama": { "icon": "si:ollama", "relation": "same" },
+    "brew:gh": { "icon": "si:github", "relation": "maker" },
+    "brew:jq": { "icon": "gh:jqlang", "relation": "same" },
+    "npm:@openai/codex": { "icon": "gh:openai", "relation": "maker" },
+    "standalone:claude": { "icon": "si:claude", "relation": "same" },
+    "standalone:rustup": { "icon": "si:rust", "relation": "maker" },
+    "standalone:agy": { "icon": "gh:google-antigravity", "relation": "same" },
+    "standalone:grok": { "icon": "gh:xai-org", "relation": "maker" },
+    "ollama:llama": { "icon": "si:meta", "relation": "maker" },
+    "ollama:qwen": { "icon": "gh:qwenlm", "relation": "maker" }
+  },
+  "sources": {
+    "brew": "si:homebrew",
+    "npm": "si:npm",
+    "pip": "si:python",
+    "pipx": "si:pipx",
+    "uv": "si:uv",
+    "cargo": "si:rust",
+    "ollama": "si:ollama",
+    "standalone-claude": "si:claude",
+    "standalone-rustup": "si:rust",
+    "standalone-agy": "gh:google-antigravity",
+    "standalone-grok": "gh:xai-org"
+  }
+}
