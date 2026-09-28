@@ -27,6 +27,11 @@ tauri-plugin-window-state = "2.4.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 canager-core = { path = "../crates/canager-core" }
+# The daily check's timer (`tokio::time::interval_at` in auto_check.rs), on
+# tauri's own tokio runtime. Already in Cargo.lock at this version as a
+# dependency of tauri, and canager-core already switches `time` on, so no
+# new crate and no new feature enters the build.
+tokio = { version = "1", features = ["time"] }
 # Pinned to an explicit rev (not just whatever Cargo.lock happens to resolve
 # to): this is a git dependency with no published version, so without a
 # pinned rev it is the one dependency that could change under us -- on a

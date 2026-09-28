@@ -1,6 +1,7 @@
 use crate::events::UiEvent;
 use crate::state::AppState;
 use canager_core::adapters::CheckOptions;
+use canager_core::auto_check::RoundTrigger;
 use canager_core::model::OpRequest;
 use canager_core::ops::{CancelRefused, OpSummary};
 use canager_core::runner::HostEnv;
@@ -20,20 +21,37 @@ pub async fn get_snapshot(state: State<'_, AppState>) -> Result<Snapshot, String
     get_snapshot_impl(&state)
 }
 
-/// Also broadcasts `UiEvent::SnapshotChanged` on `state.channel_sink`
-/// whenever the refreshed snapshot's `generation` is newer than any this
-/// process has already announced (M9 in the design review; see
-/// `claim_broadcast` below for exactly what that means under concurrent
-/// callers). `canager-core` must never depend on `tauri`, so
-/// `Session::refresh` itself cannot send this — the shell is the only
-/// layer that can, and `announce` below is the only place that does so
-/// outside a test (`refresh_on_background_change` refreshes through this
-/// function too).
+/// The window's refresh, the `refresh` command's body: `refresh_as` for
+/// `RoundTrigger::Window`.
 pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
-    let snapshot = state
+    refresh_as(state, RoundTrigger::Window).await
+}
+
+/// Every refresh the shell runs goes through here: the window's
+/// (`refresh_impl`), the daily check's (`auto_check::check_automatically`)
+/// and the one a finished `brew update` sets off
+/// (`refresh_on_background_change`). Records who asked for the round that
+/// answered (`RoundLog::record`), then broadcasts
+/// `UiEvent::SnapshotChanged` on `state.channel_sink` whenever the
+/// refreshed snapshot's `generation` is newer than any this process has
+/// already announced (M9 in the design review; see `claim_broadcast` below
+/// for exactly what that means under concurrent callers). `canager-core`
+/// must never depend on `tauri`, so `Session::refresh` itself cannot send
+/// this — the shell is the only layer that can, and `announce` below is
+/// the only place that does so outside a test.
+pub(crate) async fn refresh_as(
+    state: &AppState,
+    trigger: RoundTrigger,
+) -> Result<Snapshot, String> {
+    let (round, snapshot) = state
         .session
-        .refresh(&HostEnv::discover(), &check_options(state))
+        .refresh_with_round(&HostEnv::discover(), &check_options(state))
         .await;
+    state
+        .rounds
+        .lock()
+        .unwrap()
+        .record(round, trigger, &snapshot);
     Ok(announce(state, snapshot))
 }
 
@@ -115,17 +133,23 @@ pub async fn refresh(state: State<'_, AppState>) -> Result<Snapshot, String> {
 /// "still downloading" notice goes and the fresh catalogue shows without
 /// the user pressing anything. Nothing new crosses to the front end.
 ///
-/// Through `refresh_impl`, so `Session::refresh`, like any other refresh.
+/// Through `refresh_as`, so `Session::refresh`, like any other refresh.
 /// The refresh in flight when this wakes can be the one that reported the
 /// update as running, still waiting on a slow source; `Session::refresh`
 /// never answers a call with a round that started before the call
 /// arrived, so this gets a round that starts after the wake-up, and so
-/// after the update ended. `refresh_impl` never returns `Err`; a failed
+/// after the update ended. `refresh_as` never returns `Err`; a failed
 /// refresh is on screen through the snapshot's own `errors`.
+///
+/// Recorded as asked for by whoever asked for the round that started the
+/// `brew update` that ended (`RoundLog::take_follow_up_trigger`): the
+/// follow-up of a daily check's update is the daily check's, and that of
+/// a check of the window's is the window's.
 pub(crate) async fn refresh_on_background_change(state: &AppState) {
     loop {
         state.session.background_change().await;
-        let _ = refresh_impl(state).await;
+        let trigger = state.rounds.lock().unwrap().take_follow_up_trigger();
+        let _ = refresh_as(state, trigger).await;
     }
 }
 
@@ -896,6 +920,7 @@ mod tests {
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
         };
         (state, execute_calls, check_options_calls)
     }
@@ -935,6 +960,7 @@ mod tests {
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
         })
     }
 
@@ -986,6 +1012,7 @@ mod tests {
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
         });
         (state, check_options_calls)
     }
@@ -1304,13 +1331,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_refresh_impl_broadcasts_snapshot_changed_when_the_generation_moves() {
-        // M9 in the design review: `refresh_impl` is the only production
-        // code path in the whole plan that ever sends
-        // `UiEvent::SnapshotChanged`, and only when the refresh actually
-        // moved `generation`. Subscribe *first* (every other test that
-        // refreshes either has no subscriber or subscribes after its last
-        // refresh, which is why inverting or dropping the generation-diff
-        // branch used to leave the whole suite green), then refresh a fresh
+        // M9 in the design review: `refresh_as`, which `refresh_impl` runs
+        // for the window, is the only production code path in the whole
+        // plan that ever sends `UiEvent::SnapshotChanged`, and only when
+        // the refresh actually moved `generation`. Subscribe *first*
+        // (every other test that refreshes either has no subscriber or
+        // subscribes after its last refresh, which is why inverting or
+        // dropping the generation-diff branch used to leave the whole
+        // suite green), then refresh a fresh
         // session: its first refresh always changes the content (no
         // instances -> the fake instance), so `generation` must move and
         // exactly one SnapshotChanged carrying the new value must reach the
@@ -1627,6 +1655,7 @@ mod tests {
             settings: std::sync::Mutex::new(Settings::default()),
             channel_sink: sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: std::sync::Mutex::new(Default::default()),
         }
     }
 

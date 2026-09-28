@@ -1,3 +1,4 @@
+mod auto_check;
 pub mod events;
 mod ipc;
 mod menu;
@@ -62,6 +63,12 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 ipc::refresh_on_background_change(&handle.state::<AppState>()).await
+            });
+            // The daily check (auto_check.rs): checks nothing while
+            // `Settings::auto_check` is off, which it is by default.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                auto_check::check_automatically(&handle.state::<AppState>()).await
             });
             // The menu bar (menu.rs), up before the window has loaded, in
             // the language the page is about to choose; the page then says

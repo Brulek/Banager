@@ -59,6 +59,16 @@ pub struct Settings {
     /// `Settings::default()` in `load()`.
     #[serde(default)]
     pub include_self_updating: bool,
+    /// The daily check: whether Canager, while it runs, refreshes by itself
+    /// once a day -- the same refresh as Check again, which installs
+    /// nothing. Read at every tick of the shell's task
+    /// (`check_automatically` in src-tauri/src/auto_check.rs), which hands
+    /// it to `auto_check::tick`. Off by default. `#[serde(default)]` so a
+    /// settings.json written before this field existed still loads with its
+    /// other fields, instead of `load()` falling back to
+    /// `Settings::default()`.
+    #[serde(default)]
+    pub auto_check: bool,
 }
 
 impl Default for Settings {
@@ -69,6 +79,7 @@ impl Default for Settings {
             ignored_updates: Vec::new(),
             skipped_versions: Vec::new(),
             include_self_updating: false,
+            auto_check: false,
         }
     }
 }
@@ -143,6 +154,7 @@ mod tests {
         assert!(!settings.show_technical_details);
         assert!(settings.ignored_updates.is_empty());
         assert!(settings.skipped_versions.is_empty());
+        assert!(!settings.auto_check, "the daily check is off by default");
     }
 
     #[test]
@@ -158,6 +170,7 @@ mod tests {
         assert!(json.contains("\"ignored_updates\":[]"));
         assert!(json.contains("\"skipped_versions\":[]"));
         assert!(json.contains("\"include_self_updating\":false"));
+        assert!(json.contains("\"auto_check\":false"));
     }
 
     #[test]
@@ -233,6 +246,36 @@ mod tests {
     }
 
     #[test]
+    fn test_load_of_json_written_before_the_daily_check_turns_it_off_and_keeps_the_rest() {
+        // Every settings.json written before the daily check existed: all
+        // of today's other fields, set, and no `auto_check`. Without
+        // `#[serde(default)]` on it `load` would fall back to
+        // Settings::default() and drop every one of them.
+        let path = temp_settings_path("no-auto-check");
+        std::fs::write(
+            &path,
+            br#"{"language":"ZhCn","show_technical_details":true,"ignored_updates":[{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"jq"}],"skipped_versions":[{"key":{"instance_id":"brew:/opt/homebrew","kind":"Formula","name":"glib"},"version":"2.90.0"}],"include_self_updating":true}"#,
+        )
+        .expect("write settings.json without auto_check");
+        let loaded = load(&path);
+        assert_eq!(
+            loaded,
+            Settings {
+                language: Language::ZhCn,
+                show_technical_details: true,
+                ignored_updates: vec![key("jq")],
+                skipped_versions: vec![SkippedVersion {
+                    key: key("glib"),
+                    version: "2.90.0".to_string(),
+                }],
+                include_self_updating: true,
+                auto_check: false,
+            }
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn test_save_then_load_round_trips_a_non_default_settings() {
         let path = temp_settings_path("roundtrip");
         let settings = Settings {
@@ -244,6 +287,7 @@ mod tests {
                 version: "2.90.0".to_string(),
             }],
             include_self_updating: true,
+            auto_check: true,
         };
         save(&path, &settings).expect("save");
         let loaded = load(&path);

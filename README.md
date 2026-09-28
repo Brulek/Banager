@@ -47,7 +47,7 @@ last check finished, or choose **Check Again** (⌘R) in the menu bar's View men
 a check runs, neither starts another. The "Try again" of a failed refresh, or of a Homebrew index
 Canager couldn't update, runs the same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
-`src-tauri/src/lib.rs:62-65`). The Unknown page's header has *Scan again* in its place, with how
+`src-tauri/src/lib.rs:63-66`). The Unknown page's header has *Scan again* in its place, with how
 long ago that page last scanned: it re-runs only that page's scan of your bin folders, against the
 sources' last known state — it does not refresh the sources. Settings' header has neither.
 
@@ -323,7 +323,7 @@ Canager 在打开时、每次操作完成后，以及你按下“概览”“更
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
 再按也不会多查一遍。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
-`src-tauri/src/lib.rs:62-65`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
+`src-tauri/src/lib.rs:63-66`，不需要用户动手）。“来源不明”页的页头换成“重新扫描”和上次扫描是多久以前，
 它只属于那一页：只重新扫描那一页看的几个 bin 文件夹，按各来源上次已知的状态判断——并不刷新各来源。
 “设置”页的页头两者都没有。
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo

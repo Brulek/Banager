@@ -1,4 +1,5 @@
 use crate::events::ChannelSink;
+use canager_core::auto_check::RoundLog;
 use canager_core::session::Session;
 use canager_core::settings::{self, Settings};
 use std::path::PathBuf;
@@ -17,6 +18,11 @@ pub struct AppState {
     /// resulting Snapshot, only one of them ever wins the swap and
     /// broadcasts -- never both.
     pub last_broadcast_generation: std::sync::atomic::AtomicU64,
+    /// Who asked for each refresh round: the window or the daily check.
+    /// Written by `ipc::refresh_as` after every round, read by
+    /// `ipc::refresh_on_background_change` for the round its refresh
+    /// belongs to. In memory only.
+    pub rounds: Mutex<RoundLog>,
 }
 
 impl AppState {
@@ -32,6 +38,7 @@ impl AppState {
             settings: Mutex::new(loaded),
             channel_sink,
             last_broadcast_generation: std::sync::atomic::AtomicU64::new(0),
+            rounds: Mutex::new(RoundLog::default()),
         }
     }
 
