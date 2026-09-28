@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { cancelState, currentOf, isWaitingForBrewUpdate, outcomeTone, trackRun, type OperationRun } from "./operations";
+import {
+  cancelState,
+  currentOf,
+  isWaitingForBrewUpdate,
+  outcomeTone,
+  runsToItsEnd,
+  trackRun,
+  type OperationRun,
+} from "./operations";
 import type { LogLine } from "../store/ui";
 import type { OpStatus, OpSummary } from "./types";
 
@@ -84,6 +92,18 @@ describe("currentOf", () => {
     expect(currentOf([op(3, "Verifying"), op(2, "Running")])?.id).toBe(2);
     expect(currentOf([op(3, "Queued"), op(2, "Queued")])?.id).toBe(2);
     expect(currentOf([])).toBeUndefined();
+  });
+});
+
+describe("runsToItsEnd", () => {
+  it("is true of a NoCancel operation from the moment it starts until it is done, and of nothing else", () => {
+    const noCancel = { cancel_policy: "NoCancel" } as const;
+    expect(runsToItsEnd(op(1, "Running", noCancel))).toBe(true);
+    expect(runsToItsEnd(op(1, "Verifying", noCancel))).toBe(true);
+    // Waiting its turn, it has started nothing, and can still be cancelled.
+    expect(runsToItsEnd(op(1, "Queued", noCancel))).toBe(false);
+    expect(runsToItsEnd(op(1, "Done", noCancel))).toBe(false);
+    expect(runsToItsEnd(op(1, "Running"))).toBe(false);
   });
 });
 

@@ -53,6 +53,15 @@ export const OP_STATUS_KEYS: Record<Exclude<OpStatus, "Done">, string> = {
 };
 
 /**
+ * Whether `op` has started and nothing can stop it now: a `NoCancel` plan
+ * past Queued, which `cancelState` offers no Cancel for. It goes on to its
+ * end, whatever the operation bar's Cancel does to the rest of its run.
+ */
+export function runsToItsEnd(op: OpSummary): boolean {
+  return isActive(op) && op.cancel_policy === "NoCancel" && op.status !== "Queued";
+}
+
+/**
  * Whether Cancel is offered for `op`, and whether it can be pressed.
  *
  * `OperationManager::cancel` (ops/mod.rs) refuses a `NoCancel` op once it
@@ -69,8 +78,7 @@ export const OP_STATUS_KEYS: Record<Exclude<OpStatus, "Done">, string> = {
  * `NotPending`, which the IPC reports as a silent Ok.
  */
 export function cancelState(op: OpSummary): "none" | "enabled" | "disabled" {
-  if (!isActive(op)) return "none";
-  if (op.cancel_policy === "NoCancel" && op.status !== "Queued") return "none";
+  if (!isActive(op) || runsToItsEnd(op)) return "none";
   if (op.status === "CancelRequested" || op.status === "Cancelling" || op.status === "Verifying") {
     return "disabled";
   }
@@ -213,6 +221,8 @@ export function trackRun(previous: OperationRun | null, operations: OpSummary[])
  * The operation a run's words and Cancel are about while it is under way:
  * the oldest one actually doing something, or, when every one left is
  * waiting its turn, the oldest of those. With one operation, that one.
+ * The operation bar asks it first of the ones nothing can stop
+ * (`runsToItsEnd`), which it names while one of them runs.
  */
 export function currentOf(active: OpSummary[]): OpSummary | undefined {
   let current: OpSummary | undefined;

@@ -342,7 +342,8 @@
       "allSucceeded_other": "{{count}} 个都已成功",
       "needsAttention_other": "{{total}} 个中有 {{count}} 个需要留意",
       "finished": "{{succeeded}} 个已成功，{{cancelled}} 个已取消",
-      "cancelAll": "全部取消"
+      "cancelAll": "全部取消",
+      "cancelRest": "取消其余"
     },
     "cancelKind": {
       "Install": "取消安装",

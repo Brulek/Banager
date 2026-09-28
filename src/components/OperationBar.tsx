@@ -8,6 +8,7 @@ import {
   isActive,
   outcomeSentence,
   outcomeTone,
+  runsToItsEnd,
   statusKey,
   trackRun,
   useOperationName,
@@ -39,15 +40,17 @@ function needsALook(tone: OutcomeTone): boolean {
  * where it stands -- with Cancel where Cancel can still do something, and
  * the way to its log; with several, how far along the run is: 「正在处理
  * 3 个中的第 2 个」, and 「全部取消」 for all of it that can still be
- * cancelled. Once everything is done, how it went in place of where
- * it stood: 「更新 ffmpeg：已成功」, or the outcome with a warning sign and
- * its log when it needs a look -- and a close button. Closed, it stays away
- * until the next operation starts.
+ * cancelled -- 「取消其余」 while one of it runs that nothing can stop. Once
+ * everything is done, how it went in place of where it stood: 「更新
+ * ffmpeg：已成功」, or the outcome with a warning sign and its log when it
+ * needs a look -- and a close button. Closed, it stays away until the next
+ * operation starts.
  *
  * Its operations are a run (`trackRun`): the ones started while others
  * were still under way belong together, and a new one started after
  * everything had finished replaces the last run's result. The one a run
- * names while under way is the oldest actually working (`currentOf`);
+ * names while under way is the one nothing can stop (`runsToItsEnd`),
+ * while one runs, and otherwise the oldest actually working (`currentOf`);
  * with a single operation that is it, and its Cancel is that one's alone.
  * Once a run of one is done, that one -- so an update that finished while
  * the user was looking elsewhere is still on screen, with how it went.
@@ -91,20 +94,28 @@ export function OperationBar() {
   );
 
   let body;
-  const current = currentOf(active);
+  const batch = total > 1;
+  // What nothing can stop now (`runsToItsEnd`): rustup's self update or
+  // self uninstall once it has started. In a run of several, the bar names
+  // such a one while it runs -- the one its Cancel leaves running, before
+  // the press and after -- and otherwise the oldest actually working
+  // (`currentOf`).
+  const unstoppable = active.filter(runsToItsEnd);
+  const current = (batch ? currentOf(unstoppable) : undefined) ?? currentOf(active);
   if (current !== undefined) {
     const done = total - active.length;
     const status = statusKey(current, logs);
     const line = t("operations.current", { ...titleOf(current), status: status === null ? "" : t(status) });
-    // With several, Cancel all: every operation of the run that can still
-    // be cancelled -- each one queued, whatever its plan, and each one
-    // running whose plan allows it, the current one among them when it
-    // can be. One that cannot be (a NoCancel op already running) goes on
-    // to its end, on the bar. The queued ones go first, oldest first, so
-    // none of them starts in the moment its turn comes. Pressable while
-    // there is one to cancel; held, not pressable, while the cancels are
-    // on their way, as a single Cancel is.
-    const batch = total > 1;
+    // With several, one Cancel for the run: every operation of it that can
+    // still be cancelled -- each one queued, whatever its plan, and each
+    // one running whose plan allows it, the current one among them when it
+    // can be. That is all of them, 「全部取消」, unless one running cannot
+    // be (a NoCancel op already running): then it is the rest of them,
+    // 「取消其余」, and that one goes on to its end, named on the bar. The
+    // queued ones go first, oldest first, so none of them starts in the
+    // moment its turn comes. Pressable while there is one to cancel; held,
+    // not pressable, while the cancels are on their way, as a single
+    // Cancel is.
     const cancellable = active
       .filter((op) => cancelState(op) === "enabled")
       .sort((a, b) => Number(b.status === "Queued") - Number(a.status === "Queued") || a.id - b.id);
@@ -153,7 +164,11 @@ export function OperationBar() {
         {viewLog(current)}
         {cancel !== "none" ? (
           <button type="button" onClick={cancelNow} disabled={cancel === "disabled"} className={CANCEL_BUTTON}>
-            {batch ? t("operations.batch.cancelAll") : t("common.cancel")}
+            {!batch
+              ? t("common.cancel")
+              : unstoppable.length > 0
+                ? t("operations.batch.cancelRest")
+                : t("operations.batch.cancelAll")}
           </button>
         ) : null}
       </>
