@@ -143,8 +143,10 @@ pub enum RoundTrigger {
 }
 
 /// Who asked for each refresh round the shell was handed, by the number
-/// `Session::refresh_with_round` gave it, and whose the refresh is that a
-/// `brew update` ending sets off.
+/// `Session::refresh_recording` gave it -- recorded before that round's
+/// snapshot is committed, so no reader of the snapshot meets a round not
+/// recorded yet -- and whose the refresh is that a `brew update` ending
+/// sets off.
 ///
 /// A round two callers shared -- two calls that arrived before a round
 /// started share it (`Session::refresh`) -- is the window's if either was

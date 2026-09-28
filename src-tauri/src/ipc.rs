@@ -31,7 +31,11 @@ pub(crate) async fn refresh_impl(state: &AppState) -> Result<Snapshot, String> {
 /// (`refresh_impl`), the daily check's (`auto_check::check_automatically`)
 /// and the one a finished `brew update` sets off
 /// (`refresh_on_background_change`). Records who asked for the round that
-/// answered (`RoundLog::record`), then broadcasts
+/// answered (`RoundLog::record`) before that round's snapshot is committed
+/// (`Session::refresh_recording`) -- so before the page can fetch it
+/// (`get_snapshot`, which it may do at any time, a refetch as the window
+/// comes back included) and report it (`notify::report_update_set`, which
+/// looks up who asked) -- then broadcasts
 /// `UiEvent::SnapshotChanged` on `state.channel_sink` whenever the
 /// refreshed snapshot's `generation` is newer than any this process has
 /// already announced (M9 in the design review; see `claim_broadcast` below
@@ -45,15 +49,20 @@ pub(crate) async fn refresh_as(
     state: &AppState,
     trigger: RoundTrigger,
 ) -> Result<Snapshot, String> {
-    let (round, snapshot) = state
+    let (_, snapshot) = state
         .session
-        .refresh_with_round(&HostEnv::discover(), &check_options(state))
+        .refresh_recording(
+            &HostEnv::discover(),
+            &check_options(state),
+            |round, snapshot| {
+                state
+                    .rounds
+                    .lock()
+                    .unwrap()
+                    .record(round, trigger, snapshot)
+            },
+        )
         .await;
-    state
-        .rounds
-        .lock()
-        .unwrap()
-        .record(round, trigger, &snapshot);
     Ok(announce(state, snapshot, trigger))
 }
 
@@ -1476,6 +1485,50 @@ mod tests {
             generations,
             vec![daily.generation],
             "the daily check's round, and it alone, announced: {events:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_refresh_as_records_who_asked_before_the_round_can_be_seen() {
+        // The page may fetch the snapshot at any moment (`get_snapshot`)
+        // and report its round (`notify::report_update_set`), which looks
+        // up who asked for it. So the round is recorded before it is
+        // committed: while nothing can record it -- another thread holds
+        // the log -- nothing can see it either.
+        let state = Arc::new(state_with_fake_adapter());
+        let (locked, is_locked) = std::sync::mpsc::channel::<()>();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let holder = {
+            let state = state.clone();
+            std::thread::spawn(move || {
+                let _log = state.rounds.lock().unwrap();
+                locked.send(()).expect("the test is waiting");
+                released.recv().ok();
+            })
+        };
+        is_locked.recv().expect("the log is held");
+
+        let refreshing = {
+            let state = state.clone();
+            tokio::spawn(async move { refresh_as(&state, RoundTrigger::Automatic).await })
+        };
+        // Long past the fake source's answer: the round has run as far as
+        // it can.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert_eq!(
+            state.session.snapshot().round,
+            0,
+            "the round was committed before who asked for it was recorded"
+        );
+
+        release.send(()).expect("the holder is waiting");
+        holder.join().expect("holder thread");
+        let snapshot = refreshing.await.expect("refresh task").expect("refresh_as");
+        assert_eq!(snapshot.round, 1);
+        assert_eq!(state.session.snapshot().round, 1);
+        assert_eq!(
+            state.rounds.lock().unwrap().trigger_of(1),
+            Some(RoundTrigger::Automatic)
         );
     }
 

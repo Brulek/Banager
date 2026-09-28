@@ -22,7 +22,9 @@ pub struct AppState {
     /// won.
     pub last_broadcast_generation: std::sync::atomic::AtomicU64,
     /// Who asked for each refresh round: the window or the daily check.
-    /// Written by `ipc::refresh_as` after every round, read by
+    /// Written by `ipc::refresh_as` for every round before the round's
+    /// snapshot is committed, and by each call that shares it as it takes
+    /// it (`Session::refresh_recording`); read by
     /// `ipc::refresh_on_background_change` for the round its refresh
     /// belongs to, by `notify::report` for the round the page reports, and
     /// by `auto_check::tick_at` for when the last round that counts as a

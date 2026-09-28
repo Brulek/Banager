@@ -103,7 +103,7 @@ impl Session {
     /// back: the round this call ran, or the one it shared. Two calls
     /// answered with one round get the same number, and a later round a
     /// higher one. The shell records who asked for each round by this
-    /// number (`auto_check::RoundLog`).
+    /// number (`auto_check::RoundLog`), through `refresh_recording`.
     ///
     /// Counted in `busy` from the moment it arrives until it returns or is
     /// dropped, the wait for the gate included.
@@ -111,6 +111,24 @@ impl Session {
         self: &std::sync::Arc<Self>,
         env: &HostEnv,
         opts: &CheckOptions,
+    ) -> (u64, Snapshot) {
+        self.refresh_recording(env, opts, |_, _| {}).await
+    }
+
+    /// `refresh_with_round`, calling `record` with the number of the round
+    /// that answers this call and its snapshot, while this call holds the
+    /// refresh gate: when this call runs the round, before the round's
+    /// snapshot is committed -- so before `snapshot()`, or any other call,
+    /// can hand that round to anyone -- and when it shares a round another
+    /// call ran, as it takes that round. The shell records who asked for
+    /// each round this way (`ipc::refresh_as`), so that a reader of the
+    /// snapshot never finds a round not yet recorded. Not called when this
+    /// call is dropped before a round answers it.
+    pub async fn refresh_recording(
+        self: &std::sync::Arc<Self>,
+        env: &HostEnv,
+        opts: &CheckOptions,
+        record: impl FnOnce(u64, &Snapshot) + Send,
     ) -> (u64, Snapshot) {
         let _under_way = UnderWay::enter(&self.refreshes_under_way);
         // Read before queueing on the gate: any round numbered above this
@@ -124,20 +142,23 @@ impl Session {
         // left no snapshot behind to share.
         let committed = self.last_committed_round.load(Ordering::SeqCst);
         if committed > arrived_after {
-            return (committed, self.snapshot.lock().unwrap().clone());
+            let snapshot = self.snapshot.lock().unwrap().clone();
+            record(committed, &snapshot);
+            return (committed, snapshot);
         }
-        self.refresh_round(gate, env, opts).await
+        self.refresh_round(gate, env, opts, record).await
     }
 
     /// One real refresh round, the body of `refresh`, handing back its own
     /// number with its snapshot. Takes the `refresh_gate` guard by value so
     /// no round can run without holding it, and holds it until the round
-    /// has committed.
+    /// has committed. `record` is `commit`'s to call.
     async fn refresh_round(
         self: &std::sync::Arc<Self>,
         _gate: tokio::sync::MutexGuard<'_, ()>,
         env: &HostEnv,
         opts: &CheckOptions,
+        record: impl FnOnce(u64, &Snapshot) + Send,
     ) -> (u64, Snapshot) {
         // Numbered before anything is read, under the gate: a caller that
         // read `rounds_started` below this number arrived before this round
@@ -657,18 +678,25 @@ impl Session {
             stale,
             errors,
         };
-        (round, self.commit(round, previous, candidate))
+        (round, self.commit(round, previous, candidate, record))
     }
 
     /// Assigns the real generation number (bumping only on a content
-    /// change), stores the result as the current snapshot, and records
-    /// `round` as the last one committed regardless of whether
-    /// `generation` moved (M5 in the design review -- see
-    /// `last_committed_round`'s field doc).
-    fn commit(&self, round: u64, previous: Snapshot, mut candidate: Snapshot) -> Snapshot {
+    /// change), hands the result to `record` (`refresh_recording`), stores
+    /// it as the current snapshot, and records `round` as the last one
+    /// committed regardless of whether `generation` moved (M5 in the design
+    /// review -- see `last_committed_round`'s field doc).
+    fn commit(
+        &self,
+        round: u64,
+        previous: Snapshot,
+        mut candidate: Snapshot,
+        record: impl FnOnce(u64, &Snapshot),
+    ) -> Snapshot {
         if !previous.same_content(&candidate) {
             candidate.generation = previous.generation + 1;
         }
+        record(round, &candidate);
         *self.snapshot.lock().unwrap() = candidate.clone();
         self.last_committed_round.store(round, Ordering::SeqCst);
         candidate
@@ -2946,6 +2974,88 @@ mod tests {
         assert_eq!(again.round, second);
         assert!(second > first);
         assert_eq!(session.snapshot().round, second);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_recording_records_a_round_before_anyone_can_see_it() {
+        // The shell records who asked for a round through `record`: were
+        // the round's snapshot committed first, a reader could fetch it --
+        // the page, and report it -- before its record was in.
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (round, snapshot) = session
+            .refresh_recording(&non_root_env(), &CheckOptions::default(), {
+                let session = session.clone();
+                let seen = seen.clone();
+                move |round, snapshot| {
+                    // What anyone reading the session sees as it is recorded.
+                    let visible = session.snapshot().round;
+                    seen.lock().unwrap().push((round, snapshot.round, visible));
+                }
+            })
+            .await;
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [(round, round, round - 1)],
+            "recorded once, with its own number and snapshot, while the session still showed the round before"
+        );
+        assert_eq!(snapshot.round, round);
+        assert_eq!(session.snapshot().round, round, "then committed");
+    }
+
+    #[tokio::test]
+    async fn test_refresh_recording_records_a_shared_round_for_each_caller_that_takes_it() {
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session = Session::with_adapters(sink, vec![adapter], None);
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+
+        // A round in flight, and three calls arriving during it: they share
+        // the one round after it, and each records it as it takes it.
+        state.lock().unwrap().detect_delay = Duration::from_millis(100);
+        let in_flight = {
+            let session = session.clone();
+            let recorded = recorded.clone();
+            tokio::spawn(async move {
+                session
+                    .refresh_recording(
+                        &non_root_env(),
+                        &CheckOptions::default(),
+                        move |round, _| recorded.lock().unwrap().push(round),
+                    )
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let behind: Vec<_> = (0..3)
+            .map(|_| {
+                let session = session.clone();
+                let recorded = recorded.clone();
+                tokio::spawn(async move {
+                    session
+                        .refresh_recording(
+                            &non_root_env(),
+                            &CheckOptions::default(),
+                            move |round, _| recorded.lock().unwrap().push(round),
+                        )
+                        .await
+                })
+            })
+            .collect();
+        let (first, _) = in_flight.await.expect("in-flight task");
+        for handle in behind {
+            let (round, _) = handle.await.expect("caller task");
+            assert_eq!(round, first + 1);
+        }
+        assert_eq!(
+            *recorded.lock().unwrap(),
+            [first, first + 1, first + 1, first + 1],
+            "each call recorded the round that answered it, once"
+        );
     }
 
     #[tokio::test]
