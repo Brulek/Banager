@@ -1060,6 +1060,22 @@ describe("the Updates page's chip details", () => {
     );
   });
 
+  it("calls a source that did not answer one thing on every page, and says what to do next", () => {
+    // ruff read 暂时不可用 on the Updates page and 暂时不能更新 on the
+    // Installed page, and its drawer said 没有响应 under the chip over
+    // 没有应答 in the notice under it: one fact, in two words each time.
+    expect(zhCN.updates.sourceUnavailable).toBe("暂时不能更新");
+    expect(en.updates.sourceUnavailable).toBe("Can't update now");
+    expect(JSON.stringify(zhCN)).not.toContain("应答");
+    expect(zhCN.sourceNotice.unreachable.title).toBe("{{source}} 没有响应");
+    for (const copy of [zhCN.sourceNotice.unreachable.description, zhCN.sourceNotice.unreachable.descriptionWithRows]) {
+      expect(copy.endsWith("稍后点「重新检查」再试。"), copy).toBe(true);
+    }
+    for (const copy of [en.sourceNotice.unreachable.description, en.sourceNotice.unreachable.descriptionWithRows]) {
+      expect(copy.endsWith("Press Check again later."), copy).toBe(true);
+    }
+  });
+
   it("says what to do about a source that did not answer by why it did not, naming the source", () => {
     // "Check again later" is no help for an Ollama that is not running or
     // a Canager started with sudo.
@@ -1068,10 +1084,11 @@ describe("the Updates page's chip details", () => {
       NotResponding: "updates.unavailableDetail.NotResponding",
       RefusesAsRoot: "updates.unavailableDetail.RefusesAsRoot",
     });
+    // Each says what to do with the button that does it: Check again.
     expect(en.updates.unavailableDetail.NotResponding).toBe(
-      "{{source}} isn't responding. Check again later.",
+      "{{source}} isn't responding. Press Check again later.",
     );
-    expect(zhCN.updates.unavailableDetail.NotResponding).toBe("{{source}} 没有响应，稍后再检查。");
+    expect(zhCN.updates.unavailableDetail.NotResponding).toBe("{{source}} 没有响应，稍后点「重新检查」再试。");
     for (const locale of [en, zhCN]) {
       for (const copy of Object.values(locale.updates.unavailableDetail)) {
         expect(copy).toContain("{{source}}");
@@ -1079,8 +1096,8 @@ describe("the Updates page's chip details", () => {
       expect(locale.updates.unavailableDetail.NotRunning).not.toMatch(/later|稍后/);
       expect(locale.updates.unavailableDetail.RefusesAsRoot).not.toMatch(/later|稍后/);
     }
-    expect(en.updates.unavailableDetail.NotRunning).toMatch(/Start it/);
-    expect(zhCN.updates.unavailableDetail.NotRunning).toMatch(/启动它/);
+    expect(en.updates.unavailableDetail.NotRunning).toBe("{{source}} isn't running. Open it, then press Check again.");
+    expect(zhCN.updates.unavailableDetail.NotRunning).toBe("{{source}} 没有运行。打开它，再点「重新检查」。");
     expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Open Canager again/);
     expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/重新打开 Canager/);
   });

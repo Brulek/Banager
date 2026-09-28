@@ -452,18 +452,35 @@ export function InstalledPage() {
   }
 
   // Uninstall where both the source and the tool allow it: a source that
-  // is read-only, or did not answer the last check -- its rows are last
-  // time's, carried forward -- offers none, nor does a package the tool
-  // refuses to remove (`uninstall_blocked`). `Session::issue_plan` refuses
-  // all three in Rust whatever this page shows (spec §2.5).
+  // is read-only offers none, nor does a package the tool refuses to
+  // remove (`uninstall_blocked`) -- each row says why with its own chip.
+  // `Session::issue_plan` refuses both in Rust whatever this page shows
+  // (spec §2.5).
   const canUninstall = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
-    canWrite(instance) && isAvailable(instance) && artifact.uninstall_blocked === null;
-  // Such an Uninstall stays, disabled, while the source refuses to plan
-  // one until a note of its goes away -- a Homebrew updating its list
-  // (`uninstallHoldKey`) -- with a chip saying why. It comes back with the
-  // refresh that clears the note.
+    canWrite(instance) && artifact.uninstall_blocked === null;
+  // Why such an Uninstall stays, disabled, for now, or null when it does
+  // not: the source did not answer the last check -- its rows are last
+  // time's, carried forward, and `Session::issue_plan` refuses to plan on
+  // it (spec §2.5) -- which says what to do by why it did not
+  // (`unavailableDetail`), or it refuses to plan one until a note of its
+  // goes away -- a Homebrew updating its list (`uninstallHoldKey`). The
+  // row's 「暂时不能卸载」 chip says it, the same chip for both; the button
+  // comes back with the check that finds the source answering, or clears
+  // the note.
+  const uninstallHoldDetail = (
+    artifact: InstalledArtifact,
+    instance: ManagerInstance,
+    label: string,
+  ): ReactNode | null => {
+    if (!canUninstall(artifact, instance)) return null;
+    if (!isAvailable(instance)) return unavailableDetail(t, instance, label);
+    const holdKey = uninstallHoldKey(instance);
+    return holdKey === null ? null : detailLines([t(holdKey)]);
+  };
+  // Held as above, or while an uninstall of this one is under way.
   const uninstallHeld = (artifact: InstalledArtifact, instance: ManagerInstance): boolean =>
-    canUninstall(artifact, instance) && (uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
+    canUninstall(artifact, instance) &&
+    (!isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
   const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
@@ -587,12 +604,12 @@ export function InstalledPage() {
       });
     }
     // Why the row's Uninstall is disabled for now.
-    const holdKey = canUninstall(artifact, instance) ? uninstallHoldKey(instance) : null;
-    if (holdKey !== null) {
+    const holdDetail = uninstallHoldDetail(artifact, instance, label);
+    if (holdDetail !== null) {
       chips.push({
         id: "uninstall-held",
         label: t("installed.uninstallHold.label"),
-        detail: detailLines([t(holdKey)]),
+        detail: holdDetail,
         tone: "neutral",
       });
     }
@@ -636,7 +653,8 @@ export function InstalledPage() {
           // forward; the source's notice says it did not answer.
           chips.push({
             id: "update-unavailable",
-            label: t("installed.updateSourceUnavailable"),
+            // The Updates page's chip for the same row, word for word.
+            label: t("updates.sourceUnavailable"),
             detail: unavailableDetail(t, instance, label),
             tone: "neutral",
           });

@@ -861,17 +861,19 @@ describe("InstalledPage", () => {
       // Pinned in Homebrew and up to date: still pinned, from the inventory.
       expect(chipsOf(rowOf("pinned-current"))).toEqual(["Pinned", "Up to date"]);
       expect(chipsOf(rowOf("current"))).toEqual(["Up to date"]);
-      // Its source is not running, so there is no Update button for it.
-      expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't update now"]);
+      // Its source is not running, so there is no Update button for it,
+      // and its Uninstall waits too.
+      expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't uninstall now", "Can't update now"]);
       // A model's skipped version is a digest, and no digest is printed.
-      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Newer build skipped"]);
+      // Its Ollama is the stopped one too.
+      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Can't uninstall now", "Newer build skipped"]);
       expect(container.textContent).not.toContain("sha256");
       // Not "Skipped latest": a skip of a cask every release of which is
       // offered as "latest" would never end, so it hides nothing.
       expect(chipsOf(rowOf("chromium"))).toEqual(["Update available"]);
       // Each "why" behind its chip.
       expect(chipDetail(rowOf("stopped-model"), "Can't update now")).toHaveTextContent(
-        "Ollama isn't running. Start it, then check again.",
+        "Ollama isn't running. Open it, then press Check again.",
       );
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       expect(chipDetail(rowOf("ignored"), "Reminders off")).toHaveTextContent(
@@ -960,8 +962,11 @@ describe("InstalledPage", () => {
       renderWithProviders(<InstalledPage />);
 
       expect(chipsOf(await findRow("answered"))).toEqual(["Up to date"]);
-      for (const name of ["silent", "failed", "stopped"]) {
-        expect(chipsOf(rowOf(name)), name).toEqual([]);
+      // Nothing about updates; the two whose source did not answer say
+      // only that their Uninstall waits.
+      expect(chipsOf(rowOf("failed"))).toEqual([]);
+      for (const name of ["silent", "stopped"]) {
+        expect(chipsOf(rowOf(name)), name).toEqual(["Can't uninstall now"]);
       }
       // The two that did not answer say so in their own line, the second
       // folded behind the first (`SourceNotices`).
@@ -1134,7 +1139,7 @@ describe("InstalledPage", () => {
     expect(queryByText(/Reopening Canager/)).not.toBeInTheDocument();
   });
 
-  it("says what is listed for a silent source is from the last time it answered, when it has rows, a search or not", async () => {
+  it("says what is listed for a silent source is from the last time it responded, when it has rows, a search or not", async () => {
     // `refresh` keeps an unavailable source's last known artifacts, so
     // once there has been a good refresh these rows are real and the user
     // needs telling how old they are. A search that hides them does not
@@ -1152,7 +1157,7 @@ describe("InstalledPage", () => {
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
+      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
     );
   });
 
@@ -1251,14 +1256,15 @@ describe("InstalledPage", () => {
     expect(queryByText(/ollama_open_failed/)).not.toBeInTheDocument();
   });
 
-  it("keeps a stopped source's rows on screen but offers no Uninstall on them", async () => {
+  it("keeps a stopped source's rows on screen with Uninstall disabled, and says why behind a chip", async () => {
     // `refresh` carries an unavailable source's last known artifacts
     // forward, which is what makes the line's "what's listed for Ollama is
-    // from the last time it answered" true instead of a sentence over no
-    // rows. Every one of those rows would otherwise carry an Uninstall
-    // button, and `ollama rm` against a daemon that is not listening
-    // cannot succeed -- spec §2.5's conjunction, on the button rather than
-    // only in the backend's refusal.
+    // from the last time it responded" true instead of a sentence over no
+    // rows. `ollama rm` against a daemon that is not listening cannot
+    // succeed -- spec §2.5's conjunction, on the button rather than only in
+    // the backend's refusal -- so each row's Uninstall stays, disabled, as
+    // it does while Homebrew updates its list, with the same chip saying
+    // why and what to do.
     served = {
       ...snapshot,
       generation: 4,
@@ -1280,8 +1286,49 @@ describe("InstalledPage", () => {
     );
 
     await findByText("Ollama isn't running");
-    expect(await findByText("qwen3:8b")).toBeInTheDocument();
-    expect(queryByRole("button", { name: "Uninstall" })).toBeNull();
+    const model = await findRow("qwen3:8b");
+    const held = within(model).getByRole("button", { name: "Uninstall" });
+    expect(held).toBeDisabled();
+    fireEvent.click(held);
+    expect(queryByRole("dialog")).toBeNull();
+    expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
+    expect(chipsOf(model)).toEqual(["Can't uninstall now"]);
+    expect(chipDetail(model, "Can't uninstall now")).toHaveTextContent(
+      "Ollama isn't running. Open it, then press Check again.",
+    );
+  });
+
+  it("holds a silent source's Uninstall the same way, and says to check again later", async () => {
+    // pre-commit, from a uv that did not answer: the row used to show a
+    // name and a line and nothing else, beside a Homebrew row whose
+    // disabled Uninstall said why.
+    const uv: ManagerInstance = {
+      ...brew,
+      id: "uv:/Users/someone/.local/share/uv/tools",
+      adapter_id: "uv",
+      exe_path: "/opt/homebrew/bin/uv",
+      prefix: "/Users/someone/.local/share/uv/tools",
+      status: { unavailable: "NotResponding", notes: [] },
+    };
+    served = {
+      ...snapshot,
+      instances: [uv],
+      artifacts: [formula("pre-commit", { key: { instance_id: uv.id, kind: "Tool", name: "pre-commit" } })],
+      updates: [],
+    };
+    renderWithProviders(<InstalledPage />);
+
+    const row = await findRow("pre-commit");
+    expect(within(row).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    expect(chipDetail(row, "Can't uninstall now")).toHaveTextContent(
+      "uv isn't responding. Press Check again later.",
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    // The drawer says the same: Uninstall disabled, and why under the chip.
+    const drawer = await openDetails("pre-commit");
+    expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    expect(within(drawer).getByText("uv isn't responding. Press Check again later.")).toBeInTheDocument();
   });
 
   it("keeps Homebrew's Uninstall disabled while it updates its list, says why behind a chip, and gives it back after", async () => {
@@ -1778,14 +1825,18 @@ describe("InstalledPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const drawer = await openDetails("glib");
       expect(within(drawer).getByText("Can't update now")).toBeInTheDocument();
-      expect(within(drawer).getByText("Homebrew isn't responding. Check again later.")).toBeInTheDocument();
+      expect(within(drawer).getByText("Can't uninstall now")).toBeInTheDocument();
+      // What to do, under each of the two chips.
+      expect(within(drawer).getAllByText("Homebrew isn't responding. Press Check again later.")).toHaveLength(2);
       // Its source's own line, whole.
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
-        within(drawer).getByText("What's listed for Homebrew is from the last time it answered. Later changes aren't shown."),
+        within(drawer).getByText(
+          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
+        ),
       ).toBeInTheDocument();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
-      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
     });
 
     it("uninstalls through the row's own dialog, then gives way to the log", async () => {

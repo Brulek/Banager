@@ -839,8 +839,8 @@ describe("UpdatesPage", () => {
     expect(queryByText(/next time/)).toBeNull();
     // onyx, not pinned, is Unavailable, and says so of Homebrew.
     expect(
-      within(chipDetail(rowOf("onyx"), "Unavailable")).getByText(
-        "Homebrew isn't responding. Check again later.",
+      within(chipDetail(rowOf("onyx"), "Can't update now")).getByText(
+        "Homebrew isn't responding. Press Check again later.",
       ),
     ).toBeInTheDocument();
   });
@@ -1769,13 +1769,13 @@ describe("UpdatesPage", () => {
       renderWithProviders(<UpdatesPage />);
 
       await showCantUpdate();
-      expect(chipDetail(await findRow("qwen3:8b"), "Unavailable")).toHaveTextContent(
-        "Ollama isn't running. Start it, then check again.",
+      expect(chipDetail(await findRow("qwen3:8b"), "Can't update now")).toHaveTextContent(
+        "Ollama isn't running. Open it, then press Check again.",
       );
-      expect(chipDetail(rowOf("tokei"), "Unavailable")).toHaveTextContent(
-        "Cargo isn't responding. Check again later.",
+      expect(chipDetail(rowOf("tokei"), "Can't update now")).toHaveTextContent(
+        "Cargo isn't responding. Press Check again later.",
       );
-      expect(chipDetail(rowOf("glib"), "Unavailable")).toHaveTextContent(
+      expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
         "Homebrew won't run while Canager has administrator powers. Open Canager again the normal way.",
       );
     });
@@ -2776,7 +2776,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Ollama is from the last time it answered. Later changes aren't shown.",
+        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Press Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -2788,8 +2788,8 @@ describe("UpdatesPage", () => {
       for (const name of ["qwen3:8b", "llama3.2:3b"]) {
         const row = await findRow(name);
         expect(within(row).getByText("Ollama")).toBeInTheDocument();
-        expect(chipDetail(row, "Unavailable")).toHaveTextContent(
-          "Ollama isn't responding. Check again later.",
+        expect(chipDetail(row, "Can't update now")).toHaveTextContent(
+          "Ollama isn't responding. Press Check again later.",
         );
       }
     });
@@ -2845,7 +2845,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Homebrew is from the last time it answered. Later changes aren't shown.",
+        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
       );
       withRows.unmount();
 
@@ -3767,7 +3767,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
-    expect(within(claude).getByRole("button", { name: "Unavailable" })).toBeInTheDocument();
+    expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 

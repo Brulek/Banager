@@ -104,7 +104,6 @@
     "updateIgnored": "不再提醒",
     "updateSkipped": "已跳过 {{version}}",
     "updateSkippedNewBuild": "已跳过新版本",
-    "updateSourceUnavailable": "暂时不能更新",
     "showDependencies_other": "另有 {{count}} 个被其它软件带来的组件",
     "hideDependencies_other": "收起 {{count}} 个组件",
     "unverifiedVersion": "{{source}} {{version}} 版未经测试",
@@ -165,10 +164,10 @@
     "cannotCheck": "无法检查",
     "cannotCheckShort": "查不到它的最新版本。",
     "cannotCheckSummary_other": "这里有 {{count}} 项没能检查更新。想看原因，在“设置”里打开“{{setting}}”。",
-    "sourceUnavailable": "暂时不可用",
+    "sourceUnavailable": "暂时不能更新",
     "unavailableDetail": {
-      "NotRunning": "{{source}} 没有在运行。启动它，然后再检查。",
-      "NotResponding": "{{source}} 没有响应，稍后再检查。",
+      "NotRunning": "{{source}} 没有运行。打开它，再点「重新检查」。",
+      "NotResponding": "{{source}} 没有响应，稍后点「重新检查」再试。",
       "RefusesAsRoot": "Canager 用管理员身份运行时，{{source}} 不肯工作。像平常那样重新打开 Canager。"
     },
     "runInTerminal": "在终端运行：{{command}}",
@@ -310,9 +309,9 @@
       "description": "npm 把它们装在你的账户改不了的文件夹里，所以只能查看。用 Homebrew 装 Node 后，再用它装的 npm 包就能在这里管理。"
     },
     "unreachable": {
-      "title": "{{source}} 没有应答",
-      "description": "{{source}} 没有应答，所以看不到它装了什么。",
-      "descriptionWithRows": "这里列出的 {{source}} 内容是它上次应答时的，之后的变化不会显示。"
+      "title": "{{source}} 没有响应",
+      "description": "{{source}} 没有响应，所以看不到它装了什么。稍后点「重新检查」再试。",
+      "descriptionWithRows": "这里列出的是 {{source}} 上次响应时的内容，之后的变化不会显示。稍后点「重新检查」再试。"
     },
     "refusesAsRoot": {
       "title": "以管理员身份打开时 {{source}} 不工作",

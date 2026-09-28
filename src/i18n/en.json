@@ -117,7 +117,6 @@
     "updateIgnored": "Reminders off",
     "updateSkipped": "Skipped {{version}}",
     "updateSkippedNewBuild": "Newer build skipped",
-    "updateSourceUnavailable": "Can't update now",
     "showDependencies_one": "{{count}} more component came with other software",
     "showDependencies_other": "{{count}} more components came with other software",
     "hideDependencies_one": "Hide {{count}} component",
@@ -183,10 +182,10 @@
     "cannotCheckShort": "Canager can't find its latest version.",
     "cannotCheckSummary_one": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
     "cannotCheckSummary_other": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
-    "sourceUnavailable": "Unavailable",
+    "sourceUnavailable": "Can't update now",
     "unavailableDetail": {
-      "NotRunning": "{{source}} isn't running. Start it, then check again.",
-      "NotResponding": "{{source}} isn't responding. Check again later.",
+      "NotRunning": "{{source}} isn't running. Open it, then press Check again.",
+      "NotResponding": "{{source}} isn't responding. Press Check again later.",
       "RefusesAsRoot": "{{source}} won't run while Canager has administrator powers. Open Canager again the normal way."
     },
     "runInTerminal": "In Terminal: {{command}}",
@@ -347,8 +346,8 @@
     },
     "unreachable": {
       "title": "{{source}} isn't responding",
-      "description": "{{source}} didn't respond, so Canager can't show what it has installed.",
-      "descriptionWithRows": "What's listed for {{source}} is from the last time it answered. Later changes aren't shown."
+      "description": "{{source}} didn't respond, so Canager can't show what it has installed. Press Check again later.",
+      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Press Check again later."
     },
     "refusesAsRoot": {
       "title": "{{source}} doesn't work while Canager runs as administrator",

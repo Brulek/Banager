@@ -354,11 +354,12 @@ export function sourceNoticesFor(
       variant: "warning",
       titleKey: "sourceNotice.unreachable.title",
       // Two sentences for one state, chosen by what is actually on screen.
-      // Neither offers a way out: the one it used to offer ("Reopening
-      // Canager usually fixes this") is simply wrong for a source that
-      // will fail the same way on the next launch, and promising a
-      // recovery that may not happen is the pattern this phase exists to
-      // remove.
+      // Each ends with the one next step there is, the one its rows' chips
+      // give too: press Check again later. Nothing more: the way out they
+      // used to offer ("Reopening Canager usually fixes this") is simply
+      // wrong for a source that will fail the same way on the next
+      // launch, and promising a recovery that may not happen is the
+      // pattern this phase exists to remove.
       descriptionKey:
         rowsOnScreen > 0
           ? "sourceNotice.unreachable.descriptionWithRows"
@@ -640,9 +641,10 @@ export const READ_ONLY_DETAIL_KEYS: Record<ReadOnlyReason, string> = {
 
 /**
  * A row whose source did not answer the last check, in the detail of its
- * "Unavailable" chip: what is wrong and what to do, per reason, because
+ * "Can't update now" chip on both lists, and of the Installed page's
+ * "Can't uninstall now": what is wrong and what to do, per reason, because
  * "check again later" is no help for an Ollama that is not running or a
- * Canager started with `sudo`. The Updates page fills `{{source}}`.
+ * Canager started with `sudo`. The page fills `{{source}}`.
  */
 export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
   NotRunning: "updates.unavailableDetail.NotRunning",
