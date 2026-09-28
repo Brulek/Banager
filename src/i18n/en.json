@@ -176,7 +176,7 @@
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "New version",
     "newBuild": "A newer build of this model is available",
-    "selfUpdating": "Updates itself",
+    "selfUpdating": "Usually updates itself",
     "selfUpdatingDetail": "It usually updates itself. You can also update it now.",
     "readOnly": "View only",
     "cannotCheck": "Can't check",
@@ -225,7 +225,7 @@
         "refused": "It's pinned in {{source}}, so Canager didn't update or change anything."
       },
       "SelfUpdatesOnly": {
-        "badge": "Updates itself",
+        "badge": "Only updates itself",
         "detail": "It updates itself: open it once and it checks for a new version.",
         "refused": "{{source}} updates itself, so Canager didn't try to update it. Nothing has been changed."
       }

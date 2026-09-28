@@ -159,7 +159,7 @@
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "有新版本",
     "newBuild": "这个模型有新的版本可用",
-    "selfUpdating": "会自动更新",
+    "selfUpdating": "平时自动更新",
     "selfUpdatingDetail": "它平时会自己更新，也可以现在更新。",
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
@@ -204,7 +204,7 @@
         "refused": "它在 {{source}} 里被固定了，所以没有更新，也没有改动。"
       },
       "SelfUpdatesOnly": {
-        "badge": "自动更新",
+        "badge": "只能自己更新",
         "detail": "它会自己更新：打开它一次就会检查新版本。",
         "refused": "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
       }

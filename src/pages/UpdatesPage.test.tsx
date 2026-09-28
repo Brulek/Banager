@@ -8,6 +8,7 @@ import { queryKeys } from "../lib/queries";
 import { loadToolIcons } from "../lib/toolIcons";
 import { lazyDescriptionTable } from "../lib/toolDescriptions";
 import i18n from "../i18n";
+import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import type {
   ArtifactKey,
@@ -3426,7 +3427,7 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
-    expect(chipDetail(claude, "Updates itself").textContent).toBe(
+    expect(chipDetail(claude, "Usually updates itself").textContent).toBe(
       "It usually updates itself. You can also update it now.",
     );
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
@@ -3456,7 +3457,7 @@ describe("UpdatesPage", () => {
       if (chips === null) throw new Error("the row has no chips' column");
       expect(await within(chips).findByText(words)).toBeInTheDocument();
       expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
-      expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+      expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
       expect(within(claude).getByRole("button", { name: "Retry" })).toBeInTheDocument();
 
       // Retried: the update under way stands where the button was, and
@@ -3464,7 +3465,7 @@ describe("UpdatesPage", () => {
       operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
       expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(rowOf("Claude Code")).getByRole("button", { name: "Updates itself" })).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByRole("button", { name: "Usually updates itself" })).toBeInTheDocument();
       expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
     },
   );
@@ -3485,13 +3486,13 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(await within(claude).findByText("Failed")).toBeInTheDocument();
-    expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
 
     // "Failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
     updates = [{ ...claudeUpdate, target: "2.1.291" }];
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
     await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Failed")).toBeNull());
-    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Updates itself" })).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Usually updates itself" })).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
@@ -3520,7 +3521,7 @@ describe("UpdatesPage", () => {
 
     const onyx = await findRow("OnyX");
     expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
-    expect(within(onyx).queryByRole("button", { name: "Updates itself" })).toBeNull();
+    expect(within(onyx).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
   });
 
   it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
@@ -3575,7 +3576,7 @@ describe("UpdatesPage", () => {
     const grok = await findRow("Grok Build");
     expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
-    expect(within(grok).queryByRole("button", { name: "Updates itself" })).toBeNull();
+    expect(within(grok).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
   });
 
@@ -3746,7 +3747,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(chipDetail(claude, "Can't check").textContent).toBe("Canager can't find its latest version.");
-    expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 
@@ -3765,7 +3766,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
+    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
     expect(within(claude).getByRole("button", { name: "Unavailable" })).toBeInTheDocument();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
@@ -3793,7 +3794,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
-    const detail = chipDetail(claude, "Updates itself");
+    const detail = chipDetail(claude, "Only updates itself");
     expect(detail.textContent).toBe("It updates itself: open it once and it checks for a new version.");
     expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
     // Not the updatable row's chip: this row has no button to point at.
@@ -3809,7 +3810,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    const detail = chipDetail(claude, "Updates itself");
+    const detail = chipDetail(claude, "Only updates itself");
     expect(
       within(detail).getByText(wholeSentence("In Terminal: /Users/someone/.local/bin/claude")),
     ).toBeInTheDocument();
@@ -3849,8 +3850,8 @@ describe("UpdatesPage", () => {
 
       expect(await findByText(noticeTitle)).toBeInTheDocument();
       const claude = await findRow("Claude Code");
-      expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
-      expect(queryByText(/usually updates itself|just run it/)).toBeNull();
+      expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+      expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
       expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     },
@@ -3892,11 +3893,16 @@ describe("UpdatesPage", () => {
     expect(queryByText("Everything is up to date")).toBeNull();
   });
 
-  it("calls the two self-updating chips what the author asked for in Chinese", () => {
-    // 会自动更新: a tool Canager can update too. 自动更新: one only it can.
-    expect(zhCN.updates.selfUpdating).toBe("会自动更新");
+  it("calls the two self-updating chips by what each leaves the user, in both languages", () => {
+    // 平时自动更新: a tool Canager can update too, which usually does it
+    // itself. 只能自己更新: one only it can update, so its row has no
+    // button. They once read 会自动更新 and 自动更新, and "Updates itself"
+    // both in English, which said nothing of why one row had a button.
+    expect(zhCN.updates.selfUpdating).toBe("平时自动更新");
     expect(zhCN.updates.selfUpdatingDetail).toBe("它平时会自己更新，也可以现在更新。");
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("自动更新");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("只能自己更新");
+    expect(en.updates.selfUpdating).toBe("Usually updates itself");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Only updates itself");
   });
 
   it("says per item, under its command, that a NoCancel update cannot be stopped once it starts", async () => {

@@ -703,9 +703,10 @@ export function UpdatesPage() {
     const outcome =
       progress !== null ? <UpdateProgress key="outcome" progress={progress} name={name} onViewLog={viewLog} /> : null;
     // How it ended has the chips' column to itself: beside a chip -- the
-    // only one an updatable row has, "Updates itself" -- it left the name
-    // a few letters at the window's default width ("Clau…"). The chips
-    // come back once it clears: a Retry under way, a newer version offered.
+    // only one an updatable row has, "Usually updates itself" -- it left
+    // the name a few letters at the window's default width ("Clau…"). The
+    // chips come back once it clears: a Retry under way, a newer version
+    // offered.
     const chips = retry ? [outcome] : statusChips(candidate, state, instance);
     const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
