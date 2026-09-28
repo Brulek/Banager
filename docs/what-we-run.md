@@ -19,9 +19,11 @@ Antigravity CLI, Grok Build) name every path those uninstalls move or
 keep and their time budget, and the never-list every path of settings or
 state they keep, that Grok Build's section shows the update check it runs
 on every refresh and says it installs nothing, that the Trash section
-names the call and states the pause after each move, and that the app
-icons section names the call, the size an icon is drawn at, and that no
-command runs for it.
+names the call and states the pause after each move, that the app icons
+section names the call, the size an icon is drawn at, and that no
+command runs for it, and that this file names each permission of the
+opener plugin the window has and the unknown-source scan's section the
+call Show in Finder makes, saying it runs nothing else.
 
 Throughout, `<brew>`, `<npm>` and so on stand for the absolute path of the
 executable the adapter found; `{name}` is the one user-chosen argument a
@@ -1219,6 +1221,21 @@ that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
 put on the disk, or one inside a second `.app` of the same cask), and a
 cask whose `brew info` entry carries no absolute `target` for its `app`.
 
+Each row's ⋯ menu has *Show in Finder* and *Copy path*. Show in Finder
+asks Finder to show the program and runs nothing else: no command runs
+for it. The window hands the path the scan resolved for that row
+(`UnknownEntry.resolved`, every link followed) to the Tauri opener
+plugin's `revealItemInDir` (`revealInFinder` in `src/lib/api.ts`), whose
+`reveal_item_in_dir` command (tauri-plugin-opener 2.5.5, the version in
+`Cargo.lock`) resolves it again (`realpath`) and makes one call,
+`NSWorkspace activateFileViewerSelectingURLs:`, with which Finder opens a
+window on the program's folder with the program selected. So for a link
+Finder shows the file the link points to; a broken link's is gone, and on
+its row the item is off. The window may call that one command of the
+plugin and no other (Network, below). Copy path puts the path the row
+shows, `~` and all, on the clipboard (`useCopyCommand` in
+`src/lib/clipboard.ts`), and does nothing else.
+
 ## App icons: read through macOS, no command runs
 
 The window asks for the icon of the app a Homebrew cask installed, the
@@ -1351,7 +1368,8 @@ All read-only, none saved anywhere else, none uploaded:
   nothing else — no version is read.
 - The Unknown page's scan: the entries of the bin directories its section
   lists, one level deep, and each entry's metadata and link target — never
-  a file's contents.
+  a file's contents. A row's Show in Finder: where the path it shows
+  leads (`realpath`), and nothing else (Unknown-source scan, above).
 - Canager's own `settings.json` in its application data directory
   (`settings::load`; a missing or unreadable file means default settings).
 - Canager's own `.window-state.json` beside it, once, as the window opens:
@@ -1511,11 +1529,13 @@ Three things are outside that client and worth saying out loud. The
 window itself cannot make a network request: its content security policy
 is `connect-src 'self'` (`src-tauri/tauri.conf.json`). The Tauri opener
 plugin — the one that opens a URL or a path in another application — is
-registered (`run()` in `src-tauri/src/lib.rs`) and the main window is
-permitted to call it (`opener:default` in
-`src-tauri/capabilities/default.json`), but nothing in the front end
-calls it: no homepage link, no "reveal in Finder"; when one ships, this
-paragraph changes. And the Tauri updater
+registered (`run()` in `src-tauri/src/lib.rs`), and the main window may
+call one of its commands and no other: `reveal_item_in_dir`
+(`opener:allow-reveal-item-in-dir` in
+`src-tauri/capabilities/default.json`), the Unknown page's Show in Finder,
+which asks Finder to show a file and connects to nothing (Unknown-source
+scan, above). The window cannot have it open a URL: there is no homepage
+link; when one ships, this paragraph changes. And the Tauri updater
 plugin is compiled in and configured with the endpoint
 `https://github.com/Brulek/Canager/releases/latest/download/latest.json`
 (`src-tauri/tauri.conf.json`, `plugins.updater`), but nothing in Canager

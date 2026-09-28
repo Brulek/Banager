@@ -3,15 +3,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** What the last copy did: said for a moment, then nothing. */
 export type CopyStatus = "copied" | "failed" | null;
 
-/** How long "Copied" or "Couldn't copy" stays on screen. */
-const SHOWN_FOR_MS = 2500;
+/**
+ * How long "Copied" or "Couldn't copy" stays on screen -- and, beside it
+ * on the Unknown page, "Couldn't show it in Finder".
+ */
+export const SHOWN_FOR_MS = 2500;
 
 /**
  * A row's "Copy command", and a word about whether it worked -- on the
- * Updates page and on the Installed page alike. The clipboard can refuse
- * (or be missing altogether outside a secure context), and a menu item
- * that did nothing must not look as if it had, so each page shows
- * `status` where it can be read (`role="status"`).
+ * Updates page and on the Installed page alike -- and the Unknown page's
+ * "Copy path". The clipboard can refuse (or be missing altogether outside
+ * a secure context), and a menu item that did nothing must not look as if
+ * it had, so each page shows `status` where it can be read
+ * (`role="status"`).
  */
 export function useCopyCommand(): { status: CopyStatus; copy: (command: string) => void } {
   const [status, setStatus] = useState<CopyStatus>(null);

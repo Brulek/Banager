@@ -1,6 +1,7 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   ArtifactKey,
   IssuedPlan,
@@ -98,6 +99,24 @@ export function openOllamaApp(): Promise<void> {
  */
 export function scanUnknown(): Promise<UnknownScan> {
   return call<UnknownScan>("scan_unknown");
+}
+
+/**
+ * Has Finder show `path` -- a Finder window on its folder, with it
+ * selected -- for the Unknown page's Show in Finder. Through the opener
+ * plugin's `revealItemInDir`, the one command of that plugin the window may
+ * call (`opener:allow-reveal-item-in-dir` in
+ * src-tauri/capabilities/default.json), which resolves `path` first, every
+ * link followed, and then asks macOS for that and nothing else
+ * (`NSWorkspace activateFileViewerSelectingURLs:`): no command runs.
+ * Rejects, with the plugin's reason, when there is nothing at `path`.
+ */
+export async function revealInFinder(path: string): Promise<void> {
+  try {
+    await revealItemInDir(path);
+  } catch (e) {
+    throw asError(e);
+  }
 }
 
 /**

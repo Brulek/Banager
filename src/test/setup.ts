@@ -60,6 +60,13 @@ vi.mock("@tauri-apps/api/window", () => {
   return { getCurrentWindow: () => currentWindow };
 });
 
+// Show in Finder (`revealInFinder` in src/lib/api.ts): shown nowhere --
+// jsdom has no Tauri, and no Finder -- and read back by a test that asks
+// what it was handed.
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  revealItemInDir: vi.fn(async () => {}),
+}));
+
 /**
  * A logo pack with no logos: what the avatars draw from under
  * `renderWithProviders` unless a test hands it a pack of its own, so that

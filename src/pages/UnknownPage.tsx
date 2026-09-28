@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { SourceNoticeLine } from "../components/SourceNotice";
+import { Menu, type MenuItem } from "../components/ui/Menu";
 import {
   elapsedText,
   HeaderAction,
@@ -11,8 +12,9 @@ import {
   type HeaderStatus,
 } from "../components/PageHeader";
 import { CheckCircleIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
+import { SHOWN_FOR_MS, useCopyCommand } from "../lib/clipboard";
 import { elapsedSince, formatBytes } from "../lib/format";
-import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
+import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
@@ -91,6 +93,19 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
 }
 
 /**
+ * What Show in Finder says of itself, by kind, as its hint: a link shows
+ * the file it points to, where Finder opens, not the folder the link is
+ * in; a broken link has no file to show, and the item is off. A program
+ * that is no link shows itself, which needs no word. A `Record` over
+ * `EntryKind`, as `KIND_KEYS` is.
+ */
+const SHOW_IN_FINDER_HINTS: Record<EntryKind, string | null> = {
+  File: null,
+  Symlink: "unknown.showsLinkTarget",
+  BrokenSymlink: "unknown.targetGone",
+};
+
+/**
  * The avatar of a program no source accounts for: a prompt, in the
  * neutral colour of the Overview's Unknown tile. Decorative, as a
  * source's is: the name is beside it.
@@ -153,10 +168,11 @@ export function ScanAgain() {
  * The command-line programs on this Mac that no source accounts for, as
  * rows like every other list's: a neutral avatar, the name with the path
  * it was found at, a chip for what kind of entry it is -- whose ⓘ says
- * the rest, where there is more to say -- and its size and date where a
- * tool's version would be. Canager only lists them: nothing here runs or
- * removes anything, which the page says once, at its top, above the
- * folders it looked in; Scan again is in the page header (`ScanAgain`).
+ * the rest, where there is more to say -- its size and date where a
+ * tool's version would be, and a ⋯ menu to show it in Finder or copy its
+ * path. Canager only lists them: nothing here runs or removes anything,
+ * which the page says once, at its top, above the folders it looked in;
+ * Scan again is in the page header (`ScanAgain`).
  *
  * Its paths select (`select-text`), to be copied into Terminal or into
  * Finder's Go to Folder: each row's, the folders it looked in, and the
@@ -192,6 +208,58 @@ export function UnknownPage() {
   const technical = settings?.show_technical_details ?? false;
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
 
+  // A row's Copy path and Show in Finder, and a word about how the last
+  // one went: "Copied" or "Couldn't copy" as the other pages say it
+  // (`useCopyCommand`), or "Couldn't show it in Finder" -- for as long,
+  // and started over by each new failure. Nothing needs saying when
+  // Finder comes forward with the file. The newest word wins: a copy
+  // takes a failure to show away.
+  const { status: copyStatus, copy } = useCopyCommand();
+  const reveal = useRevealInFinder();
+  const { isError: revealFailed, submittedAt: revealedAt, reset: resetReveal } = reveal;
+  useEffect(() => {
+    if (!revealFailed) return;
+    const timer = window.setTimeout(resetReveal, SHOWN_FOR_MS);
+    return () => window.clearTimeout(timer);
+  }, [revealFailed, revealedAt, resetReveal]);
+  const notice = revealFailed
+    ? t("unknown.showInFinderFailed")
+    : copyStatus === "copied"
+      ? t("common.copied")
+      : copyStatus === "failed"
+        ? t("common.copyFailed")
+        : null;
+
+  // The ⋯ menu. Show in Finder hands the plugin where the program is,
+  // every link followed (`resolved`): what the plugin would make of the
+  // row's own path anyway, as it resolves a path before it asks Finder,
+  // and with no `~` in it, which the plugin would not read as the home
+  // folder. A broken link resolves nowhere, and the item is off. Copy path
+  // copies the path the row shows.
+  const menuItems = (entry: UnknownEntry): MenuItem[] => {
+    const { resolved } = entry;
+    const hint = SHOW_IN_FINDER_HINTS[entry.kind];
+    return [
+      {
+        id: "reveal",
+        label: t("unknown.showInFinder"),
+        hint: hint === null ? undefined : t(hint),
+        disabled: resolved === null,
+        onSelect: () => {
+          if (resolved !== null) reveal.mutate(resolved);
+        },
+      },
+      {
+        id: "copyPath",
+        label: t("unknown.copyPath"),
+        onSelect: () => {
+          resetReveal();
+          copy(entry.path);
+        },
+      },
+    ];
+  };
+
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex shrink-0 flex-col gap-1 px-6 pb-3">
@@ -199,12 +267,19 @@ export function UnknownPage() {
             pages have Check again. */}
         <p className="text-body text-muted">{t("unknown.intro")}</p>
         {result ? (
-          <p className="select-text break-words text-small text-muted">
-            {t("unknown.lookedIn", {
-              // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
-              folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
-            })}
-          </p>
+          <div className="flex items-baseline gap-4">
+            <p className="min-w-0 flex-1 select-text break-words text-small text-muted">
+              {t("unknown.lookedIn", {
+                // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
+                folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
+              })}
+            </p>
+            {/* How a row's Copy path or Show in Finder went, at the top of
+                the page as the other pages say how a Copy command went. */}
+            <p role="status" className="shrink-0 text-small text-muted">
+              {notice}
+            </p>
+          </div>
         ) : null}
       </div>
       {scan.isError ? (
@@ -242,6 +317,7 @@ export function UnknownPage() {
           ) : (
             <div className="px-3 pb-2">
               {result.entries.map((entry) => {
+                const name = fileName(entry.path);
                 const facts = factsOf(entry, t, technical);
                 const detail =
                   facts.length === 0
@@ -259,7 +335,7 @@ export function UnknownPage() {
                   <div key={entry.path} data-list-slot="" className="relative z-0">
                     <ToolRow
                       avatar={<ProgramAvatar />}
-                      name={fileName(entry.path)}
+                      name={name}
                       // Home abbreviated as Rust sent it (`UnknownEntry.path`).
                       description={entry.path}
                       selectableDescription
@@ -269,6 +345,7 @@ export function UnknownPage() {
                       version={
                         <span className="inline-block min-w-[9.5rem]">{sizeAndDate(entry, t, i18n.language)}</span>
                       }
+                      menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                     />
                   </div>
                 );

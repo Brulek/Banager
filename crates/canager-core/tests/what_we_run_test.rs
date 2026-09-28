@@ -20,11 +20,14 @@
 //! Claude Code's notice goes on past the first executable `claude`, that
 //! the never-list's bullet about rustup's own update or uninstall being
 //! under way states the window in which a refresh's version read can
-//! still overlap it, and that the never-list holds a moved path to the
-//! tool's uninstall list, not to vendor instructions, which Antigravity CLI
-//! and Grok Build do not publish. A source, host, variable, limit, path,
-//! check, pause or icon size added or changed, or that look shortened,
-//! without its line in the document fails here.
+//! still overlap it, that the never-list holds a moved path to the tool's
+//! uninstall list, not to vendor instructions, which Antigravity CLI and
+//! Grok Build do not publish, and that the document names each permission
+//! of the opener plugin the window is given
+//! (`src-tauri/capabilities/default.json`) and the one call Show in Finder
+//! makes, saying it runs nothing else. A source, host, variable, limit,
+//! path, check, pause, icon size or opener permission added or changed, or
+//! that look shortened, without its line in the document fails here.
 
 use canager_core::adapters::brew::BrewAdapter;
 use canager_core::adapters::cargo::CargoAdapter;
@@ -476,6 +479,53 @@ fn test_what_we_run_states_the_app_icon_call_its_size_and_that_no_command_runs()
     assert!(
         folded.contains("runs no command"),
         "the `## App icons` section of docs/what-we-run.md does not say that getting an icon runs no command"
+    );
+}
+
+#[test]
+fn test_what_we_run_names_the_opener_permission_the_window_has_and_what_show_in_finder_calls() {
+    let doc = read_doc();
+    // The window's permissions (`src-tauri/capabilities/default.json`),
+    // read from the repository as the document is: the plugin that opens a
+    // URL or a path in another application is the one the Network section
+    // says the window may call, and how far.
+    let path = Path::new("../../src-tauri/capabilities/default.json");
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let capability: serde_json::Value = serde_json::from_str(&text).expect("default.json is JSON");
+    let permissions = capability["permissions"]
+        .as_array()
+        .expect("default.json lists its permissions");
+    let opener: Vec<&str> = permissions
+        .iter()
+        .filter_map(|p| p.as_str().or_else(|| p["identifier"].as_str()))
+        .filter(|p| p.starts_with("opener:"))
+        .collect();
+    // Hard-wrapped prose: compare with the line breaks folded away.
+    let folded = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    for permission in &opener {
+        assert!(
+            folded.contains(&format!("`{permission}`")),
+            "docs/what-we-run.md does not name {permission:?}, which src-tauri/capabilities/default.json gives the window"
+        );
+    }
+    assert!(
+        opener.contains(&"opener:default") || !folded.contains("`opener:default`"),
+        "docs/what-we-run.md names `opener:default`, which src-tauri/capabilities/default.json no longer gives the window"
+    );
+    // What Show in Finder, the one caller, asks of macOS, and that it asks
+    // nothing more.
+    let body = section_body(&doc, "Unknown-source scan").unwrap_or_else(|| {
+        panic!("docs/what-we-run.md has no `## Unknown-source scan` section for scan::scan_unknown")
+    });
+    let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        body.contains("NSWorkspace activateFileViewerSelectingURLs:"),
+        "the `## Unknown-source scan` section of docs/what-we-run.md does not name the call Show in Finder makes"
+    );
+    assert!(
+        body.contains("runs nothing else"),
+        "the `## Unknown-source scan` section of docs/what-we-run.md does not say that Show in Finder runs nothing else"
     );
 }
 

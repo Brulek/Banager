@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import capability from "../../src-tauri/capabilities/default.json";
 import {
   getSnapshot,
   refresh,
@@ -18,6 +20,7 @@ import {
   onMenuCommand,
   type MenuCommand,
   setDockBadge,
+  revealInFinder,
 } from "./api";
 import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 import { watchDock } from "../test/dock";
@@ -243,5 +246,35 @@ describe("the Dock's badge", () => {
       "window.set_badge_count not allowed",
     );
     await expect(setDockBadge(2)).rejects.toThrow("window.set_badge_count not allowed");
+  });
+});
+
+describe("Show in Finder", () => {
+  const mockReveal = vi.mocked(revealItemInDir);
+
+  beforeEach(() => {
+    mockReveal.mockReset();
+  });
+
+  it("hands the opener plugin the path and nothing else, not through a command of Canager's", async () => {
+    mockReveal.mockResolvedValueOnce(undefined);
+    await revealInFinder("/Applications/Helper.app/Contents/Helpers/helper-cli");
+    expect(mockReveal).toHaveBeenCalledTimes(1);
+    expect(mockReveal).toHaveBeenCalledWith("/Applications/Helper.app/Contents/Helpers/helper-cli");
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure as an Error carrying the plugin's text", async () => {
+    mockReveal.mockRejectedValueOnce("No such file or directory (os error 2)");
+    await expect(revealInFinder("/usr/local/bin/gone")).rejects.toThrow("No such file or directory (os error 2)");
+  });
+
+  it("is the one command of the opener plugin the window may call", () => {
+    // Not `opener:default`, which would also let the page open a web
+    // address or a mail link. The plugin gives this command no scope to
+    // narrow it to some paths: the permission is for the command.
+    expect(capability.permissions.filter((p) => p.startsWith("opener:"))).toEqual([
+      "opener:allow-reveal-item-in-dir",
+    ]);
   });
 });

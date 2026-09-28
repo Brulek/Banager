@@ -16,6 +16,7 @@ import {
   setSettings,
   openOllamaApp,
   scanUnknown,
+  revealInFinder,
   artifactIcon,
 } from "./api";
 import { isNewerSnapshot, isRefreshInFlight, refreshIntoCache, useRefreshInFlight } from "./events";
@@ -91,6 +92,16 @@ export function useOperations(): UseQueryResult<OpSummary[]> {
  */
 export function useUnknownScan(): UseQueryResult<UnknownScan> {
   return useQuery({ queryKey: queryKeys.unknown, queryFn: scanUnknown, enabled: false });
+}
+
+/**
+ * The Unknown page's Show in Finder, handed the path to show
+ * (`revealInFinder`). Nothing is cached and nothing refreshed after it:
+ * Finder shows the file, and nothing Canager knows has changed. A mutation
+ * for its error, which the page says.
+ */
+export function useRevealInFinder(): UseMutationResult<void, Error, string> {
+  return useMutation({ mutationFn: revealInFinder });
 }
 
 export function useRefresh(): UseMutationResult<Snapshot, Error, void> {

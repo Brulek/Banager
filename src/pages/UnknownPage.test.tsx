@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { renderWithProviders } from "../test/setup";
 import { ScanAgain, UnknownPage } from "./UnknownPage";
 import i18n from "../i18n";
+import zhCN from "../i18n/zh-CN.json";
 import { formatBytes } from "../lib/format";
 import { queryKeys } from "../lib/queryKeys";
 import type { Settings, Snapshot, UnknownScan } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
+// Show in Finder's one call (src/test/setup.ts mocks the plugin).
+const mockReveal = vi.mocked(revealItemInDir);
 
 // Every name here is invented; the research machine's real ones are
 // deliberately not in the repository.
@@ -87,6 +92,7 @@ beforeEach(() => {
   scanFailure = null;
   holdScan = false;
   releaseScan = () => {};
+  mockReveal.mockClear();
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "scan_unknown") {
@@ -117,6 +123,16 @@ function dateOf(seconds: number): string {
 /** The row a program's name is on. */
 function rowOf(name: HTMLElement): HTMLElement {
   return name.closest("[data-tool-row]") as HTMLElement;
+}
+
+/** A row's chips (`ToolRow`'s `data-status`). */
+function chipsOf(row: HTMLElement): HTMLElement {
+  return row.querySelector("[data-status]") as HTMLElement;
+}
+
+/** A row's size and date: the column after its chips, where a tool's version goes. */
+function sizeAndDateOf(row: HTMLElement): HTMLElement {
+  return chipsOf(row).nextElementSibling as HTMLElement;
 }
 
 describe("UnknownPage", () => {
@@ -187,7 +203,7 @@ describe("UnknownPage", () => {
     const { findByText } = renderWithProviders(<UnknownPage />);
 
     const tool = rowOf(await findByText("standalone-tool"));
-    expect(within(tool).queryByRole("button")).toBeNull();
+    expect(within(chipsOf(tool)).queryByRole("button")).toBeNull();
     expect(within(tool).getByText("Program").tagName).toBe("SPAN");
   });
 
@@ -199,7 +215,7 @@ describe("UnknownPage", () => {
     ).toBeInTheDocument();
     expect(getByText(`${formatBytes(2_100_000)} · ${dateOf(1_700_000_000)}`)).toBeInTheDocument();
     // A broken link has no size and no date, and no stray separator.
-    expect(rowOf(getByText("old-script")).textContent).not.toContain("·");
+    expect(sizeAndDateOf(rowOf(getByText("old-script"))).textContent).toBe("");
   });
 
   it("shows where a link leads only with technical details on", async () => {
@@ -221,7 +237,7 @@ describe("UnknownPage", () => {
     // A plain file resolves to itself; there is nothing to add, so its
     // chip stays a plain label.
     const tool = rowOf(shown.getByText("standalone-tool"));
-    expect(within(tool).queryByRole("button")).toBeNull();
+    expect(within(chipsOf(tool)).queryByRole("button")).toBeNull();
   });
 
   it("lets its paths be selected, to be copied, and nothing else on a row", async () => {
@@ -444,5 +460,228 @@ describe("UnknownPage", () => {
 
     const alert = await findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't scan: boom");
+  });
+});
+
+/** Opens `row`'s ⋯ menu. */
+function openMenu(row: HTMLElement): HTMLElement {
+  fireEvent.click(within(row).getByRole("button", { name: /^More actions for / }));
+  return screen.getByRole("menu");
+}
+
+function chooseFromMenu(row: HTMLElement, item: string) {
+  fireEvent.click(within(openMenu(row)).getByRole("menuitem", { name: item }));
+}
+
+/** What the page last said about a row's Copy path or Show in Finder. */
+function notice(): HTMLElement {
+  return screen.getByRole("status");
+}
+
+describe("a row's ⋯ menu", () => {
+  it("is on every row, named after it, with Show in Finder and Copy path", async () => {
+    const { findByText, container } = renderWithProviders(<UnknownPage />);
+    await findByText("standalone-tool");
+
+    const rows = [...container.querySelectorAll<HTMLElement>("[data-tool-row]")];
+    expect(rows).toHaveLength(3);
+    for (const [row, name] of rows.map((row, i) => [row, ["standalone-tool", "old-script", "helper-cli"][i]] as const)) {
+      const button = within(row).getByRole("button", { name: `More actions for ${name}` });
+      expect(button).toHaveAttribute("aria-haspopup", "menu");
+      const menu = openMenu(row);
+      expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+        "Show in Finder",
+        "Copy path",
+      ]);
+      fireEvent.click(button);
+      expect(screen.queryByRole("menu")).toBeNull();
+    }
+  });
+
+  it("asks Finder to show a program where it is, and a link's file where the link points", async () => {
+    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+
+    // A program that is no link: its own path, the home folder written
+    // out, as the scan resolved it -- with no word needed on the item.
+    const tool = rowOf(await findByText("standalone-tool"));
+    const own = within(openMenu(tool)).getByRole("menuitem", { name: "Show in Finder" });
+    expect(own).not.toHaveAttribute("title");
+    fireEvent.click(own);
+    await waitFor(() => expect(mockReveal).toHaveBeenCalledTimes(1));
+    expect(mockReveal).toHaveBeenLastCalledWith("/Users/someone/.opencode/bin/standalone-tool");
+
+    // A link: the file it points to, which the item says is what Finder
+    // shows.
+    const helper = rowOf(getByText("helper-cli"));
+    const linked = within(openMenu(helper)).getByRole("menuitem", { name: "Show in Finder" });
+    expect(linked).toHaveAccessibleDescription("Shows the file this link points to.");
+    fireEvent.click(linked);
+    await waitFor(() => expect(mockReveal).toHaveBeenCalledTimes(2));
+    expect(mockReveal).toHaveBeenLastCalledWith("/Applications/Helper.app/Contents/Helpers/helper-cli");
+    // Nothing to say when Finder comes forward.
+    expect(notice()).toHaveTextContent(/^$/);
+  });
+
+  it("turns Show in Finder off for a broken link, says why, and still copies its path", async () => {
+    const { findByText } = renderWithProviders(<UnknownPage />);
+
+    const menu = openMenu(rowOf(await findByText("old-script")));
+    const item = within(menu).getByRole("menuitem", { name: "Show in Finder" });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAccessibleDescription("The file this link points to is gone.");
+    fireEvent.click(item);
+    expect(mockReveal).not.toHaveBeenCalled();
+    expect(within(menu).getByRole("menuitem", { name: "Copy path" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("is reached with Tab and worked with the keys, as every row's ⋯ is", async () => {
+    const user = userEvent.setup();
+    const { findByText, getByRole, queryByRole } = renderWithProviders(<UnknownPage />);
+    await findByText("standalone-tool");
+
+    // The first row's chip is a plain label, so its ⋯ is the page's first stop.
+    await user.tab();
+    const button = getByRole("button", { name: "More actions for standalone-tool" });
+    expect(button).toHaveFocus();
+
+    // Enter opens it on its first item; the arrow keys move; Enter chooses,
+    // and the focus goes back to the ⋯.
+    await user.keyboard("{Enter}");
+    expect(getByRole("menuitem", { name: "Show in Finder" })).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(getByRole("menuitem", { name: "Copy path" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}{Enter}");
+    await waitFor(() => expect(mockReveal).toHaveBeenCalledWith("/Users/someone/.opencode/bin/standalone-tool"));
+    expect(queryByRole("menu")).toBeNull();
+    expect(button).toHaveFocus();
+
+    // Escape closes it, the focus back on the ⋯, and Tab goes on to the
+    // next row's controls: its chip's ⓘ, then its ⋯.
+    await user.keyboard("{ArrowDown}");
+    expect(getByRole("menuitem", { name: "Show in Finder" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(queryByRole("menu")).toBeNull();
+    expect(button).toHaveFocus();
+    await user.tab();
+    expect(getByRole("button", { name: "Broken link" })).toHaveFocus();
+    await user.tab();
+    expect(getByRole("button", { name: "More actions for old-script" })).toHaveFocus();
+  });
+
+  it("calls them 在访达中显示 and 拷贝路径 in Chinese, in six characters or fewer", async () => {
+    expect(zhCN.unknown.showInFinder).toBe("在访达中显示");
+    expect(zhCN.unknown.copyPath).toBe("拷贝路径");
+    for (const label of [zhCN.unknown.showInFinder, zhCN.unknown.copyPath]) {
+      expect([...label].length).toBeLessThanOrEqual(6);
+    }
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderWithProviders(<UnknownPage />);
+      const helper = rowOf(await findByText("helper-cli"));
+      fireEvent.click(within(helper).getByRole("button", { name: "helper-cli 的更多操作" }));
+      const menu = screen.getByRole("menu");
+      expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+        "在访达中显示",
+        "拷贝路径",
+      ]);
+      expect(within(menu).getByRole("menuitem", { name: "在访达中显示" })).toHaveAccessibleDescription(
+        "显示这个链接指向的文件。",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  describe("Show in Finder that could not show it", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    });
+
+    it("says so at the top of the page until a copy has a word of its own", async () => {
+      mockReveal.mockRejectedValueOnce("No such file or directory (os error 2)");
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      const { findByText } = renderWithProviders(<UnknownPage />);
+
+      const tool = rowOf(await findByText("standalone-tool"));
+      chooseFromMenu(tool, "Show in Finder");
+      await waitFor(() => expect(notice()).toHaveTextContent(/^Couldn't show it in Finder$/));
+
+      chooseFromMenu(tool, "Copy path");
+      await waitFor(() => expect(notice()).toHaveTextContent(/^Copied$/));
+    });
+
+    it("takes the word back as a copy's is, after the same while", async () => {
+      mockReveal.mockRejectedValueOnce("No such file or directory (os error 2)");
+      const { findByText } = renderWithProviders(<UnknownPage />);
+      const tool = rowOf(await findByText("standalone-tool"));
+
+      // Only the page's timeouts are fake, from here on: the rows are up.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      chooseFromMenu(tool, "Show in Finder");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(notice()).toHaveTextContent(/^Couldn't show it in Finder$/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_400);
+      });
+      expect(notice()).toHaveTextContent(/^Couldn't show it in Finder$/);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(notice()).toHaveTextContent(/^$/);
+    });
+  });
+});
+
+describe("Copy path", () => {
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  });
+
+  it("copies the path the row shows, a link's own, and says it did", async () => {
+    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+
+    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy path");
+    expect(writeText).toHaveBeenLastCalledWith("~/.opencode/bin/standalone-tool");
+    await waitFor(() => expect(notice()).toHaveTextContent(/^Copied$/));
+
+    // Where the link is, not where it points.
+    chooseFromMenu(rowOf(getByText("helper-cli")), "Copy path");
+    expect(writeText).toHaveBeenLastCalledWith("/usr/local/bin/helper-cli");
+    expect(mockReveal).not.toHaveBeenCalled();
+  });
+
+  it("says so when the clipboard refuses", async () => {
+    writeText.mockRejectedValue(new Error("denied"));
+    const { findByText } = renderWithProviders(<UnknownPage />);
+
+    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy path");
+
+    await waitFor(() => expect(notice()).toHaveTextContent(/^Couldn't copy$/));
+  });
+
+  it("says it in the words the other pages' Copy command says it in, in Chinese too", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderWithProviders(<UnknownPage />);
+      const tool = rowOf(await findByText("standalone-tool"));
+      fireEvent.click(within(tool).getByRole("button", { name: "standalone-tool 的更多操作" }));
+      fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "拷贝路径" }));
+      await waitFor(() => expect(notice()).toHaveTextContent(new RegExp(`^${zhCN.common.copied}$`)));
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });

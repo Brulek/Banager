@@ -346,6 +346,22 @@ describe("the preview's stand-ins for Tauri", () => {
     await expect(previewWindow().setBadgeCount(3)).resolves.toBeUndefined();
     await expect(previewWindow().setBadgeCount(undefined)).resolves.toBeUndefined();
   });
+
+  it("show nothing in Finder: revealItemInDir needs no Tauri, and says in the console what it was asked for", async () => {
+    // Imported here, under the spy: it shares the preview's console marker
+    // with ./mockTauri.ts, whose first line goes to the console on import.
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const { revealItemInDir } = await import("./mockTauriOpener");
+      const docker = "/Applications/Docker.app/Contents/Resources/bin/docker";
+      await expect(revealItemInDir(docker)).resolves.toBeUndefined();
+      const said = String(info.mock.lastCall?.[0]);
+      expect(said.startsWith("[canager-ui-preview-mock] ")).toBe(true);
+      expect(said.endsWith(docker)).toBe(true);
+    } finally {
+      info.mockRestore();
+    }
+  });
 });
 
 describe("the preview's URL switches", () => {

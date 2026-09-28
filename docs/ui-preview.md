@@ -52,23 +52,28 @@ page that asked it to listen: in this window those three do nothing but
 bring the window back when it is closed or minimized. Nor does the page
 badge Canager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
-`src/dev/mockTauriWindow.ts`, which badges nothing.
+`src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Unknown
+page's Show in Finder reach this Mac's Finder: it asks the stand-in in
+`src/dev/mockTauriOpener.ts`, which shows nothing.
 
 ## How it works, and why it never ships
 
 - `src/lib/api.ts` is the only production module that imports Tauri
   (`invoke` and `Channel` from `@tauri-apps/api/core`, `listen` from
-  `@tauri-apps/api/event` for the menu bar's items, and
-  `getCurrentWindow` from `@tauri-apps/api/window` for the Dock's badge).
+  `@tauri-apps/api/event` for the menu bar's items,
+  `getCurrentWindow` from `@tauri-apps/api/window` for the Dock's badge,
+  and `revealItemInDir` from `@tauri-apps/plugin-opener` for the Unknown
+  page's Show in Finder).
 - `vite.config.ts` aliases `@tauri-apps/api/core` to
   `src/dev/mockTauri.ts`, `@tauri-apps/api/event` to
-  `src/dev/mockTauriEvent.ts` and `@tauri-apps/api/window` to
-  `src/dev/mockTauriWindow.ts`, in `--mode mock` only, and serves that
+  `src/dev/mockTauriEvent.ts`, `@tauri-apps/api/window` to
+  `src/dev/mockTauriWindow.ts` and `@tauri-apps/plugin-opener` to
+  `src/dev/mockTauriOpener.ts`, in `--mode mock` only, and serves that
   mode on port 1430 (`pnpm tauri dev` keeps 1420, and `pnpm tauri:mock`
   asks for 1440). In every other mode -- `pnpm dev`
   under `pnpm tauri dev`, `pnpm build` under `pnpm tauri build`, and
   vitest -- the config resolves exactly as it did before this mode existed.
-  `src/dev/mockBackend.test.ts` checks that those three are every module
+  `src/dev/mockBackend.test.ts` checks that those four are every module
   of Tauri's that production code imports: one left out would run for
   real in the preview.
 - Nothing outside `src/dev/` imports anything in it, so a production
@@ -94,9 +99,11 @@ does: it would ask Tauri, and here it asks the stand-in in
   its line, and a tool the table has no line for keeps what it said:
   iTerm2 its cask's English, TypeScript 「npm 软件包」.
 
-The files: `mockTauri.ts`, `mockTauriEvent.ts` and `mockTauriWindow.ts`
-(the stand-in modules; the second listens to nothing, and the third
-badges nothing), `mockBackend.ts` (the commands),
+The files: `mockTauri.ts`, `mockTauriEvent.ts`, `mockTauriWindow.ts` and
+`mockTauriOpener.ts` (the stand-in modules; the second listens to
+nothing, the third badges nothing, and the fourth shows nothing in Finder
+and says in the console which path it was handed), `mockBackend.ts` (the
+commands),
 `mockData.ts` (the pretend Mac), `mockIcons.ts` (its apps' icons),
 `mockPlans.ts` (what each operation would run and print), `scenario.ts`
 (the URL switches).
@@ -148,6 +155,10 @@ Paths are under a generic home folder, `/Users/you`.
 - Settings are kept until the page reloads. Turning on Show
   self-updating apps adds the Visual Studio Code update on the next
   refresh.
+- On the Unknown page, a row's Show in Finder opens nothing: the console
+  says which path Finder would have been asked to show. Copy path copies
+  where the browser lets the page write to the clipboard, and otherwise
+  says it couldn't.
 
 ## URL switches
 
