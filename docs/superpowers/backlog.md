@@ -457,6 +457,14 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
   结果出现时可以收起次要标签。
 - **全部取消遇到不能取消的 rustup**：按钮仍叫「全部取消」，rustup 那一项会继续跑完；操作条会接着显示它，但按钮文字与结果不完全一致。
 - **概览「2 个已隐藏」没有去处**：更新页不列出隐藏项，可以让这句话带用户去设置里的「已隐藏的更新」。
+- **图标服务器（Icon server）**（2026-09-28，分支 feat/tool-logos）。现在的标志全部内置：`pnpm icons:build` 按
+  `scripts/tool-icons/mapping.json` 生成 `src/assets/tool-icons/`，随应用一起打包，显示时不发网络请求；整个文件夹以
+  5 MB 为限（`scripts/tool-icons/build.mjs` 的 `BUDGET_BYTES`，`src/lib/toolIcons.test.ts` 也卡着）。以后可以在服务器上
+  以静态文件提供一个更大的包：应用整包下载，在本地用 `toolIconKey` 匹配，服务器因此不知道这台 Mac 装了什么。以
+  `pack.json` 的 `version` 区分版本——现在 `icons:build` 固定写 1，应用还不读它。做的时候要动的：应用现在两条路都到不了
+  一台 https 服务器（Rust 的 `RealHttpClient` 拒绝 `ALLOWED_HTTPS_HOSTS` 以外的 https 主机，窗口的内容安全策略是
+  `connect-src 'self'`），主机加进名单后 `what_we_run_test` 要求 `docs/what-we-run.md` 写上它；下载的包若存到磁盘上，
+  那份文件的「Files Canager writes」一节（现在只有 `settings.json`）也要改。
 
 ## 需要作者本人操作的事项（阶段 0–1 遗留）
 
