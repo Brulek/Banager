@@ -243,11 +243,18 @@ The notification is titled Canager and says "N tools can be updated"
 (「有 N 个工具可以更新」) in the window's language, N being every update
 Update all would take. It is handed to macOS's Notification Center
 (`NSUserNotificationCenter`) through notify-rust, the crate the plugin
-posts through: no command runs, nothing connects, and Canager writes no
-file for it. Clicking it brings the window back on the Updates page. One
-that could not be posted is logged, and tried again at the next daily
-check that finds its updates. What has been told is kept in memory only,
-so after Canager is quit and opened again, nothing has been.
+posts through, on a thread of its own (`post` and `hand_off` in
+`src-tauri/src/notify.rs`): no command runs, nothing connects, and
+Canager writes no file for it. That thread waits only for macOS to
+confirm the delivery, two seconds at most, and learns nothing either way:
+Canager is told of no delivery that failed, and hears no click on the
+notification, so a click does not open the Updates page. The updates it
+counts are marked as told once it is handed over, so one that macOS does
+not show — System Settings → Notifications can turn Canager's off — is
+not posted again for the same updates. Only when that thread cannot be
+started is nothing handed over: that is logged, and the next daily check
+that finds those updates tries again. What has been told is kept in
+memory only, so after Canager is quit and opened again, nothing has been.
 
 The window is given one of the plugin's commands, `is_permission_granted`
 (`notification:allow-is-permission-granted` in

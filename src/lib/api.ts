@@ -222,16 +222,17 @@ export function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * The event Rust sends the window when the update notification is
- * clicked, once the window is back on screen: `OPEN_UPDATES_EVENT` in
- * src-tauri/src/notify.rs, sent the way the menu bar's are.
+ * The event Rust sends the window for a click on the update notification,
+ * once the window is back on screen: `OPEN_UPDATES_EVENT` in
+ * src-tauri/src/notify.rs, sent the way the menu bar's are -- by a handler
+ * that, on a Mac, is never handed a click (`post` there).
  */
 export const OPEN_UPDATES_EVENT = "notification://open-updates";
 
 /**
- * Calls `onClick` each time the update notification is clicked, and
- * resolves to what stops that once the window listens.
- * `useUpdateNotification` is the caller.
+ * Calls `onClick` each time Rust sends `OPEN_UPDATES_EVENT`, and resolves
+ * to what stops that once the window listens. `useUpdateNotification` is
+ * the caller.
  */
 export async function onOpenUpdates(onClick: () => void): Promise<() => void> {
   try {

@@ -4,11 +4,12 @@
 //! Update all would take, with the round the snapshot came from
 //! (`report_update_set`), and `canager_core::notify_updates` decides what
 //! that report does. This is the shell's part: whether the window has the
-//! focus, the notification itself -- titled with the app's name, Canager,
-//! and saying how many tools can be updated, in the window's language --
-//! and, on a Mac, the window brought back on the Updates page when the
-//! notification is clicked (`OPEN_UPDATES_EVENT`). The Settings page asks
-//! for permission to post as the switch is turned on
+//! focus, and the notification itself -- titled with the app's name,
+//! Canager, and saying how many tools can be updated, in the window's
+//! language. On a Mac it carries a handler that would bring the window
+//! back on the Updates page for a click (`OPEN_UPDATES_EVENT`), which
+//! notify-rust never hands a click (`post`). The Settings page asks for
+//! permission to post as the switch is turned on
 //! (`request_notification_permission`).
 
 use crate::menu::{self, MenuBar, MenuLanguage};
@@ -19,9 +20,10 @@ use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
 
-/// The event the window hears when the update notification is clicked,
-/// once it is back on screen, and which opens the Updates page:
-/// src/lib/api.ts's `OPEN_UPDATES_EVENT` spells the same.
+/// The event `open_updates` tells the window, once it is back on screen,
+/// for a click on the update notification -- which `post` never hears --
+/// and which opens the Updates page: src/lib/api.ts's
+/// `OPEN_UPDATES_EVENT` spells the same.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 
@@ -29,8 +31,8 @@ pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 /// start -- the rows Update all would take, as (row, version) pairs -- and
 /// of `round`, the snapshot's `Snapshot::round`. What it does is `report`'s,
 /// with the window's focus as it is now and the notification in the
-/// window's language. A notification that could not be posted is logged
-/// here; the page is told nothing, having nothing to do about it.
+/// window's language. A notification that could not be handed off is
+/// logged here; the page is told nothing, having nothing to do about it.
 #[tauri::command]
 pub async fn report_update_set(
     app: AppHandle,
@@ -56,7 +58,9 @@ pub async fn report_update_set(
 /// and what this run has told or the user has seen (`AppState::notified`),
 /// with `post` to post a notification saying how many tools can be
 /// updated. The lock on what has been told is held until the post has
-/// returned, so two reports cannot both post the same news.
+/// returned, so two reports cannot both post the same news. `post`
+/// returns once the notification is handed off (`hand_off`), and that is
+/// when its pairs are marked as told: nothing confirms a delivery.
 pub(crate) fn report(
     state: &AppState,
     round: u64,
@@ -103,19 +107,43 @@ pub fn body(language: MenuLanguage, count: usize) -> String {
     }
 }
 
+/// Starts `deliver` on a thread of its own and returns once the thread
+/// has started, not once `deliver` has run: that is when a notification
+/// is handed off, and when `report` marks its pairs as told. What
+/// `deliver` answers comes after, and is only logged. The error handed
+/// back is the thread's that could not be started, which handed nothing
+/// off: nothing is marked, and the next report that offers the same
+/// updates tries again.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn hand_off(deliver: impl FnOnce() -> Result<(), String> + Send + 'static) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name("update-notification".to_string())
+        .spawn(move || {
+            if let Err(e) = deliver() {
+                eprintln!("[canager] the update notification: {e}");
+            }
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Posts the notification through notify-rust, the crate
-/// tauri-plugin-notification posts through, and on a thread of its own
-/// waits for what becomes of it (`wait_for_response`): a click brings the
-/// window back on the Updates page (`open_updates`). The plugin's own
-/// `show` hands the notification off and waits for nothing, so a click on
-/// it would only bring Canager to the front.
+/// tauri-plugin-notification posts through, on the thread `hand_off`
+/// starts, and returns once that thread has started.
 ///
-/// The thread lives until the notification is clicked, closed or cleared
-/// from Notification Center -- or macOS has not confirmed delivering it
-/// within two seconds, which mac-notification-sys takes as closed -- or
-/// Canager quits. What fails before the thread has started is this call's
-/// error. The delivery itself reports no failure (`deliverNotification:`
-/// returns nothing); what `wait_for_response` does report is logged.
+/// On a Mac, notify-rust's `show` sends nothing and never fails: it wraps
+/// the notification in a handle, and the handle's `wait_for_response`, on
+/// that thread, is what hands it to Notification Center
+/// (`deliverNotification:`). For a notification without buttons, as this
+/// one is, mac-notification-sys then waits only for macOS to confirm the
+/// delivery (`didDeliverNotification:`), two seconds at most, and answers
+/// that the notification closed whether the confirmation came or not. So
+/// the thread ends within about two seconds, and nothing it is told
+/// confirms a delivery or reports one that failed: the pairs are marked
+/// as told at the hand-off, and a notification macOS does not show is not
+/// posted again. Nor is the handler, which would bring the window back on
+/// the Updates page (`open_updates`), ever handed a click. What
+/// `wait_for_response` reports as an error is logged.
 #[cfg(target_os = "macos")]
 fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
     use notify_rust::error::{ApplicationError, MacOsError};
@@ -142,25 +170,20 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
         .show()
         .map_err(|e| e.to_string())?;
     let app = app.clone();
-    std::thread::Builder::new()
-        .name("update-notification".to_string())
-        .spawn(move || {
-            let answered =
-                handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
-                    if response.is_default_action() {
-                        open_updates(&app);
-                    }
-                });
-            if let Err(e) = answered {
-                eprintln!("[canager] the update notification: {e}");
-            }
-        })
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    hand_off(move || {
+        handle
+            .wait_for_response(|response: &notify_rust::NotificationResponse| {
+                if response.is_default_action() {
+                    open_updates(&app);
+                }
+            })
+            .map_err(|e| e.to_string())
+    })
 }
 
-/// Posts the notification through tauri-plugin-notification. No click is
-/// heard: the plugin reports none on a desktop.
+/// Posts the notification through tauri-plugin-notification, whose `show`
+/// hands it to a task of its own and returns: what becomes of it is not
+/// reported. No click is heard: the plugin reports none on a desktop.
 #[cfg(not(target_os = "macos"))]
 fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
     app.notification()
@@ -173,7 +196,8 @@ fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), S
 
 /// A click on the notification: the window back on screen and the page
 /// told to open Updates, as the menu bar's items that act in the page are
-/// carried out (`window::show_and_tell`).
+/// carried out (`window::show_and_tell`). Called from `post`'s handler,
+/// which notify-rust never hands a click (see there).
 #[cfg(target_os = "macos")]
 fn open_updates<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = crate::window::show_and_tell(app, OPEN_UPDATES_EVENT) {
@@ -354,6 +378,8 @@ mod tests {
 
     #[test]
     fn test_a_post_that_failed_is_handed_back_and_tried_again_at_the_next_report() {
+        // A hand-off that failed: the thread that delivers could not be
+        // started (`hand_off`'s error), so nothing was handed to macOS.
         let state = state(notifications_on());
         let updates = [pair("jq", "1.8.1")];
         assert_eq!(
@@ -366,6 +392,40 @@ mod tests {
             Ok(Notice::Post { count: 1 })
         );
         assert_eq!(*posted.borrow(), [1]);
+    }
+
+    #[test]
+    fn test_a_notification_counts_as_told_once_handed_off_whatever_its_delivery_does_after() {
+        // `post` on a Mac: `hand_off` returns once the thread that delivers
+        // has started, and nothing that thread learns reaches `report`. So
+        // the pairs are marked at the hand-off, before the delivery has
+        // run, and one that then fails is not posted again.
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let notice = report(&state, DAILY, &updates, false, |_| {
+            hand_off(move || {
+                released.recv().ok();
+                finish.send(()).ok();
+                Err("macOS never confirmed the delivery".to_string())
+            })
+        });
+        assert_eq!(notice, Ok(Notice::Post { count: 1 }));
+        assert!(
+            state.notified.lock().unwrap().contains(&updates[0]),
+            "marked at the hand-off, while the delivery has not run"
+        );
+
+        release.send(()).expect("the delivery is waiting");
+        finished
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the delivery ran, and failed");
+        let never = |_| -> Result<(), String> { panic!("posted again after the hand-off") };
+        assert_eq!(
+            report(&state, DAILY, &updates, false, never),
+            Ok(Notice::Nothing)
+        );
     }
 
     #[test]

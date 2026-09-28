@@ -2,7 +2,8 @@
  * The page's part in the update notification, Settings' 「有可更新时通知我」
  * (src-tauri/src/notify.rs): it tells Rust, after each snapshot, which
  * updates Update all would take, and Rust decides whether a notification
- * goes out; and it opens the Updates page when one is clicked.
+ * goes out; and it opens the Updates page when Rust says one was clicked,
+ * which on a Mac Rust does not hear (`post` in notify.rs).
  */
 import { useEffect, useRef } from "react";
 import { onOpenUpdates, reportUpdateSet } from "./api";
@@ -26,9 +27,10 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
  *   which no round committed. Rust posts nothing unless the round was the
  *   daily check's, notifications are on and the window is away, and posts
  *   only news: a (row, version) pair neither told nor seen before.
- * - A click on the notification opens the Updates page, as the sidebar's
- *   Updates does, once Rust has brought the window back
- *   (`OPEN_UPDATES_EVENT`).
+ * - When Rust says the notification was clicked, once it has brought the
+ *   window back (`OPEN_UPDATES_EVENT`), it opens the Updates page, as the
+ *   sidebar's Updates does. On a Mac, Rust does not hear the click
+ *   (`post` in src-tauri/src/notify.rs), so this does not happen there.
  */
 export function useUpdateNotification(): void {
   const { data: snapshot } = useSnapshot();
