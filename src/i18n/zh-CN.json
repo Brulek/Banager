@@ -272,6 +272,12 @@
     "caskStep": {
       "Deletes_other": "还会永久删除：{{items}}。",
       "DeletesUnnamed": "还会永久删除 Homebrew 执行卸载步骤时才找到的文件。",
+      "DeletesLinks_other": "还会永久删除下列路径，但只删其中指向的路径含有“{{link}}”的链接：{{items}}。",
+      "DeletesFilesContaining_other": "还会永久删除下列路径，但只删其中内容含有“{{content}}”的文件：{{items}}。",
+      "DeletesLinksToFilesContaining_other": "还会永久删除下列路径，但只删其中指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的链接：{{items}}。",
+      "DeletesUnnamedLinks": "还会永久删除 Homebrew 执行卸载步骤时才找到的链接，但只删指向的路径含有“{{link}}”的。",
+      "DeletesUnnamedFilesContaining": "还会永久删除 Homebrew 执行卸载步骤时才找到的文件，但只删内容含有“{{content}}”的。",
+      "DeletesUnnamedLinksToFilesContaining": "还会永久删除 Homebrew 执行卸载步骤时才找到的链接，但只删指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的。",
       "Trashes_other": "还会把这些移到废纸篓：{{items}}。",
       "RemovesPackages_other": "还会删除这些安装包装的全部文件，不论别的 App 是否在用：{{items}}。",
       "RunsScript_other": "还会运行：{{items}}。",

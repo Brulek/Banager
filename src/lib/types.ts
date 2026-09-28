@@ -141,6 +141,19 @@ export type CaskStep =
   | "RemovesLoginItems"
   | "QuitsApps";
 /**
+ * The check an uninstall step of type `remove` makes of each path before it
+ * deletes it, the `only_if` of a `Deletes` or `DeletesUnnamed`
+ * `Warning.CaskUninstallStep`. Mirrors `RemoveCheck` in
+ * crates/canager-core/src/model.rs: externally tagged, the text as the
+ * record spells it -- only a link whose target contains it, only a file
+ * whose contents contain it, or both. Read through `CHECKED_DELETE_KEYS`
+ * and `warningArgs` in src/lib/warnings.ts.
+ */
+export type RemoveCheck =
+  | { LinkTargetContains: string }
+  | { ContentContains: string }
+  | { LinkTargetAndContentContain: { link_target: string; content: string } };
+/**
  * A specific warning `Plan` or `UpdateCandidate` carries. Mirrors `Warning`
  * in crates/canager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
@@ -161,7 +174,8 @@ export type CaskStep =
  * uninstall's one sentence about what goes and what stays
  * (`UninstallScope`, whose `what` picks the key and whose `{{name}}` is the
  * row's, given by the uninstall confirmation) and a cask's extra steps
- * (`CaskUninstallStep`, whose `step` picks the key and whose `items`
+ * (`CaskUninstallStep`, whose `step` -- with its `only_if`, when a
+ * `remove` step checks each path first -- picks the key and whose `items`
  * interpolate it), and a `Message`
  * catch-all for warnings this phase does not localise (spec §6's
  * `show_technical_details` backlog item) -- rendered as the raw string it
@@ -189,7 +203,7 @@ export type Warning =
   | "HomebrewPeriodicCleanup"
   | "HomebrewCleanupAutoremoves"
   | { UninstallScope: { what: UninstallScope } }
-  | { CaskUninstallStep: { step: CaskStep; items: string[] } }
+  | { CaskUninstallStep: { step: CaskStep; items: string[]; only_if?: RemoveCheck } }
   | { Message: string };
 /**
  * Why the tool itself will refuse to update this one package, although its

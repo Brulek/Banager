@@ -392,7 +392,11 @@ impl BrewAdapter {
             scope(what),
             steps
                 .into_iter()
-                .map(|(step, items)| Warning::CaskUninstallStep { step, items })
+                .map(|(step, only_if, items)| Warning::CaskUninstallStep {
+                    step,
+                    items,
+                    only_if,
+                })
                 .collect(),
         )
     }
@@ -2422,7 +2426,7 @@ mod tests {
 mod plan_execute_tests {
     use super::*;
     use crate::events::VecSink;
-    use crate::model::CaskStep;
+    use crate::model::{CaskStep, RemoveCheck};
     use crate::runner::MockRunner;
     use crate::testing::{command_args, command_env};
 
@@ -3156,6 +3160,7 @@ mod plan_execute_tests {
         let step = |step, items: &[&str]| Warning::CaskUninstallStep {
             step,
             items: items.iter().map(|item| item.to_string()).collect(),
+            only_if: None,
         };
 
         // Recorded on this Mac: `quit`, `app`, `zap`. The tapped cask's
@@ -3218,9 +3223,11 @@ mod plan_execute_tests {
     #[tokio::test]
     async fn test_a_cask_uninstall_whose_recorded_steps_remove_paths_says_they_go_for_good() {
         // An uninstall step of type `remove` deletes for good
-        // (`install_steps.rb:1049-1068`): its paths are said with what
+        // (`install_steps.rb:1049-1070`): its paths are said with what
         // `delete:` names, and one Homebrew finds only when it runs the step
-        // is said without a name.
+        // is said without a name -- each with the check the step makes of
+        // a path before it deletes it, on a line of its own, when it
+        // records one (`install_steps.rb:1051-1060`).
         let prefix = CaskroomPrefix::new(
             "remove",
             &[
@@ -3237,32 +3244,48 @@ mod plan_execute_tests {
             ..test_instance()
         };
         let scope = |what| Warning::UninstallScope { what };
-        let step = |step, items: &[&str]| Warning::CaskUninstallStep {
-            step,
-            items: items.iter().map(|item| item.to_string()).collect(),
-        };
+        let step =
+            |step, only_if: Option<RemoveCheck>, items: &[&str]| Warning::CaskUninstallStep {
+                step,
+                items: items.iter().map(|item| item.to_string()).collect(),
+                only_if,
+            };
 
+        // `charm` in each folder Homebrew looks for commands in, only where
+        // it is a file whose contents hold that line.
         let plan = cask_uninstall(&runner, &adapter, &inst, "pycharm-edu").await;
         assert_eq!(
             plan.warnings,
             vec![
                 scope(UninstallScope::HomebrewCaskSteps),
-                step(CaskStep::DeletesUnnamed, &[]),
+                step(
+                    CaskStep::DeletesUnnamed,
+                    Some(RemoveCheck::ContentContains(
+                        "# see com.intellij.idea.SocketLock for the server side of this interface"
+                            .to_string()
+                    )),
+                    &[]
+                ),
             ]
         );
 
-        // A `pkg` cask: only its steps delete what it put down.
+        // A `pkg` cask: only its steps delete what it put down. `delete:`
+        // takes `/usr/local/playdate` whatever it is; the `remove` step
+        // takes `/usr/local/bin/arm-*` only where it is a link whose target
+        // contains `playdate`.
         let plan = cask_uninstall(&runner, &adapter, &inst, "playdate-simulator").await;
         assert_eq!(
             plan.warnings,
             vec![
                 scope(UninstallScope::HomebrewCaskStepsOnly),
+                step(CaskStep::Deletes, None, &["/usr/local/playdate"]),
                 step(
                     CaskStep::Deletes,
-                    &["/usr/local/bin/arm-*", "/usr/local/playdate"]
+                    Some(RemoveCheck::LinkTargetContains("playdate".to_string())),
+                    &["/usr/local/bin/arm-*"]
                 ),
-                step(CaskStep::Trashes, &["~/Developer/PlaydateSDK"]),
-                step(CaskStep::RemovesPackages, &["date.play.sdk"]),
+                step(CaskStep::Trashes, None, &["~/Developer/PlaydateSDK"]),
+                step(CaskStep::RemovesPackages, None, &["date.play.sdk"]),
             ]
         );
     }
@@ -3316,6 +3339,7 @@ mod plan_execute_tests {
                         "at.obdev.LittleSnitchHelper".to_string(),
                         "at.obdev.LittleSnitchUIAgent".to_string(),
                     ],
+                    only_if: None,
                 },
             ]
         );

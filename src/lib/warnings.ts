@@ -5,7 +5,7 @@
  * only as a parameter, so both confirmations and the updates page share
  * one rule and it is testable without rendering anything.
  */
-import type { CaskStep, KeptWhat, RemovedWhat, UninstallScope, Warning } from "./types";
+import type { CaskStep, KeptWhat, RemoveCheck, RemovedWhat, UninstallScope, Warning } from "./types";
 
 /** The sentence for each kind of path a path-list uninstall moves; a
  *  `Record` over `RemovedWhat`, so a kind without copy fails `tsc`. */
@@ -83,6 +83,70 @@ const CASK_STEP_KEYS: Record<CaskStep, string> = {
   QuitsApps: "warnings.caskStep.QuitsApps",
 };
 
+/** Which check a `remove` step makes of each path before it deletes it. */
+type RemoveCheckKind = "LinkTargetContains" | "ContentContains" | "LinkTargetAndContentContain";
+
+/**
+ * The line for the paths a `remove` step deletes only where they pass its
+ * check (`RemoveCheck`, a `Deletes` or `DeletesUnnamed` step's `only_if`),
+ * named or found only as the step runs. Each interpolates the check's text
+ * -- `{{link}}` for a link's target, `{{content}}` for a file's contents
+ * -- and a named line `{{items}}`, pluralised on `{{count}}`. A `Record`
+ * over the check's kinds, so one added without copy fails `tsc`.
+ */
+const CHECKED_DELETE_KEYS: Record<RemoveCheckKind, Record<"Deletes" | "DeletesUnnamed", string>> = {
+  LinkTargetContains: {
+    Deletes: "warnings.caskStep.DeletesLinks",
+    DeletesUnnamed: "warnings.caskStep.DeletesUnnamedLinks",
+  },
+  ContentContains: {
+    Deletes: "warnings.caskStep.DeletesFilesContaining",
+    DeletesUnnamed: "warnings.caskStep.DeletesUnnamedFilesContaining",
+  },
+  LinkTargetAndContentContain: {
+    Deletes: "warnings.caskStep.DeletesLinksToFilesContaining",
+    DeletesUnnamed: "warnings.caskStep.DeletesUnnamedLinksToFilesContaining",
+  },
+};
+
+/** `check`'s kind; null for one this build does not know. */
+function removeCheckKind(check: RemoveCheck): RemoveCheckKind | null {
+  if ("LinkTargetContains" in check) return "LinkTargetContains";
+  if ("ContentContains" in check) return "ContentContains";
+  if ("LinkTargetAndContentContain" in check) return "LinkTargetAndContentContain";
+  const unhandled: never = check;
+  void unhandled;
+  return null;
+}
+
+/** The text `check` looks for, as its line interpolates it. */
+function removeCheckArgs(check: RemoveCheck): Record<string, string> {
+  if ("LinkTargetContains" in check) return { link: check.LinkTargetContains };
+  if ("ContentContains" in check) return { content: check.ContentContains };
+  if ("LinkTargetAndContentContain" in check) {
+    const { link_target: link, content } = check.LinkTargetAndContentContain;
+    return { link, content };
+  }
+  const unhandled: never = check;
+  void unhandled;
+  return {};
+}
+
+/**
+ * A cask step's key: its kind's, or, for the paths a `remove` step deletes
+ * only where they pass a check, that check's line. The core sets `only_if`
+ * on `Deletes` and `DeletesUnnamed` alone (`cask_receipt::classify`); a
+ * check this build does not know gets its kind's line, which says more
+ * goes, not less.
+ */
+function caskStepKey(step: CaskStep, onlyIf: RemoveCheck | undefined): string {
+  const kind = onlyIf === undefined ? null : removeCheckKind(onlyIf);
+  if (kind !== null && (step === "Deletes" || step === "DeletesUnnamed")) {
+    return CHECKED_DELETE_KEYS[kind][step];
+  }
+  return CASK_STEP_KEYS[step];
+}
+
 /**
  * The `warnings.*` key for a `Warning`'s copy, or `null` for the `Message`
  * catch-all, whose text is read straight off the wire (see
@@ -144,7 +208,9 @@ export function warningKey(warning: Warning): string | null {
       : "warnings.leavesShellConfigLineMaybe";
   }
   if ("UninstallScope" in warning) return UNINSTALL_SCOPE_KEYS[warning.UninstallScope.what];
-  if ("CaskUninstallStep" in warning) return CASK_STEP_KEYS[warning.CaskUninstallStep.step];
+  if ("CaskUninstallStep" in warning) {
+    return caskStepKey(warning.CaskUninstallStep.step, warning.CaskUninstallStep.only_if);
+  }
   if ("Message" in warning) return null;
   const unhandled: never = warning;
   return unhandled;
@@ -181,8 +247,11 @@ export function warningArgs(warning: Warning): Record<string, unknown> {
   // Its `{{name}}` is the row's, which only the page has (`warningText`).
   if ("UninstallScope" in warning) return {};
   if ("CaskUninstallStep" in warning) {
-    const items = warning.CaskUninstallStep.items;
-    return items.length > 0 ? { count: items.length, items: items.join(", ") } : {};
+    const { items, only_if: onlyIf } = warning.CaskUninstallStep;
+    return {
+      ...(items.length > 0 ? { count: items.length, items: items.join(", ") } : {}),
+      ...(onlyIf === undefined ? {} : removeCheckArgs(onlyIf)),
+    };
   }
   if ("Message" in warning) return {};
   const unhandled: never = warning;
@@ -331,9 +400,10 @@ export function warningGroup(warning: Warning): WarningGroup {
  * rustup folder with its toolchains, the Cargo folder and the programs in
  * it (their sentences start "Permanently deletes"), and a cask whose
  * recorded uninstall deletes paths -- by `delete:` or an uninstall step of
- * type `remove` -- named or not (`CaskUninstallStep` `Deletes` and
- * `DeletesUnnamed`: "Also permanently deletes"). The uninstall
- * confirmation's button then says so
+ * type `remove` -- named or not, and whether or not that step deletes a
+ * path only where it passes a check (`CaskUninstallStep` `Deletes` and
+ * `DeletesUnnamed`, with or without `only_if`: "Also permanently deletes").
+ * The uninstall confirmation's button then says so
  * too (`uninstall.confirmPermanent`). Only what a line says counts: a plan
  * with no such line may well delete files -- `brew uninstall` does, and so
  * does the autoremove Homebrew's two lines speak of -- but says nothing

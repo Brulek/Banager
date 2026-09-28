@@ -36,7 +36,7 @@
 //! it takes, each named as the record names it (`CaskStep`). Both only
 //! read: nothing is written, nothing is run.
 
-use crate::model::CaskStep;
+use crate::model::{CaskStep, RemoveCheck};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -176,6 +176,11 @@ fn read_regular_file(path: &Path) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// One line under 「请注意」: a kind of extra step; for `Deletes` and
+/// `DeletesUnnamed` from a `remove` step that checks each path first, the
+/// check (`RemoveCheck`), else `None`; and what the record names for it.
+pub(crate) type StepLine = (CaskStep, Option<RemoveCheck>, Vec<String>);
+
 /// What a recorded cask uninstall does beyond deleting what Homebrew
 /// installed, for the sentence the confirmation says under the tool and
 /// the lines it lists under 「请注意」.
@@ -188,15 +193,16 @@ pub(crate) enum Classified {
     /// stay.
     Plain,
     /// Deletes what Homebrew put down or linked for the cask and takes
-    /// extra steps, one entry per kind in `CaskStep`'s order, each with
+    /// extra steps, one entry per kind and check in `CaskStep`'s order --
+    /// a kind with no check before the same kind with one -- each with
     /// what the record names for it (nothing for `DeletesUnnamed` and
     /// `RunsOwnSteps`).
-    Steps(Vec<(CaskStep, Vec<String>)>),
+    Steps(Vec<StepLine>),
     /// Lists none of `PLACED_STANZAS` -- a cask installed with a `pkg` or an
     /// installer, which the record leaves out -- and takes these extra
     /// steps, as in `Steps`: they are all that deletes any of what its
     /// installer put down.
-    OnlySteps(Vec<(CaskStep, Vec<String>)>),
+    OnlySteps(Vec<StepLine>),
     /// A record Canager does not read -- an artifact, a directive or a
     /// value of a shape it does not know -- or one that lists neither any
     /// of `PLACED_STANZAS` nor any step: an empty list, which Homebrew saves
@@ -321,11 +327,11 @@ pub(crate) fn classify(recorded: &Recorded, home: Option<&Path>) -> Classified {
     steps.finish(placed)
 }
 
-/// The kinds found so far, each with its names in the order first met and
-/// each name once.
+/// The kinds found so far, each with the check a `remove` step makes, if
+/// any, and its names in the order first met and each name once.
 #[derive(Default)]
 struct Steps {
-    kinds: BTreeMap<CaskStep, Vec<String>>,
+    kinds: BTreeMap<(CaskStep, Option<RemoveCheck>), Vec<String>>,
 }
 
 impl Steps {
@@ -338,9 +344,21 @@ impl Steps {
         items: impl IntoIterator<Item = String>,
         home: Option<&Path>,
     ) {
+        self.add_checked(step, None, items, home);
+    }
+
+    /// `add`, for paths a `remove` step deletes only where they pass
+    /// `check`: a line of their own for each check.
+    fn add_checked(
+        &mut self,
+        step: CaskStep,
+        check: Option<RemoveCheck>,
+        items: impl IntoIterator<Item = String>,
+        home: Option<&Path>,
+    ) {
         for item in items {
             let shown = shown(&item, home);
-            let names = self.kinds.entry(step).or_default();
+            let names = self.kinds.entry((step, check.clone())).or_default();
             if !names.contains(&shown) {
                 names.push(shown);
             }
@@ -349,15 +367,27 @@ impl Steps {
 
     /// `step` without names.
     fn flag(&mut self, step: CaskStep) {
-        self.kinds.entry(step).or_default();
+        self.flag_checked(step, None);
+    }
+
+    /// `flag`, with the check a `remove` step makes.
+    fn flag_checked(&mut self, step: CaskStep, check: Option<RemoveCheck>) {
+        self.kinds.entry((step, check)).or_default();
     }
 
     /// With something Homebrew `placed`, `Plain` when only apps are quit,
     /// else `Steps` with every kind, in order; without, `OnlySteps` with
     /// every kind -- apps quit included -- or `Unknown` when there is none.
     fn finish(self, placed: bool) -> Classified {
-        let only_quits = self.kinds.keys().all(|step| *step == CaskStep::QuitsApps);
-        let kinds: Vec<_> = self.kinds.into_iter().collect();
+        let only_quits = self
+            .kinds
+            .keys()
+            .all(|(step, _)| *step == CaskStep::QuitsApps);
+        let kinds: Vec<StepLine> = self
+            .kinds
+            .into_iter()
+            .map(|((step, check), items)| (step, check, items))
+            .collect();
         match (placed, only_quits, kinds.is_empty()) {
             (true, true, _) => Classified::Plain,
             (true, false, _) => Classified::Steps(kinds),
@@ -556,9 +586,10 @@ fn login_items(value: &Value) -> Option<Vec<String>> {
 /// (`[{ "steps": [ { "type": …, … } ] }]`), which run with every step type
 /// (`install_steps.rb` `Runner#run_install_step`). A step Canager names goes
 /// under its kind; one it does not, under `RunsOwnSteps`. A `remove` step
-/// deletes for good (`install_steps.rb:1049-1068`): each path it names
+/// deletes for good (`install_steps.rb:1049-1070`): each path it names
 /// outright goes under `Deletes`, and one it does not, under
-/// `DeletesUnnamed` (`removed_path`).
+/// `DeletesUnnamed` (`removed_path`) -- with the check it makes of each
+/// path first, when it records one (`remove_check`).
 fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool {
     let Some(args) = args.as_array() else {
         return false;
@@ -598,6 +629,9 @@ fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool
                     _ => steps.flag(CaskStep::RunsOwnSteps),
                 },
                 "remove" => {
+                    let Some(check) = remove_check(step) else {
+                        return false;
+                    };
                     // `step_paths(step, "paths")`: a list of path specs,
                     // each with its `path` (`install_steps.rb:1446-1449`).
                     let Some(specs) = step.get("paths").and_then(Value::as_array) else {
@@ -616,8 +650,10 @@ fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool
                             Some(_) => return false,
                         };
                         match removed_path(path, base) {
-                            Some(path) => steps.add(CaskStep::Deletes, [path], home),
-                            None => steps.flag(CaskStep::DeletesUnnamed),
+                            Some(path) => {
+                                steps.add_checked(CaskStep::Deletes, check.clone(), [path], home)
+                            }
+                            None => steps.flag_checked(CaskStep::DeletesUnnamed, check.clone()),
                         }
                     }
                 }
@@ -626,6 +662,32 @@ fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool
         }
     }
     true
+}
+
+/// The check a `remove` step makes of each path before it deletes it
+/// (`install_steps.rb:1051-1060`): `symlink_target_contains`, only a link
+/// whose target contains the text; `content_contains`, only a file whose
+/// contents contain it; both, only a path that passes both (`RemoveCheck`).
+/// `Some(None)` for a step that records neither; `None` for a text that is
+/// not a string, which Homebrew does not take: `step_string` hands it on as
+/// it is (`:1499-1501`), and `String#include?` raises on it.
+fn remove_check(step: &Map<String, Value>) -> Option<Option<RemoveCheck>> {
+    let text = |key: &str| match step.get(key) {
+        None => Some(None),
+        Some(Value::String(text)) => Some(Some(text.clone())),
+        Some(_) => None,
+    };
+    Some(
+        match (text("symlink_target_contains")?, text("content_contains")?) {
+            (None, None) => None,
+            (Some(link_target), None) => Some(RemoveCheck::LinkTargetContains(link_target)),
+            (None, Some(content)) => Some(RemoveCheck::ContentContains(content)),
+            (Some(link_target), Some(content)) => Some(RemoveCheck::LinkTargetAndContentContain {
+                link_target,
+                content,
+            }),
+        },
+    )
 }
 
 /// The path a `remove` step's path spec names, when the record says it
@@ -726,11 +788,23 @@ mod tests {
         classify(&recorded(json), Some(Path::new(HOME)))
     }
 
-    fn listed(kinds: &[(CaskStep, &[&str])]) -> Vec<(CaskStep, Vec<String>)> {
+    /// Lines with no check, as every kind but a checking `remove` step's
+    /// gives them.
+    fn listed(kinds: &[(CaskStep, &[&str])]) -> Vec<StepLine> {
         kinds
             .iter()
-            .map(|(step, items)| (*step, items.iter().map(|s| s.to_string()).collect()))
+            .map(|(step, items)| (*step, None, items.iter().map(|s| s.to_string()).collect()))
             .collect()
+    }
+
+    /// One line whose paths a `remove` step deletes only where they pass
+    /// `check`.
+    fn checked(step: CaskStep, check: RemoveCheck, items: &[&str]) -> StepLine {
+        (
+            step,
+            Some(check),
+            items.iter().map(|s| s.to_string()).collect(),
+        )
     }
 
     /// Beside what Homebrew put down or linked.
@@ -1273,22 +1347,152 @@ mod tests {
     }
 
     #[test]
-    fn a_remove_step_from_the_catalogue_is_a_permanent_deletion() {
+    fn a_remove_step_from_the_catalogue_is_a_permanent_deletion_with_its_check() {
         // pycharm-edu's only extra step removes `charm` from each folder
-        // Homebrew looks for commands in: no path to name, still for good.
+        // Homebrew looks for commands in, where it is a file whose contents
+        // hold that line (`content_contains`): no path to name, still for
+        // good, and the check said.
         let (_, pycharm) = receipt!("pycharm-edu");
-        assert_eq!(classified(pycharm), steps(&[(DeletesUnnamed, &[])]));
-        // playdate-simulator's step names its links outright; they go with
-        // what its `delete:` names, in the order Homebrew meets them.
-        let (_, playdate) = receipt!("playdate-simulator");
         assert_eq!(
-            classified(playdate),
-            only_steps(&[
-                (Deletes, &["/usr/local/bin/arm-*", "/usr/local/playdate"]),
-                (Trashes, &["~/Developer/PlaydateSDK"]),
-                (RemovesPackages, &["date.play.sdk"]),
+            classified(pycharm),
+            Classified::Steps(vec![checked(
+                DeletesUnnamed,
+                RemoveCheck::ContentContains(
+                    "# see com.intellij.idea.SocketLock for the server side of this interface"
+                        .to_string()
+                ),
+                &[]
+            )])
+        );
+        // playdate-simulator's step names its links outright and deletes
+        // each only where it is a link whose target contains `playdate`
+        // (`symlink_target_contains`): a line of its own, after what its
+        // `delete:` names with no check.
+        let (_, playdate) = receipt!("playdate-simulator");
+        let mut lines = listed(&[(Deletes, &["/usr/local/playdate"])]);
+        lines.push(checked(
+            Deletes,
+            RemoveCheck::LinkTargetContains("playdate".to_string()),
+            &["/usr/local/bin/arm-*"],
+        ));
+        lines.extend(listed(&[
+            (Trashes, &["~/Developer/PlaydateSDK"]),
+            (RemovesPackages, &["date.play.sdk"]),
+        ]));
+        assert_eq!(classified(playdate), Classified::OnlySteps(lines));
+    }
+
+    #[test]
+    fn a_remove_step_that_checks_each_path_says_the_check_it_records() {
+        let classify_step = |step: Value| {
+            classify(
+                &Recorded {
+                    artifacts: vec![
+                        serde_json::json!({ "app": ["A.app"] }),
+                        serde_json::json!({ "uninstall_postflight_steps": [{ "steps": [step] }] }),
+                    ],
+                    flight_blocks: false,
+                },
+                Some(Path::new(HOME)),
+            )
+        };
+        let link = || RemoveCheck::LinkTargetContains("MacGPG2".to_string());
+        let content = || RemoveCheck::ContentContains("SocketLock".to_string());
+        let both = || RemoveCheck::LinkTargetAndContentContain {
+            link_target: "MacGPG2".to_string(),
+            content: "SocketLock".to_string(),
+        };
+        let named = serde_json::json!([
+            { "path": "/usr/local/bin/gpg" },
+            { "path": "/Users/someone/bin/gpg2" }
+        ]);
+        let unnamed = serde_json::json!([{ "path": "gpg", "base": "search_path" }]);
+        for (keys, check) in [
+            (
+                serde_json::json!({ "symlink_target_contains": "MacGPG2" }),
+                link(),
+            ),
+            (
+                serde_json::json!({ "content_contains": "SocketLock" }),
+                content(),
+            ),
+            (
+                serde_json::json!({
+                    "symlink_target_contains": "MacGPG2",
+                    "content_contains": "SocketLock"
+                }),
+                both(),
+            ),
+        ] {
+            let with = |paths: &Value| {
+                let mut step = serde_json::json!({ "type": "remove", "paths": paths });
+                for (key, value) in keys.as_object().unwrap() {
+                    step[key] = value.clone();
+                }
+                step
+            };
+            // Named paths: the line names them, with the check.
+            assert_eq!(
+                classify_step(with(&named)),
+                Classified::Steps(vec![checked(
+                    Deletes,
+                    check.clone(),
+                    &["/usr/local/bin/gpg", "~/bin/gpg2"]
+                )]),
+                "{keys}"
+            );
+            // Paths Homebrew finds only as it runs the step: the unnamed
+            // line, with the check.
+            assert_eq!(
+                classify_step(with(&unnamed)),
+                Classified::Steps(vec![checked(DeletesUnnamed, check.clone(), &[])]),
+                "{keys}"
+            );
+        }
+        // No check: what the step names is the plain line, as `delete:`'s.
+        assert_eq!(
+            classify_step(serde_json::json!({ "type": "remove", "paths": named })),
+            steps(&[(Deletes, &["/usr/local/bin/gpg", "~/bin/gpg2"])])
+        );
+        // Two checks are two lines; one check twice is one line.
+        let recorded = Recorded {
+            artifacts: vec![
+                serde_json::json!({ "app": ["A.app"] }),
+                serde_json::json!({ "uninstall_postflight_steps": [{ "steps": [
+                    { "type": "remove", "paths": [{ "path": "/usr/local/bin/gpg" }],
+                      "symlink_target_contains": "MacGPG2" },
+                    { "type": "remove", "paths": [{ "path": "/usr/local/bin/gpg2" }],
+                      "symlink_target_contains": "MacGPG2" },
+                    { "type": "remove", "paths": [{ "path": "/usr/local/bin/arm-gcc" }],
+                      "symlink_target_contains": "playdate" },
+                    { "type": "remove", "paths": [{ "path": "/usr/local/bin/gpg" }] }
+                ] }] }),
+            ],
+            flight_blocks: false,
+        };
+        assert_eq!(
+            classify(&recorded, Some(Path::new(HOME))),
+            Classified::Steps(vec![
+                (Deletes, None, vec!["/usr/local/bin/gpg".to_string()]),
+                checked(
+                    Deletes,
+                    link(),
+                    &["/usr/local/bin/gpg", "/usr/local/bin/gpg2"]
+                ),
+                checked(
+                    Deletes,
+                    RemoveCheck::LinkTargetContains("playdate".to_string()),
+                    &["/usr/local/bin/arm-gcc"]
+                ),
             ])
         );
+        // A check whose text is not a string, which Homebrew does not take.
+        for bad in [
+            serde_json::json!({ "type": "remove", "paths": named, "symlink_target_contains": null }),
+            serde_json::json!({ "type": "remove", "paths": named, "content_contains": 1 }),
+        ] {
+            assert_eq!(classify_step(bad.clone()), Classified::Unknown, "{bad}");
+        }
     }
 
     #[test]

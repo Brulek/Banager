@@ -290,12 +290,18 @@ the Mac stay. Either way, "Before you continue" lists one line per kind,
 with what the record names, the home folder spelled `~`: paths deleted for good
 (`delete:`, an `artifact` placed in the home folder, and each path an
 uninstall step of type `remove` spells out — from `/` or `~`, or under the
-home folder — which that step deletes where the path passes the check it
-may record on a link's target or a file's text; `install_steps.rb:1049-1068`),
-files a `remove` step deletes for good that Homebrew finds only as it runs
-it (a path under the cask's staged folder, in each folder Homebrew looks
-for commands in, relative, or with a `{{…}}` template: one line that names
-nothing), paths moved to the Trash (`trash:`), installer packages whose
+home folder; `install_steps.rb:1049-1070`), files a `remove` step deletes
+for good that Homebrew finds only as it runs it (a path under the cask's
+staged folder, in each folder Homebrew looks for commands in, relative, or
+with a `{{…}}` template: one line that names nothing) — and, for a `remove`
+step that records a check, a line of its own that says it, since the step
+deletes only the paths that pass: only where a path is a link whose target
+contains the text of its `symlink_target_contains`, only where it is a
+file whose contents contain the text of its `content_contains`, or where
+both hold (`install_steps.rb:1051-1060`; `playdate-simulator`'s
+`/usr/local/bin/arm-*` where each is a link whose target contains
+`playdate`, `pycharm-edu`'s `charm` where its contents hold one given
+line) — paths moved to the Trash (`trash:`), installer packages whose
 every file is deleted (`pkgutil:`), programs run (`early_script:`,
 `script:`, an uninstall step of type `run`), background services removed
 (`launchctl:`), kernel extensions (`kext:`), the text whose every

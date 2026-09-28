@@ -9,7 +9,7 @@ import {
   warningMessage,
   warningText,
 } from "./warnings";
-import type { CaskStep, KeptWhat, UninstallScope, Warning } from "./types";
+import type { CaskStep, KeptWhat, RemoveCheck, UninstallScope, Warning } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 
@@ -132,6 +132,23 @@ describe("warningKey", () => {
     );
   });
 
+  it("gives the paths a remove step deletes only where they pass its check that check's line, named or not", () => {
+    // `symlink_target_contains`, `content_contains`, or both
+    // (install_steps.rb:1051-1060 in Homebrew 7.0.6-70).
+    for (const [check, line] of CHECKS) {
+      expect(
+        warningKey({ CaskUninstallStep: { step: "Deletes", items: ["/usr/local/bin/arm-*"], only_if: check } }),
+      ).toBe(`warnings.caskStep.Deletes${line}`);
+      expect(warningKey({ CaskUninstallStep: { step: "DeletesUnnamed", items: [], only_if: check } })).toBe(
+        `warnings.caskStep.DeletesUnnamed${line}`,
+      );
+    }
+    // No check: the kind's own line.
+    expect(warningKey({ CaskUninstallStep: { step: "Deletes", items: ["/usr/local/playdate"] } })).toBe(
+      "warnings.caskStep.Deletes",
+    );
+  });
+
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
     expect(warningKey({ Message: "boom" })).toBeNull();
   });
@@ -246,6 +263,32 @@ describe("warningArgs", () => {
     expect(warningArgs({ CaskUninstallStep: { step: "DeletesUnnamed", items: [] } })).toEqual({});
   });
 
+  it("interpolates the text a remove step's check looks for, beside the paths", () => {
+    expect(
+      warningArgs({
+        CaskUninstallStep: {
+          step: "Deletes",
+          items: ["/usr/local/bin/arm-*"],
+          only_if: { LinkTargetContains: "playdate" },
+        },
+      }),
+    ).toEqual({ count: 1, items: "/usr/local/bin/arm-*", link: "playdate" });
+    expect(
+      warningArgs({
+        CaskUninstallStep: { step: "DeletesUnnamed", items: [], only_if: { ContentContains: "SocketLock" } },
+      }),
+    ).toEqual({ content: "SocketLock" });
+    expect(
+      warningArgs({
+        CaskUninstallStep: {
+          step: "Deletes",
+          items: ["/usr/local/bin/gpg", "/usr/local/bin/gpg2"],
+          only_if: { LinkTargetAndContentContain: { link_target: "MacGPG2", content: "gpg" } },
+        },
+      }),
+    ).toEqual({ count: 2, items: "/usr/local/bin/gpg, /usr/local/bin/gpg2", link: "MacGPG2", content: "gpg" });
+  });
+
   it("is empty for every other variant", () => {
     // A scope sentence's `{{name}}` is the row's, which `warningText` is given.
     expect(warningArgs({ UninstallScope: { what: "Cargo" } })).toEqual({});
@@ -331,6 +374,13 @@ const EVERY_SCOPE: UninstallScope[] = [
   "Uv",
   "Cargo",
   "Ollama",
+];
+
+/** Every `RemoveCheck`, with the tail its lines' keys add to `Deletes` and `DeletesUnnamed`. */
+const CHECKS: [RemoveCheck, string][] = [
+  [{ LinkTargetContains: "playdate" }, "Links"],
+  [{ ContentContains: "SocketLock" }, "FilesContaining"],
+  [{ LinkTargetAndContentContain: { link_target: "MacGPG2", content: "gpg" } }, "LinksToFilesContaining"],
 ];
 
 /** Every `CaskStep`, in its declared order. */
@@ -520,6 +570,36 @@ describe("warningDetailKey", () => {
     }
   });
 
+  it("has copy in both languages for every line of paths a remove step deletes only where they pass its check", () => {
+    // Each says "permanently" and the text the check looks for; a named
+    // line says its paths, one and several apart in English.
+    for (const [check, line] of CHECKS) {
+      const placeholders = Object.keys(warningArgs({ CaskUninstallStep: { step: "DeletesUnnamed", items: [], only_if: check } }));
+      expect(placeholders.length).toBeGreaterThan(0);
+      const unnamed = `warnings.caskStep.DeletesUnnamed${line}`;
+      for (const locale of [en, zhCN]) {
+        const text = lookUp(locale, unnamed);
+        expect(typeof text, unnamed).toBe("string");
+        expect(text as string, unnamed).toMatch(/permanently|永久/);
+        expect(text as string, unnamed).not.toContain("{{items}}");
+        for (const name of placeholders) expect(text as string, unnamed).toContain(`{{${name}}}`);
+      }
+      const named = `warnings.caskStep.Deletes${line}`;
+      for (const [locale, forms] of [
+        [en, ["_one", "_other"]],
+        [zhCN, ["_other"]],
+      ] as const) {
+        for (const form of forms) {
+          const text = lookUp(locale, `${named}${form}`);
+          expect(typeof text, `${named}${form}`).toBe("string");
+          expect(text as string, `${named}${form}`).toMatch(/permanently|永久/);
+          expect(text as string, `${named}${form}`).toContain("{{items}}");
+          for (const name of placeholders) expect(text as string, `${named}${form}`).toContain(`{{${name}}}`);
+        }
+      }
+    }
+  });
+
   it("names only keys both languages have", () => {
     const keys = [
       ...EVERY_VARIANT,
@@ -560,6 +640,14 @@ describe("deletesForGood", () => {
     expect(deletesForGood({ CaskUninstallStep: { step: "DeletesUnnamed", items: [] } })).toBe(true);
     for (const locale of [en, zhCN]) {
       expect(locale.warnings.caskStep.DeletesUnnamed).toMatch(/permanently|永久/);
+    }
+    // A `remove` step that checks each path first can still delete one for
+    // good, so its lines count too.
+    for (const [check] of CHECKS) {
+      expect(deletesForGood({ CaskUninstallStep: { step: "Deletes", items: ["x"], only_if: check } })).toBe(true);
+      expect(deletesForGood({ CaskUninstallStep: { step: "DeletesUnnamed", items: [], only_if: check } })).toBe(
+        true,
+      );
     }
   });
 

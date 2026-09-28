@@ -14,6 +14,7 @@ import type {
   UninstallBlocked,
   UpdateBlocked,
   Warning,
+  RemoveCheck,
   RemovedWhat,
   KeptWhat,
   EntryKind,
@@ -329,6 +330,26 @@ describe("types", () => {
       '{"CaskUninstallStep":{"step":"RemovesPackages","items":["com.microsoft.pkg.licensing"]}}',
     );
     expect(roundTrip(step)).toEqual(step);
+
+    // A `remove` step's check, as `only_if`: pinned against the same Rust
+    // test, one shape per `RemoveCheck` variant.
+    const checks: [RemoveCheck, string][] = [
+      [{ LinkTargetContains: "playdate" }, '{"LinkTargetContains":"playdate"}'],
+      [{ ContentContains: "SocketLock" }, '{"ContentContains":"SocketLock"}'],
+      [
+        { LinkTargetAndContentContain: { link_target: "MacGPG2", content: "gpg" } },
+        '{"LinkTargetAndContentContain":{"link_target":"MacGPG2","content":"gpg"}}',
+      ],
+    ];
+    for (const [check, json] of checks) {
+      const checked: Warning = {
+        CaskUninstallStep: { step: "Deletes", items: ["/usr/local/bin/arm-*"], only_if: check },
+      };
+      expect(JSON.stringify(checked)).toBe(
+        `{"CaskUninstallStep":{"step":"Deletes","items":["/usr/local/bin/arm-*"],"only_if":${json}}}`,
+      );
+      expect(roundTrip(checked)).toEqual(checked);
+    }
   });
 
   it("keeps OperationEvent and UiEvent wire shapes intact", () => {

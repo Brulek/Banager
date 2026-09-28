@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import { UninstallDialog } from "./UninstallDialog";
-import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot } from "../lib/types";
+import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
 
 const request: OpRequest = {
   kind: "Uninstall",
@@ -609,23 +609,23 @@ describe("UninstallDialog", () => {
   });
 
   it("says Uninstall permanently where a cask's recorded steps delete files they find only as they run", async () => {
-    // pycharm-edu's one extra step, a `remove` of `charm` in each folder
-    // Homebrew looks for commands in: `CaskStep::DeletesUnnamed`
+    // mailtrackerblocker's `remove` of the script in its staged folder,
+    // with no check: `CaskStep::DeletesUnnamed`
     // (crates/canager-core/src/adapters/brew/cask_receipt.rs).
-    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "pycharm-edu" };
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "mailtrackerblocker" };
     vi.mocked(invoke).mockResolvedValue(
       issuedPlanFor({
         request: cask,
         needs_password: true,
         warnings: [
-          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
           { CaskUninstallStep: { step: "DeletesUnnamed", items: [] } },
         ],
       }),
     );
 
     const en = renderWithProviders(
-      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="PyCharm Edu" />,
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="MailTrackerBlocker" />,
     );
     expect(await screen.findByRole("button", { name: "Uninstall permanently" })).toBeEnabled();
     expect(linesOf("Before you continue")[0]).toBe(
@@ -635,11 +635,116 @@ describe("UninstallDialog", () => {
 
     await i18n.changeLanguage("zh-CN");
     try {
-      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="PyCharm Edu" />);
+      renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="MailTrackerBlocker" />,
+      );
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
       expect(linesOf("请注意")[0]).toBe("还会永久删除 Homebrew 执行卸载步骤时才找到的文件。");
     } finally {
       await i18n.changeLanguage("en");
+    }
+  });
+
+  it("says the check a cask's remove step makes before it deletes a path, in either language, and Uninstall permanently", async () => {
+    // `symlink_target_contains` and `content_contains`
+    // (install_steps.rb:1051-1060 in Homebrew 7.0.6-70): the step deletes
+    // only the paths that pass, so the line says which -- and the button
+    // still says permanently, since one can go for good.
+    const cases: [string, string, Warning[], string[], string[]][] = [
+      [
+        // playdate-simulator: `delete:` with no check, and a `remove` of
+        // its links whose target contains `playdate`.
+        "playdate-simulator",
+        "Playdate Simulator",
+        [
+          { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
+          { CaskUninstallStep: { step: "Deletes", items: ["/usr/local/playdate"] } },
+          {
+            CaskUninstallStep: {
+              step: "Deletes",
+              items: ["/usr/local/bin/arm-*"],
+              only_if: { LinkTargetContains: "playdate" },
+            },
+          },
+          { CaskUninstallStep: { step: "Trashes", items: ["~/Developer/PlaydateSDK"] } },
+        ],
+        [
+          "Also permanently deletes /usr/local/playdate.",
+          "Also permanently deletes /usr/local/bin/arm-*, but only where it is a link whose target contains “playdate”.",
+          "Also moves ~/Developer/PlaydateSDK to the Trash.",
+        ],
+        [
+          "还会永久删除：/usr/local/playdate。",
+          "还会永久删除下列路径，但只删其中指向的路径含有“playdate”的链接：/usr/local/bin/arm-*。",
+          "还会把这些移到废纸篓：~/Developer/PlaydateSDK。",
+        ],
+      ],
+      [
+        // gpg-suite: three links, each only where its target contains
+        // `MacGPG2`.
+        "gpg-suite",
+        "GPG Suite",
+        [
+          { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
+          {
+            CaskUninstallStep: {
+              step: "Deletes",
+              items: ["/usr/local/bin/gpg", "/usr/local/bin/gpg2", "/usr/local/bin/gpg-agent"],
+              only_if: { LinkTargetContains: "MacGPG2" },
+            },
+          },
+        ],
+        [
+          "Also permanently deletes these, but only where they are links whose target contains “MacGPG2”: /usr/local/bin/gpg, /usr/local/bin/gpg2, /usr/local/bin/gpg-agent.",
+        ],
+        [
+          "还会永久删除下列路径，但只删其中指向的路径含有“MacGPG2”的链接：/usr/local/bin/gpg, /usr/local/bin/gpg2, /usr/local/bin/gpg-agent。",
+        ],
+      ],
+      [
+        // pycharm-edu: `charm` in each folder Homebrew looks for commands
+        // in, only where it is a file whose contents hold that line.
+        "pycharm-edu",
+        "PyCharm Edu",
+        [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          {
+            CaskUninstallStep: {
+              step: "DeletesUnnamed",
+              items: [],
+              only_if: { ContentContains: "# see com.intellij.idea.SocketLock for the server side of this interface" },
+            },
+          },
+        ],
+        [
+          "Also permanently deletes files Homebrew finds only as it runs the uninstall steps, but only those whose contents contain “# see com.intellij.idea.SocketLock for the server side of this interface”.",
+        ],
+        [
+          "还会永久删除 Homebrew 执行卸载步骤时才找到的文件，但只删内容含有“# see com.intellij.idea.SocketLock for the server side of this interface”的。",
+        ],
+      ],
+    ];
+    for (const [name, displayName, warnings, english, chinese] of cases) {
+      const cask: OpRequest = { ...request, artifact_kind: "Cask", name };
+      vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ request: cask, warnings }));
+      const en = renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={cask} displayName={displayName} />,
+      );
+      expect(await screen.findByRole("button", { name: "Uninstall permanently" })).toBeEnabled();
+      expect(linesOf("Before you continue")).toEqual(english);
+      en.unmount();
+
+      await i18n.changeLanguage("zh-CN");
+      try {
+        const zh = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={cask} displayName={displayName} />,
+        );
+        expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
+        expect(linesOf("请注意")).toEqual(chinese);
+        zh.unmount();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
     }
   });
 

@@ -630,13 +630,22 @@ pub enum Warning {
     /// record names for it: paths (`~` for the home folder), installer
     /// package ids, service labels, bundle ids, programs, certificate
     /// names -- empty only for `CaskStep::RunsOwnSteps` and
-    /// `CaskStep::DeletesUnnamed`, which name nothing. One per kind, in
-    /// `CaskStep`'s order, each name once.
+    /// `CaskStep::DeletesUnnamed`, which name nothing. `only_if` is the
+    /// check a `remove` uninstall step makes of each path before it deletes
+    /// it (`RemoveCheck`), set only on a `Deletes` or `DeletesUnnamed` that
+    /// such a step gave; absent, and left out of the JSON, everywhere else.
+    /// One per kind and check, in `CaskStep`'s order -- a kind's line with
+    /// no check before its lines with one -- each name once.
     /// Produced by `BrewAdapter::plan` for a cask `Uninstall` whose recorded
     /// uninstall is not plain (`cask_receipt::classify`), beside
-    /// `UninstallScope { what: HomebrewCaskSteps }`; read by `warningKey`
-    /// and `warningArgs` in src/lib/warnings.ts.
-    CaskUninstallStep { step: CaskStep, items: Vec<String> },
+    /// `UninstallScope { what: HomebrewCaskSteps }` or `HomebrewCaskStepsOnly`;
+    /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    CaskUninstallStep {
+        step: CaskStep,
+        items: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_if: Option<RemoveCheck>,
+    },
     /// Not yet localised -- see this type's doc comment.
     Message(String),
 }
@@ -737,15 +746,17 @@ pub enum CaskStep {
     /// `artifact` Homebrew placed in the home folder, which its uninstall
     /// deletes again, and each path an uninstall step of type `remove`
     /// names outright (`FileUtils.rm_f`/`rm_rf`, or a removal with `sudo`,
-    /// globs expanded; `install_steps.rb:1049-1068`) -- which that step
-    /// deletes only where the path passes the check it may record, on a
-    /// link's target or a file's text: gone for good, not to the Trash.
+    /// globs expanded; `install_steps.rb:1049-1070`): gone for good, not to
+    /// the Trash. A `remove` step that records a check deletes a path only
+    /// where it passes it; its paths are a line of their own, with the
+    /// check (`Warning::CaskUninstallStep`'s `only_if`, `RemoveCheck`).
     Deletes,
     /// A `remove` uninstall step's path the record does not spell out: one
     /// Homebrew resolves against a folder it knows only when it runs the
     /// step -- the cask's own staged folder, the folders it looks for
     /// commands in, its working folder -- or through a `{{…}}` template.
-    /// Gone for good like `Deletes`, but named by nothing.
+    /// Gone for good like `Deletes`, but named by nothing; like `Deletes`,
+    /// its line carries the step's check when the step records one.
     DeletesUnnamed,
     /// `trash:`: moved to the Trash.
     Trashes,
@@ -783,6 +794,33 @@ pub enum CaskStep {
     /// wildcard) are quit or signalled. Plain on its own; said only beside
     /// another kind.
     QuitsApps,
+}
+
+/// The check an uninstall step of type `remove` makes of each path it
+/// lists, once globs are expanded, before it deletes it: with
+/// `symlink_target_contains`, only a path that is a link whose target, as
+/// the link spells it, contains the text (`path.symlink? &&
+/// path.readlink.to_s.include?`); with `content_contains`, only a path that
+/// is a file -- a link to one counts -- Homebrew can read and whose
+/// contents contain the text (`path.file? && path.readable? &&
+/// path.read.include?`); with both, only a path that passes both
+/// (`install_steps.rb:1051-1060` in Homebrew 7.0.6-70). The text is taken
+/// as the record spells it: Homebrew fills in no `{{…}}` template there
+/// (`step_string`, `:1499-1501`). Set on `Warning::CaskUninstallStep`'s
+/// `only_if` by `cask_receipt::classify`; read by `warningKey` and
+/// `warningArgs` in src/lib/warnings.ts, which pick the line and fill in
+/// the text.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum RemoveCheck {
+    /// `symlink_target_contains`.
+    LinkTargetContains(String),
+    /// `content_contains`.
+    ContentContains(String),
+    /// Both, on one step.
+    LinkTargetAndContentContain {
+        link_target: String,
+        content: String,
+    },
 }
 
 /// Why the tool itself will refuse to update this one package, although
@@ -1589,10 +1627,56 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Warning::CaskUninstallStep {
                 step: CaskStep::RemovesPackages,
-                items: vec!["com.microsoft.pkg.licensing".to_string()]
+                items: vec!["com.microsoft.pkg.licensing".to_string()],
+                only_if: None,
             })
             .unwrap(),
             r#"{"CaskUninstallStep":{"step":"RemovesPackages","items":["com.microsoft.pkg.licensing"]}}"#
+        );
+        // A `remove` step's check: `only_if`, externally tagged, as
+        // `RemoveCheck` in src/lib/types.ts spells it -- and a step read
+        // back without one has none.
+        for (check, json) in [
+            (
+                RemoveCheck::LinkTargetContains("playdate".to_string()),
+                r#"{"LinkTargetContains":"playdate"}"#,
+            ),
+            (
+                RemoveCheck::ContentContains("SocketLock".to_string()),
+                r#"{"ContentContains":"SocketLock"}"#,
+            ),
+            (
+                RemoveCheck::LinkTargetAndContentContain {
+                    link_target: "MacGPG2".to_string(),
+                    content: "gpg".to_string(),
+                },
+                r#"{"LinkTargetAndContentContain":{"link_target":"MacGPG2","content":"gpg"}}"#,
+            ),
+        ] {
+            let warning = Warning::CaskUninstallStep {
+                step: CaskStep::Deletes,
+                items: vec!["/usr/local/bin/arm-*".to_string()],
+                only_if: Some(check),
+            };
+            let wire = serde_json::to_string(&warning).unwrap();
+            assert_eq!(
+                wire,
+                format!(
+                    r#"{{"CaskUninstallStep":{{"step":"Deletes","items":["/usr/local/bin/arm-*"],"only_if":{json}}}}}"#
+                )
+            );
+            assert_eq!(serde_json::from_str::<Warning>(&wire).unwrap(), warning);
+        }
+        assert_eq!(
+            serde_json::from_str::<Warning>(
+                r#"{"CaskUninstallStep":{"step":"Trashes","items":["~/.nvs"]}}"#
+            )
+            .unwrap(),
+            Warning::CaskUninstallStep {
+                step: CaskStep::Trashes,
+                items: vec!["~/.nvs".to_string()],
+                only_if: None,
+            }
         );
         for what in [
             UninstallScope::HomebrewFormulaOnly,
