@@ -258,10 +258,17 @@ receipt says there is no such Ruby, the sentence says the cask's settings
 and data stay. Otherwise it says Homebrew also runs the uninstall steps it
 recorded, and "Before you continue" lists one line per kind, with what the
 record names, the home folder spelled `~`: paths deleted for good
-(`delete:`, and an `artifact` placed in the home folder) or moved to the
-Trash (`trash:`), installer packages whose every file is deleted
-(`pkgutil:`), programs run (`early_script:`, `script:`, an uninstall step
-of type `run`), background services removed (`launchctl:`), kernel
+(`delete:`, an `artifact` placed in the home folder, and each path an
+uninstall step of type `remove` spells out — from `/` or `~`, or under the
+home folder — which that step deletes where the path passes the check it
+may record on a link's target or a file's text; `install_steps.rb:1049-1068`),
+files a `remove` step deletes for good that Homebrew finds only as it runs
+it (a path under the cask's staged folder, in each folder Homebrew looks
+for commands in, relative, or with a `{{…}}` template: one line that names
+nothing), paths moved to the Trash (`trash:`), installer packages whose
+every file is deleted (`pkgutil:`), programs run (`early_script:`,
+`script:`, an uninstall step of type `run`), background services removed
+(`launchctl:`), kernel
 extensions (`kext:`), keychain certificates (an uninstall step), login
 items (`login_item:`), the apps quit (`quit:`, `signal:`), and, naming
 nothing, Ruby blocks and other uninstall steps. When Canager finds no such

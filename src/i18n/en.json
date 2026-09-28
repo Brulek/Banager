@@ -290,6 +290,7 @@
     "caskStep": {
       "Deletes_one": "Also permanently deletes {{items}}.",
       "Deletes_other": "Also permanently deletes these: {{items}}.",
+      "DeletesUnnamed": "Also permanently deletes files Homebrew finds only as it runs the uninstall steps.",
       "Trashes_one": "Also moves {{items}} to the Trash.",
       "Trashes_other": "Also moves these to the Trash: {{items}}.",
       "RemovesPackages_one": "Also deletes every file the installer package {{items}} put on this Mac, whether or not other apps use them.",

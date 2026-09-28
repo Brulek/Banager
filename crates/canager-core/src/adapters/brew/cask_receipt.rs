@@ -518,7 +518,10 @@ fn login_items(value: &Value) -> Option<Vec<String>> {
 /// `uninstall_preflight_steps`/`uninstall_postflight_steps`
 /// (`[{ "steps": [ { "type": …, … } ] }]`), which run with every step type
 /// (`install_steps.rb` `Runner#run_install_step`). A step Canager names goes
-/// under its kind; one it does not, under `RunsOwnSteps`.
+/// under its kind; one it does not, under `RunsOwnSteps`. A `remove` step
+/// deletes for good (`install_steps.rb:1049-1068`): each path it names
+/// outright goes under `Deletes`, and one it does not, under
+/// `DeletesUnnamed` (`removed_path`).
 fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool {
     let Some(args) = args.as_array() else {
         return false;
@@ -548,11 +551,60 @@ fn uninstall_steps(args: &Value, steps: &mut Steps, home: Option<&Path>) -> bool
                     Some(name) => steps.add(CaskStep::DeletesCertificates, [name], home),
                     None => steps.flag(CaskStep::RunsOwnSteps),
                 },
+                "remove" => {
+                    // `step_paths(step, "paths")`: a list of path specs,
+                    // each with its `path` (`install_steps.rb:1446-1449`).
+                    let Some(specs) = step.get("paths").and_then(Value::as_array) else {
+                        return false;
+                    };
+                    for spec in specs {
+                        let Some(spec) = spec.as_object() else {
+                            return false;
+                        };
+                        let Some(path) = spec.get("path").and_then(Value::as_str) else {
+                            return false;
+                        };
+                        let base = match spec.get("base") {
+                            None | Some(Value::Null) => None,
+                            Some(Value::String(base)) => Some(base.as_str()),
+                            Some(_) => return false,
+                        };
+                        match removed_path(path, base) {
+                            Some(path) => steps.add(CaskStep::Deletes, [path], home),
+                            None => steps.flag(CaskStep::DeletesUnnamed),
+                        }
+                    }
+                }
                 _ => steps.flag(CaskStep::RunsOwnSteps),
             }
         }
     }
     true
+}
+
+/// The path a `remove` step's path spec names, when the record says it
+/// outright, as `Runner#resolve_path` resolves it
+/// (`install_steps.rb:1540-1547`): with no base or an absolute one, a path
+/// from `/` or `~` as recorded -- Homebrew expands the `~` to the home
+/// folder -- and with the home folder as its base, `~/<path>`. `None` for
+/// a path with a `{{…}}` template Homebrew fills in at run time, a relative
+/// one it resolves against its working folder, and one it resolves against
+/// any other base: a folder it knows only when it runs the step, such as
+/// the cask's staged folder or, for `search_path`, each folder it looks
+/// for commands in (`expand_path_glob`, `:1473-1497`).
+fn removed_path(path: &str, base: Option<&str>) -> Option<String> {
+    if path.contains("{{") {
+        return None;
+    }
+    match base {
+        None | Some("") | Some("absolute") => {
+            (path.starts_with('/') || path.starts_with('~')).then(|| path.to_string())
+        }
+        // `Dir.home/path`, which an absolute `path` replaces.
+        Some("home") if path.starts_with('/') => Some(path.to_string()),
+        Some("home") => Some(format!("~/{path}")),
+        Some(_) => None,
+    }
 }
 
 /// The program a `run` step starts, when the record names it outright: a
@@ -981,10 +1033,102 @@ mod tests {
                 { "type": "run", "command": { "base": "home", "path": "bin/tool" } },
                 { "type": "run", "command": { "base": "staged_path", "path": "uninstall.sh" } },
                 { "type": "run", "command": { "path": "{{appdir}}/X.app/uninstall" } },
-                { "type": "delete_keychain_certificate", "name": "{{name}} CA" },
-                { "type": "remove", "paths": [{ "path": "/usr/local/bin/x" }] }
+                { "type": "delete_keychain_certificate", "name": "{{name}} CA" }
             ])),
             steps(&[(RunsScript, &["~/bin/tool"]), (RunsOwnSteps, &[])])
+        );
+    }
+
+    #[test]
+    fn a_remove_step_deletes_for_good_and_names_each_path_the_record_spells_out() {
+        let classify_remove = |paths: Value| {
+            classify(
+                &Recorded {
+                    artifacts: vec![serde_json::json!({
+                        "uninstall_postflight_steps": [{ "steps": [
+                            { "type": "remove", "paths": paths, "recursive": true }
+                        ] }]
+                    })],
+                    flight_blocks: false,
+                },
+                Some(Path::new(HOME)),
+            )
+        };
+        // No base or an absolute one: the path from `/` or `~` as recorded,
+        // the home folder shortened to `~`, a glob as it stands. The home
+        // folder as the base: `~/<path>`.
+        assert_eq!(
+            classify_remove(serde_json::json!([
+                { "path": "/usr/local/bin/gpg" },
+                { "path": "/Users/someone/Library/Application Support/Foo" },
+                { "path": "~/.foo", "base": "absolute" },
+                { "path": "/usr/local/bin/arm-*" },
+                { "path": ".config/foo", "base": "home" }
+            ])),
+            steps(&[(
+                Deletes,
+                &[
+                    "/usr/local/bin/gpg",
+                    "~/Library/Application Support/Foo",
+                    "~/.foo",
+                    "/usr/local/bin/arm-*",
+                    "~/.config/foo",
+                ]
+            )])
+        );
+        // What Homebrew resolves only when it runs the step: still deleted
+        // for good, named by nothing.
+        for unnamed in [
+            serde_json::json!({ "path": "charm", "base": "search_path" }),
+            serde_json::json!({ "path": "uninstall.sh", "base": "staged_path" }),
+            serde_json::json!({ "path": "relative/file" }),
+            serde_json::json!({ "path": "{{appdir}}/Foo.app" }),
+        ] {
+            assert_eq!(
+                classify_remove(serde_json::json!([unnamed.clone()])),
+                steps(&[(DeletesUnnamed, &[])]),
+                "{unnamed}"
+            );
+        }
+        // Both kinds from one step, each once.
+        assert_eq!(
+            classify_remove(serde_json::json!([
+                { "path": "/usr/local/bin/x" },
+                { "path": "x", "base": "staged_path" },
+                { "path": "/usr/local/bin/x" },
+                { "path": "y", "base": "staged_path" }
+            ])),
+            steps(&[(Deletes, &["/usr/local/bin/x"]), (DeletesUnnamed, &[])])
+        );
+        // No path at all deletes nothing.
+        assert_eq!(classify_remove(serde_json::json!([])), Classified::Plain);
+        // A spec Homebrew would not take.
+        for bad in [
+            serde_json::json!({ "path": "/x" }),
+            serde_json::json!(["/x"]),
+            serde_json::json!([{ "base": "home" }]),
+            serde_json::json!([{ "path": "/x", "base": 1 }]),
+        ] {
+            assert_eq!(classify_remove(bad.clone()), Classified::Unknown, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_remove_step_from_the_catalogue_is_a_permanent_deletion() {
+        // pycharm-edu's only extra step removes `charm` from each folder
+        // Homebrew looks for commands in: no path to name, still for good.
+        let (_, pycharm) = receipt!("pycharm-edu");
+        assert_eq!(classified(pycharm), steps(&[(DeletesUnnamed, &[])]));
+        // playdate-simulator's step names its links outright; they go with
+        // what its `delete:` names, in the order Homebrew meets them.
+        let (_, playdate) = receipt!("playdate-simulator");
+        assert_eq!(
+            classified(playdate),
+            steps(&[
+                (Deletes, &["/usr/local/bin/arm-*", "/usr/local/playdate"]),
+                (Trashes, &["~/Developer/PlaydateSDK"]),
+                (RemovesPackages, &["date.play.sdk"]),
+            ])
         );
     }
 

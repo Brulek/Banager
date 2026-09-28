@@ -127,6 +127,7 @@ export type UninstallScope =
  */
 export type CaskStep =
   | "Deletes"
+  | "DeletesUnnamed"
   | "Trashes"
   | "RemovesPackages"
   | "RunsScript"

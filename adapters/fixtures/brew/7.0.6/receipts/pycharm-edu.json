@@ -1,0 +1,61 @@
+{
+  "homebrew_version": "7.0.6",
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "uninstall_flight_blocks": false,
+  "installed_on_request": true,
+  "time": 1790484495,
+  "runtime_dependencies": {},
+  "source": {
+    "tap": "homebrew/cask",
+    "tap_git_head": "0000000000000000000000000000000000000000",
+    "version": "2022.2.2,222.4345.35",
+    "path": "/Users/someone/Library/Caches/Homebrew/api/internal/packages.arm64_golden_gate.jws.json"
+  },
+  "arch": "arm64",
+  "uninstall_artifacts": [
+    {
+      "app": [
+        "PyCharm Edu.app"
+      ]
+    },
+    {
+      "uninstall_postflight_steps": [
+        {
+          "steps": [
+            {
+              "paths": [
+                {
+                  "base": "search_path",
+                  "path": "charm"
+                }
+              ],
+              "content_contains": "# see com.intellij.idea.SocketLock for the server side of this interface",
+              "type": "remove"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "zap": [
+        {
+          "trash": [
+            "~/Library/Application Support/PyCharmEdu2022.2",
+            "~/Library/Caches/PyCharmEdu2022.2",
+            "~/Library/Logs/PyCharmEdu2022.2",
+            "~/Library/Preferences/PyCharmEdu2022.2"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "arm_sotra",
+    "xcode": "26.6",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

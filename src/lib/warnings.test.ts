@@ -113,6 +113,9 @@ describe("warningKey", () => {
     expect(warningKey({ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } })).toBe(
       "warnings.caskStep.RunsOwnSteps",
     );
+    expect(warningKey({ CaskUninstallStep: { step: "DeletesUnnamed", items: [] } })).toBe(
+      "warnings.caskStep.DeletesUnnamed",
+    );
   });
 
   it("has no key for a Message -- its text comes from the wire, not i18n", () => {
@@ -225,6 +228,7 @@ describe("warningArgs", () => {
       warningArgs({ CaskUninstallStep: { step: "RemovesPackages", items: ["a.pkg", "b.pkg"] } }),
     ).toEqual({ count: 2, items: "a.pkg, b.pkg" });
     expect(warningArgs({ CaskUninstallStep: { step: "RunsOwnSteps", items: [] } })).toEqual({});
+    expect(warningArgs({ CaskUninstallStep: { step: "DeletesUnnamed", items: [] } })).toEqual({});
   });
 
   it("is empty for every other variant", () => {
@@ -315,6 +319,7 @@ const EVERY_SCOPE: UninstallScope[] = [
 /** Every `CaskStep`, in its declared order. */
 const EVERY_STEP: CaskStep[] = [
   "Deletes",
+  "DeletesUnnamed",
   "Trashes",
   "RemovesPackages",
   "RunsScript",
@@ -474,9 +479,12 @@ describe("warningDetailKey", () => {
     }
     for (const step of EVERY_STEP) {
       const key = warningKey({ CaskUninstallStep: { step, items: [] } }) ?? "";
-      if (step === "RunsOwnSteps") {
-        expect(typeof lookUp(en, key), key).toBe("string");
-        expect(typeof lookUp(zhCN, key), key).toBe("string");
+      // The two that name nothing have one sentence and no `{{items}}`.
+      if (step === "RunsOwnSteps" || step === "DeletesUnnamed") {
+        for (const locale of [en, zhCN]) {
+          expect(typeof lookUp(locale, key), key).toBe("string");
+          expect(lookUp(locale, key) as string, key).not.toContain("{{");
+        }
         continue;
       }
       for (const [locale, forms] of [
@@ -522,9 +530,16 @@ describe("deletesForGood", () => {
     expect(deletesForGood({ RemovesToolchains: { path: "~/.rustup", names: [] } })).toBe(true);
     // What goes to the Trash can be dragged back out.
     expect(deletesForGood({ WillTrash: { path: "~/.local/share/claude", what: "Program" } })).toBe(false);
-    // Only the step whose line says "permanently".
+    // Only the steps whose lines say "permanently": what `delete:` and a
+    // `remove` step name, and what a `remove` step finds as it runs.
     for (const step of EVERY_STEP) {
-      expect(deletesForGood({ CaskUninstallStep: { step, items: ["x"] } })).toBe(step === "Deletes");
+      expect(deletesForGood({ CaskUninstallStep: { step, items: ["x"] } })).toBe(
+        step === "Deletes" || step === "DeletesUnnamed",
+      );
+    }
+    expect(deletesForGood({ CaskUninstallStep: { step: "DeletesUnnamed", items: [] } })).toBe(true);
+    for (const locale of [en, zhCN]) {
+      expect(locale.warnings.caskStep.DeletesUnnamed).toMatch(/permanently|永久/);
     }
   });
 

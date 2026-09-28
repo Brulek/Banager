@@ -593,6 +593,41 @@ describe("UninstallDialog", () => {
     }
   });
 
+  it("says Uninstall permanently where a cask's recorded steps delete files they find only as they run", async () => {
+    // pycharm-edu's one extra step, a `remove` of `charm` in each folder
+    // Homebrew looks for commands in: `CaskStep::DeletesUnnamed`
+    // (crates/canager-core/src/adapters/brew/cask_receipt.rs).
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "pycharm-edu" };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: cask,
+        needs_password: true,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskSteps" } },
+          { CaskUninstallStep: { step: "DeletesUnnamed", items: [] } },
+        ],
+      }),
+    );
+
+    const en = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="PyCharm Edu" />,
+    );
+    expect(await screen.findByRole("button", { name: "Uninstall permanently" })).toBeEnabled();
+    expect(linesOf("Before you continue")[0]).toBe(
+      "Also permanently deletes files Homebrew finds only as it runs the uninstall steps.",
+    );
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="PyCharm Edu" />);
+      expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
+      expect(linesOf("请注意")[0]).toBe("还会永久删除 Homebrew 执行卸载步骤时才找到的文件。");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("says Homebrew will also remove what nothing needs when a brew.env turns autoremove back on, with the why behind its ⓘ", async () => {
     // `Warning::HomebrewAutoremoves`: every brew command runs with
     // HOMEBREW_NO_AUTOREMOVE=1, and a brew.env took it back

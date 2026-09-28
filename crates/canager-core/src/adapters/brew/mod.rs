@@ -3084,6 +3084,11 @@ mod plan_execute_tests {
         include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/microsoft-word.json");
     const TWELITE_RECEIPT: &str =
         include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/twelite-stage.json");
+    const PYCHARM_EDU_RECEIPT: &str =
+        include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/pycharm-edu.json");
+    const PLAYDATE_RECEIPT: &str = include_str!(
+        "../../../../../adapters/fixtures/brew/7.0.6/receipts/playdate-simulator.json"
+    );
 
     #[tokio::test]
     async fn test_a_cask_uninstall_says_what_its_install_receipt_records() {
@@ -3164,6 +3169,57 @@ mod plan_execute_tests {
             word.into_iter()
                 .chain([Warning::HomebrewAutoremoves])
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_whose_recorded_steps_remove_paths_says_they_go_for_good() {
+        // An uninstall step of type `remove` deletes for good
+        // (`install_steps.rb:1049-1068`): its paths are said with what
+        // `delete:` names, and one Homebrew finds only when it runs the step
+        // is said without a name.
+        let prefix = CaskroomPrefix::new(
+            "remove",
+            &[
+                ("pycharm-edu", PYCHARM_EDU_RECEIPT),
+                ("playdate-simulator", PLAYDATE_RECEIPT),
+            ],
+        );
+        let runner = Arc::new(MockRunner::new());
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let scope = |what| Warning::UninstallScope { what };
+        let step = |step, items: &[&str]| Warning::CaskUninstallStep {
+            step,
+            items: items.iter().map(|item| item.to_string()).collect(),
+        };
+
+        let plan = cask_uninstall(&runner, &adapter, &inst, "pycharm-edu").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                scope(UninstallScope::HomebrewCaskSteps),
+                step(CaskStep::DeletesUnnamed, &[]),
+            ]
+        );
+
+        let plan = cask_uninstall(&runner, &adapter, &inst, "playdate-simulator").await;
+        assert_eq!(
+            plan.warnings,
+            vec![
+                scope(UninstallScope::HomebrewCaskSteps),
+                step(
+                    CaskStep::Deletes,
+                    &["/usr/local/bin/arm-*", "/usr/local/playdate"]
+                ),
+                step(CaskStep::Trashes, &["~/Developer/PlaydateSDK"]),
+                step(CaskStep::RemovesPackages, &["date.play.sdk"]),
+            ]
         );
     }
 

@@ -64,11 +64,13 @@ const UNINSTALL_SCOPE_KEYS: Record<UninstallScope, string> = {
 
 /**
  * The line for each kind of extra step a cask's recorded uninstall takes.
- * A `Record` over `CaskStep`. Each but `RunsOwnSteps`, which names nothing,
- * interpolates `{{items}}` and pluralises on `{{count}}`.
+ * A `Record` over `CaskStep`. Each but `DeletesUnnamed` and `RunsOwnSteps`,
+ * which name nothing, interpolates `{{items}}` and pluralises on
+ * `{{count}}`.
  */
 const CASK_STEP_KEYS: Record<CaskStep, string> = {
   Deletes: "warnings.caskStep.Deletes",
+  DeletesUnnamed: "warnings.caskStep.DeletesUnnamed",
   Trashes: "warnings.caskStep.Trashes",
   RemovesPackages: "warnings.caskStep.RemovesPackages",
   RunsScript: "warnings.caskStep.RunsScript",
@@ -323,8 +325,10 @@ export function warningGroup(warning: Warning): WarningGroup {
  * nothing moved to the Trash: rustup's own uninstall, which deletes the
  * rustup folder with its toolchains, the Cargo folder and the programs in
  * it (their sentences start "Permanently deletes"), and a cask whose
- * recorded uninstall deletes paths (`CaskUninstallStep` `Deletes`: "Also
- * permanently deletes"). The uninstall confirmation's button then says so
+ * recorded uninstall deletes paths -- by `delete:` or an uninstall step of
+ * type `remove` -- named or not (`CaskUninstallStep` `Deletes` and
+ * `DeletesUnnamed`: "Also permanently deletes"). The uninstall
+ * confirmation's button then says so
  * too (`uninstall.confirmPermanent`). Only what a line says counts: a plan
  * with no such line may well delete files -- `brew uninstall` does, and so
  * does the autoremove Homebrew's two lines speak of -- but says nothing
@@ -355,7 +359,10 @@ export function deletesForGood(warning: Warning): boolean {
   if ("RemovesToolchains" in warning || "DeletesCargoHome" in warning || "RemovesCargoInstalled" in warning) {
     return true;
   }
-  if ("CaskUninstallStep" in warning) return warning.CaskUninstallStep.step === "Deletes";
+  if ("CaskUninstallStep" in warning) {
+    const step = warning.CaskUninstallStep.step;
+    return step === "Deletes" || step === "DeletesUnnamed";
+  }
   if (
     "WouldBreak" in warning ||
     "ThirdPartyRegistry" in warning ||

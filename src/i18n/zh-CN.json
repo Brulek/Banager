@@ -268,6 +268,7 @@
     },
     "caskStep": {
       "Deletes_other": "还会永久删除：{{items}}。",
+      "DeletesUnnamed": "还会永久删除 Homebrew 执行卸载步骤时才找到的文件。",
       "Trashes_other": "还会把这些移到废纸篓：{{items}}。",
       "RemovesPackages_other": "还会删除这些安装包装的全部文件，不论别的 App 是否在用：{{items}}。",
       "RunsScript_other": "还会运行：{{items}}。",

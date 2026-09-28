@@ -604,8 +604,9 @@ pub enum Warning {
     /// deleting what Homebrew installed for it (`CaskStep`), with what the
     /// record names for it: paths (`~` for the home folder), installer
     /// package ids, service labels, bundle ids, programs, certificate
-    /// names -- empty only for `CaskStep::RunsOwnSteps`, which names
-    /// nothing. One per kind, in `CaskStep`'s order, each name once.
+    /// names -- empty only for `CaskStep::RunsOwnSteps` and
+    /// `CaskStep::DeletesUnnamed`, which name nothing. One per kind, in
+    /// `CaskStep`'s order, each name once.
     /// Produced by `BrewAdapter::plan` for a cask `Uninstall` whose recorded
     /// uninstall is not plain (`cask_receipt::classify`), beside
     /// `UninstallScope { what: HomebrewCaskSteps }`; read by `warningKey`
@@ -695,10 +696,20 @@ pub enum UninstallScope {
 /// src/lib/warnings.ts, a `Record` over the mirror.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CaskStep {
-    /// `delete:` (`sudo rm -r -f`, globs expanded, `~` the home folder), and
-    /// an `artifact` Homebrew placed in the home folder, which its uninstall
-    /// deletes again: gone for good, not to the Trash.
+    /// `delete:` (`sudo rm -r -f`, globs expanded, `~` the home folder), an
+    /// `artifact` Homebrew placed in the home folder, which its uninstall
+    /// deletes again, and each path an uninstall step of type `remove`
+    /// names outright (`FileUtils.rm_f`/`rm_rf`, or a removal with `sudo`,
+    /// globs expanded; `install_steps.rb:1049-1068`) -- which that step
+    /// deletes only where the path passes the check it may record, on a
+    /// link's target or a file's text: gone for good, not to the Trash.
     Deletes,
+    /// A `remove` uninstall step's path the record does not spell out: one
+    /// Homebrew resolves against a folder it knows only when it runs the
+    /// step -- the cask's own staged folder, the folders it looks for
+    /// commands in, its working folder -- or through a `{{…}}` template.
+    /// Gone for good like `Deletes`, but named by nothing.
+    DeletesUnnamed,
     /// `trash:`: moved to the Trash.
     Trashes,
     /// `pkgutil:`: every file each matching installer package recorded is
@@ -1553,6 +1564,7 @@ mod tests {
         }
         for step in [
             CaskStep::Deletes,
+            CaskStep::DeletesUnnamed,
             CaskStep::Trashes,
             CaskStep::RemovesPackages,
             CaskStep::RunsScript,
