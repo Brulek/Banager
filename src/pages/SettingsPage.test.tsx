@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SettingsPage } from "./SettingsPage";
 import zhCN from "../i18n/zh-CN.json";
-import type { ArtifactKey, Settings } from "../lib/types";
+import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 
 const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
@@ -16,6 +16,36 @@ function lastSaved(): Settings {
   const saves = vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings");
   expect(saves.length).toBeGreaterThan(0);
   return (saves[saves.length - 1][1] as { settings: Settings }).settings;
+}
+
+function artifact(key: ArtifactKey, displayName: string): InstalledArtifact {
+  return {
+    key,
+    display_name: displayName,
+    version: "1.0.0",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+  };
+}
+
+// A snapshot with these installed, and nothing else the page reads.
+function snapshotOf(artifacts: InstalledArtifact[], updates: Snapshot["updates"] = []): Snapshot {
+  return {
+    generation: 3,
+    detect: "Found",
+    instances: [],
+    artifacts,
+    updates,
+    refreshed_at: 1790586000,
+    stale: false,
+    errors: [],
+  };
 }
 
 function baseSettings(overrides: Partial<Settings> = {}): Settings {
@@ -208,14 +238,29 @@ describe("SettingsPage", () => {
   it("keeps listing a skipped version its source no longer offers, and keeps it through a save of anything else", async () => {
     // Say glib 2.89.0 was skipped and its source has since moved on to
     // 2.90.0: the skip hides nothing any more (`hidingRule` matches only the
-    // version a row offers). This page does not read the snapshot -- the
-    // mock below answers nothing else -- so what a source offers now cannot
-    // make it drop an entry. The skip is still listed, and a save of
-    // another setting writes it back unchanged: nothing is pruned behind
-    // the user's back.
+    // version a row offers). This page reads the snapshot for names only,
+    // so what a source offers now -- 2.90.0, below -- cannot make it drop
+    // an entry. The skip is still listed, and a save of another setting
+    // writes it back unchanged: nothing is pruned behind the user's back.
     vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
       if (cmd === "get_settings") {
         return baseSettings({ skipped_versions: [{ key: glibKey, version: "2.89.0" }] });
+      }
+      if (cmd === "get_snapshot") {
+        return snapshotOf(
+          [artifact(glibKey, "glib")],
+          [
+            {
+              key: glibKey,
+              current: "2.88.3",
+              target: "2.90.0",
+              channel: "Native",
+              checkable: true,
+              warnings: [],
+              blocked: null,
+            },
+          ],
+        );
       }
       if (cmd === "set_settings") return undefined;
       throw new Error(`unexpected command ${cmd}`);
@@ -229,6 +274,76 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Show technical details" }));
     await waitFor(() => expect(lastSaved().show_technical_details).toBe(true));
     expect(lastSaved().skipped_versions).toEqual([{ key: glibKey, version: "2.89.0" }]);
+  });
+
+  it("names each hidden update the way the Updates page does, with its source beside it", async () => {
+    const claudeKey: ArtifactKey = { instance_id: "standalone-claude", kind: "Binary", name: "claude" };
+    const agyKey: ArtifactKey = { instance_id: "standalone-agy", kind: "Binary", name: "agy" };
+    const grokKey: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
+    const codeKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "visual-studio-code" };
+    const brewTsKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "typescript" };
+    const npmTsKey: ArtifactKey = { instance_id: "npm:/opt/homebrew", kind: "Package", name: "typescript" };
+    const ffmpegKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "ffmpeg" };
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") {
+        return baseSettings({
+          skipped_versions: [
+            { key: claudeKey, version: "2.1.3" },
+            { key: codeKey, version: "1.105.0" },
+          ],
+          // grok and ffmpeg are no longer installed: the snapshot has no
+          // name for them.
+          ignored_updates: [agyKey, grokKey, brewTsKey, npmTsKey, ffmpegKey],
+        });
+      }
+      if (cmd === "get_snapshot") {
+        return snapshotOf([
+          artifact(claudeKey, "Claude Code"),
+          artifact(agyKey, "Antigravity CLI"),
+          artifact(codeKey, "Microsoft Visual Studio Code"),
+          artifact(brewTsKey, "typescript"),
+          artifact(npmTsKey, "typescript"),
+        ]);
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    const never = screen.getByRole("region", { name: "Never remind me about" });
+    const lines = (list: HTMLElement) =>
+      within(list)
+        .getAllByRole("listitem")
+        .map((item) => [...item.querySelectorAll("span > span")].map((part) => part.textContent));
+
+    // A tool with its own installer is its own source: its name, once.
+    await waitFor(() =>
+      expect(lines(skipped)).toEqual([
+        ["Claude Code", "2.1.3"],
+        ["Microsoft Visual Studio Code", "Homebrew", "1.105.0"],
+      ]),
+    );
+    expect(lines(never)).toEqual([
+      ["Antigravity CLI"],
+      // Not in the snapshot: a tool with its own installer by its product
+      // name all the same, anything else by its package's.
+      ["Grok Build"],
+      // Two installs of one name, told apart by their source.
+      ["typescript", "Homebrew"],
+      ["typescript", "npm"],
+      ["ffmpeg", "Homebrew"],
+    ]);
+    expect(screen.queryByText("claude")).toBeNull();
+    expect(screen.queryByText("agy")).toBeNull();
+    // Their buttons are named by the same names.
+    expect(within(skipped).getByRole("button", { name: "Stop skipping 2.1.3 of Claude Code" })).toBeInTheDocument();
+    expect(
+      within(skipped).getByRole("button", { name: "Stop skipping 1.105.0 of Microsoft Visual Studio Code" }),
+    ).toBeInTheDocument();
+    expect(within(never).getByRole("button", { name: "Remind me again about Antigravity CLI" })).toBeInTheDocument();
+    expect(within(never).getByRole("button", { name: "Remind me again about Grok Build" })).toBeInTheDocument();
+    expect(within(never).getByRole("button", { name: "Remind me again about ffmpeg" })).toBeInTheDocument();
   });
 
   it("says what Show technical details shows, and nothing it does not", async () => {

@@ -1,10 +1,10 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useSettings, useSaveSettings } from "../lib/queries";
-import { settingsSaveErrorMessage } from "../lib/sources";
+import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
+import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, settingsSaveErrorMessage } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
-import type { Settings, Language, SkippedVersion } from "../lib/types";
+import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 
@@ -66,6 +66,20 @@ const ROW_LABEL = "block text-body font-medium text-foreground";
 const ROW_DESCRIPTION = "mt-0.5 text-small text-muted";
 
 /**
+ * A hidden update's software, the way the Updates and Installed rows name
+ * it: its name, then its source's in small muted text -- none for a tool
+ * with its own installer, which is its own source.
+ */
+function EntryName({ name, source }: { name: string; source: string | undefined }) {
+  return (
+    <>
+      <span className="truncate text-body font-medium text-foreground">{name}</span>
+      {source !== undefined ? <span className="shrink-0 text-small text-muted">{source}</span> : null}
+    </>
+  );
+}
+
+/**
  * Settings, in three cards: 「通用」 -- the language, and whether to show
  * technical details -- 「更新」 -- whether Homebrew's self-updating apps
  * are listed -- and 「已隐藏的更新」, the versions skipped and the
@@ -77,6 +91,7 @@ export function SettingsPage() {
   const { t } = useTranslation();
   const settingsQuery = useSettings();
   const saveMutation = useSaveSettings();
+  const { data: snapshot } = useSnapshot();
   const [draft, setDraft] = useState<Settings | null>(null);
   const languageRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const languageLabelId = useId();
@@ -88,6 +103,16 @@ export function SettingsPage() {
       setDraft(settingsQuery.data);
     }
   }, [settingsQuery.data, draft]);
+
+  // What the Updates and Installed rows call each package they list: its
+  // `display_name` ("Claude Code", where the package is "claude").
+  const displayNames = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const artifact of snapshot?.artifacts ?? []) {
+      byId.set(artifactKeyId(artifact.key), artifact.display_name);
+    }
+    return byId;
+  }, [snapshot]);
 
   const current = draft ?? settingsQuery.data;
 
@@ -119,6 +144,23 @@ export function SettingsPage() {
     const next = (index + (forward ? 1 : -1) + LANGUAGES.length) % LANGUAGES.length;
     persist({ ...current, language: LANGUAGES[next] });
     languageRefs.current[next]?.focus();
+  };
+
+  // An entry's name and source. Where the snapshot no longer lists the
+  // package, a tool with its own installer is still named by its product
+  // name, which is its source's too (its `display_name` is that name, from
+  // its recipe in crates/canager-core/src/adapters/standalone/), and
+  // anything else by the package's own name. The source is left out where
+  // it would only say the name again, as on the Updates page's rows. It
+  // goes by the key alone: an instance id starts with its adapter's.
+  const entryOf = (key: ArtifactKey): { name: string; source: string | undefined } => {
+    const adapterId = adapterIdOf(key.instance_id);
+    const source = adapterLabel(t, adapterId);
+    const standalone =
+      adapterId.startsWith("standalone-") &&
+      Object.prototype.hasOwnProperty.call(ADAPTER_LABEL_KEYS, adapterId);
+    const name = displayNames.get(artifactKeyId(key)) || (standalone ? source : key.name);
+    return { name, source: source === name ? undefined : source };
   };
 
   const unignore = (key: Settings["ignored_updates"][number]) => {
@@ -245,11 +287,11 @@ export function SettingsPage() {
           Every stored skip is listed, including one whose version its
           source has since moved past: such an entry hides nothing any more
           (`hidingRule` matches only the version a row offers), and it is
-          shown rather than dropped. This page does not read the snapshot,
-          and every other change saved here writes the list back as it is,
-          so an entry leaves it only when the user presses Stop skipping on
-          it, or skips that package's next version on the Updates page,
-          which replaces it (`withSkippedVersion`). */}
+          shown rather than dropped. This page reads the snapshot for names
+          only (`entryOf`), and every other change saved here writes the
+          list back as it is, so an entry leaves it only when the user
+          presses Stop skipping on it, or skips that package's next version
+          on the Updates page, which replaces it (`withSkippedVersion`). */}
       <SettingsGroup title={t("settings.groups.hidden")}>
         <section aria-labelledby={skippedTitleId} className="px-4 py-3">
           <h3 id={skippedTitleId} className="text-small font-semibold text-muted">
@@ -262,10 +304,11 @@ export function SettingsPage() {
               {current.skipped_versions.map((skipped) => {
                 // An Ollama model's skipped version is a digest, never shown.
                 const version = shownSkippedVersion(skipped);
+                const { name, source } = entryOf(skipped.key);
                 return (
                   <li key={skippedVersionId(skipped)} className="flex items-center justify-between gap-4 py-1.5">
                     <span className="flex min-w-0 items-baseline gap-2">
-                      <span className="truncate text-body font-medium text-foreground">{skipped.key.name}</span>
+                      <EntryName name={name} source={source} />
                       <span className="shrink-0 text-small tabular-nums text-muted">
                         {version ?? t("settings.skippedVersions.newBuild")}
                       </span>
@@ -274,13 +317,8 @@ export function SettingsPage() {
                       type="button"
                       aria-label={
                         version === null
-                          ? t("settings.skippedVersions.unskipNewBuildAriaLabel", {
-                              name: skipped.key.name,
-                            })
-                          : t("settings.skippedVersions.unskipAriaLabel", {
-                              name: skipped.key.name,
-                              version,
-                            })
+                          ? t("settings.skippedVersions.unskipNewBuildAriaLabel", { name })
+                          : t("settings.skippedVersions.unskipAriaLabel", { name, version })
                       }
                       onClick={() => unskip(skipped)}
                       className={UNDO_BUTTON}
@@ -302,21 +340,24 @@ export function SettingsPage() {
             <p className="mt-1.5 text-body text-muted">{t("settings.ignoredUpdates.empty")}</p>
           ) : (
             <ul className="mt-1 flex flex-col">
-              {current.ignored_updates.map((key) => (
-                <li key={artifactKeyId(key)} className="flex items-center justify-between gap-4 py-1.5">
-                  <span className="min-w-0 truncate text-body font-medium text-foreground">{key.name}</span>
-                  <button
-                    type="button"
-                    aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", {
-                      name: key.name,
-                    })}
-                    onClick={() => unignore(key)}
-                    className={UNDO_BUTTON}
-                  >
-                    {t("settings.ignoredUpdates.unignore")}
-                  </button>
-                </li>
-              ))}
+              {current.ignored_updates.map((key) => {
+                const { name, source } = entryOf(key);
+                return (
+                  <li key={artifactKeyId(key)} className="flex items-center justify-between gap-4 py-1.5">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <EntryName name={name} source={source} />
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t("settings.ignoredUpdates.unignoreAriaLabel", { name })}
+                      onClick={() => unignore(key)}
+                      className={UNDO_BUTTON}
+                    >
+                      {t("settings.ignoredUpdates.unignore")}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
