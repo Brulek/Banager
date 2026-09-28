@@ -22,8 +22,8 @@
     "close": "关闭",
     "viewLog": "查看日志",
     "listSeparator": "、",
+    "listAnd": "{{list}} 和 {{last}}",
     "checking": "正在检查…",
-    "retry": "重试",
     "details": "详情",
     "detailsLabel": "详情：{{title}}",
     "copyCommand": "拷贝命令",
@@ -329,7 +329,7 @@
     },
     "indexMayBeStale": {
       "title": "Homebrew 软件清单没更新成功",
-      "description": "这次的更新结果以旧清单为准。检查网络后点「重试」。"
+      "description": "这次的更新结果以旧清单为准。检查网络后点「重新检查」。"
     },
     "indexUpdating": {
       "title": "Homebrew 正在更新软件清单",
@@ -573,8 +573,7 @@
     },
     "refreshFailed": {
       "title": "部分检查没完成",
-      "description_other": "{{count}} 项没完成，相关内容没有更新。",
-      "retryFailed": "重试失败：{{message}}"
+      "description_other": "{{sources}} 这次没查完，这部分内容没能刷新。"
     },
     "nothingInstalled": {
       "title": "没有找到已安装的工具",

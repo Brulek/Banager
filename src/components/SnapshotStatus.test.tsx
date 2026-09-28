@@ -113,12 +113,11 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 
-  it("counts one broken source once, not twice, when its inventory and update check both failed", async () => {
+  it("names one broken source once, not twice, when its inventory and update check both failed", async () => {
     // session/refresh.rs pushes one SourceError from the inventory fetch
     // and a second from check_updates for the very same instance -- that
-    // is two failed *calls* against one failed *source*. The banner
-    // counts checks, a source's each; the count must agree with it rather
-    // than with errors.length.
+    // is two failed *calls* against one failed *source*. The banner names
+    // sources, each once.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
         generation: 412,
@@ -138,8 +137,55 @@ describe("SnapshotStatus", () => {
     );
 
     expect(
-      await screen.findByText("1 check didn't finish, so Canager couldn't refresh everything."),
+      await screen.findByText("Homebrew didn't finish this check, so what Canager shows for it wasn't refreshed."),
     ).toBeInTheDocument();
+  });
+
+  it("names every source whose check did not finish, never with 更新 for a refresh, in Chinese", async () => {
+    // 「2 项没完成，相关内容没有更新。」 said neither which two, and 更新 is
+    // this app's word for installing a newer version: it read as "these
+    // have no updates". An error against a bare adapter id -- its detect
+    // failed -- is named by that adapter.
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        generation: 412,
+        refreshed_at: 1700000500,
+        stale: true,
+        instances: [
+          {
+            id: "brew:/opt/homebrew",
+            adapter_id: "brew",
+            exe_path: "/opt/homebrew/bin/brew",
+            prefix: "/opt/homebrew",
+            scope: "User",
+            version: "7.0.3",
+            status: { unavailable: null, notes: [] },
+            unverified_version: null,
+            read_only_reason: null,
+          },
+        ],
+        errors: [
+          { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
+          { instance_id: "npm", message: "internal error detecting this source" },
+          { instance_id: "uv:/Users/you/.local/share/uv/tools", message: "uv tool list exited 2" },
+        ],
+      }),
+    );
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(
+        <SnapshotStatus>
+          <p>installed list</p>
+        </SnapshotStatus>,
+      );
+
+      expect(await screen.findByText("部分检查没完成")).toBeInTheDocument();
+      expect(screen.getByText("Homebrew、npm 和 uv 这次没查完，这部分内容没能刷新。")).toBeInTheDocument();
+      // The header's Check again, right above it, runs the same check.
+      expect(screen.queryByRole("button")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("lets a page that says Checking… itself show through while the first refresh runs", async () => {
@@ -236,17 +282,13 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
-  it("shows a stale banner above the existing data when the last refresh failed", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "get_snapshot") {
-        return baseSnapshot({
-          stale: true,
-          errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
-        });
-      }
-      if (cmd === "refresh") return baseSnapshot();
-      throw new Error(`unexpected command ${cmd}`);
-    });
+  it("shows a stale banner above the existing data when the last refresh failed, with no button of its own", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({
+        stale: true,
+        errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
+      }),
+    );
 
     renderWithProviders(
       <SnapshotStatus>
@@ -256,8 +298,27 @@ describe("SnapshotStatus", () => {
 
     expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
+    // Its Try again ran the check the header's Check again, right above
+    // it, runs: two names for one button.
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  it("calls the load failure's button what the header calls the same check", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null });
+      if (cmd === "refresh") return baseSnapshot();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+    useUiStore.setState({ startupRefreshError: "refresh timed out" });
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true),
     );

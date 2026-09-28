@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useRefresh, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
-import { failedSourceCount, hasSourceNotice } from "../lib/sources";
+import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { EmptyState, type EmptyStateDetail } from "./EmptyState";
 
@@ -37,7 +37,9 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // get_snapshot itself failed. InstalledPage renders null without data,
     // so without this branch the user would face a blank page and no way
     // out. The message is the backend's own text (Task 10's call()); a
-    // failed retry replaces it with the retry's message.
+    // failed check from here replaces it with that check's message. Its
+    // button runs the check the header's does, and is called what that
+    // one is.
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
@@ -45,7 +47,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
           message: (refreshMutation.error ?? snapshotQuery.error).message,
         })}
         action={{
-          label: t("common.retry"),
+          label: t("header.checkAgain"),
           onClick: () => refreshMutation.mutate(),
         }}
       />
@@ -75,7 +77,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
         title={t("emptyStates.loadFailed.title")}
         description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
         action={{
-          label: t("common.retry"),
+          label: t("header.checkAgain"),
           onClick: () => refreshMutation.mutate(),
         }}
       />
@@ -119,10 +121,19 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     //
     // `stale` alone, with no `errors.length > 0` beside it: `refresh()`
     // sets `stale` to exactly `!errors.is_empty()`, so the second test was
-    // identity, and the count below is therefore never zero. A source that
+    // identity, and the banner below therefore always has a source to
+    // name. A source that
     // is merely unavailable is not stale and gets no banner -- it says so
     // itself, in its own words, through its own `SourceNotice` on this
     // page and on the Updates page.
+    //
+    // It names the sources whose check did not finish (`failedSourceNames`)
+    // -- "2 checks didn't finish" said neither which nor what that meant --
+    // and says only that what is shown for them was not refreshed: their
+    // rows may be last round's, or, on the first check since Canager
+    // opened, none. It has no button: the header's Check again, right
+    // above it, runs the same check (`useCheckAgain`), and says so when
+    // that check fails.
     //
     // The banner variant is meant to "sit above still-visible content"
     // without hiding any of it, but `children` (e.g. InstalledPage) sizes
@@ -135,24 +146,16 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // column — banner sized to its own content, `children` wrapped in the
     // remaining `flex-1 min-h-0` space with its own scroll — keeps the
     // total height exactly at the box's height, so nothing overflows.
+    const failed = failedSourceNames(t, snapshot.errors, snapshot.instances);
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <EmptyState
           variant="banner"
           title={t("emptyStates.refreshFailed.title")}
-          description={
-            refreshMutation.isError
-              ? t("emptyStates.refreshFailed.retryFailed", {
-                  message: refreshMutation.error.message,
-                })
-              : t("emptyStates.refreshFailed.description", {
-                  count: failedSourceCount(snapshot.errors),
-                })
-          }
-          action={{
-            label: t("common.retry"),
-            onClick: () => refreshMutation.mutate(),
-          }}
+          description={t("emptyStates.refreshFailed.description", {
+            count: failed.length,
+            sources: namesInSentence(t, failed),
+          })}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>

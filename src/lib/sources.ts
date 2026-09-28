@@ -260,7 +260,7 @@ export function uninstallHoldKey(instance: ManagerInstance): string | null {
  * this module stays pure so both pages can call it, and each page wires
  * the id to its own mutation.
  */
-export type SourceNoticeActionId = "openOllama" | "retry";
+export type SourceNoticeActionId = "openOllama" | "checkAgain";
 
 /**
  * One notice a source needs rendered, as data: which i18n keys say it,
@@ -388,7 +388,9 @@ export function sourceNoticesFor(
         variant: "warning",
         titleKey: "sourceNotice.indexMayBeStale.title",
         descriptionKey: "sourceNotice.indexMayBeStale.description",
-        action: { id: "retry", labelKey: "common.retry" },
+        // The header's own words for the same check: one name for every
+        // button that runs it.
+        action: { id: "checkAgain", labelKey: "header.checkAgain" },
       });
     } else if (note === "IndexUpdating") {
       // Nothing has failed: the download is still going. So an "info"
@@ -1210,4 +1212,41 @@ export function settingsSaveErrorMessage(t: Translate, raw: string): string {
  */
 export function failedSourceCount(errors: SourceError[]): number {
   return new Set(errors.map((e) => e.instance_id)).size;
+}
+
+/**
+ * The sources a refresh failed for, by name, in the user's language, each
+ * once, in the order `errors` first names them: what the stale banner says
+ * did not finish, in place of a count that did not say which. A source is
+ * named by its instance's adapter, or -- for an error against a bare
+ * adapter id (its `detect` failed) or an instance the snapshot no longer
+ * lists -- by the adapter its id names (`adapterIdOf`). Two instances of
+ * one adapter, two Homebrews, are one name.
+ */
+export function failedSourceNames(
+  t: Translate,
+  errors: SourceError[],
+  instances: ManagerInstance[],
+): string[] {
+  const names: string[] = [];
+  for (const error of errors) {
+    const adapterId =
+      instances.find((instance) => instance.id === error.instance_id)?.adapter_id ??
+      adapterIdOf(error.instance_id);
+    const name = adapterLabel(t, adapterId);
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/**
+ * `names` as a sentence lists them, in the user's language: 「Homebrew、npm
+ * 和 uv」, "Homebrew, npm and uv". One name alone; none, nothing.
+ */
+export function namesInSentence(t: Translate, names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return t("common.listAnd", {
+    list: names.slice(0, -1).join(t("common.listSeparator")),
+    last: names[names.length - 1],
+  });
 }

@@ -62,10 +62,10 @@ export function EmptyState({
         </div>
       </div>
       {action && (
-        // This is the Retry button of the refresh-failed states, the only way
-        // out of them. Left class-less it rendered as one more line of text
-        // under the explanation, so the recovery the screen is offering was
-        // invisible.
+        // This is the Check again button of the load-failed states, the
+        // only way out of them. Left class-less it rendered as one more line
+        // of text under the explanation, so the recovery the screen is
+        // offering was invisible.
         <button
           type="button"
           onClick={action.onClick}

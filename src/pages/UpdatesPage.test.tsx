@@ -2640,7 +2640,7 @@ describe("UpdatesPage", () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
   });
 
-  it("warns that Homebrew's catalogue may be behind, with a way to retry", async () => {
+  it("warns that Homebrew's catalogue may be behind, with the header's Check again", async () => {
     // A note, not an unavailability: brew answered, and what it said may
     // simply be out of date. "Everything is up to date" is the one
     // sentence that must not appear over it.
@@ -2653,7 +2653,7 @@ describe("UpdatesPage", () => {
 
     await findByText("Couldn't update Homebrew's software list");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
-    fireEvent.click(getByRole("button", { name: "Try again" }));
+    fireEvent.click(getByRole("button", { name: "Check again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 

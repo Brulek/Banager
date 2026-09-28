@@ -6,8 +6,10 @@ import {
   canWrite,
   describeTool,
   failedSourceCount,
+  failedSourceNames,
   hasSourceNotice,
   isAvailable,
+  namesInSentence,
   notActionableMessage,
   openOllamaErrorDetail,
   openOllamaErrorMessage,
@@ -168,13 +170,16 @@ describe("sourceNoticesFor", () => {
     ).toBe("sourceNotice.unreachable.description");
   });
 
-  it("warns that a stale index makes up-to-date unreliable, with a way to retry", () => {
+  it("warns that a stale index makes up-to-date unreliable, with the header's Check again", () => {
     const [note] = sourceNoticesFor(
       instance({ status: { unavailable: null, notes: ["IndexMayBeStale"] } }),
       "Homebrew",
     );
     expect(note.titleKey).toBe("sourceNotice.indexMayBeStale.title");
-    expect(note.action?.id).toBe("retry");
+    // One name for every button that runs the check: the header's.
+    expect(note.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
+    expect(zhCN.sourceNotice.indexMayBeStale.description).toContain("「重新检查」");
+    expect(en.sourceNotice.indexMayBeStale.description).toContain("Check again");
   });
 
   it("says a still-running download is still running: no failure, no button", () => {
@@ -829,6 +834,43 @@ describe("openOllamaErrorMessage", () => {
       "There's no Ollama app in Applications. Download it from ollama.com, install it, then press Open Ollama again.",
     );
     expect(zhCN.sourceNotice.openOllamaFailed.notInstalledDetail).toBe("用 Homebrew 装的 ollama 命令不包含这个 App。");
+  });
+});
+
+describe("failedSourceNames and namesInSentence", () => {
+  // The stale banner's words: which sources did not finish, by name.
+  const t = (key: string, options?: Record<string, string>): string => {
+    const english: Record<string, string> = {
+      "adapters.brew": "Homebrew",
+      "adapters.npm": "npm",
+      "adapters.uv": "uv",
+      "common.listSeparator": ", ",
+    };
+    if (key === "common.listAnd") return `${options?.list} and ${options?.last}`;
+    return english[key] ?? key;
+  };
+
+  it("names each source once, in the order the errors first name it, by its adapter", () => {
+    const names = failedSourceNames(
+      t,
+      [
+        { instance_id: "brew:/opt/homebrew", message: "brew list failed" },
+        { instance_id: "npm", message: "internal error detecting this source" },
+        { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
+        // A second Homebrew is Homebrew too.
+        { instance_id: "brew:/usr/local", message: "brew list failed" },
+        { instance_id: "uv:/Users/you/.local/share/uv/tools", message: "uv tool list exited 2" },
+      ],
+      [instance()],
+    );
+    expect(names).toEqual(["Homebrew", "npm", "uv"]);
+  });
+
+  it("lists names the way a sentence does", () => {
+    expect(namesInSentence(t, [])).toBe("");
+    expect(namesInSentence(t, ["Homebrew"])).toBe("Homebrew");
+    expect(namesInSentence(t, ["Homebrew", "npm"])).toBe("Homebrew and npm");
+    expect(namesInSentence(t, ["Homebrew", "npm", "uv"])).toBe("Homebrew, npm and uv");
   });
 });
 

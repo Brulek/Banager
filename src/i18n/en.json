@@ -25,8 +25,8 @@
     "close": "Close",
     "viewLog": "View log",
     "listSeparator": ", ",
+    "listAnd": "{{list}} and {{last}}",
     "checking": "Checking…",
-    "retry": "Try again",
     "details": "Details",
     "detailsLabel": "Details: {{title}}",
     "copyCommand": "Copy command",
@@ -365,7 +365,7 @@
     },
     "indexMayBeStale": {
       "title": "Couldn't update Homebrew's software list",
-      "description": "Canager checked for updates against the old list. Check your connection, then try again."
+      "description": "Canager checked for updates against the old list. Check your connection, then press Check again."
     },
     "indexUpdating": {
       "title": "Homebrew is updating its software list",
@@ -617,9 +617,8 @@
     },
     "refreshFailed": {
       "title": "Some checks didn't finish",
-      "description_one": "{{count}} check didn't finish, so Canager couldn't refresh everything.",
-      "description_other": "{{count}} checks didn't finish, so Canager couldn't refresh everything.",
-      "retryFailed": "Trying again didn't work: {{message}}"
+      "description_one": "{{sources}} didn't finish this check, so what Canager shows for it wasn't refreshed.",
+      "description_other": "{{sources}} didn't finish this check, so what Canager shows for them wasn't refreshed."
     },
     "nothingInstalled": {
       "title": "Canager found nothing installed",

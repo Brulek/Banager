@@ -26,7 +26,7 @@ const brewStale: SourceNoticeSpec = {
   variant: "warning",
   titleKey: "sourceNotice.indexMayBeStale.title",
   descriptionKey: "sourceNotice.indexMayBeStale.description",
-  action: { id: "retry", labelKey: "common.retry" },
+  action: { id: "checkAgain", labelKey: "header.checkAgain" },
 };
 const uvSilent: SourceNoticeSpec = {
   id: "uv:unreachable",
@@ -205,7 +205,7 @@ describe("SourceNotices, folded", () => {
       "Canager hasn't tested this version.",
     );
     mockInvoke.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
     mockInvoke.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Open Ollama" }));

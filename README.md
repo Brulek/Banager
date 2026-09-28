@@ -44,8 +44,9 @@ first its record lists — so the other programs of a crate that installs severa
 Canager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
 last check finished, or choose **Check Again** (⌘R) in the menu bar's View menu, on any page; while
-a check runs, neither starts another. The "Try again" of a failed refresh, or of a Homebrew index
-Canager couldn't update, runs the same check, and a Homebrew index update left running in the
+a check runs, neither starts another. The **Check again** on the page Canager shows when it couldn't
+load what's installed, and the one on the notice of a Homebrew index Canager couldn't update, run the
+same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
 its index, and when Homebrew has moved a package you have between a formula and a cask, or renamed
@@ -207,13 +208,14 @@ Three kinds of text are shown as-is:
   That is another program's text, and there is no way to translate it. Outside the log it is quoted
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
-  rest of Canager at all while loading or refreshing the list — its own text is shown untranslated,
-  next to the retry button. Short of that, Canager itself never fails a refresh as a whole, but not
+  rest of Canager at all while loading the list, or refreshing it before any check has found
+  anything — its own text is shown untranslated, next to the Check again button (after that, the
+  header says only "Couldn't check"). Short of that, Canager itself never fails a refresh as a whole, but not
   every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
   notice. A source that Canager could still reach, but whose software list or update check failed,
-  is not: it only adds to the count in the "Some checks didn't finish" banner, which never says
-  which source it was.
+  gets no notice of its own: the "Some checks didn't finish" banner names it, and says that what
+  Canager shows for it wasn't refreshed.
 - **A number of technical details that are still Canager's own**, which appear in English inside an
   otherwise translated sentence. This is a known gap, not a design choice, and it is not just the
   one case the wording used to name: with "Show technical details" turned on, whenever a package
@@ -317,11 +319,12 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
 - **其他程序自己的话。** brew、npm 在操作日志里打印的每一行，操作失败时它 stderr 的最后
   几行；以及 macOS 无法启动某个工具（不论 Canager 是在准备操作还是在执行操作）、
   或因为 Canager 不认识的原因无法保存设置、或拒绝把某一项移到废纸篓时给出的原因。那是另一个程序自己的文字，没法翻译。日志之外，它会被引用在一句用你的语言说明发生了什么的话里。
-- **应用框架自己的报错**，只出现在一种情况：加载或刷新列表时，窗口完全联系不上 Canager 的其余部分——这时它
-  自己的文字会原样显示在重试按钮旁边。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
+- **应用框架自己的报错**，只出现在一种情况：加载列表时，或在还没有任何检查结果时刷新列表，窗口完全联系不上
+  Canager 的其余部分——这时它自己的文字会原样显示在“重新检查”按钮旁边（有了检查结果之后，页头只说
+  “没能检查”）。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
   运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
-  检查失败了，就没有自己的提示——只会计入“部分检查没完成”横幅里的数字，横幅不会说是哪个来源。
+  检查失败了，就没有自己的提示——只会由“部分检查没完成”横幅点名，说这部分内容没能刷新。
 - **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
@@ -349,7 +352,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 
 Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
-再按也不会多查一遍。刷新失败或 Homebrew 的索引过期时出现的“重试”按钮做的是同一次检查；
+再按也不会多查一遍。没能读取已安装的内容时页面上的“重新检查”，和 Homebrew 软件清单没更新成功时提示里的“重新检查”，做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
 `src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
