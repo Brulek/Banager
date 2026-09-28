@@ -45,7 +45,7 @@ function SettingsGroup({
         id={headingId}
         ref={headingRef}
         tabIndex={headingRef === undefined ? undefined : -1}
-        className="mb-2 px-1 text-section text-foreground outline-none"
+        className="mb-2 text-section text-foreground outline-none"
       >
         {title}
       </h2>
@@ -250,8 +250,11 @@ export function SettingsPage() {
   };
 
   return (
-    // No title of its own: the page header over it says "Settings".
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 pb-8">
+    // No title of its own: the page header over it says "Settings". On
+    // the header's left edge, as the Updates, Installed and Unknown pages'
+    // lists are, not centred in the window; no wider than `max-w-2xl`, so
+    // that on a wide window a switch stays within reach of its words.
+    <div className="flex w-full max-w-2xl flex-col gap-6 px-6 pb-8">
       {saveMutation.isError && (
         <p role="alert" className="text-body text-danger">
           {t("settings.saveError", {
