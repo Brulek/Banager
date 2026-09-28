@@ -29,9 +29,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // Permission to post the update notification (notify.rs). The page
-        // is given one of its commands, the one the plugin's own script
-        // calls as the page loads (capabilities/default.json); Canager's
+        // The update notification's plugin (notify.rs): asked for
+        // permission to post, and, off a Mac, posting through. The page is
+        // given one of its commands, the one the plugin's own script calls
+        // as the page loads (capabilities/default.json); Canager's
         // commands in notify.rs do the rest.
         .plugin(tauri_plugin_notification::init())
         // The window opens as big as it was when Canager last quit, and

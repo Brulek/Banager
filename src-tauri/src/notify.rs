@@ -110,11 +110,12 @@ pub fn body(language: MenuLanguage, count: usize) -> String {
 /// `show` hands the notification off and waits for nothing, so a click on
 /// it would only bring Canager to the front.
 ///
-/// The thread lives until the notification is clicked or cleared from
-/// Notification Center, or Canager quits. What fails before the thread
-/// has started is this call's error. The delivery itself reports no
-/// failure (`deliverNotification:` returns nothing); what `wait_for_response`
-/// does report is logged.
+/// The thread lives until the notification is clicked, closed or cleared
+/// from Notification Center -- or macOS has not confirmed delivering it
+/// within two seconds, which mac-notification-sys takes as closed -- or
+/// Canager quits. What fails before the thread has started is this call's
+/// error. The delivery itself reports no failure (`deliverNotification:`
+/// returns nothing); what `wait_for_response` does report is logged.
 #[cfg(target_os = "macos")]
 fn post<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str) -> Result<(), String> {
     use notify_rust::error::{ApplicationError, MacOsError};
