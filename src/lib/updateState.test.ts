@@ -344,6 +344,22 @@ describe("updatesSummary", () => {
     });
   });
 
+  it("leaves out the updates an update is installing or has just installed", () => {
+    const glib = candidate();
+    const jq = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "jq" } });
+    const wget = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "wget" }, blocked: "Pinned" });
+    const snapshot = { instances: [brew], updates: [glib, jq, wget], errors: [] };
+    // glib's update is under way: jq alone is left for Review updates.
+    expect(updatesSummary(snapshot, hiding(), (u) => u === glib)).toEqual({ kind: "updates", actionable: [jq] });
+    // Both taken: nothing to start, and wget alone is under "Can't update here".
+    expect(updatesSummary(snapshot, hiding(), (u) => u !== wget)).toEqual({
+      kind: "nothingToUpdate",
+      cantUpdateHere: 1,
+      hidden: 0,
+      checksUnfinished: 0,
+    });
+  });
+
   it("is up to date only with no update at all and every source checked", () => {
     expect(updatesSummary({ instances: [brew], updates: [], errors: [] }, hiding())).toEqual({
       kind: "upToDate",

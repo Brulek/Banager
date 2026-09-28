@@ -2074,6 +2074,51 @@ describe("UpdatesPage", () => {
       expect(within(rowOf("onyx")).getByRole("button", { name: "Update" })).toBeInTheDocument();
     });
 
+    const takesRow: Array<[string, Partial<OpSummary>]> = [
+      ["under way", { status: "Running" }],
+      ["that worked", { status: "Done", outcome: "Succeeded" }],
+    ];
+
+    it.each(takesRow)("leaves a row with an update %s out of its checkbox, the count, Select all, Invert and Update all", async (_name, fields) => {
+      operations = [operation(glibKey, fields)];
+      started(7, "2.90.0");
+      // Ticked before its update started.
+      useUiStore.setState({ selectedUpdates: [artifactKeyId(glibKey)] });
+      const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      const glib = await findRow("glib");
+      expect(await findByText("1 update")).toBeInTheDocument();
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      expect(within(rowOf("onyx")).getByRole("checkbox")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+
+      fireEvent.click(getByRole("button", { name: "Invert selection among the items that can be updated here" }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
+      expect(getByRole("button", { name: "Update selected (1)" })).toBeEnabled();
+
+      useUiStore.setState({ selectedUpdates: [] });
+      fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
+
+      fireEvent.click(getByRole("button", { name: "Update all" }));
+      await waitFor(() => expect(plannedNames()).toEqual(["onyx"]));
+    });
+
+    it("keeps the checkbox of a row whose update failed, for Retry", async () => {
+      operations = [
+        operation(glibKey, { status: "Done", outcome: { Failed: { exit_code: 1, summary: "Error: no bottle" } } }),
+      ];
+      started(7, "2.90.0");
+      const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
+
+      const glib = await findRow("glib");
+      expect(await within(glib).findByText("Failed")).toBeInTheDocument();
+      expect(await findByText("2 updates")).toBeInTheDocument();
+      expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
+      fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
+      expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
+    });
+
     it("ticks a finished update Updated, while its row still offers the version it was for", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Succeeded" })];
       started(7, "2.90.0");

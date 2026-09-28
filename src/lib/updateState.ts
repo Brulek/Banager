@@ -180,9 +180,10 @@ export function notHidden(
  * The updates Canager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
  * (`isUpdateActionable`, against the instance its key names). This is the
- * Updates page's "N updates", the rows its Select all and Update all tick,
- * and the count on the sidebar's Updates entry -- one function, so the
- * badge cannot promise a row the page does not offer.
+ * count on the sidebar's Updates entry, and, less the rows an update
+ * under way or just finished takes (`holdsRow`), the Updates page's "N
+ * updates" and the rows its Select all and Update all tick -- one
+ * function, so the badge cannot promise a row the page does not list.
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,
@@ -271,7 +272,10 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  * The Overview's headline, as the Updates page would put it:
  *
  * - `updates`: there are updates it offers to install
- *   (`actionableUpdatesOf`) -- the rows "Review updates" selects.
+ *   (`actionableUpdatesOf`) whose rows `holdsRow` leaves free -- an
+ *   update already under way, or one that has just worked, takes its row
+ *   (`holdsRow` in src/components/UpdateProgress.tsx) -- the rows "Review
+ *   updates" selects and the Updates page's "N updates" counts.
  * - `upToDate`: no update listed at all and every source checked in full
  *   (`everySourceChecked`) -- exactly when the Updates page says
  *   "Everything is up to date".
@@ -281,13 +285,13 @@ export function upToDateIsKnown(instance: ManagerInstance, errors: SourceError[]
  *   checked in full, or a check failed this round. Calling that up to date
  *   is the lie the Updates page stopped telling; the Overview does not
  *   start. It carries what the Overview says under its headline, in the
- *   Updates page's own numbers: `cantUpdateHere`, every update that page
- *   lists -- none can be installed, so each is under its "Can't update
- *   here (N)" -- `hidden`, the updates it leaves out because the user hid
- *   them (`hidingRule`; a skip or a never-remind that hides no update this
- *   check found is not counted), and `checksUnfinished`, the sources whose
- *   check failed this round, as the "Some checks didn't finish" banner
- *   counts them (`failedSourceCount`). A source not checked in full says
+ *   Updates page's own numbers: `cantUpdateHere`, the updates under its
+ *   "Can't update here (N)" -- every one it lists but those an update is
+ *   installing or has just installed -- `hidden`, the updates it leaves
+ *   out because the user hid them (`hidingRule`; a skip or a never-remind
+ *   that hides no update this check found is not counted), and
+ *   `checksUnfinished`, the sources whose check failed this round, as the
+ *   "Some checks didn't finish" banner counts them (`failedSourceCount`). A source not checked in full says
  *   so in the Overview's "Needs attention", and is not counted here.
  */
 export type UpdatesSummary =
@@ -298,16 +302,18 @@ export type UpdatesSummary =
 export function updatesSummary(
   snapshot: Pick<Snapshot, "instances" | "updates" | "errors">,
   settings: HidingSettings,
+  holdsRow: (candidate: UpdateCandidate) => boolean = () => false,
 ): UpdatesSummary {
   const actionable = actionableUpdatesOf(snapshot, settings);
-  if (actionable.length > 0) return { kind: "updates", actionable };
+  const startable = actionable.filter((candidate) => !holdsRow(candidate));
+  if (startable.length > 0) return { kind: "updates", actionable: startable };
   if (snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors)) {
     return { kind: "upToDate" };
   }
   const listed = notHidden(snapshot.updates, settings).length;
   return {
     kind: "nothingToUpdate",
-    cantUpdateHere: listed,
+    cantUpdateHere: listed - actionable.length,
     hidden: snapshot.updates.length - listed,
     checksUnfinished: failedSourceCount(snapshot.errors),
   };

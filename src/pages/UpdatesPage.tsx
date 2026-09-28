@@ -23,7 +23,7 @@ import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
-import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import { holdsRow, isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
 import {
   blockedDetail,
   cannotCheckDetail,
@@ -223,24 +223,34 @@ export function UpdatesPage() {
     updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
 
   // The rows Canager can update from here: every listed update whose row
-  // has an Update button and a checkbox. `actionableUpdatesOf` is
+  // has an Update button and a checkbox while no update takes it
+  // (`startableUpdates`, below). `actionableUpdatesOf` is
   // `visibleUpdates` filtered by `isUpdateActionable` -- read-only source,
   // could not be checked, blocked, source not answering: `updateStateOf`
   // in src/lib/updateState.ts, which the Installed page's chips read too,
   // so the two pages cannot disagree about whether a package can be
   // updated -- and it is kept there because the sidebar's count on this
-  // page's entry and the Overview's are this list's length, which must
-  // never disagree with the page. `Session::issue_plan` applies the same
-  // conditions in Rust (spec §2.5 for the source, `blocked_upgrade` in
+  // page's entry is this list's length, and the Overview's is it less the
+  // rows an update takes, as below; neither may disagree with the page.
+  // `Session::issue_plan` applies the same conditions in Rust (spec §2.5
+  // for the source, `blocked_upgrade` in
   // crates/canager-core/src/session/plans.rs for the package), so a stale
   // snapshot costs an error message, not a wrong command.
-  //
-  // It is also every row that shows a checkbox, and what Select all,
-  // Invert selection and Update all hand to the store, so none of them can
-  // tick a row the user could not tick by hand.
   const actionableUpdates = useMemo(
     () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : []),
     [snapshot, settings],
+  );
+
+  // The rows of it an update does not take (`holdsRow`): one under way,
+  // or one that worked and still says so, stands in its row with no
+  // checkbox -- Rust queues a second update of the same tool behind the
+  // first, so a second click could only repeat it. These are every row
+  // that shows a checkbox, the header's "N updates", and what Select all,
+  // Invert selection and Update all hand to the store, so none of them can
+  // tick a row the user could not tick by hand.
+  const startableUpdates = useMemo(
+    () => actionableUpdates.filter((candidate) => !holdsRow(operationFor(candidate))),
+    [actionableUpdates, operationFor],
   );
 
   // The list's two parts, each by name: the rows with an Update button,
@@ -268,10 +278,14 @@ export function UpdatesPage() {
   // refresh takes that away (a pin, a failed lookup, a source that stopped
   // answering), and the batch would then plan the very row whose Update
   // button has just gone.
-  const selectedVisible = useMemo(
-    () => actionableRows.filter((u) => selectedUpdates.includes(artifactKeyId(u.key))),
-    [actionableRows, selectedUpdates],
-  );
+  // An update taking a row since it was ticked leaves it out the same way.
+  const selectedVisible = useMemo(() => {
+    const startableIds = new Set(startableUpdates.map((u) => artifactKeyId(u.key)));
+    return actionableRows.filter((u) => {
+      const id = artifactKeyId(u.key);
+      return startableIds.has(id) && selectedUpdates.includes(id);
+    });
+  }, [actionableRows, startableUpdates, selectedUpdates]);
 
   // "Just updated": this session's updates that worked, once their rows
   // have gone (`justUpdatedOps`). Out of every count, and of Select all:
@@ -695,7 +709,7 @@ export function UpdatesPage() {
           source,
         )}
         selectable={
-          actionable
+          actionable && !holdsRow(op)
             ? {
                 checked: selectedUpdates.includes(artifactKeyId(candidate.key)),
                 onToggle: () => toggleUpdate(candidate.key),
@@ -728,19 +742,19 @@ export function UpdatesPage() {
     );
   };
 
-  const actionableCount = actionableUpdates.length;
+  const startableCount = startableUpdates.length;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pb-3">
         <div className="flex min-w-0 items-baseline gap-3">
-          {/* How many rows have an Update button. With none, not "0
-              updates": the rows under "Can't update here" are real, and
-              simply not Canager's to update. */}
+          {/* How many rows have a checkbox. With none, not "0 updates":
+              the rows under "Can't update here" are real, and simply not
+              Canager's to update. */}
           <p className="text-section text-foreground">
-            {actionableCount === 0
+            {startableCount === 0
               ? t("updates.noneActionable")
-              : t("updates.count", { count: actionableCount })}
+              : t("updates.count", { count: startableCount })}
           </p>
           <p role="status" className="text-small text-muted">
             {copyStatus === "copied"
@@ -752,7 +766,7 @@ export function UpdatesPage() {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {/* Select all, Invert selection and Update all act on the rows
-              that show a checkbox (`actionableUpdates`) and on no others.
+              that show a checkbox (`startableUpdates`) and on no others.
               A row in any other `UpdateState` -- read-only, could not be
               checked, blocked, its source not answering -- has no
               checkbox, and a row the user hid (skipped, or never to be
@@ -765,8 +779,8 @@ export function UpdatesPage() {
               they act on. */}
           <button
             type="button"
-            disabled={actionableCount === 0}
-            onClick={() => selectUpdates(actionableUpdates.map((u) => u.key))}
+            disabled={startableCount === 0}
+            onClick={() => selectUpdates(startableUpdates.map((u) => u.key))}
             aria-label={t("updates.selectAllLabel")}
             className={HEADER_TEXT_BUTTON}
           >
@@ -774,8 +788,8 @@ export function UpdatesPage() {
           </button>
           <button
             type="button"
-            disabled={actionableCount === 0}
-            onClick={() => invertUpdateSelection(actionableUpdates.map((u) => u.key))}
+            disabled={startableCount === 0}
+            onClick={() => invertUpdateSelection(startableUpdates.map((u) => u.key))}
             aria-label={t("updates.invertSelectionLabel")}
             className={HEADER_TEXT_BUTTON}
           >
@@ -795,10 +809,10 @@ export function UpdatesPage() {
               Update selected opens: one batch flow, not two. */}
           <button
             type="button"
-            disabled={actionableCount === 0 || dialogOpen}
+            disabled={startableCount === 0 || dialogOpen}
             onClick={(event) => {
-              selectUpdates(actionableUpdates.map((u) => u.key));
-              void openConfirm(actionableUpdates, event.currentTarget);
+              selectUpdates(startableUpdates.map((u) => u.key));
+              void openConfirm(startableUpdates, event.currentTarget);
             }}
             className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content disabled:opacity-50 disabled:hover:bg-accent"
           >

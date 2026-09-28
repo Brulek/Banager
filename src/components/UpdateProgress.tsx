@@ -58,6 +58,18 @@ export function isRetryable(progress: RowProgress): boolean {
   return progress.kind === "failed" || progress.kind === "cancelled" || progress.kind === "check";
 }
 
+/**
+ * Whether an update takes its row: one still under way, or one that worked
+ * and stands in the row as "Updated" until the next refresh drops it. Such
+ * a row has no checkbox, and Select all, Invert selection, Update all and
+ * the Overview's Review updates leave it out: a second update could only
+ * queue the same one behind it. One that ended without updating
+ * (`isRetryable`) leaves the row selectable, with Retry.
+ */
+export function holdsRow(op: OpSummary | null): boolean {
+  return op !== null && !isRetryable(progressOf(op));
+}
+
 /** Where an update stands, from its operation. A `switch` with no default, so a new status fails `tsc`. */
 export function progressOf(op: OpSummary): RowProgress {
   switch (op.status) {

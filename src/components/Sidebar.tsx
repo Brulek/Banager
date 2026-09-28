@@ -45,7 +45,7 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
  * The number beside each entry, or nothing:
  *
  * - Updates: the updates the Updates page offers to install
- *   (`actionableUpdatesOf`, the list behind its "N updates available").
+ *   (`actionableUpdatesOf`), those an update is installing now included.
  * - Installed: everything the Installed page lists, components other
  *   software brought in included.
  * - Unknown: what the last scan found, once one has run. Nothing here

@@ -13,6 +13,7 @@ import type {
   InstalledArtifact,
   InstanceNote,
   ManagerInstance,
+  OpSummary,
   Settings,
   Snapshot,
   UnknownScan,
@@ -114,6 +115,8 @@ const startupSnapshot: Snapshot = {
 
 let served: Snapshot;
 let settings: Settings;
+// What `list_operations` answers, newest first.
+let operations: OpSummary[];
 
 beforeEach(() => {
   served = snapshotWith();
@@ -124,10 +127,12 @@ beforeEach(() => {
     skipped_versions: [],
     include_self_updating: false,
   };
+  operations = [];
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_snapshot") return Promise.resolve(served);
     if (cmd === "get_settings") return Promise.resolve(settings);
+    if (cmd === "list_operations") return Promise.resolve(operations);
     return Promise.resolve(undefined);
   });
 });
@@ -194,6 +199,31 @@ describe("OverviewPage", () => {
       artifactKeyId(formula("glib")),
       artifactKeyId(formula("wget")),
     ]);
+  });
+
+  it("leaves out an update under way or just done, and Review updates does not tick it", async () => {
+    served = snapshotWith({
+      updates: [candidate(formula("glib")), candidate(formula("jq")), candidate(formula("wget"))],
+    });
+    const upgrade = (id: number, name: string, fields: Partial<OpSummary>): OpSummary => ({
+      id,
+      kind: "Upgrade",
+      instance_id: brew.id,
+      artifact_kind: "Formula",
+      name,
+      status: "Running",
+      outcome: null,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+      ...fields,
+    });
+    operations = [upgrade(9, "jq", { status: "Done", outcome: "Succeeded" }), upgrade(8, "glib", {})];
+    useUiStore.setState({ page: "overview", selectedUpdates: [], updateTargets: { 9: "1.1.0" } });
+    const { findByRole } = renderOverview();
+
+    expect(await findByRole("heading", { level: 2, name: "1 tool can be updated" })).toBeInTheDocument();
+    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+    expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(formula("wget"))]);
   });
 
   it("keeps a row the user had already selected when Review updates adds the rest", async () => {

@@ -8,6 +8,7 @@ import { updatesSummary } from "../lib/updateState";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance } from "../lib/types";
 import { useUiStore } from "../store/ui";
+import { holdsRow, useUpdateOperationFor } from "../components/UpdateProgress";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { CheckIcon, DashIcon, InfoIcon, UnknownIcon, WarningIcon } from "../components/icons";
 
@@ -171,6 +172,7 @@ export function OverviewPage() {
   const setPage = useUiStore((s) => s.setPage);
   const openInstalled = useUiStore((s) => s.openInstalled);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
+  const operationFor = useUpdateOperationFor();
   const toolsHeadingId = useId();
   const attentionHeadingId = useId();
 
@@ -196,7 +198,7 @@ export function OverviewPage() {
     installedByInstance.set(id, (installedByInstance.get(id) ?? 0) + 1);
   }
 
-  const summary = updatesSummary(snapshot, settings);
+  const summary = updatesSummary(snapshot, settings, (candidate) => holdsRow(operationFor(candidate)));
   const whyNothing = summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary) : null;
 
   const tiles: SourceTile[] = snapshot.instances.flatMap((instance) => {
