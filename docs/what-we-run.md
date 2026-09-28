@@ -1997,15 +1997,17 @@ such logo under About → Icon credits (`IconCreditsDrawer` in
 addresses of the license's text and of that source, shown as text: the
 credits call no opener either.
 
-Showing a tool's line in Chinese makes no network request either. The
-lines a window in Chinese shows under a tool's name, where Canager has
-one, are built into the app too: `src/assets/tool-descriptions/zh-CN.json`,
-translated at development time from the description each tool's own
-source gives it, and committed.
-`src/lib/toolDescriptions.ts` reads it with a dynamic `import`, which the
-build makes a file of its own, apart from the window's script, that the
-window loads from the app only once it is in Chinese
-(`useTranslatedDescription`).
+Showing a tool's line in Chinese, or an npm, PyPI or crates.io
+package's line in English, makes no network request either. The lines a
+window shows under a tool's name, where Canager has one, are built into
+the app too: `src/assets/tool-descriptions/zh-CN.json`, translated at
+development time from the description each tool's own source gives it,
+and `src/assets/tool-descriptions/en.json`, rewritten at development
+time from the description each package's own registry gives it, both
+committed. `src/lib/toolDescriptions.ts` reads each with a dynamic
+`import`, which the build makes a file of its own, apart from the
+window's script, that the window loads from the app only once it is in
+that file's language (`useTranslatedDescription`).
 
 The tools Canager runs make their own connections — `brew`, `npm`, `pip`,
 `pipx`, `uv`, `cargo`, `cargo-binstall`, `ollama pull`, `claude update`,

@@ -158,7 +158,8 @@ export function UpdatesPage() {
   const [showCantUpdate, setShowCantUpdate] = useState(false);
   // What the last "Copy command" did, said for a moment in the header.
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
-  // A tool's line in Chinese, while the window is in Chinese.
+  // A tool's line in the window's language: Chinese in Chinese, and
+  // English in English for an npm, PyPI or crates.io package.
   const translatedDescription = useTranslatedDescription();
 
   // Every update the user has not hidden, with "Never remind me" or "Skip

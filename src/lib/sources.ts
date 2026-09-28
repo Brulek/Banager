@@ -112,9 +112,11 @@ export interface DescribedTool {
   description: string | null | undefined;
   /**
    * The tool's line in the window's language, where it has one
-   * (`useTranslatedDescription`, src/lib/toolDescriptions.ts): Chinese,
-   * translated from the description the tool's source gives it, while the
-   * window is in Chinese. Left out, or `null`, where there is none.
+   * (`useTranslatedDescription`, src/lib/toolDescriptions.ts): while the
+   * window is in Chinese, Chinese, translated from the description the
+   * tool's source gives it; while it is in English, for an npm, PyPI or
+   * crates.io package only, English, rewritten from the description its
+   * registry gives it. Left out, or `null`, where there is none.
    */
   translated?: string | null;
   kind: ArtifactKind;
@@ -131,10 +133,10 @@ export interface ToolDescriptionLines {
   /** The one line a row says the tool is. Never empty. */
   line: string;
   /**
-   * The source's own description where `line` is a translation shown in
-   * its place, for the tool's details to show under it, quieter, so that
-   * nothing the source said is lost; `null` where `line` is the source's
-   * own words, or the source gave none.
+   * The source's own description where `line` is the window's line
+   * (`translated`) shown in its place, for the tool's details to show
+   * under it, quieter, so that nothing the source said is lost; `null`
+   * where `line` is the source's own words, or the source gave none.
    */
   original: string | null;
 }

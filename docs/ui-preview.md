@@ -97,7 +97,11 @@ page's Show in Finder reach this Mac's Finder: it asks the stand-in in
   through `src/lib/toolDescriptions.ts`), so git, ffmpeg and jq say what
   they are in Chinese, git's details show Homebrew's own description under
   its line, and a tool the table has no line for keeps what it said:
-  iTerm2 its cask's English, TypeScript 「npm 软件包」.
+  iTerm2 its cask's English, TypeScript 「npm 软件包」. Nor those in
+  English: in English the rows read the English table
+  (`src/assets/tool-descriptions/en.json`), so prettier, tokei and httpie
+  say what they are, and TypeScript, which it has no line for, still
+  "npm package".
 
 The files: `mockTauri.ts`, `mockTauriEvent.ts`, `mockTauriWindow.ts` and
 `mockTauriOpener.ts` (the stand-in modules; the second listens to

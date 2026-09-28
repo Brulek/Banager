@@ -3562,7 +3562,7 @@ describe("UpdatesPage", () => {
       described(tokeiKey, "tokei", null),
     ];
     updates = [...snapshot.updates, { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" }];
-    renderWithProviders(<UpdatesPage />, { toolDescriptions });
+    renderWithProviders(<UpdatesPage />, { toolDescriptions: { "zh-CN": toolDescriptions } });
 
     expect(within(await findRow("glib")).getByText("Core application library for C")).toBeInTheDocument();
     expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
@@ -3582,6 +3582,55 @@ describe("UpdatesPage", () => {
     }
     expect(within(rowOf("glib")).getByText("Core application library for C")).toBeInTheDocument();
     expect(within(rowOf("tokei")).getByText("Program installed with Cargo")).toBeInTheDocument();
+  });
+
+  it("says a crate's line in English where the English table has one, and switches it with the language", async () => {
+    // Tables of this test's own: tokei's line in each language -- Cargo's
+    // inventory gives no description -- and none for my-fork in either.
+    const toolDescriptions = {
+      en: lazyDescriptionTable(async () => ({ "cargo:tokei": "Code line counter" })),
+      "zh-CN": lazyDescriptionTable(async () => ({ "cargo:tokei": "代码行数统计工具" })),
+    };
+    const tokeiKey: ArtifactKey = { instance_id: "cargo:/Users/brulek/.cargo", kind: "Binary", name: "tokei" };
+    const crate = (key: ArtifactKey) => ({
+      key,
+      display_name: key.name,
+      version: "1.0.0",
+      reason: "Requested" as const,
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+    });
+    artifacts = [crate(tokeiKey), crate(myForkKey)];
+    updates = [
+      { ...brewCandidate("tokei"), key: tokeiKey, channel: "Registry" },
+      { ...brewCandidate("my-fork"), key: myForkKey, channel: "Registry" },
+    ];
+    renderWithProviders(<UpdatesPage />, { toolDescriptions });
+
+    expect(await within(await findRow("tokei")).findByText("Code line counter")).toBeInTheDocument();
+    expect(within(rowOf("tokei")).queryByText("Program installed with Cargo")).toBeNull();
+    expect(within(rowOf("my-fork")).getByText("Program installed with Cargo")).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage("zh-CN");
+    });
+    try {
+      expect(await within(rowOf("tokei")).findByText("代码行数统计工具")).toBeInTheDocument();
+      expect(within(rowOf("tokei")).queryByText("Code line counter")).toBeNull();
+      expect(within(rowOf("my-fork")).getByText("用 Cargo 安装的程序")).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+    // English again: its line, at once.
+    expect(within(rowOf("tokei")).getByText("Code line counter")).toBeInTheDocument();
+    expect(within(rowOf("my-fork")).getByText("Program installed with Cargo")).toBeInTheDocument();
   });
 
   it("gives a standalone row that cannot be checked its reason, not the self-updating chip", async () => {

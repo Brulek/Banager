@@ -178,7 +178,8 @@ export function InstalledPage() {
   const operationFor = useUpdateOperationFor();
   const { data: operations } = useOperations();
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
-  // A tool's line in Chinese, while the window is in Chinese.
+  // A tool's line in the window's language: Chinese in Chinese, and
+  // English in English for an npm, PyPI or crates.io package.
   const translatedDescription = useTranslatedDescription();
   const listRef = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);

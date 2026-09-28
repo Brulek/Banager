@@ -1923,17 +1923,26 @@ describe("InstalledPage", () => {
     });
   });
 
-  describe("Chinese descriptions", () => {
-    // A table of this test's own: jq's line, prettier's -- npm's inventory
-    // gives no description -- and one under Claude Code's key, which its
-    // summary keeps off its row; none for corepack.
-    const toolDescriptions = () =>
+  describe("lines in the window's language", () => {
+    // Tables of this test's own. The Chinese: jq's line, prettier's --
+    // npm's inventory gives no description -- and one under Claude Code's
+    // key, which its summary keeps off its row; none for corepack. The
+    // English: prettier's, and one under Claude Code's key; none for
+    // corepack, nor, as in the built-in one, for jq, whose source gives
+    // its own words.
+    const JQ = "Lightweight and flexible command-line JSON processor";
+    const PRETTIER = "Opinionated code formatter";
+    const chinese = () =>
       lazyDescriptionTable(async () => ({
         "brew:jq": "命令行 JSON 处理工具",
         "npm:prettier": "代码格式化工具",
         "standalone:claude": "不该出现的一行",
       }));
-    const JQ = "Lightweight and flexible command-line JSON processor";
+    const english = () =>
+      lazyDescriptionTable(async () => ({
+        "npm:prettier": PRETTIER,
+        "standalone:claude": "A line that should not show",
+      }));
     const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" };
     const npmPackage = (name: string): InstalledArtifact =>
       formula(name, { key: { instance_id: "npm:/opt/homebrew", kind: "Package", name }, description: null });
@@ -1961,7 +1970,7 @@ describe("InstalledPage", () => {
     }
 
     it("gives a row its line in Chinese where the table has one, and what it said where the table has none", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: toolDescriptions() });
+      renderWithProviders(<InstalledPage />, { toolDescriptions: { "zh-CN": chinese() } });
 
       expect(within(await findRow("jq")).getByText(JQ)).toBeInTheDocument();
       expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
@@ -1982,7 +1991,7 @@ describe("InstalledPage", () => {
     });
 
     it("shows the line in a tool's details, with the source's own words under it, quieter", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: toolDescriptions() });
+      renderWithProviders(<InstalledPage />, { toolDescriptions: { "zh-CN": chinese() } });
       await findRow("jq");
 
       await inChinese(async () => {
@@ -2012,6 +2021,40 @@ describe("InstalledPage", () => {
       const drawer = await openDetails("jq");
       expect(within(drawer).getAllByText(JQ)).toHaveLength(1);
       expect(within(drawer).queryByText("命令行 JSON 处理工具")).toBeNull();
+      expect(drawer.querySelector("[data-original-description]")).toBeNull();
+    });
+
+    it("gives a package's row its line in English where the English table has one, and switches it with the language", async () => {
+      renderWithProviders(<InstalledPage />, { toolDescriptions: { en: english(), "zh-CN": chinese() } });
+
+      // prettier's line, where the row said what npm lists; corepack, which
+      // the table has no line for, still that; jq its source's own words,
+      // and Claude Code its summary.
+      expect(await within(await findRow("prettier")).findByText(PRETTIER)).toBeInTheDocument();
+      expect(within(rowOf("prettier")).queryByText("npm package")).toBeNull();
+      expect(within(rowOf("corepack")).getByText("npm package")).toBeInTheDocument();
+      expect(within(rowOf("jq")).getByText(JQ)).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
+      expect(screen.queryByText("A line that should not show")).toBeNull();
+
+      await inChinese(async () => {
+        expect(await within(rowOf("prettier")).findByText("代码格式化工具")).toBeInTheDocument();
+        expect(within(rowOf("prettier")).queryByText(PRETTIER)).toBeNull();
+        expect(within(rowOf("corepack")).getByText("npm 软件包")).toBeInTheDocument();
+      });
+
+      // English again: its line, at once.
+      expect(within(rowOf("prettier")).getByText(PRETTIER)).toBeInTheDocument();
+      expect(within(rowOf("corepack")).getByText("npm package")).toBeInTheDocument();
+    });
+
+    it("shows a package's line in English alone in its details: its source said nothing", async () => {
+      renderWithProviders(<InstalledPage />, { toolDescriptions: { en: english() } });
+      await within(await findRow("prettier")).findByText(PRETTIER);
+
+      const drawer = await openDetails("prettier");
+      expect(within(drawer).getByText(PRETTIER)).toBeInTheDocument();
+      expect(within(drawer).queryByText("npm package")).toBeNull();
       expect(drawer.querySelector("[data-original-description]")).toBeNull();
     });
   });
