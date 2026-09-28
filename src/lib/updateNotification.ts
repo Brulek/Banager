@@ -25,8 +25,9 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
  *   (`useStartableUpdates`) with the snapshot's `round`
  *   (`reportUpdateSet`) -- not the backend's startup snapshot, round 0,
  *   which no round committed. Rust posts nothing unless the round was the
- *   daily check's, notifications are on and the window is away, and posts
- *   only news: a (row, version) pair neither told nor seen before.
+ *   daily check's, notifications are on and another app is in front, not
+ *   Canager, and posts only news: a (row, version) pair neither told nor
+ *   seen before.
  * - When Rust says the notification was clicked, once it has brought the
  *   window back (`OPEN_UPDATES_EVENT`), it opens the Updates page, as the
  *   sidebar's Updates does. On a Mac, Rust does not hear the click

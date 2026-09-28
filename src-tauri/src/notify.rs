@@ -3,8 +3,9 @@
 //! check it sits under). After each snapshot the page reports the rows its
 //! Update all would take, with the round the snapshot came from
 //! (`report_update_set`), and `canager_core::notify_updates` decides what
-//! that report does. This is the shell's part: whether the window has the
-//! focus, and the notification itself -- titled with the app's name,
+//! that report does. This is the shell's part: where the focus is -- on
+//! the window, on Canager without its window, or on another app -- and the
+//! notification itself -- titled with the app's name,
 //! Canager, and saying how many tools can be updated, in the window's
 //! language. On a Mac it carries a handler that would bring the window
 //! back on the Updates page for a click (`OPEN_UPDATES_EVENT`), which
@@ -15,7 +16,7 @@
 use crate::menu::{self, MenuBar, MenuLanguage};
 use crate::state::AppState;
 use crate::window::MAIN_WINDOW;
-use canager_core::notify_updates::{self, Notice, UpdatePair};
+use canager_core::notify_updates::{self, Focus, Notice, UpdatePair};
 use tauri::plugin::PermissionState;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
@@ -30,7 +31,7 @@ pub const OPEN_UPDATES_EVENT: &str = "notification://open-updates";
 /// The page's report, after each snapshot, of the updates it offers to
 /// start -- the rows Update all would take, as (row, version) pairs -- and
 /// of `round`, the snapshot's `Snapshot::round`. What it does is `report`'s,
-/// with the window's focus as it is now and the notification in the
+/// with the focus as it is now (`focus`) and the notification in the
 /// window's language. A notification that could not be handed off is
 /// logged here; the page is told nothing, having nothing to do about it.
 #[tauri::command]
@@ -40,10 +41,10 @@ pub async fn report_update_set(
     round: u64,
     updates: Vec<UpdatePair>,
 ) -> Result<(), String> {
-    let focused = window_focused(&app);
+    let focus = focus(&app);
     let language = language(&app, &state);
     let title = app.package_info().name.clone();
-    let reported = report(&state, round, &updates, focused, |count| {
+    let reported = report(&state, round, &updates, focus, |count| {
         post(&app, &title, &body(language, count))
     });
     if let Err(e) = reported {
@@ -54,7 +55,7 @@ pub async fn report_update_set(
 
 /// A report's whole effect: `notify_updates::report` over who asked for
 /// `round` (`AppState::rounds`), whether notifications are on as the
-/// settings are saved now (`notify_updates::notifications_on`), `focused`,
+/// settings are saved now (`notify_updates::notifications_on`), `focus`,
 /// and what this run has told or the user has seen (`AppState::notified`),
 /// with `post` to post a notification saying how many tools can be
 /// updated. The lock on what has been told is held until the post has
@@ -65,13 +66,46 @@ pub(crate) fn report(
     state: &AppState,
     round: u64,
     updates: &[UpdatePair],
-    focused: bool,
+    focus: Focus,
     post: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<Notice, String> {
     let trigger = state.rounds.lock().unwrap().trigger_of(round);
     let on = notify_updates::notifications_on(&state.get_settings());
     let mut notified = state.notified.lock().unwrap();
-    notify_updates::report(&mut notified, trigger, on, focused, updates, post)
+    notify_updates::report(&mut notified, trigger, on, focus, updates, post)
+}
+
+/// Where the focus is now: `focus_of` over whether the window has the
+/// focus and whether Canager is the active app.
+fn focus<R: Runtime>(app: &AppHandle<R>) -> Focus {
+    focus_of(window_focused(app), app_active())
+}
+
+/// On the window when it has the focus; else on Canager when it is the
+/// active app -- the app in front, whose notifications macOS shows no
+/// banner for -- with its window closed or in the Dock; else away.
+fn focus_of(window_focused: bool, app_active: bool) -> Focus {
+    if window_focused {
+        Focus::Window
+    } else if app_active {
+        Focus::App
+    } else {
+        Focus::Away
+    }
+}
+
+/// Whether Canager is the active app, the one in front, as macOS says
+/// (`NSRunningApplication`'s `isActive`, for this process; safe to ask
+/// off the main thread, and it runs nothing).
+#[cfg(target_os = "macos")]
+fn app_active() -> bool {
+    objc2_app_kit::NSRunningApplication::currentApplication().isActive()
+}
+
+/// Off a Mac, the focus is only ever the window's or away.
+#[cfg(not(target_os = "macos"))]
+fn app_active() -> bool {
+    false
 }
 
 /// Whether the window has the focus: on screen, and the window the keys go
@@ -303,13 +337,13 @@ mod tests {
         let posted = RefCell::new(Vec::new());
         let updates = [pair("jq", "1.8.1"), pair("gh", "2.102.0")];
         assert_eq!(
-            report(&state, DAILY, &updates, false, recording(&posted)),
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
             Ok(Notice::Post { count: 2 })
         );
         // Reported again -- a page loaded again, the next day's check
         // finding the same two: nothing new, nothing posted.
         assert_eq!(
-            report(&state, DAILY, &updates, false, recording(&posted)),
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
             Ok(Notice::Nothing)
         );
         assert_eq!(*posted.borrow(), [2]);
@@ -321,18 +355,18 @@ mod tests {
         let updates = [pair("jq", "1.8.1")];
         let never = |_| -> Result<(), String> { panic!("posted for the window's round") };
         assert_eq!(
-            report(&state, WINDOW, &updates, false, never),
+            report(&state, WINDOW, &updates, Focus::Away, never),
             Ok(Notice::Nothing)
         );
         let never = |_| -> Result<(), String> { panic!("posted for a round never recorded") };
         assert_eq!(
-            report(&state, 99, &updates, false, never),
+            report(&state, 99, &updates, Focus::Away, never),
             Ok(Notice::Nothing)
         );
         // Neither marked anything: the daily check's round still posts.
         let posted = RefCell::new(Vec::new());
         assert_eq!(
-            report(&state, DAILY, &updates, false, recording(&posted)),
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
             Ok(Notice::Post { count: 1 })
         );
     }
@@ -354,7 +388,7 @@ mod tests {
             let state = state(settings.clone());
             let never = |_| -> Result<(), String> { panic!("posted with {settings:?}") };
             assert_eq!(
-                report(&state, DAILY, &updates, false, never),
+                report(&state, DAILY, &updates, Focus::Away, never),
                 Ok(Notice::Nothing)
             );
         }
@@ -366,14 +400,49 @@ mod tests {
         let updates = [pair("jq", "1.8.1")];
         let never = |_| -> Result<(), String> { panic!("posted while the window had the focus") };
         assert_eq!(
-            report(&state, DAILY, &updates, true, never),
+            report(&state, DAILY, &updates, Focus::Window, never),
             Ok(Notice::Seen)
         );
         let never = |_| -> Result<(), String> { panic!("posted what the user saw") };
         assert_eq!(
-            report(&state, DAILY, &updates, false, never),
+            report(&state, DAILY, &updates, Focus::Away, never),
             Ok(Notice::Nothing)
         );
+    }
+
+    #[test]
+    fn test_with_canager_in_front_and_its_window_closed_nothing_is_posted_and_nothing_seen() {
+        let state = state(notifications_on());
+        let updates = [pair("jq", "1.8.1")];
+        let never = |_| -> Result<(), String> { panic!("posted while Canager was in front") };
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::App, never),
+            Ok(Notice::Withheld)
+        );
+        assert!(!state.notified.lock().unwrap().contains(&updates[0]));
+        // The same updates, offered again with another app in front.
+        let posted = RefCell::new(Vec::new());
+        assert_eq!(
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
+            Ok(Notice::Post { count: 1 })
+        );
+        assert_eq!(*posted.borrow(), [1]);
+    }
+
+    #[test]
+    fn test_the_focus_is_the_windows_else_canagers_when_it_is_in_front_else_away() {
+        assert_eq!(focus_of(true, true), Focus::Window);
+        assert_eq!(
+            focus_of(true, false),
+            Focus::Window,
+            "a focused window is enough"
+        );
+        assert_eq!(
+            focus_of(false, true),
+            Focus::App,
+            "in front, the window closed or in the Dock"
+        );
+        assert_eq!(focus_of(false, false), Focus::Away);
     }
 
     #[test]
@@ -383,12 +452,14 @@ mod tests {
         let state = state(notifications_on());
         let updates = [pair("jq", "1.8.1")];
         assert_eq!(
-            report(&state, DAILY, &updates, false, |_| Err("no".to_string())),
+            report(&state, DAILY, &updates, Focus::Away, |_| Err(
+                "no".to_string()
+            )),
             Err("no".to_string())
         );
         let posted = RefCell::new(Vec::new());
         assert_eq!(
-            report(&state, DAILY, &updates, false, recording(&posted)),
+            report(&state, DAILY, &updates, Focus::Away, recording(&posted)),
             Ok(Notice::Post { count: 1 })
         );
         assert_eq!(*posted.borrow(), [1]);
@@ -404,7 +475,7 @@ mod tests {
         let updates = [pair("jq", "1.8.1")];
         let (release, released) = std::sync::mpsc::channel::<()>();
         let (finish, finished) = std::sync::mpsc::channel::<()>();
-        let notice = report(&state, DAILY, &updates, false, |_| {
+        let notice = report(&state, DAILY, &updates, Focus::Away, |_| {
             hand_off(move || {
                 released.recv().ok();
                 finish.send(()).ok();
@@ -423,7 +494,7 @@ mod tests {
             .expect("the delivery ran, and failed");
         let never = |_| -> Result<(), String> { panic!("posted again after the hand-off") };
         assert_eq!(
-            report(&state, DAILY, &updates, false, never),
+            report(&state, DAILY, &updates, Focus::Away, never),
             Ok(Notice::Nothing)
         );
     }

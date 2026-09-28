@@ -2,9 +2,9 @@
 //! under the daily check: one notification after a round of the daily
 //! check, when the updates the Updates page offers to start include one
 //! the user has not been told about. What is decided here is pure -- who
-//! asked for the round, the settings, whether the window has the focus,
-//! the updates the page offers and those told or seen before -- so every
-//! case is tested without a notification. The shell hands them in each
+//! asked for the round, the settings, where the focus is ([`Focus`]), the
+//! updates the page offers and those told or seen before -- so every case
+//! is tested without a notification. The shell hands them in each
 //! time the page reports what it offers (`report_update_set` in
 //! `src-tauri/src/notify.rs`), and posts.
 
@@ -49,6 +49,21 @@ impl Notified {
     }
 }
 
+/// Where the focus is as a report comes, which the shell asks macOS
+/// (`focus` in src-tauri/src/notify.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Focus {
+    /// Canager's window has the focus: the user sees what it offers.
+    Window,
+    /// Canager is the active app, the one in front, but its window does not
+    /// have the focus -- it is closed, or in the Dock. macOS shows no
+    /// banner for a notification of the app in front, so one posted now
+    /// would go unseen; nor does the user see what the window offers.
+    App,
+    /// Another app is in front.
+    Away,
+}
+
 /// What one report of the updates the page offers does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Notice {
@@ -57,6 +72,11 @@ pub enum Notice {
     /// The window has the focus, so the user sees what it offers: every
     /// pair of the report is marked, and nothing is posted.
     Seen,
+    /// A notification was due, but Canager is the app in front without its
+    /// window focused ([`Focus::App`]), where macOS would show no banner:
+    /// nothing is posted, and nothing marked, so the next round of the
+    /// daily check that offers the same updates posts them.
+    Withheld,
     /// One notification saying `count` tools can be updated -- every
     /// update of the report, not only the new ones.
     Post { count: usize },
@@ -74,27 +94,29 @@ pub fn notifications_on(settings: &Settings) -> bool {
 /// take after a round, whose trigger is `round_trigger`.
 ///
 /// - Nothing, when it offers no update.
-/// - `Seen`, whenever the window has the focus: the user is looking at
-///   what it offers -- whoever asked for the round, and whether or not
-///   notifications are on.
+/// - `Seen`, whenever the window has the focus ([`Focus::Window`]): the
+///   user is looking at what it offers -- whoever asked for the round, and
+///   whether or not notifications are on.
 /// - `Post`, when the round was the daily check's
 ///   (`RoundTrigger::Automatic`), notifications are on
-///   (`notifications_on`), and a pair of `updates` has been neither told
-///   nor seen in this run.
+///   (`notifications_on`), a pair of `updates` has been neither told nor
+///   seen in this run, and another app is in front ([`Focus::Away`]).
+/// - `Withheld`, when all that holds but Canager is the app in front
+///   without its window focused ([`Focus::App`]).
 /// - Nothing otherwise: a round the window asked for, or one no longer
 ///   remembered (`round_trigger` `None`), never posts; nor does one
 ///   offering only what the user was told about or saw.
 pub fn decide(
     round_trigger: Option<RoundTrigger>,
     notifications_on: bool,
-    focused: bool,
+    focus: Focus,
     updates: &[UpdatePair],
     notified: &Notified,
 ) -> Notice {
     if updates.is_empty() {
         return Notice::Nothing;
     }
-    if focused {
+    if focus == Focus::Window {
         return Notice::Seen;
     }
     if round_trigger != Some(RoundTrigger::Automatic) || !notifications_on {
@@ -103,26 +125,30 @@ pub fn decide(
     if updates.iter().all(|pair| notified.contains(pair)) {
         return Notice::Nothing;
     }
+    if focus == Focus::App {
+        return Notice::Withheld;
+    }
     let whole: BTreeSet<&UpdatePair> = updates.iter().collect();
     Notice::Post { count: whole.len() }
 }
 
 /// A report's whole effect on `notified`: what `decide` answers, carried
-/// out. `Seen` marks every pair of `updates`. `Post` calls `post` with its
-/// count, and marks every pair once `post` returns `Ok`; when it fails,
-/// nothing is marked, so the next round of the daily check that offers
-/// them posts again, and its error is handed back for the caller to log.
+/// out. `Seen` marks every pair of `updates`; `Nothing` and `Withheld`
+/// mark none. `Post` calls `post` with its count, and marks every pair once
+/// `post` returns `Ok`; when it fails, nothing is marked, so the next round
+/// of the daily check that offers them posts again, and its error is
+/// handed back for the caller to log.
 pub fn report(
     notified: &mut Notified,
     round_trigger: Option<RoundTrigger>,
     notifications_on: bool,
-    focused: bool,
+    focus: Focus,
     updates: &[UpdatePair],
     post: impl FnOnce(usize) -> Result<(), String>,
 ) -> Result<Notice, String> {
-    let notice = decide(round_trigger, notifications_on, focused, updates, notified);
+    let notice = decide(round_trigger, notifications_on, focus, updates, notified);
     match notice {
-        Notice::Nothing => {}
+        Notice::Nothing | Notice::Withheld => {}
         Notice::Seen => notified.mark(updates),
         Notice::Post { count } => {
             post(count)?;
@@ -187,7 +213,7 @@ mod tests {
         let mut notified = Notified::default();
         notified.mark(&[jq()]);
         assert_eq!(
-            decide(AUTOMATIC, true, false, &[jq(), gh()], &notified),
+            decide(AUTOMATIC, true, Focus::Away, &[jq(), gh()], &notified),
             Notice::Post { count: 2 },
             "gh is new; the count is every update offered, jq included"
         );
@@ -197,11 +223,11 @@ mod tests {
     fn test_a_round_the_window_asked_for_never_posts() {
         let notified = Notified::default();
         assert_eq!(
-            decide(WINDOW, true, false, &[jq()], &notified),
+            decide(WINDOW, true, Focus::Away, &[jq()], &notified),
             Notice::Nothing
         );
         assert_eq!(
-            decide(None, true, false, &[jq()], &notified),
+            decide(None, true, Focus::Away, &[jq()], &notified),
             Notice::Nothing,
             "a round no longer remembered is not known to be the daily check's"
         );
@@ -210,7 +236,7 @@ mod tests {
     #[test]
     fn test_nothing_is_posted_while_notifications_are_off() {
         assert_eq!(
-            decide(AUTOMATIC, false, false, &[jq()], &Notified::default()),
+            decide(AUTOMATIC, false, Focus::Away, &[jq()], &Notified::default()),
             Notice::Nothing
         );
     }
@@ -221,7 +247,7 @@ mod tests {
         for trigger in [AUTOMATIC, WINDOW, None] {
             for on in [true, false] {
                 assert_eq!(
-                    decide(trigger, on, true, &[jq()], &notified),
+                    decide(trigger, on, Focus::Window, &[jq()], &notified),
                     Notice::Seen,
                     "{trigger:?}, notifications on: {on}"
                 );
@@ -230,14 +256,60 @@ mod tests {
     }
 
     #[test]
+    fn test_with_canager_in_front_and_its_window_away_nothing_is_posted_or_marked() {
+        // Canager is the active app, its window closed or in the Dock:
+        // macOS would show no banner, and the user sees nothing the window
+        // offers.
+        let mut notified = Notified::default();
+        let never = |_| -> Result<(), String> { panic!("posted while Canager was in front") };
+        assert_eq!(
+            report(&mut notified, AUTOMATIC, true, Focus::App, &[jq()], never),
+            Ok(Notice::Withheld)
+        );
+        assert!(!notified.contains(&jq()), "not seen, so not marked");
+        // The next daily check that offers it, with another app in front,
+        // posts it.
+        assert_eq!(
+            decide(AUTOMATIC, true, Focus::Away, &[jq()], &notified),
+            Notice::Post { count: 1 }
+        );
+    }
+
+    #[test]
+    fn test_canager_in_front_withholds_only_a_notification_that_was_due() {
+        let mut notified = Notified::default();
+        assert_eq!(
+            decide(WINDOW, true, Focus::App, &[jq()], &notified),
+            Notice::Nothing,
+            "the window's round posts nothing anyway"
+        );
+        assert_eq!(
+            decide(AUTOMATIC, false, Focus::App, &[jq()], &notified),
+            Notice::Nothing,
+            "notifications off"
+        );
+        assert_eq!(
+            decide(AUTOMATIC, true, Focus::App, &[], &notified),
+            Notice::Nothing,
+            "nothing offered"
+        );
+        notified.mark(&[jq()]);
+        assert_eq!(
+            decide(AUTOMATIC, true, Focus::App, &[jq()], &notified),
+            Notice::Nothing,
+            "nothing new"
+        );
+    }
+
+    #[test]
     fn test_no_update_offered_is_nothing_even_with_the_window_focused() {
         let notified = Notified::default();
         assert_eq!(
-            decide(AUTOMATIC, true, false, &[], &notified),
+            decide(AUTOMATIC, true, Focus::Away, &[], &notified),
             Notice::Nothing
         );
         assert_eq!(
-            decide(AUTOMATIC, true, true, &[], &notified),
+            decide(AUTOMATIC, true, Focus::Window, &[], &notified),
             Notice::Nothing
         );
     }
@@ -259,7 +331,7 @@ mod tests {
                 &mut notified,
                 AUTOMATIC,
                 true,
-                false,
+                Focus::Away,
                 &[jq()],
                 recording(&posted)
             ),
@@ -270,7 +342,7 @@ mod tests {
                 &mut notified,
                 AUTOMATIC,
                 true,
-                false,
+                Focus::Away,
                 &[jq()],
                 recording(&posted)
             ),
@@ -283,7 +355,7 @@ mod tests {
                 &mut notified,
                 AUTOMATIC,
                 true,
-                false,
+                Focus::Away,
                 &[newer],
                 recording(&posted)
             ),
@@ -297,13 +369,13 @@ mod tests {
         let mut notified = Notified::default();
         let never = |_| -> Result<(), String> { panic!("posted while the window had the focus") };
         assert_eq!(
-            report(&mut notified, WINDOW, true, true, &[jq()], never),
+            report(&mut notified, WINDOW, true, Focus::Window, &[jq()], never),
             Ok(Notice::Seen)
         );
         assert!(notified.contains(&jq()));
         let never = |_| -> Result<(), String> { panic!("posted what the user saw") };
         assert_eq!(
-            report(&mut notified, AUTOMATIC, true, false, &[jq()], never),
+            report(&mut notified, AUTOMATIC, true, Focus::Away, &[jq()], never),
             Ok(Notice::Nothing)
         );
     }
@@ -312,9 +384,14 @@ mod tests {
     fn test_a_notification_that_failed_marks_nothing_and_the_next_round_posts_again() {
         let mut notified = Notified::default();
         assert_eq!(
-            report(&mut notified, AUTOMATIC, true, false, &[jq(), gh()], |_| {
-                Err("could not post".to_string())
-            }),
+            report(
+                &mut notified,
+                AUTOMATIC,
+                true,
+                Focus::Away,
+                &[jq(), gh()],
+                |_| { Err("could not post".to_string()) }
+            ),
             Err("could not post".to_string())
         );
         assert!(!notified.contains(&jq()) && !notified.contains(&gh()));
@@ -325,7 +402,7 @@ mod tests {
                 &mut notified,
                 AUTOMATIC,
                 true,
-                false,
+                Focus::Away,
                 &[jq(), gh()],
                 recording(&posted)
             ),
@@ -341,14 +418,14 @@ mod tests {
         // nor seen, so the next daily check may still post it.
         let mut notified = Notified::default();
         assert_eq!(
-            report(&mut notified, WINDOW, true, false, &[jq()], |_| {
+            report(&mut notified, WINDOW, true, Focus::Away, &[jq()], |_| {
                 panic!("the window's round posted")
             }),
             Ok(Notice::Nothing)
         );
         assert!(!notified.contains(&jq()));
         assert_eq!(
-            decide(AUTOMATIC, true, false, &[jq()], &notified),
+            decide(AUTOMATIC, true, Focus::Away, &[jq()], &notified),
             Notice::Post { count: 1 }
         );
     }
@@ -359,7 +436,7 @@ mod tests {
             decide(
                 AUTOMATIC,
                 true,
-                false,
+                Focus::Away,
                 &[jq(), jq(), gh()],
                 &Notified::default()
             ),

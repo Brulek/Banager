@@ -233,11 +233,16 @@ included, which Rust announces to it even when nothing changed
 Update all would take, as tool-and-version pairs, and which check it was
 (`report_update_set`). Rust posts one notification only when that check
 was a daily one, or the refresh a daily one's `brew update` set off; both
-switches are on; Canager's window does not have the focus; and one of the
-pairs has been neither in a notification nor before the user in the
+switches are on; another app is in front, not Canager — macOS shows no
+banner for a notification of the app in front, and Rust asks macOS
+whether Canager is (`app_active` in `src-tauri/src/notify.rs`); and one of
+the pairs has been neither in a notification nor before the user in the
 focused window since Canager was opened (`notify_updates::decide` in
 `crates/canager-core/src/notify_updates.rs`). A report that comes while
-the window has the focus marks its pairs as seen, and posts nothing.
+the window has the focus marks its pairs as seen, and posts nothing. One
+that comes while Canager is in front with its window closed or in the
+Dock posts nothing and marks nothing, so its updates are still news to
+the next daily check that finds them.
 
 The notification is titled Canager and says "N tools can be updated"
 (「有 N 个工具可以更新」) in the window's language, N being every update

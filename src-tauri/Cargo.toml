@@ -58,6 +58,15 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSLocale",
     "NSString",
 ] }
+# `notify::app_active` asks macOS whether Canager is the app in front
+# (`NSRunningApplication`'s `isActive`): macOS shows no banner for its
+# notifications then, so none is posted. Already in Cargo.lock at this
+# version as a dependency of tauri, with these features on, so no new crate
+# and no new feature enters the build. macOS only, as the call is.
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSRunningApplication",
+] }
 # The update notification itself on a Mac (`notify::post`): the crate
 # tauri-plugin-notification posts through, at the version the plugin pulls
 # in, so no crate enters the build that the plugin does not bring. Called
