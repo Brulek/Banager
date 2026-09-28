@@ -9,8 +9,9 @@ const host = process.env.TAURI_DEV_HOST;
 
 // `vite --mode mock` (`pnpm dev:mock`): the UI in a plain browser with a
 // mock backend and no Tauri, for screenshots (docs/ui-preview.md). Only
-// that mode aliases "@tauri-apps/api/core" to src/dev/mockTauri.ts and
-// "@tauri-apps/api/event" to src/dev/mockTauriEvent.ts, and serves on its
+// that mode aliases "@tauri-apps/api/core" to src/dev/mockTauri.ts,
+// "@tauri-apps/api/event" to src/dev/mockTauriEvent.ts and
+// "@tauri-apps/api/window" to src/dev/mockTauriWindow.ts, and serves on its
 // own port; every other mode -- `pnpm dev` under `pnpm tauri dev`,
 // `pnpm build` under `pnpm tauri build`, vitest's `test` -- resolves
 // exactly the config it did before the mode existed.
@@ -34,6 +35,10 @@ export default defineConfig(({ mode }) => {
               {
                 find: /^@tauri-apps\/api\/event$/,
                 replacement: fileURLToPath(new URL("./src/dev/mockTauriEvent.ts", import.meta.url)),
+              },
+              {
+                find: /^@tauri-apps\/api\/window$/,
+                replacement: fileURLToPath(new URL("./src/dev/mockTauriWindow.ts", import.meta.url)),
               },
             ],
           },

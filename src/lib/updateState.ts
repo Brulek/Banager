@@ -181,10 +181,11 @@ export function notHidden(
  * The updates Canager can install from the Updates page right now: every
  * one it lists (`notHidden`) whose row has an Update button and a checkbox
  * (`isUpdateActionable`, against the instance its key names). This is the
- * count on the sidebar's Updates entry, and, less the rows an update
- * under way or just finished takes (`holdsRow`), the Updates page's "N
- * updates" and the rows its Select all and Update all tick -- one
- * function, so the badge cannot promise a row the page does not list.
+ * count on the sidebar's Updates entry and on the Dock's badge
+ * (`useUpdateCount`), and, less the rows an update under way or just
+ * finished takes (`holdsRow`), the Updates page's "N updates" and the rows
+ * its Select all and Update all tick -- one function, so neither badge can
+ * promise a row the page does not list.
  */
 export function actionableUpdatesOf(
   snapshot: Pick<Snapshot, "instances" | "updates">,

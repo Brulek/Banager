@@ -3,6 +3,7 @@ import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
+import { watchDock } from "./test/dock";
 import App from "./App";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type { OpRequest, Settings, Snapshot, UnknownScan } from "./lib/types";
@@ -302,6 +303,27 @@ describe("App", () => {
     vi.unstubAllEnvs();
     const dev = renderWithProviders(<App />);
     expect(fireEvent.contextMenu(await dev.findByRole("heading", { level: 1, name: "Overview" }))).toBe(true);
+  });
+
+  it("puts the sidebar's Updates count on the Dock's badge", async () => {
+    // Two updates the Updates page offers, and one pinned, which it lists
+    // without offering.
+    const brew = snapshot.instances[0];
+    const update = (name: string, blocked: "Pinned" | null = null) => ({
+      key: { instance_id: brew.id, kind: "Formula" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Native" as const,
+      checkable: true,
+      warnings: [],
+      blocked,
+    });
+    mockBackend({ ...snapshot, updates: [update("glib"), update("jq", "Pinned"), update("wget")] });
+    const dock = watchDock();
+    const { getByRole } = renderWithProviders(<App />);
+
+    await waitFor(() => expect(dock.badge()).toBe(2));
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
   });
 });
 

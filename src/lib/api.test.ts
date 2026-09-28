@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getSnapshot,
   refresh,
@@ -16,8 +17,10 @@ import {
   setMenuLanguage,
   onMenuCommand,
   type MenuCommand,
+  setDockBadge,
 } from "./api";
 import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
+import { watchDock } from "../test/dock";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -213,5 +216,32 @@ describe("the menu bar's events", () => {
 
     await expect(onMenuCommand(() => {})).rejects.toThrow("event.listen not allowed");
     expect(stopped.sort()).toEqual(["menu://check-again", "menu://settings"]);
+  });
+});
+
+describe("the Dock's badge", () => {
+  it("is the count setDockBadge is given, set on the window, not through a command of Canager's", async () => {
+    const dock = watchDock();
+    await setDockBadge(12);
+    expect(dock.counts()).toEqual([12]);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("is taken away at 0, not shown as a 0", async () => {
+    // Tauri writes a count into the Dock tile's badge label as text, a 0
+    // included; no count at all is what clears the label.
+    const dock = watchDock();
+    await setDockBadge(3);
+    await setDockBadge(0);
+    expect(dock.counts()).toEqual([3, undefined]);
+    expect(dock.badge()).toBeUndefined();
+  });
+
+  it("reports a failure as an Error carrying Tauri's text", async () => {
+    watchDock();
+    vi.mocked(getCurrentWindow().setBadgeCount).mockRejectedValueOnce(
+      "window.set_badge_count not allowed",
+    );
+    await expect(setDockBadge(2)).rejects.toThrow("window.set_badge_count not allowed");
   });
 });

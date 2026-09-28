@@ -44,7 +44,8 @@ const COUNT_DESCRIPTION_KEYS: Partial<Record<Page, string>> = {
  * The number beside each entry, or nothing:
  *
  * - Updates: the updates the Updates page offers to install
- *   (`useUpdateCount`), those an update is installing now included.
+ *   (`useUpdateCount`), those an update is installing now included. The
+ *   Dock's badge shows the same number (`useDockBadge`).
  * - Installed: everything the Installed page lists, components other
  *   software brought in included.
  * - Unknown: what the last scan found, once one has run. Nothing here

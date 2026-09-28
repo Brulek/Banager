@@ -1,5 +1,6 @@
 import { invoke, Channel, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   ArtifactKey,
   IssuedPlan,
@@ -161,4 +162,21 @@ export async function onMenuCommand(onCommand: (command: MenuCommand) => void): 
     throw asError(failed.reason);
   }
   return stop;
+}
+
+/**
+ * Puts `count` on Canager's icon in the Dock, as the App Store puts there
+ * the number of updates it has, or takes the badge away at 0. Through
+ * Tauri's `setBadgeCount` (`core:window:allow-set-badge-count` in
+ * src-tauri/capabilities/default.json), which on macOS badges the app, not
+ * the window that asks, by writing the number into the Dock tile's badge
+ * label as text -- so it would show a 0, and 0 goes as no count at all,
+ * which clears the label. `useDockBadge` is the caller.
+ */
+export async function setDockBadge(count: number): Promise<void> {
+  try {
+    await getCurrentWindow().setBadgeCount(count > 0 ? count : undefined);
+  } catch (e) {
+    throw asError(e);
+  }
 }

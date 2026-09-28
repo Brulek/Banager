@@ -57,6 +57,18 @@ describe("the window", () => {
     expect(capability.permissions).toContain("core:window:allow-start-dragging");
   });
 
+  it("lets the page badge the Dock icon, and adds no other window command to core:default's", () => {
+    // `setDockBadge` (src/lib/api.ts) asks for
+    // `plugin:window|set_badge_count`, which `core:default` does not allow
+    // either. Beyond `core:default`'s -- reading the window, and the zoom
+    // on a drag region's double-click -- these two are the only commands
+    // of the window's the page is given.
+    expect(capability.permissions.filter((p) => p.startsWith("core:window:"))).toEqual([
+      "core:window:allow-start-dragging",
+      "core:window:allow-set-badge-count",
+    ]);
+  });
+
   it("gives the page none of the window-state plugin's commands", () => {
     // Rust restores the window's size and position and saves them
     // (`run()` in src-tauri/src/lib.rs); the page has no part in it.

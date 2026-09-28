@@ -62,8 +62,8 @@ export function useSettings(): UseQueryResult<Settings> {
  * How many updates the Updates page offers to install
  * (`actionableUpdatesOf`), those an update is installing now included, or
  * undefined until both the snapshot and the settings have arrived: the
- * number beside the sidebar's Updates. One hook, so that whatever else
- * shows it cannot show another.
+ * number beside the sidebar's Updates, and on the Dock's badge
+ * (`useDockBadge`). One hook, so the two cannot differ.
  */
 export function useUpdateCount(): number | undefined {
   const { data: snapshot } = useSnapshot();

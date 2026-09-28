@@ -51,6 +51,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
+// The Dock's badge (`setDockBadge` in src/lib/api.ts): one window, whose
+// badge is set on nothing -- jsdom has no Tauri for the real one to reach
+// -- and read back by a test that watches the Dock (./dock.ts).
+vi.mock("@tauri-apps/api/window", () => {
+  const currentWindow = { setBadgeCount: vi.fn(async () => {}) };
+  return { getCurrentWindow: () => currentWindow };
+});
+
 /**
  * A logo pack with no logos: what the avatars draw from under
  * `renderWithProviders` unless a test hands it a pack of its own, so that

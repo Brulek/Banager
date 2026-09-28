@@ -15,6 +15,7 @@ import type {
 } from "../lib/types";
 import { hidingRule, updateStateOf } from "../lib/updateState";
 import { createMockBackend, MOCK_COMMANDS, type MockBackend } from "./mockBackend";
+import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -314,6 +315,36 @@ describe("the preview stays out of the app", () => {
         .map((target) => `${path.relative(src, file)} imports ${path.relative(src, target)}`),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("the preview's stand-ins for Tauri", () => {
+  it("replace every module of Tauri's the app imports, and no other", () => {
+    // One the page imports that the preview did not replace would run for
+    // real there: in a browser, with no Tauri to reach, it throws; in
+    // `pnpm tauri:mock`'s window, it reaches the app's own backend.
+    const config = readFileSync(path.resolve(__dirname, "../../vite.config.ts"), "utf-8");
+    const replaced = [...config.matchAll(/find: \/\^(@tauri-apps[^$]*)\$\//g)].map((match) =>
+      match[1].replace(/\\\//g, "/"),
+    );
+    // What goes into the app: src, less the tests, their helpers and the
+    // preview itself. A type-only import is gone from the build.
+    const src = path.resolve(__dirname, "..");
+    const outside = [path.resolve(__dirname), path.join(src, "test")];
+    const tauriImport = /^import\s+(?!type\b)[^;]*?\bfrom\s+["'](@tauri-apps\/[^"']+)["']/gm;
+    const imported = readdirSync(src, { recursive: true, encoding: "utf-8" })
+      .filter((file) => /\.(ts|tsx)$/.test(file) && !/\.test\.tsx?$/.test(file))
+      .map((file) => path.resolve(src, file))
+      .filter((file) => !outside.some((dir) => file.startsWith(dir + path.sep)))
+      .flatMap((file) => [...readFileSync(file, "utf-8").matchAll(tauriImport)].map((match) => match[1]));
+    expect(imported.length).toBeGreaterThan(0);
+    expect([...replaced].sort()).toEqual([...new Set(imported)].sort());
+  });
+
+  it("badge no Dock: the window's setBadgeCount does nothing and needs no Tauri", async () => {
+    // jsdom has no Tauri: the real `setBadgeCount` could not be called here.
+    await expect(previewWindow().setBadgeCount(3)).resolves.toBeUndefined();
+    await expect(previewWindow().setBadgeCount(undefined)).resolves.toBeUndefined();
   });
 });
 
