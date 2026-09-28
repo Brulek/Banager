@@ -485,6 +485,7 @@
     },
     "notifyUpdates": {
       "label": "有可更新时通知我",
+      "needsAutoCheck": "先打开上面的「{{setting}}」。",
       "refused": "在系统设置 → 通知里允许 Canager"
     },
     "language": {

@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { SettingsPage } from "./SettingsPage";
 import { useUiStore } from "../store/ui";
+import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
@@ -449,6 +450,8 @@ describe("SettingsPage", () => {
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
     expect(notify).toBeDisabled();
+    // Why it does not move, and what turns it on.
+    expect(notify).toHaveAccessibleDescription("Turn on “Check for updates every day” above first.");
     // Under the daily check, the row it depends on.
     const switches = within(updates).getAllByRole("switch");
     expect(switches.indexOf(notify)).toBe(switches.indexOf(daily) + 1);
@@ -473,6 +476,9 @@ describe("SettingsPage", () => {
     const notify = screen.getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).toBeEnabled();
     expect(notify).not.toBeChecked();
+    // Nothing left to say about why it would not move.
+    expect(notify).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByText("Turn on “Check for updates every day” above first.")).toBeNull();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
 
@@ -767,6 +773,23 @@ describe("SettingsPage", () => {
       expect(screen.getByRole("heading", { level: 2, name }).className).toContain("text-section");
     }
     expect(within(general).queryByRole("button", { name: "Remind me again about jq" })).toBeNull();
+  });
+
+  it("says in Chinese what turns the notification on while the daily check is off", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(<SettingsPage />);
+
+      const notify = await screen.findByRole("switch", { name: "有可更新时通知我" });
+      expect(notify).toBeDisabled();
+      expect(notify).toHaveAccessibleDescription("先打开上面的「每天自动检查」。");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {

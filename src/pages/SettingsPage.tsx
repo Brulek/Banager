@@ -331,9 +331,9 @@ export function SettingsPage() {
         {/* The daily check (src-tauri/src/auto_check.rs), off by default,
             and under it the notification that belongs to it
             (src-tauri/src/notify.rs): offered only while the daily check
-            is on, shown off while it is not, saved off when the daily
-            check is turned off, and turned on only with permission to
-            post (`turnNotifyOn`). */}
+            is on, shown off -- saying so, and what turns it on -- while it
+            is not, saved off when the daily check is turned off, and
+            turned on only with permission to post (`turnNotifyOn`). */}
         <SettingRow
           label={
             <label htmlFor="settings-auto-check" className={ROW_LABEL}>
@@ -367,7 +367,12 @@ export function SettingsPage() {
             </label>
           }
           description={
-            notifyRefused ? (
+            !current.auto_check ? (
+              // Why it does not move: a faded switch alone said nothing.
+              <p id="settings-notify-updates-desc" className={ROW_DESCRIPTION}>
+                {t("settings.notifyUpdates.needsAutoCheck", { setting: t("settings.autoCheck.label") })}
+              </p>
+            ) : notifyRefused ? (
               <p id="settings-notify-updates-desc" role="status" className={ROW_DESCRIPTION}>
                 {t("settings.notifyUpdates.refused")}
               </p>
@@ -376,7 +381,9 @@ export function SettingsPage() {
           control={
             <Switch
               id="settings-notify-updates"
-              aria-describedby={notifyRefused ? "settings-notify-updates-desc" : undefined}
+              aria-describedby={
+                !current.auto_check || notifyRefused ? "settings-notify-updates-desc" : undefined
+              }
               checked={current.auto_check && (current.notify_updates || askingToNotify)}
               disabled={!current.auto_check || askingToNotify}
               onCheckedChange={(checked) =>

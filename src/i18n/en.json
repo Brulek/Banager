@@ -525,6 +525,7 @@
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
+      "needsAutoCheck": "Turn on “{{setting}}” above first.",
       "refused": "Allow Canager in System Settings → Notifications."
     },
     "language": {
