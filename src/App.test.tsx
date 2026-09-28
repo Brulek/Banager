@@ -80,6 +80,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("App", () => {
@@ -288,5 +289,17 @@ describe("App", () => {
     // Its title is the page header's; the page adds no second one.
     expect(await findByRole("heading", { level: 1, name: "Unknown" })).toBeInTheDocument();
     expect(await findByText("No programs of unknown origin")).toBeInTheDocument();
+  });
+
+  it("shows no browser menu on a right-click in a build, and leaves it to developers in development", async () => {
+    // Which right-clicks keep a menu in a build is src/lib/contextMenu.ts's.
+    vi.stubEnv("PROD", true);
+    const built = renderWithProviders(<App />);
+    expect(fireEvent.contextMenu(await built.findByRole("heading", { level: 1, name: "Overview" }))).toBe(false);
+    built.unmount();
+
+    vi.unstubAllEnvs();
+    const dev = renderWithProviders(<App />);
+    expect(fireEvent.contextMenu(await dev.findByRole("heading", { level: 1, name: "Overview" }))).toBe(true);
   });
 });

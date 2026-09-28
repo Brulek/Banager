@@ -12,6 +12,7 @@ import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
+import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useUiStore, type Page } from "./store/ui";
 
 /**
@@ -36,6 +37,7 @@ function headerActions(page: Page): ReactNode {
 
 function App() {
   useLanguageSync();
+  useNoBrowserContextMenu();
   const { t } = useTranslation();
   const page = useUiStore((s) => s.page);
   const setPage = useUiStore((s) => s.setPage);
