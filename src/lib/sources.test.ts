@@ -1186,7 +1186,9 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     // `UninstallBlocked::UvToolDirSet`: `uv tool uninstall` of the last
     // tool deletes the folder above the one UV_TOOL_DIR names when that
     // holds no other folder. The command that would do it is not set
-    // apart to be copied.
+    // apart to be copied. Every uv tool carries the reason
+    // (`UvAdapter::uninstall_blocked`), the last or not, so the copy says
+    // Canager uninstalls none, not that this one is the last.
     const uv = instance({ id: "uv", adapter_id: "uv", exe_path: "/opt/homebrew/bin/uv" });
     const key: ArtifactKey = { instance_id: "uv", kind: "Tool", name: "ruff" };
     expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.command(key, uv)).toBe("");
@@ -1202,6 +1204,14 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     }
     expect(en.installed.blocked.UvToolDirSet.refused).toContain("didn't uninstall or change anything");
     expect(zhCN.installed.blocked.UvToolDirSet.refused).toContain("没有卸载，也没有改动");
+    for (const copy of [en.installed.blocked.UvToolDirSet.description, en.installed.blocked.UvToolDirSet.refused]) {
+      expect(copy).toContain("Canager uninstalls no uv tool while UV_TOOL_DIR is set");
+      expect(copy).not.toContain("uninstalling the last uv tool");
+    }
+    for (const copy of [zhCN.installed.blocked.UvToolDirSet.description, zhCN.installed.blocked.UvToolDirSet.refused]) {
+      expect(copy).toContain("Canager 不卸载任何 uv 工具");
+      expect(copy).not.toContain("卸载最后一个 uv 工具");
+    }
   });
 });
 

@@ -143,8 +143,8 @@
       },
       "UvToolDirSet": {
         "badge": "Uninstall in Terminal",
-        "description": "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names, with every file in it, when that folder holds no other folder. Uninstall it in Terminal.",
-        "refused": "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names when that folder holds no other folder, so Canager didn't uninstall or change anything. Uninstall it in Terminal."
+        "description": "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names, with every file in it, when it uninstalls its last tool and that folder holds no other folder. So Canager uninstalls no uv tool while UV_TOOL_DIR is set. Uninstall it in Terminal.",
+        "refused": "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names when it uninstalls its last tool and that folder holds no other folder. Canager uninstalls no uv tool while UV_TOOL_DIR is set, and didn't uninstall or change anything. Uninstall it in Terminal."
       }
     }
   },

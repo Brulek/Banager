@@ -618,11 +618,12 @@ describe("InstalledPage", () => {
   });
 
   it("offers no Uninstall on a uv tool while UV_TOOL_DIR is set, and says why behind its chip", async () => {
-    // `UninstallBlocked::UvToolDirSet` (uv's inventory): with UV_TOOL_DIR
-    // set, `uv tool uninstall` of the last tool also deletes the folder
-    // above the tools folder when that holds no other folder, so the row
-    // hides the button and its chip says why, with nothing set apart to
-    // copy. `Session::issue_plan` and uv's own plan refuse it in Rust too.
+    // `UninstallBlocked::UvToolDirSet` (uv's inventory, on every uv tool):
+    // with UV_TOOL_DIR set, `uv tool uninstall` of the last tool also
+    // deletes the folder above the tools folder when that holds no other
+    // folder, so no uv tool's row offers Uninstall -- whether or not it is
+    // the last -- and its chip says why, with nothing set apart to copy.
+    // `Session::issue_plan` and uv's own plan refuse it in Rust too.
     const uv: ManagerInstance = {
       ...brew,
       id: "uv",
@@ -647,7 +648,7 @@ describe("InstalledPage", () => {
     const ruff = await findRow("ruff");
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
     expect(chipDetail(ruff, "Uninstall in Terminal")).toHaveTextContent(
-      "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names, with every file in it, when that folder holds no other folder. Uninstall it in Terminal.",
+      "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names, with every file in it, when it uninstalls its last tool and that folder holds no other folder. So Canager uninstalls no uv tool while UV_TOOL_DIR is set. Uninstall it in Terminal.",
     );
     expect(container.querySelector("code")).toBeNull();
   });

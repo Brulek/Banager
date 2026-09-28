@@ -1310,7 +1310,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "With UV_TOOL_DIR set, uninstalling the last uv tool also deletes the folder above the one UV_TOOL_DIR names when that folder holds no other folder, so Canager didn't uninstall or change anything. Uninstall it in Terminal.",
+        "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names when it uninstalls its last tool and that folder holds no other folder. Canager uninstalls no uv tool while UV_TOOL_DIR is set, and didn't uninstall or change anything. Uninstall it in Terminal.",
       ),
     );
     expect(alert.querySelector("code")).toBeNull();
