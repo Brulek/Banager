@@ -415,7 +415,7 @@ describe("UninstallDialog", () => {
       ],
       [
         "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
-        "Stopping it partway leaves the tool unusable.",
+        "Wait until the bottom of the window shows how it went before you quit Canager or turn off your Mac.",
       ],
       [
         "Conversations and history: ~/.gemini/antigravity-cli",
@@ -1033,7 +1033,7 @@ describe("UninstallDialog", () => {
     expect(await screen.findByText(hint)).toBeInTheDocument();
     expect(linesOf("Before you continue")).toEqual([hint]);
     fireEvent.click(screen.getByRole("button", { name: `Details: ${hint}` }));
-    expect(screen.getByText("Stopping it partway leaves the tool unusable.")).toBeInTheDocument();
+    expect(screen.getByText("Wait until the bottom of the window shows how it went before you quit Canager or turn off your Mac.")).toBeInTheDocument();
 
     unmount();
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ cancel_policy: "KillThenReconcile" }));

@@ -321,7 +321,7 @@
     "current": "{{kind}} {{name}}：{{status}}",
     "title": "{{kind}} {{name}}",
     "noCancelHint": "开始后不能取消，完成前请别关 Canager 或 Mac。",
-    "noCancelHintDetail": "中途停下会让这个工具无法使用。",
+    "noCancelHintDetail": "等窗口底部显示结果，再退出 Canager 或关机。",
     "logDrawerTitle": "操作日志",
     "batch": {
       "running": "正在处理 {{total}} 个中的第 {{current}} 个",

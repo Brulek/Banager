@@ -338,7 +338,7 @@
     "current": "{{kind}} {{name}}: {{status}}",
     "title": "{{kind}} {{name}}",
     "noCancelHint": "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
-    "noCancelHintDetail": "Stopping it partway leaves the tool unusable.",
+    "noCancelHintDetail": "Wait until the bottom of the window shows how it went before you quit Canager or turn off your Mac.",
     "logDrawerTitle": "Operation log",
     "batch": {
       "running": "Working on {{current}} of {{total}}",
