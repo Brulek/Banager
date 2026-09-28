@@ -136,7 +136,7 @@
     "cantUpdateHere": "Can't update here ({{number}})",
     "selectAll": "Select all",
     "selectAllLabel": "Select all items that can be updated here",
-    "invertSelection": "Invert selection",
+    "invertSelection": "Invert",
     "invertSelectionLabel": "Invert selection among the items that can be updated here",
     "updateSelected": "Update selected",
     "updateSelectedCount": "Update selected ({{number}})",

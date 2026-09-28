@@ -3416,7 +3416,7 @@ describe("UpdatesPage", () => {
 
   describe("Select all and Invert selection", () => {
     // Each button's accessible name starts with the words on it ("Select
-    // all", "Invert selection") and goes on to say which rows it acts on.
+    // all", "Invert") and goes on to say which rows it acts on.
     const SELECT_ALL = "Select all items that can be updated here";
     const INVERT = "Invert selection among the items that can be updated here";
 
@@ -3496,7 +3496,7 @@ describe("UpdatesPage", () => {
       expect(queryAllByRole("checkbox")).toHaveLength(3);
       const selectAll = getByRole("button", { name: SELECT_ALL });
       expect(selectAll.textContent).toBe("Select all");
-      expect(getByRole("button", { name: INVERT }).textContent).toBe("Invert selection");
+      expect(getByRole("button", { name: INVERT }).textContent).toBe("Invert");
       expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
 
       fireEvent.click(selectAll);
