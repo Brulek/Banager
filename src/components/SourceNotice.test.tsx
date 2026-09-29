@@ -76,16 +76,17 @@ describe("SourceNotice's look (spec §3.8)", () => {
     expect(container.innerHTML).not.toContain("text-warning");
   });
 
-  it("lines up with its list's columns: the symbol centred on the checkboxes' or the avatars', the title where the names start", () => {
+  it("lines up with its list's columns: the symbol centred on the avatars', the title where the names start", () => {
     // The Updates page: rows start with a 16 checkbox, 12, a 32 avatar, 12,
     // the name -- 72 past the line's left edge.
     const updates = renderWithProviders(
       <SourceNoticeLine variant="warning" title="uv isn't responding" detailsAriaLabel="Details" grid="checkbox" />,
     );
     const symbol = updates.container.querySelector("[data-notice-symbol]") as HTMLElement;
-    expect(symbol.className.split(" ")).toEqual(expect.arrayContaining(["w-4", "justify-center", "shrink-0"]));
-    expect(updates.getByText("uv isn't responding").className.split(" ")).toContain("ml-14");
-    expect(NOTICE_GRID.checkbox).toEqual({ symbol: "w-4", gap: "ml-14", inset: "pl-18", hairline: "left-18" });
+    // Past the checkbox's 16 and 12, in the avatars' 32: 28 + 32 + 12 = 72.
+    expect(symbol.className.split(" ")).toEqual(expect.arrayContaining(["ml-7", "w-8", "justify-center", "shrink-0"]));
+    expect(updates.getByText("uv isn't responding").className.split(" ")).toContain("ml-3");
+    expect(NOTICE_GRID.checkbox).toEqual({ symbol: "ml-7 w-8", gap: "ml-3", inset: "pl-18", hairline: "left-18" });
     updates.unmount();
 
     // The Installed and Unknown pages: a 32 avatar, 12, the name -- 44 in.

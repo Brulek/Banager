@@ -15,8 +15,8 @@ export const DETAILS_TRIGGER_CLASS = `shrink-0 ${LINK}`;
 /**
  * Which list's columns a notice line lines up with (`SourceNoticeLine`):
  * `checkbox`, a list whose rows start with a checkbox -- the Updates
- * page's -- its symbol centred on the checkboxes' column and its words
- * where the rows' names start, past the avatars' column; `avatar`, a list
+ * page's -- its symbol centred on the avatars' column, past the
+ * checkboxes', and its words where the rows' names start; `avatar`, a list
  * whose rows start with the avatar -- the Installed and Unknown pages' --
  * its symbol centred on the avatars' column and its words where the
  * names start.
@@ -25,14 +25,15 @@ export type NoticeGrid = "checkbox" | "avatar";
 
 /**
  * A grid's classes, from the line's left edge -- 20 in, where the rows'
- * content starts: the symbol's column (the checkbox's 16, or the avatar's
- * 32); the gap from it to the words (12 + 32 + 12 past a checkbox's
- * column, 12 past an avatar's), and the same room as a padding for a line
- * that has no symbol of its own; and a hairline starting where the words
- * do (16 + 56 = 72, or 32 + 12 = 44), as a row's does.
+ * content starts: the symbol in the avatars' 32 column, past a checkbox's
+ * 16 and 12 where the rows have checkboxes (a ⚠︎ out in the checkboxes'
+ * column read as cut off from its words); the 12 from it to the words, and
+ * the same room as a padding for a line that has no symbol of its own; and
+ * a hairline starting where the words do (28 + 32 + 12 = 72, or
+ * 32 + 12 = 44), as a row's does.
  */
 export const NOTICE_GRID: Record<NoticeGrid, { symbol: string; gap: string; inset: string; hairline: string }> = {
-  checkbox: { symbol: "w-4", gap: "ml-14", inset: "pl-18", hairline: "left-18" },
+  checkbox: { symbol: "ml-7 w-8", gap: "ml-3", inset: "pl-18", hairline: "left-18" },
   avatar: { symbol: "w-8", gap: "ml-3", inset: "pl-11", hairline: "left-11" },
 };
 

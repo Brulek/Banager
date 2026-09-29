@@ -193,7 +193,7 @@ function keyboardRow(item: ListItem): boolean {
  * The line that discloses the rows that can't be updated here, 32 high:
  * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png),
  * on the rows' grid, as the notices over them are: the triangle centred in
- * the checkboxes' column, the words where the names start. One of the rows
+ * the avatars' column, the words where the names start. One of the rows
  * ↑ and ↓ move between, Space or Enter opening it.
  */
 function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
@@ -973,7 +973,7 @@ export function UpdatesPage() {
         keyboardRows={keyboardRow}
         renderItem={(item) =>
           item.type === "notices" ? (
-            // On the rows' grid: the ⚠︎ in the checkboxes' column, the
+            // On the rows' grid: the ⚠︎ in the avatars' column, the
             // words where the names start.
             <div className="px-5">
               <SourceNotices notices={notices} layout="line" fold={noticeFold} grid="checkbox" />

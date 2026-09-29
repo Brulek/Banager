@@ -1957,10 +1957,11 @@ describe("UpdatesPage", () => {
       // Not the semibold heading it was.
       expect(toggle.className).not.toContain("font-semibold");
       // On the rows' grid, as the notices over it: the triangle centred in
-      // the checkboxes' 16 column, the words where the names start.
+      // the avatars' 32 column past a checkbox's room, the words where the
+      // names start.
       const [slot, words] = [...toggle.children] as HTMLElement[];
-      expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["w-4", "justify-center", "shrink-0"]));
-      expect(words.className.split(" ")).toContain("ml-14");
+      expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["ml-7", "w-8", "justify-center", "shrink-0"]));
+      expect(words.className.split(" ")).toContain("ml-3");
       expect(words.textContent).toBe("1 more can't be updated here");
       const triangle = slot.firstElementChild as SVGElement;
       expect(triangle.getAttribute("width")).toBe("10");
@@ -3053,13 +3054,15 @@ describe("UpdatesPage", () => {
       const header = getByRole("checkbox", { name: SELECT_ALL });
       expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       // A line of the list: 32 high, 20 in from the edge as the rows are,
-      // on their grid -- the ⚠︎ in the checkboxes' column, the title where
+      // on their grid -- the ⚠︎ in the avatars' column, the title where
       // the names start -- over a hairline as a row's.
       const line = notice.closest("[data-notice-line]") as HTMLElement;
       expect(line.className.split(" ")).toContain("h-8");
       expect((line.closest("[data-list-slot] > div") as HTMLElement).className.split(" ")).toContain("px-5");
-      expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toContain("w-4");
-      expect(notice.className.split(" ")).toContain("ml-14");
+      expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
+        expect.arrayContaining(["ml-7", "w-8"]),
+      );
+      expect(notice.className.split(" ")).toContain("ml-3");
       const hairline = line.closest("[data-list-slot]")?.querySelector("[data-row-separator]") as HTMLElement;
       expect(hairline.className.split(" ")).toEqual(expect.arrayContaining(["left-18", "right-0", "h-px"]));
       // Its ⓘ and its one button, and no link.
