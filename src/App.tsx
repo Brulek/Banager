@@ -38,6 +38,21 @@ function headerActions(page: Page): ReactNode {
   }
 }
 
+/**
+ * What the window keeps up to date about the updates, out of sight: the
+ * Dock's badge (`useDockBadge`) and the update notification's report
+ * (`useUpdateNotification`). A component of their own, which draws
+ * nothing: both read the operations, which change with every step of
+ * every update, and in `App` itself each change drew the whole window
+ * again -- the page, its rows, the sidebar -- a few hundred times over
+ * while Update all submitted 120 tools.
+ */
+function UpdateWatchers() {
+  useDockBadge();
+  useUpdateNotification();
+  return null;
+}
+
 function App() {
   useLanguageSync();
   useNoBrowserContextMenu();
@@ -48,11 +63,10 @@ function App() {
   useOperationEvents();
   useStartupRefresh();
   useMenuCommands();
-  useDockBadge();
-  useUpdateNotification();
 
   return (
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
+      <UpdateWatchers />
       {/* The sidebar's Installed opens the page on everything installed,
           which is what its count counts; an Overview tile opens it on one
           source (`openInstalled`). */}

@@ -9,10 +9,10 @@ import { setDockBadge } from "./api";
 import { useUpdateCount } from "../components/UpdateProgress";
 
 /**
- * Mounted once, by `App`. No badge until the snapshot and the settings
- * have both arrived, and none while the count is 0 -- which it is until
- * the first check comes back, since the snapshot the backend starts from
- * lists no update (`Snapshot::empty()` in
+ * Mounted once, by `App`'s `UpdateWatchers`. No badge until the snapshot
+ * and the settings have both arrived, and none while the count is 0 --
+ * which it is until the first check comes back, since the snapshot the
+ * backend starts from lists no update (`Snapshot::empty()` in
  * crates/canager-core/src/session/mod.rs). After that, the badge is set
  * again each time the count changes, and only then: a check that finds
  * the same number leaves it alone.

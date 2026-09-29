@@ -6,8 +6,17 @@ import { fakeMenuBar } from "./test/menuBar";
 import { watchDock } from "./test/dock";
 import App from "./App";
 import { OPEN_UPDATES_EVENT } from "./lib/api";
+import { useNoBrowserContextMenu } from "./lib/contextMenu";
+import { queryKeys } from "./lib/queryKeys";
 import type { InvokeArgs } from "@tauri-apps/api/core";
-import type { OpRequest, Settings, Snapshot, UnknownScan } from "./lib/types";
+import type { OpRequest, OpSummary, Settings, Snapshot, UnknownScan } from "./lib/types";
+
+// The real hook, watched: `App` calls it once each time it draws, and
+// nothing else calls it, so its calls count App's draws.
+vi.mock("./lib/contextMenu", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/contextMenu")>();
+  return { ...actual, useNoBrowserContextMenu: vi.fn(actual.useNoBrowserContextMenu) };
+});
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -364,6 +373,50 @@ describe("App", () => {
 
     await waitFor(() => expect(dock.badge()).toBe(2));
     expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("2 can be updated");
+  });
+
+  it("keeps the Dock's badge up to date as an update starts, without drawing the window again for it", async () => {
+    const brew = snapshot.instances[0];
+    const update = (name: string) => ({
+      key: { instance_id: brew.id, kind: "Formula" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Native" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    });
+    mockBackend({ ...snapshot, updates: [update("glib"), update("wget")] });
+    const dock = watchDock();
+    const { queryClient, getByRole } = renderWithProviders(<App />);
+    await waitFor(() => expect(dock.badge()).toBe(2));
+    const appDraws = vi.mocked(useNoBrowserContextMenu).mock.calls.length;
+
+    // glib's update is queued, as an operation's event tells the page
+    // (`useOperationEvents`): its row is taken, and one update is left to
+    // start. Update all changes the operations hundreds of times over.
+    const queued: OpSummary = {
+      id: 1,
+      kind: "Upgrade",
+      instance_id: brew.id,
+      artifact_kind: "Formula",
+      name: "glib",
+      status: "Queued",
+      outcome: null,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+    };
+    const answer = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "list_operations" ? Promise.resolve([queued]) : answer!(cmd, args),
+    );
+    await queryClient.invalidateQueries({ queryKey: queryKeys.operations });
+
+    await waitFor(() => expect(dock.badge()).toBe(1));
+    expect(getByRole("button", { name: "Updates" })).toHaveAccessibleDescription("1 can be updated");
+    // The badge's and the notification's hooks drew again; the window --
+    // the page, its rows, the header -- did not, for them.
+    expect(vi.mocked(useNoBrowserContextMenu).mock.calls.length).toBe(appDraws);
   });
 });
 

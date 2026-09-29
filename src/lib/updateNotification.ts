@@ -20,7 +20,7 @@ export function updatePairOf(candidate: UpdateCandidate): UpdatePair {
 }
 
 /**
- * Mounted once, by `App`, next to `useDockBadge`:
+ * Mounted once, by `App`'s `UpdateWatchers`, next to `useDockBadge`:
  *
  * - Once for each snapshot, as soon as the settings and the operations
  *   are in too, it reports the updates Update all would take
