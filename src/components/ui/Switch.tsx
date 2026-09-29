@@ -15,6 +15,15 @@ export interface SwitchProps {
   disabled?: boolean;
 }
 
+/**
+ * A Mac's switch in the size a grouped form uses (System Settings' rows,
+ * measured on macOS 27: native-sui-settings): a 36 by 16 track, and in it
+ * a white 20 by 12 capsule, 2 in from the track's edges, on the left while
+ * off and the right while on. Off, the track is `switch-off`, the grey a
+ * group's fill shows through; on, the accent. The knob has the faintest
+ * edge, no drop shadow. The keyboard's focus ring is the page's own
+ * (index.css), round as the track is.
+ */
 export function Switch({
   checked,
   onCheckedChange,
@@ -31,13 +40,10 @@ export function Switch({
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
-      // Off, a grey that still reads as a control on a white card (the
-      // quiet fill alone all but vanished there); on, the accent. The
-      // keyboard's focus ring is the page's own (index.css), round as the
-      // switch is. Disabled, faded, with no pointer.
-      className="relative h-6 w-10 shrink-0 rounded-full bg-muted/45 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent"
+      className="relative inline-flex h-4 w-9 shrink-0 items-center rounded-full bg-switch-off disabled:opacity-50 data-[state=checked]:bg-accent"
     >
-      <RadixSwitch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-sm shadow-black/20 transition-transform duration-150 data-[state=checked]:translate-x-[18px]" />
+      {/* Slides only once it is pressed, in under 200 ms (spec §2.8). */}
+      <RadixSwitch.Thumb className="block h-3 w-5 translate-x-0.5 rounded-full bg-white shadow-[0_0_0_0.5px_rgb(0_0_0/0.08)] transition-transform duration-150 data-[state=checked]:translate-x-3.5" />
     </RadixSwitch.Root>
   );
 }
