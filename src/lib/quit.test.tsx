@@ -65,15 +65,18 @@ describe("what the question says under its title", () => {
 });
 
 describe("listening for the question", () => {
-  function Listener({ onRequest }: { onRequest: () => void }) {
+  function Listener({ onRequest }: { onRequest: (question: number) => void }) {
     useQuitRequests(onRequest);
     return null;
   }
 
-  /** The commands the page sent, in order. */
-  function sent(): string[] {
-    return mockInvoke.mock.calls.map(([cmd]) => cmd);
+  /** The commands the page sent, in order, with their arguments. */
+  function sent(): unknown[][] {
+    return mockInvoke.mock.calls.map((call) => [...call]);
   }
+
+  const ASK = ["ask_before_quit", { ask: true }];
+  const STOP_ASKING = ["ask_before_quit", { ask: false }];
 
   it("tells Rust to ask before quitting once it listens, and not before", async () => {
     let finishListening: (() => void) | undefined;
@@ -89,40 +92,85 @@ describe("listening for the question", () => {
     expect(sent()).toEqual([]);
     finishListening?.();
 
-    await waitFor(() => expect(sent()).toEqual(["ask_before_quit"]));
+    await waitFor(() => expect(sent()).toEqual([ASK]));
   });
 
-  it("calls back each time Rust asks, with the newest callback it was handed", async () => {
+  it("calls back each time Rust asks, with the question's number and the newest callback it was handed", async () => {
     const rust = fakeMenuBar();
     const first = vi.fn();
     const second = vi.fn();
     const { rerender } = render(<Listener onRequest={first} />);
-    await waitFor(() => expect(sent()).toEqual(["ask_before_quit"]));
+    await waitFor(() => expect(sent()).toEqual([ASK]));
 
-    rust.hear(QUIT_REQUESTED_EVENT);
+    rust.hear(QUIT_REQUESTED_EVENT, 1);
     rerender(<Listener onRequest={second} />);
-    rust.hear(QUIT_REQUESTED_EVENT);
+    rust.hear(QUIT_REQUESTED_EVENT, 2);
 
-    expect(first).toHaveBeenCalledTimes(1);
-    expect(second).toHaveBeenCalledTimes(1);
+    expect(first.mock.calls).toEqual([[1]]);
+    expect(second.mock.calls).toEqual([[2]]);
     // Listened for once, however many renders.
-    expect(sent()).toEqual(["ask_before_quit"]);
+    expect(sent()).toEqual([ASK]);
   });
 
-  it("tells Rust nothing when it cannot listen, so that a quit quits at once", async () => {
+  it("tells Rust to stop asking when unmounted, so that a quit quits at once again", async () => {
+    const rust = fakeMenuBar();
+    const { unmount } = render(<Listener onRequest={() => {}} />);
+    await waitFor(() => expect(sent()).toEqual([ASK]));
+
+    unmount();
+
+    expect(sent()).toEqual([ASK, STOP_ASKING]);
+    expect(rust.listening()).toEqual([]);
+  });
+
+  it("tells Rust to stop asking when an error in drawing the page takes it down", async () => {
+    // Nothing catches the error: React takes the whole page down, and the
+    // question with it -- nobody would be there to ask.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const reported = vi.fn();
+    window.addEventListener("error", reported);
+    function Breaks({ now }: { now: boolean }) {
+      if (now) throw new Error("a row could not be drawn");
+      return null;
+    }
+    const rust = fakeMenuBar();
+    const page = (breaks: boolean) => (
+      <>
+        <Listener onRequest={() => {}} />
+        <Breaks now={breaks} />
+      </>
+    );
+    const { rerender } = render(page(false));
+    await waitFor(() => expect(sent()).toEqual([ASK]));
+
+    try {
+      rerender(page(true));
+    } catch {
+      // Thrown back out of the render by React's `act`, as it may be.
+    }
+
+    await waitFor(() => expect(sent()).toEqual([ASK, STOP_ASKING]));
+    expect(rust.listening()).toEqual([]);
+    window.removeEventListener("error", reported);
+    error.mockRestore();
+  });
+
+  it("tells Rust nothing when it cannot listen, so that a quit quits at once, and nothing when unmounted", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(listen).mockRejectedValueOnce("event.listen not allowed");
-    render(<Listener onRequest={() => {}} />);
+    const { unmount } = render(<Listener onRequest={() => {}} />);
 
     await waitFor(() => expect(error).toHaveBeenCalledWith("listening for Quit failed", expect.any(Error)));
+    expect(sent()).toEqual([]);
+    unmount();
     expect(sent()).toEqual([]);
     error.mockRestore();
   });
 
-  it("listens once under StrictMode, tells Rust once, and stops listening when unmounted", async () => {
+  it("listens once under StrictMode, tells Rust once, and when unmounted stops listening and tells Rust to stop", async () => {
     // StrictMode mounts, unmounts and mounts again at once: the first
     // mount's listening, which resolves after its unmount, is stopped
-    // then and tells Rust nothing.
+    // then, and tells Rust nothing, either way.
     const listening = new Set<EventCallback<unknown>>();
     vi.mocked(listen).mockImplementation(async (event, handler) => {
       expect(event).toBe(QUIT_REQUESTED_EVENT);
@@ -138,14 +186,30 @@ describe("listening for the question", () => {
         <Listener onRequest={onRequest} />
       </StrictMode>,
     );
-    await waitFor(() => expect(sent()).toEqual(["ask_before_quit"]));
+    await waitFor(() => expect(sent()).toEqual([ASK]));
     expect(listening.size).toBe(1);
 
-    for (const callback of listening) callback({ event: QUIT_REQUESTED_EVENT, id: 1, payload: null });
-    expect(onRequest).toHaveBeenCalledTimes(1);
+    for (const callback of listening) callback({ event: QUIT_REQUESTED_EVENT, id: 1, payload: 1 });
+    expect(onRequest.mock.calls).toEqual([[1]]);
 
     unmount();
     expect(listening.size).toBe(0);
-    expect(sent()).toEqual(["ask_before_quit"]);
+    expect(sent()).toEqual([ASK, STOP_ASKING]);
+  });
+
+  it("says why when Rust cannot be told to stop asking", async () => {
+    // Rust then asks a page that is gone, and quits once nothing has said
+    // the question is on screen (src-tauri/src/quit.rs).
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeMenuBar();
+    const { unmount } = render(<Listener onRequest={() => {}} />);
+    await waitFor(() => expect(sent()).toEqual([ASK]));
+    mockInvoke.mockRejectedValueOnce("the window is gone");
+
+    unmount();
+
+    await waitFor(() => expect(error).toHaveBeenCalledWith("ask_before_quit failed", new Error("the window is gone")),
+    );
+    error.mockRestore();
   });
 });

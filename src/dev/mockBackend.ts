@@ -43,6 +43,7 @@ export const MOCK_COMMANDS = [
   "report_update_set",
   "request_notification_permission",
   "ask_before_quit",
+  "quit_question_shown",
   "quit_anyway",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
@@ -499,10 +500,23 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // turns on as it does where permission is granted.
       return true;
     },
-    async ask_before_quit() {
+    async ask_before_quit(args) {
       // Nothing to ask before: the browser has no Quit of Canager's, and
       // the one `pnpm tauri:mock` shows is Rust's, which this page never
       // reaches, so it never hears the question (./mockTauriEvent.ts).
+      // Like the real command, it takes whether the page asks; Tauri turns
+      // anything else away.
+      if (typeof args.ask !== "boolean") {
+        throw `invalid args \`ask\` for command \`ask_before_quit\`: ${JSON.stringify(args.ask)}`;
+      }
+    },
+    async quit_question_shown(args) {
+      // No question is ever asked here (above), so none is on screen; like
+      // the real command, it takes a question's number, a `u64`.
+      const { question } = args;
+      if (typeof question !== "number" || !Number.isSafeInteger(question) || question < 0) {
+        throw `invalid args \`question\` for command \`quit_question_shown\`: ${JSON.stringify(question)}`;
+      }
     },
     async quit_anyway() {
       // Nothing to quit: a page cannot quit the browser, nor reach the Rust

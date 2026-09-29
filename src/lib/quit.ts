@@ -5,8 +5,10 @@
  * not done, Rust calls the quit off, brings the window back and sends
  * `QUIT_REQUESTED_EVENT`, and the page asks the user
  * (`QuitQuestion`): 「还有 N 个操作没完成」, 「继续等待」 or 「仍然退出」. Rust
- * asks only once the page has said it listens (`askBeforeQuit`), so that a
- * page that could not listen leaves quitting as it was.
+ * asks only while the page has said it listens (`askBeforeQuit`), so that a
+ * page that could not listen, or has gone, leaves quitting as it was; and
+ * Canager quits after all when the page does not say within 2 seconds that
+ * the question is on screen (`quitQuestionShown`).
  */
 import { useEffect, useRef } from "react";
 import { askBeforeQuit, onQuitRequested } from "./api";
@@ -62,13 +64,16 @@ export const QUIT_NO_CANCEL_KEYS: Record<OpKind, string> = {
 };
 
 /**
- * Calls `onRequest` each time Rust asks (`QUIT_REQUESTED_EVENT`), from
- * mount to unmount, and -- once the window listens, not before -- tells
- * Rust to ask from now on (`askBeforeQuit`). Should listening fail, Rust is
- * told nothing, and a quit quits at once, as it did before the page
- * could ask. Mounted once, by `QuitQuestion`.
+ * Calls `onRequest` with the question's number each time Rust asks
+ * (`QUIT_REQUESTED_EVENT`), from mount to unmount, and -- once the window
+ * listens, not before -- tells Rust to ask from now on (`askBeforeQuit`).
+ * Should listening fail, Rust is told nothing, and a quit quits at once, as
+ * it did before the page could ask. Unmounted -- as React takes the page
+ * down after an error in drawing it that nothing catches -- it tells Rust
+ * to stop asking: nobody would be there to answer, and a quit that Rust
+ * called off would never happen. Mounted once, by `QuitQuestion`.
  */
-export function useQuitRequests(onRequest: () => void): void {
+export function useQuitRequests(onRequest: (question: number) => void): void {
   // The newest `onRequest`, so that the window listens once, whatever the
   // component hands in from one render to the next.
   const latest = useRef(onRequest);
@@ -79,10 +84,10 @@ export function useQuitRequests(onRequest: () => void): void {
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
-    onQuitRequested(() => {
+    onQuitRequested((question) => {
       // Inert once unmounted, while the listening may still be under way
       // (StrictMode's first mount), as `useMenuCommands` is.
-      if (!cancelled) latest.current();
+      if (!cancelled) latest.current(question);
     })
       .then((stopListening) => {
         if (cancelled) {
@@ -90,7 +95,7 @@ export function useQuitRequests(onRequest: () => void): void {
           return;
         }
         stop = stopListening;
-        askBeforeQuit().catch((e: unknown) => {
+        askBeforeQuit(true).catch((e: unknown) => {
           // Rust then asks nothing: a quit quits at once.
           console.error("ask_before_quit failed", e);
         });
@@ -100,7 +105,16 @@ export function useQuitRequests(onRequest: () => void): void {
       });
     return () => {
       cancelled = true;
-      stop?.();
+      if (stop === undefined) return;
+      // Told to ask, Rust stops: quitting quits at once again. A mount
+      // that never listened -- StrictMode's first, one whose listening
+      // failed -- told Rust nothing, and has nothing to take back.
+      askBeforeQuit(false).catch((e: unknown) => {
+        // Rust then asks a page that is gone, and quits 2 seconds later,
+        // when nothing has said that the question is on screen.
+        console.error("ask_before_quit failed", e);
+      });
+      stop();
     };
   }, []);
 }

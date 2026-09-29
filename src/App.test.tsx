@@ -455,7 +455,9 @@ describe("quitting while an operation is under way", () => {
 
     expect(rust.listening()).toContain(QUIT_REQUESTED_EVENT);
     await waitFor(() =>
-      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "ask_before_quit")).toEqual([["ask_before_quit"]]),
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "ask_before_quit")).toEqual([
+        ["ask_before_quit", { ask: true }],
+      ]),
     );
   });
 
@@ -483,9 +485,15 @@ describe("quitting while an operation is under way", () => {
     await findByRole("heading", { level: 1, name: "Settings" });
     await waitFor(() => expect(rust.listening()).toContain(QUIT_REQUESTED_EVENT));
 
-    rust.hear(QUIT_REQUESTED_EVENT);
+    rust.hear(QUIT_REQUESTED_EVENT, 1);
 
     const dialog = await findByRole("dialog", { name: "1 operation hasn't finished" });
+    // On screen, and Rust is told so: it waits for the answer.
+    await waitFor(() =>
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_question_shown")).toEqual([
+        ["quit_question_shown", { question: 1 }],
+      ]),
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
     await waitFor(() =>
       expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_anyway")).toEqual([["quit_anyway"]]),

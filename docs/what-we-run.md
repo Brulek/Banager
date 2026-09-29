@@ -203,7 +203,12 @@ delegate as it starts (`guard_quitting` in `src-tauri/src/quit.rs`) and
 answers it at once, so a logout, restart or shutdown is called off rather
 than kept waiting, and has to be started again after *Quit anyway*.
 Nothing asks until the window has loaded and listens for the question,
-and a refresh alone never holds a quit (`src-tauri/src/quit.rs`,
+nor once the page has stopped listening, as it does when an error in
+drawing it takes it down; and once asked, the window has 2 seconds to
+say that the question is on screen, or Canager quits — a window that
+was reloaded or stopped working is not there to answer, and a quit
+called off with nobody to ask would never happen. A refresh alone never
+holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 `src/components/QuitQuestion.tsx`). Force Quit still quits at once.
 
 ## The daily check: off unless turned on

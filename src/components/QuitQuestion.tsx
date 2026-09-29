@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { quitAnyway } from "../lib/api";
+import { quitAnyway, quitQuestionShown } from "../lib/api";
 import { freshOperations, queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
 import { QUIT_NO_CANCEL_KEYS, quitBodyKey, useQuitRequests } from "../lib/quit";
@@ -27,6 +27,11 @@ import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
  * and goes away by itself once every one has finished: nothing is left to
  * wait for, and Canager stays, with how they went on the operation bar.
  *
+ * Once it is on screen, it tells Rust so, by the number of the newest
+ * question it answers (`quitQuestionShown`): Rust waits 2 seconds for
+ * that, then quits, since a page that never showed the question is not
+ * there for the user to answer.
+ *
  * Mounted once, by `App`. Draws nothing until Rust asks.
  */
 export function QuitQuestion() {
@@ -35,6 +40,8 @@ export function QuitQuestion() {
   const { data: operations } = useOperations();
   const nameOf = useOperationName(operations);
   const [asked, setAsked] = useState(false);
+  // The newest question from Rust that the sheet answers, by its number.
+  const [question, setQuestion] = useState<number | null>(null);
   const [quitting, setQuitting] = useState(false);
   const keepWaiting = useRef<HTMLButtonElement>(null);
 
@@ -53,10 +60,12 @@ export function QuitQuestion() {
     );
   }, []);
 
-  useQuitRequests(() => {
+  useQuitRequests((asking) => {
     const answer = (listed: OpSummary[] | undefined) => {
-      if ((listed ?? []).some(isActive)) setAsked(true);
-      else quit();
+      if ((listed ?? []).some(isActive)) {
+        setAsked(true);
+        setQuestion(asking);
+      } else quit();
     };
     freshOperations(queryClient).then(answer, (e: unknown) => {
       // The list as the page last heard it, then.
@@ -99,6 +108,7 @@ export function QuitQuestion() {
         </>
       }
     >
+      {question !== null && <OnScreen question={question} />}
       <p className="break-words text-body text-foreground">{t(quitBodyKey(active), { count })}</p>
       {active.filter(runsToItsEnd).map((op) => (
         <p key={op.id} className="mt-3 flex gap-2 text-body text-foreground">
@@ -108,4 +118,21 @@ export function QuitQuestion() {
       ))}
     </Dialog>
   );
+}
+
+/**
+ * Tells Rust that question `question` is on screen (`quitQuestionShown`),
+ * so that Canager waits for the user's answer rather than quitting: drawn
+ * inside the sheet, so that it says so once the sheet is in the page, and
+ * again for each question that comes while it is up.
+ */
+function OnScreen({ question }: { question: number }) {
+  useEffect(() => {
+    quitQuestionShown(question).catch((e: unknown) => {
+      // Canager then quits 2 seconds after asking, as it does with nobody
+      // here to answer.
+      console.error("quit_question_shown failed", e);
+    });
+  }, [question]);
+  return null;
 }

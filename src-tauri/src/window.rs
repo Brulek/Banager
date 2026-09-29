@@ -7,7 +7,7 @@
 //! window back as it was left. Canager quits only when asked to: Quit
 //! Canager (⌘Q), or Quit in the Dock icon's menu -- and while an operation
 //! is under way, only once the window has asked and the user has answered
-//! 「仍然退出」 (quit.rs).
+//! 「仍然退出」, or the window could not ask (quit.rs).
 //!
 //! The update notification (notify.rs) is the one exception to "as it was
 //! left". Canager hears no click on it, but a click brings Canager to the
@@ -285,8 +285,18 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) {
 /// update notification waits on the window (`notify::open_updates`). An
 /// error is the event's: the window is shown whatever becomes of it.
 pub fn show_and_tell<R: Runtime>(app: &AppHandle<R>, event: &str) -> tauri::Result<()> {
+    show_and_send(app, event, ())
+}
+
+/// `show_and_tell`, with `payload` for the page to read along with
+/// `event`: the question a quit asks, by its number (`quit::should_quit`).
+pub fn show_and_send<R: Runtime, S: serde::Serialize + Clone>(
+    app: &AppHandle<R>,
+    event: &str,
+    payload: S,
+) -> tauri::Result<()> {
     show(app);
-    app.emit_to(MAIN_WINDOW, event, ())
+    app.emit_to(MAIN_WINDOW, event, payload)
 }
 
 #[cfg(test)]

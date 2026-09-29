@@ -105,8 +105,9 @@ pub fn run() {
         // Whether an update notification waits on the window (window.rs):
         // set as one is handed off, cleared as the window comes back.
         .manage(window::NotificationPending::default())
-        // Whether a quit asks first (quit.rs): once the page listens for
-        // the question, and until the user answers 「仍然退出」.
+        // Whether a quit asks first (quit.rs): while the page listens for
+        // the question, until the user answers 「仍然退出」; and which
+        // questions the page has said are on screen.
         .manage(quit::QuitGuard::default())
         // Its items that act in the page bring the window back and tell it;
         // macOS carries out the rest itself.
@@ -131,6 +132,7 @@ pub fn run() {
             notify::report_update_set,
             notify::request_notification_permission,
             quit::ask_before_quit,
+            quit::quit_question_shown,
             quit::quit_anyway,
         ])
         .build(tauri::generate_context!())

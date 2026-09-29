@@ -251,31 +251,44 @@ export async function onOpenUpdates(onClick: () => void): Promise<() => void> {
  * bar's are, once the window is back on screen. On a Mac every way of
  * quitting reaches it -- Quit Canager (⌘Q), the Dock's Quit, a logout --
  * while an operation is not done, once the page has said it listens
- * (`askBeforeQuit`).
+ * (`askBeforeQuit`). Its payload is the question's number, which the page
+ * hands back once the question is on screen (`quitQuestionShown`).
  */
 export const QUIT_REQUESTED_EVENT = "quit://requested";
 
 /**
- * Calls `onQuit` each time Rust sends `QUIT_REQUESTED_EVENT`, and resolves
- * to what stops that once the window listens. `useQuitRequests` is the
- * caller.
+ * Calls `onQuit` with the question's number each time Rust sends
+ * `QUIT_REQUESTED_EVENT`, and resolves to what stops that once the window
+ * listens. `useQuitRequests` is the caller.
  */
-export async function onQuitRequested(onQuit: () => void): Promise<() => void> {
+export async function onQuitRequested(onQuit: (question: number) => void): Promise<() => void> {
   try {
-    return await listen(QUIT_REQUESTED_EVENT, () => onQuit());
+    return await listen<number>(QUIT_REQUESTED_EVENT, (event) => onQuit(event.payload));
   } catch (e) {
     throw asError(e);
   }
 }
 
 /**
- * Tells Rust that the page listens for `QUIT_REQUESTED_EVENT`: from now on
- * a quit asks first while an operation is not done (`ask_before_quit` in
- * src-tauri/src/quit.rs). Until then a quit quits at once, as it would
- * with no page to ask. `useQuitRequests` sends it once it listens.
+ * Tells Rust whether the page listens for `QUIT_REQUESTED_EVENT`
+ * (`ask_before_quit` in src-tauri/src/quit.rs): `true` once it does, and
+ * from then on a quit asks first while an operation is not done; `false`
+ * as it stops, and a quit quits at once again, as it would with no page
+ * to ask. `useQuitRequests` sends both.
  */
-export function askBeforeQuit(): Promise<void> {
-  return call<void>("ask_before_quit");
+export function askBeforeQuit(ask: boolean): Promise<void> {
+  return call<void>("ask_before_quit", { ask });
+}
+
+/**
+ * Tells Rust that question `question` (`QUIT_REQUESTED_EVENT`'s payload) is
+ * on screen, so that Canager waits for the user's answer
+ * (`quit_question_shown` in src-tauri/src/quit.rs). Without it, Canager
+ * quits 2 seconds after asking: nobody is there to answer. `QuitQuestion`
+ * sends it.
+ */
+export function quitQuestionShown(question: number): Promise<void> {
+  return call<void>("quit_question_shown", { question });
 }
 
 /**

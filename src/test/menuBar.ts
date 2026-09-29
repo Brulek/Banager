@@ -10,11 +10,13 @@ import { MENU_EVENTS, type MenuCommand } from "../lib/api";
  * the user chooses that item (src-tauri/src/menu.rs). Every other event
  * the page listens for is kept too, and `hear` sends one by its name: the
  * update notification's click (`OPEN_UPDATES_EVENT`), which Rust sends the
- * way it sends the menu bar's (src-tauri/src/notify.rs).
+ * way it sends the menu bar's (src-tauri/src/notify.rs), and the question
+ * before a quit (`QUIT_REQUESTED_EVENT`), with its number as `payload`
+ * (src-tauri/src/quit.rs).
  */
 export function fakeMenuBar(): {
   choose(command: MenuCommand): void;
-  hear(event: string): void;
+  hear(event: string, payload?: unknown): void;
   listening(): string[];
 } {
   const listeners = new Map<string, EventCallback<unknown>>();
@@ -24,10 +26,10 @@ export function fakeMenuBar(): {
       listeners.delete(event);
     };
   });
-  const hear = (event: string) => {
+  const hear = (event: string, payload: unknown = null) => {
     const handler = listeners.get(event);
     if (handler === undefined) throw new Error(`nothing listens for ${event}`);
-    act(() => handler({ event, id: 0, payload: null }));
+    act(() => handler({ event, id: 0, payload }));
   };
   return {
     choose(command) {

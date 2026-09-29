@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { QueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { fakeMenuBar } from "../test/menuBar";
 import { QUIT_REQUESTED_EVENT } from "../lib/api";
@@ -20,6 +20,13 @@ let operations: OpSummary[];
 let snapshot: Snapshot | null;
 // What `quit_anyway` answers: at once, unless a test holds it.
 let quitReply: () => Promise<void>;
+// What `quit_question_shown` answers: at once, unless a test fails it.
+let shownReply: () => Promise<void>;
+// Each `quit_question_shown` the page sent: the question's number, and
+// whether the sheet was in the page as it did.
+let shown: { question: unknown; onScreen: boolean }[];
+// The number Rust gave the newest question (`asked`).
+let questions: number;
 
 function op(id: number, name: string, status: OpStatus, extra: Partial<OpSummary> = {}): OpSummary {
   return {
@@ -49,13 +56,21 @@ beforeEach(() => {
   operations = [];
   snapshot = null;
   quitReply = () => Promise.resolve();
+  shownReply = () => Promise.resolve();
+  shown = [];
+  questions = 0;
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation((cmd: string) => {
+  mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
     if (cmd === "list_operations") return Promise.resolve(operations);
     // Never answered without a snapshot: an answer of nothing would be an
     // error to the query, which is not what these tests are about.
     if (cmd === "get_snapshot") return snapshot === null ? new Promise(() => {}) : Promise.resolve(snapshot);
     if (cmd === "quit_anyway") return quitReply();
+    if (cmd === "quit_question_shown") {
+      const { question } = args as { question: unknown };
+      shown.push({ question, onScreen: screen.queryByRole("dialog") !== null });
+      return shownReply();
+    }
     return Promise.resolve(undefined);
   });
 });
@@ -76,9 +91,16 @@ async function mounted() {
   return { rust, ...rendered };
 }
 
+/** Rust asks, as a quit comes, with the question's number, counting from 1. */
+function ask(rust: ReturnType<typeof fakeMenuBar>): number {
+  questions += 1;
+  rust.hear(QUIT_REQUESTED_EVENT, questions);
+  return questions;
+}
+
 /** Rust asks, as a quit comes while something is under way; resolves to the question. */
 async function asked(rust: ReturnType<typeof fakeMenuBar>, name: string | RegExp): Promise<HTMLElement> {
-  rust.hear(QUIT_REQUESTED_EVENT);
+  ask(rust);
   return screen.findByRole("dialog", { name });
 }
 
@@ -97,6 +119,7 @@ describe("the question before a quit", () => {
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(sent("quit_anyway")).toBe(0);
+    expect(sent("quit_question_shown")).toBe(0);
   });
 
   it("asks while an update runs: how many, what quitting does, and its two buttons, Keep waiting in focus", async () => {
@@ -151,6 +174,8 @@ describe("the question before a quit", () => {
     await asked(rust, "1 operation hasn't finished");
 
     expect(sent("quit_anyway")).toBe(0);
+    // Each time on screen, and said so, by the question it answers.
+    await waitFor(() => expect(shown.map(({ question }) => question)).toEqual([1, 2]));
   });
 
   it("quits on Quit anyway, both buttons held while it does", async () => {
@@ -199,10 +224,12 @@ describe("the question before a quit", () => {
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual(operations));
     operations = [op(1, "wget", "Done")];
 
-    rust.hear(QUIT_REQUESTED_EVENT);
+    ask(rust);
 
     await waitFor(() => expect(sent("quit_anyway")).toBe(1));
     expect(screen.queryByRole("dialog")).toBeNull();
+    // Nothing on screen, and nothing said: Canager is quitting.
+    expect(sent("quit_question_shown")).toBe(0);
   });
 
   it("goes by the backend's list when Rust asks, not one an event has not refetched yet", async () => {
@@ -240,11 +267,56 @@ describe("the question before a quit", () => {
     const { rust } = await mounted();
     await asked(rust, "1 operation hasn't finished");
 
-    rust.hear(QUIT_REQUESTED_EVENT);
-    rust.hear(QUIT_REQUESTED_EVENT);
+    ask(rust);
+    ask(rust);
 
     await waitFor(() => expect(sent("list_operations")).toBeGreaterThanOrEqual(3));
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    // The one sheet answers every quit: said so up to the newest, whose
+    // number stands for those before it (`QuitGuard::shown`).
+    await waitFor(() => expect(shown[shown.length - 1]).toEqual({ question: 3, onScreen: true }));
+    expect(shown.every(({ onScreen }) => onScreen)).toBe(true);
+  });
+
+  it("tells Rust the question is on screen once it is, by the number Rust gave it", async () => {
+    // Rust quits 2 seconds after asking unless told so: a page that never
+    // shows the question is not there to answer it (src-tauri/src/quit.rs).
+    operations = [op(1, "wget", "Running")];
+    const { rust } = await mounted();
+    questions = 6;
+
+    await asked(rust, "1 operation hasn't finished");
+
+    await waitFor(() => expect(shown).toEqual([{ question: 7, onScreen: true }]));
+  });
+
+  it("stays on screen, to be answered, when Rust cannot be told it is", async () => {
+    // Rust then quits once its wait is over, as it does with nobody here.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    shownReply = () => Promise.reject("quit_question_shown went wrong");
+    operations = [op(1, "wget", "Running")];
+    const { rust } = await mounted();
+
+    const dialog = await asked(rust, "1 operation hasn't finished");
+
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith("quit_question_shown failed", new Error("quit_question_shown went wrong")),
+    );
+    expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
+    expect(sent("quit_anyway")).toBe(0);
+    error.mockRestore();
+  });
+
+  it("stops Rust asking once it is gone from the page", async () => {
+    operations = [op(1, "wget", "Running")];
+    const { unmount } = await mounted();
+
+    unmount();
+
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "ask_before_quit")).toEqual([
+      ["ask_before_quit", { ask: true }],
+      ["ask_before_quit", { ask: false }],
+    ]);
   });
 
   it("says so of one that has started and that nothing can stop, and not of one still queued", async () => {
