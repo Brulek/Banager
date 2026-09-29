@@ -164,7 +164,6 @@
   },
   "updates": {
     "upToDate": "Everything is up to date",
-    "allHidden": "No updates to handle. The rest are hidden.",
     "noneCheckable": "No updates in the sources checked",
     "count_one": "{{count}} can be updated",
     "count_other": "{{count}} can be updated",
@@ -235,7 +234,11 @@
         "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
         "refused": "{{source}} updates itself and can't be updated here."
       }
-    }
+    },
+    "allHiddenTitle": "No updates to handle",
+    "allHiddenDescription": "The rest are hidden.",
+    "showHidden": "Show Hidden Updates",
+    "lastCheckedSentence": "{{when}}."
   },
   "commandPreview": {
     "show_one": "Show Command",

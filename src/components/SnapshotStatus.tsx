@@ -4,6 +4,7 @@ import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
 import { useUiStore } from "../store/ui";
+import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import { EmptyState, type EmptyStateDetail } from "./EmptyState";
 import { FirstCheck } from "./StatusRing";
 
@@ -31,6 +32,16 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
   // two states that found nothing. "Not found", never "not installed": a
   // tool with its own installer is looked for in its default location
   // only, so one somewhere else is not found although it is there.
+  // Why loading failed: in a person's words where the message says
+  // (`failureCause`, spec R10), else the message itself -- there is
+  // nothing else on the page to go by.
+  const whyFailed = (message: string): string => {
+    const cause = failureCause(message);
+    return cause !== null
+      ? t(FAILURE_CAUSE_KEYS[cause].line)
+      : t("emptyStates.loadFailed.description", { message });
+  };
+
   const supportedList = (title: string): EmptyStateDetail => ({
     label: t("common.details"),
     ariaLabel: t("common.detailsLabel", { title }),
@@ -47,9 +58,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
-        description={t("emptyStates.loadFailed.description", {
-          message: (checkError ?? snapshotQuery.error).message,
-        })}
+        description={whyFailed((checkError ?? snapshotQuery.error).message)}
         action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );
@@ -76,7 +85,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     return (
       <EmptyState
         title={t("emptyStates.loadFailed.title")}
-        description={t("emptyStates.loadFailed.description", { message: startupRefreshError })}
+        description={whyFailed(startupRefreshError)}
         action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
       />
     );

@@ -216,12 +216,12 @@ describe("App", () => {
         expected,
       );
       // Never a second one stacked under the header -- but for the
-      // Overview's status row, whose one button it is when there is
-      // nothing else to do there (everything is up to date here), as
-      // macOS's empty states offer one.
+      // Overview's status row and the Updates page's empty list, whose
+      // one button it is when there is nothing else to do there
+      // (everything is up to date here), as macOS's empty states offer one.
       const again = queryAllByRole("button", { name: /^(Check|Scan) Again$/ });
-      const inStatusRow = again.filter((button) => button.closest("[data-status]") !== null);
-      expect(inStatusRow).toHaveLength(name === "Overview" ? 1 : 0);
+      const inStatusRow = again.filter((button) => button.closest("[data-status], [data-empty-state]") !== null);
+      expect(inStatusRow).toHaveLength(name === "Overview" || name === "Updates" ? 1 : 0);
       expect(again.length - inStatusRow.length).toBe(expected.length);
     }
   });

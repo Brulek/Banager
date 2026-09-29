@@ -169,6 +169,7 @@ describe("the polish-3 copy rules, in English", () => {
       "updates.neverRemind",
       "updates.justUpdated.clear",
       "updates.showReasons",
+      "updates.showHidden",
       "commandPreview.show_one",
       "commandPreview.show_other",
       "sourceNotice.openOllama",

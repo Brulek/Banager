@@ -272,6 +272,23 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 
+  it("says why loading failed in a person's words where the message says, and no more", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
+    );
+    useUiStore.setState({ startupRefreshError: "No space left on device (os error 28)" });
+
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
+    expect(screen.getByText("The disk is full. Free up some space, then try again.")).toBeInTheDocument();
+    expect(screen.queryByText(/os error 28/)).toBeNull();
+  });
+
   it("keeps showing the data it has when a later refresh fails on a Mac that has refreshed before", async () => {
     // A Mac that has refreshed 412 times and whose npm is broken. Gating
     // the full-page load-failure surface on the startup error alone let one

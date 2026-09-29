@@ -477,7 +477,7 @@ describe("OverviewPage", () => {
             [
               "No updates in the sources checked",
               "Nothing to update here",
-              "No updates to handle. The rest are hidden.",
+              "No updates to handle",
             ].includes(element.textContent ?? ""),
         ),
       ).toBeInTheDocument(),

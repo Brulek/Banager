@@ -2139,9 +2139,7 @@ describe("UpdatesPage", () => {
 
     chooseFromMenu(await findRow("qwen3:8b"), "Skip This Version");
 
-    await findByText(
-      "No updates to handle. The rest are hidden.",
-    );
+    await findByText("No updates to handle");
     expect(savedSettings().skipped_versions).toEqual([{ key: qwenKey, version: digest }]);
     expect(container.textContent).not.toMatch(/sha256|5642e974/);
   });
@@ -2825,12 +2823,36 @@ describe("UpdatesPage", () => {
   it("says every update is hidden — not that everything is up to date — once each is skipped or never reminded about", async () => {
     settings.ignored_updates = [glibKey];
     settings.skipped_versions = [{ key: onyxKey, version: "5.1.0" }];
-    const { findByText, queryByText } = renderPage();
+    const { findByText, queryByText, getByRole } = renderPage();
 
-    await findByText(
-      "No updates to handle. The rest are hidden.",
-    );
+    await findByText("No updates to handle");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
+    // Where they are, one press away: Settings' hidden updates.
+    expect(getByRole("button", { name: "Show Hidden Updates" }).className).toBe(`mt-4 ${BUTTON.regular.grey}`);
+    fireEvent.click(getByRole("button", { name: "Show Hidden Updates" }));
+    expect(useUiStore.getState().page).toBe("settings");
+  });
+
+  it("says an empty list as macOS does: a 36 tertiary symbol, the title, one sentence, one grey button", async () => {
+    updates = [];
+    const { findByText, getByRole } = renderPage();
+
+    const title = await findByText("Everything is up to date");
+    const empty = title.closest("[data-empty-state]") as HTMLElement;
+    const symbol = empty.querySelector("svg") as SVGElement;
+    expect(symbol).toHaveAttribute("width", "36");
+    // Never green: nothing to do is not news to celebrate.
+    expect(symbol.getAttribute("class")).toContain("text-tertiary");
+    expect(symbol.getAttribute("class")).not.toContain("text-success");
+    expect(title).toHaveClass("text-section", "mt-6");
+    const sentence = title.nextElementSibling as HTMLElement;
+    expect(sentence.textContent).toMatch(/^Checked .*\.$/);
+    expect(sentence).toHaveClass("text-section", "font-normal", "text-muted", "mt-2", "max-w-90");
+    const again = within(empty).getByRole("button", { name: "Check Again" });
+    expect(again.className).toBe(`mt-4 ${BUTTON.regular.grey}`);
+    fireEvent.click(again);
+    await waitFor(() => expect(calls("refresh").length).toBeGreaterThan(0));
+    expect(getByRole("button", { name: "Check Again" })).toBe(again);
   });
 
   it("says everything is up to date only when the backend reports no updates at all", async () => {

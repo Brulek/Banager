@@ -43,7 +43,7 @@ describe("EmptyState", () => {
     expect(screen.getByText("Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeInTheDocument();
   });
 
-  it("renders as a status banner when variant is 'banner'", () => {
+  it("renders as a status banner when variant is 'banner': a 16 orange ⚠︎, the title, the sentence quieter", () => {
     renderWithProviders(
       <EmptyState
         title="Some checks didn't finish"
@@ -52,7 +52,43 @@ describe("EmptyState", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    const banner = screen.getByRole("status");
+    expect(banner.querySelector("svg")).toHaveAttribute("width", "16");
+    expect(banner.querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    expect(screen.getByText("1 check didn't finish, so Canager couldn't refresh everything.")).toHaveClass("text-muted");
+    // A line over the page, not a card: no fill of its own.
+    expect(banner.className).not.toMatch(/bg-/);
+  });
+
+  it("is centred in the list's area: a 36 symbol, 24 to the title, 8 to its sentence, 16 to its one button", () => {
+    renderWithProviders(
+      <EmptyState
+        symbol="check"
+        title="Everything is up to date"
+        description="Checked 3 min ago."
+        action={{ label: "Check Again", onClick: () => {} }}
+      />,
+    );
+
+    const title = screen.getByText("Everything is up to date");
+    const empty = title.closest("[data-empty-state]") as HTMLElement;
+    expect(empty).toHaveClass("h-full", "items-center", "justify-center", "text-center");
+    const symbol = empty.querySelector("svg") as SVGElement;
+    expect(symbol).toHaveAttribute("width", "36");
+    expect(symbol.getAttribute("class")).toContain("text-tertiary");
+    expect(title).toHaveClass("mt-6", "text-section", "text-muted");
+    expect(screen.getByText("Checked 3 min ago.")).toHaveClass("mt-2", "text-section", "font-normal", "max-w-90");
+    expect(screen.getByRole("button", { name: "Check Again" })).toHaveClass("mt-4", "bg-fill");
+  });
+
+  it("draws an ⓘ in a circle unless told there is nothing to do, and never in green", () => {
+    const { container, rerender } = renderWithProviders(<EmptyState title="No tools to manage" />);
+    const info = container.querySelector("svg") as SVGElement;
+    expect(info.querySelector("circle")).not.toBeNull();
+    expect(info.innerHTML).toContain("M12 11v5.5");
+    rerender(<EmptyState symbol="check" title="Everything is up to date" />);
+    expect(container.querySelector("svg")?.innerHTML).toContain("M8 12.4");
+    expect(container.innerHTML).not.toContain("text-success");
   });
   it("gives the action a visible button style, not bare text", () => {
     // EmptyState's action is the Retry button of the refresh-failed states

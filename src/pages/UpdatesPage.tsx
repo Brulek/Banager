@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
+import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
+import { elapsedSince } from "../lib/format";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
@@ -28,6 +29,8 @@ import { VirtualList } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
+import { EmptyState } from "../components/EmptyState";
+import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import {
   holdsRow,
   isRetryable,
@@ -44,7 +47,7 @@ import {
   unavailableDetail,
   updateVersionColumn,
 } from "../components/updateDetails";
-import { CheckCircleIcon, DisclosureIcon, InfoIcon } from "../components/icons";
+import { DisclosureIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
 import type {
   InstanceNote,
@@ -71,8 +74,8 @@ const ROW_ESTIMATE = 52;
 const SECTION_ESTIMATE = 32;
 const SUMMARY_ESTIMATE = 32;
 const NOTICE_ESTIMATE = 32;
-const JUST_UPDATED_ESTIMATE = 52;
-const JUST_UPDATED_LINE_ESTIMATE = 36;
+const JUST_UPDATED_ESTIMATE = 64;
+const JUST_UPDATED_LINE_ESTIMATE = 28;
 
 /** No update: what the page starts from until the snapshot and the settings are in. */
 const NO_UPDATES: UpdateCandidate[] = [];
@@ -259,6 +262,11 @@ export function UpdatesPage() {
   const opFinishedAt = useUiStore((s) => s.opFinishedAt);
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
   const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
+  const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
+  // The empty page's Check Again, the toolbar's own check, and when the
+  // last one was, to the minute.
+  const { checkAgain, checking } = useCheckAgain();
+  const now = useMinuteClock(snapshot?.refreshed_at ?? null);
 
   // "N more can't be updated here": folded until pressed.
   const [showCantUpdate, setShowCantUpdate] = useState(false);
@@ -725,33 +733,42 @@ export function UpdatesPage() {
   if (visibleUpdates.length === 0) {
     const upToDate =
       snapshot.updates.length === 0 && everySourceChecked(snapshot.instances, snapshot.errors);
-    const message =
-      snapshot.updates.length > 0
-        ? t("updates.allHidden")
-        : upToDate
-          ? t("updates.upToDate")
-          : t("updates.noneCheckable");
+    const refreshedAt = snapshot.refreshed_at;
+    // As macOS says an empty list (`EmptyState`): up to date, when the
+    // last check was, and Check Again; every update hidden, and where
+    // they are; nothing in what could be checked, over the notices that
+    // say what could not.
+    const empty =
+      snapshot.updates.length > 0 ? (
+        <EmptyState
+          title={t("updates.allHiddenTitle")}
+          description={t("updates.allHiddenDescription")}
+          action={{ label: t("updates.showHidden"), onClick: showHiddenUpdates }}
+        />
+      ) : upToDate ? (
+        <EmptyState
+          symbol="check"
+          title={t("updates.upToDate")}
+          description={
+            refreshedAt === null
+              ? undefined
+              : t("updates.lastCheckedSentence", {
+                  when: elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now)),
+                })
+          }
+          action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
+        />
+      ) : (
+        <EmptyState title={t("updates.noneCheckable")} />
+      );
     // The last update to go leaves this: what was just updated, over the
     // sentence that says nothing is left. Taller than the window, the page
     // scrolls in its box (`App`).
     return (
       <div className="flex min-h-full flex-col">
         {noticeLines}
-        {justUpdatedSection !== null ? <div className="px-2 pb-3">{justUpdatedSection}</div> : null}
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 pb-10 text-center">
-          {upToDate ? (
-            <CheckCircleIcon size={44} className="text-success" />
-          ) : (
-            <InfoIcon size={36} className="text-muted" />
-          )}
-          <p
-            className={
-              upToDate ? "text-section text-foreground" : "max-w-sm text-body text-muted"
-            }
-          >
-            {message}
-          </p>
-        </div>
+        {justUpdatedSection !== null ? <div className="px-5 pb-4 pt-3">{justUpdatedSection}</div> : null}
+        <div className="flex flex-1 flex-col">{empty}</div>
       </div>
     );
   }
@@ -949,7 +966,8 @@ export function UpdatesPage() {
             </div>
           ) : item.type === "justUpdated" ? (
             // Drawn anew each time the list is (`reusable`): it reads the clock.
-            <div className="px-2 pb-3">
+            // 20 in, as the rows are.
+            <div className="px-5 pb-4 pt-3">
               <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
             </div>
           ) : item.type === "section" ? (
