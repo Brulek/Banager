@@ -349,6 +349,7 @@
       "description": "打开{{source}}后，才能列出它安装的内容和更新。"
     },
     "openOllama": "打开Ollama",
+    "showTool": "查看",
     "openOllamaFailed": {
       "notInstalled": "“应用程序”中没有Ollama App。请从ollama.com下载并安装，然后点按“打开Ollama”。",
       "notInstalledDetail": "用Homebrew安装的ollama命令不包含此App。",

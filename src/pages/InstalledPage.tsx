@@ -551,6 +551,18 @@ export function InstalledPage() {
   useEffect(() => {
     setSelection((was) => (was === null || was.filter === activeFilter ? was : null));
   }, [activeFilter]);
+  // A notice's Show (`showInstalledTool`): its tool selected, and the
+  // focus on its row, scrolled into sight -- once the snapshot is here to
+  // find it in. After the effect above, so a source changed along with it
+  // does not unselect it again. A tool no longer listed selects nothing.
+  const inspectRequested = useUiStore((s) => s.inspectRequested);
+  useEffect(() => {
+    if (inspectRequested === null || !snapshot) return;
+    useUiStore.getState().inspectAnswered();
+    if (!artifactsById.has(inspectRequested)) return;
+    setSelection({ id: inspectRequested, filter: activeFilter });
+    listHandle.current?.focusKey(inspectRequested);
+  }, [inspectRequested, snapshot, artifactsById, activeFilter]);
   // Headings only while the list is sorted by source and shows every
   // source; a "N more components" line names its source only where the
   // list mixes sources and has no heading saying it.
@@ -1181,7 +1193,10 @@ export function InstalledPage() {
         selectable: false,
       });
     }
-    const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
+    // Without a Show: it would show what the inspector shows already.
+    const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0).map((notice) =>
+      notice.action?.id === "showTool" ? { ...notice, action: undefined } : notice,
+    );
     const line = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);
     const refusals = confirm.pageErrors.filter((item) => artifactKeyId(item.candidate.key) === id);

@@ -434,6 +434,53 @@ describe("App", () => {
     expect(within(getByRole("banner")).getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
   });
 
+  it("opens the Installed page on a launcher left without its program from the Overview's Show, the tool selected", async () => {
+    // Rows need a height to be drawn in jsdom.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("data-index") === null ? 600 : 56;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    const grok = {
+      ...snapshot.instances[0],
+      id: "standalone-grok",
+      adapter_id: "standalone-grok",
+      exe_path: "/Users/someone/.grok/bin/grok",
+      prefix: "/Users/someone/.grok",
+      version: null,
+      status: { unavailable: null, notes: ["LauncherOnly" as const] },
+    };
+    mockBackend({
+      ...snapshot,
+      instances: [...snapshot.instances, grok],
+      artifacts: [
+        ...snapshot.artifacts,
+        {
+          ...snapshot.artifacts[0],
+          key: { instance_id: grok.id, kind: "Binary", name: "grok" },
+          display_name: "Grok Build",
+          version: "",
+          description: null,
+          homepage: null,
+        },
+      ],
+    });
+    const { findByRole, getByRole } = renderWithProviders(<App />);
+
+    const problems = await findByRole("list", { name: "Needs attention" });
+    const problem = within(problems).getByText("Grok Build's program files are missing").closest("li") as HTMLElement;
+    // What the user can do about it in the app is its Uninstall…: Show
+    // leads there. Checking again is the toolbar's ⟳.
+    expect(within(problem).queryByRole("button", { name: "Check Again" })).toBeNull();
+    fireEvent.click(within(problem).getByRole("button", { name: "Show" }));
+
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent("Installed");
+    expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");
+    const inspector = await findByRole("complementary", { name: "Grok Build" });
+    expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Details: Grok Build" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(getByRole("banner")).getByRole("button", { name: "Check Again" })).toBeInTheDocument();
+  });
+
   it("hands the focus from an uninstall's confirmation to its log, and back to the row's Uninstall when the log closes", async () => {
     // The log drawer gives the focus back to what had it as it opened.
     // The Installed page opens it only once the confirmation has closed and

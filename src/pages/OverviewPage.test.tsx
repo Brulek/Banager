@@ -983,7 +983,7 @@ describe("OverviewPage", () => {
     expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
   });
 
-  it("gives each problem whose next step is checking again a Check Again of its own, and says the step without pointing at a button", async () => {
+  it("gives each problem whose next step is checking again a Check Again of its own, and a launcher left without its program a Show", async () => {
     const intel = instance("brew:/usr/local", "brew", {
       prefix: "/usr/local",
       exe_path: "/usr/local/bin/brew",
@@ -994,6 +994,7 @@ describe("OverviewPage", () => {
       prefix: "/Users/someone/.local/share/claude",
       status: { unavailable: null, notes: ["LauncherOnly"] },
     });
+    const claudeCode = { ...artifact({ instance_id: claude.id, kind: "Binary", name: "claude" }), display_name: "Claude Code" };
     served = snapshotWith({
       instances: [
         { ...brew, prefix: "/opt/homebrew", status: { unavailable: "NotResponding", notes: [] } },
@@ -1002,6 +1003,7 @@ describe("OverviewPage", () => {
         pip,
         stoppedOllama,
       ],
+      artifacts: [...snapshotWith().artifacts, claudeCode],
     });
     const { findByRole } = renderOverview();
 
@@ -1018,11 +1020,17 @@ describe("OverviewPage", () => {
       "Showing what Homebrew (Apple silicon) reported last time. Newer changes aren't shown. Check again later.",
     );
     expect(lines[1]).toHaveTextContent("This check used the old list. Check your internet connection, then try again.");
-    for (const line of lines.slice(0, 3)) {
+    for (const line of lines.slice(0, 2)) {
       const again = within(line).getByRole("button", { name: "Check Again" });
       expect(again.className).toContain(BUTTON.regular.grey);
       expect(line.textContent).not.toMatch(/click Check Again/i);
     }
+    // Claude Code's program files are gone: its way out in the app is its
+    // Uninstall…, so its button shows it on the Installed page. Checking
+    // again after a reinstall is the toolbar's ⟳.
+    const show = within(lines[2]).getByRole("button", { name: "Show" });
+    expect(show.className).toContain(BUTTON.regular.grey);
+    expect(within(lines[2]).queryByRole("button", { name: "Check Again" })).toBeNull();
     // Ollama's keeps its own.
     expect(within(lines[3]).getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
     expect(within(lines[3]).queryByRole("button", { name: "Check Again" })).toBeNull();
@@ -1031,6 +1039,11 @@ describe("OverviewPage", () => {
     mockInvoke.mockClear();
     fireEvent.click(within(lines[0]).getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+
+    // Show: the Installed page, asked to select Claude Code.
+    fireEvent.click(show);
+    expect(useUiStore.getState().page).toBe("installed");
+    expect(useUiStore.getState().inspectRequested).toBe(artifactKeyId(claudeCode.key));
   });
 
   it("names which Homebrew a row is about where this Mac has two, as the sidebar does", async () => {

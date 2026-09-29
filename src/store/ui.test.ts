@@ -137,6 +137,42 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().searchFocusRequested).toBe(false);
   });
 
+  it("opens the Installed page to select a tool, keeping only that tool's own source, with the search cleared", () => {
+    const grok: ArtifactKey = { instance_id: "standalone-grok", kind: "Binary", name: "grok" };
+    // From another page, on another source's list, mid-search: every
+    // source, no search, so the tool is in the list to select.
+    useUiStore.setState({ page: "overview", installedFilter: "brew:/opt/homebrew", query: "jq" });
+    useUiStore.getState().showInstalledTool(grok);
+    expect(useUiStore.getState()).toMatchObject({
+      page: "installed",
+      installedFilter: null,
+      query: "",
+      inspectRequested: artifactKeyId(grok),
+    });
+    useUiStore.getState().inspectAnswered();
+    expect(useUiStore.getState().inspectRequested).toBeNull();
+
+    // On the tool's own source already: it stays there.
+    useUiStore.setState({ installedFilter: grok.instance_id, query: "gr" });
+    useUiStore.getState().showInstalledTool(grok);
+    expect(useUiStore.getState().installedFilter).toBe(grok.instance_id);
+    expect(useUiStore.getState().query).toBe("");
+  });
+
+  it("drops a tool not yet selected once the window goes anywhere by any other way", () => {
+    const leave = [
+      () => useUiStore.getState().setPage("settings"),
+      () => useUiStore.getState().openInstalled(null),
+      () => useUiStore.getState().searchInstalled(),
+      () => useUiStore.getState().showHiddenUpdates(),
+    ];
+    for (const away of leave) {
+      useUiStore.getState().showInstalledTool(key);
+      away();
+      expect(useUiStore.getState().inspectRequested).toBeNull();
+    }
+  });
+
   it("toggleDependencies expands one source at a time", () => {
     // It used to be a single boolean, so unfolding pip's dependencies also
     // unfolded Homebrew's. Every row already carries the instance it came

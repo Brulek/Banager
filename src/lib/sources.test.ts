@@ -286,8 +286,10 @@ describe("sourceNoticesFor", () => {
     // The half-uninstalled state (program files gone, launcher dangling):
     // a warning because this launcher is broken; another PATH copy may
     // work. The row's own Uninstall moves the link, which the sentence
-    // says; the notice's button is Check again, the last step of the other
-    // way out (reinstall, or the files back from the Trash).
+    // says, and is the one way out done in the app: the notice's button
+    // shows the tool on the Installed page, where its Uninstall… is. Check
+    // again, after a reinstall or the files back from the Trash, is the
+    // toolbar's.
     const notices = sourceNoticesFor(
       { ...claude, status: { unavailable: null, notes: ["LauncherOnly"] } },
       "Claude Code",
@@ -299,9 +301,11 @@ describe("sourceNoticesFor", () => {
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
         values: { source: "Claude Code", command: "claude" },
-        action: { id: "checkAgain", labelKey: "header.checkAgain" },
+        action: { id: "showTool", labelKey: "sourceNotice.showTool", instanceId: "standalone-claude" },
       },
     ]);
+    expect(en.sourceNotice.showTool).toBe("Show");
+    expect(zhCN.sourceNotice.showTool).toBe("查看");
   });
 
   it("falls back to the whole exe_path as the command when it has no file name", () => {
@@ -423,7 +427,8 @@ describe("sourceNoticesFor", () => {
     // on the Installed page offers Uninstall (its artifact carries no
     // `uninstall_blocked` since step C), which cleans it up -- named by
     // its page, not as a button to press: the notice also stands on the
-    // Overview and the Updates page, where its one button is Check Again.
+    // Overview and the Updates page, where its one button is Show, which
+    // opens that page on the tool.
     expect(en.sourceNotice.launcherOnly.description).toBe(
       "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it.",
     );

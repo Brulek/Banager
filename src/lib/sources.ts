@@ -239,9 +239,18 @@ export function uninstallHoldKey(instance: ManagerInstance): string | null {
  * Something the notice offers to do about itself. An id, not a callback:
  * this module stays pure so every page can call it, and `SourceNotices`
  * wires the id to what carries it out -- `checkAgain` to the header's
- * Check again (`useCheckAgain`).
+ * Check again (`useCheckAgain`), `showTool` to the Installed page with
+ * the source's tool selected (`useShowSourceTool`).
  */
-export type SourceNoticeActionId = "openOllama" | "checkAgain";
+export type SourceNoticeActionId = "openOllama" | "checkAgain" | "showTool";
+
+/**
+ * A notice's button, as data: which action, and its words. `showTool`
+ * names the source whose tool it shows.
+ */
+export type SourceNoticeAction =
+  | { id: "openOllama" | "checkAgain"; labelKey: string }
+  | { id: "showTool"; labelKey: string; instanceId: string };
 
 /**
  * One notice a source needs rendered, as data: which i18n keys say it,
@@ -267,7 +276,7 @@ export interface SourceNoticeSpec {
   /** Interpolation values, already in the user's language. */
   values?: Record<string, string>;
   /** What the notice offers to do about itself, if anything. */
-  action?: { id: SourceNoticeActionId; labelKey: string };
+  action?: SourceNoticeAction;
 }
 
 /**
@@ -430,18 +439,20 @@ export function sourceNoticesFor(
       });
     } else if (note === "LauncherOnly") {
       // The half-uninstalled state: this launcher cannot run, so a
-      // warning. The row's own Uninstall finishes the job -- its preview
+      // warning. Of its three ways out, reinstalling and putting the files
+      // back from the Trash are done outside the app; the one done in it is
+      // the tool's own Uninstall, which finishes the job -- its preview
       // lists the program directory as already gone and moves the link
-      // (spec §3.3, §6.2) -- and the notice's button is the other way
-      // out's last step: Check again, once the tool is reinstalled or its
-      // files are back from the Trash.
+      // (spec §3.3, §6.2). So the notice's button shows the tool on the
+      // Installed page, selected, its Uninstall… in the inspector; Check
+      // again, the last step after a reinstall, is the toolbar's ⟳.
       notices.push({
         id: `${instance.id}:launcher-only`,
         variant: "warning",
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
-        action: { id: "checkAgain", labelKey: "header.checkAgain" },
+        action: { id: "showTool", labelKey: "sourceNotice.showTool", instanceId: instance.id },
       });
     } else {
       const unhandled: never = note;

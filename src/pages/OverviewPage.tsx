@@ -19,6 +19,7 @@ import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
+import { useShowSourceTool } from "../components/SourceNotices";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { Popover } from "../components/ui/Popover";
@@ -101,15 +102,17 @@ function nothingToUpdateLine(
  * the Updates and Installed pages give it (`sourceNoticesFor`, in their
  * words) -- a filled orange ⚠︎ for a warning, a muted ⓘ for news -- its
  * title, its description under it, and on the right its own button where
- * it has one: Open Ollama, Check again, wired as the lists wire theirs
- * (`SourceNotices`), Check again off while a check runs. A press of Open
- * Ollama that failed says so under the description, with its Details.
+ * it has one: Open Ollama, Check again, Show, wired as the lists wire
+ * theirs (`SourceNotices`), Check again off while a check runs. A press of
+ * Open Ollama that failed says so under the description, with its Details.
  */
 function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
   const { checkAgain, checking } = useCheckAgain();
-  const opensOllama = notice.action?.id === "openOllama";
+  const showTool = useShowSourceTool();
+  const action = notice.action;
+  const opensOllama = action?.id === "openOllama";
 
   let error: ReactNode = null;
   if (opensOllama && openOllamaApp.error) {
@@ -151,14 +154,20 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
           ) : null}
         </div>
       </div>
-      {notice.action ? (
+      {action ? (
         <button
           type="button"
-          onClick={opensOllama ? () => openOllamaApp.mutate() : checkAgain}
-          disabled={opensOllama ? false : checking}
+          onClick={
+            action.id === "openOllama"
+              ? () => openOllamaApp.mutate()
+              : action.id === "showTool"
+                ? () => showTool(action.instanceId)
+                : checkAgain
+          }
+          disabled={action.id === "checkAgain" && checking}
           className={BUTTON.regular.grey}
         >
-          {t(notice.action.labelKey)}
+          {t(action.labelKey)}
         </button>
       ) : null}
     </li>

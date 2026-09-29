@@ -41,6 +41,16 @@ export interface UiState {
   searchFocusRequested: boolean;
   searchInstalled(): void;
   searchFocused(): void;
+  // A notice's Show (a launcher left without its program): the Installed
+  // page with this tool selected, by artifact key id, its inspector open
+  // and the focus on its row, as soon as the page has its snapshot --
+  // at once, or once it has loaded -- which says so (`inspectAnswered`).
+  // The page opens on every source, or stays on this tool's own, with the
+  // search empty, so the tool is in the list; going to any page by any
+  // other way drops it, as it drops a search not yet focused.
+  inspectRequested: string | null;
+  showInstalledTool(key: ArtifactKey): void;
+  inspectAnswered(): void;
   // The Overview's 「2个已隐藏」: the Settings page, which brings its two
   // groups of hidden updates, 「已跳过的版本」 and 「不再提醒的工具」, into
   // view and puts the focus on the first one's title as soon as it is on
@@ -123,7 +133,7 @@ let logSeq = 0;
 export const useUiStore = create<UiState>((set) => ({
   // The Overview: what the Mac looks like at a glance, before any list.
   page: "overview",
-  setPage: (p) => set({ page: p, searchFocusRequested: false, hiddenUpdatesRequested: false }),
+  setPage: (p) => set({ page: p, searchFocusRequested: false, hiddenUpdatesRequested: false, inspectRequested: null }),
   query: "",
   setQuery: (q) => set({ query: q }),
   installedFilter: null,
@@ -137,23 +147,37 @@ export const useUiStore = create<UiState>((set) => ({
       query: "",
       searchFocusRequested: false,
       hiddenUpdatesRequested: false,
+      inspectRequested: null,
     }),
   searchFocusRequested: false,
   searchInstalled: () =>
     set((s) =>
       s.page === "installed"
-        ? { searchFocusRequested: true }
+        ? { searchFocusRequested: true, inspectRequested: null }
         : {
             page: "installed",
             installedFilter: null,
             query: "",
             searchFocusRequested: true,
             hiddenUpdatesRequested: false,
+            inspectRequested: null,
           },
     ),
   searchFocused: () => set({ searchFocusRequested: false }),
+  inspectRequested: null,
+  showInstalledTool: (key) =>
+    set((s) => ({
+      page: "installed",
+      installedFilter: s.installedFilter === key.instance_id ? key.instance_id : null,
+      query: "",
+      searchFocusRequested: false,
+      hiddenUpdatesRequested: false,
+      inspectRequested: artifactKeyId(key),
+    })),
+  inspectAnswered: () => set({ inspectRequested: null }),
   hiddenUpdatesRequested: false,
-  showHiddenUpdates: () => set({ page: "settings", searchFocusRequested: false, hiddenUpdatesRequested: true }),
+  showHiddenUpdates: () =>
+    set({ page: "settings", searchFocusRequested: false, hiddenUpdatesRequested: true, inspectRequested: null }),
   hiddenUpdatesShown: () => set({ hiddenUpdatesRequested: false }),
   expandedDependencies: [],
   toggleDependencies: (instanceId) =>

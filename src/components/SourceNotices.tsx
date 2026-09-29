@@ -1,8 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useOpenOllamaApp } from "../lib/queries";
-import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
+import { useCheckAgain, useOpenOllamaApp, useSnapshot } from "../lib/queries";
+import {
+  openOllamaErrorDetail,
+  openOllamaErrorMessage,
+  type SourceNoticeAction,
+  type SourceNoticeSpec,
+} from "../lib/sources";
+import { useUiStore } from "../store/ui";
 import { NOTICE_GRID, SourceNotice, SourceNoticeLine, type NoticeGrid } from "./SourceNotice";
 import { DisclosureIcon } from "./icons";
 import { InfoDetail } from "./InfoDetail";
@@ -18,6 +24,24 @@ const FOLD_TOGGLE_CLASS = "inline-flex shrink-0 items-center rounded-sm text-bod
 /** The fold's triangle: ▸ while the lines are folded, ▾ once they show. */
 function FoldTriangle({ expanded }: { expanded: boolean }) {
   return <DisclosureIcon size={10} className={expanded ? "shrink-0 rotate-90" : "shrink-0"} />;
+}
+
+/**
+ * A notice's Show (`showTool`): the Installed page with the source's tool
+ * selected, its inspector open -- a standalone tool's one row, or else the
+ * source's first that no other software brought in -- or, with nothing of
+ * the source's listed, the page on that source alone, which says why.
+ */
+export function useShowSourceTool(): (instanceId: string) => void {
+  const { data: snapshot } = useSnapshot();
+  const showInstalledTool = useUiStore((s) => s.showInstalledTool);
+  const openInstalled = useUiStore((s) => s.openInstalled);
+  return (instanceId) => {
+    const listed = (snapshot?.artifacts ?? []).filter((artifact) => artifact.key.instance_id === instanceId);
+    const tool = listed.find((artifact) => artifact.reason !== "Dependency") ?? listed[0];
+    if (tool === undefined) openInstalled(instanceId);
+    else showInstalledTool(tool.key);
+  };
 }
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */
@@ -70,7 +94,8 @@ export interface SourceNoticesProps {
 /**
  * Renders the notices `sourceNoticesFor` decided a source needs, and wires
  * each one's action to what carries it out: Open Ollama to its mutation,
- * Check again to the header's (`useCheckAgain`), off while a check runs.
+ * Check again to the header's (`useCheckAgain`), off while a check runs,
+ * and Show to the Installed page's inspector (`useShowSourceTool`).
  *
  * The split is deliberate: `sourceNoticesFor` (src/lib/sources.ts) decides
  * *what* to say from the instance alone and is pure, this decides how to
@@ -95,6 +120,7 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   // The header's Check again, and off when that one is: pressed while a
   // check runs, it would queue a second one after it.
   const { checkAgain, checking } = useCheckAgain();
+  const showTool = useShowSourceTool();
   const linesId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   // Set by the fold's own button, and only by it: the lines folding up
@@ -126,17 +152,25 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
       );
   }
 
+  const button = (action: SourceNoticeAction) => {
+    const label = t(action.labelKey);
+    switch (action.id) {
+      case "openOllama":
+        return { label, onClick: () => openOllamaApp.mutate() };
+      case "showTool":
+        return { label, onClick: () => showTool(action.instanceId) };
+      case "checkAgain":
+        return { label, onClick: checkAgain, disabled: checking };
+    }
+  };
+
   const noticeView = (notice: SourceNoticeSpec, trailing?: ReactNode) => {
     const title = t(notice.titleKey, notice.values);
     const props = {
       variant: notice.variant,
       title,
       description: t(notice.descriptionKey, notice.values),
-      action: notice.action
-        ? notice.action.id === "openOllama"
-          ? { label: t(notice.action.labelKey), onClick: () => openOllamaApp.mutate() }
-          : { label: t(notice.action.labelKey), onClick: checkAgain, disabled: checking }
-        : undefined,
+      action: notice.action ? button(notice.action) : undefined,
       // Only the notice whose button failed says so.
       error: notice.action?.id === "openOllama" ? openOllamaError : undefined,
     };

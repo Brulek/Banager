@@ -1366,6 +1366,39 @@ describe("InstalledPage", () => {
       expect(screen.getByText(line)).toBeInTheDocument();
     });
 
+    it("selects a launcher left without its program from its notice's Show, the search cleared, and leaves Show out of its inspector", async () => {
+      served = {
+        ...snapshot,
+        instances: [brew, { ...claudeInstance, status: { unavailable: null, notes: ["LauncherOnly"] } }],
+        artifacts: [...snapshot.artifacts, { ...claudeArtifact, version: "", path: null }],
+        updates: [],
+      };
+      // A search that hides its row: Show brings it back into the list.
+      useUiStore.setState({ query: "jq" });
+      renderInstalled();
+
+      await findRow("jq");
+      expect(screen.queryByText("Claude Code", { selector: "[data-tool-row] p" })).toBeNull();
+      // The list's first line: the notice, whose one button is Show.
+      const title = screen.getByText("Claude Code's program files are missing");
+      const line = title.closest("[data-notice-line]") as HTMLElement;
+      expect(within(line).queryByRole("button", { name: "Check Again" })).toBeNull();
+      fireEvent.click(within(line).getByRole("button", { name: "Show" }));
+
+      // Selected, its inspector open, the focus on its row.
+      const inspector = await screen.findByRole("complementary", { name: "Claude Code" });
+      expect(useUiStore.getState().query).toBe("");
+      expect(useUiStore.getState().inspectRequested).toBeNull();
+      const row = rowOf("Claude Code");
+      expect(row).toHaveAttribute("data-selected");
+      await waitFor(() => expect(document.activeElement).toBe(row));
+      // Its Uninstall… there, and the notice once more under it -- without
+      // a Show, which would show what the inspector shows already.
+      expect(within(inspector).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
+      expect(within(inspector).getByText("Claude Code's program files are missing")).toBeInTheDocument();
+      expect(within(inspector).queryByRole("button", { name: "Show" })).toBeNull();
+    });
+
     it("says nothing about updates for a launcher left without its program: there was no version to check", async () => {
       served = {
         ...snapshot,
