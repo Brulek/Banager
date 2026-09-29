@@ -601,7 +601,7 @@
     },
     "includeSelfUpdating": {
       "label": "Show apps that update themselves",
-      "description": "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too."
+      "description": "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates."
     },
     "autoCheck": {
       "label": "Check for updates every day",

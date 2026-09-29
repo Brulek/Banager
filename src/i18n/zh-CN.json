@@ -550,7 +550,7 @@
     },
     "includeSelfUpdating": {
       "label": "显示会自行更新的App",
-      "description": "打开“显示会自行更新的App”后，Homebrew安装的Chrome等App也会列在“更新”中。"
+      "description": "在“更新”中也显示通过Homebrew安装、会自行更新的App，例如Chrome。"
     },
     "autoCheck": {
       "label": "每天自动检查",

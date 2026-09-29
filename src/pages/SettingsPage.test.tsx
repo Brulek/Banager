@@ -865,7 +865,7 @@ describe("SettingsPage", () => {
     expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
     expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
-      "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too.",
+      "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates.",
     );
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toBeInTheDocument();
     expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
@@ -964,11 +964,12 @@ describe("SettingsPage", () => {
     expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);
     expect(daily).toHaveAccessibleDescription(what.textContent ?? "");
     // After the container, not in it: the footnote, in small muted text,
-    // naming the switch it is about.
+    // saying which apps the switch above it adds -- the switch's
+    // description, so its name need not be said again.
     const group = screen.getByRole("heading", { level: 2, name: "Updates" }).nextElementSibling as HTMLElement;
     const footnote = group.nextElementSibling as HTMLElement;
     expect(footnote).toHaveTextContent(
-      "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too.",
+      "Also list apps installed with Homebrew that update themselves, like Chrome, under Updates.",
     );
     expect(footnote.className.split(" ")).toEqual(
       expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "leading-4", "text-muted"]),
@@ -999,8 +1000,13 @@ describe("SettingsPage", () => {
     expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", about: "关于" });
     expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自行更新的App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
-    // its line names Homebrew.
+    // its line names Homebrew; it is the switch's description, so it
+    // does not say the switch's name over again.
+    expect(zhCN.settings.includeSelfUpdating.description).toBe(
+      "在“更新”中也显示通过Homebrew安装、会自行更新的App，例如Chrome。",
+    );
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");
+    expect(zhCN.settings.includeSelfUpdating.description).not.toContain(zhCN.settings.includeSelfUpdating.label);
     // An empty group of hidden updates says so in one word, as System
     // Settings' lists do.
     expect(zhCN.settings.hiddenNone).toBe("无");
