@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
+import { BUTTON } from "../components/ui/controls";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { queryKeys } from "../lib/queries";
 import { loadToolIcons } from "../lib/toolIcons";
@@ -2323,7 +2324,8 @@ describe("UpdatesPage", () => {
         const glib = await findRow("glib");
         expect(await within(glib).findByText(text)).toBeInTheDocument();
         const retry = within(glib).getByRole("button", { name: "Retry" });
-        expect(retry).toHaveAttribute("data-tone", "accent");
+        // The look Update had: a row's regular grey button (`RowAction`).
+        expect(retry.className).toBe(BUTTON.regular.grey);
         expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
         // Still a row it can update: its checkbox stays.
         expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
@@ -3165,11 +3167,15 @@ describe("UpdatesPage", () => {
       expect(within(dialog).queryByRole("button", { name: /more$/ })).toBeNull();
     });
 
-    it("keeps a row's Update the accent: the thing this page recommends", async () => {
+    it("gives a row's Update the regular grey look, and the accent to Update all alone", async () => {
+      // One accent button on the page: what it asks for as a whole. Every
+      // row offers its own the same way, grey.
       renderWithProviders(<UpdatesPage />);
 
       const update = within(await findRow("glib")).getByRole("button", { name: "Update" });
-      expect(update).toHaveAttribute("data-tone", "accent");
+      expect(update.className).toBe(BUTTON.regular.grey);
+      expect(screen.getByRole("button", { name: "Update all" }).className).toBe(BUTTON.regular.default);
+      expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
     });
 
     it("puts the focus on Update as it opens, and gives it back to the row's Update when cancelled", async () => {

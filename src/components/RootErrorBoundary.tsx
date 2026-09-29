@@ -1,7 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNoBrowserContextMenu } from "../lib/contextMenu";
-import { SHEET_BUTTON } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
 
 interface RootErrorBoundaryProps {
   children: ReactNode;
@@ -49,7 +49,7 @@ function PageFailed({ reload }: { reload: () => void }) {
       <p role="alert" className="max-w-[460px] break-words text-center text-body">
         {t("app.failed")}
       </p>
-      <button type="button" onClick={reload} className={SHEET_BUTTON.primary}>
+      <button type="button" onClick={reload} className={BUTTON.large.default}>
         {t("app.reload")}
       </button>
     </div>

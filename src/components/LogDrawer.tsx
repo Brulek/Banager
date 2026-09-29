@@ -16,7 +16,7 @@ import {
 } from "../lib/operations";
 import { adapterIdOf, adapterLabel } from "../lib/sources";
 import { Drawer } from "./ui/Drawer";
-import { SHEET_BUTTON } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
 import { ScrollArea } from "./ui/ScrollArea";
 import { ToolAvatar } from "./ToolAvatar";
 import { OutcomeIcon } from "./OutcomeIcon";
@@ -149,7 +149,7 @@ export function LogDrawer() {
             type="button"
             onClick={() => cancelMutation.mutate(op.id)}
             disabled={cancel === "disabled"}
-            className={SHEET_BUTTON.secondary}
+            className={BUTTON.large.grey}
           >
             {t(OP_CANCEL_KEYS[op.kind])}
           </button>

@@ -19,13 +19,16 @@ import { useUiStore } from "../store/ui";
 import type { OpSummary } from "../lib/types";
 import { OutcomeIcon } from "./OutcomeIcon";
 import { CloseIcon, SpinnerIcon } from "./icons";
+import { BUTTON, ICON_BUTTON } from "./ui/controls";
 
-const LINK_BUTTON =
-  "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
-const CANCEL_BUTTON =
-  "h-7 shrink-0 rounded-button border border-border bg-surface px-3 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface";
-const DISMISS_BUTTON =
-  "-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-button text-muted outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent";
+/**
+ * The bar's buttons: View log and Cancel small and grey, as a status
+ * line's are (spec §3.5), and its close × an icon button, drawn to the
+ * bar's edge.
+ */
+const VIEW_LOG_BUTTON = BUTTON.small.grey;
+const CANCEL_BUTTON = BUTTON.small.grey;
+const DISMISS_BUTTON = `-mr-1.5 ${ICON_BUTTON}`;
 
 /** Whether an ending is one to look at: its log is offered beside it. */
 function needsALook(tone: OutcomeTone): boolean {
@@ -88,7 +91,7 @@ export function OperationBar() {
     setDrawerOpen(true);
   };
   const viewLog = (op: OpSummary) => (
-    <button type="button" onClick={() => openLog(op)} className={LINK_BUTTON}>
+    <button type="button" onClick={() => openLog(op)} className={VIEW_LOG_BUTTON}>
       {t("common.viewLog")}
     </button>
   );

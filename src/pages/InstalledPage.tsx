@@ -49,6 +49,7 @@ import {
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
 import { CheckIcon, ChevronIcon, SearchIcon } from "../components/icons";
+import { BUTTON } from "../components/ui/controls";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), and a "N more components" line. Each slot then measures itself
@@ -720,9 +721,7 @@ export function InstalledPage() {
         version={versionOf(artifact)}
         action={
           canUninstall(artifact, instance) ? (
-            // Offered, not recommended: the quiet look (`RowAction`).
             <RowAction
-              tone="quiet"
               disabled={uninstallHeld(artifact, instance)}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
             >
@@ -810,13 +809,13 @@ export function InstalledPage() {
       removable || updatable ? (
         <>
           {removable ? (
-            // As quiet as the row's, beside the accent of Update.
+            // Grey beside Update's accent, as the row's is: offered, not
+            // recommended, and not red (`RowAction`).
             <button
               type="button"
-              data-tone="quiet"
               disabled={uninstallHeld(artifact, instance)}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
-              className="rounded-button border border-border bg-surface px-3.5 py-1.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-surface disabled:hover:text-muted"
+              className={BUTTON.large.grey}
             >
               {uninstallUnderway(artifact) ?? t("installed.uninstall")}
             </button>
@@ -829,7 +828,7 @@ export function InstalledPage() {
               type="button"
               onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
               disabled={confirm.dialogOpen}
-              className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50"
+              className={BUTTON.large.default}
             >
               {progress === null ? t("updates.update") : t("updates.retry")}
             </button>

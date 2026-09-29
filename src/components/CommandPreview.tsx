@@ -5,6 +5,7 @@ import { displayToken } from "../lib/format";
 import { useSettings } from "../lib/queries";
 import type { PlanAction } from "../lib/types";
 import { ChevronIcon } from "./icons";
+import { LINK } from "./ui/controls";
 
 /** One plan a confirmation is about, for its preview. */
 export interface PlanPreview {
@@ -99,7 +100,7 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
             aria-expanded={open}
             aria-controls={open ? panelId : undefined}
             onClick={() => setChosen(!open)}
-            className="-ml-1 inline-flex items-center gap-1 rounded-button px-1 py-0.5 text-small font-medium text-accent-text outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            className={`-ml-1 inline-flex items-center gap-1 px-1 py-0.5 text-small ${LINK}`}
           >
             <ChevronIcon size={14} className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
             {t("commandPreview.show", { count: commands.length })}

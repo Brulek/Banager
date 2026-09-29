@@ -4,6 +4,7 @@ import { artifactKeyId } from "../store/ui";
 import type { ArtifactKey, OpSummary } from "../lib/types";
 import { CheckIcon } from "./icons";
 import { ToolAvatar } from "./ToolAvatar";
+import { BUTTON } from "./ui/controls";
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
 export interface JustUpdatedEntry {
@@ -121,7 +122,7 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           type="button"
           onClick={onClear}
           aria-label={t("updates.justUpdated.clearLabel")}
-          className="rounded-sm px-1 text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+          className={BUTTON.small.grey}
         >
           {t("updates.justUpdated.clear")}
         </button>

@@ -16,7 +16,8 @@ import { CommandPreview } from "./CommandPreview";
 import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
 import { WarningIcon } from "./icons";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
-import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
+import { Dialog } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
 
 export interface UninstallDialogProps {
   open: boolean;
@@ -34,7 +35,8 @@ export interface UninstallDialogProps {
  * The uninstall confirmation, as a sheet: 「卸载 Claude Code？」, the tool
  * with its avatar and, under it, the one sentence its source's uninstall
  * has about what goes and what stays (`Warning.UninstallScope`), what the
- * uninstall does in three groups, then Cancel and a red Uninstall --
+ * uninstall does in three groups, then Cancel and Uninstall as the
+ * default button -- the accent, not red: the user chose it (HIG) --
  * 「永久卸载」 where a line says the uninstall deletes something for good
  * (`deletesForGood`): rustup's own, and a cask whose recorded uninstall
  * deletes paths.
@@ -238,14 +240,14 @@ export function UninstallDialog({
       onClosed={onClosed}
       footer={
         <>
-          <button ref={cancelRef} type="button" onClick={() => onOpenChange(false)} className={SHEET_BUTTON.secondary}>
+          <button ref={cancelRef} type="button" onClick={() => onOpenChange(false)} className={BUTTON.large.grey}>
             {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={!plan || hasAffected || submitMutation.isPending}
-            className={SHEET_BUTTON.danger}
+            className={BUTTON.large.default}
           >
             {t(permanent ? "uninstall.confirmPermanent" : "uninstall.confirm")}
           </button>

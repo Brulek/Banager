@@ -8,7 +8,11 @@ export interface DialogProps {
   /** The question, as the sheet's name: 「卸载 Claude Code？」, "Update 3 tools?". */
   title: string;
   children: ReactNode;
-  /** The buttons, at the foot: the quiet one first, then the one it asks for (`SHEET_BUTTON`). */
+  /**
+   * The buttons, at the foot: the grey one first, then the one it asks
+   * for, the default button -- large, both (`BUTTON.large` in
+   * ./controls.ts), and never red, removing something included.
+   */
   footer?: ReactNode;
   /**
    * What gets the focus back when it closes: what opened it -- a row's
@@ -27,20 +31,6 @@ export interface DialogProps {
   /** Called once it has closed and handed the focus back. */
   onClosed?: () => void;
 }
-
-/**
- * The buttons at a sheet's foot: the quiet one (Cancel, Close), the one it
- * asks for (Update), and the one it asks for when that removes something
- * (Uninstall), which is the only red button in the app.
- */
-export const SHEET_BUTTON = {
-  secondary:
-    "h-8 rounded-button border border-border bg-surface px-4 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface",
-  primary:
-    "h-8 min-w-20 rounded-button bg-accent px-4 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:hover:bg-accent",
-  danger:
-    "h-8 min-w-20 rounded-button bg-danger px-4 text-body font-semibold text-white outline-none transition-colors hover:bg-danger/90 focus-visible:ring-2 focus-visible:ring-danger focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:hover:bg-danger",
-} as const;
 
 /**
  * A calm sheet for a question that needs an answer before anything runs:

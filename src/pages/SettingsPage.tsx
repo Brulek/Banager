@@ -9,6 +9,7 @@ import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/typ
 import { artifactKeyId, useUiStore } from "../store/ui";
 import { Switch } from "../components/ui/Switch";
 import { IconCreditsDrawer } from "../components/IconCreditsDrawer";
+import { BUTTON } from "../components/ui/controls";
 
 const LANGUAGES: Language[] = ["System", "En", "ZhCn"];
 
@@ -18,9 +19,8 @@ function languageLabelKey(lang: Language): string {
   return "settings.language.chinese";
 }
 
-/** A row's own button: Stop skipping, Remind me again, View. */
-const ROW_BUTTON =
-  "h-7 shrink-0 rounded-button border border-border bg-surface px-3 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent";
+/** A row's own button: Stop skipping, Remind me again, View -- a regular grey one (`BUTTON`). */
+const ROW_BUTTON = BUTTON.regular.grey;
 
 /**
  * One group of settings: its title in the section style, over a card that

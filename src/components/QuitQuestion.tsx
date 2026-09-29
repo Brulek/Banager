@@ -7,7 +7,8 @@ import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
 import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "../lib/quit";
 import type { OpSummary } from "../lib/types";
 import { WarningIcon } from "./icons";
-import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
+import { Dialog } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
 
 /**
  * The question a quit asks while an operation is under way
@@ -107,7 +108,7 @@ export function QuitQuestion() {
       initialFocus={keepWaitingButton}
       footer={
         <>
-          <button type="button" disabled={quitting} onClick={quit} className={SHEET_BUTTON.secondary}>
+          <button type="button" disabled={quitting} onClick={quit} className={BUTTON.large.grey}>
             {t("quit.quitAnyway")}
           </button>
           <button
@@ -115,7 +116,7 @@ export function QuitQuestion() {
             type="button"
             disabled={quitting}
             onClick={keepWaiting}
-            className={SHEET_BUTTON.primary}
+            className={BUTTON.large.default}
           >
             {t("quit.keepWaiting")}
           </button>

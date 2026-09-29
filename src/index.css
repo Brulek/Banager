@@ -85,9 +85,11 @@
   --color-switch-off: rgb(0 0 0 / 0.11);
   --color-overlay: rgb(0 0 0 / 0.2);
 
-  /* controlAccentColor's default; the user's own accent below. */
+  /* controlAccentColor's default; the user's own accent below. Pressed,
+     a default button darkens by 15% (`BUTTON` in
+     src/components/ui/controls.ts); nothing changes under the pointer. */
   --color-accent: #007aff;
-  --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, black);
+  --color-accent-pressed: color-mix(in srgb, var(--color-accent) 85%, black);
   --color-accent-foreground: #ffffff;
   /* The accent as the colour of text (linkColor): blue at 5.3:1 on white,
      where the accent itself would read at 4:1. */
@@ -237,6 +239,22 @@ input,
 textarea {
   -webkit-user-select: text;
   user-select: text;
+}
+
+/*
+ * The keyboard's focus, the one way for everything: a 3px ring in
+ * keyboardFocusIndicatorColor, drawn around the edge of what has it and
+ * following its corners -- a button's 6, a large button's round ends --
+ * as AppKit draws it. Only for the keyboard (`:focus-visible`): a click
+ * draws nothing. In the base layer, so that `outline-none` still turns it
+ * off where something takes the focus only to hand it on: a page's title
+ * (`focusOrFallback`), a dialog's own box.
+ */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 0;
+  }
 }
 
 /* Selected text is highlighted as a Mac highlights it

@@ -9,6 +9,7 @@ import {
 import { MoreIcon } from "../icons";
 import { useDismiss, usePlacement } from "./floating";
 import { focusOrFallback } from "./focus";
+import { ICON_BUTTON } from "./controls";
 
 export interface MenuItem {
   /** Stable React key. */
@@ -142,7 +143,7 @@ export function Menu({ label, items }: MenuProps) {
         aria-label={label}
         onClick={() => (open ? close() : openAt("first"))}
         onKeyDown={onTriggerKeyDown}
-        className="flex h-7 w-7 items-center justify-center rounded-button text-muted outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-expanded:bg-hover aria-expanded:text-foreground"
+        className={`${ICON_BUTTON} aria-expanded:bg-fill aria-expanded:text-foreground`}
       >
         <MoreIcon size={18} />
       </button>

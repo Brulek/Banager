@@ -1,14 +1,15 @@
 import type { ReactNode } from "react";
 import { InfoIcon, WarningIcon } from "./icons";
 import { Popover } from "./ui/Popover";
+import { BUTTON, LINK } from "./ui/controls";
 
 /**
  * The look of a "Details" button beside a sentence: a notice's, or its
- * error's. Not of the fold's 「还有 N 条」 and 「收起」, which have a look
- * of their own, a disclosure's (`SourceNotices`).
+ * error's -- a link (`LINK`), in the size of the line it is in. Not of the
+ * fold's 「还有 N 条」 and 「收起」, which have a look of their own, a
+ * disclosure's (`SourceNotices`).
  */
-export const DETAILS_TRIGGER_CLASS =
-  "shrink-0 rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
+export const DETAILS_TRIGGER_CLASS = `shrink-0 ${LINK}`;
 
 export type SourceNoticeVariant = "info" | "warning";
 
@@ -19,9 +20,8 @@ export interface SourceNoticeAction {
   disabled?: boolean;
 }
 
-/** The look of a notice's own button, in a line or whole: dimmed while it is off. */
-const ACTION_CLASS =
-  "rounded-button border border-border bg-surface px-2.5 py-0.5 text-small font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface";
+/** The look of a notice's own button, in a line or whole: a small grey one, its words dimmed while it is off. */
+const ACTION_CLASS = BUTTON.small.grey;
 
 export interface SourceNoticeProps {
   variant: SourceNoticeVariant;

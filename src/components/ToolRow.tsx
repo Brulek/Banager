@@ -1,35 +1,25 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { ArtifactKey } from "../lib/types";
 import { ToolAvatar } from "./ToolAvatar";
-
-/**
- * How a row's own button looks: `accent` for what the row recommends --
- * Update, 360's one obvious button -- and `quiet` for what it only offers:
- * Uninstall, an outline in the muted colour that takes the danger colour
- * only under the pointer or the keyboard's focus, so that removing
- * something never looks like the thing to do.
- */
-export type RowActionTone = "accent" | "quiet";
-
-const ROW_ACTION_CLASSES: Record<RowActionTone, string> = {
-  accent:
-    "h-7 rounded-button bg-accent/10 px-3.5 text-body font-semibold text-accent-text outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-accent/10 disabled:hover:text-accent-text",
-  quiet:
-    "h-7 rounded-button border border-border px-3.5 text-body font-medium text-muted outline-none transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-danger focus-visible:border-danger/40 focus-visible:text-danger focus-visible:ring-2 focus-visible:ring-danger/40 disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted",
-};
+import { BUTTON } from "./ui/controls";
 
 export interface RowActionProps {
-  tone: RowActionTone;
   /** Handed the event, so what it opens can hand the focus back to the button. */
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   children: ReactNode;
 }
 
-/** A row's own button, for `ToolRow`'s `action`: Update or Uninstall. `data-tone` says which look it has. */
-export function RowAction({ tone, onClick, disabled, children }: RowActionProps) {
+/**
+ * A row's own button, for `ToolRow`'s `action`: Update, Retry or
+ * Uninstall…. A regular grey button, whichever it is (spec §3.5): the list
+ * recommends none of them over the rest -- the accent is kept for the one
+ * thing a screen asks for -- and Uninstall is not tinted red, under the
+ * pointer or not, as a Mac's button for something the user chose is not.
+ */
+export function RowAction({ onClick, disabled, children }: RowActionProps) {
   return (
-    <button type="button" data-tone={tone} onClick={onClick} disabled={disabled} className={ROW_ACTION_CLASSES[tone]}>
+    <button type="button" onClick={onClick} disabled={disabled} className={BUTTON.regular.grey}>
       {children}
     </button>
   );

@@ -5,6 +5,7 @@ import { actionableUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
 import { CheckIcon, SpinnerIcon } from "./icons";
+import { LINK } from "./ui/controls";
 
 /**
  * What a row shows in place of its Update button while an update of it is
@@ -196,7 +197,7 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
       type="button"
       onClick={() => onViewLog(opId)}
       aria-label={t("updates.progress.viewLogLabel", { name })}
-      className="rounded-sm text-small font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+      className={`${LINK} text-small`}
     >
       {t("common.viewLog")}
     </button>

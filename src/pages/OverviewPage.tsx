@@ -14,6 +14,7 @@ import { SourceAvatar } from "../components/SourceAvatar";
 import { SourceNotices } from "../components/SourceNotices";
 import { FirstCheck, StatusRing } from "../components/StatusRing";
 import { UnknownIcon } from "../components/icons";
+import { BUTTON, LINK } from "../components/ui/controls";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -40,10 +41,6 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
   }
 }
 
-/** A link in a line of text: its words in the accent, underlined under the pointer. */
-const LINK_BUTTON =
-  "rounded-sm font-medium text-accent-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent";
-
 /**
  * The line under "Nothing to update": what there is instead, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
@@ -63,7 +60,7 @@ function nothingToUpdateLine(
   const parts: ReactNode[] = [];
   if (summary.hidden > 0) {
     parts.push(
-      <button type="button" onClick={showHidden} className={LINK_BUTTON}>
+      <button type="button" onClick={showHidden} className={LINK}>
         {t("overview.hiddenCount", { count: summary.hidden })}
       </button>,
     );
@@ -179,7 +176,7 @@ export function OverviewPage() {
           <button
             type="button"
             onClick={() => setPage("updates")}
-            className="h-9 rounded-button border border-border bg-surface px-6 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            className={BUTTON.large.grey}
           >
             {t("overview.reviewUpdates")}
           </button>
@@ -189,7 +186,7 @@ export function OverviewPage() {
           <button
             type="button"
             onClick={() => setPage("updates")}
-            className="h-9 rounded-button border border-border bg-surface px-6 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent"
+            className={BUTTON.large.grey}
           >
             {t("overview.seeProgress")}
           </button>
@@ -203,7 +200,7 @@ export function OverviewPage() {
               selectUpdates(summary.actionable.map((candidate) => candidate.key));
               setPage("updates");
             }}
-            className="h-10 rounded-button bg-accent px-8 text-section font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content"
+            className={BUTTON.large.default}
           >
             {t("overview.reviewUpdates")}
           </button>

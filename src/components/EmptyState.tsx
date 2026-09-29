@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Popover } from "./ui/Popover";
 import { DETAILS_TRIGGER_CLASS } from "./SourceNotice";
+import { BUTTON } from "./ui/controls";
 
 export interface EmptyStateAction {
   label: string;
@@ -72,7 +73,7 @@ export function EmptyState({
           type="button"
           onClick={action.onClick}
           disabled={action.disabled}
-          className="shrink-0 rounded-md bg-[var(--color-accent)] px-3 py-1 text-sm font-medium text-[var(--color-accent-foreground)] disabled:opacity-50"
+          className={BUTTON.regular.grey}
         >
           {action.label}
         </button>

@@ -12,39 +12,31 @@ function atRest(className: string): string[] {
 }
 
 describe("RowAction", () => {
-  it("gives Update the accent, the look of what the row recommends", () => {
-    const { getByRole } = renderWithProviders(
-      <RowAction tone="accent" onClick={() => {}}>
-        Update
-      </RowAction>,
-    );
-
-    const update = getByRole("button", { name: "Update" });
-    expect(update).toHaveAttribute("data-tone", "accent");
-    expect(atRest(update.className)).toEqual(expect.arrayContaining(["bg-accent/10", "text-accent-text"]));
-  });
-
-  it("gives Uninstall a quiet outline, and the danger colour only under the pointer or the keyboard's focus", () => {
+  it("is a regular grey button, whichever action it is: nothing in accent, nothing red", () => {
     // What the page gets: the button itself, to give the focus back to.
     const pressed: Array<EventTarget | null> = [];
     const onClick = vi.fn((event: MouseEvent<HTMLButtonElement>) => pressed.push(event.currentTarget));
     const { getByRole } = renderWithProviders(
-      <RowAction tone="quiet" onClick={onClick}>
-        Uninstall
-      </RowAction>,
+      <>
+        <RowAction onClick={() => {}}>Update</RowAction>
+        <RowAction onClick={onClick}>Uninstall</RowAction>
+      </>,
     );
 
-    const uninstall = getByRole("button", { name: "Uninstall" });
-    expect(uninstall).toHaveAttribute("data-tone", "quiet");
-    // At rest: an outline, muted text, no fill, and nothing red or accent.
-    const rest = atRest(uninstall.className);
-    expect(rest).toEqual(expect.arrayContaining(["border", "border-border", "text-muted"]));
-    expect(rest.filter((name) => /danger|accent/.test(name))).toEqual([]);
-    expect(rest.filter((name) => name.startsWith("bg-"))).toEqual([]);
-    // Under the pointer or the focus, and only there, the danger colour.
-    expect(uninstall.className).toMatch(/\bhover:text-danger\b/);
-    expect(uninstall.className).toMatch(/\bfocus-visible:text-danger\b/);
+    for (const name of ["Update", "Uninstall"]) {
+      const button = getByRole("button", { name });
+      // 24 high, the fill and the label colour at rest, a darker fill
+      // while pressed.
+      const rest = atRest(button.className);
+      expect(rest).toEqual(expect.arrayContaining(["h-6", "rounded-control", "bg-fill", "text-foreground"]));
+      expect(button.className).toMatch(/\bactive:bg-fill-pressed\b/);
+      // No accent and no red, at rest or in any state; nothing under the
+      // pointer at all.
+      expect(button.className).not.toMatch(/danger|accent/);
+      expect(button.className).not.toMatch(/\bhover:/);
+    }
 
+    const uninstall = getByRole("button", { name: "Uninstall" });
     fireEvent.click(uninstall);
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(pressed).toEqual([uninstall]);

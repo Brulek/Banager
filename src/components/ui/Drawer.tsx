@@ -1,6 +1,7 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { CloseIcon } from "../icons";
+import { ICON_BUTTON } from "./controls";
 
 export interface DrawerProps {
   open: boolean;
@@ -108,7 +109,7 @@ export function Drawer({
             </div>
             <RadixDialog.Close
               aria-label={closeLabel}
-              className="-mr-1.5 -mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-button text-muted outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+              className={`-mr-1.5 -mt-0.5 ${ICON_BUTTON}`}
             >
               <CloseIcon size={16} />
             </RadixDialog.Close>

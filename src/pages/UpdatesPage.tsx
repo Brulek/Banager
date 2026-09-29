@@ -41,6 +41,7 @@ import {
   unavailableDetail,
 } from "../components/updateDetails";
 import { CheckCircleIcon, ChevronIcon, InfoIcon } from "../components/icons";
+import { BUTTON } from "../components/ui/controls";
 import type {
   InstanceNote,
   InstalledArtifact,
@@ -149,9 +150,6 @@ const NAME_MAY_NOT_RUN_THIS_COPY: Record<InstanceNote, boolean> = {
   ShadowedByOther: true,
   LauncherOnly: true,
 };
-
-const HEADER_TEXT_BUTTON =
-  "rounded-button px-2.5 py-1.5 text-body font-medium text-accent-text outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:hover:bg-transparent";
 
 export function UpdatesPage() {
   const { t, i18n } = useTranslation();
@@ -747,7 +745,6 @@ export function UpdatesPage() {
             outcome
           ) : actionable ? (
             <RowAction
-              tone="accent"
               onClick={(event) => void openConfirm([candidate], event.currentTarget)}
               disabled={dialogOpen}
             >
@@ -799,7 +796,7 @@ export function UpdatesPage() {
                 : null}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Select all, Invert selection and Update all act on the rows
               that show a checkbox (`startableUpdates`) and on no others.
               A row in any other `UpdateState` -- read-only, could not be
@@ -817,7 +814,7 @@ export function UpdatesPage() {
             disabled={startableCount === 0}
             onClick={() => selectUpdates(startableUpdates.map((u) => u.key))}
             aria-label={t("updates.selectAllLabel")}
-            className={HEADER_TEXT_BUTTON}
+            className={BUTTON.regular.grey}
           >
             {t("updates.selectAll")}
           </button>
@@ -826,7 +823,7 @@ export function UpdatesPage() {
             disabled={startableCount === 0}
             onClick={() => invertUpdateSelection(startableUpdates.map((u) => u.key))}
             aria-label={t("updates.invertSelectionLabel")}
-            className={HEADER_TEXT_BUTTON}
+            className={BUTTON.regular.grey}
           >
             {t("updates.invertSelection")}
           </button>
@@ -834,7 +831,7 @@ export function UpdatesPage() {
             type="button"
             disabled={selectedVisible.length === 0 || dialogOpen}
             onClick={(event) => void openConfirm(selectedVisible, event.currentTarget)}
-            className="ml-2 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
+            className={BUTTON.regular.grey}
           >
             {selectedVisible.length === 0
               ? t("updates.updateSelected")
@@ -849,7 +846,7 @@ export function UpdatesPage() {
               selectUpdates(startableUpdates.map((u) => u.key));
               void openConfirm(startableUpdates, event.currentTarget);
             }}
-            className="rounded-button bg-accent px-4 py-1.5 text-body font-semibold text-accent-foreground outline-none transition-colors hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-content disabled:opacity-50 disabled:hover:bg-accent"
+            className={BUTTON.regular.default}
           >
             {t("updates.updateAll")}
           </button>

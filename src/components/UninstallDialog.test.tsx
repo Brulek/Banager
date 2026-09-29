@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { UninstallDialog } from "./UninstallDialog";
+import { BUTTON } from "./ui/controls";
 import type { InstalledArtifact, IssuedPlan, ManagerInstance, OpRequest, Plan, Snapshot, Warning } from "../lib/types";
 
 const request: OpRequest = {
@@ -169,7 +170,7 @@ describe("UninstallDialog", () => {
     expect(within(item).getByText("H").closest("[data-source-badge]")).not.toBeNull();
   });
 
-  it("puts the focus on Cancel as it opens, and gives Uninstall the danger colour", async () => {
+  it("puts the focus on Cancel as it opens, and makes Uninstall the default button, not a red one", async () => {
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor());
 
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
@@ -177,8 +178,11 @@ describe("UninstallDialog", () => {
     const cancel = screen.getByRole("button", { name: "Cancel" });
     await waitFor(() => expect(document.activeElement).toBe(cancel));
     const uninstall = screen.getByRole("button", { name: "Uninstall" });
-    expect(uninstall.className).toMatch(/\bbg-danger\b/);
-    expect(cancel.className).not.toMatch(/\bbg-danger\b/);
+    // Large, both: Cancel grey, Uninstall the accent -- the user chose it,
+    // so it is not tinted as a warning (HIG).
+    expect(cancel.className).toBe(BUTTON.large.grey);
+    expect(uninstall.className).toBe(BUTTON.large.default);
+    for (const button of [cancel, uninstall]) expect(button.className).not.toMatch(/danger/);
   });
 
   it("says some apps ask for the Mac's password when the plan may need it, and stays quiet when it does not", async () => {

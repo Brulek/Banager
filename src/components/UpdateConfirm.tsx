@@ -8,7 +8,8 @@ import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib
 import { CommandPreview } from "./CommandPreview";
 import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
 import { CheckIcon, ChevronIcon, WarningIcon } from "./icons";
-import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
+import { Dialog } from "./ui/Dialog";
+import { BUTTON } from "./ui/controls";
 
 /**
  * How many tools a long confirmation lists before 「还有 N 个」, so that
@@ -478,7 +479,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       returnFocusTo={confirm.returnFocusTo}
       footer={
         batch?.phase === "done" ? (
-          <button ref={closeRef} type="button" onClick={confirm.close} className={SHEET_BUTTON.secondary}>
+          <button ref={closeRef} type="button" onClick={confirm.close} className={BUTTON.large.grey}>
             {t("common.close")}
           </button>
         ) : (
@@ -495,7 +496,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
                 {t("updates.notesSummary", { count: noteCount })}
               </button>
             ) : null}
-            <button type="button" onClick={confirm.close} disabled={submitting} className={SHEET_BUTTON.secondary}>
+            <button type="button" onClick={confirm.close} disabled={submitting} className={BUTTON.large.grey}>
               {t("common.cancel")}
             </button>
             <button
@@ -503,7 +504,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               type="button"
               onClick={confirm.confirmAndSubmit}
               disabled={batch?.phase !== "ready"}
-              className={SHEET_BUTTON.primary}
+              className={BUTTON.large.default}
             >
               {t("updates.update")}
             </button>

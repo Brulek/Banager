@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { InstalledPage } from "./InstalledPage";
+import { BUTTON } from "../components/ui/controls";
 import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
 import { useUiStore } from "../store/ui";
@@ -420,22 +421,22 @@ describe("InstalledPage", () => {
     expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull();
   });
 
-  it("offers Uninstall quietly, on the row and in the drawer, where Update is the accent", async () => {
-    // Uninstall must not look like the thing to do: an outline in the
-    // muted colour, red only under the pointer or the focus (`RowAction`).
+  it("offers Uninstall as a grey button, on the row and in the drawer, where the drawer's Update is the default", async () => {
+    // Uninstall must not look like the thing to do, nor like a warning: a
+    // grey button with nothing red about it, under the pointer or not
+    // (`RowAction`).
     renderWithProviders(<InstalledPage />);
 
     const rowUninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
-    expect(rowUninstall).toHaveAttribute("data-tone", "quiet");
-    expect(rowUninstall.className).toMatch(/(^|\s)text-muted(\s|$)/);
-    expect(rowUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger|bg-accent\S*|text-accent-text)(\s|$)/);
+    expect(rowUninstall.className).toBe(BUTTON.regular.grey);
+    expect(rowUninstall.className).not.toMatch(/danger|accent/);
 
     fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
     const drawer = await openDetails("glib");
     const drawerUninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
-    expect(drawerUninstall).toHaveAttribute("data-tone", "quiet");
-    expect(drawerUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger)(\s|$)/);
-    expect(within(drawer).getByRole("button", { name: "Update" }).className).toMatch(/(^|\s)bg-accent(\s|$)/);
+    expect(drawerUninstall.className).toBe(BUTTON.large.grey);
+    expect(drawerUninstall.className).not.toMatch(/danger|accent/);
+    expect(within(drawer).getByRole("button", { name: "Update" }).className).toBe(BUTTON.large.default);
   });
 
   it("gives the focus back to the row's Uninstall when its confirmation is cancelled", async () => {
