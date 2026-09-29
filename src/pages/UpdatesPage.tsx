@@ -8,7 +8,7 @@ import {
   adapterIdOf,
   adapterLabel,
   instanceLabels,
-  settingsSaveErrorMessage,
+  settingsSaveSentence,
   sourceNoticesFor,
   toolDescription,
   UPDATE_BLOCKED_KEYS,
@@ -932,23 +932,23 @@ export function UpdatesPage() {
           </button>
         )}
       </ToolbarItems>
-      {pageErrors.map((item) => {
-        const text = t("updates.planFailed", { message: item.planError });
-        return (
-          <Refusal
-            key={artifactKeyId(item.candidate.key)}
-            text={text}
-            detail={item.planErrorDetail}
-            detailTitle={text}
-            className="px-5 pb-2"
-          />
-        );
-      })}
+      {pageErrors.map(({ candidate, refusal }) => (
+        <Refusal
+          key={artifactKeyId(candidate.key)}
+          text={refusal.text}
+          detail={refusal.detail}
+          detailTitle={refusal.text}
+          className="px-5 pb-2"
+        />
+      ))}
       {saveSettings.isError ? (
         <p role="alert" className="px-5 pb-2 text-body text-danger-text">
-          {t("updates.saveChoiceFailed", {
-            message: settingsSaveErrorMessage(t, saveSettings.error.message),
-          })}
+          {settingsSaveSentence(
+            t,
+            "updates.saveChoiceFailed",
+            saveSettings.error.message,
+            settings?.show_technical_details ?? false,
+          )}
         </p>
       ) : null}
       {/* The list's header, 28 high, over the list and still while it

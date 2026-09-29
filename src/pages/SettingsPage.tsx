@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
-import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveErrorMessage } from "../lib/sources";
+import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveSentence } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
 import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -290,11 +290,16 @@ export function SettingsPage() {
     // than 560, so that on a wide window a switch stays within reach of
     // its words.
     <div className={FORM_COLUMN}>
+      {/* Its reason only with "Show technical details" on as saved, not
+          as shown: a save that was to turn it on is what failed. */}
       {saveMutation.isError && (
         <p role="alert" className="px-2.5 text-body text-danger-text">
-          {t("settings.saveError", {
-            message: settingsSaveErrorMessage(t, saveMutation.error.message),
-          })}
+          {settingsSaveSentence(
+            t,
+            "settings.saveError",
+            saveMutation.error.message,
+            settingsQuery.data?.show_technical_details ?? false,
+          )}
         </p>
       )}
 

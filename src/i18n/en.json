@@ -193,6 +193,7 @@
     "neverRemind": "Stop Reminding Me",
     "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
+    "saveChoiceFailedPlain": "Couldn't save that choice. Try again later.",
     "versionChange": "{{current}} → {{target}}",
     "versionTo": "→ {{target}}",
     "newVersion": "New version",
@@ -233,7 +234,9 @@
     "preparing": "Preparing…",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
+    "planFailedPlain": "Couldn't prepare the update. Try again later.",
     "submitFailed": "Couldn't start the update: {{message}}",
+    "submitFailedPlain": "Couldn't start the update. Try again later.",
     "blocked": {
       "Pinned": {
         "badge": "Pinned",
@@ -432,6 +435,7 @@
     "invalidName": "Couldn't pass “{{name}}” to {{source}}.",
     "programMissing": "Couldn't find {{program}}. Click Check Again.",
     "spawnFailed": "{{source}} couldn't start. macOS said: {{detail}}",
+    "spawnFailedPlain": "{{source}} couldn't start.",
     "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
     "indexUpdating": "Homebrew is updating its software list, so dependencies can't be checked reliably now. Try again in a minute or two.",
     "refused": "Couldn't continue because of an internal error.",
@@ -556,7 +560,9 @@
     "title": "Uninstall “{{name}}”?",
     "checking": "Checking what this affects…",
     "planError": "Couldn't check what this affects: {{message}}",
+    "planErrorPlain": "Couldn't check what this affects. Try again later.",
     "submitError": "Couldn't start the uninstall: {{message}}",
+    "submitErrorPlain": "Couldn't start the uninstall.",
     "reissued": "That didn't start, so it was checked again.",
     "reissuedConfirmAgain": "That didn't start, so it was checked again. Confirm once more.",
     "warningsTitle": "Notes",
@@ -625,7 +631,8 @@
     },
     "hiddenNone": "None",
     "hiddenEntryMeta": "{{source}} · {{version}}",
-    "saveError": "Couldn't save: {{message}}. Your previous setting is back."
+    "saveError": "Couldn't save: {{message}}. Your previous setting is back.",
+    "saveErrorPlain": "Couldn't save. Your previous setting is back."
   },
   "settingsSaveFailed": {
     "permissionDenied": "no permission to write to the settings folder",

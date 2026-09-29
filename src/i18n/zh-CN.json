@@ -174,6 +174,7 @@
     "neverRemind": "不再提醒",
     "neverRemindHint": "以后不再提醒此工具的任何更新。可以在“设置”中撤销。",
     "saveChoiceFailed": "无法保存此选择：{{message}}",
+    "saveChoiceFailedPlain": "无法保存此选择。请稍后再试。",
     "versionChange": "{{current}} → {{target}}",
     "versionTo": "→ {{target}}",
     "newVersion": "有新版本",
@@ -212,7 +213,9 @@
     "preparing": "正在准备…",
     "started": "已开始",
     "planFailed": "无法准备此次更新：{{message}}",
+    "planFailedPlain": "无法准备此次更新。请稍后再试。",
     "submitFailed": "无法开始更新：{{message}}",
+    "submitFailedPlain": "无法开始更新。请稍后再试。",
     "blocked": {
       "Pinned": {
         "badge": "已固定",
@@ -393,6 +396,7 @@
     "invalidName": "无法用{{source}}处理“{{name}}”。",
     "programMissing": "找不到{{program}}。请点按“重新检查”。",
     "spawnFailed": "{{source}}无法启动。系统提示：{{detail}}",
+    "spawnFailedPlain": "{{source}}无法启动。",
     "outputTooLarge": "{{source}}返回的内容过多，无法继续。",
     "indexUpdating": "Homebrew正在更新软件清单，现在无法准确检查依赖。请过一两分钟再试。",
     "refused": "发生内部错误，无法继续。",
@@ -506,7 +510,9 @@
     "title": "要卸载“{{name}}”吗？",
     "checking": "正在检查影响…",
     "planError": "无法检查影响：{{message}}",
+    "planErrorPlain": "无法检查影响。请稍后再试。",
     "submitError": "无法开始卸载：{{message}}",
+    "submitErrorPlain": "无法开始卸载。",
     "reissued": "刚才未能开始，已重新检查。",
     "reissuedConfirmAgain": "刚才未能开始，已重新检查。请再确认一次。",
     "warningsTitle": "说明",
@@ -574,7 +580,8 @@
     },
     "hiddenNone": "无",
     "hiddenEntryMeta": "{{source}} · {{version}}",
-    "saveError": "无法保存：{{message}}。已恢复原来的设置。"
+    "saveError": "无法保存：{{message}}。已恢复原来的设置。",
+    "saveErrorPlain": "无法保存。已恢复原来的设置。"
   },
   "settingsSaveFailed": {
     "permissionDenied": "没有权限写入设置文件夹",

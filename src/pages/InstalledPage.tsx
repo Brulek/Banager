@@ -8,7 +8,7 @@ import {
   canWrite,
   instanceLabels,
   isAvailable,
-  settingsSaveErrorMessage,
+  settingsSaveSentence,
   sourceNoticesFor,
   type SourceNoticeSpec,
   toolDescription,
@@ -429,9 +429,10 @@ export function InstalledPage() {
   // would start over at the sidebar.
   const inspectorUpdate = useRef<HTMLButtonElement>(null);
   const refocusAfterUndo = useRef(false);
-  // The tool whose 取消跳过 or 恢复提醒 could not be saved, and why: said in
-  // its inspector, and only there, until it is pressed again.
-  const [undoFailed, setUndoFailed] = useState<{ id: string; message: string } | null>(null);
+  // The tool whose 取消跳过 or 恢复提醒 could not be saved, and why, in the
+  // backend's words (worded where it is said, `settingsSaveSentence`):
+  // said in its inspector, and only there, until it is pressed again.
+  const [undoFailed, setUndoFailed] = useState<{ id: string; raw: string } | null>(null);
   useEffect(() => {
     if (!refocusAfterUndo.current) return;
     refocusAfterUndo.current = false;
@@ -838,7 +839,7 @@ export function InstalledPage() {
         onSuccess: () => {
           refocusAfterUndo.current = true;
         },
-        onError: (error) => setUndoFailed({ id, message: settingsSaveErrorMessage(t, error.message) }),
+        onError: (error) => setUndoFailed({ id, raw: error.message }),
       },
     );
   };
@@ -1234,7 +1235,7 @@ export function InstalledPage() {
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
             <p role="alert" className={`mt-2 ${SMALL_WRAPPING} text-danger-text`}>
-              {t("updates.saveChoiceFailed", { message: undoFailed.message })}
+              {settingsSaveSentence(t, "updates.saveChoiceFailed", undoFailed.raw, showTechnicalDetails)}
             </p>
           ) : null}
           {removable || updatable ? (
@@ -1271,10 +1272,9 @@ export function InstalledPage() {
           ) : null}
           {/* This tool's own refusal only: the update that failed to start
               may have been pressed for another tool. */}
-          {refusals.map((item) => {
-            const text = t("updates.planFailed", { message: item.planError });
-            return <Refusal key={id} text={text} detail={item.planErrorDetail} detailTitle={text} className="mt-4" />;
-          })}
+          {refusals.map(({ refusal }) => (
+            <Refusal key={id} text={refusal.text} detail={refusal.detail} detailTitle={refusal.text} className="mt-4" />
+          ))}
           {sourceNotices.length > 0 ? (
             <div className="mt-4 flex flex-col gap-2">
               <SourceNotices notices={sourceNotices} layout="block" />

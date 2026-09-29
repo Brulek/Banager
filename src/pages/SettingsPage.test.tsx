@@ -96,6 +96,31 @@ describe("SettingsPage", () => {
   });
 
   it("optimistically applies a toggle and rolls it back when the save fails", async () => {
+    // Technical details on, and staying on: the save that was to turn them
+    // off is the one that fails.
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ show_technical_details: true });
+      if (cmd === "set_settings") throw new Error("disk full");
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const toggle = await screen.findByRole("switch", { name: "Show technical details" });
+    await waitFor(() => expect(toggle).toBeChecked());
+
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+
+    // One sentence: what went wrong, and that the old setting is back.
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save: disk full. Your previous setting is back."),
+    );
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it("says a save failed without the system's words while technical details are off, the old setting back", async () => {
+    // The save that was to turn them on is the one that fails: they stay off.
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings();
       if (cmd === "set_settings") throw new Error("disk full");
@@ -110,10 +135,10 @@ describe("SettingsPage", () => {
     fireEvent.click(toggle);
     expect(toggle).toBeChecked();
 
-    // One sentence: what went wrong, and that the old setting is back.
     await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save: disk full. Your previous setting is back."),
+      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save. Your previous setting is back."),
     );
+    expect(screen.queryByText(/disk full/)).toBeNull();
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 

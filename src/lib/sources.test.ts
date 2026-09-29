@@ -21,7 +21,9 @@ import {
   planErrorDetail,
   planErrorMessage,
   READ_ONLY_DETAIL_KEYS,
+  refusalSentence,
   settingsSaveErrorMessage,
+  settingsSaveSentence,
   sourceNoticesFor,
   sourceWarningOf,
   standaloneSummaryKey,
@@ -579,16 +581,33 @@ describe("planErrorMessage", () => {
         fakeT,
         '{"kind":"not_actionable","read_only":"PrefixNotWritable","unavailable":null}',
         "npm",
+        false,
       ),
     ).toBe("sourceNotice.prefixNotWritable.description");
   });
 
-  it("shows a string that is not a structured payload verbatim, rather than swallowing it", () => {
-    expect(planErrorMessage(fakeT, "unknown instance fake:1", "npm")).toBe(
+  it("shows a string that is not a structured payload verbatim with technical details on, rather than swallowing it", () => {
+    expect(planErrorMessage(fakeT, "unknown instance fake:1", "npm", true)).toBe(
       "unknown instance fake:1",
     );
     // A kind this build does not know is not guessed at either.
-    expect(planErrorMessage(fakeT, '{"kind":"toString"}', "npm")).toBe('{"kind":"toString"}');
+    expect(planErrorMessage(fakeT, '{"kind":"toString"}', "npm", true)).toBe('{"kind":"toString"}');
+  });
+
+  it("gives nothing of the backend's own words with technical details off, but a cause it can read", () => {
+    // The caller's sentence says what happened without them
+    // (`refusalSentence`).
+    expect(planErrorMessage(fakeT, "unknown instance fake:1", "npm", false)).toBeNull();
+    expect(planErrorMessage(fakeT, '{"kind":"toString"}', "npm", false)).toBeNull();
+    expect(planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Held"}', "Homebrew", false)).toBeNull();
+    // What `failureCause` reads is said in a person's words.
+    expect(planErrorMessage(fakeT, "curl: (6) Could not resolve host: ghcr.io", "Homebrew", false)).toBe(
+      "failure.line.network",
+    );
+    // With them on, the words themselves, as they came.
+    expect(planErrorMessage(fakeT, "curl: (6) Could not resolve host: ghcr.io", "Homebrew", true)).toBe(
+      "curl: (6) Could not resolve host: ghcr.io",
+    );
   });
 
   it("words each of Canager's own planning failures itself, naming the source", () => {
@@ -597,14 +616,14 @@ describe("planErrorMessage", () => {
       ["index_updating", "planRefused.indexUpdating"],
       ["refused", "planRefused.refused"],
     ]) {
-      expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew")).toBe(
+      expect(planErrorMessage(fakeT, JSON.stringify({ kind }), "Homebrew", false)).toBe(
         `${key}({"source":"Homebrew"})`,
       );
     }
   });
 
   it("interpolates the data an invalid name or a missing program carries", () => {
-    expect(planErrorMessage(fakeT, '{"kind":"invalid_name","name":"-rf"}', "npm")).toBe(
+    expect(planErrorMessage(fakeT, '{"kind":"invalid_name","name":"-rf"}', "npm", false)).toBe(
       'planRefused.invalidName({"name":"-rf","source":"npm"})',
     );
     expect(
@@ -612,14 +631,21 @@ describe("planErrorMessage", () => {
         fakeT,
         '{"kind":"program_missing","program":"/opt/homebrew/bin/brew"}',
         "Homebrew",
+        false,
       ),
     ).toBe('planRefused.programMissing({"program":"/opt/homebrew/bin/brew"})');
   });
 
-  it("quotes the system's reason a tool could not start inside a translated sentence", () => {
+  it("quotes the system's reason a tool could not start inside a translated sentence, with technical details on", () => {
     expect(
-      planErrorMessage(fakeT, '{"kind":"spawn_failed","detail":"Permission denied (os error 13)"}', "npm"),
+      planErrorMessage(fakeT, '{"kind":"spawn_failed","detail":"Permission denied (os error 13)"}', "npm", true),
     ).toBe('planRefused.spawnFailed({"source":"npm","detail":"Permission denied (os error 13)"})');
+  });
+
+  it("says only that a tool could not start with technical details off", () => {
+    expect(
+      planErrorMessage(fakeT, '{"kind":"spawn_failed","detail":"Permission denied (os error 13)"}', "npm", false),
+    ).toBe('planRefused.spawnFailedPlain({"source":"npm"})');
   });
 
   it("words each reason a path-list uninstall preview was refused, naming the path", () => {
@@ -639,15 +665,19 @@ describe("planErrorMessage", () => {
           fakeT,
           JSON.stringify({ kind: "uninstall_unsafe", path: "~/.local/bin/claude", reason }),
           "Claude Code",
+          false,
         ),
       ).toBe(`${key}({"path":"~/.local/bin/claude"})`);
     }
     // A reason this build has no copy for, or a payload without its path,
-    // is shown verbatim rather than guessed at.
+    // is shown verbatim rather than guessed at -- with technical details
+    // on; without them, not at all.
     const unknown = '{"kind":"uninstall_unsafe","path":"~/x","reason":"cursed"}';
-    expect(planErrorMessage(fakeT, unknown, "Claude Code")).toBe(unknown);
+    expect(planErrorMessage(fakeT, unknown, "Claude Code", true)).toBe(unknown);
+    expect(planErrorMessage(fakeT, unknown, "Claude Code", false)).toBeNull();
     const pathless = '{"kind":"uninstall_unsafe","reason":"missing"}';
-    expect(planErrorMessage(fakeT, pathless, "Claude Code")).toBe(pathless);
+    expect(planErrorMessage(fakeT, pathless, "Claude Code", true)).toBe(pathless);
+    expect(planErrorMessage(fakeT, pathless, "Claude Code", false)).toBeNull();
   });
 
   it("refuses a path it can't confirm without citing official instructions, which Antigravity CLI and Grok Build don't publish, in both locales", () => {
@@ -696,6 +726,7 @@ describe("planErrorMessage", () => {
         fakeT,
         '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}',
         "Ollama",
+        false,
       ),
     ).toBe('sourceNotice.notRunning.description({"source":"Ollama"})');
   });
@@ -704,7 +735,7 @@ describe("planErrorMessage", () => {
     // The instance is not in the snapshot any more, so the caller's
     // `sourceLabel` has already fallen back to the raw instance id. The
     // copy must not interpolate it.
-    expect(planErrorMessage(fakeT, '{"kind":"source_gone"}', "brew:/opt/homebrew")).toBe(
+    expect(planErrorMessage(fakeT, '{"kind":"source_gone"}', "brew:/opt/homebrew", false)).toBe(
       "planRefused.sourceGone",
     );
   });
@@ -713,7 +744,7 @@ describe("planErrorMessage", () => {
     // `submit_operation_error` used to send `SubmitError::Expired`'s
     // `Display` verbatim -- this project's own English, unlocalised. It
     // now sends `{"kind":"expired"}` like every other structured refusal.
-    expect(planErrorMessage(fakeT, '{"kind":"expired"}', "Homebrew")).toBe("planRefused.expired");
+    expect(planErrorMessage(fakeT, '{"kind":"expired"}', "Homebrew", false)).toBe("planRefused.expired");
   });
 
   it("says a pinned package is being kept where it is, instead of showing the backend's JSON", () => {
@@ -722,16 +753,40 @@ describe("planErrorMessage", () => {
     // `update_blocked_json` in src-tauri/src/ipc.rs). The Updates page
     // hides the button for such a row, so this is the stale-page path.
     expect(
-      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Pinned"}', "Homebrew"),
+      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Pinned"}', "Homebrew", false),
     ).toBe('updates.blocked.Pinned.refused({"source":"Homebrew"})');
     // A reason this build does not know is shown verbatim, not guessed at.
     expect(
-      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Held"}', "Homebrew"),
+      planErrorMessage(fakeT, '{"kind":"update_blocked","reason":"Held"}', "Homebrew", true),
     ).toBe('{"kind":"update_blocked","reason":"Held"}');
   });
 
   it("localises an unknown/already-submitted plan instead of showing SubmitError::Unknown's own English", () => {
-    expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew")).toBe("planRefused.unknown");
+    expect(planErrorMessage(fakeT, '{"kind":"unknown"}', "Homebrew", false)).toBe("planRefused.unknown");
+  });
+});
+
+describe("refusalSentence", () => {
+  it("says a refusal in its sentence, its own words whatever the setting", () => {
+    for (const technical of [false, true]) {
+      expect(refusalSentence(fakeT, "updates.planFailed", '{"kind":"expired"}', "Homebrew", technical)).toBe(
+        'updates.planFailed({"message":"planRefused.expired"})',
+      );
+    }
+  });
+
+  it("says the backend's own words only with technical details on, and each sentence's plain one without", () => {
+    for (const [frame, plain] of [
+      ["updates.planFailed", "updates.planFailedPlain"],
+      ["updates.submitFailed", "updates.submitFailedPlain"],
+      ["uninstall.planError", "uninstall.planErrorPlain"],
+      ["uninstall.submitError", "uninstall.submitErrorPlain"],
+    ] as const) {
+      expect(refusalSentence(fakeT, frame, "glib is pinned", "Homebrew", true)).toBe(
+        `${frame}({"message":"glib is pinned"})`,
+      );
+      expect(refusalSentence(fakeT, frame, "glib is pinned", "Homebrew", false)).toBe(plain);
+    }
   });
 });
 
@@ -860,7 +915,7 @@ describe("planErrorDetail", () => {
   it("says Canager's own refusal in one sentence, with nothing behind an ⓘ about whose problem it was", () => {
     // The polish-3 copy rules (规则 3): 「问题出在 Canager，不在你的 Mac」
     // was reassurance, not a next step, and is gone.
-    expect(planErrorMessage(fakeT, '{"kind":"refused"}', "Homebrew")).toBe(
+    expect(planErrorMessage(fakeT, '{"kind":"refused"}', "Homebrew", false)).toBe(
       'planRefused.refused({"source":"Homebrew"})',
     );
     expect(planErrorDetail(fakeT, '{"kind":"refused"}')).toBeNull();
@@ -886,30 +941,56 @@ describe("planErrorDetail", () => {
 });
 
 describe("settingsSaveErrorMessage", () => {
-  it("words the reasons a person can act on itself", () => {
+  it("words the reasons a person can act on itself, whatever the setting", () => {
     for (const [reason, key] of [
       ["permission_denied", "settingsSaveFailed.permissionDenied"],
       ["disk_full", "settingsSaveFailed.diskFull"],
       ["read_only", "settingsSaveFailed.readOnly"],
     ]) {
-      expect(
-        settingsSaveErrorMessage(fakeT, JSON.stringify({ kind: "settings_save_failed", reason })),
-      ).toBe(key);
+      for (const technical of [false, true]) {
+        expect(
+          settingsSaveErrorMessage(fakeT, JSON.stringify({ kind: "settings_save_failed", reason }), technical),
+        ).toBe(key);
+      }
     }
   });
 
-  it("quotes the system's own text for any other reason, inside a translated phrase", () => {
-    expect(
-      settingsSaveErrorMessage(
-        fakeT,
-        '{"kind":"settings_save_failed","reason":"other","detail":"Input/output error (os error 5)"}',
-      ),
-    ).toBe('settingsSaveFailed.other({"detail":"Input/output error (os error 5)"})');
+  it("quotes the system's own text for any other reason, inside a translated phrase, with technical details on", () => {
+    const other = '{"kind":"settings_save_failed","reason":"other","detail":"Input/output error (os error 5)"}';
+    expect(settingsSaveErrorMessage(fakeT, other, true)).toBe(
+      'settingsSaveFailed.other({"detail":"Input/output error (os error 5)"})',
+    );
+    // Without them there is nothing to say of it: the caller's sentence
+    // says the save failed (`settingsSaveSentence`).
+    expect(settingsSaveErrorMessage(fakeT, other, false)).toBeNull();
   });
 
-  it("shows anything that is not the payload verbatim", () => {
-    expect(settingsSaveErrorMessage(fakeT, "boom")).toBe("boom");
-    expect(settingsSaveErrorMessage(fakeT, '{"kind":"expired"}')).toBe('{"kind":"expired"}');
+  it("shows anything that is not the payload verbatim with technical details on, and nothing of it without", () => {
+    expect(settingsSaveErrorMessage(fakeT, "boom", true)).toBe("boom");
+    expect(settingsSaveErrorMessage(fakeT, '{"kind":"expired"}', true)).toBe('{"kind":"expired"}');
+    expect(settingsSaveErrorMessage(fakeT, "boom", false)).toBeNull();
+    expect(settingsSaveErrorMessage(fakeT, '{"kind":"expired"}', false)).toBeNull();
+  });
+});
+
+describe("settingsSaveSentence", () => {
+  it("says a reason a person can act on in its sentence, whatever the setting", () => {
+    const full = JSON.stringify({ kind: "settings_save_failed", reason: "disk_full" });
+    for (const technical of [false, true]) {
+      expect(settingsSaveSentence(fakeT, "settings.saveError", full, technical)).toBe(
+        'settings.saveError({"message":"settingsSaveFailed.diskFull"})',
+      );
+    }
+  });
+
+  it("says the system's own words only with technical details on, and each sentence's plain one without", () => {
+    for (const [frame, plain] of [
+      ["settings.saveError", "settings.saveErrorPlain"],
+      ["updates.saveChoiceFailed", "updates.saveChoiceFailedPlain"],
+    ] as const) {
+      expect(settingsSaveSentence(fakeT, frame, "boom", true)).toBe(`${frame}({"message":"boom"})`);
+      expect(settingsSaveSentence(fakeT, frame, "boom", false)).toBe(plain);
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
-import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
+import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
 import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -39,7 +39,9 @@ function errorMessage(e: unknown): string {
  * One selected row's journey through a batch. Exactly one of `issued` /
  * `planError` is set once its plan settles; exactly one of `submittedOpId` /
  * `submitError` once its submit settles. A row whose plan failed is listed
- * in the dialog with its reason and is never submitted.
+ * in the dialog with its reason and is never submitted. A reason is kept
+ * as the backend gave it and worded where it is drawn (`refusalOf`), so
+ * that turning "Show technical details" on shows its words at once.
  */
 export interface BatchItem {
   // The whole candidate, not just its key: the confirmation has to say
@@ -51,10 +53,12 @@ export interface BatchItem {
   /** The row's name, as the list showed it when the batch was built. */
   name: string;
   issued: IssuedPlan | null;
+  /** Why its plan was refused, in the backend's words (`refusalSentence`). */
   planError: string | null;
   /** `planError`'s longer why, for its ⓘ (`planErrorDetail`), or null. */
   planErrorDetail: string | null;
   submittedOpId: number | null;
+  /** Why its submit was refused, in the backend's words (`refusalSentence`). */
   submitError: string | null;
   /** `submitError`'s longer why, for its ⓘ, or null. */
   submitErrorDetail: string | null;
@@ -91,16 +95,11 @@ function hasIssuedPlan(batch: Batch): boolean {
   return batch.items.some((item) => item.issued !== null);
 }
 
-/**
- * Narrows a `BatchItem` to the branch where its plan failed. `issued` and
- * `planError` are set as a pair in `openConfirm` -- a fulfilled `mutateAsync`
- * sets `issued` and leaves `planError` null, a rejected one does the
- * reverse -- so this is never false for an item already known to have no
- * `issued` plan (see `pageErrors` below), but the compiler has no way to see
- * that invariant across the two fields on its own.
- */
-function hasPlanError(item: BatchItem): item is BatchItem & { planError: string } {
-  return item.planError !== null;
+/** Why a tool of a batch did not start, as the screen says it (`refusalOf`). */
+export interface ItemRefusal {
+  text: string;
+  /** Its longer why, for its ⓘ, or null. */
+  detail: string | null;
 }
 
 export interface UpdateConfirmOptions {
@@ -108,7 +107,7 @@ export interface UpdateConfirmOptions {
   nameOf: (candidate: UpdateCandidate) => string;
   /** The list's own order, which the confirmation lists items in. */
   compare: (a: UpdateCandidate, b: UpdateCandidate) => number;
-  /** The source's name, for a refusal's sentence (`planErrorMessage`). */
+  /** The source's name, for a refusal's sentence (`refusalSentence`). */
   sourceLabelFor: (instanceId: string) => string;
 }
 
@@ -135,7 +134,9 @@ export interface UpdateConfirm {
    * Every plan failed, so there is nothing to confirm: the reasons, for the
    * page to show where the user pressed Update. Cleared by the next batch.
    */
-  pageErrors: Array<BatchItem & { planError: string }>;
+  pageErrors: Array<BatchItem & { refusal: ItemRefusal }>;
+  /** Why `item` did not start, as the screen says it, or null when it has not failed. */
+  refusalOf(item: BatchItem): ItemRefusal | null;
   batch: Batch | null;
   submitting: boolean;
   confirmAndSubmit(): Promise<void>;
@@ -158,6 +159,10 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   // `isPending`/`isError`/`error`; every flag the UI needs comes from `batch`.
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
+  // Whether a refusal may quote the backend or another program, read as
+  // it is drawn (`refusalOf`).
+  const { data: settings } = useSettings();
+  const technical = settings?.show_technical_details ?? false;
   const [batch, setBatch] = useState<Batch | null>(null);
   // Monotonic. The batch whose id equals this is the only one allowed to
   // write state; every async continuation checks `isCurrent` after `await`.
@@ -205,10 +210,10 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     setBatch({ id, phase: "planning", items: candidates.map(blank) });
 
     // allSettled, not all: one rejected plan must not hide the others, and
-    // each item keeps its own backend message verbatim. The notes and the
-    // commands arrive together, once every plan has settled, and so does
-    // Update: nothing of a batch can be confirmed before all of it is on
-    // the sheet.
+    // each item keeps its own backend message verbatim, to be worded where
+    // it is drawn (`refusalOf`). The notes and the commands arrive
+    // together, once every plan has settled, and so does Update: nothing of
+    // a batch can be confirmed before all of it is on the sheet.
     const results = await Promise.allSettled(
       candidates.map((c) => planMutation.mutateAsync(toRequest(c))),
     );
@@ -218,11 +223,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
       const result = results[i];
       if (result.status === "fulfilled") return { ...blank(c), issued: result.value };
       const raw = errorMessage(result.reason);
-      return {
-        ...blank(c),
-        planError: planErrorMessage(t, raw, sourceLabelFor(c.key.instance_id)),
-        planErrorDetail: planErrorDetail(t, raw),
-      };
+      return { ...blank(c), planError: raw, planErrorDetail: planErrorDetail(t, raw) };
     });
     // Nothing to confirm when no plan came back: the dialog shuts and the
     // reasons are rendered on the page (see `pageErrors` below).
@@ -259,17 +260,13 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
         // A PlanId is single-use and expires after 10 minutes. Whatever the
         // backend said (`Expired`, `Unknown`, anything else), this id is
         // spent: record the reason and carry on with the next item.
-        // Through `planErrorMessage` like the planning failure above, for
-        // the same reason: `submit` re-runs the actionability gate against
+        // Worded like the planning failure above (`refusalOf`), for the
+        // same reason: `submit` re-runs the actionability gate against
         // the current snapshot, so "that source stopped answering while
         // you were reading this" is a refusal this path can produce, and
         // it must not arrive as JSON or as a Rust enum.
         const raw = errorMessage(e);
-        items[i] = {
-          ...item,
-          submitError: planErrorMessage(t, raw, sourceLabelFor(item.candidate.key.instance_id)),
-          submitErrorDetail: planErrorDetail(t, raw),
-        };
+        items[i] = { ...item, submitError: raw, submitErrorDetail: planErrorDetail(t, raw) };
       }
       if (!isCurrent(id)) return;
       setBatch({ id, phase: "submitting", items: [...items] });
@@ -295,11 +292,35 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   // when every plan failed, whose reasons are then the page's.
   const dialogOpen = batch !== null && (batch.phase === "planning" || hasIssuedPlan(batch));
   const submitting = batch?.phase === "submitting";
+  // Why an item did not start, in the source's name (`sourceLabelFor`):
+  // its refusal in 「无法准备此次更新：…」 or 「无法开始更新：…」, without
+  // the backend's own words unless "Show technical details" is on
+  // (`refusalSentence`).
+  function refusalOf(item: BatchItem): ItemRefusal | null {
+    const source = sourceLabelFor(item.candidate.key.instance_id);
+    if (item.planError !== null) {
+      return {
+        text: refusalSentence(t, "updates.planFailed", item.planError, source, technical),
+        detail: item.planErrorDetail,
+      };
+    }
+    if (item.submitError !== null) {
+      return {
+        text: refusalSentence(t, "updates.submitFailed", item.submitError, source, technical),
+        detail: item.submitErrorDetail,
+      };
+    }
+    return null;
+  }
+
   // Every plan failed: there is nothing to confirm, so the reasons go on the
   // page rather than into an empty dialog. Cleared by the next batch.
   const pageErrors =
     batch !== null && batch.phase === "done" && !hasIssuedPlan(batch)
-      ? batch.items.filter(hasPlanError)
+      ? batch.items.flatMap((item) => {
+          const refusal = refusalOf(item);
+          return refusal === null ? [] : [{ ...item, refusal }];
+        })
       : [];
 
   return {
@@ -307,6 +328,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     returnFocusTo: openerRef,
     dialogOpen,
     pageErrors,
+    refusalOf,
     batch,
     submitting,
     confirmAndSubmit,
@@ -337,17 +359,21 @@ function versionJump(t: Translate, candidate: UpdateCandidate): string | null {
   return t("updates.versionChange", { current: candidate.current, target: candidate.target });
 }
 
-/** What a tool's row -- or the dialog, for one tool -- says under its name. */
-function aboutTool(t: Translate, item: BatchItem, notes: WarningLine[], size: "body" | "small") {
-  const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
-  const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
+/**
+ * What a tool's row -- or the dialog, for one tool -- says under its name:
+ * why it did not start (`refusalOf`), that it did, and its notes.
+ */
+function aboutTool(
+  t: Translate,
+  item: BatchItem,
+  refusal: ItemRefusal | null,
+  notes: WarningLine[],
+  size: "body" | "small",
+) {
   return (
     <>
-      {item.planError !== null ? (
-        <Refusal text={planFailed} detail={item.planErrorDetail} detailTitle={planFailed} size={size} />
-      ) : null}
-      {item.submitError !== null ? (
-        <Refusal text={submitFailed} detail={item.submitErrorDetail} detailTitle={submitFailed} size={size} />
+      {refusal !== null ? (
+        <Refusal text={refusal.text} detail={refusal.detail} detailTitle={refusal.text} size={size} />
       ) : null}
       {item.submittedOpId !== null ? (
         <p className="flex items-center gap-1 text-small text-foreground">
@@ -363,6 +389,8 @@ function aboutTool(t: Translate, item: BatchItem, notes: WarningLine[], size: "b
 interface BatchToolProps {
   t: Translate;
   item: BatchItem;
+  /** Why it did not start, as the dialog says it (`refusalOf`), or null. */
+  refusal: ItemRefusal | null;
   /** What to know about it before going on (the dialog's `notesOf`). */
   notes: WarningLine[];
   adapterId: string;
@@ -378,7 +406,15 @@ interface BatchToolProps {
  * plans come back, and at each update Update all starts, a hundred and
  * more of them -- and every tool on it, each time, was most of that.
  */
-const BatchTool = memo(function BatchTool({ t, item, notes, adapterId, sourceLabel, showSource }: BatchToolProps) {
+const BatchTool = memo(function BatchTool({
+  t,
+  item,
+  refusal,
+  notes,
+  adapterId,
+  sourceLabel,
+  showSource,
+}: BatchToolProps) {
   const jump = versionJump(t, item.candidate);
   const digest = item.candidate.channel === "Digest";
   return (
@@ -395,7 +431,7 @@ const BatchTool = memo(function BatchTool({ t, item, notes, adapterId, sourceLab
       aside={digest ? null : jump}
     >
       {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
-      {aboutTool(t, item, notes, "small")}
+      {aboutTool(t, item, refusal, notes, "small")}
     </SheetTool>
   );
 }, sameBatchTool);
@@ -415,11 +451,9 @@ function sameBatchTool(was: BatchToolProps, now: BatchToolProps): boolean {
     was.showSource === now.showSource &&
     a.candidate === b.candidate &&
     a.name === b.name &&
-    a.planError === b.planError &&
-    a.planErrorDetail === b.planErrorDetail &&
     a.submittedOpId === b.submittedOpId &&
-    a.submitError === b.submitError &&
-    a.submitErrorDetail === b.submitErrorDetail &&
+    was.refusal?.text === now.refusal?.text &&
+    was.refusal?.detail === now.refusal?.detail &&
     was.notes.length === now.notes.length &&
     was.notes.every(
       (line, index) =>
@@ -607,7 +641,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       {only !== null ? (
         <div data-sheet-about="" className="flex flex-col gap-2">
           {onlyDigest && onlyJump !== null ? <SheetText>{onlyJump}</SheetText> : null}
-          {aboutTool(t, only, said[0].notes, "body")}
+          {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>
       ) : (
         <SheetToolList>
@@ -618,6 +652,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
                 key={artifactKeyId(key)}
                 t={t}
                 item={item}
+                refusal={confirm.refusalOf(item)}
                 notes={notes}
                 adapterId={adapterFor(key.instance_id)}
                 sourceLabel={sourceLabelOf(key.instance_id)}

@@ -1665,6 +1665,8 @@ describe("UpdatesPage", () => {
   });
 
   it("shows one item's planning failure in the dialog while the other stays submittable", async () => {
+    // The backend's own words, with "Show technical details" on.
+    settings = { ...settings, show_technical_details: true };
     planFailures.glib = "glib is pinned";
     const { findAllByRole, getByRole, findByRole, queryByRole } = renderPage();
 
@@ -1696,6 +1698,47 @@ describe("UpdatesPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("says an item's planning failure in the dialog without the backend's words while technical details are off", async () => {
+    planFailures.glib = "glib is pinned";
+    const { findAllByRole, getByRole, findByRole } = renderPage();
+
+    const checkboxes = await findAllByRole("checkbox", { name: ROW_CHECKBOX });
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
+
+    const dialog = await findByRole("dialog");
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't prepare the update. Try again later.");
+    expect(within(dialog).queryByText(/glib is pinned/)).toBeNull();
+    expect(dialog).toHaveAccessibleName("Update “onyx”?");
+  });
+
+  it("says a tool's update did not start in the backend's words only with technical details on", async () => {
+    submitFailures["1"] = "operation queue is closed";
+    const plain = renderPage();
+
+    fireEvent.click((await plain.findAllByRole("button", { name: "Update" }))[0]);
+    let dialog = await plain.findByRole("dialog");
+    showCommands(dialog);
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't start the update. Try again later.");
+    expect(within(dialog).queryByText(/operation queue is closed/)).toBeNull();
+    plain.unmount();
+
+    settings = { ...settings, show_technical_details: true };
+    nextPlanId = 1;
+    const technical = renderPage();
+    fireEvent.click((await technical.findAllByRole("button", { name: "Update" }))[0]);
+    dialog = await technical.findByRole("dialog");
+    await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Couldn't start the update: operation queue is closed",
+    );
   });
 
   it("localises a stale-snapshot NotActionable refusal instead of showing the backend's JSON", async () => {
@@ -2405,7 +2448,8 @@ describe("UpdatesPage", () => {
     expect(calls("set_settings")).toHaveLength(1);
   });
 
-  it("shows the backend's message when saving the choice fails", async () => {
+  it("shows the backend's message when saving the choice fails, with technical details on", async () => {
+    settings = { ...settings, show_technical_details: true };
     saveFailure = "settings.json is read-only";
     const { findByRole } = renderPage();
 
@@ -2415,6 +2459,17 @@ describe("UpdatesPage", () => {
       "Couldn't save that choice: settings.json is read-only",
     );
     // Nothing was saved, so nothing disappears.
+    expect(rowOf("glib")).toBeInTheDocument();
+  });
+
+  it("says a choice could not be saved, and what to do, without the backend's message while technical details are off", async () => {
+    saveFailure = "settings.json is read-only";
+    const { findByRole, queryByText } = renderPage();
+
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
+
+    expect(await findByRole("alert")).toHaveTextContent("Couldn't save that choice. Try again later.");
+    expect(queryByText(/settings\.json is read-only/)).toBeNull();
     expect(rowOf("glib")).toBeInTheDocument();
   });
 
@@ -3653,6 +3708,8 @@ describe("UpdatesPage", () => {
     });
 
     it("lists every tool of a long batch when one of them was refused, with its why", async () => {
+      // Its why in the backend's words: "Show technical details" is on.
+      settings = { ...settings, show_technical_details: true };
       updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
       planFailures["tool-8"] = "tool-8 is pinned";
       const { findByRole, findByText, getByRole } = renderPage();
@@ -3855,6 +3912,8 @@ describe("UpdatesPage", () => {
     });
 
     it("shuts when every plan is refused, and says why on the page, with the focus back on the row's Update", async () => {
+      // Why in the backend's words: "Show technical details" is on.
+      settings = { ...settings, show_technical_details: true };
       planFailures.glib = "glib is pinned";
       holdPlans.add("glib");
       const { findByRole, queryByRole } = renderPage();
@@ -3868,6 +3927,31 @@ describe("UpdatesPage", () => {
       expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update: glib is pinned");
       expect(queryByRole("dialog")).toBeNull();
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
+    });
+
+    it("says on the page that no update could be prepared, without the backend's words while technical details are off", async () => {
+      planFailures.glib = "glib is pinned";
+      const { findByRole, queryByRole, queryByText } = renderPage();
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
+      expect(queryByText(/glib is pinned/)).toBeNull();
+      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+    });
+
+    it("shows the words on the page's refusal as soon as technical details are turned on", async () => {
+      // A refusal is worded where it is drawn (`refusalOf`), so the
+      // setting changing under it -- the page's own Show reasons, say --
+      // shows the words without pressing Update again.
+      planFailures.glib = "glib is pinned";
+      const { findByRole, findByText, queryClient } = renderPage();
+
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+      expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
+
+      act(() => queryClient.setQueryData(queryKeys.settings, { ...settings, show_technical_details: true }));
+      expect(await findByText("Couldn't prepare the update: glib is pinned")).toBeInTheDocument();
     });
   });
 

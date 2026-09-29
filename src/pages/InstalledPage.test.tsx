@@ -1270,6 +1270,8 @@ describe("InstalledPage", () => {
     });
 
     it("says in the inspector why a way back could not be saved, and keeps the word", async () => {
+      // Why in the backend's words: "Show technical details" is on.
+      servedSettings = { ...servedSettings, show_technical_details: true };
       const answer = mockInvoke.getMockImplementation();
       mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
         cmd === "set_settings" ? Promise.reject("settings.json is read-only") : answer!(cmd, args),
@@ -1289,6 +1291,19 @@ describe("InstalledPage", () => {
       await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       const other = await openDetails("ignored");
       expect(within(other).queryByRole("alert")).toBeNull();
+    });
+
+    it("says a way back could not be saved, and what to do, without the backend's words while technical details are off", async () => {
+      const answer = mockInvoke.getMockImplementation();
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "set_settings" ? Promise.reject("settings.json is read-only") : answer!(cmd, args),
+      );
+      renderInstalled();
+      const drawer = await openDetails("skipped");
+      fireEvent.click(within(drawer).getByRole("button", { name: "Stop skipping 2.90.0 of skipped" }));
+
+      expect(await within(drawer).findByRole("alert")).toHaveTextContent("Couldn't save that choice. Try again later.");
+      expect(within(drawer).queryByText(/settings\.json is read-only/)).toBeNull();
     });
   });
 
@@ -2526,12 +2541,29 @@ describe("InstalledPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const glib = await openDetails("glib");
       fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
-      expect(await within(glib).findByText(/^Couldn't prepare the update/)).toBeInTheDocument();
+      // Without the backend's words: "Show technical details" is off.
+      expect(await within(glib).findByText("Couldn't prepare the update. Try again later.")).toBeInTheDocument();
+      expect(within(glib).queryByText(/brew is busy/)).toBeNull();
 
       fireEvent.click(within(glib).getByRole("button", { name: "Close" }));
       await waitFor(() => expect(screen.queryByRole("complementary", { name: "glib" })).toBeNull());
       const jq = await openDetails("jq");
       expect(within(jq).queryByText(/^Couldn't prepare the update/)).toBeNull();
+    });
+
+    it("says why an update could not start in the backend's words with technical details on", async () => {
+      servedSettings = { ...settings, show_technical_details: true };
+      const answer = mockInvoke.getMockImplementation()!;
+      mockInvoke.mockImplementation((cmd, args) =>
+        cmd === "plan_operation" ? Promise.reject("brew is busy") : answer(cmd, args),
+      );
+      renderInstalled();
+
+      await findRow("jq");
+      fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
+      const glib = await openDetails("glib");
+      fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
+      expect(await within(glib).findByText("Couldn't prepare the update: brew is busy")).toBeInTheDocument();
     });
 
     it.each([

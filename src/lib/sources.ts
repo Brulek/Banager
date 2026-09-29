@@ -15,6 +15,7 @@ import type {
   UpdateBlocked,
 } from "./types";
 import { displayToken } from "./format";
+import { FAILURE_CAUSE_KEYS, failureCause } from "./failureCause";
 
 /** i18n key holding each adapter's human name. The `standalone-*` ids are
  *  the tools with their own installer (`standalone::all` in
@@ -656,7 +657,8 @@ export const UNAVAILABLE_DETAIL_KEYS: Record<Unavailable, string> = {
  * `update_blocked_json` in src-tauri/src/ipc.rs sends when
  * `Session::issue_plan` or `Session::submit` refuses to update one package.
  * `null` for anything else, including a reason this build has no copy for
- * -- which `planErrorMessage` then shows verbatim rather than guessing at.
+ * -- which `planErrorMessage` then does not guess at: it is the backend's
+ * own words, shown with "Show technical details" on.
  */
 export function parseUpdateBlocked(message: string): UpdateBlocked | null {
   const p = parseErrorPayload(message);
@@ -826,7 +828,8 @@ export const UNINSTALL_UNSAFE_KEYS: Record<UninstallUnsafeReason, string> = {
  * `plan_operation_error` sends when a path-list uninstall preview refused
  * one of its checks. `null` for anything else, including a reason this
  * build has no copy for or a payload without its path, which
- * `planErrorMessage` then shows verbatim rather than guessing at.
+ * `planErrorMessage` then does not guess at: it is the backend's own
+ * words, shown with "Show technical details" on.
  */
 export function parseUninstallUnsafe(
   message: string,
@@ -1064,12 +1067,24 @@ export function notActionableMessage(
  * payload, the matching `planRefused.*` copy for every other structured
  * kind `submit_operation_error` and `plan_operation_error` send, otherwise
  * `raw` verbatim. Every call site that renders a plan or submit error
- * (`UpdatesPage`, `UninstallDialog`) goes through this instead of showing
+ * (`UpdateConfirm`, `UninstallDialog`) goes through this instead of showing
  * the backend's string directly, so no refusal that can reach a real
  * person is ever a raw Rust `{:?}` or this project's own English reaching
  * someone reading Canager in another language.
+ *
+ * `raw` verbatim, and another program's words quoted in a sentence (a
+ * tool that would not start: macOS's reason), only with "Show technical
+ * details" on (`technical`), as every raw error. Without it, a `raw` that
+ * `failureCause` reads is said in a person's words, and any other is
+ * null: the caller's sentence then says what happened without it
+ * (`refusalSentence`).
  */
-export function planErrorMessage(t: Translate, raw: string, sourceLabel: string): string {
+export function planErrorMessage(
+  t: Translate,
+  raw: string,
+  sourceLabel: string,
+  technical: boolean,
+): string | null {
   const reason = parseNotActionable(raw);
   if (reason) return notActionableMessage(t, reason, sourceLabel);
   const blocked = parseUpdateBlocked(raw);
@@ -1081,7 +1096,45 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
   if (isSourceGone(raw)) return t("planRefused.sourceGone");
   if (isExpired(raw)) return t("planRefused.expired");
   if (isUnknownPlan(raw)) return t("planRefused.unknown");
-  return planFailureMessage(t, raw, sourceLabel) ?? raw;
+  const failure = planFailureMessage(t, raw, sourceLabel, technical);
+  if (failure !== null) return failure;
+  if (technical) return raw;
+  const cause = failureCause(raw);
+  return cause === null ? null : t(FAILURE_CAUSE_KEYS[cause].line);
+}
+
+/**
+ * Each sentence a plan or submit refusal is said in, and the same
+ * sentence without the refusal's words (`refusalSentence`): what did not
+ * happen and, where waiting can help, to try again later. An uninstall
+ * that did not start says nothing more: the dialog is already checking
+ * again, and says so, with Uninstall to press once more.
+ */
+const REFUSAL_PLAIN_KEYS = {
+  "updates.planFailed": "updates.planFailedPlain",
+  "updates.submitFailed": "updates.submitFailedPlain",
+  "uninstall.planError": "uninstall.planErrorPlain",
+  "uninstall.submitError": "uninstall.submitErrorPlain",
+} as const;
+
+/** A sentence a plan or submit refusal is said in (`refusalSentence`). */
+export type RefusalFrame = keyof typeof REFUSAL_PLAIN_KEYS;
+
+/**
+ * A plan or submit refusal as the screen says it: `frame` -- 「无法准备此次
+ * 更新：…」 -- around `planErrorMessage`'s words, or, where those would
+ * have been nothing but the backend's or another program's own and "Show
+ * technical details" is off, the frame's plain sentence alone.
+ */
+export function refusalSentence(
+  t: Translate,
+  frame: RefusalFrame,
+  raw: string,
+  sourceLabel: string,
+  technical: boolean,
+): string {
+  const message = planErrorMessage(t, raw, sourceLabel, technical);
+  return message === null ? t(REFUSAL_PLAIN_KEYS[frame]) : t(frame, { message });
 }
 
 /**
@@ -1122,12 +1175,14 @@ const PLAN_FAILURE_KEYS: Record<string, string> = {
  * One of them quotes another program verbatim, inside a sentence that
  * says what happened: `spawn_failed` carries the operating system's reason
  * it could not start the tool. That is not Canager's text, so it cannot be
- * translated -- but the sentence around it is. `invalid_name` and
+ * translated -- but the sentence around it is -- and it is quoted only
+ * with "Show technical details" on (`technical`); without it, the
+ * sentence says that the tool could not start. `invalid_name` and
  * `program_missing` carry data (the name, the path), not prose.
  * `uninstall_unsafe` carries the path a path-list uninstall preview
  * refused and which check refused it (`parseUninstallUnsafe`).
  */
-function planFailureMessage(t: Translate, raw: string, sourceLabel: string): string | null {
+function planFailureMessage(t: Translate, raw: string, sourceLabel: string, technical: boolean): string | null {
   const p = parseErrorPayload(raw);
   if (!p) return null;
   // `typeof`, not truthiness: a `kind` like "toString" finds a function
@@ -1141,7 +1196,9 @@ function planFailureMessage(t: Translate, raw: string, sourceLabel: string): str
     case "program_missing":
       return t("planRefused.programMissing", { program: text(p.program) });
     case "spawn_failed":
-      return t("planRefused.spawnFailed", { source: sourceLabel, detail: text(p.detail) });
+      return technical
+        ? t("planRefused.spawnFailed", { source: sourceLabel, detail: text(p.detail) })
+        : t("planRefused.spawnFailedPlain", { source: sourceLabel });
     case "uninstall_unsafe": {
       const refused = parseUninstallUnsafe(raw);
       return refused ? t(UNINSTALL_UNSAFE_KEYS[refused.reason], { path: refused.path }) : null;
@@ -1265,11 +1322,10 @@ export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | nul
 
 /**
  * What a rejected Open Ollama press should read as: the localised copy for
- * a recognised failure, otherwise `raw` verbatim -- the same fallback
- * `planErrorMessage` uses, so an unexpected error is still visible rather
- * than swallowed. Before this existed the button's failures were never
- * shown at all; the backend reported nothing, and so there was nothing to
- * render.
+ * a recognised failure, otherwise `raw` verbatim, so an unexpected error
+ * is still visible rather than swallowed. Before this existed the button's
+ * failures were never shown at all; the backend reported nothing, and so
+ * there was nothing to render.
  */
 export function openOllamaErrorMessage(t: Translate, raw: string): string {
   const reason = parseOpenOllamaFailure(raw);
@@ -1297,19 +1353,48 @@ const SETTINGS_SAVE_FAILURE_KEYS: Record<string, string> = {
  * interpolate. The three reasons a person can act on are worded here;
  * `other` quotes the operating system's own description verbatim inside
  * a translated phrase, since that text is the system's, not Canager's.
- * Anything that is not the payload at all is shown verbatim, the same
- * fallback `planErrorMessage` uses, so an unexpected error is still
- * visible rather than swallowed.
+ * Anything that is not the payload at all is shown verbatim, as
+ * `planErrorMessage` shows one, so an unexpected error is still
+ * visible rather than swallowed -- both, as every raw error, only with
+ * "Show technical details" on (`technical`). Without it they are null,
+ * and the caller's sentence says what happened without them
+ * (`settingsSaveSentence`).
  */
-export function settingsSaveErrorMessage(t: Translate, raw: string): string {
+export function settingsSaveErrorMessage(t: Translate, raw: string, technical: boolean): string | null {
   const p = parseErrorPayload(raw);
-  if (!p || p.kind !== "settings_save_failed") return raw;
+  if (!p || p.kind !== "settings_save_failed") return technical ? raw : null;
   const key: unknown =
     typeof p.reason === "string" ? SETTINGS_SAVE_FAILURE_KEYS[p.reason] : undefined;
   if (typeof key === "string") return t(key);
+  if (!technical) return null;
   return t("settingsSaveFailed.other", {
     detail: typeof p.detail === "string" ? p.detail : "",
   });
+}
+
+/**
+ * Each sentence a failed save is said in, and the same sentence without
+ * its reason (`settingsSaveSentence`): still saying that the setting as it
+ * was is back where it did, and otherwise to try again later.
+ */
+const SETTINGS_SAVE_PLAIN_KEYS = {
+  "settings.saveError": "settings.saveErrorPlain",
+  "updates.saveChoiceFailed": "updates.saveChoiceFailedPlain",
+} as const;
+
+/**
+ * A rejected `set_settings` as the screen says it: `frame` around
+ * `settingsSaveErrorMessage`'s phrase, or the frame's plain sentence
+ * where there is no phrase to give without "Show technical details".
+ */
+export function settingsSaveSentence(
+  t: Translate,
+  frame: keyof typeof SETTINGS_SAVE_PLAIN_KEYS,
+  raw: string,
+  technical: boolean,
+): string {
+  const message = settingsSaveErrorMessage(t, raw, technical);
+  return message === null ? t(SETTINGS_SAVE_PLAIN_KEYS[frame]) : t(frame, { message });
 }
 
 /**

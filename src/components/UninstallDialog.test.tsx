@@ -1512,6 +1512,100 @@ describe("UninstallDialog", () => {
     expect(alert.textContent).not.toMatch(/not_actionable/);
   });
 
+  describe("the backend's own words", () => {
+    // Settings with "Show technical details" on or off, for `get_settings`.
+    const settingsWith = (technical: boolean) => ({
+      language: "System",
+      show_technical_details: technical,
+      ignored_updates: [],
+      skipped_versions: [],
+      include_self_updating: false,
+      auto_check: false,
+      notify_updates: false,
+    });
+
+    it("says the check failed and what to do, and the backend's words only with technical details on", async () => {
+      for (const technical of [false, true]) {
+        vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+          if (cmd === "get_settings") return settingsWith(technical);
+          if (cmd === "plan_operation") throw "brew: command exploded";
+          return undefined;
+        });
+        const { unmount } = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+        );
+        const alert = await screen.findByRole("alert");
+        if (technical) {
+          await waitFor(() =>
+            expect(alert).toHaveTextContent("Couldn't check what this affects: brew: command exploded"),
+          );
+        } else {
+          expect(alert).toHaveTextContent("Couldn't check what this affects. Try again later.");
+          expect(screen.queryByText(/command exploded/)).toBeNull();
+        }
+        unmount();
+      }
+    });
+
+    it("says a tool could not start, and macOS's reason only with technical details on", async () => {
+      for (const technical of [false, true]) {
+        vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+          if (cmd === "get_settings") return settingsWith(technical);
+          if (cmd === "plan_operation") throw '{"kind":"spawn_failed","detail":"Operation not permitted (os error 1)"}';
+          return undefined;
+        });
+        const { unmount } = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+        );
+        const alert = await screen.findByRole("alert");
+        if (technical) {
+          await waitFor(() =>
+            expect(alert).toHaveTextContent(
+              "Couldn't check what this affects: Homebrew couldn't start. macOS said: Operation not permitted (os error 1)",
+            ),
+          );
+        } else {
+          expect(alert).toHaveTextContent("Couldn't check what this affects: Homebrew couldn't start.");
+          expect(screen.queryByText(/os error 1/)).toBeNull();
+        }
+        unmount();
+      }
+    });
+
+    it("says the uninstall did not start while it checks again, and the backend's words only with technical details on", async () => {
+      for (const technical of [false, true]) {
+        let plans = 0;
+        vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+          if (cmd === "get_settings") return settingsWith(technical);
+          if (cmd === "plan_operation") {
+            plans += 1;
+            // The re-plan after the failed submit is held, so the submit's
+            // refusal stays up.
+            return plans === 1 ? issuedPlanFor() : new Promise(() => {});
+          }
+          if (cmd === "submit_operation") throw "operation queue is closed";
+          return undefined;
+        });
+        const { unmount } = renderWithProviders(
+          <UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />,
+        );
+        const confirmButton = await screen.findByRole("button", { name: "Uninstall" });
+        await waitFor(() => expect(confirmButton).not.toBeDisabled());
+        fireEvent.click(confirmButton);
+        const alert = await screen.findByRole("alert");
+        if (technical) {
+          expect(alert).toHaveTextContent("Couldn't start the uninstall: operation queue is closed");
+        } else {
+          // Nothing to do but what the dialog is doing: checking again.
+          expect(alert).toHaveTextContent(/^Couldn't start the uninstall\.$/);
+          expect(screen.queryByText(/queue is closed/)).toBeNull();
+        }
+        expect(screen.getByText("Checking what this affects…")).toBeInTheDocument();
+        unmount();
+      }
+    });
+  });
+
   it("says a pinned package was not uninstalled and gives the unpin command as code", async () => {
     // A stale Installed page can still offer Uninstall on a package pinned
     // since the last refresh; `Session::issue_plan` refuses it

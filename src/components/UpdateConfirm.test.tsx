@@ -39,6 +39,7 @@ const confirmOf = (batch: Batch): UpdateConfirm => ({
   returnFocusTo: { current: null },
   dialogOpen: true,
   pageErrors: [],
+  refusalOf: () => null,
   batch,
   submitting: batch.phase === "submitting",
   confirmAndSubmit: vi.fn(),

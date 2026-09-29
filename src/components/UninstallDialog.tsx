@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
+import { useSettings, useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
 import {
   adapterIdOf,
   adapterLabel,
@@ -9,6 +9,7 @@ import {
   parseUninstallUnsafe,
   planErrorDetail,
   planErrorMessage,
+  refusalSentence,
   uninstallBlockedCopy,
 } from "../lib/sources";
 import type { OpRequest } from "../lib/types";
@@ -70,6 +71,7 @@ export function UninstallDialog({
 }: UninstallDialogProps) {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
+  const { data: settings } = useSettings();
   const planMutation = usePlanOperation();
   const submitMutation = useSubmitOperation();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -168,15 +170,19 @@ export function UninstallDialog({
   // preview refused one of its paths (`uninstall_unsafe`,
   // `removal::plan_removal`), whose sentence names the path and already
   // says nothing was changed.
+  //
+  // Any other says it in `frame`, without the backend's own words unless
+  // "Show technical details" is on (`refusalSentence`).
   function refusal(raw: string, frame: "uninstall.planError" | "uninstall.submitError") {
     const detail = planErrorDetail(t, raw);
-    if (parseUninstallUnsafe(raw) !== null) {
-      const text = planErrorMessage(t, raw, sourceLabel);
-      return <Refusal text={text} detail={detail} detailTitle={text} />;
+    const technical = settings?.show_technical_details ?? false;
+    const unsafe = parseUninstallUnsafe(raw) !== null ? planErrorMessage(t, raw, sourceLabel, technical) : null;
+    if (unsafe !== null) {
+      return <Refusal text={unsafe} detail={detail} detailTitle={unsafe} />;
     }
     const blocked = parseUninstallBlocked(raw);
     if (blocked === null) {
-      const text = t(frame, { message: planErrorMessage(t, raw, sourceLabel) });
+      const text = refusalSentence(t, frame, raw, sourceLabel, technical);
       return <Refusal text={text} detail={detail} detailTitle={text} />;
     }
     const copy = uninstallBlockedCopy(blocked, instance?.adapter_id);
