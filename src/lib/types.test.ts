@@ -236,6 +236,7 @@ describe("types", () => {
     // returned as a raw key. This test is what pins the spellings.
     const dependentsUnknown: Warning = "DependentsUnknown";
     const compilesLocally: Warning = "CompilesLocally";
+    const downloadsModelChanges: Warning = "DownloadsModelChanges";
     const nonRegistrySource: Warning = "NonRegistrySource";
     const wouldBreak: Warning = { WouldBreak: { names: ["python@3.13"] } };
     const thirdPartyRegistry: Warning = { ThirdPartyRegistry: { host: "modelscope.cn" } };
@@ -243,6 +244,7 @@ describe("types", () => {
 
     expect(roundTrip(dependentsUnknown)).toBe("DependentsUnknown");
     expect(roundTrip(compilesLocally)).toBe("CompilesLocally");
+    expect(roundTrip(downloadsModelChanges)).toBe("DownloadsModelChanges");
     expect(roundTrip(nonRegistrySource)).toBe("NonRegistrySource");
     expect(JSON.stringify(wouldBreak)).toBe('{"WouldBreak":{"names":["python@3.13"]}}');
     expect(roundTrip(wouldBreak)).toEqual({ WouldBreak: { names: ["python@3.13"] } });

@@ -521,16 +521,20 @@ impl OllamaAdapter {
         // legitimate thing to want, it just has to be said out loud.
         // `Plan::warnings` is already rendered in the preview.
         let (args, warnings) = match req.kind {
-            OpKind::Install | OpKind::Upgrade => (
-                vec!["pull".to_string(), req.name.clone()],
-                third_party_registry(&req.name)
-                    .map(|host| {
-                        vec![Warning::ThirdPartyRegistry {
-                            host: host.to_string(),
-                        }]
+            OpKind::Install | OpKind::Upgrade => {
+                let mut warnings: Vec<Warning> = third_party_registry(&req.name)
+                    .map(|host| Warning::ThirdPartyRegistry {
+                        host: host.to_string(),
                     })
-                    .unwrap_or_default(),
-            ),
+                    .into_iter()
+                    .collect();
+                // An upgrade fetches what changed, which can be gigabytes
+                // of new weights: said, as a crate that compiles is.
+                if req.kind == OpKind::Upgrade {
+                    warnings.push(Warning::DownloadsModelChanges);
+                }
+                (vec!["pull".to_string(), req.name.clone()], warnings)
+            }
             // What `ollama rm` removes and leaves (Ollama 0.34.1
             // `server/routes.go:1249-1299`: the model's manifest and the
             // layers no other model uses), said under the tool -- not under
@@ -1771,14 +1775,41 @@ mod tests {
             vec!["rm", "modelscope.cn/Qwen/Qwen3-8B"]
         );
 
-        // Upgrading re-pulls, so it does warn.
+        // Upgrading re-pulls, so it does warn -- and says, after the
+        // registry, that it downloads what changed.
         let upgrade = plan_for_kind("modelscope.cn/Qwen/Qwen3-8B", OpKind::Upgrade).await;
         assert_eq!(
             upgrade.warnings,
-            vec![Warning::ThirdPartyRegistry {
-                host: "modelscope.cn".to_string()
-            }],
+            vec![
+                Warning::ThirdPartyRegistry {
+                    host: "modelscope.cn".to_string()
+                },
+                Warning::DownloadsModelChanges,
+            ],
         );
+    }
+
+    #[tokio::test]
+    async fn test_plan_says_an_upgrade_downloads_what_changed_and_an_install_does_not() {
+        // The model's note in the update confirmation: an upgrade of a
+        // model from Ollama's own library carries it alone.
+        assert_eq!(
+            plan_for_kind("qwen3.8:27b-mlx", OpKind::Upgrade)
+                .await
+                .warnings,
+            vec![Warning::DownloadsModelChanges],
+        );
+        assert_eq!(
+            plan_for_kind("hf.co/user/repo:tag", OpKind::Upgrade)
+                .await
+                .warnings,
+            vec![Warning::DownloadsModelChanges],
+        );
+        // An install downloads the whole model, which is what was asked for.
+        assert!(plan_for_kind("qwen3.8:27b-mlx", OpKind::Install)
+            .await
+            .warnings
+            .is_empty());
     }
 
     #[tokio::test]

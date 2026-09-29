@@ -205,6 +205,8 @@ export function warningKey(warning: Warning): string | null {
         return "warnings.dependentsUnknown";
       case "CompilesLocally":
         return "warnings.compilesLocally";
+      case "DownloadsModelChanges":
+        return "warnings.downloadsModelChanges";
       case "NonRegistrySource":
         return "warnings.nonRegistrySource";
       case "HomebrewRustupLosesToolchains":
@@ -365,6 +367,7 @@ export function warningDetailKey(warning: Warning): string | null {
         return "warnings.homebrewCleanupAutoremovesDetail";
       case "DependentsUnknown":
       case "CompilesLocally":
+      case "DownloadsModelChanges":
       case "NonRegistrySource":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
@@ -470,6 +473,7 @@ export function deletesForGood(warning: Warning): boolean {
     switch (warning) {
       case "DependentsUnknown":
       case "CompilesLocally":
+      case "DownloadsModelChanges":
       case "NonRegistrySource":
       case "HomebrewRustupLosesToolchains":
       case "EditsShellConfig":
@@ -580,7 +584,7 @@ export function skipsTrash(warnings: readonly Warning[]): boolean {
  * working, what is deleted for good, a source Canager cannot vouch for, a
  * dependency it could not check, a cask's extra steps, and anything this
  * build has no words for. Not one that only says how it goes: that it
- * compiles, where it came from, which line rustup takes out, what moves to
+ * compiles, that a model downloads what changed, where it came from, which line rustup takes out, what moves to
  * the Trash or stays, and what the uninstall covers.
  *
  * Every variant is named, so one added to `Warning` fails `tsc` here; at
@@ -596,6 +600,7 @@ export function isCaution(warning: Warning): boolean {
       case "HomebrewCleanupAutoremoves":
         return true;
       case "CompilesLocally":
+      case "DownloadsModelChanges":
       case "NonRegistrySource":
       case "EditsShellConfig":
         return false;

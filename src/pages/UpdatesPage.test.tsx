@@ -1634,6 +1634,55 @@ describe("UpdatesPage", () => {
     expect(inSheet.querySelector(".sr-only")?.textContent).toBe(MODELS.coder);
   });
 
+  it("says under an Ollama model's row that its update downloads what changed, after where the model is from, in either language", async () => {
+    // `Warning::DownloadsModelChanges`, the model's note as
+    // `CompilesLocally` is a crate's, after the registry's caution
+    // (crates/canager-core/src/adapters/ollama/mod.rs).
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+      },
+    ];
+    planWarnings[MODELS.coder] = [{ ThirdPartyRegistry: { host: "modelscope.cn" } }, "DownloadsModelChanges"];
+    const linesUnder = async (update: RegExp) => {
+      const row = (await screen.findByTitle(MODELS.coder)).closest("[data-tool-row]") as HTMLElement;
+      fireEvent.click(within(row).getByRole("button", { name: update }));
+      const dialog = await screen.findByRole("dialog");
+      // One tool: its lines are the dialog's own, under its name.
+      await waitFor(() => expect(dialog.querySelectorAll("li")).toHaveLength(2));
+      return [...dialog.querySelectorAll("li")].map((item) => ({
+        text: item.textContent?.trim(),
+        caution: item.hasAttribute("data-caution"),
+      }));
+    };
+
+    const en = renderPage();
+    expect(await linesUnder(ROW_UPDATE)).toEqual([
+      { text: "This model comes from modelscope.cn, not Ollama's own library.", caution: true },
+      { text: "Downloads the model files that changed; this can take a while.", caution: false },
+    ]);
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderPage();
+      expect(await linesUnder(/^更新(?!所选|全部)/)).toEqual([
+        { text: "此模型来自modelscope.cn，不是Ollama官方模型库。", caution: true },
+        { text: "需要下载模型有变化的文件，可能要一段时间。", caution: false },
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("shows no version and no digest for an Ollama model Canager could not check", async () => {
     // Its `target` is the digest it has, not a newer one: "New version"
     // would be false, and the digest is never shown.

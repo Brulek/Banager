@@ -325,8 +325,11 @@ export function buildPlan(world: World, inst: ManagerInstance, request: OpReques
       return {
         ...plan,
         action: command(inst.exe_path, [upgrade ? "pull" : "rm", name]),
-        // The registry is said on the download only, never on an uninstall.
-        warnings: upgrade ? (thirdParty ? [{ ThirdPartyRegistry: { host } }] : []) : [scope("Ollama")],
+        // The registry is said on the download only, never on an uninstall;
+        // then that the upgrade downloads what changed.
+        warnings: upgrade
+          ? [...(thirdParty ? [{ ThirdPartyRegistry: { host } }] : []), "DownloadsModelChanges"]
+          : [scope("Ollama")],
         timeout_secs: 3600,
       };
     }

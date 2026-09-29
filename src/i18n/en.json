@@ -271,6 +271,7 @@
     "wouldBreak_one": "{{names}} still needs this.",
     "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
     "compilesLocally": "This compiles on your Mac and takes a while.",
+    "downloadsModelChanges": "Downloads the model files that changed; this can take a while.",
     "nonRegistrySource": "It wasn't installed from crates.io.",
     "thirdPartyRegistry": "This model comes from {{host}}, not Ollama's own library.",
     "willTrash": {

@@ -249,6 +249,7 @@
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
     "compilesLocally": "需要在这台Mac上编译，会花一些时间。",
+    "downloadsModelChanges": "需要下载模型有变化的文件，可能要一段时间。",
     "nonRegistrySource": "它不是从crates.io安装的。",
     "thirdPartyRegistry": "此模型来自{{host}}，不是Ollama官方模型库。",
     "willTrash": {

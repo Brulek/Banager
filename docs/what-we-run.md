@@ -1040,7 +1040,10 @@ an operation has — the preview, the log, cancel, the check afterwards — is
 the same as for every other source. A model reference whose first segment
 names a registry other than `registry.ollama.ai` or `hf.co` is previewed
 with a warning naming that host; it is never blocked, since `ollama pull`
-is what will contact it, under Ollama's own configuration.
+is what will contact it, under Ollama's own configuration. An upgrade's
+preview also says, after that warning, that it downloads the model files
+that changed and can take a while (`Warning::DownloadsModelChanges`, from
+`OllamaAdapter::plan`); an install's and an uninstall's do not.
 
 **The Open Ollama button** runs `/usr/bin/open -a Ollama`
 (`open_ollama_app_argv` in `src-tauri/src/ipc.rs`), with its stdin,

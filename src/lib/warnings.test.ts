@@ -27,6 +27,7 @@ describe("warningKey", () => {
   it("gives each fixed warning its own key", () => {
     expect(warningKey("DependentsUnknown")).toBe("warnings.dependentsUnknown");
     expect(warningKey("CompilesLocally")).toBe("warnings.compilesLocally");
+    expect(warningKey("DownloadsModelChanges")).toBe("warnings.downloadsModelChanges");
     expect(warningKey("NonRegistrySource")).toBe("warnings.nonRegistrySource");
     expect(warningKey({ WouldBreak: { names: ["python@3.13"] } })).toBe("warnings.wouldBreak");
     expect(warningKey({ ThirdPartyRegistry: { host: "modelscope.cn" } })).toBe(
@@ -181,13 +182,14 @@ describe("warningKey", () => {
 
   it("is null for Message and for nothing else", () => {
     // The runtime half of what `tsc` checks at compile time: every
-    // variant of `Warning` is one of these twenty, and the only one
+    // variant of `Warning` is one of these twenty-one, and the only one
     // without a `warnings.*` key is the raw-text catch-all. A variant this
     // list does not name is a `never` in `warningKey`'s default branches
     // and does not compile, so there is no "unrecognised variant" to test.
     const all: Warning[] = [
       "DependentsUnknown",
       "CompilesLocally",
+      "DownloadsModelChanges",
       "NonRegistrySource",
       { WouldBreak: { names: ["a"] } },
       { ThirdPartyRegistry: { host: "modelscope.cn" } },
@@ -373,6 +375,7 @@ describe("warningText", () => {
 const EVERY_VARIANT: Warning[] = [
   "DependentsUnknown",
   "CompilesLocally",
+  "DownloadsModelChanges",
   "NonRegistrySource",
   "HomebrewRustupLosesToolchains",
   "EditsShellConfig",
@@ -496,7 +499,7 @@ describe("warningGroup", () => {
           "UninstallScope" in warning
         ),
     );
-    expect(notes).toHaveLength(16);
+    expect(notes).toHaveLength(17);
     for (const warning of notes) expect(warningGroup(warning)).toBe("note");
     // Every kind of a cask's extra steps.
     for (const step of EVERY_STEP) {
@@ -574,6 +577,7 @@ describe("warningDetailKey", () => {
       { DeletesCargoHome: { path: "~/.cargo" } },
       "DependentsUnknown",
       "CompilesLocally",
+      "DownloadsModelChanges",
       "NonRegistrySource",
       "HomebrewRustupLosesToolchains",
       "EditsShellConfig",
@@ -857,6 +861,7 @@ describe("isCaution", () => {
     ];
     const plain: Warning[] = [
       "CompilesLocally",
+      "DownloadsModelChanges",
       "NonRegistrySource",
       "EditsShellConfig",
       { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },

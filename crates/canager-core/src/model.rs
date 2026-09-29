@@ -499,6 +499,16 @@ pub enum Warning {
     /// twice before fetching it, and no reason at all to hesitate before
     /// deleting it.
     ThirdPartyRegistry { host: String },
+    /// Upgrading this model pulls it again (`ollama pull`), which fetches
+    /// every layer of the model's current manifest that is not already on
+    /// this Mac -- the files that changed since it was pulled, weights of
+    /// several gigabytes when those changed -- so it can take a while. The
+    /// model's note in the update confirmation, as `CompilesLocally` is a
+    /// crate's. Carried only on Upgrade plans, after `ThirdPartyRegistry`
+    /// when there is one: an Install downloads the whole model, which the
+    /// person asked for, and an Uninstall downloads nothing. Produced by
+    /// `OllamaAdapter::plan`; read by `warningKey` in src/lib/warnings.ts.
+    DownloadsModelChanges,
     /// A path-list uninstall will move this to the Trash: one per path, in
     /// the order they will be moved (the launcher last). `path` has `$HOME`
     /// abbreviated to `~` (`scan::display_path`): data for a sentence, not
@@ -1556,6 +1566,10 @@ mod tests {
             })
             .unwrap(),
             r#"{"ThirdPartyRegistry":{"host":"modelscope.cn"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Warning::DownloadsModelChanges).unwrap(),
+            r#""DownloadsModelChanges""#
         );
         assert_eq!(
             serde_json::to_string(&Warning::Message("boom".to_string())).unwrap(),

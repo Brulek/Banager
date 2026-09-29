@@ -167,7 +167,8 @@ export type RemoveCheck =
  * in crates/canager-core/src/model.rs: bare-string unit variants,
  * externally tagged data variants (`WouldBreak`, whose `names` interpolate
  * and pluralise the copy in `src/lib/warnings.ts`, and
- * `ThirdPartyRegistry`, whose `host` interpolates it, and a path-list
+ * `ThirdPartyRegistry`, whose `host` interpolates it, with
+ * `DownloadsModelChanges` as an Ollama upgrade's bare-string one, and a path-list
  * uninstall's `WillTrash`, `WillKeep` and `AlreadyGone`, whose `path`
  * interpolates it and whose `what` picks the key, and rustup's own
  * uninstall's `RemovesToolchains`, `DeletesCargoHome`,
@@ -199,6 +200,7 @@ export type Warning =
   | "CompilesLocally"
   | "NonRegistrySource"
   | { ThirdPartyRegistry: { host: string } }
+  | "DownloadsModelChanges"
   | { WillTrash: { path: string; what: RemovedWhat } }
   | { WillKeep: { path: string; what: KeptWhat } }
   | { AlreadyGone: { path: string } }
