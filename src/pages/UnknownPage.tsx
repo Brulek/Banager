@@ -148,8 +148,8 @@ const SHOW_IN_FINDER_HINTS: Record<EntryKind, string | null> = {
 
 /**
  * The avatar of a program no source accounts for: a prompt, in the
- * neutral colour of the Overview's Unknown tile -- systemGray, and in the
- * dark the darker #6E6E73, so that the tiles down the list are not the
+ * neutral colour (`neutral-avatar`) -- systemGray, and in the dark
+ * systemGray3's #48484A, so that the tiles down the list are not the
  * brightest thing on a dark page. Decorative, as a source's is: the name
  * is beside it. `facts`, what the row's tooltip says (`factsOf`), are said
  * to a screen reader here, the row having no ⓘ for them.
@@ -159,7 +159,7 @@ function ProgramAvatar({ facts }: { facts: string }) {
     <>
       <span
         aria-hidden="true"
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white dark:bg-[#6E6E73]"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white"
       >
         <TerminalIcon size={18} />
       </span>

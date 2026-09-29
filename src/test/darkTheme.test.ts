@@ -62,7 +62,7 @@ function darkRoot(css: string): Record<string, string> {
 describe("the dark theme, as built", () => {
   let css = "";
   beforeAll(async () => {
-    css = await build(["shadow-dialog", "shadow-menu", "bg-surface", "bg-popover", "bg-switch-off", "bg-switch-knob"]);
+    css = await build(["shadow-dialog", "shadow-menu", "bg-surface", "bg-popover", "bg-switch-off", "bg-switch-knob", "bg-neutral-avatar"]);
   });
 
   it("gives a dialog, a menu and a popover the shadow of the mode they are in, not the light one", () => {
@@ -88,5 +88,10 @@ describe("the dark theme, as built", () => {
     expect(darkRoot(css)["--color-switch-knob"]).toBe("#e2e2e2");
     expect(darkRoot(css)["--color-switch-off"]).toBe("rgb(255 255 255 / 0.1)");
     expect(rule(css, ".bg-switch-knob")).toEqual({ "background-color": "var(--color-switch-knob)" });
+  });
+
+  it("draws the square of something with no source of its own in systemGray3 in the dark, not the page's brightest grey", () => {
+    expect(lightTheme(css, "--color-neutral-avatar")).toBe("#8e8e93");
+    expect(darkRoot(css)["--color-neutral-avatar"]).toBe("#48484a");
   });
 });

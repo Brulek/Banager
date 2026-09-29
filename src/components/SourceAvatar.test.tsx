@@ -6,16 +6,19 @@ import { SOURCE_AVATAR_CLASSES, SourceAvatar } from "./SourceAvatar";
 
 /**
  * A pack of this test's own (`renderWithProviders` otherwise hands the
- * avatars none): a glyph for Homebrew, a raster for Grok Build, nothing
- * for the rest.
+ * avatars none): a glyph for Homebrew, a black one for Cargo, a raster
+ * for Grok Build, nothing for the rest.
  */
 const PACK: ToolIconPack = {
   version: 1,
   generated: "2026-09-28",
-  glyphs: { "si-homebrew": { path: "M4 4h16v16H4z", hex: "FBB040", title: "Homebrew" } },
+  glyphs: {
+    "si-homebrew": { path: "M4 4h16v16H4z", hex: "FBB040", title: "Homebrew" },
+    "si-rust": { path: "M4 4h16v16H4z", hex: "000000", title: "Rust" },
+  },
   rasters: { "gh-xai-org": { file: "gh-xai-org.webp", title: "xai-org" } },
   tools: {},
-  sources: { brew: "si-homebrew", "standalone-grok": "gh-xai-org" },
+  sources: { brew: "si-homebrew", "standalone-grok": "gh-xai-org", cargo: "si-rust" },
 };
 const toolIcons = loadToolIcons(PACK, new Map([["gh-xai-org.webp", "/assets/gh-xai-org.webp"]]));
 
@@ -46,13 +49,23 @@ describe("SourceAvatar", () => {
     expect(avatar.className).toContain("rounded-[7px]");
   });
 
-  it("edges a glyph's square with the border colour in dark mode, and with nothing in light mode", () => {
+  it("edges a glyph's square with 12% white in dark mode, and with nothing in light mode", () => {
     const { container } = renderWithProviders(<SourceAvatar adapterId="brew" label="Homebrew" size="xs" />, {
       toolIcons,
     });
     const classes = (container.firstElementChild as HTMLElement).className.split(" ");
-    expect(classes).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-border"]));
+    expect(classes).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-white/12"]));
     // No ring or border outside the dark variant.
+    expect(classes.filter((c) => /^(inset-ring|ring|border)/.test(c))).toEqual([]);
+  });
+
+  it("edges a black glyph's square with 20% white in dark mode, where 12% would be the window's own grey", () => {
+    const { container } = renderWithProviders(<SourceAvatar adapterId="cargo" label="Cargo" size="xs" />, {
+      toolIcons,
+    });
+    const classes = (container.firstElementChild as HTMLElement).className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["dark:inset-ring", "dark:inset-ring-white/20"]));
+    expect(classes).not.toContain("dark:inset-ring-white/12");
     expect(classes.filter((c) => /^(inset-ring|ring|border)/.test(c))).toEqual([]);
   });
 
@@ -68,6 +81,11 @@ describe("SourceAvatar", () => {
     expect(avatar).toHaveAttribute("aria-hidden", "true");
     expect(avatar.className.split(" ")).toEqual(
       expect.arrayContaining(["bg-white", "outline-[0.5px]", "outline-black/12", "object-contain", "h-4", "rounded-[4px]"]),
+    );
+    // In dark mode the edge is light, so one that fills its square with
+    // black -- Grok's -- keeps an outline on the dark window.
+    expect(avatar.className.split(" ")).toEqual(
+      expect.arrayContaining(["dark:outline-1", "dark:-outline-offset-1", "dark:outline-white/20"]),
     );
   });
 

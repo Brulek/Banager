@@ -112,7 +112,9 @@
   --color-warning: #ff8d28;
   --color-danger: #ff383c;
   --color-danger-text: #d70015;
-  /* systemGray: the square of something with no source of its own. */
+  /* systemGray: the square of something with no source of its own; in the
+     dark systemGray3's #48484A (below), so that a list of them is not the
+     brightest thing on a dark page. */
   --color-neutral-avatar: #8e8e93;
 
   /* Each source's colour, for its small avatar and nowhere else, and the
@@ -192,6 +194,7 @@
     --color-row-selected: #464646;
     --color-switch-off: rgb(255 255 255 / 0.1);
     --color-switch-knob: #e2e2e2;
+    --color-neutral-avatar: #48484a;
     --color-accent-text: #419cff;
     --color-selection: #3f638b;
     --color-focus: rgb(26 169 255 / 0.5);

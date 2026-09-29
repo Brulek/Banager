@@ -74,12 +74,24 @@ const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
 };
 
 /**
- * A glyph's square in dark mode: a 1px edge just inside it, in the border
- * colour, so that a near-black brand's square -- GitHub's, Rust's,
- * Ollama's -- keeps its outline on the dark content. None in light mode.
- * Whole class names, for Tailwind.
+ * A glyph's square in dark mode: a 1px edge just inside it, 12% white, so
+ * that a dark brand's square -- GitHub's #181717 -- keeps its outline on
+ * the dark content. On a square darker still -- Rust's and Ollama's pure
+ * black -- 12% white is the window's own #1E1E1E and the edge would vanish
+ * into it, so it is 20% there, to read as GitHub's does. None in light
+ * mode. Whole class names, for Tailwind.
  */
-const GLYPH_EDGE_CLASSES = "dark:inset-ring dark:inset-ring-border";
+const GLYPH_EDGE_CLASSES = "dark:inset-ring dark:inset-ring-white/12";
+const BLACK_GLYPH_EDGE_CLASSES = "dark:inset-ring dark:inset-ring-white/20";
+
+/**
+ * Whether the brand colour `hex` (`RRGGBB`) is so near black that 12% white
+ * over it would be the dark window's grey: every channel under 0x14.
+ */
+function isNearBlack(hex: string): boolean {
+  const rgb = parseInt(hex.replace(/^#/, ""), 16);
+  return [16, 8, 0].every((shift) => ((rgb >> shift) & 0xff) < 0x14);
+}
 
 export interface PackLogoProps {
   icon: ToolIcon;
@@ -90,12 +102,14 @@ export interface PackLogoProps {
  * A logo from the logo pack (src/lib/toolIcons.ts) on an avatar's square.
  * A glyph is drawn in white or near-black, whichever reads better on its
  * brand's colour (`glyphInk`), on a square of that colour, in dark mode as
- * in light; in dark mode the square has a 1px edge inside it
- * (`GLYPH_EDGE_CLASSES`). A raster fills a white square with a half-point
- * edge drawn over it, as macOS edges an app icon's white tile: some are
+ * in light; in dark mode the square has a 1px edge inside it (12% white,
+ * 20% on a near-black square). A raster fills a white square with a
+ * half-point edge drawn over it, as macOS edges an app icon's white tile: some are
  * black on transparent, and would vanish on dark mode's surfaces. In dark
- * mode the white is dimmed a little, so it does not glare. `data-logo` says which it is. Decorative, as the
- * initial is.
+ * mode the white is dimmed a little, so it does not glare, and the edge is
+ * a glyph's 1px of 20% white, so a raster that fills its square with
+ * black -- Grok's -- keeps an outline as a black glyph's does. `data-logo` says which it is.
+ * Decorative, as the initial is.
  */
 export function PackLogo({ icon, size }: PackLogoProps) {
   if (icon.kind === "raster") {
@@ -106,7 +120,7 @@ export function PackLogo({ icon, size }: PackLogoProps) {
         aria-hidden="true"
         draggable={false}
         data-logo="raster"
-        className={`${SIZE_CLASSES[size]} shrink-0 bg-white object-contain outline-[0.5px] -outline-offset-[0.5px] outline-black/12 dark:brightness-90`}
+        className={`${SIZE_CLASSES[size]} shrink-0 bg-white object-contain outline-[0.5px] -outline-offset-[0.5px] outline-black/12 dark:outline-1 dark:-outline-offset-1 dark:outline-white/20 dark:brightness-90`}
       />
     );
   }
@@ -114,7 +128,7 @@ export function PackLogo({ icon, size }: PackLogoProps) {
     <span
       aria-hidden="true"
       data-logo="glyph"
-      className={`inline-flex shrink-0 items-center justify-center ${SIZE_CLASSES[size]} ${GLYPH_EDGE_CLASSES}`}
+      className={`inline-flex shrink-0 items-center justify-center ${SIZE_CLASSES[size]} ${isNearBlack(icon.hex) ? BLACK_GLYPH_EDGE_CLASSES : GLYPH_EDGE_CLASSES}`}
       style={{ backgroundColor: `#${icon.hex}` }}
     >
       <svg viewBox="0 0 24 24" fill={glyphInk(icon.hex)} className={GLYPH_CLASSES[size]}>

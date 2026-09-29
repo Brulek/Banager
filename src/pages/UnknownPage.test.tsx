@@ -173,9 +173,10 @@ describe("UnknownPage", () => {
     const row = rowOf(await findByText("standalone-tool"));
     const avatar = row.querySelector('[aria-hidden="true"]') as HTMLElement;
     expect(avatar.className).toContain("bg-neutral-avatar");
-    // systemGray in the light; in the dark the darker #6E6E73, so the
-    // tiles are not the brightest thing on the page.
-    expect(avatar.className.split(" ")).toContain("dark:bg-[#6E6E73]");
+    // systemGray in the light; in the dark the token's own #48484A
+    // (src/test/darkTheme.test.ts), so the tiles are not the brightest
+    // thing on the page -- no dark colour of the page's own.
+    expect(avatar.className).not.toMatch(/dark:bg-/);
     expect(avatar.className).toContain("h-8");
     expect(avatar.querySelector("svg")).not.toBeNull();
     expect(avatar.textContent).toBe("");
