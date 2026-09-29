@@ -898,6 +898,35 @@ describe("OverviewPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("names which Homebrew a row is about where this Mac has two, as the sidebar does", async () => {
+    const appleSilicon = { ...brew, prefix: "/opt/homebrew" };
+    const intel = instance("brew:/usr/local", "brew", {
+      prefix: "/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      status: { unavailable: "NotResponding", notes: [] },
+    });
+    served = snapshotWith({ instances: [appleSilicon, intel, pip] });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    const lines = within(list).getAllByRole("listitem");
+    expect(lines).toHaveLength(1);
+    expect(within(lines[0]).getByText("Homebrew (Intel) isn't responding")).toBeInTheDocument();
+    expect(list.textContent).not.toContain("/usr/local");
+  });
+
+  it("names the only Homebrew plainly", async () => {
+    const intelOnly = instance("brew:/usr/local", "brew", {
+      prefix: "/usr/local",
+      status: { unavailable: "NotResponding", notes: [] },
+    });
+    served = snapshotWith({ instances: [intelOnly, pip] });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    expect(within(list).getByText("Homebrew isn't responding")).toBeInTheDocument();
+  });
+
   it("says under the row when Open Ollama did not work", async () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
     mockInvoke.mockImplementation((cmd: string) => {

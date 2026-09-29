@@ -88,9 +88,9 @@ function useCounts(): Partial<Record<Page, number>> {
 interface SourceRow {
   id: string;
   adapterId: string;
-  /** Its whole name, 「Homebrew（/usr/local）」: what a screen reader says, and the tooltip. */
+  /** Its whole name, 「Homebrew（Intel）」: what a screen reader says, and the tooltip. */
   label: string;
-  /** Its kind's name, and where it is where another of its kind is on the Mac (`instanceNames`). */
+  /** Its kind's name, and which one it is where another of its kind is on the Mac (`instanceNames`): 「Intel」. */
   source: string;
   place: string | null;
   count: number;
@@ -147,6 +147,7 @@ function SidebarRow({
   place = null,
   active,
   count,
+  reserveCount = false,
   warning,
   description,
   descriptionId,
@@ -155,13 +156,22 @@ function SidebarRow({
   glyph: ReactNode;
   label: string;
   /**
-   * Where a source is, after its name, 11 and in the secondary colour --
-   * as Mail sets an account's name after a mailbox's -- which gives way
-   * first; the whole name in the tooltip and to a screen reader.
+   * Which of two sources of one kind this is -- 「Apple芯片」, 「Intel」 --
+   * on a line of its own under the name, 11 and in the secondary colour, as
+   * System Settings sets what an account is under its name: the row 40
+   * high for it. After the name, on its line, 「Apple silicon」 would be cut
+   * short in the sidebar's width, and it is the part that tells the two
+   * rows apart. The whole name in the tooltip and to a screen reader.
    */
   place?: { text: string; whole: string } | null;
   active: boolean;
   count?: number;
+  /**
+   * The count's place is kept, 20 wide and its number at its right, with
+   * no number in it: a source's row, whose ⚠︎ then stands at one x down
+   * the list, whether its source has installed anything or not.
+   */
+  reserveCount?: boolean;
   warning?: string | null;
   description: string | null;
   descriptionId: string;
@@ -176,7 +186,7 @@ function SidebarRow({
       title={place === null ? undefined : place.whole}
       aria-describedby={description !== null ? descriptionId : undefined}
       onClick={onPress}
-      className={`flex h-8 w-full items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
+      className={`flex ${place === null ? "h-8" : "h-10"} w-full items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
         active ? "bg-sidebar-active" : ""
       }`}
     >
@@ -184,9 +194,9 @@ function SidebarRow({
       {place === null ? (
         <span className="min-w-0 flex-1 truncate">{label}</span>
       ) : (
-        <span className="flex min-w-0 flex-1 items-baseline gap-1">
-          <span className="shrink-0">{label}</span>
-          <span className="min-w-0 truncate text-small text-muted">{place.text}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{label}</span>
+          <span className="truncate text-small text-muted">{place.text}</span>
         </span>
       )}
       {warning !== undefined && warning !== null ? (
@@ -198,10 +208,16 @@ function SidebarRow({
         </span>
       ) : null}
       {/* A plain number, as a Mac's sidebar counts: none of them is a
-          badge. The Dock's shows the updates. */}
-      {counted ? (
-        <span aria-hidden="true" className="shrink-0 text-small tabular-nums text-muted">
-          {count}
+          badge. The Dock's shows the updates. At its column's right, 20
+          wide at least -- three digits -- so a number of any length ends
+          20 from the sidebar's edge. */}
+      {counted || reserveCount ? (
+        <span
+          aria-hidden="true"
+          data-count=""
+          className="min-w-5 shrink-0 text-right text-small tabular-nums text-muted"
+        >
+          {counted ? count : null}
         </span>
       ) : null}
       {description !== null ? (
@@ -255,6 +271,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
         place={row.place === null ? null : { text: row.place, whole: row.label }}
         active={sourceShown === row.id}
         count={row.count}
+        reserveCount
         warning={row.warning}
         description={said.length > 0 ? said.join(t("common.listSeparator")) : null}
         descriptionId={`${idPrefix}-source-${index}`}
@@ -282,32 +299,37 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
           is the app's, as a Mac app's sidebar says. */}
       <div data-tauri-drag-region="" className="h-13 shrink-0" />
       {/* Everything under the lights' row scrolls as one when the window
-          is too short for it, 「来源」 with the pages: nothing folds. */}
-      <div data-sidebar-scroller="" className="min-h-0 flex-1 overflow-y-auto pb-3">
-        {/* The first row 8 below the lights' row, 60 from the window's top. */}
-        <ul className="flex flex-col px-2.5 pt-2">
-          {PAGES.map((p) => (
-            <li key={p}>{entry(p)}</li>
-          ))}
-        </ul>
-        {sources.length > 0 ? (
-          <>
-            {/* A group's title, as a Mac sidebar sets one: 11 bold in the
-                secondary colour, 14 from the edge, in a 28-high row whose
-                words sit at its foot, just over the rows they name. */}
-            <p
-              id={`${idPrefix}-sources`}
-              className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
-            >
-              {t("nav.sources")}
-            </p>
-            <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
-              {sources.map((row, index) => (
-                <li key={row.id}>{sourceEntry(row, index)}</li>
-              ))}
-            </ul>
-          </>
-        ) : null}
+          is too short for it, 「来源」 with the pages: nothing folds. 12
+          under the last row, inside what scrolls -- an engine that leaves a
+          scroller's own bottom padding out of what it scrolls to would
+          leave the last row flush with the window's edge. */}
+      <div data-sidebar-scroller="" className="min-h-0 flex-1 overflow-y-auto">
+        <div className="pb-3">
+          {/* The first row 8 below the lights' row, 60 from the window's top. */}
+          <ul className="flex flex-col px-2.5 pt-2">
+            {PAGES.map((p) => (
+              <li key={p}>{entry(p)}</li>
+            ))}
+          </ul>
+          {sources.length > 0 ? (
+            <>
+              {/* A group's title, as a Mac sidebar sets one: 11 bold in the
+                  secondary colour, 14 from the edge, in a 28-high row whose
+                  words sit at its foot, just over the rows they name. */}
+              <p
+                id={`${idPrefix}-sources`}
+                className="mt-1 flex h-7 items-end px-3.5 pb-0.5 text-small font-bold text-muted"
+              >
+                {t("nav.sources")}
+              </p>
+              <ul aria-labelledby={`${idPrefix}-sources`} className="flex flex-col px-2.5">
+                {sources.map((row, index) => (
+                  <li key={row.id}>{sourceEntry(row, index)}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
       </div>
     </nav>
   );

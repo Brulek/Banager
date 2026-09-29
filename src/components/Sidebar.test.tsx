@@ -39,7 +39,7 @@ function instance(
   };
 }
 
-const brew = instance("brew:/opt/homebrew", "brew");
+const brew = instance("brew:/opt/homebrew", "brew", { prefix: "/opt/homebrew", exe_path: "/opt/homebrew/bin/brew" });
 const pip = instance("pip:/usr/bin/python3", "pip", { read_only_reason: "ByDesign" });
 const ollama = instance("ollama:http://127.0.0.1:11434", "ollama", {
   status: { unavailable: "NotRunning", notes: [] },
@@ -399,7 +399,8 @@ describe("Sidebar", () => {
     // No name of the app between them and the entries, which start 8
     // below (`pt-2`): 60 from the top, at the top of what scrolls.
     const scroller = firstRow.nextElementSibling as HTMLElement;
-    expect(scroller.firstElementChild).toBe(getByRole("list"));
+    expect(scroller).toHaveAttribute("data-sidebar-scroller");
+    expect(scroller.firstElementChild?.firstElementChild).toBe(getByRole("list"));
     expect(queryByText("Canager")).toBeNull();
     expect(nav.textContent).not.toContain("Canager");
 
@@ -476,7 +477,7 @@ describe("Sidebar", () => {
       expect(within(getByRole("button", { name: "pip" })).queryByTitle(/./)).toBeNull();
     });
 
-    it("tells two sources of one kind apart by where each is", async () => {
+    it("tells two Homebrews apart by the Mac each is for, not by a path it would cut short", async () => {
       const intel = instance("brew:/usr/local", "brew", { prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
       served = {
         ...snapshot,
@@ -487,22 +488,84 @@ describe("Sidebar", () => {
 
       const list = await findByRole("list", { name: "Sources" });
       expect(within(list).getAllByRole("button")).toEqual([
-        getByRole("button", { name: "Homebrew (/opt/brew)" }),
-        getByRole("button", { name: "Homebrew (/usr/local)" }),
+        getByRole("button", { name: "Homebrew (Apple silicon)" }),
+        getByRole("button", { name: "Homebrew (Intel)" }),
         getByRole("button", { name: "pip" }),
       ]);
-      expect(getByRole("button", { name: "Homebrew (/usr/local)" })).toHaveAccessibleDescription("1 installed");
-      // In sight: the name, then where it is, 11 in the secondary colour --
-      // what gives way first in the sidebar's width -- and the whole name
-      // under the pointer.
-      const intelRow = getByRole("button", { name: "Homebrew (/usr/local)" });
-      const place = within(intelRow).getByText("/usr/local");
-      expect(place.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted", "truncate", "min-w-0"]));
+      expect(getByRole("button", { name: "Homebrew (Intel)" })).toHaveAccessibleDescription("1 installed");
+      // In sight: the name, and under it which one it is, 11 in the
+      // secondary colour, on a line of its own that the sidebar's width
+      // holds whole -- the row 40 high for it -- and the whole name under
+      // the pointer.
+      const intelRow = getByRole("button", { name: "Homebrew (Intel)" });
+      const place = within(intelRow).getByText("Intel");
+      expect(place.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted", "truncate"]));
       expect(place.previousElementSibling).toHaveTextContent(/^Homebrew$/);
-      expect(place.previousElementSibling?.className).toContain("shrink-0");
-      expect(intelRow).toHaveAttribute("title", "Homebrew (/usr/local)");
+      expect(place.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-col", "min-w-0"]));
+      expect(intelRow.className.split(" ")).toContain("h-10");
+      expect(intelRow).toHaveAttribute("title", "Homebrew (Intel)");
+      // A row with its name alone stays 32.
+      expect(getByRole("button", { name: "pip" }).className.split(" ")).toContain("h-8");
+      expect(within(getByRole("button", { name: "Homebrew (Apple silicon)" })).getByText("Apple silicon")).toBeInTheDocument();
+      expect(list.textContent).not.toContain("/usr/local");
+      expect(list.textContent).not.toContain("/opt/homebrew");
       // The only one of its kind: its name alone, no tooltip.
       expect(getByRole("button", { name: "pip" })).not.toHaveAttribute("title");
+    });
+
+    it("names the only Homebrew plainly, wherever it is", async () => {
+      const intelOnly = instance("brew:/usr/local", "brew", { prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
+      served = { ...snapshot, instances: [intelOnly, pip], artifacts: [] };
+      const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+
+      await findByRole("list", { name: "Sources" });
+      const homebrew = getByRole("button", { name: "Homebrew" });
+      // Its name alone: no place after it, no tooltip.
+      expect(homebrew.querySelector(".truncate")?.textContent).toBe("Homebrew");
+      expect(homebrew.querySelector(".text-small.text-muted.truncate")).toBeNull();
+      expect(homebrew).not.toHaveAttribute("title");
+    });
+
+    it("keeps every source row's count 20 wide at its right, so a ⚠︎ stands at one x with a count or without", async () => {
+      served = {
+        ...snapshot,
+        instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }, pip, ollama],
+      };
+      const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+      await findByRole("list", { name: "Sources" });
+
+      const counted = getByRole("button", { name: "Homebrew" });
+      const empty = getByRole("button", { name: "Ollama" });
+      for (const row of [counted, empty, getByRole("button", { name: "pip" })]) {
+        const slot = row.querySelector("[data-count]") as HTMLElement;
+        // The row's last thing, a column 20 wide at least, its number at
+        // its right edge -- the row's own right, 20 from the sidebar's.
+        expect(slot).not.toBeNull();
+        // (Only the screen reader's hidden words may follow it.)
+        const after = slot.nextElementSibling;
+        expect(after === null || (after instanceof HTMLElement && after.hidden)).toBe(true);
+        expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["min-w-5", "shrink-0", "text-right"]));
+        expect(slot).toHaveAttribute("aria-hidden", "true");
+      }
+      expect(counted.querySelector("[data-count]")).toHaveTextContent("4");
+      // Nothing installed: the column kept, empty, the ⚠︎ just before it
+      // as on a row with a number.
+      expect(empty.querySelector("[data-count]")?.textContent).toBe("");
+      for (const row of [counted, empty]) {
+        const warning = row.querySelector('[title]:not(button)') as HTMLElement;
+        expect(warning.nextElementSibling).toBe(row.querySelector("[data-count]"));
+      }
+      // A page's row with nothing to count has no column.
+      expect(getByRole("button", { name: "Overview" }).querySelector("[data-count]")).toBeNull();
+    });
+
+    it("leaves 12 under the last row inside what scrolls", async () => {
+      const { findByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+      const list = await findByRole("list", { name: "Sources" });
+      const content = list.parentElement as HTMLElement;
+      expect(content.className.split(" ")).toContain("pb-3");
+      expect(content.parentElement).toHaveAttribute("data-sidebar-scroller");
+      expect(content.parentElement?.className).not.toContain("pb-3");
     });
 
     it("selects one row at a time: a source's while the Installed page shows it alone, Installed's otherwise", async () => {
@@ -548,12 +611,13 @@ describe("Sidebar", () => {
       expect(queryByRole("list", { name: "Sources" })).toBeNull();
       expect(queryByText("Sources")).toBeNull();
 
-      const scroller = getByRole("list").parentElement as HTMLElement;
+      const scroller = getByRole("list").parentElement?.parentElement as HTMLElement;
+      expect(scroller).toHaveAttribute("data-sidebar-scroller");
       expect(scroller.className.split(" ")).toEqual(expect.arrayContaining(["min-h-0", "flex-1", "overflow-y-auto"]));
       expect(scroller.previousElementSibling).toHaveAttribute("data-tauri-drag-region");
     });
 
-    it("titles the group 来源 and counts in Chinese, with a source's place in full-width brackets", async () => {
+    it("titles the group 来源 and counts in Chinese, with which Homebrew it is in full-width brackets", async () => {
       const intel = instance("brew:/usr/local", "brew", { prefix: "/usr/local" });
       served = { ...snapshot, instances: [brew, intel] };
       await act(async () => {
@@ -565,8 +629,8 @@ describe("Sidebar", () => {
         );
         await findByRole("list", { name: "来源" });
         expect(getByText("来源")).toBeInTheDocument();
-        expect(getByRole("button", { name: "Homebrew（/opt/brew）" })).toHaveAccessibleDescription("已安装4个");
-        expect(getByRole("button", { name: "Homebrew（/usr/local）" })).not.toHaveAttribute("aria-describedby");
+        expect(getByRole("button", { name: "Homebrew（Apple芯片）" })).toHaveAccessibleDescription("已安装4个");
+        expect(getByRole("button", { name: "Homebrew（Intel）" })).not.toHaveAttribute("aria-describedby");
       } finally {
         await act(async () => {
           await i18n.changeLanguage("en");

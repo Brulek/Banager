@@ -66,7 +66,7 @@ describe("the copy rules, over every string in both languages", () => {
 
   it("keeps brackets for a count, a shortcut or where a source is, and nothing else", () => {
     // 「更新所选（3）」 is a count, and 「重新检查（⌘R）」 names the keys
-    // that do it, as the toolbar's tooltip says them; 「Homebrew（/usr/local）」
+    // that do it, as the toolbar's tooltip says them; 「Homebrew（Intel）」
     // is a name, not copy -- which of two sources of one kind a row in the
     // sidebar is (`common.sourceWithPlace`, spec R8). 「程序（链接）」 and
     // 「（pin）」 were asides.

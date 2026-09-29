@@ -6,7 +6,7 @@ import { isStartupSnapshot } from "../lib/events";
 import { elapsedSince } from "../lib/format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import {
-  ADAPTER_LABEL_KEYS,
+  instanceLabels,
   openOllamaErrorDetail,
   openOllamaErrorMessage,
   sourceNoticesFor,
@@ -289,10 +289,11 @@ export function OverviewPage() {
     );
   }
 
-  const labelOf = (instance: ManagerInstance): string => {
-    const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-    return labelKey ? t(labelKey) : instance.adapter_id;
-  };
+  // Each source by the name the sidebar gives it (`instanceLabels`): where
+  // this Mac has two Homebrews, which one a line is about, 「Homebrew（Intel）
+  // 没有响应」, never two lines of one name.
+  const labels = instanceLabels(t, snapshot.instances);
+  const labelOf = (instance: ManagerInstance): string => labels.get(instance.id) ?? instance.adapter_id;
 
   const installedByInstance = new Map<string, number>();
   for (const artifact of snapshot.artifacts) {

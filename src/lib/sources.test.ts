@@ -746,17 +746,50 @@ describe("instanceLabels", () => {
     ]);
   });
 
-  it("puts where each is after the name of two sources of one kind: the prefix, the home folder as ~", () => {
+  it("names two Homebrews by the Mac each is for: Apple silicon's /opt/homebrew, an Intel Mac's /usr/local", () => {
     const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
-    const home = instance({ id: "brew:/Users/you/homebrew", prefix: "/Users/you/homebrew" });
-    const labels = instanceLabels(fakeT, [instance(), intel, home]);
+    const labels = instanceLabels(fakeT, [instance(), intel]);
     expect(labels.get("brew:/opt/homebrew")).toBe(
-      'common.sourceWithPlace({"source":"adapters.brew","place":"/opt/homebrew"})',
+      'common.sourceWithPlace({"source":"adapters.brew","place":"common.place.appleSilicon"})',
     );
-    expect(labels.get("brew:/usr/local")).toBe('common.sourceWithPlace({"source":"adapters.brew","place":"/usr/local"})');
+    expect(labels.get("brew:/usr/local")).toBe(
+      'common.sourceWithPlace({"source":"adapters.brew","place":"common.place.intel"})',
+    );
+    // A trailing slash is the same place.
+    const slashed = instance({ id: "brew:/usr/local/", prefix: "/usr/local/" });
+    expect(instanceLabels(fakeT, [instance(), slashed]).get("brew:/usr/local/")).toBe(
+      'common.sourceWithPlace({"source":"adapters.brew","place":"common.place.intel"})',
+    );
+  });
+
+  it("names any other place by the last part of its path that tells it apart, without a hidden folder's dot", () => {
+    const home = instance({ id: "brew:/Users/you/homebrew", prefix: "/Users/you/homebrew" });
+    const linux = instance({ id: "brew:/home/linuxbrew/.linuxbrew", prefix: "/home/linuxbrew/.linuxbrew" });
+    const labels = instanceLabels(fakeT, [instance(), home, linux]);
     expect(labels.get("brew:/Users/you/homebrew")).toBe(
-      'common.sourceWithPlace({"source":"adapters.brew","place":"~/homebrew"})',
+      'common.sourceWithPlace({"source":"adapters.brew","place":"homebrew"})',
     );
+    expect(labels.get("brew:/home/linuxbrew/.linuxbrew")).toBe(
+      'common.sourceWithPlace({"source":"adapters.brew","place":"linuxbrew"})',
+    );
+    // Not Homebrew: /opt/homebrew and /usr/local are only paths. The
+    // first's last part tells it apart; the second has no telling part, so
+    // it is its whole path.
+    const npm = instance({ id: "npm:/opt/homebrew", adapter_id: "npm", prefix: "/opt/homebrew" });
+    const npmSystem = instance({ id: "npm:/usr/local", adapter_id: "npm", prefix: "/usr/local" });
+    expect([...instanceLabels(fakeT, [npm, npmSystem]).values()]).toEqual([
+      'common.sourceWithPlace({"source":"adapters.npm","place":"homebrew"})',
+      'common.sourceWithPlace({"source":"adapters.npm","place":"/usr/local"})',
+    ]);
+  });
+
+  it("falls back to whole prefixes where two places' names would read the same", () => {
+    const a = instance({ id: "brew:/Users/you/homebrew", prefix: "/Users/you/homebrew" });
+    const b = instance({ id: "brew:/Volumes/Work/homebrew", prefix: "/Volumes/Work/homebrew" });
+    expect([...instanceLabels(fakeT, [a, b]).values()]).toEqual([
+      'common.sourceWithPlace({"source":"adapters.brew","place":"~/homebrew"})',
+      'common.sourceWithPlace({"source":"adapters.brew","place":"/Volumes/Work/homebrew"})',
+    ]);
   });
 
   it("tells two of one prefix apart by their programs, and else by the rest of their ids", () => {
@@ -774,9 +807,11 @@ describe("instanceLabels", () => {
     ]);
   });
 
-  it("reads 「Homebrew（/usr/local）」 in Chinese and \"Homebrew (/usr/local)\" in English", () => {
+  it("reads 「Homebrew（Intel）」 in Chinese and \"Homebrew (Apple silicon)\" in English", () => {
     expect(zhCN.common.sourceWithPlace).toBe("{{source}}（{{place}}）");
     expect(en.common.sourceWithPlace).toBe("{{source}} ({{place}})");
+    expect(zhCN.common.place).toEqual({ appleSilicon: "Apple芯片", intel: "Intel" });
+    expect(en.common.place).toEqual({ appleSilicon: "Apple silicon", intel: "Intel" });
   });
 });
 
@@ -785,8 +820,8 @@ describe("instanceNames", () => {
     const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local" });
     const pip = instance({ id: "pip:/usr/bin/python3", adapter_id: "pip", prefix: "/usr" });
     expect([...instanceNames(fakeT, [instance(), intel, pip])]).toEqual([
-      ["brew:/opt/homebrew", { source: "adapters.brew", place: "/opt/homebrew" }],
-      ["brew:/usr/local", { source: "adapters.brew", place: "/usr/local" }],
+      ["brew:/opt/homebrew", { source: "adapters.brew", place: "common.place.appleSilicon" }],
+      ["brew:/usr/local", { source: "adapters.brew", place: "common.place.intel" }],
       ["pip:/usr/bin/python3", { source: "adapters.pip", place: null }],
     ]);
   });

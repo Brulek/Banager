@@ -34,6 +34,10 @@
     "copyFailed": "无法拷贝",
     "moreActions": "“{{name}}”的更多操作",
     "sourceWithPlace": "{{source}}（{{place}}）",
+    "place": {
+      "appleSilicon": "Apple芯片",
+      "intel": "Intel"
+    },
     "done": "完成"
   },
   "header": {

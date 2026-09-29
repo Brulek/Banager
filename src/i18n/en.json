@@ -37,6 +37,10 @@
     "copyFailed": "Couldn't copy",
     "moreActions": "More actions for {{name}}",
     "sourceWithPlace": "{{source}} ({{place}})",
+    "place": {
+      "appleSilicon": "Apple silicon",
+      "intel": "Intel"
+    },
     "done": "Done"
   },
   "header": {

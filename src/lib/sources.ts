@@ -907,13 +907,61 @@ function withHomeAsTilde(path: string): string {
 }
 
 /**
- * Where each of `group` -- sources of one kind -- is, in words that tell
- * them apart: its prefix (`/opt/homebrew`, `/usr/local`); should two share
- * one, the program's own path; or else the rest of its id, which is
- * unique (`instance_id` in crates/canager-core/src/model.rs).
+ * Folders whose name says nothing about which copy of a tool lives under
+ * them: a place is named by the last part of its path that is not one of
+ * these (`placeName`). Lower case; compared case aside.
  */
-function placesOf(group: readonly ManagerInstance[]): string[] {
+const PLACELESS_FOLDERS = new Set(["usr", "local", "opt", "bin", "sbin", "lib", "libexec", "share", "library"]);
+
+/**
+ * The last part of `path` that tells a place apart -- `homebrew` for
+ * `~/homebrew`, `linuxbrew` for `/home/linuxbrew/.linuxbrew`, `cargo` for
+ * `~/.cargo` -- without a hidden folder's leading dot; null for a path
+ * made only of folders every Mac has (`/usr/local`).
+ */
+function lastTellingPart(path: string): string | null {
+  const parts = path.split("/");
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index].replace(/^\.+/, "");
+    if (part !== "" && part !== "~" && !PLACELESS_FOLDERS.has(part.toLowerCase())) return part;
+  }
+  return null;
+}
+
+/** Where Homebrew installs itself on each kind of Mac, by the name a person knows the Mac by. */
+const HOMEBREW_PLACE_KEYS: Record<string, string> = {
+  "/opt/homebrew": "common.place.appleSilicon",
+  "/usr/local": "common.place.intel",
+};
+
+/**
+ * A source's place in the words a person knows it by, not its path: a
+ * Homebrew in /opt/homebrew is Apple silicon's (「Apple芯片」) and one in
+ * /usr/local an Intel Mac's (「Intel」) -- the one Migration Assistant
+ * carries over -- and anything else is named by the last telling part of
+ * its prefix (`lastTellingPart`), or else by the whole prefix.
+ */
+function placeName(t: Translate, instance: ManagerInstance): string {
+  const prefix = instance.prefix.replace(/(?<=.)\/+$/, "");
+  if (instance.adapter_id === "brew" && Object.prototype.hasOwnProperty.call(HOMEBREW_PLACE_KEYS, prefix)) {
+    return t(HOMEBREW_PLACE_KEYS[prefix]);
+  }
+  const shown = withHomeAsTilde(prefix);
+  return lastTellingPart(shown) ?? shown;
+}
+
+/**
+ * Where each of `group` -- sources of one kind -- is, in words that tell
+ * them apart: the name of its place (`placeName`: 「Apple芯片」,
+ * 「Intel」, `homebrew`); should two share one, its whole prefix
+ * (`/opt/homebrew`, `~/homebrew`); should two share that, the program's
+ * own path; or else the rest of its id, which is unique (`instance_id` in
+ * crates/canager-core/src/model.rs).
+ */
+function placesOf(t: Translate, group: readonly ManagerInstance[]): string[] {
   const distinct = (places: string[]) => new Set(places).size === places.length;
+  const named = group.map((instance) => placeName(t, instance));
+  if (distinct(named)) return named;
   const prefixes = group.map((instance) => withHomeAsTilde(instance.prefix));
   if (distinct(prefixes)) return prefixes;
   const programs = group.map((instance) => withHomeAsTilde(instance.exe_path));
@@ -923,12 +971,14 @@ function placesOf(group: readonly ManagerInstance[]): string[] {
 
 /**
  * Each source's name, by instance id: the sidebar's row for it, the
- * Installed page's title while it shows that source alone, and the words
- * that page's headings, rows and notices name it by. Its kind's name --
- * and, where this Mac has two sources of one kind, a Homebrew in
- * /opt/homebrew and one left in /usr/local by an Intel Mac, where each is
- * after it: 「Homebrew（/usr/local）」 (spec R8), so that the two are never
- * two rows of one name, as Mail tells two accounts' Inboxes apart.
+ * Installed page's title while it shows that source alone, the words that
+ * page's headings, rows and notices name it by, and the Overview's lines.
+ * Its kind's name -- and, where this Mac has two sources of one kind, a
+ * Homebrew in /opt/homebrew and one left in /usr/local by an Intel Mac,
+ * which of the two it is after it: 「Homebrew（Apple芯片）」,
+ * 「Homebrew（Intel）」 (spec R8, `placesOf`), so that the two are never two
+ * rows of one name, as Mail tells two accounts' Inboxes apart. The only
+ * one of its kind is its kind's name alone: 「Homebrew」.
  */
 export function instanceLabels(t: Translate, instances: readonly ManagerInstance[]): Map<string, string> {
   const labels = new Map<string, string>();
@@ -957,7 +1007,7 @@ export function instanceNames(
   const names = new Map<string, { source: string; place: string | null }>();
   for (const [adapterId, group] of byKind) {
     const source = adapterLabel(t, adapterId);
-    const places = group.length === 1 ? null : placesOf(group);
+    const places = group.length === 1 ? null : placesOf(t, group);
     group.forEach((instance, index) => names.set(instance.id, { source, place: places?.[index] ?? null }));
   }
   return names;

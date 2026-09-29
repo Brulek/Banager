@@ -192,6 +192,20 @@ describe("App", () => {
     expect(useUiStore.getState().installedFilter).toBe(npm.id);
   });
 
+  it("titles a Homebrew by which one it is where the Mac has two: Apple silicon's, or an Intel Mac's", async () => {
+    const brew = snapshot.instances[0];
+    const intel = { ...brew, id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" };
+    mockBackend({ ...snapshot, instances: [brew, intel] });
+    const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
+    const sources = await findByRole("list", { name: "Sources" });
+
+    fireEvent.click(within(sources).getByRole("button", { name: "Homebrew (Intel)" }));
+    expect(await findByText("Nothing installed with Homebrew (Intel)")).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Homebrew \(Intel\)$/);
+    fireEvent.click(within(sources).getByRole("button", { name: "Homebrew (Apple silicon)" }));
+    await waitFor(() => expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Homebrew \(Apple silicon\)$/));
+  });
+
   it("titles every page in one header, with that page's own way to look again beside it", async () => {
     const { getByRole, findByText, getAllByRole, queryAllByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
