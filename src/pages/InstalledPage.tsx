@@ -312,7 +312,7 @@ const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
 /**
  * The page on one source that has nothing to list (spec R8): why, in the
  * words of its first warning -- 「uv没有响应」 over 「无法列出它安装的内
- * 容。请稍后点按“重新检查”。」, the notice's sentence less what its title
+ * 容。请稍后重新检查。」, the notice's sentence less what its title
  * has just said (`EMPTY_PAGE_DESCRIPTION_KEYS`) -- or, for a source that
  * answered, that nothing is installed with it; and Check again, the
  * header's, which shows what it has once it answers or has something. In

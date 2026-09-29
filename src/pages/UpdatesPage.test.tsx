@@ -3146,7 +3146,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Click Check Again later.",
+        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -3215,8 +3215,15 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
+        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
       );
+      // The next step it names, as its line's own button, which checks again.
+      const line = details.closest("[data-notice-line]") as HTMLElement;
+      const again = within(line).getByRole("button", { name: "Check Again" });
+      expect(again.className).toContain(BUTTON.small.grey);
+      mockInvoke.mockClear();
+      fireEvent.click(again);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
       withRows.unmount();
 
       // And the cold start, which is every launch: the snapshot is in

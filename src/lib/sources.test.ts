@@ -150,6 +150,9 @@ describe("sourceNoticesFor", () => {
     expect(notice.titleKey).toBe("sourceNotice.unreachable.title");
     expect(notice.descriptionKey).toBe("sourceNotice.unreachable.descriptionWithRows");
     expect(notice.values).toEqual({ source: "Homebrew" });
+    // Its next step is to check again: the button that does it, beside it,
+    // in the header's words -- not a sentence sending the user to find it.
+    expect(notice.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
   });
 
   it("does not promise carried-forward rows when the page has none to show", () => {
@@ -181,8 +184,11 @@ describe("sourceNoticesFor", () => {
     expect(note.titleKey).toBe("sourceNotice.indexMayBeStale.title");
     // One name for every button that runs the check: the header's.
     expect(note.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
-    expect(zhCN.sourceNotice.indexMayBeStale.description).toContain("“重新检查”");
-    expect(en.sourceNotice.indexMayBeStale.description).toContain("Check Again");
+    // Why, and the next step; the button beside it says which.
+    expect(zhCN.sourceNotice.indexMayBeStale.description).toBe("这次的更新结果以旧清单为准。请检查网络连接后重试。");
+    expect(en.sourceNotice.indexMayBeStale.description).toBe(
+      "This check used the old list. Check your internet connection, then try again.",
+    );
   });
 
   it("says a still-running download is still running: no failure, no button", () => {
@@ -280,8 +286,9 @@ describe("sourceNoticesFor", () => {
   it("warns, and names the link, when a standalone tool's launcher is left without its program", () => {
     // The half-uninstalled state (program files gone, launcher dangling):
     // a warning because this launcher is broken; another PATH copy may
-    // work. No button on the notice: the row's own Uninstall moves the
-    // link, which the sentence says.
+    // work. The row's own Uninstall moves the link, which the sentence
+    // says; the notice's button is Check again, the last step of the other
+    // way out (reinstall, or the files back from the Trash).
     const notices = sourceNoticesFor(
       { ...claude, status: { unavailable: null, notes: ["LauncherOnly"] } },
       "Claude Code",
@@ -293,6 +300,7 @@ describe("sourceNoticesFor", () => {
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
         values: { source: "Claude Code", command: "claude" },
+        action: { id: "checkAgain", labelKey: "header.checkAgain" },
       },
     ]);
   });
@@ -416,10 +424,10 @@ describe("sourceNoticesFor", () => {
     // that stopped partway moved them to the Trash -- "if", as spec §9.2
     // says: the Trash can have been emptied since.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again.",
+      "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处，然后点按“重新检查”。",
+      "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处后重新检查。",
     );
     expect(JSON.stringify(zhCN.sourceNotice)).not.toContain("这一份");
     for (const locale of [en, zhCN]) {
@@ -1255,11 +1263,31 @@ describe("the Updates page's chip details", () => {
     expect(en.updates.sourceUnavailable).toBe("Can't update now");
     expect(JSON.stringify(zhCN)).not.toContain("应答");
     expect(zhCN.sourceNotice.unreachable.title).toBe("{{source}}没有响应");
-    for (const copy of [zhCN.sourceNotice.unreachable.description, zhCN.sourceNotice.unreachable.descriptionWithRows]) {
-      expect(copy.endsWith("请稍后点按“重新检查”。"), copy).toBe(true);
+    // Each ends with the next step, which the notice's own Check again
+    // carries out: said, not pointed at 「点按“重新检查”」 -- the only other
+    // one on screen is the toolbar's ⟳, which has no words.
+    for (const copy of [
+      zhCN.sourceNotice.unreachable.description,
+      zhCN.sourceNotice.unreachable.descriptionWithRows,
+      zhCN.installed.sourceEmpty.unreachable,
+    ]) {
+      expect(copy.endsWith("请稍后重新检查。"), copy).toBe(true);
     }
-    for (const copy of [en.sourceNotice.unreachable.description, en.sourceNotice.unreachable.descriptionWithRows]) {
-      expect(copy.endsWith("Click Check Again later."), copy).toBe(true);
+    for (const copy of [
+      en.sourceNotice.unreachable.description,
+      en.sourceNotice.unreachable.descriptionWithRows,
+      en.installed.sourceEmpty.unreachable,
+    ]) {
+      expect(copy.endsWith("Check again later."), copy).toBe(true);
+    }
+  });
+
+  it("never sends the user to press a Check Again from a notice that has one of its own", () => {
+    for (const locale of [en, zhCN]) {
+      for (const [key, value] of Object.entries(locale.sourceNotice)) {
+        expect(JSON.stringify(value), key).not.toMatch(/点按“重新检查”|click Check Again|Click Check Again/);
+      }
+      expect(locale.installed.sourceEmpty.unreachable).not.toMatch(/点按“重新检查”|Click Check Again/);
     }
   });
 

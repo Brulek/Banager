@@ -163,7 +163,7 @@
     "sourceEmpty": {
       "title": "Nothing installed with {{source}}",
       "description": "Tools you install with {{source}} show up here.",
-      "unreachable": "What it has installed can't be shown. Click Check Again later."
+      "unreachable": "What it has installed can't be shown. Check again later."
     },
     "installedOn": "Date Installed",
     "size": "Size"
@@ -371,8 +371,8 @@
     },
     "unreachable": {
       "title": "{{source}} isn't responding",
-      "description": "{{source}} didn't respond, so what it has installed can't be shown. Click Check Again later.",
-      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Click Check Again later."
+      "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
+      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Check again later."
     },
     "refusesAsRoot": {
       "title": "{{source}} doesn't run as administrator",
@@ -390,7 +390,7 @@
     },
     "indexMayBeStale": {
       "title": "Couldn't update Homebrew's software list",
-      "description": "This check used the old list. Check your connection, then click Check Again."
+      "description": "This check used the old list. Check your internet connection, then try again."
     },
     "indexUpdating": {
       "title": "Homebrew is updating its software list",
@@ -414,7 +414,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again."
+      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again."
     },
     "more_one": "{{count}} more issue",
     "more_other": "{{count}} more issues",

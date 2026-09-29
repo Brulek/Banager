@@ -148,7 +148,7 @@
     "sourceEmpty": {
       "title": "没有用{{source}}安装的工具",
       "description": "用{{source}}安装的工具会显示在这里。",
-      "unreachable": "无法列出它安装的内容。请稍后点按“重新检查”。"
+      "unreachable": "无法列出它安装的内容。请稍后重新检查。"
     },
     "installedOn": "安装日期",
     "size": "大小"
@@ -335,8 +335,8 @@
     },
     "unreachable": {
       "title": "{{source}}没有响应",
-      "description": "{{source}}没有响应，无法列出它安装的内容。请稍后点按“重新检查”。",
-      "descriptionWithRows": "这里列出的是{{source}}上次响应时的内容，之后的变化不会显示。请稍后点按“重新检查”。"
+      "description": "{{source}}没有响应，无法列出它安装的内容。请稍后重新检查。",
+      "descriptionWithRows": "这里列出的是{{source}}上次响应时的内容，之后的变化不会显示。请稍后重新检查。"
     },
     "refusesAsRoot": {
       "title": "{{source}}无法以管理员身份运行",
@@ -354,7 +354,7 @@
     },
     "indexMayBeStale": {
       "title": "无法更新Homebrew软件清单",
-      "description": "这次的更新结果以旧清单为准。请检查网络连接，然后点按“重新检查”。"
+      "description": "这次的更新结果以旧清单为准。请检查网络连接后重试。"
     },
     "indexUpdating": {
       "title": "Homebrew正在更新软件清单",
@@ -378,7 +378,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}的程序文件不见了",
-      "description": "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处，然后点按“重新检查”。"
+      "description": "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处后重新检查。"
     },
     "more_other": "还有{{count}}个问题",
     "showFewer": "收起"

@@ -1489,8 +1489,16 @@ describe("InstalledPage", () => {
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
+      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
     );
+    // Its next step's button on its own line, after its ⓘ, which checks again.
+    const line = details.closest("[data-notice-line]") as HTMLElement;
+    const again = within(line).getByRole("button", { name: "Check Again" });
+    expect(again).toBeEnabled();
+    expect(again.className).toContain(BUTTON.small.grey);
+    mockInvoke.mockClear();
+    fireEvent.click(again);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
   it("shows every row's version, and never a model's digest, technical details on or off", async () => {
@@ -1829,7 +1837,7 @@ describe("InstalledPage", () => {
       const { findByText, getByRole } = renderInstalled();
 
       const title = await findByText("Homebrew (Intel) isn't responding");
-      const sentence = screen.getByText("What it has installed can't be shown. Click Check Again later.");
+      const sentence = screen.getByText("What it has installed can't be shown. Check again later.");
       expect(sentence).not.toHaveTextContent(/isn't responding|didn't respond/);
       expect(title.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
@@ -1840,7 +1848,7 @@ describe("InstalledPage", () => {
       });
       try {
         expect(await findByText("Homebrew（Intel）没有响应")).toBeInTheDocument();
-        const zh = screen.getByText("无法列出它安装的内容。请稍后点按“重新检查”。");
+        const zh = screen.getByText("无法列出它安装的内容。请稍后重新检查。");
         expect(zh).not.toHaveTextContent("没有响应");
       } finally {
         await act(async () => {
@@ -2441,9 +2449,11 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
+          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
         ),
       ).toBeInTheDocument();
+      // And the button its next step needs, under its sentence.
+      expect(within(drawer).getByRole("button", { name: "Check Again" })).toBeEnabled();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
       expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     });

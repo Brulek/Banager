@@ -6,6 +6,7 @@ import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { SnapshotStatus } from "../components/SnapshotStatus";
+import { BUTTON } from "../components/ui/controls";
 import { refreshIntoCache } from "../lib/events";
 import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -896,6 +897,56 @@ describe("OverviewPage", () => {
     expect(
       getByRole("heading", { level: 2, name: "No updates in the sources checked" }),
     ).toBeInTheDocument();
+  });
+
+  it("gives each problem whose next step is checking again a Check Again of its own, and says the step without pointing at a button", async () => {
+    const intel = instance("brew:/usr/local", "brew", {
+      prefix: "/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      status: { unavailable: null, notes: ["IndexMayBeStale"] },
+    });
+    const claude = instance("standalone-claude", "standalone-claude", {
+      exe_path: "/Users/someone/.local/bin/claude",
+      prefix: "/Users/someone/.local/share/claude",
+      status: { unavailable: null, notes: ["LauncherOnly"] },
+    });
+    served = snapshotWith({
+      instances: [
+        { ...brew, prefix: "/opt/homebrew", status: { unavailable: "NotResponding", notes: [] } },
+        intel,
+        claude,
+        pip,
+        stoppedOllama,
+      ],
+    });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    const lines = within(list).getAllByRole("listitem");
+    expect(lines.map((line) => line.querySelector("p")?.textContent)).toEqual([
+      "Homebrew (Apple silicon) isn't responding",
+      "Couldn't update Homebrew's software list",
+      "Claude Code's program files are missing",
+      "Ollama isn't running",
+    ]);
+    // Reason and next step, the button beside them doing it.
+    expect(lines[0]).toHaveTextContent(
+      "What's listed for Homebrew (Apple silicon) is from the last time it responded, and later changes aren't shown. Check again later.",
+    );
+    expect(lines[1]).toHaveTextContent("This check used the old list. Check your internet connection, then try again.");
+    for (const line of lines.slice(0, 3)) {
+      const again = within(line).getByRole("button", { name: "Check Again" });
+      expect(again.className).toContain(BUTTON.regular.grey);
+      expect(line.textContent).not.toMatch(/click Check Again/i);
+    }
+    // Ollama's keeps its own.
+    expect(within(lines[3]).getByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
+    expect(within(lines[3]).queryByRole("button", { name: "Check Again" })).toBeNull();
+
+    // Pressed, it starts a check.
+    mockInvoke.mockClear();
+    fireEvent.click(within(lines[0]).getByRole("button", { name: "Check Again" }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
   it("names which Homebrew a row is about where this Mac has two, as the sidebar does", async () => {

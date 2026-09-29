@@ -356,16 +356,18 @@ export function sourceNoticesFor(
       titleKey: "sourceNotice.unreachable.title",
       // Two sentences for one state, chosen by what is actually on screen.
       // Each ends with the one next step there is, the one its rows' chips
-      // give too: press Check again later. Nothing more: the way out they
-      // used to offer ("Reopening Canager usually fixes this") is simply
-      // wrong for a source that will fail the same way on the next
-      // launch, and promising a recovery that may not happen is the
-      // pattern this phase exists to remove.
+      // give too: check again later -- with the notice's own Check again
+      // there to do it, so the sentence need not say which button. Nothing
+      // more: the way out they used to offer ("Reopening Canager usually
+      // fixes this") is simply wrong for a source that will fail the same
+      // way on the next launch, and promising a recovery that may not
+      // happen is the pattern this phase exists to remove.
       descriptionKey:
         rowsOnScreen > 0
           ? "sourceNotice.unreachable.descriptionWithRows"
           : "sourceNotice.unreachable.description",
       values: { source: sourceLabel },
+      action: { id: "checkAgain", labelKey: "header.checkAgain" },
     });
   } else if (unavailable === "RefusesAsRoot") {
     // Its own copy because its own action: Canager was started with
@@ -448,15 +450,18 @@ export function sourceNoticesFor(
       });
     } else if (note === "LauncherOnly") {
       // The half-uninstalled state: this launcher cannot run, so a
-      // warning. No button on the notice: the row's own Uninstall finishes
-      // the job -- its preview lists the program directory as already gone
-      // and moves the link (spec §3.3, §6.2).
+      // warning. The row's own Uninstall finishes the job -- its preview
+      // lists the program directory as already gone and moves the link
+      // (spec §3.3, §6.2) -- and the notice's button is the other way
+      // out's last step: Check again, once the tool is reinstalled or its
+      // files are back from the Trash.
       notices.push({
         id: `${instance.id}:launcher-only`,
         variant: "warning",
         titleKey: "sourceNotice.launcherOnly.title",
         descriptionKey: "sourceNotice.launcherOnly.description",
         values: { source: sourceLabel, command: commandNameOf(instance) },
+        action: { id: "checkAgain", labelKey: "header.checkAgain" },
       });
     } else {
       const unhandled: never = note;
