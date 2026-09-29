@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
-import { adapterIdOf, adapterLabel, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, planErrorMessage } from "../lib/sources";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
@@ -379,6 +379,12 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const adapterFor = (instanceId: string): string =>
     snapshot?.instances.find((instance) => instance.id === instanceId)?.adapter_id ??
     adapterIdOf(instanceId);
+  // The source's name as the sidebar gives it -- 「Homebrew（Intel）」 where
+  // this Mac has two (`instanceLabels`) -- or its kind's, for an instance
+  // the snapshot has lost.
+  const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
+  const sourceLabelOf = (instanceId: string): string =>
+    labels.get(instanceId) ?? adapterLabel(t, adapterFor(instanceId));
 
   // A batch that did not all start stays open to say which did not, with
   // Close in place of Cancel and Update -- where the focus goes, rather
@@ -483,7 +489,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         only !== null && onlyAdapter !== null ? (
           <SheetIcon
             adapterId={onlyAdapter}
-            sourceLabel={adapterLabel(t, onlyAdapter)}
+            sourceLabel={sourceLabelOf(only.candidate.key.instance_id)}
             iconKey={only.candidate.key}
           />
         ) : undefined
@@ -492,7 +498,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       // the question. A model's "new version" is a sentence: the text.
       subtitle={
         only !== null && onlyAdapter !== null
-          ? sheetMeta(only.name, adapterLabel(t, onlyAdapter), onlyDigest ? null : onlyJump)
+          ? sheetMeta(only.name, sourceLabelOf(only.candidate.key.instance_id), onlyDigest ? null : onlyJump)
           : undefined
       }
       initialFocus={batch?.phase === "done" ? closeRef : updateRef}
@@ -537,7 +543,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               <SheetTool
                 key={artifactKeyId(key)}
                 adapterId={adapterId}
-                sourceLabel={adapterLabel(t, adapterId)}
+                sourceLabel={sourceLabelOf(key.instance_id)}
                 showSource={twice.has(item.name)}
                 iconKey={key}
                 name={item.name}

@@ -5,9 +5,9 @@ import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings
 import { elapsedSince } from "../lib/format";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
-  ADAPTER_LABEL_KEYS,
   adapterIdOf,
   adapterLabel,
+  instanceLabels,
   settingsSaveErrorMessage,
   sourceNoticesFor,
   toolDescription,
@@ -311,23 +311,18 @@ export function UpdatesPage() {
     return byId;
   }, [snapshot]);
 
-  // The source's name in the user's language: the chip beside a row's
-  // name, the `{{source}}` in its detail, and the one refusal that can
-  // reach a real person verbatim otherwise (`planErrorMessage`'s
-  // NotActionable case). A stale snapshot's own read-only/unavailable
-  // state cannot be trusted for *which* reason applies -- that is exactly
-  // what went stale -- but the instance's adapter, and therefore its
-  // label, does not change underneath it, so this is safe to read from the
-  // same snapshot.
-  const sourceLabelFor = useCallback(
-    (instanceId: string): string => {
-      const instance = instancesById.get(instanceId);
-      if (!instance) return instanceId;
-      const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
-      return labelKey ? t(labelKey) : instance.adapter_id;
-    },
-    [instancesById, t],
-  );
+  // The source's name in the user's language, as the sidebar lists it --
+  // with which one it is after it where this Mac has two of its kind,
+  // 「Homebrew（Intel）」 (`instanceLabels`): the chip beside a row's name,
+  // the `{{source}}` in its detail, and the one refusal that can reach a
+  // real person verbatim otherwise (`planErrorMessage`'s NotActionable
+  // case). A stale snapshot's own read-only/unavailable state cannot be
+  // trusted for *which* reason applies -- that is exactly what went stale
+  // -- but the instance's adapter and place, and therefore its label, do
+  // not change underneath it, so this is safe to read from the same
+  // snapshot.
+  const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
+  const sourceLabelFor = useCallback((instanceId: string): string => labels.get(instanceId) ?? instanceId, [labels]);
 
   // The name a row shows: the one the Installed page shows for the same
   // software ("Microsoft Visual Studio Code", "Claude Code"), or the
@@ -447,7 +442,7 @@ export function UpdatesPage() {
         opId: op.id,
         key,
         adapterId,
-        sourceLabel: adapterLabel(t, adapterId),
+        sourceLabel: labels.get(op.instance_id) ?? adapterLabel(t, adapterId),
         name: opName(op),
         version: op.artifact_kind === "Model" ? null : installed || updateTargets[op.id] || null,
         finishedAt: opFinishedAt[op.id] ?? null,
@@ -463,6 +458,7 @@ export function UpdatesPage() {
     artifactsById,
     opName,
     updateTargets,
+    labels,
     t,
   ]);
   const clearJustUpdatedList = () => clearJustUpdated(justUpdated.map((entry) => entry.opId));

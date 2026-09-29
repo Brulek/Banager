@@ -364,6 +364,45 @@ describe("SettingsPage", () => {
     expect(within(never).getByRole("button", { name: "Remind me again about ffmpeg" })).toBeInTheDocument();
   });
 
+  it("names the source of a hidden update as the sidebar does where this Mac has two Homebrews", async () => {
+    // A Mac migrated from Intel: jq from each Homebrew, each hidden.
+    // 「Homebrew」 beside both would not say which is which.
+    const intelJqKey: ArtifactKey = { ...jqKey, instance_id: "brew:/usr/local" };
+    const brew = {
+      id: "brew:/opt/homebrew",
+      adapter_id: "brew",
+      exe_path: "/opt/homebrew/bin/brew",
+      prefix: "/opt/homebrew",
+      scope: "User" as const,
+      version: "7.0.3",
+      status: { unavailable: null, notes: [] },
+      unverified_version: null,
+      read_only_reason: null,
+    };
+    const intel = { ...brew, id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" };
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ ignored_updates: [jqKey, intelJqKey] });
+      if (cmd === "get_snapshot") {
+        return { ...snapshotOf([artifact(jqKey, "jq"), artifact(intelJqKey, "jq")]), instances: [brew, intel] };
+      }
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const never = await screen.findByRole("region", { name: "Tools with reminders off" });
+    await waitFor(() =>
+      expect(
+        within(never)
+          .getAllByRole("listitem")
+          .map((item) => [...item.querySelectorAll("span > span")].map((part) => part.textContent)),
+      ).toEqual([
+        ["jq", "Homebrew (Apple silicon)"],
+        ["jq", "Homebrew (Intel)"],
+      ]),
+    );
+  });
+
   it("says what Show technical details shows, and nothing it does not", async () => {
     // Every reader of `show_technical_details`, and nothing else (T2 of the
     // copy table): a tool's own error text behind a row's "Can't check"

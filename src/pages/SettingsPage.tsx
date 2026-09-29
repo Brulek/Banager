@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { requestNotificationPermission } from "../lib/api";
 import { useSettings, useSaveSettings, useSnapshot } from "../lib/queries";
-import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, settingsSaveErrorMessage } from "../lib/sources";
+import { ADAPTER_LABEL_KEYS, adapterIdOf, adapterLabel, instanceLabels, settingsSaveErrorMessage } from "../lib/sources";
 import { shownSkippedVersion, skippedVersionId } from "../lib/updateState";
 import type { ArtifactKey, Settings, Language, SkippedVersion } from "../lib/types";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -175,6 +175,9 @@ export function SettingsPage() {
     }
     return byId;
   }, [snapshot]);
+  // Each source by the name the sidebar gives it -- 「Homebrew（Intel）」
+  // where this Mac has two (`instanceLabels`).
+  const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
 
   const current = draft ?? settingsQuery.data;
   const loaded = !settingsQuery.isLoading && current !== undefined;
@@ -241,11 +244,12 @@ export function SettingsPage() {
   // name, which is its source's too (its `display_name` is that name, from
   // its recipe in crates/canager-core/src/adapters/standalone/), and
   // anything else by the package's own name. The source is left out where
-  // it would only say the name again, as on the Updates page's rows. It
-  // goes by the key alone: an instance id starts with its adapter's.
+  // it would only say the name again, as on the Updates page's rows. It is
+  // named as the sidebar names it, or -- for a source the snapshot does
+  // not list -- by the key alone: an instance id starts with its adapter's.
   const entryOf = (key: ArtifactKey): { name: string; source: string | undefined } => {
     const adapterId = adapterIdOf(key.instance_id);
-    const source = adapterLabel(t, adapterId);
+    const source = labels.get(key.instance_id) ?? adapterLabel(t, adapterId);
     const standalone =
       adapterId.startsWith("standalone-") &&
       Object.prototype.hasOwnProperty.call(ADAPTER_LABEL_KEYS, adapterId);

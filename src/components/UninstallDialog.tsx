@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
 import {
   adapterIdOf,
   adapterLabel,
+  instanceLabels,
   parseUninstallBlocked,
   parseUninstallUnsafe,
   planErrorDetail,
@@ -80,7 +81,12 @@ export function UninstallDialog({
   const instance = snapshot?.instances?.find((i) => i.id === request.instance_id);
   // A snapshot that lost the instance still names the source, by the id.
   const adapterId = instance?.adapter_id ?? adapterIdOf(request.instance_id);
-  const sourceLabel = adapterLabel(t, adapterId);
+  // As the sidebar names it: 「Homebrew（Intel）」 where this Mac has two
+  // (`instanceLabels`), so the dialog says which one it uninstalls from.
+  const sourceLabel = useMemo(
+    () => instanceLabels(t, snapshot?.instances ?? []).get(request.instance_id) ?? adapterLabel(t, adapterId),
+    [t, snapshot, request.instance_id, adapterId],
+  );
   // The version the tool's row shows: never a model's digest.
   const artifact = snapshot?.artifacts?.find(
     (a) =>

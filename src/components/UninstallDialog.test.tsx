@@ -152,6 +152,37 @@ describe("UninstallDialog", () => {
     expect(initial.className).toMatch(/\bh-12 w-12\b/);
   });
 
+  it("says which of two Homebrews it uninstalls from, by the Mac each is for", async () => {
+    // A Mac migrated from Intel keeps a Homebrew in /usr/local beside the
+    // one in /opt/homebrew: 「Homebrew」 alone would not say which one's jq goes.
+    const intelRequest: OpRequest = { ...request, instance_id: "brew:/usr/local" };
+    const jq: InstalledArtifact = {
+      key: { instance_id: "brew:/usr/local", kind: "Formula", name: "jq" },
+      display_name: "jq",
+      version: "1.7.1",
+      reason: "Requested",
+      description: null,
+      homepage: null,
+      size_bytes: null,
+      installed_at: null,
+      path: null,
+      auto_updates: false,
+      uninstall_blocked: null,
+    };
+    const intel = brewInstance({ id: "brew:/usr/local", exe_path: "/usr/local/bin/brew", prefix: "/usr/local" });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_snapshot") return snapshotWith([brewInstance(), intel], [jq]);
+      if (cmd === "plan_operation") return issuedPlanFor({ request: intelRequest });
+      return undefined;
+    });
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={intelRequest} displayName="jq" />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+    const subtitle = (await within(dialog).findByText("1.7.1")).closest("[data-dialog-subtitle]");
+    expect(subtitle).toHaveTextContent("Homebrew (Intel) · 1.7.1");
+  });
+
   it("shows an app's own icon beside its name, as its row does, once the icon arrives", async () => {
     const icon = "data:image/png;base64,iVBORw0KGgo=";
     const itermRequest: OpRequest = { ...request, artifact_kind: "Cask", name: "iterm2" };

@@ -926,6 +926,60 @@ describe("UpdatesPage", () => {
     expect(queryByText(/\/opt\/homebrew\/bin\/brew unpin/)).toBeNull();
   });
 
+  it("names each of two Homebrews by the Mac it is for, on the rows and in the confirmation", async () => {
+    // A Mac migrated from Intel: a Homebrew in /usr/local beside the one
+    // in /opt/homebrew. Each is named as the sidebar names it, so that
+    // 「Homebrew」 never stands for either.
+    const intelBrew: Snapshot["instances"][number] = {
+      ...snapshot.instances[0],
+      id: "brew:/usr/local",
+      exe_path: "/usr/local/bin/brew",
+      prefix: "/usr/local",
+    };
+    instances = [snapshot.instances[0], intelBrew];
+    const intelGlib: ArtifactKey = { ...glibKey, instance_id: "brew:/usr/local" };
+    updates = [
+      { ...snapshot.updates[0], key: intelGlib },
+      brewCandidate("wget"),
+      { ...brewCandidate("wget"), key: { instance_id: "brew:/usr/local", kind: "Formula", name: "wget" } },
+    ];
+    const { findByRole, getByRole } = renderPage();
+
+    // The row's source, for a screen reader and in the avatar's tooltip.
+    const glib = await findRow("glib");
+    expect(within(glib).getByText("Homebrew (Intel)")).toHaveClass("sr-only");
+    expect(glib.querySelector('[title="Homebrew (Intel)"]')).not.toBeNull();
+    expect(within(glib).queryByText("Homebrew")).toBeNull();
+    // A name both have says in sight which is which.
+    const wgets = screen
+      .getAllByText("wget", { selector: "[data-tool-row] p" })
+      .map((element) => element.closest("[data-tool-row]") as HTMLElement);
+    expect(wgets.map((row) => within(row).getByText(/^Homebrew \(/).textContent).sort()).toEqual([
+      "Homebrew (Apple silicon)",
+      "Homebrew (Intel)",
+    ]);
+
+    // The update's confirmation, under its question.
+    fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
+    const dialog = await findByRole("dialog", { name: "Update “glib”?" });
+    const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
+    expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew (Intel) · 2.88.3 → 2.90.0");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Several: the two wgets' rows say in sight whose each is, and glib's
+    // for a screen reader.
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const several = await findByRole("dialog", { name: "Update 3 tools?" });
+    const sources = within(several).getAllByText(/^Homebrew/);
+    expect(sources.filter((source) => !source.classList.contains("sr-only")).map((source) => source.textContent)).toEqual(
+      ["Homebrew (Apple silicon)", "Homebrew (Intel)"],
+    );
+    expect(sources.filter((source) => source.classList.contains("sr-only")).map((source) => source.textContent)).toEqual(
+      ["Homebrew (Intel)"],
+    );
+  });
+
   it("names pipx and pipx's own unpin command on a pinned pipx tool", async () => {
     // `pipx list --outdated` lists a pinned tool as `cowsay [pinned]: 5.0
     // -> 6.1`, and `pipx upgrade cowsay` then changes nothing and exits 0.
