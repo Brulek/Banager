@@ -111,10 +111,6 @@
   /* systemGray: the square of something with no source of its own. */
   --color-neutral-avatar: #8e8e93;
 
-  /* Floating things only: a menu or a popover, and a dialog. */
-  --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.15), 0 6px 20px rgb(0 0 0 / 0.15);
-  --shadow-dialog: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 16px 48px rgb(0 0 0 / 0.25);
-
   /* Each source's colour, for its small avatar and nowhere else, and the
      colour of the initial on it where white would not read. */
   --color-source-homebrew: #f2a93b;
@@ -151,15 +147,32 @@
   /* A little space where Chinese meets Latin letters or digits, as AppKit
      draws it (1/8 em), so the strings carry no spaces of their own. */
   text-autospace: normal;
+  /* Floating things only: a menu or a popover, and a dialog -- a 0.5px
+     ring, then the shadow. Not theme variables: Tailwind's own `shadow-*`
+     utility would copy the light values into its class, and the dark ones
+     below would never apply (a black ring, lost on a dark window). The
+     `shadow-menu` and `shadow-dialog` classes read them instead (below). */
+  --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.15), 0 6px 20px rgb(0 0 0 / 0.15);
+  --shadow-dialog: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 16px 48px rgb(0 0 0 / 0.25);
+}
+
+@utility shadow-menu {
+  box-shadow: var(--shadow-menu);
+}
+@utility shadow-dialog {
+  box-shadow: var(--shadow-dialog);
 }
 
 /* Unlayered, so these win over the `@layer theme` block Tailwind emits
-   for the light values above. */
+   for the light values above. A dialog, a menu and a popover are #2C2C2C,
+   a step lighter than the sidebar's #282828 as well as the window's
+   #1E1E1E, so a sheet that reaches over the sidebar still stands apart
+   from it. */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-content: #1e1e1e;
-    --color-surface: #282828;
-    --color-popover: #282828;
+    --color-surface: #2c2c2c;
+    --color-popover: #2c2c2c;
     --color-sidebar: #282828;
     --color-sidebar-active: rgb(255 255 255 / 0.1);
     --color-foreground: rgb(255 255 255 / 0.847);
@@ -188,7 +201,7 @@
   }
 }
 
-/* A dialog is lighter than the window in the dark (#282828 over #1E1E1E),
+/* A dialog is lighter than the window in the dark (#2C2C2C over #1E1E1E),
    so a group inside one -- a list of tools, a log, a command -- is lighter
    again, as a sheet's grouped form is, rather than the window's #252525,
    which would sink into it. */
