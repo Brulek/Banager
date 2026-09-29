@@ -118,24 +118,64 @@ describe("Popover placement", () => {
     return document.getElementById(button.getAttribute("aria-controls") ?? "") as HTMLElement;
   }
 
-  it("opens from the button's left edge when it fits", () => {
+  // The panel stands 24 to the side of the button's middle, its arrow's.
+  it("opens rightwards from the button when it fits", () => {
     layOut(100, 160);
-    expect(openPanel("start").className).toContain("left-0");
+    const panel = openPanel("start");
+    expect(panel).toHaveAttribute("data-align", "start");
+    expect(panel.className).toContain("left-[calc(50%-24px)]");
   });
 
   it("opens leftwards from near the window's right edge instead of past it", () => {
     layOut(900, 960);
-    expect(openPanel("start").className).toContain("right-0");
+    const panel = openPanel("start");
+    expect(panel).toHaveAttribute("data-align", "end");
+    expect(panel.className).toContain("right-[calc(50%-24px)]");
   });
 
   it("opens rightwards from near the window's left edge when asked to line up with the button's right", () => {
     layOut(20, 80);
-    expect(openPanel("end").className).toContain("left-0");
+    expect(openPanel("end")).toHaveAttribute("data-align", "start");
   });
 
   it("opens upwards at the foot of the window, and downwards where there is room", () => {
     layOut(100, 160, 720);
-    expect(openPanel("start").className).toContain("bottom-full");
+    const panel = openPanel("start");
+    expect(panel).toHaveAttribute("data-side", "above");
+    expect(panel.className).toContain("bottom-full");
+  });
+
+  it("is a macOS popover: 260 wide, the corners of a group, the menu's shadow, 12 in, 13/18, no edge", () => {
+    layOut(100, 160);
+    const panel = openPanel("start");
+    for (const look of ["w-65", "rounded-group", "bg-surface", "shadow-menu", "p-3", "text-body-long", "text-foreground"]) {
+      expect(panel).toHaveClass(look);
+    }
+    expect(panel.className).not.toMatch(/\bborder\b|shadow-lg/);
+  });
+
+  it("has a 14 by 7 arrow on the side facing the button, pointing at it", () => {
+    layOut(100, 160);
+    const below = openPanel("start");
+    const arrow = below.querySelector("[data-popover-arrow]") as SVGElement;
+    expect(arrow).not.toBeNull();
+    expect(arrow).toHaveAttribute("width", "14");
+    expect(arrow).toHaveAttribute("height", "7");
+    // Under the button: on the panel's top edge, pointing up, 17 in (its
+    // middle 24 in, where the button's middle is).
+    expect(arrow.getAttribute("class")).toMatch(/\bbottom-full\b/);
+    expect(arrow.getAttribute("class")).not.toMatch(/rotate-180/);
+    expect(arrow.getAttribute("class")).toMatch(/left-\[17px\]/);
+  });
+
+  it("turns its arrow down when it opens above the button", () => {
+    layOut(900, 960, 720);
+    const above = openPanel("start");
+    const arrow = above.querySelector("[data-popover-arrow]") as SVGElement;
+    expect(arrow.getAttribute("class")).toMatch(/\btop-full\b/);
+    expect(arrow.getAttribute("class")).toMatch(/rotate-180/);
+    // Lined up from the right, its arrow is too.
+    expect(arrow.getAttribute("class")).toMatch(/right-\[17px\]/);
   });
 });
 

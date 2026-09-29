@@ -1,5 +1,6 @@
 import {
   createContext,
+  Fragment,
   useCallback,
   useContext,
   useId,
@@ -21,6 +22,12 @@ export interface MenuItem {
   hint?: string;
   /** Shown, and reachable with the arrow keys, but choosing it does nothing. */
   disabled?: boolean;
+  /**
+   * It starts a group of its own: a hairline over it, as a Mac menu parts
+   * what does different kinds of things -- Skip and Stop Reminding Me from
+   * Copy Command.
+   */
+  separatorBefore?: boolean;
   onSelect: () => void;
 }
 
@@ -235,7 +242,9 @@ export function Menu({ label, items }: MenuProps) {
           tabIndex={-1}
           onKeyDown={onMenuKeyDown}
           style={point === null ? undefined : { left: point.left, top: point.top }}
-          className={`absolute z-30 flex min-w-52 flex-col rounded-button border border-border bg-surface p-1 shadow-lg shadow-black/10 outline-none ${
+          // A macOS menu (spec §3.10): at least 180 wide, the corners of a
+          // group, 5 in, the menu's shadow and hairline and no other edge.
+          className={`absolute z-30 flex min-w-45 flex-col rounded-group bg-surface p-[5px] shadow-menu outline-none ${
             point !== null
               ? ""
               : `${placement.align === "end" ? "right-0" : "left-0"} ${
@@ -243,22 +252,29 @@ export function Menu({ label, items }: MenuProps) {
                 }`
           }`}
         >
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              aria-disabled={item.disabled ? true : undefined}
-              title={item.hint}
-              onClick={() => choose(item)}
-              onMouseEnter={(event) => event.currentTarget.focus()}
-              // Its highlight is its focus, the pointer's or the
-              // keyboard's, as a Mac menu's is: no ring around it besides.
-              className="w-full whitespace-nowrap rounded-[6px] px-2.5 py-1.5 text-left text-body text-foreground outline-none focus:bg-accent focus:text-accent-foreground aria-disabled:cursor-default aria-disabled:opacity-50 aria-disabled:focus:bg-hover aria-disabled:focus:text-foreground"
-            >
-              {item.label}
-            </button>
+          {items.map((item, index) => (
+            <Fragment key={item.id}>
+              {item.separatorBefore && index > 0 ? (
+                <div role="separator" className="mx-2.5 my-[5px] h-px shrink-0 bg-separator" />
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                aria-disabled={item.disabled ? true : undefined}
+                title={item.hint}
+                onClick={() => choose(item)}
+                onMouseEnter={(event) => event.currentTarget.focus()}
+                // 22 high, 13, 10 in; its highlight is its focus, the
+                // pointer's or the keyboard's, as a Mac menu's is: the
+                // accent with white words, corners of 6, at once -- no
+                // ring besides and no fade. One that is off is in the
+                // tertiary grey and never lights up.
+                className="flex h-5.5 w-full shrink-0 items-center whitespace-nowrap rounded-control px-2.5 text-left text-body text-foreground outline-none focus:bg-accent focus:text-accent-foreground aria-disabled:cursor-default aria-disabled:text-tertiary aria-disabled:focus:bg-transparent aria-disabled:focus:text-tertiary"
+              >
+                {item.label}
+              </button>
+            </Fragment>
           ))}
         </div>
       ) : null}

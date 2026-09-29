@@ -112,9 +112,50 @@ describe("Menu", () => {
     const skip = getByRole("menuitem", { name: "Skip this version" });
 
     expect(skip).toHaveAttribute("aria-disabled", "true");
+    // In the tertiary grey, as a Mac menu's item that is off; never lit.
+    expect(skip).toHaveClass("aria-disabled:text-tertiary", "aria-disabled:focus:bg-transparent");
     fireEvent.click(skip);
     expect(list[0].onSelect).not.toHaveBeenCalled();
     expect(getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("is a macOS menu: at least 180 wide, corners of 10, 5 in, the menu's shadow and no other edge", () => {
+    const { button, getByRole } = renderMenu();
+    fireEvent.click(button);
+    const menu = getByRole("menu");
+    for (const look of ["min-w-45", "rounded-group", "p-[5px]", "shadow-menu", "bg-surface"]) {
+      expect(menu).toHaveClass(look);
+    }
+    expect(menu.className).not.toMatch(/\bborder\b|shadow-lg/);
+  });
+
+  it("draws its items 22 high in 13, 10 in, lit with the accent and white words, corners of 6, and no fade", () => {
+    const { button, getByRole } = renderMenu();
+    fireEvent.click(button);
+    const item = getByRole("menuitem", { name: "Skip this version" });
+    for (const look of ["h-5.5", "text-body", "px-2.5", "rounded-control", "focus:bg-accent", "focus:text-accent-foreground"]) {
+      expect(item).toHaveClass(look);
+    }
+    expect(item.className).not.toMatch(/transition|hover:/);
+  });
+
+  it("parts its groups with a hairline, 5 above and below it", () => {
+    const { button, getByRole, getAllByRole } = renderMenu(items({ copy: { separatorBefore: true } }));
+    fireEvent.click(button);
+    const menu = getByRole("menu");
+    const separators = getAllByRole("separator");
+    expect(separators).toHaveLength(1);
+    expect(separators[0]).toHaveClass("h-px", "bg-separator", "my-[5px]");
+    // Between Never remind me and Copy command.
+    expect(separators[0].previousElementSibling).toHaveTextContent("Never remind me about this software");
+    expect(separators[0].nextElementSibling).toHaveTextContent("Copy command");
+    expect(menu.firstElementChild).toHaveAttribute("role", "menuitem");
+  });
+
+  it("never draws a hairline over its first item", () => {
+    const { button, queryByRole } = renderMenu(items({ skip: { separatorBefore: true } }));
+    fireEvent.click(button);
+    expect(queryByRole("separator")).toBeNull();
   });
 
   it("gives the focus to the page's title when its row goes after an item is chosen", () => {

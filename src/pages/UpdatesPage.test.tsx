@@ -2254,6 +2254,18 @@ describe("UpdatesPage", () => {
       expect(await findByRole("status")).toHaveTextContent("Copied");
     });
 
+    it("stands in a group of its own, under a hairline, apart from the choices about the update", async () => {
+      settings.show_technical_details = true;
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }];
+      renderPage();
+
+      await showCantUpdate();
+      const menu = openMenu(await findRow("glib"));
+      const separator = within(menu).getByRole("separator");
+      expect(separator.nextElementSibling).toHaveTextContent("Copy Command");
+      expect(separator.previousElementSibling).toHaveAttribute("role", "menuitem");
+    });
+
     it("says so when the clipboard refuses", async () => {
       settings.show_technical_details = true;
       writeText.mockRejectedValue(new Error("denied"));

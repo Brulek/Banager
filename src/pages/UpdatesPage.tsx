@@ -671,7 +671,13 @@ export function UpdatesPage() {
     });
     if (settings?.show_technical_details && state.kind === "blocked") {
       const command = UPDATE_BLOCKED_KEYS[state.reason].command(candidate.key, instance);
-      items.push({ id: "copy", label: t("common.copyCommand"), onSelect: () => copyCommand(command) });
+      items.push({
+        id: "copy",
+        label: t("common.copyCommand"),
+        // Not a choice about the update, as the two above are.
+        separatorBefore: true,
+        onSelect: () => copyCommand(command),
+      });
     }
     return items;
   };

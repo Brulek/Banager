@@ -10,17 +10,21 @@ export interface InfoDetailProps {
 }
 
 /**
- * An ⓘ at the end of a line, and the line's longer why in a panel under
- * it (`Popover`): the redesign's rule that a line says what matters and
- * keeps the explanation one click away (原则 2). Set after the line's
- * last word, inside it, so it wraps with the text.
+ * An ⓘ at the end of a line, and the line's longer why in a popover
+ * pointing at it (`Popover`: 13/18, 12 in): the redesign's rule that a
+ * line says what matters and keeps the explanation one click away (原则
+ * 2). Set after the line's last word, inside it, so it wraps with the
+ * text. The ⓘ is 12, in the muted grey (spec R4: never the tertiary, it
+ * carries something), darker only while its popover is open -- nothing
+ * changes under the pointer. The popover's text is its own, whatever the
+ * size and colour of the line it came from.
  */
 export function InfoDetail({ label, children }: InfoDetailProps) {
   return (
     <Popover
-      trigger={<InfoIcon size={14} />}
+      trigger={<InfoIcon size={12} />}
       triggerLabel={label}
-      triggerClassName="-my-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full align-middle text-muted hover:text-foreground aria-expanded:text-foreground"
+      triggerClassName="-my-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full align-middle text-muted aria-expanded:text-foreground"
     >
       {children}
     </Popover>
