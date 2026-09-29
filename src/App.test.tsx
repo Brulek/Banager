@@ -165,10 +165,10 @@ describe("App", () => {
     // The pages about the sources check them again; the Unknown page
     // scans again, and only that; Settings has nothing to look again at.
     const actions: Array<[string, string[]]> = [
-      ["Overview", ["Check again"]],
-      ["Updates", ["Check again"]],
-      ["Installed", ["Check again"]],
-      ["Unknown", ["Scan again"]],
+      ["Overview", ["Check Again"]],
+      ["Updates", ["Check Again"]],
+      ["Installed", ["Check Again"]],
+      ["Unknown", ["Scan Again"]],
       ["Settings", []],
     ];
     for (const [name, expected] of actions) {
@@ -179,7 +179,7 @@ describe("App", () => {
       const header = titles[0].closest("header") as HTMLElement;
       expect(within(header).queryAllByRole("button").map((button) => button.textContent)).toEqual(expected);
       // Never a second one stacked under the header.
-      expect(queryAllByRole("button", { name: /^(Check|Scan) again$/ })).toHaveLength(expected.length);
+      expect(queryAllByRole("button", { name: /^(Check|Scan) Again$/ })).toHaveLength(expected.length);
     }
   });
 
@@ -192,7 +192,7 @@ describe("App", () => {
 
     expect(await findByText("Scanned just now")).toBeInTheDocument();
     expect(queryByText(/^Checked /)).toBeNull();
-    expect(getByRole("button", { name: "Scan again" })).toBeEnabled();
+    expect(getByRole("button", { name: "Scan Again" })).toBeEnabled();
   });
 
   it("opens the Updates page from Review updates with every row it can update ticked", async () => {
@@ -220,13 +220,13 @@ describe("App", () => {
     });
     const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
 
-    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+    fireEvent.click(await findByRole("button", { name: "Review Updates" }));
 
     expect(await findByText("2 can be updated", { selector: "p" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
-    expect(getByRole("button", { name: "Update selected (2)" })).toBeEnabled();
+    expect(getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
   });
 
   it("hands the focus from an uninstall's confirmation to its log, and back to the row's Uninstall when the log closes", async () => {
@@ -266,9 +266,9 @@ describe("App", () => {
     fireEvent.click(getByRole("button", { name: "Installed" }));
 
     const row = (await findByText("jq", { selector: "[data-tool-row] p" })).closest("[data-tool-row]");
-    const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall" });
+    const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall…" });
     fireEvent.click(uninstall);
-    const sheet = await findByRole("dialog", { name: "Uninstall jq?" });
+    const sheet = await findByRole("dialog", { name: "Uninstall “jq”?" });
     const confirm = within(sheet).getByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
@@ -319,7 +319,7 @@ describe("App", () => {
   it("keeps Settings reachable when no source is installed", async () => {
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Canager found nothing it can manage");
+    await findByText("No tools to manage");
 
     fireEvent.click(getByRole("button", { name: "Settings" }));
 
@@ -333,7 +333,7 @@ describe("App", () => {
     // must not be behind that gate.
     mockBackend({ ...snapshot, detect: "Missing", instances: [], artifacts: [] });
     const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
-    await findByText("Canager found nothing it can manage");
+    await findByText("No tools to manage");
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
 
@@ -494,7 +494,7 @@ describe("quitting while an operation is under way", () => {
         ["quit_question_shown", { question: 1 }],
       ]),
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Quit" }));
     await waitFor(() =>
       expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_anyway")).toEqual([["quit_anyway"]]),
     );
@@ -543,7 +543,7 @@ describe("the menu bar's items that act in the page", () => {
     });
     const { findByText, getByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
-    const checkAgain = getByRole("button", { name: "Check again" });
+    const checkAgain = getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(checkAgain).toBeEnabled());
     expect(refreshes()).toBe(1);
 
@@ -659,6 +659,6 @@ describe("the menu bar's items that act in the page", () => {
     await waitFor(() => expect(document.activeElement).toBe(box));
     // The startup check, which nothing here waited on, finishes too.
     answers.get("refresh")?.(snapshot);
-    await waitFor(() => expect(getByRole("button", { name: "Check again" })).toBeEnabled());
+    await waitFor(() => expect(getByRole("button", { name: "Check Again" })).toBeEnabled());
   });
 });

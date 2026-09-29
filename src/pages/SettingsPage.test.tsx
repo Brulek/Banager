@@ -165,12 +165,12 @@ describe("SettingsPage", () => {
     expect(within(skipped).getByText("glib")).toBeInTheDocument();
     expect(within(skipped).getByText("2.90.0")).toBeInTheDocument();
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toHaveTextContent(
-      "Stop skipping",
+      "Stop Skipping",
     );
     expect(within(skipped).queryByText("jq")).toBeNull();
     expect(within(never).getByText("jq")).toBeInTheDocument();
     expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toHaveTextContent(
-      "Remind me again",
+      "Remind Me Again",
     );
     expect(within(never).queryByText("glib")).toBeNull();
   });
@@ -445,7 +445,7 @@ describe("SettingsPage", () => {
     const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
     expect(daily).not.toBeChecked();
     expect(daily).toHaveAccessibleDescription(
-      "Checks once a day while Canager is running, and installs none of the updates it finds. Nothing is checked after you quit.",
+      "Canager checks for updates once a day while it's running, and doesn't install the updates it finds.",
     );
     const notify = within(updates).getByRole("switch", { name: "Notify me when there are updates" });
     expect(notify).not.toBeChecked();
@@ -554,11 +554,11 @@ describe("SettingsPage", () => {
     fireEvent.click(notify);
 
     await waitFor(() =>
-      expect(notify).toHaveAccessibleDescription("Allow Canager in System Settings → Notifications."),
+      expect(notify).toHaveAccessibleDescription("Allow Canager to send notifications in System Settings > Notifications."),
     );
     expect(notify).not.toBeChecked();
     expect(notify).toBeEnabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Allow Canager in System Settings → Notifications.");
+    expect(screen.getByRole("status")).toHaveTextContent("Allow Canager to send notifications in System Settings > Notifications.");
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "set_settings")).toHaveLength(0);
   });
 
@@ -575,7 +575,7 @@ describe("SettingsPage", () => {
     fireEvent.click(notify);
 
     await waitFor(() =>
-      expect(notify).toHaveAccessibleDescription("Allow Canager in System Settings → Notifications."),
+      expect(notify).toHaveAccessibleDescription("Allow Canager to send notifications in System Settings > Notifications."),
     );
     expect(notify).not.toBeChecked();
   });

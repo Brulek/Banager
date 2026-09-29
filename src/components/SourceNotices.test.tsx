@@ -103,7 +103,7 @@ describe("SourceNotices, folded", () => {
       "Claude Code 2.1.290 not tested",
     ]);
     expect(screen.queryByRole("button", { name: "2 more" })).toBeNull();
-    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    const fewer = screen.getByRole("button", { name: "Show Fewer" });
     expect(
       screen.getByText("Claude Code 2.1.290 not tested").compareDocumentPosition(fewer) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -112,7 +112,7 @@ describe("SourceNotices, folded", () => {
     fireEvent.click(fewer);
 
     expect(linesShown()).toEqual(["uv isn't responding"]);
-    expect(screen.queryByRole("button", { name: "Show fewer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
     expect(screen.getByRole("button", { name: "2 more" })).toBeInTheDocument();
   });
 
@@ -128,7 +128,7 @@ describe("SourceNotices, folded", () => {
 
     fireEvent.click(more);
 
-    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    const fewer = screen.getByRole("button", { name: "Show Fewer" });
     expect(fewer).toHaveAttribute("type", "button");
     expect(fewer).toHaveAttribute("aria-expanded", "true");
     expect(fewer).toHaveAttribute("aria-controls", controls);
@@ -148,7 +148,7 @@ describe("SourceNotices, folded", () => {
 
     fireEvent.click(more);
 
-    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    const fewer = screen.getByRole("button", { name: "Show Fewer" });
     expect(fewer).toHaveClass("text-muted");
     expect(fewer).not.toHaveClass("text-accent-text");
     expect(fewer.querySelector("svg")).toHaveClass("rotate-90");
@@ -160,7 +160,7 @@ describe("SourceNotices, folded", () => {
 
     screen.getByRole("button", { name: "2 more" }).focus();
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show fewer" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show Fewer" })));
 
     await user.keyboard("{Enter}");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "2 more" })));
@@ -173,7 +173,7 @@ describe("SourceNotices, folded", () => {
     // As many lines, other ones: still unfolded.
     rerender(<Folded notices={[brewUpdating, ollamaStopped]} />);
     expect(linesShown()).toEqual(["Homebrew is updating its software list", "Ollama isn't running"]);
-    expect(screen.getByRole("button", { name: "Show fewer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
 
     // One more: folded.
     rerender(<Folded notices={[brewUpdating, ollamaStopped, uvSilent]} />);
@@ -204,10 +204,10 @@ describe("SourceNotices, folded", () => {
     const claudeDetails = screen.getByRole("button", { name: "Details: Claude Code 2.1.290 not tested" });
     fireEvent.click(claudeDetails);
     expect(document.getElementById(claudeDetails.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Canager hasn't tested this version.",
+      "Not tested with this version of Claude Code yet.",
     );
     mockInvoke.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
     mockInvoke.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Open Ollama" }));
@@ -275,7 +275,7 @@ describe("SourceNotices' Check again", () => {
       </>,
     );
     await screen.findByText(/^Checked /);
-    const [header, notice] = screen.getAllByRole("button", { name: "Check again" });
+    const [header, notice] = screen.getAllByRole("button", { name: "Check Again" });
     expect(notice).toBeEnabled();
 
     fireEvent.click(header);

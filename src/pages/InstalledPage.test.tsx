@@ -307,9 +307,9 @@ function wholeSentence(text: string) {
     element?.tagName === "P" && element.textContent === text;
 }
 
-// Opens a confirmation's "Show the command": it is one press away.
+// Opens a confirmation's "Show Command": it is one press away.
 function showCommand(dialog: HTMLElement) {
-  const disclosure = within(dialog).getByRole("button", { name: /^Show the command/ });
+  const disclosure = within(dialog).getByRole("button", { name: /^Show Command/ });
   if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
 }
 
@@ -402,9 +402,9 @@ describe("InstalledPage", () => {
     const { findByRole } = renderWithProviders(<InstalledPage />);
 
     const jq = await findRow("jq");
-    fireEvent.click(within(jq).getByRole("button", { name: "Uninstall" }));
+    fireEvent.click(within(jq).getByRole("button", { name: "Uninstall…" }));
 
-    const dialog = await findByRole("dialog", { name: "Uninstall jq?" });
+    const dialog = await findByRole("dialog", { name: "Uninstall “jq”?" });
     expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
       request: {
         kind: "Uninstall",
@@ -413,7 +413,7 @@ describe("InstalledPage", () => {
         name: "jq",
       },
     });
-    await within(dialog).findByRole("button", { name: "Show the command" });
+    await within(dialog).findByRole("button", { name: "Show Command" });
     showCommand(dialog);
     expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
     // The row's button, not the row: no details drawer under the dialog.
@@ -425,14 +425,14 @@ describe("InstalledPage", () => {
     // muted colour, red only under the pointer or the focus (`RowAction`).
     renderWithProviders(<InstalledPage />);
 
-    const rowUninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    const rowUninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     expect(rowUninstall).toHaveAttribute("data-tone", "quiet");
     expect(rowUninstall.className).toMatch(/(^|\s)text-muted(\s|$)/);
     expect(rowUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger|bg-accent\S*|text-accent-text)(\s|$)/);
 
     fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
     const drawer = await openDetails("glib");
-    const drawerUninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+    const drawerUninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
     expect(drawerUninstall).toHaveAttribute("data-tone", "quiet");
     expect(drawerUninstall.className).not.toMatch(/(^|\s)(text-danger|bg-danger)(\s|$)/);
     expect(within(drawer).getByRole("button", { name: "Update" }).className).toMatch(/(^|\s)bg-accent(\s|$)/);
@@ -441,9 +441,9 @@ describe("InstalledPage", () => {
   it("gives the focus back to the row's Uninstall when its confirmation is cancelled", async () => {
     renderWithProviders(<InstalledPage />);
 
-    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     fireEvent.click(uninstall);
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
     await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" })));
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -458,9 +458,9 @@ describe("InstalledPage", () => {
     // lands on the row's Uninstall, where the user began.
     renderWithProviders(<InstalledPage />);
 
-    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall" });
+    const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     fireEvent.click(uninstall);
-    const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
+    const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
     const confirm = within(dialog).getByRole("button", { name: "Uninstall" });
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
@@ -475,9 +475,9 @@ describe("InstalledPage", () => {
     planAffected = ["jq-cli-wrapper"];
     const { findByRole } = renderWithProviders(<InstalledPage />);
 
-    fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "Uninstall" }));
+    fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "Uninstall…" }));
 
-    const dialog = await findByRole("dialog", { name: "Uninstall jq?" });
+    const dialog = await findByRole("dialog", { name: "Uninstall “jq”?" });
     await within(dialog).findByText("jq-cli-wrapper");
     expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
@@ -492,7 +492,7 @@ describe("InstalledPage", () => {
     const details = getByRole("button", { name: "Details: Homebrew 99.9.9 not tested" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Canager hasn't tested this version.",
+      "Not tested with this version of Homebrew yet.",
     );
   });
 
@@ -534,7 +534,7 @@ describe("InstalledPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "2 more" }));
 
-    const fewer = screen.getByRole("button", { name: "Show fewer" });
+    const fewer = screen.getByRole("button", { name: "Show Fewer" });
     const lines = document.getElementById(fewer.getAttribute("aria-controls") ?? "");
     if (lines === null) throw new Error("Show fewer controls nothing");
     expect(
@@ -572,8 +572,8 @@ describe("InstalledPage", () => {
 
     await findRow("wget");
     // Only wget's.
-    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
-    expect(within(rowOf("wget")).getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
+    expect(getAllByRole("button", { name: "Uninstall…" })).toHaveLength(1);
+    expect(within(rowOf("wget")).getByRole("button", { name: "Uninstall…" })).toBeInTheDocument();
     const jq = rowOf("jq");
     // The reason is behind the chip; the row keeps saying what jq is.
     expect(within(jq).getByText("Lightweight and flexible command-line JSON processor")).toBeInTheDocument();
@@ -604,7 +604,7 @@ describe("InstalledPage", () => {
     const { queryAllByRole } = renderWithProviders(<InstalledPage />);
 
     const jq = await findRow("jq");
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
     const detail = chipDetail(jq, "Pinned");
     expect(detail).toHaveTextContent(
       "It's pinned in Homebrew. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal.",
@@ -627,9 +627,9 @@ describe("InstalledPage", () => {
     const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
 
     const claude = await findRow("Claude Code");
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
     expect(chipDetail(claude, "Uninstall by hand")).toHaveTextContent(
-      "Claude Code has no uninstall command, and Canager can't yet remove its files safely. Follow Claude Code's official documentation to uninstall it.",
+      "Claude Code has no uninstall command, and its files can't yet be removed safely from here. Follow Claude Code's official documentation to uninstall it.",
     );
     expect(container.querySelector("code")).toBeNull();
   });
@@ -663,9 +663,9 @@ describe("InstalledPage", () => {
     const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
 
     const ruff = await findRow("ruff");
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
     expect(chipDetail(ruff, "Can't uninstall here")).toHaveTextContent(
-      "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. Canager uninstalls no uv tool while it's set.",
+      "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. So no uv tool can be uninstalled here while it's set.",
     );
     expect(container.querySelector("code")).toBeNull();
   });
@@ -691,7 +691,7 @@ describe("InstalledPage", () => {
     expect(within(rowOf("jq")).getByText("Homebrew package")).toBeInTheDocument();
     expect(queryByText(/No description/)).toBeNull();
     // Only the Homebrew artifact may offer Uninstall.
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(1);
   });
 
   it("offers Uninstall on Claude Code, beside its summary, now that it has a path list", async () => {
@@ -705,7 +705,7 @@ describe("InstalledPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
-    expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
+    expect(getAllByRole("button", { name: "Uninstall…" })).toHaveLength(1);
     expect(queryByText("Uninstall by hand")).toBeNull();
   });
 
@@ -890,7 +890,7 @@ describe("InstalledPage", () => {
       expect(chipsOf(rowOf("chromium"))).toEqual(["Update available"]);
       // Each "why" behind its chip.
       expect(chipDetail(rowOf("stopped-model"), "Can't update now")).toHaveTextContent(
-        "Ollama isn't running. Open it, then press Check again.",
+        "Ollama isn't running. Open it, then click Check Again.",
       );
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       expect(chipDetail(rowOf("ignored"), "Reminders off")).toHaveTextContent(
@@ -911,7 +911,7 @@ describe("InstalledPage", () => {
       await updates.findByText("offered");
       // Every row it lists on the page, the ones folded under "Can't update
       // here" too.
-      fireEvent.click(updates.getByRole("button", { name: /^Can't update here/ }));
+      fireEvent.click(updates.getByRole("button", { name: /^\d+ more can't be updated here$/ }));
       await updates.findByText("stopped-model", { selector: "[data-tool-row] p" });
       const rowNamed = (name: string) =>
         updates.queryByText(name, { selector: "[data-tool-row] p" })?.closest("[data-tool-row]") ?? null;
@@ -1049,7 +1049,7 @@ describe("InstalledPage", () => {
     const { queryByRole, queryAllByText } = renderWithProviders(<InstalledPage />);
 
     const requests = await findRow("requests");
-    expect(queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Uninstall…" })).not.toBeInTheDocument();
     expect(chipsOf(requests)).toEqual(["View only", "Up to date"]);
     expect(chipDetail(requests, "View only")).toHaveTextContent(
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
@@ -1093,7 +1093,7 @@ describe("InstalledPage", () => {
       "npm keeps these in a folder your account can't change, so you can only view them. After you install Node with Homebrew, you can manage the npm packages you install with it here.",
     );
     expect(detail.textContent).not.toMatch(/pipx|uv/);
-    expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
   });
 
   it("lets each slot measure itself, so a heading or a row is never overlapped by the one below it", async () => {
@@ -1149,7 +1149,7 @@ describe("InstalledPage", () => {
     // first refresh after a launch, because the snapshot is in memory
     // only (`Session::new` starts from `Snapshot::empty()`).
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "npm didn't respond, so Canager can't show what it has installed.",
+      "npm didn't respond, so what it has installed can't be shown.",
     );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
@@ -1174,7 +1174,7 @@ describe("InstalledPage", () => {
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
+      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
     );
   });
 
@@ -1227,7 +1227,7 @@ describe("InstalledPage", () => {
 
     await findByText("Ollama isn't running");
     // Nothing is installed anywhere else, and the page says so under it.
-    expect(await findByText("Canager found nothing installed")).toBeInTheDocument();
+    expect(await findByText("No installed tools found")).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Open Ollama" }));
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
@@ -1304,14 +1304,14 @@ describe("InstalledPage", () => {
 
     await findByText("Ollama isn't running");
     const model = await findRow("qwen3:8b");
-    const held = within(model).getByRole("button", { name: "Uninstall" });
+    const held = within(model).getByRole("button", { name: "Uninstall…" });
     expect(held).toBeDisabled();
     fireEvent.click(held);
     expect(queryByRole("dialog")).toBeNull();
     expect(mockInvoke).not.toHaveBeenCalledWith("plan_operation", expect.anything());
     expect(chipsOf(model)).toEqual(["Can't uninstall now"]);
     expect(chipDetail(model, "Can't uninstall now")).toHaveTextContent(
-      "Ollama isn't running. Open it, then press Check again.",
+      "Ollama isn't running. Open it, then click Check Again.",
     );
   });
 
@@ -1336,16 +1336,16 @@ describe("InstalledPage", () => {
     renderWithProviders(<InstalledPage />);
 
     const row = await findRow("pre-commit");
-    expect(within(row).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     expect(chipDetail(row, "Can't uninstall now")).toHaveTextContent(
-      "uv isn't responding. Press Check again later.",
+      "uv isn't responding. Click Check Again later.",
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     // The drawer says the same: Uninstall disabled, and why under the chip.
     const drawer = await openDetails("pre-commit");
-    expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
-    expect(within(drawer).getByText("uv isn't responding. Press Check again later.")).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
+    expect(within(drawer).getByText("uv isn't responding. Click Check Again later.")).toBeInTheDocument();
   });
 
   it("keeps Homebrew's Uninstall disabled while it updates its list, says why behind a chip, and gives it back after", async () => {
@@ -1365,7 +1365,7 @@ describe("InstalledPage", () => {
     const { queryClient } = renderWithProviders(<InstalledPage />);
 
     const jq = await findRow("jq");
-    const held = within(jq).getByRole("button", { name: "Uninstall" });
+    const held = within(jq).getByRole("button", { name: "Uninstall…" });
     expect(held).toBeDisabled();
     fireEvent.click(held);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -1376,12 +1376,12 @@ describe("InstalledPage", () => {
     );
     // The page's own line says what Homebrew is doing.
     expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
-    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Uninstall" })).toBeEnabled();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
     expect(chipsOf(rowOf("Claude Code"))).not.toContain("Can't uninstall now");
 
     // The drawer says the same: Uninstall disabled, and why under the chip.
     const drawer = await openDetails("jq");
-    expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+    expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     expect(
       within(drawer).getByText("Homebrew is updating its software list. Uninstall once it's done."),
     ).toBeInTheDocument();
@@ -1390,10 +1390,10 @@ describe("InstalledPage", () => {
 
     served = { ...updating, instances: [brew, claudeInstance] };
     await act(() => queryClient.invalidateQueries());
-    await waitFor(() => expect(within(rowOf("jq")).getByRole("button", { name: "Uninstall" })).toBeEnabled());
+    await waitFor(() => expect(within(rowOf("jq")).getByRole("button", { name: "Uninstall…" })).toBeEnabled());
     expect(chipsOf(rowOf("jq"))).toEqual(["Up to date"]);
-    fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "Uninstall" }));
-    expect(await screen.findByRole("dialog", { name: "Uninstall jq?" })).toBeInTheDocument();
+    fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "Uninstall…" }));
+    expect(await screen.findByRole("dialog", { name: "Uninstall “jq”?" })).toBeInTheDocument();
   });
 
   it("unfolds one source's components without unfolding another's, each line naming its source", async () => {
@@ -1674,7 +1674,7 @@ describe("InstalledPage", () => {
       // Pinned against its update too: said once.
       expect(within(drawer).getAllByText("Pinned")).toHaveLength(1);
       // Neither uninstalled nor updated from here.
-      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      expect(within(drawer).queryByRole("button", { name: "Uninstall…" })).toBeNull();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
     });
 
@@ -1701,7 +1701,7 @@ describe("InstalledPage", () => {
 
       const drawer = await openDetails("jq");
       const close = within(drawer).getByRole("button", { name: "Close" });
-      const uninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+      const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
       await waitFor(() => expect(document.activeElement).toBe(close));
       // The page under it is out of reach.
       expect(screen.queryByRole("searchbox")).toBeNull();
@@ -1723,7 +1723,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("2.90.0");
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Update" }));
-      const confirm = await screen.findByRole("dialog", { name: "Update glib?" });
+      const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
       expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
@@ -1746,7 +1746,7 @@ describe("InstalledPage", () => {
       ];
       fireEvent.click(within(confirm).getByRole("button", { name: "Update" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update glib?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update “glib”?" })).toBeNull());
       // Where the button was, as on the Updates page's row.
       const open = screen.getByRole("dialog", { name: "glib" });
       expect(await within(open).findByText("Updating…")).toBeInTheDocument();
@@ -1774,12 +1774,12 @@ describe("InstalledPage", () => {
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const drawer = await openDetails("glib");
-      expect(await within(drawer).findByText("Update failed")).toBeInTheDocument();
+      expect(await within(drawer).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(drawer).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Retry" }));
-      await screen.findByRole("dialog", { name: "Update glib?" });
+      await screen.findByRole("dialog", { name: "Update “glib”?" });
       expect(mockInvoke).toHaveBeenCalledWith("plan_operation", {
         request: { kind: "Upgrade", instance_id: "brew:/opt/homebrew", artifact_kind: "Formula", name: "glib" },
       });
@@ -1825,10 +1825,10 @@ describe("InstalledPage", () => {
 
       const row = await findRow("jq");
       expect(await within(row).findByRole("button", { name: label })).toBeDisabled();
-      expect(within(row).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      expect(within(row).queryByRole("button", { name: "Uninstall…" })).toBeNull();
       const drawer = await openDetails("jq");
       expect(within(drawer).getByRole("button", { name: label })).toBeDisabled();
-      expect(within(drawer).queryByRole("button", { name: "Uninstall" })).toBeNull();
+      expect(within(drawer).queryByRole("button", { name: "Uninstall…" })).toBeNull();
     });
 
     it("offers no Update for an update the Updates page does not offer", async () => {
@@ -1844,16 +1844,16 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Can't update now")).toBeInTheDocument();
       expect(within(drawer).getByText("Can't uninstall now")).toBeInTheDocument();
       // What to do, under each of the two chips.
-      expect(within(drawer).getAllByText("Homebrew isn't responding. Press Check again later.")).toHaveLength(2);
+      expect(within(drawer).getAllByText("Homebrew isn't responding. Click Check Again later.")).toHaveLength(2);
       // Its source's own line, whole.
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
+          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
         ),
       ).toBeInTheDocument();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
-      expect(within(drawer).getByRole("button", { name: "Uninstall" })).toBeDisabled();
+      expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     });
 
     it("uninstalls through the row's own dialog, then gives way to the log", async () => {
@@ -1861,9 +1861,9 @@ describe("InstalledPage", () => {
 
       const rowButton = within(await findRow("jq")).getByRole("button", { name: "Details: jq" });
       const drawer = await openDetails("jq");
-      fireEvent.click(within(drawer).getByRole("button", { name: "Uninstall" }));
-      const dialog = await screen.findByRole("dialog", { name: "Uninstall jq?" });
-      await within(dialog).findByRole("button", { name: "Show the command" });
+      fireEvent.click(within(drawer).getByRole("button", { name: "Uninstall…" }));
+      const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
+      await within(dialog).findByRole("button", { name: "Show Command" });
       showCommand(dialog);
       expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
 
@@ -1885,21 +1885,21 @@ describe("InstalledPage", () => {
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const drawer = await openDetails("glib");
-      const uninstall = within(drawer).getByRole("button", { name: "Uninstall" });
+      const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
       const update = within(drawer).getByRole("button", { name: "Update" });
 
       fireEvent.click(uninstall);
-      await screen.findByRole("dialog", { name: "Uninstall glib?" });
+      await screen.findByRole("dialog", { name: "Uninstall “glib”?" });
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Uninstall glib?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Uninstall “glib”?" })).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(uninstall));
       // The drawer stays: only the question went.
       expect(screen.getByRole("dialog", { name: "glib" })).toBe(drawer);
 
       fireEvent.click(update);
-      const confirm = await screen.findByRole("dialog", { name: "Update glib?" });
+      const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
       fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update glib?" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update “glib”?" })).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(update));
     });
 
@@ -1982,7 +1982,7 @@ describe("InstalledPage", () => {
 
         fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "More actions for jq" }));
         menu = screen.getByRole("menu");
-        fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy command" }));
+        fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy Command" }));
         expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin jq");
         expect(await screen.findByRole("status")).toHaveTextContent("Copied");
       } finally {

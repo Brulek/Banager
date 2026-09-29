@@ -179,7 +179,7 @@ describe("sourceNoticesFor", () => {
     // One name for every button that runs the check: the header's.
     expect(note.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
     expect(zhCN.sourceNotice.indexMayBeStale.description).toContain("“重新检查”");
-    expect(en.sourceNotice.indexMayBeStale.description).toContain("Check again");
+    expect(en.sourceNotice.indexMayBeStale.description).toContain("Check Again");
   });
 
   it("says a still-running download is still running: no failure, no button", () => {
@@ -215,7 +215,7 @@ describe("sourceNoticesFor", () => {
   });
 
   it("is the one rule hasSourceNotice answers from", () => {
-    // SnapshotStatus's "Canager found nothing installed" gate and the
+    // SnapshotStatus's "No installed tools found" gate and the
     // pages' notice lines must never disagree about which sources have something to
     // say: a Mac whose only source is a stopped Ollama would otherwise see
     // the empty state and no way to start it.
@@ -389,10 +389,10 @@ describe("sourceNoticesFor", () => {
     expect(zhCN.sourceNotice.shadowedByNpm.title).toBe("输入“{{command}}”会先运行npm中的同名程序");
     expect(zhCN.sourceNotice.shadowedByOther.title).toBe("输入“{{command}}”会先运行另一个同名程序");
     for (const key of ["shadowedByHomebrew", "shadowedByNpm"] as const) {
-      expect(en.sourceNotice[key].description).toContain("Canager can't tell whether that one is {{source}}.");
+      expect(en.sourceNotice[key].description).toContain("Couldn't confirm whether that one is {{source}}.");
       expect(zhCN.sourceNotice[key].description).toContain("无法确认它是否就是{{source}}。");
     }
-    expect(en.sourceNotice.shadowedByOther.description).toContain("Canager can't identify that program.");
+    expect(en.sourceNotice.shadowedByOther.description).toContain("Couldn't identify that program.");
     expect(zhCN.sourceNotice.shadowedByOther.description).toContain("无法识别那个程序。");
     for (const key of ["notOnPath", "shadowedByHomebrew", "shadowedByNpm", "shadowedByOther"] as const) {
       for (const locale of [en, zhCN]) {
@@ -413,7 +413,7 @@ describe("sourceNoticesFor", () => {
     // that stopped partway moved them to the Trash -- "if", as spec §9.2
     // says: the Trash can have been emptied since.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and press Check again.",
+      "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
       "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处，然后点按“重新检查”。",
@@ -652,7 +652,7 @@ describe("planErrorMessage", () => {
       en: en.planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail,
       zhCN: zhCN.planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail,
     };
-    expect(refusal.en).toContain("isn't what Canager expected");
+    expect(refusal.en).toContain("isn't what was expected");
     expect(refusal.zhCN).toContain("和预期的不一样");
     for (const sentence of [refusal.en, refusal.zhCN, detail.en, detail.zhCN]) {
       expect(sentence).not.toMatch(/official|instructions|官方|说明/);
@@ -742,7 +742,7 @@ describe("planErrorDetail", () => {
       'planRefused.refused({"source":"Homebrew"})',
     );
     expect(planErrorDetail(fakeT, '{"kind":"refused"}')).toBeNull();
-    expect(en.planRefused.refused).toBe("Something went wrong inside Canager, so it stopped. Nothing changed.");
+    expect(en.planRefused.refused).toBe("Couldn't continue because of an internal error.");
     expect(zhCN.planRefused.refused).toBe("发生内部错误，无法继续。");
     expect("canagerFaultDetail" in en.common).toBe(false);
     expect("canagerFaultDetail" in zhCN.common).toBe(false);
@@ -839,7 +839,7 @@ describe("openOllamaErrorMessage", () => {
     expect(openOllamaErrorDetail(fakeT, '{"kind":"ollama_open_failed","reason":"launch_failed"}')).toBeNull();
     expect(openOllamaErrorDetail(fakeT, "command open_ollama_app not found")).toBeNull();
     expect(en.sourceNotice.openOllamaFailed.notInstalled).toBe(
-      "There's no Ollama app in Applications. Download it from ollama.com, install it, then press Open Ollama again.",
+      "There's no Ollama app in Applications. Download it from ollama.com, install it, then click Open Ollama again.",
     );
     expect(zhCN.sourceNotice.openOllamaFailed.notInstalledDetail).toBe("用Homebrew安装的ollama命令不包含此App。");
   });
@@ -1061,7 +1061,7 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // The versions are the row's own version column; the launcher is shown
     // under the sentence only with technical details on.
     expect(en.updates.blocked.SelfUpdatesOnly.detail).toBe(
-      "It updates itself: open it once and it checks for a new version.",
+      "It updates itself and can't be updated here. Open it once and it checks for a new version.",
     );
     expect(zhCN.updates.blocked.SelfUpdatesOnly.detail).toBe("它会自行更新，无法在这里更新。打开它一次就会检查新版本。");
     for (const copy of [en.updates.blocked.SelfUpdatesOnly.detail, zhCN.updates.blocked.SelfUpdatesOnly.detail]) {
@@ -1151,7 +1151,7 @@ describe("the Updates page's chip details", () => {
       expect(copy.endsWith("请稍后点按“重新检查”。"), copy).toBe(true);
     }
     for (const copy of [en.sourceNotice.unreachable.description, en.sourceNotice.unreachable.descriptionWithRows]) {
-      expect(copy.endsWith("Press Check again later."), copy).toBe(true);
+      expect(copy.endsWith("Click Check Again later."), copy).toBe(true);
     }
   });
 
@@ -1165,7 +1165,7 @@ describe("the Updates page's chip details", () => {
     });
     // Each says what to do with the button that does it: Check again.
     expect(en.updates.unavailableDetail.NotResponding).toBe(
-      "{{source}} isn't responding. Press Check again later.",
+      "{{source}} isn't responding. Click Check Again later.",
     );
     expect(zhCN.updates.unavailableDetail.NotResponding).toBe("{{source}}没有响应。请稍后点按“重新检查”。");
     for (const locale of [en, zhCN]) {
@@ -1175,7 +1175,7 @@ describe("the Updates page's chip details", () => {
       expect(locale.updates.unavailableDetail.NotRunning).not.toMatch(/later|稍后/);
       expect(locale.updates.unavailableDetail.RefusesAsRoot).not.toMatch(/later|稍后/);
     }
-    expect(en.updates.unavailableDetail.NotRunning).toBe("{{source}} isn't running. Open it, then press Check again.");
+    expect(en.updates.unavailableDetail.NotRunning).toBe("{{source}} isn't running. Open it, then click Check Again.");
     expect(zhCN.updates.unavailableDetail.NotRunning).toBe("{{source}}没有运行。请打开它，然后点按“重新检查”。");
     expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Quit, then open Canager again/);
     expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/请退出，然后连按两次重新打开/);
@@ -1304,9 +1304,10 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
         expect(copy).not.toMatch(/\bmay\b|\bmight\b|可能/);
       }
     }
-    expect(en.installed.blocked.UvToolDirSet.refused).toContain("didn't uninstall or change anything");
     // The refusal stops before anything runs, so the polish-3 copy rules
-    // (规则 2) say what did not happen once, as 无法卸载, with no 没有改动.
+    // (规则 2) say what did not happen once, as "Couldn't uninstall" and
+    // 无法卸载, with no "nothing changed" or 没有改动.
+    expect(en.installed.blocked.UvToolDirSet.refused).toBe("Couldn't uninstall because UV_TOOL_DIR is set.");
     expect(zhCN.installed.blocked.UvToolDirSet.refused).toBe("无法卸载，因为设置了UV_TOOL_DIR。");
     // uv's rule, said once: uv checks the tools folder for another tool's
     // folder first (`crates/uv/src/commands/tool/uninstall.rs:40-52`), so
@@ -1315,7 +1316,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     // reasons' refusals do.
     expect(en.installed.blocked.UvToolDirSet.description).toContain("when uv uninstalls its last tool");
     expect(en.installed.blocked.UvToolDirSet.description).toContain("and everything in it");
-    expect(en.installed.blocked.UvToolDirSet.description).toContain("Canager uninstalls no uv tool while it's set.");
+    expect(en.installed.blocked.UvToolDirSet.description).toContain("So no uv tool can be uninstalled here while it's set.");
     expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("uv卸载最后一个工具");
     expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("及其中的所有文件");
     expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("无法在这里卸载任何uv工具");
@@ -1590,7 +1591,7 @@ describe("uninstallBlockedCopy", () => {
     // refuses when only a part is elsewhere -- a link at the top of either
     // folder -- and the variables' names are not this audience's words.
     expect(en.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
-      "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. Follow rustup's official documentation and run rustup self uninstall.",
+      "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and only Rust in those folders can be uninstalled here. Follow rustup's official documentation and run “rustup self uninstall”.",
     );
     expect(zhCN.installed.blocked.NoSafeMethod["standalone-rustup"].description).toBe(
       "这台Mac上的Rust不全在~/.cargo和~/.rustup中，而这里只卸载这两个位置的Rust。请按照rustup的官方文档运行“rustup self uninstall”。",

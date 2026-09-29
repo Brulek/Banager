@@ -44,7 +44,7 @@ first its record lists — so the other programs of a crate that installs severa
 Canager checks every source when it opens, after each operation, and whenever you press **Check
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
 last check finished, or choose **Check Again** (⌘R) in the menu bar's View menu, on any page; while
-a check runs, neither starts another. The **Check again** on the page Canager shows when it couldn't
+a check runs, neither starts another. The **Check Again** on the page Canager shows when it couldn't
 load installed tools, and the one on the notice of a Homebrew index Canager couldn't update, run the
 same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
@@ -69,7 +69,7 @@ to the front, and if Canager's window is closed or minimized into the Dock and h
 since the notification, the window comes back on the Updates page. Canager isn't told of the click
 itself, only that it has come to the front, so until the window has been in front again, anything
 else that brings Canager to the front with the window closed or minimized — ⌘-Tab, its Dock icon —
-does the same. The Unknown page's header has *Scan again* in its place, with how long ago that page
+does the same. The Unknown page's header has *Scan Again* in its place, with how long ago that page
 last scanned: it re-runs only that page's scan of your bin folders, against the sources' last known
 state — it does not refresh the sources. Settings' header has neither.
 
@@ -80,9 +80,9 @@ Canager (⌘Q) quits it. While an update or uninstall is still queued or running
 ⌘Q, Quit in the Dock icon's menu, or logging out, restarting or shutting down — first brings the
 window back and asks: *2 operations haven't finished*, since quitting now stops them and a tool that
 is being updated can be left half-updated, and it says so of one that has started and can't be
-cancelled, such as rustup's self update. *Keep waiting* leaves Canager running, and *Quit anyway*
+cancelled, such as rustup's self update. *Cancel* leaves Canager running, and *Quit*
 quits. Canager answers macOS at once, so a logout, restart or shutdown is called off rather than
-kept waiting, and after *Quit anyway* you start it again (`src-tauri/src/quit.rs`). Should the window
+kept waiting, and after *Quit* you start it again (`src-tauri/src/quit.rs`). Should the window
 be unable to ask — it stopped working, or doesn't show the question within 2 seconds — Canager quits
 rather than hold the quit with nobody there to answer. Force Quit still quits at once.
 
@@ -98,7 +98,7 @@ This app runs package managers on your behalf, so the boundary matters more than
   expiring identifier for a plan the Rust side built itself. There is no general "run this" path,
   so a compromised web view cannot invent one.
 - **You see the exact command before it runs.** Every update and uninstall lets you see the exact
-  command before it runs, with the variables Canager sets for it — one press on "Show the command"
+  command before it runs, with the variables Canager sets for it — one press on "Show Command"
   in its confirmation, or open from the start with Settings' "Show technical details" on — and
   says whether it may ask for your password; an uninstall that runs no command lists instead the
   exact paths it will move to the Trash. An uninstall also says what it will affect. An update says
@@ -217,7 +217,7 @@ Three kinds of text are shown as-is:
   inside a sentence in your language that says what happened.
 - **The app framework's own error**, in the one case where the window can't get an answer from the
   rest of Canager at all while loading the list, or refreshing it before any check has found
-  anything — its own text is shown untranslated, next to the Check again button (after that, the
+  anything — its own text is shown untranslated, next to the Check Again button (after that, the
   header says only "Couldn't check"). Short of that, Canager itself never fails a refresh as a whole, but not
   every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own

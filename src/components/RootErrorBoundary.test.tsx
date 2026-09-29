@@ -58,7 +58,7 @@ describe("an error in drawing the page", () => {
     fireEvent.click(screen.getByRole("button", { name: "break" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Something went wrong inside Canager, and the window can't show this page.",
+      "Couldn't show this page.",
     );
     expect(screen.queryByRole("button", { name: "break" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));

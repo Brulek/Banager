@@ -70,7 +70,7 @@
     "listSeparator": "，",
     "yourTools": "来源",
     "itemCount_other": "{{count}}个",
-    "attentionLabel": "提示"
+    "attentionLabel": "需要查看"
   },
   "adapters": {
     "brew": "Homebrew",

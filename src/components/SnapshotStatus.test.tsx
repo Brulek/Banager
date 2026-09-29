@@ -57,14 +57,14 @@ describe("SnapshotStatus", () => {
     // "Found nothing", never "nothing yet" (T8): a tool with its own
     // installer is looked for only where its installer puts it, so one
     // somewhere else is not found although it is there.
-    expect(await screen.findByText("Canager found nothing it can manage")).toBeInTheDocument();
+    expect(await screen.findByText("No tools to manage")).toBeInTheDocument();
     expect(screen.getByText("Install Homebrew first.")).toBeInTheDocument();
     expect(screen.queryByText(/None of them are set up|yet/)).not.toBeInTheDocument();
     // What Canager works with, and where it looks, behind Details.
-    const details = screen.getByRole("button", { name: "Details: Canager found nothing it can manage" });
+    const details = screen.getByRole("button", { name: "Details: No tools to manage" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
     );
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
@@ -95,7 +95,7 @@ describe("SnapshotStatus", () => {
     expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("checking");
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
-    expect(screen.queryByText("Canager found nothing it can manage")).not.toBeInTheDocument();
+    expect(screen.queryByText("No tools to manage")).not.toBeInTheDocument();
   });
 
   it("says in Chinese why the first check takes a while", async () => {
@@ -249,7 +249,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Canager found nothing it can manage")).toBeInTheDocument();
+    expect(await screen.findByText("No tools to manage")).toBeInTheDocument();
     expect(screen.queryByText("overview")).not.toBeInTheDocument();
   });
 
@@ -351,7 +351,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true),
     );
@@ -381,7 +381,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "Check again" });
+    const button = screen.getByRole("button", { name: "Check Again" });
     fireEvent.click(button);
     await waitFor(() => expect(button).toBeDisabled());
     fireEvent.click(button);
@@ -391,7 +391,7 @@ describe("SnapshotStatus", () => {
 
     // It failed again: its words, and the button back on.
     expect(await screen.findByText(/the session is gone/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Check again" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Check Again" })).toBeEnabled();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
   });
 
@@ -414,7 +414,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "Check again" });
+    const button = screen.getByRole("button", { name: "Check Again" });
     expect(button).toBeEnabled();
 
     // The startup's check, or the one after an operation.
@@ -443,16 +443,16 @@ describe("SnapshotStatus", () => {
     );
 
     // "Found nothing installed", not "nothing installed yet" (T8).
-    expect(await screen.findByText("Canager found nothing installed")).toBeInTheDocument();
+    expect(await screen.findByText("No installed tools found")).toBeInTheDocument();
     // Not "Once you install something with Homebrew": a Mac with Node and no
     // global packages lands here too.
     expect(
       screen.getByText("Tools you install with Homebrew, npm and the like show up here."),
     ).toBeInTheDocument();
-    const details = screen.getByRole("button", { name: "Details: Canager found nothing installed" });
+    const details = screen.getByRole("button", { name: "Details: No installed tools found" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
     );
   });
 
@@ -509,7 +509,7 @@ describe("SnapshotStatus", () => {
 
     await screen.findByText("snapshot loaded");
     expect(screen.getByText("installed list")).toBeInTheDocument();
-    expect(screen.queryByText("Canager found nothing installed")).not.toBeInTheDocument();
+    expect(screen.queryByText("No installed tools found")).not.toBeInTheDocument();
     // And no page-wide banner either. An unavailable source is not a
     // failed refresh (`refresh()` leaves `stale` false for it), and it
     // already says so itself, in its own words and with its own button,

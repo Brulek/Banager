@@ -133,21 +133,21 @@ describe("the question before a quit", () => {
     ).toBeInTheDocument();
     // The quiet one first, then the one it asks for, as every sheet has them.
     expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Quit anyway",
-      "Keep waiting",
+      "Quit",
+      "Cancel",
     ]);
-    const keepWaiting = within(dialog).getByRole("button", { name: "Keep waiting" });
+    const keepWaiting = within(dialog).getByRole("button", { name: "Cancel" });
     await waitFor(() => expect(document.activeElement).toBe(keepWaiting));
     expect(sent("quit_anyway")).toBe(0);
   });
 
   it.each([
-    ["Keep waiting", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) =>
-      user.click(within(dialog).getByRole("button", { name: "Keep waiting" }))],
+    ["Cancel", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) =>
+      user.click(within(dialog).getByRole("button", { name: "Cancel" }))],
     ["Escape", async (user: ReturnType<typeof userEvent.setup>) => user.keyboard("{Escape}")],
     ["Return on the button in focus", async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => {
       await waitFor(() =>
-        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep waiting" })),
+        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" })),
       );
       await user.keyboard("{Enter}");
     }],
@@ -172,7 +172,7 @@ describe("the question before a quit", () => {
     operations = [op(1, "wget", "Running")];
     const { rust } = await mounted();
     const first = await asked(rust, "1 operation hasn't finished");
-    await user.click(within(first).getByRole("button", { name: "Keep waiting" }));
+    await user.click(within(first).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await asked(rust, "1 operation hasn't finished");
@@ -193,11 +193,11 @@ describe("the question before a quit", () => {
     const { rust } = await mounted();
     const dialog = await asked(rust, "1 operation hasn't finished");
 
-    await user.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    await user.click(within(dialog).getByRole("button", { name: "Quit" }));
 
     expect(sent("quit_anyway")).toBe(1);
-    expect(within(dialog).getByRole("button", { name: "Quit anyway" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "Keep waiting" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Quit" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
     // In the app, Canager is gone by now.
     await act(async () => quit());
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -212,7 +212,7 @@ describe("the question before a quit", () => {
     const { rust, queryClient } = await mounted();
     const dialog = await asked(rust, "1 operation hasn't finished");
 
-    await user.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    await user.click(within(dialog).getByRole("button", { name: "Quit" }));
     await listNow(queryClient, [op(1, "wget", "Done")]);
 
     expect(sent("quit_kept_waiting")).toBe(0);
@@ -226,9 +226,9 @@ describe("the question before a quit", () => {
     const { rust } = await mounted();
     const dialog = await asked(rust, "1 operation hasn't finished");
 
-    await user.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    await user.click(within(dialog).getByRole("button", { name: "Quit" }));
 
-    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Quit anyway" })).toBeEnabled());
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Quit" })).toBeEnabled());
     expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(error).toHaveBeenCalledWith("quit_anyway failed", expect.any(Error));
     error.mockRestore();
@@ -333,7 +333,7 @@ describe("the question before a quit", () => {
     expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(sent("quit_anyway")).toBe(0);
 
-    await user.click(within(dialog).getByRole("button", { name: "Keep waiting" }));
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(sent("quit_kept_waiting")).toBe(1));
     error.mockRestore();
   });

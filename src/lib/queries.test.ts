@@ -243,7 +243,7 @@ describe("queries", () => {
 
   it("useUnknownScan runs nothing until asked, then fetches through scanUnknown", async () => {
     // `enabled: false`: the scan is a directory walk of up to ten seconds,
-    // run when the Unknown page opens and when "Scan again" is pressed --
+    // run when the Unknown page opens and when "Scan Again" is pressed --
     // never because a component happened to mount, and never as part of
     // a refresh.
     const scan: UnknownScan = {

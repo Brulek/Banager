@@ -32,7 +32,7 @@ describe("CommandPreview", () => {
   it("keeps the command behind one press, closed to begin with", async () => {
     renderWithProviders(<CommandPreview plans={[{ id: "1", action: brewUpgrade }]} />);
 
-    const disclosure = screen.getByRole("button", { name: "Show the command" });
+    const disclosure = screen.getByRole("button", { name: "Show Command" });
     // Settled: the setting has arrived, and it is off.
     await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith("get_settings"));
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
@@ -52,7 +52,7 @@ describe("CommandPreview", () => {
     renderWithProviders(<CommandPreview plans={[{ id: "1", action: brewUpgrade }]} />);
 
     await user.tab();
-    const disclosure = screen.getByRole("button", { name: "Show the command" });
+    const disclosure = screen.getByRole("button", { name: "Show Command" });
     expect(document.activeElement).toBe(disclosure);
 
     await user.keyboard("{Enter}");
@@ -69,7 +69,7 @@ describe("CommandPreview", () => {
     renderWithProviders(<CommandPreview plans={[{ id: "1", action: brewUpgrade }]} />);
 
     expect(await screen.findByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
-    const disclosure = screen.getByRole("button", { name: "Show the command" });
+    const disclosure = screen.getByRole("button", { name: "Show Command" });
     expect(disclosure).toHaveAttribute("aria-expanded", "true");
 
     await userEvent.setup().click(disclosure);
@@ -95,7 +95,7 @@ describe("CommandPreview", () => {
     expect(onyx).toHaveClass("select-text");
     expect(screen.getByText("/Users/you/.cargo/bin/rustup self update")).toHaveClass("select-text");
     expect(screen.getByText("OnyX")).not.toHaveClass("select-text");
-    expect(screen.getByRole("button", { name: "Show the commands" })).not.toHaveClass("select-text");
+    expect(screen.getByRole("button", { name: "Show Commands" })).not.toHaveClass("select-text");
   });
 
   it("quotes tokens that contain whitespace so argument boundaries stay visible", async () => {
@@ -165,7 +165,7 @@ describe("CommandPreview", () => {
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Show the commands" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Commands" })).toBeInTheDocument();
     const rustup = await screen.findByText("/Users/you/.cargo/bin/rustup self update");
     expect(rustup.previousElementSibling).toHaveTextContent("rustup");
     expect(screen.getByText("/opt/homebrew/bin/brew upgrade --cask onyx").previousElementSibling).toHaveTextContent(

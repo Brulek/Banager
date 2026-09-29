@@ -62,12 +62,12 @@ describe("PageHeader", () => {
 
   it("has Check again, the page's own action in its place, or nothing at all on its right", async () => {
     const checks = renderWithProviders(<PageHeader title="Updates" actions={<CheckAgain />} />);
-    expect(checks.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    expect(checks.getByRole("button", { name: "Check Again" })).toBeInTheDocument();
     expect(await checks.findByText(/^Checked /)).toBeInTheDocument();
     checks.unmount();
 
-    const own = renderWithProviders(<PageHeader title="Unknown" actions={<button type="button">Scan again</button>} />);
-    expect(own.getAllByRole("button").map((button) => button.textContent)).toEqual(["Scan again"]);
+    const own = renderWithProviders(<PageHeader title="Unknown" actions={<button type="button">Scan Again</button>} />);
+    expect(own.getAllByRole("button").map((button) => button.textContent)).toEqual(["Scan Again"]);
     expect(own.queryByText(/^Checked /)).toBeNull();
     own.unmount();
 
@@ -83,7 +83,7 @@ describe("PageHeader", () => {
     const title = getByRole("heading", { level: 1, name: "Updates" });
     const header = title.closest("header") as HTMLElement;
     const time = await findByText(/^Checked /);
-    const checkAgain = getByRole("button", { name: "Check again" });
+    const checkAgain = getByRole("button", { name: "Check Again" });
 
     // The title, the time and the space around them drag the window...
     expect(dragsWindow(header)).toBe(true);
@@ -103,16 +103,16 @@ describe("PageHeader", () => {
   it("draws any page's look again the one way: when, then the button", () => {
     const onPress = vi.fn();
     const { getByRole, getByText, rerender } = renderWithProviders(
-      <HeaderAction status={{ text: "Scanned just now", failed: false }} label="Scan again" onPress={onPress} busy={false} />,
+      <HeaderAction status={{ text: "Scanned just now", failed: false }} label="Scan Again" onPress={onPress} busy={false} />,
     );
-    const button = getByRole("button", { name: "Scan again" });
+    const button = getByRole("button", { name: "Scan Again" });
     expect(getByText("Scanned just now").compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);
 
-    rerender(<HeaderAction status={{ text: "Couldn't scan", failed: true }} label="Scan again" onPress={onPress} busy />);
+    rerender(<HeaderAction status={{ text: "Couldn't scan", failed: true }} label="Scan Again" onPress={onPress} busy />);
     expect(getByRole("alert")).toHaveTextContent("Couldn't scan");
-    expect(getByRole("button", { name: "Scan again" })).toBeDisabled();
+    expect(getByRole("button", { name: "Scan Again" })).toBeDisabled();
   });
 
   it("says how long ago the last check finished, and moves on every minute", async () => {
@@ -180,7 +180,7 @@ describe("PageHeader", () => {
       <PageHeader title="Updates" />,
     );
     await findByText("Checked 10 min ago");
-    const button = getByRole("button", { name: "Check again" });
+    const button = getByRole("button", { name: "Check Again" });
     expect(button).toBeEnabled();
 
     fireEvent.click(button);
@@ -217,7 +217,7 @@ describe("PageHeader", () => {
       run = refreshIntoCache(queryClient, "test");
     });
 
-    const button = getByRole("button", { name: "Check again" });
+    const button = getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(button).toBeDisabled());
     expect(await findByText("Checking…")).toBeInTheDocument();
 
@@ -235,13 +235,13 @@ describe("PageHeader", () => {
     );
     await findByText(/^Checked /);
 
-    fireEvent.click(getByRole("button", { name: "Check again" }));
+    fireEvent.click(getByRole("button", { name: "Check Again" }));
 
     expect(await findByRole("alert")).toHaveTextContent("Couldn't check");
-    expect(getByRole("button", { name: "Check again" })).toBeEnabled();
+    expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
 
     refreshReply = () => Promise.resolve(snapshotCheckedAt(Math.floor(Date.now() / 1000), 5));
-    fireEvent.click(getByRole("button", { name: "Check again" }));
+    fireEvent.click(getByRole("button", { name: "Check Again" }));
 
     expect(await findByText("Checked just now")).toBeInTheDocument();
     expect(queryByRole("alert")).not.toBeInTheDocument();

@@ -171,7 +171,7 @@ describe("LogDrawer", () => {
     });
 
     await findByText(
-      "Time ran out after 120 seconds, so Canager stopped before moving ~/.local/bin/claude. What it moved is in the Trash; uninstall again to move the rest.",
+      "Time ran out after 120 seconds, so the uninstall stopped before moving ~/.local/bin/claude. What was moved is in the Trash; uninstall again to move the rest.",
     );
   });
 
@@ -240,7 +240,7 @@ describe("LogDrawer", () => {
     // out of reach while it is open.
     const { findByRole } = renderWithProviders(<LogDrawer />);
 
-    fireEvent.click(await findByRole("button", { name: "Cancel install" }));
+    fireEvent.click(await findByRole("button", { name: "Cancel Install" }));
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("cancel_operation", { opId: 1 }));
   });
@@ -249,13 +249,13 @@ describe("LogDrawer", () => {
     operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
     const done = renderWithProviders(<LogDrawer />);
     await done.findByText("Succeeded");
-    expect(done.queryByRole("button", { name: "Cancel install" })).toBeNull();
+    expect(done.queryByRole("button", { name: "Cancel Install" })).toBeNull();
     done.unmount();
 
     operations = [{ ...runningOp, kind: "Upgrade", name: "rustup", cancel_policy: "NoCancel" }];
     const noCancel = renderWithProviders(<LogDrawer />);
     await noCancel.findByRole("dialog", { name: "Update rustup" });
-    expect(noCancel.queryByRole("button", { name: "Cancel update" })).toBeNull();
+    expect(noCancel.queryByRole("button", { name: "Cancel Update" })).toBeNull();
   });
 
   it("says what to do next under an outcome that leaves the user a step", async () => {
@@ -265,7 +265,7 @@ describe("LogDrawer", () => {
 
     const { findByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Failed: something went wrong inside Canager");
+    await findByText("Couldn't finish because of an internal error");
     await findByText("Check the list to see whether anything changed.");
   });
 

@@ -276,7 +276,7 @@ describe("UnknownPage", () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
     expect(await findByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
-    expect(getByText("Canager recognized 4 more programs and doesn't list them here.")).toBeInTheDocument();
+    expect(getByText("4 more programs have a known source and aren't listed here.")).toBeInTheDocument();
   });
 
   it("says so in Chinese, the folders run together with 、", async () => {
@@ -298,14 +298,14 @@ describe("UnknownPage", () => {
     scan = { ...baseScan, stopped: { FileLimit: { max_entries: 2000 } } };
     const byFiles = renderWithProviders(<UnknownPage />);
     expect(
-      await byFiles.findByText("Canager stopped after 2000 items and didn't check the rest."),
+      await byFiles.findByText("Stopped after 2000 items; the rest weren't checked."),
     ).toBeInTheDocument();
     byFiles.unmount();
 
     scan = { ...baseScan, stopped: { TimeLimit: { max_secs: 10 } } };
     const byTime = renderWithProviders(<UnknownPage />);
     expect(
-      await byTime.findByText("Canager stopped after 10 seconds and didn't check the rest."),
+      await byTime.findByText("Stopped after 10 seconds; the rest weren't checked."),
     ).toBeInTheDocument();
     // The rows are still there under it.
     expect(byTime.getByText("standalone-tool")).toBeInTheDocument();
@@ -323,8 +323,8 @@ describe("UnknownPage", () => {
   it("vouches only for what it checked when a scan that stopped early found nothing, with no check mark", async () => {
     scan = { ...baseScan, entries: [], stopped: { TimeLimit: { max_secs: 10 } } };
     const stoppedEarly = renderWithProviders(<UnknownPage />);
-    expect(await stoppedEarly.findByText("No programs of unknown origin in what Canager checked")).toBeInTheDocument();
-    expect(stoppedEarly.getByText("Canager stopped after 10 seconds and didn't check the rest.")).toBeInTheDocument();
+    expect(await stoppedEarly.findByText("No programs of unknown origin in the places checked")).toBeInTheDocument();
+    expect(stoppedEarly.getByText("Stopped after 10 seconds; the rest weren't checked.")).toBeInTheDocument();
     expect(stoppedEarly.queryByText("No programs of unknown origin")).toBeNull();
     expect(stoppedEarly.container.querySelector("svg.text-success")).toBeNull();
     stoppedEarly.unmount();
@@ -357,7 +357,7 @@ describe("UnknownPage", () => {
     await findByText("standalone-tool");
     expect(scanCalls()).toBe(1);
 
-    fireEvent.click(getByRole("button", { name: "Scan again" }));
+    fireEvent.click(getByRole("button", { name: "Scan Again" }));
 
     await waitFor(() => expect(scanCalls()).toBe(2));
   });
@@ -366,11 +366,11 @@ describe("UnknownPage", () => {
     const { findByText, getByText, queryByRole } = renderWithProviders(<UnknownPage />);
     await findByText("standalone-tool");
 
-    expect(queryByRole("button", { name: "Scan again" })).toBeNull();
+    expect(queryByRole("button", { name: "Scan Again" })).toBeNull();
     // What it says at its top stays: what the page is, and where it looked.
     expect(
       getByText(
-        "Canager can't tell how these command-line programs got here. It only lists them and never runs or deletes them.",
+        "Couldn't determine how these programs were installed.",
       ),
     ).toBeInTheDocument();
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
@@ -394,14 +394,14 @@ describe("UnknownPage", () => {
       );
 
       expect(await findByText("Scanning…")).toBeInTheDocument();
-      expect(getByRole("button", { name: "Scan again" })).toBeDisabled();
+      expect(getByRole("button", { name: "Scan Again" })).toBeDisabled();
 
       await act(async () => {
         releaseScan();
       });
       expect(await findByText("Scanned just now")).toBeInTheDocument();
       expect(queryByText("Scanning…")).toBeNull();
-      expect(getByRole("button", { name: "Scan again" })).toBeEnabled();
+      expect(getByRole("button", { name: "Scan Again" })).toBeEnabled();
 
       act(() => {
         vi.advanceTimersByTime(2 * 60_000);
@@ -412,7 +412,7 @@ describe("UnknownPage", () => {
     it("says nothing before a scan has answered, and nothing about one that failed, whose reason the page says", async () => {
       const alone = renderWithProviders(<ScanAgain />);
       // Nothing asked for a scan: no time, and the button ready.
-      expect(alone.getByRole("button", { name: "Scan again" })).toBeEnabled();
+      expect(alone.getByRole("button", { name: "Scan Again" })).toBeEnabled();
       expect(alone.queryByText(/^Scanned|Scanning…/)).toBeNull();
       expect(scanCalls()).toBe(0);
       alone.unmount();
@@ -426,7 +426,7 @@ describe("UnknownPage", () => {
       );
       expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan: boom");
       expect(failed.queryByText(/^Scanned|Scanning…/)).toBeNull();
-      expect(failed.getByRole("button", { name: "Scan again" })).toBeEnabled();
+      expect(failed.getByRole("button", { name: "Scan Again" })).toBeEnabled();
     });
 
     it("says when it scanned in Chinese as the header says when it checked", async () => {
@@ -501,7 +501,7 @@ describe("a row's ⋯ menu", () => {
       const menu = openMenu(row);
       expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
         "Show in Finder",
-        "Copy path",
+        "Copy Path",
       ]);
       fireEvent.click(button);
       expect(screen.queryByRole("menu")).toBeNull();
@@ -541,7 +541,7 @@ describe("a row's ⋯ menu", () => {
     expect(item).toHaveAccessibleDescription("The file this link points to is gone.");
     fireEvent.click(item);
     expect(mockReveal).not.toHaveBeenCalled();
-    expect(within(menu).getByRole("menuitem", { name: "Copy path" })).not.toHaveAttribute("aria-disabled");
+    expect(within(menu).getByRole("menuitem", { name: "Copy Path" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("is reached with Tab and worked with the keys, as every row's ⋯ is", async () => {
@@ -559,7 +559,7 @@ describe("a row's ⋯ menu", () => {
     await user.keyboard("{Enter}");
     expect(getByRole("menuitem", { name: "Show in Finder" })).toHaveFocus();
     await user.keyboard("{ArrowDown}");
-    expect(getByRole("menuitem", { name: "Copy path" })).toHaveFocus();
+    expect(getByRole("menuitem", { name: "Copy Path" })).toHaveFocus();
     await user.keyboard("{ArrowUp}{Enter}");
     await waitFor(() => expect(mockReveal).toHaveBeenCalledWith("/Users/someone/.opencode/bin/standalone-tool"));
     expect(queryByRole("menu")).toBeNull();
@@ -619,7 +619,7 @@ describe("a row's ⋯ menu", () => {
       chooseFromMenu(tool, "Show in Finder");
       await waitFor(() => expect(notice()).toHaveTextContent(/^Couldn't show it in Finder$/));
 
-      chooseFromMenu(tool, "Copy path");
+      chooseFromMenu(tool, "Copy Path");
       await waitFor(() => expect(notice()).toHaveTextContent(/^Copied$/));
     });
 
@@ -648,7 +648,7 @@ describe("a row's ⋯ menu", () => {
   });
 });
 
-describe("Copy path", () => {
+describe("Copy Path", () => {
   let writeText: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -663,12 +663,12 @@ describe("Copy path", () => {
   it("copies the path the row shows, a link's own, and says it did", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
-    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy path");
+    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy Path");
     expect(writeText).toHaveBeenLastCalledWith("~/.opencode/bin/standalone-tool");
     await waitFor(() => expect(notice()).toHaveTextContent(/^Copied$/));
 
     // Where the link is, not where it points.
-    chooseFromMenu(rowOf(getByText("helper-cli")), "Copy path");
+    chooseFromMenu(rowOf(getByText("helper-cli")), "Copy Path");
     expect(writeText).toHaveBeenLastCalledWith("/usr/local/bin/helper-cli");
     expect(mockReveal).not.toHaveBeenCalled();
   });
@@ -677,7 +677,7 @@ describe("Copy path", () => {
     writeText.mockRejectedValue(new Error("denied"));
     const { findByText } = renderWithProviders(<UnknownPage />);
 
-    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy path");
+    chooseFromMenu(rowOf(await findByText("standalone-tool")), "Copy Path");
 
     await waitFor(() => expect(notice()).toHaveTextContent(/^Couldn't copy$/));
   });

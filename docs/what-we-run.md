@@ -119,7 +119,7 @@ own behalf.
 **A refresh** happens when the window opens (`refreshIntoCache(…,
 "initial")` in `src/lib/events.ts`), when the user presses a Retry or
 Refresh control (the status bar after a failed refresh, a source notice)
-or asks to check again — the page header's Check again, or Check Again
+or asks to check again — the page header's Check Again, or Check Again
 (⌘R) in the menu bar's View menu, neither of which starts one while one
 runs (`useCheckAgain` in `src/lib/queries.ts`) — after every operation
 finishes, when the "include self-updating apps" setting changes, after
@@ -145,7 +145,7 @@ moves a file, launches an application or asks for a password.
 for an uninstall that runs no command, the exact list of paths it will
 move to the Trash (the Claude Code, Antigravity CLI and Grok Build
 sections) — and the front end shows it: the paths in the confirmation,
-the command one press away there ("Show the command") — the variables
+the command one press away there ("Show Command") — the variables
 the plan sets on top of Canager's environment, as `NAME=value`, then the
 argv (`commandText` in `src/components/CommandPreview.tsx`) — open from
 the start with Settings' "Show technical details" on (`plan_operation` in
@@ -187,13 +187,13 @@ cancelled; an upgrade stopped partway is never settled either way
 
 **Quitting while an operation is under way.** Closing the window leaves
 Canager and its operations running (`src-tauri/src/window.rs`). Quitting
-after the question below — *Quit anyway*, or a question the window never
+after the question below — *Quit*, or a question the window never
 showed — first cancels every operation that can be cancelled, as the
-operation bar's *Cancel all* does: one still queued never runs, and a
+operation bar's *Cancel All* does: one still queued never runs, and a
 running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
 of it is left, which can leave the tool it was updating or uninstalling
 half done. Canager quits once those commands have stopped, 7 seconds
-after *Quit anyway* at the most (`quit_now` in `src-tauri/src/quit.rs`);
+after *Quit* at the most (`quit_now` in `src-tauri/src/quit.rs`);
 another quit meanwhile — ⌘Q, the Dock's Quit, a logout — is called off,
 and does not cut that wait short.
 A running operation that cannot be cancelled — rustup's self update or
@@ -209,21 +209,21 @@ way. So on a Mac, while an operation is not done —
 queued, running, being cancelled or checking its result — every way of
 quitting (Quit Canager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:
-*N operations haven't finished* (「还有N个操作未完成」), with *Keep
-waiting* (「取消」, which has the focus, and which Escape does) and
-*Quit anyway* (「退出」), and it names an operation that has started
+*N operations haven't finished* (「还有N个操作未完成」), with *Cancel*
+(「取消」, which has the focus, and which Escape does) and
+*Quit* (「退出」), and it names an operation that has started
 and cannot be cancelled, such as rustup's self update. Every one of those
 quits ends in AppKit's `terminate:`, which asks the application
 delegate's `applicationShouldTerminate:`; Canager adds that method to the
 delegate as it starts (`guard_quitting` in `src-tauri/src/quit.rs`) and
 answers it at once, so a logout, restart or shutdown is called off rather
-than kept waiting, and has to be started again after *Quit anyway*.
+than kept waiting, and has to be started again after *Quit*.
 Nothing asks until the window has loaded and listens for the question,
 nor once the page has stopped listening, as it does when an error in
 drawing it takes it down; and once asked, the window has 2 seconds to
 say that the question is on screen, or Canager quits — a window that
 was reloaded or stopped working is not there to answer, and a quit
-called off with nobody to ask would never happen. *Keep waiting* (or
+called off with nobody to ask would never happen. *Cancel* (or
 Escape, or the question going away once everything has finished) tells
 Canager too, and that 2-second wait then does not quit, even when the
 word that the question was on screen did not get through; the window
@@ -299,7 +299,7 @@ starts nothing. Turned on:
   while Canager is not running. Closing the window leaves Canager running
   (`src-tauri/src/window.rs`), and the task with it.
 
-**What it runs** is the refresh Check again runs, through the same
+**What it runs** is the refresh Check Again runs, through the same
 function (`ipc::refresh_for`), and nothing else: the commands a refresh
 runs, in each source's read-only table and Homebrew's `brew update`, and
 the requests a refresh makes, to the hosts in "Network". So it does to
@@ -324,13 +324,13 @@ post first (`request_notification_permission` in
 pins, answers yes on a Mac without asking macOS, so there the switch
 always turns on, and whether a notification shows is up to System
 Settings → Notifications → Canager. Were the answer no, the switch would
-turn back off with "Allow Canager in System Settings → Notifications."
+turn back off with "Allow Canager to send notifications in System Settings > Notifications."
 (「请在“系统设置”>“通知”中允许Canager发送通知。」) under it.
 
 Each time the window receives a check's result — every daily check's
 included, which Rust announces to it even when nothing changed
 (`announce` in `src-tauri/src/ipc.rs`) — it tells Rust which updates
-Update all would take, as tool-and-version pairs, and which check it was
+Update All would take, as tool-and-version pairs, and which check it was
 (`report_update_set`). Rust posts one notification only when that check
 was a daily one, or the refresh a daily one's `brew update` set off; both
 switches are on; another app is in front, not Canager — macOS shows no
@@ -357,7 +357,7 @@ the next daily check that finds them.
 
 The notification is titled Canager and says "N tools can be updated"
 (「有 N 个工具可更新」) in the window's language, N being every update
-Update all would take. It is handed to macOS's Notification Center
+Update All would take. It is handed to macOS's Notification Center
 (`NSUserNotificationCenter`) through notify-rust, the crate the plugin
 posts through, on a thread of its own (`post` and `hand_off` in
 `src-tauri/src/notify.rs`): no command runs, nothing connects, and
@@ -551,7 +551,7 @@ runs the uninstall steps it recorded, and that Canager can't see what else
 some of those steps delete — nothing about what stays, whether the
 autoremove is on or off (`UninstallScope::HomebrewCaskStepsUnseen`,
 `HomebrewCaskStepsOnlyUnseen`); the step's own line below still names the
-program. Either way, "Before you continue" lists one line per kind,
+program. Either way, "Notes" lists one line per kind,
 with what the record names, the home folder spelled `~`: paths deleted for good
 (`delete:`, an `artifact` placed in the home folder, and each path an
 uninstall step of type `remove` spells out — from `/` or `~`, or under the
@@ -1727,7 +1727,7 @@ moves or deletes anything it finds. It takes no lock and is not part of a
 refresh (`Session::scan_unknown` in
 `crates/canager-core/src/session/scan.rs`): it runs when the page opens,
 again when the sources' state changes while the page is open, and when
-you press *Scan again* — always against the sources' last known state —
+you press *Scan Again* — always against the sources' last known state —
 and its result is not stored.
 
 A program is *not* listed when a known source accounts for it
@@ -1762,7 +1762,7 @@ that lives neither inside that `.app` nor under `Caskroom` (one a `pkg`
 put on the disk, or one inside a second `.app` of the same cask), and a
 cask whose `brew info` entry carries no absolute `target` for its `app`.
 
-Each row's ⋯ menu has *Show in Finder* and *Copy path*. Show in Finder
+Each row's ⋯ menu has *Show in Finder* and *Copy Path*. Show in Finder
 asks Finder to show the program and runs nothing else: no command runs
 for it. The window hands the path the scan resolved for that row
 (`UnknownEntry.resolved`, every link followed) to the Tauri opener
@@ -1773,7 +1773,7 @@ plugin's `revealItemInDir` (`revealInFinder` in `src/lib/api.ts`), whose
 window on the program's folder with the program selected. So for a link
 Finder shows the file the link points to; a broken link's is gone, and on
 its row the item is off. The window may call that one command of the
-plugin and no other (Network, below). Copy path puts the path the row
+plugin and no other (Network, below). Copy Path puts the path the row
 shows, `~` and all, on the clipboard (`useCopyCommand` in
 `src/lib/clipboard.ts`), and does nothing else.
 

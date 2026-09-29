@@ -255,9 +255,9 @@ async function findRow(name: string): Promise<HTMLElement> {
   return rowOf(name);
 }
 
-// Unfolds "Can't update here (N)".
+// Unfolds "N more can't be updated here".
 async function showCantUpdate() {
-  const toggle = await screen.findByRole("button", { name: /^Can't update here/ });
+  const toggle = await screen.findByRole("button", { name: /^\d+ more can't be updated here$/ });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(toggle);
 }
@@ -280,7 +280,7 @@ function openMenu(row: HTMLElement): HTMLElement {
 // Opens the confirmation's "Show the command(s)": the commands are one
 // press away, not on the sheet.
 function showCommands(dialog: HTMLElement) {
-  const disclosure = within(dialog).getByRole("button", { name: /^Show the command/ });
+  const disclosure = within(dialog).getByRole("button", { name: /^Show Command/ });
   if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
 }
 
@@ -570,7 +570,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[1]);
 
     // The button counts what it will update.
-    fireEvent.click(getByRole("button", { name: "Update selected (2)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
     const dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -596,7 +596,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
 
-    fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
     const dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -635,7 +635,7 @@ describe("UpdatesPage", () => {
       "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
     await within(dialog).findByText(line);
     const why =
-      "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
+      "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
     expect(within(dialog).queryByText(why)).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: `Details: ${line}` }));
     expect(screen.getByText(why)).toBeInTheDocument();
@@ -704,7 +704,7 @@ describe("UpdatesPage", () => {
     // No version to move to: the version it has.
     expect(within(myFork).getByText("0.1.0")).toBeInTheDocument();
     const detail = chipDetail(myFork, "Can't check");
-    expect(within(detail).getByText("Canager can't find its latest version.")).toBeInTheDocument();
+    expect(within(detail).getByText("Couldn't find its latest version.")).toBeInTheDocument();
     expect(within(detail).getByText("It wasn't installed from crates.io.")).toBeInTheDocument();
   });
 
@@ -713,7 +713,7 @@ describe("UpdatesPage", () => {
     // the UI store and outlives the row that made it, so a candidate
     // selected while it was checkable stays selected after a refresh flips
     // `checkable` to false (cargo's crates.io lookup failing is enough to
-    // do that). Without this, "Update selected" would still plan the row
+    // do that). Without this, "Update Selected" would still plan the row
     // whose Update button was just taken away -- `cargo install --force
     // my-fork` against the same-named crates.io crate, the exact hazard
     // `checkable` exists for.
@@ -738,7 +738,7 @@ describe("UpdatesPage", () => {
 
     await findRow("glib");
     // One, not two: my-fork's selection counts for nothing.
-    fireEvent.click(getByRole("button", { name: "Update selected (1)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
     const dialog = await findByRole("dialog");
     showCommands(dialog);
@@ -763,7 +763,7 @@ describe("UpdatesPage", () => {
     // "Can't update here".
     await findByText("1 can be updated");
     await showCantUpdate();
-    expect(getByText("Can't update here (1)")).toBeInTheDocument();
+    expect(getByText("1 more can't be updated here")).toBeInTheDocument();
     const glib = await findRow("glib");
     // Its version is real, and shown.
     expect(within(glib).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
@@ -857,7 +857,7 @@ describe("UpdatesPage", () => {
     // onyx, not pinned, is Unavailable, and says so of Homebrew.
     expect(
       within(chipDetail(rowOf("onyx"), "Can't update now")).getByText(
-        "Homebrew isn't responding. Press Check again later.",
+        "Homebrew isn't responding. Click Check Again later.",
       ),
     ).toBeInTheDocument();
   });
@@ -955,7 +955,7 @@ describe("UpdatesPage", () => {
     const { getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     await findRow("onyx");
-    fireEvent.click(getByRole("button", { name: "Update selected (1)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
     await findByRole("dialog");
     expect(plannedNames()).toEqual(["onyx"]);
@@ -989,7 +989,7 @@ describe("UpdatesPage", () => {
     // loud. Counting only the first left "0 updates available" above six
     // listed rows on a machine whose only outdated packages were pip's.
     await findByText("1 can be updated");
-    await findByText("Can't update here (1)");
+    await findByText("1 more can't be updated here");
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "View only");
     expect(detail).toHaveTextContent(
@@ -1070,7 +1070,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("1 can be updated");
-    await findByText("Can't update here (1)");
+    await findByText("1 more can't be updated here");
     expect(queryByText("2 can be updated")).not.toBeInTheDocument();
   });
 
@@ -1099,7 +1099,7 @@ describe("UpdatesPage", () => {
     expect(advice).toHaveTextContent(/with pipx or uv/);
     expect(advice.textContent).not.toMatch(/latest version/);
     const reason = chipDetail(urllib3, "Can't check");
-    expect(reason).toHaveTextContent("Canager can't find its latest version.");
+    expect(reason).toHaveTextContent("Couldn't find its latest version.");
     expect(reason.textContent).not.toMatch(/pipx/);
   });
 
@@ -1128,11 +1128,11 @@ describe("UpdatesPage", () => {
     const detail = chipDetail(await findRow("certifi"), "Can't check");
     // What a person who does not write code is told instead: that it could
     // not be checked, in one short sentence...
-    expect(detail.textContent).toBe("Canager can't find its latest version.");
+    expect(detail.textContent).toBe("Couldn't find its latest version.");
     expect(queryAllByText(/Could not fetch URL/)).toHaveLength(0);
     expect(queryAllByText(/pip list --outdated/)).toHaveLength(0);
     // ...and, once for the page, where to go if they want the rest.
-    const summary = queryAllByText(/Canager couldn't check 3 of these for updates/);
+    const summary = queryAllByText(/3 tools couldn't be checked for updates/);
     expect(summary).toHaveLength(1);
     expect(summary[0].textContent).toContain("Show technical details");
   });
@@ -1154,12 +1154,12 @@ describe("UpdatesPage", () => {
     }));
     const { findByText, queryAllByText } = renderWithProviders(<UpdatesPage />);
 
-    await findByText("Can't update here (70)");
+    await findByText("70 more can't be updated here");
     await showCantUpdate();
-    const summary = queryAllByText(/Canager couldn't check 70 of these for updates/);
+    const summary = queryAllByText(/70 tools couldn't be checked for updates/);
     expect(summary).toHaveLength(1);
     expect(summary[0].textContent).toBe(
-      "Canager couldn't check 70 of these for updates. To see why, turn on “Show technical details” in Settings.",
+      "70 tools couldn't be checked for updates. Turn on “Show technical details” to see why.",
     );
     expect(queryAllByText(/ENOTFOUND/)).toHaveLength(0);
   });
@@ -1207,7 +1207,7 @@ describe("UpdatesPage", () => {
     const detail = chipDetail(await findRow("urllib3"), "Can't check");
     const lines = [...detail.querySelectorAll("p")].map((line) => line.textContent);
     expect(lines).toEqual([
-      "Canager can't find its latest version.",
+      "Couldn't find its latest version.",
       "pip list --outdated: ERROR: Could not fetch URL https://pypi.org/simple/",
     ]);
     // The rows already carry the tools' words, so the page's line --
@@ -1235,7 +1235,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const detail = chipDetail(await findRow("my-fork"), "Can't check");
     expect([...detail.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
-      "Canager can't find its latest version.",
+      "Couldn't find its latest version.",
       "It wasn't installed from crates.io.",
     ]);
   });
@@ -1308,7 +1308,7 @@ describe("UpdatesPage", () => {
     expect(queryByText("0 can be updated")).not.toBeInTheDocument();
     // The headline switching to "nothing here" does not excuse dropping the
     // number: two listed rows the user cannot act on are still counted.
-    expect(await findByText("Can't update here (2)")).toBeInTheDocument();
+    expect(await findByText("2 more can't be updated here")).toBeInTheDocument();
   });
 
   it("keeps a read-only source's candidate out of Update selected even when it was selected earlier", async () => {
@@ -1335,7 +1335,7 @@ describe("UpdatesPage", () => {
     const { getByRole, findByRole } = renderWithProviders(<UpdatesPage />);
 
     await findRow("glib");
-    fireEvent.click(getByRole("button", { name: "Update selected (1)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
 
     const dialog = await findByRole("dialog");
     showCommands(dialog);
@@ -1456,14 +1456,14 @@ describe("UpdatesPage", () => {
     const checkboxes = await findAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
-    fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
     const dialog = await findByRole("dialog");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Couldn't prepare the update: glib is pinned",
     );
     // One tool can still be updated: the sheet asks about it by name.
-    expect(dialog).toHaveAccessibleName("Update onyx?");
+    expect(dialog).toHaveAccessibleName("Update “onyx”?");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     expect(
@@ -1512,7 +1512,7 @@ describe("UpdatesPage", () => {
     const checkboxes = await findAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
-    fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
 
     let dialog = await findByRole("dialog");
     showCommands(dialog);
@@ -1533,7 +1533,7 @@ describe("UpdatesPage", () => {
 
     // Retry: plan_operation is asked exactly once more, for onyx only — a
     // fresh id must never re-queue the item that already started.
-    fireEvent.click(getByRole("button", { name: "Update selected (1)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
     dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
@@ -1560,11 +1560,11 @@ describe("UpdatesPage", () => {
     holdSubmits.add("2");
     const { findAllByRole, findByRole, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
-    // glib is selected so "Update selected" has something to do: the lock
+    // glib is selected so "Update Selected" has something to do: the lock
     // below is what disables it, not an empty selection.
     fireEvent.click((await findAllByRole("checkbox"))[0]);
-    const updateSelected = getByRole("button", { name: /^Update selected/ });
-    const updateAll = getByRole("button", { name: "Update all" });
+    const updateSelected = getByRole("button", { name: /^Update Selected/ });
+    const updateAll = getByRole("button", { name: "Update All" });
     const updateButtons = await findAllByRole("button", { name: "Update" });
 
     // Batch 1 (glib) is still planning when it is closed and batch 2 (onyx)
@@ -1573,11 +1573,11 @@ describe("UpdatesPage", () => {
     // The sheet is up from the first press, over the page, so the second
     // press comes after Cancel.
     fireEvent.click(updateButtons[0]);
-    const first = await findByRole("dialog", { name: "Update glib?" });
+    const first = await findByRole("dialog", { name: "Update “glib”?" });
     fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(queryByRole("dialog")).not.toBeInTheDocument());
     fireEvent.click(updateButtons[1]);
-    const dialog = await findByRole("dialog", { name: "Update onyx?" });
+    const dialog = await findByRole("dialog", { name: "Update “onyx”?" });
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
     await waitFor(() => expect(releasePlan.glib).toBeDefined());
@@ -1597,8 +1597,8 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     // Submitting: nothing closes the dialog or starts another batch until
-    // this one has settled — not Cancel, not Escape, not "Update selected",
-    // not "Update all".
+    // this one has settled — not Cancel, not Escape, not "Update Selected",
+    // not "Update All".
     await waitFor(() =>
       expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled(),
     );
@@ -1622,10 +1622,10 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole, getAllByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("3 can be updated");
-      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
       fireEvent.click(getAllByRole("checkbox")[0]);
       fireEvent.click(getAllByRole("checkbox")[2]);
-      expect(getByRole("button", { name: "Update selected (2)" })).toBeEnabled();
+      expect(getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
     });
 
     it("Update all ticks every row it can update and opens the same confirmation with exactly those", async () => {
@@ -1649,7 +1649,7 @@ describe("UpdatesPage", () => {
       const { getByRole, findByRole, queryByRole, findByText } = renderWithProviders(<UpdatesPage />);
 
       await findByText("3 can be updated");
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
 
       const dialog = await findByRole("dialog");
       showCommands(dialog);
@@ -1681,7 +1681,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByText("Updating 2 tools")).toBeInTheDocument();
       expect(queryByText("Nothing to update here")).toBeNull();
-      expect(getByRole("button", { name: "Update all" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
     });
 
     it("says it in Chinese in the Overview's words, and how many more can be updated", async () => {
@@ -1702,7 +1702,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("Nothing to update here");
-      expect(getByRole("button", { name: "Update all" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update All" })).toBeDisabled();
     });
 
     it("calls them 全部更新 and 更新所选 in Chinese, as they were asked for", () => {
@@ -1730,7 +1730,7 @@ describe("UpdatesPage", () => {
       ];
       const { findByRole, queryByText } = renderWithProviders(<UpdatesPage />);
 
-      const toggle = await findByRole("button", { name: "Can't update here (2)" });
+      const toggle = await findByRole("button", { name: "2 more can't be updated here" });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(queryByText("glib", { selector: "[data-tool-row] p" })).toBeNull();
       expect(queryByText("urllib3", { selector: "[data-tool-row] p" })).toBeNull();
@@ -1754,7 +1754,7 @@ describe("UpdatesPage", () => {
       const { queryByRole } = renderWithProviders(<UpdatesPage />);
 
       await findRow("glib");
-      expect(queryByRole("button", { name: /^Can't update here/ })).toBeNull();
+      expect(queryByRole("button", { name: /^\d+ more can't be updated here$/ })).toBeNull();
     });
   });
 
@@ -1787,13 +1787,13 @@ describe("UpdatesPage", () => {
 
       await showCantUpdate();
       expect(chipDetail(await findRow("qwen3:8b"), "Can't update now")).toHaveTextContent(
-        "Ollama isn't running. Open it, then press Check again.",
+        "Ollama isn't running. Open it, then click Check Again.",
       );
       expect(chipDetail(rowOf("tokei"), "Can't update now")).toHaveTextContent(
-        "Cargo isn't responding. Press Check again later.",
+        "Cargo isn't responding. Click Check Again later.",
       );
       expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
-        "Homebrew doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click.",
+        "Homebrew doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click.",
       );
     });
 
@@ -1844,7 +1844,7 @@ describe("UpdatesPage", () => {
   it("hides the row when Never remind me is chosen from its menu, and saves its package, not a version", async () => {
     const { queryByText } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Stop reminding me");
+    chooseFromMenu(await findRow("glib"), "Stop Reminding Me");
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     expect(savedSettings().ignored_updates).toEqual([glibKey]);
@@ -1855,7 +1855,7 @@ describe("UpdatesPage", () => {
   it("hides the row when Skip this version is chosen from its menu, and saves the version it offers", async () => {
     const { queryByText } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Skip this version");
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     expect(savedSettings().skipped_versions).toEqual([{ key: glibKey, version: "2.90.0" }]);
@@ -1873,7 +1873,7 @@ describe("UpdatesPage", () => {
     ];
     renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Skip this version");
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
 
     await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
     expect(savedSettings().skipped_versions).toEqual([
@@ -1904,10 +1904,10 @@ describe("UpdatesPage", () => {
     expect(queryByText("glib")).not.toBeInTheDocument();
     expect(await findByText("1 can be updated")).toBeInTheDocument();
     // glib's selection outlived its row, and counts for nothing.
-    expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+    expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
 
     fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
-    fireEvent.click(getByRole("button", { name: "Update selected (1)" }));
+    fireEvent.click(getByRole("button", { name: "Update Selected (1)" }));
     await findByRole("dialog");
     expect(plannedNames()).toEqual(["onyx"]);
   });
@@ -1932,13 +1932,13 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const myForkMenu = openMenu(await findRow("my-fork"));
     expect(
-      within(myForkMenu).getByRole("menuitem", { name: "Stop reminding me" }),
+      within(myForkMenu).getByRole("menuitem", { name: "Stop Reminding Me" }),
     ).toBeInTheDocument();
-    expect(within(myForkMenu).queryByRole("menuitem", { name: "Skip this version" })).toBeNull();
+    expect(within(myForkMenu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     const glibMenu = openMenu(rowOf("glib"));
-    expect(within(glibMenu).getByRole("menuitem", { name: "Skip this version" })).toBeInTheDocument();
+    expect(within(glibMenu).getByRole("menuitem", { name: "Skip This Version" })).toBeInTheDocument();
   });
 
   // A Homebrew cask declared `version :latest`, as `brew outdated --json=v2
@@ -1972,13 +1972,13 @@ describe("UpdatesPage", () => {
     expect(within(chromium).getByRole("button", { name: "Update" })).toBeInTheDocument();
     const menu = openMenu(chromium);
     expect(
-      within(menu).getByRole("menuitem", { name: "Stop reminding me" }),
+      within(menu).getByRole("menuitem", { name: "Stop Reminding Me" }),
     ).toBeInTheDocument();
-    expect(within(menu).queryByRole("menuitem", { name: "Skip this version" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     const glibMenu = openMenu(rowOf("glib"));
-    expect(within(glibMenu).getByRole("menuitem", { name: "Skip this version" })).toBeInTheDocument();
+    expect(within(glibMenu).getByRole("menuitem", { name: "Skip This Version" })).toBeInTheDocument();
   });
 
   it("lists a Homebrew cask declared version :latest even with a skip of latest in its settings", async () => {
@@ -2009,7 +2009,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, container } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("qwen3:8b"), "Skip this version");
+    chooseFromMenu(await findRow("qwen3:8b"), "Skip This Version");
 
     await findByText(
       "No updates to handle. The rest are hidden.",
@@ -2022,11 +2022,11 @@ describe("UpdatesPage", () => {
     renderWithProviders(<UpdatesPage />);
 
     const menu = openMenu(await findRow("glib"));
-    expect(within(menu).getByRole("menuitem", { name: "Skip this version" })).toHaveAccessibleDescription(
+    expect(within(menu).getByRole("menuitem", { name: "Skip This Version" })).toHaveAccessibleDescription(
       "You'll be reminded when the next version comes out.",
     );
     expect(
-      within(menu).getByRole("menuitem", { name: "Stop reminding me" }),
+      within(menu).getByRole("menuitem", { name: "Stop Reminding Me" }),
     ).toHaveAccessibleDescription(
       "You won't be reminded about any update to this tool. Undo it in Settings.",
     );
@@ -2055,15 +2055,15 @@ describe("UpdatesPage", () => {
     holdSaves = true;
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Skip this version");
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
     await waitFor(() => expect(calls("set_settings")).toHaveLength(1));
 
     // Every item locks until the first save settles. A second choice now
     // would build its settings from the same stale base, and the later save
     // would drop the earlier one.
     const menu = openMenu(rowOf("onyx"));
-    const skip = within(menu).getByRole("menuitem", { name: "Skip this version" });
-    const never = within(menu).getByRole("menuitem", { name: "Stop reminding me" });
+    const skip = within(menu).getByRole("menuitem", { name: "Skip This Version" });
+    const never = within(menu).getByRole("menuitem", { name: "Stop Reminding Me" });
     expect(skip).toHaveAttribute("aria-disabled", "true");
     expect(never).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(skip);
@@ -2076,12 +2076,12 @@ describe("UpdatesPage", () => {
     await findByText("onyx");
     const after = openMenu(rowOf("onyx"));
     await waitFor(() =>
-      expect(within(after).getByRole("menuitem", { name: "Skip this version" })).not.toHaveAttribute(
+      expect(within(after).getByRole("menuitem", { name: "Skip This Version" })).not.toHaveAttribute(
         "aria-disabled",
       ),
     );
     expect(
-      within(after).getByRole("menuitem", { name: "Stop reminding me" }),
+      within(after).getByRole("menuitem", { name: "Stop Reminding Me" }),
     ).not.toHaveAttribute("aria-disabled");
     expect(calls("set_settings")).toHaveLength(1);
   });
@@ -2090,7 +2090,7 @@ describe("UpdatesPage", () => {
     saveFailure = "settings.json is read-only";
     const { findByRole } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Skip this version");
+    chooseFromMenu(await findRow("glib"), "Skip This Version");
 
     expect(await findByRole("alert")).toHaveTextContent(
       "Couldn't save that choice: settings.json is read-only",
@@ -2099,7 +2099,7 @@ describe("UpdatesPage", () => {
     expect(rowOf("glib")).toBeInTheDocument();
   });
 
-  describe("Copy command", () => {
+  describe("Copy Command", () => {
     let writeText: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
@@ -2120,7 +2120,7 @@ describe("UpdatesPage", () => {
       const { findByRole } = renderWithProviders(<UpdatesPage />);
 
       await showCantUpdate();
-      chooseFromMenu(await findRow("glib"), "Copy command");
+      chooseFromMenu(await findRow("glib"), "Copy Command");
 
       expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin glib");
       expect(await findByRole("status")).toHaveTextContent("Copied");
@@ -2133,7 +2133,7 @@ describe("UpdatesPage", () => {
       const { findByText } = renderWithProviders(<UpdatesPage />);
 
       await showCantUpdate();
-      chooseFromMenu(await findRow("glib"), "Copy command");
+      chooseFromMenu(await findRow("glib"), "Copy Command");
 
       expect(await findByText("Couldn't copy")).toBeInTheDocument();
     });
@@ -2143,14 +2143,14 @@ describe("UpdatesPage", () => {
       const view = renderWithProviders(<UpdatesPage />);
 
       await showCantUpdate();
-      expect(within(openMenu(await findRow("glib"))).queryByRole("menuitem", { name: "Copy command" })).toBeNull();
+      expect(within(openMenu(await findRow("glib"))).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
       view.unmount();
 
       // With the switch on, an updatable row's command is only known from
       // its plan, which the menu does not ask for.
       settings.show_technical_details = true;
       renderWithProviders(<UpdatesPage />);
-      expect(within(openMenu(await findRow("onyx"))).queryByRole("menuitem", { name: "Copy command" })).toBeNull();
+      expect(within(openMenu(await findRow("onyx"))).queryByRole("menuitem", { name: "Copy Command" })).toBeNull();
       expect(calls("plan_operation")).toHaveLength(0);
     });
   });
@@ -2198,17 +2198,17 @@ describe("UpdatesPage", () => {
       expect(await findByText(header)).toBeInTheDocument();
       expect(within(glib).queryByRole("checkbox")).toBeNull();
       expect(within(rowOf("onyx")).getByRole("checkbox")).toBeInTheDocument();
-      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
 
       fireEvent.click(getByRole("button", { name: "Invert selection among the items that can be updated here" }));
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
-      expect(getByRole("button", { name: "Update selected (1)" })).toBeEnabled();
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
 
       useUiStore.setState({ selectedUpdates: [] });
       fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
 
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
       await waitFor(() => expect(plannedNames()).toEqual(["onyx"]));
     });
 
@@ -2220,7 +2220,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
       expect(await findByText("2 can be updated")).toBeInTheDocument();
       expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
@@ -2280,7 +2280,7 @@ describe("UpdatesPage", () => {
       const { getByRole } = renderWithProviders(<UpdatesPage />);
 
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "View log: glib" }));
       expect(useUiStore.getState().focusedOpId).toBe(9);
       expect(useUiStore.getState().drawerOpen).toBe(true);
@@ -2302,15 +2302,15 @@ describe("UpdatesPage", () => {
       started(11, "2.90.0");
       const { getByRole } = renderWithProviders(<UpdatesPage />);
 
-      expect(await within(await findRow("glib")).findByText("Needs attention")).toBeInTheDocument();
+      expect(await within(await findRow("glib")).findByText("Unexpected result")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "View log: glib" }));
       expect(useUiStore.getState().focusedOpId).toBe(11);
     });
 
     const endings: Array<[string, OpSummary["outcome"], string]> = [
-      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Update failed"],
+      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Couldn't update"],
       ["was cancelled", "Cancelled", "Cancelled"],
-      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
+      ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result"],
     ];
 
     it.each(endings)(
@@ -2344,7 +2344,7 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       fireEvent.click(await within(glib).findByRole("button", { name: "Retry" }));
-      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
@@ -2379,7 +2379,7 @@ describe("UpdatesPage", () => {
 
       await showCantUpdate();
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(glib).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
       expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
       expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
@@ -2528,8 +2528,8 @@ describe("UpdatesPage", () => {
       started(12, "1.1.0");
       renderWithProviders(<UpdatesPage />);
 
-      expect(await within(await findRow("glib")).findByText("Update failed")).toBeInTheDocument();
-      expect(within(rowOf("onyx")).getByText("Needs attention")).toBeInTheDocument();
+      expect(await within(await findRow("glib")).findByText("Couldn't update")).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByText("Unexpected result")).toBeInTheDocument();
       expect(justUpdated()).toBeNull();
     });
 
@@ -2564,10 +2564,10 @@ describe("UpdatesPage", () => {
 
       fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(onyxKey)]);
-      expect(getByRole("button", { name: "Update selected (1)" })).toBeEnabled();
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
 
-      fireEvent.click(getByRole("button", { name: "Update all" }));
-      await findByRole("dialog", { name: "Update OnyX?" });
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      await findByRole("dialog", { name: "Update “OnyX”?" });
       expect(plannedNames()).toEqual(["onyx"]);
     });
 
@@ -2649,7 +2649,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
     await findByText("Ollama isn't running");
-    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
     // And the notice is the working one, not a copy of its words: the
     // button that starts the daemon comes with it.
@@ -2670,7 +2670,7 @@ describe("UpdatesPage", () => {
 
     await findByText("Couldn't update Homebrew's software list");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
-    fireEvent.click(getByRole("button", { name: "Check again" }));
+    fireEvent.click(getByRole("button", { name: "Check Again" }));
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
@@ -2688,7 +2688,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText("Homebrew is updating its software list");
-    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
 
@@ -2701,7 +2701,7 @@ describe("UpdatesPage", () => {
     errors = [{ instance_id: "brew:/opt/homebrew", message: "brew outdated exited with code 1" }];
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
-    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });
 
@@ -2744,15 +2744,15 @@ describe("UpdatesPage", () => {
       // The updates go, and the page says so under the same two lines.
       updates = [];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
-      await screen.findByText("No updates in the sources Canager could check");
+      await screen.findByText("No updates in the sources checked");
       expect(screen.getByText("Homebrew is updating its software list")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Show fewer" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show Fewer" })).toBeInTheDocument();
 
       // One line, then two again: folded.
       instances = [...snapshot.instances, stoppedOllama];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
       await waitFor(() => expect(screen.queryByText("Homebrew is updating its software list")).toBeNull());
-      expect(screen.queryByRole("button", { name: "Show fewer" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Show Fewer" })).toBeNull();
       instances = [brewUpdating, ...snapshot.instances.slice(1), stoppedOllama];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
       expect(await screen.findByRole("button", { name: "1 more" })).toHaveAttribute("aria-expanded", "false");
@@ -2793,7 +2793,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Press Check again later.",
+        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Click Check Again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -2806,7 +2806,7 @@ describe("UpdatesPage", () => {
         const row = await findRow(name);
         expect(within(row).getByText("Ollama")).toBeInTheDocument();
         expect(chipDetail(row, "Can't update now")).toHaveTextContent(
-          "Ollama isn't responding. Press Check again later.",
+          "Ollama isn't responding. Click Check Again later.",
         );
       }
     });
@@ -2862,7 +2862,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Press Check again later.",
+        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Click Check Again later.",
       );
       withRows.unmount();
 
@@ -2888,7 +2888,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(coldDetails);
       const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
       expect(text).toHaveTextContent(
-        "Homebrew didn't respond, so Canager can't show what it has installed.",
+        "Homebrew didn't respond, so what it has installed can't be shown.",
       );
       expect(text?.textContent).not.toMatch(/What's listed/);
     });
@@ -2916,7 +2916,7 @@ describe("UpdatesPage", () => {
     const { findByText, findAllByRole } = renderWithProviders(<UpdatesPage />);
 
     expect(await findByText("2 can be updated")).toBeInTheDocument();
-    expect(await findByText("Can't update here (1)")).toBeInTheDocument();
+    expect(await findByText("1 more can't be updated here")).toBeInTheDocument();
     await showCantUpdate();
     const row = await findRow("qwen3:8b");
     expect(within(row).queryByRole("button", { name: "Update" })).toBeNull();
@@ -2948,7 +2948,7 @@ describe("UpdatesPage", () => {
     const { findByText, container } = renderWithProviders(<UpdatesPage />);
 
     // The list still knows how long it is.
-    expect(await findByText("Can't update here (400)")).toBeInTheDocument();
+    expect(await findByText("400 more can't be updated here")).toBeInTheDocument();
     await showCantUpdate();
     await findRow("pkg-000");
     const drawn = container.querySelectorAll("[data-index]").length;
@@ -2978,14 +2978,14 @@ describe("UpdatesPage", () => {
       const { findAllByRole, findByRole, getByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
       fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
-      let dialog = await findByRole("dialog", { name: "Update glib?" });
+      let dialog = await findByRole("dialog", { name: "Update “glib”?" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
 
       const checkboxes = await findAllByRole("checkbox");
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
-      fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       dialog = await findByRole("dialog", { name: "Update 2 tools?" });
       const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
       expect(tools.map((tool) => within(tool).getAllByText(/./, { selector: "p" })[0].textContent)).toEqual([
@@ -3030,7 +3030,7 @@ describe("UpdatesPage", () => {
       expectLogos(row);
 
       fireEvent.click(within(row).getByRole("button", { name: "Update" }));
-      expectLogos((await findByRole("dialog", { name: "Update glib?" })).querySelector("[data-sheet-tool]"));
+      expectLogos((await findByRole("dialog", { name: "Update “glib”?" })).querySelector("[data-sheet-tool]"));
     });
 
     it("keeps the commands one press away while Show technical details is off", async () => {
@@ -3039,10 +3039,10 @@ describe("UpdatesPage", () => {
       const checkboxes = await findAllByRole("checkbox");
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
-      fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       const dialog = await findByRole("dialog");
 
-      const disclosure = within(dialog).getByRole("button", { name: "Show the commands" });
+      const disclosure = within(dialog).getByRole("button", { name: "Show Commands" });
       expect(disclosure).toHaveAttribute("aria-expanded", "false");
       expect(within(dialog).queryByText(/brew upgrade/)).toBeNull();
       fireEvent.click(disclosure);
@@ -3060,7 +3060,7 @@ describe("UpdatesPage", () => {
       const dialog = await findByRole("dialog");
 
       expect(await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
-      expect(within(dialog).getByRole("button", { name: "Show the command" })).toHaveAttribute(
+      expect(within(dialog).getByRole("button", { name: "Show Command" })).toHaveAttribute(
         "aria-expanded",
         "true",
       );
@@ -3075,10 +3075,10 @@ describe("UpdatesPage", () => {
       const checkboxes = await findAllByRole("checkbox");
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
-      fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+      fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       const dialog = await findByRole("dialog");
 
-      const notes = within(dialog).getByRole("region", { name: "Before you continue" });
+      const notes = within(dialog).getByRole("region", { name: "Notes" });
       const groups = [...notes.querySelectorAll("ul")].map((list) => ({
         tool: list.previousElementSibling?.textContent,
         lines: [...list.querySelectorAll("li")].map((item) => item.textContent?.trim()),
@@ -3088,7 +3088,7 @@ describe("UpdatesPage", () => {
           tool: "glib",
           lines: [
             "This compiles on your Mac and takes a while.",
-            "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
+            "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
           ],
         },
         { tool: "onyx", lines: ["Some apps ask for your Mac password at this step."] },
@@ -3101,15 +3101,15 @@ describe("UpdatesPage", () => {
       const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("2 can be updated");
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
 
-      const notes = await within(dialog).findByRole("region", { name: "Before you continue" });
+      const notes = await within(dialog).findByRole("region", { name: "Notes" });
       const firstTool = dialog.querySelector("[data-sheet-tool]");
       expect(firstTool).toBeInstanceOf(HTMLElement);
       expect(notes.compareDocumentPosition(firstTool as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-      const summary = within(dialog).getByRole("button", { name: "2 things to note" });
+      const summary = within(dialog).getByRole("button", { name: "2 notes" });
       fireEvent.click(summary);
       expect(document.activeElement).toBe(notes);
     });
@@ -3118,11 +3118,11 @@ describe("UpdatesPage", () => {
       const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("2 can be updated");
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
 
       await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
-      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
       expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
     });
 
@@ -3131,7 +3131,7 @@ describe("UpdatesPage", () => {
       const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("10 can be updated");
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 10 tools?" });
       const toolNames = () =>
         [...dialog.querySelectorAll("[data-sheet-tool]")].map(
@@ -3144,7 +3144,7 @@ describe("UpdatesPage", () => {
 
       fireEvent.click(more);
       expect(toolNames()).toHaveLength(10);
-      const fewer = within(dialog).getByRole("button", { name: "Show fewer" });
+      const fewer = within(dialog).getByRole("button", { name: "Show Fewer" });
       expect(fewer).toHaveAttribute("aria-expanded", "true");
 
       fireEvent.click(fewer);
@@ -3157,7 +3157,7 @@ describe("UpdatesPage", () => {
       const { findByRole, findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       await findByText("10 can be updated");
-      fireEvent.click(getByRole("button", { name: "Update all" }));
+      fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 9 tools?" });
 
       expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(10);
@@ -3192,7 +3192,7 @@ describe("UpdatesPage", () => {
       const { getByRole, findByRole, queryByRole, findByText } = renderWithProviders(<UpdatesPage />);
 
       await findByText("2 can be updated");
-      const updateAll = getByRole("button", { name: "Update all" });
+      const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -3207,7 +3207,7 @@ describe("UpdatesPage", () => {
       const { getByRole, findByRole, queryByRole, findByText } = renderWithProviders(<UpdatesPage />);
 
       await findByText("2 can be updated");
-      const updateAll = getByRole("button", { name: "Update all" });
+      const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
       fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -3223,7 +3223,7 @@ describe("UpdatesPage", () => {
       const { findAllByRole, getByRole, findByRole, queryByRole } = renderWithProviders(<UpdatesPage />);
 
       fireEvent.click((await findAllByRole("checkbox"))[0]);
-      const updateSelected = getByRole("button", { name: /^Update selected/ });
+      const updateSelected = getByRole("button", { name: /^Update Selected/ });
       fireEvent.click(updateSelected);
       await findByRole("dialog");
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -3252,7 +3252,7 @@ describe("UpdatesPage", () => {
       const checkboxes = await findAllByRole("checkbox");
       fireEvent.click(checkboxes[0]);
       fireEvent.click(checkboxes[1]);
-      fireEvent.click(getByRole("button", { name: "Update selected (2)" }));
+      fireEvent.click(getByRole("button", { name: "Update Selected (2)" }));
 
       // No plan is back yet: the tools, with their avatars and versions,
       // are the rows'.
@@ -3268,8 +3268,8 @@ describe("UpdatesPage", () => {
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
       // Preparing, where the notes and the commands will go, and Update off.
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
-      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
-      expect(within(dialog).queryByRole("button", { name: /^Show the command/ })).toBeNull();
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /^Show Command/ })).toBeNull();
       const update = within(dialog).getByRole("button", { name: "Update" });
       expect(update).toBeDisabled();
       expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
@@ -3278,13 +3278,13 @@ describe("UpdatesPage", () => {
       await release("glib");
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       expect(update).toBeDisabled();
-      expect(within(dialog).queryByRole("region", { name: "Before you continue" })).toBeNull();
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
 
       // Every plan back: the notes and the commands, and Update on.
       await release("onyx");
       await waitFor(() => expect(update).toBeEnabled());
       expect(within(dialog).queryByText("Preparing…")).toBeNull();
-      expect(within(dialog).getByRole("region", { name: "Before you continue" })).toHaveTextContent(
+      expect(within(dialog).getByRole("region", { name: "Notes" })).toHaveTextContent(
         "Some apps ask for your Mac password at this step.",
       );
       showCommands(dialog);
@@ -3302,7 +3302,7 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       const update = within(dialog).getByRole("button", { name: "Update" });
@@ -3323,7 +3323,7 @@ describe("UpdatesPage", () => {
       const { findByRole } = renderWithProviders(<UpdatesPage />);
 
       fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
-      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       const cancel = within(dialog).getByRole("button", { name: "Cancel" });
       cancel.focus();
 
@@ -3339,7 +3339,7 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
@@ -3358,7 +3358,7 @@ describe("UpdatesPage", () => {
 
       const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
       fireEvent.click(rowUpdate);
-      const dialog = await findByRole("dialog", { name: "Update glib?" });
+      const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
 
       await release("glib");
@@ -3446,16 +3446,16 @@ describe("UpdatesPage", () => {
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
     // A plain label: its old ⓘ only said the label over again (polish-3
     // copy table, updates.selfUpdatingDetail).
-    expect(within(claude).getByText("Usually updates itself")).toBeInTheDocument();
-    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(claude).getByText("Updates itself")).toBeInTheDocument();
+    expect(within(claude).queryByRole("button", { name: "Updates itself" })).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     expect(within(claude).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
   const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
-    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Update failed", true],
+    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Couldn't update", true],
     ["was cancelled", "Cancelled", "Cancelled", false],
-    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention", true],
+    ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Unexpected result", true],
   ];
 
   it.each(claudeEndings)(
@@ -3475,7 +3475,7 @@ describe("UpdatesPage", () => {
       if (chips === null) throw new Error("the row has no chips' column");
       expect(await within(chips).findByText(words)).toBeInTheDocument();
       expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
-      expect(within(claude).queryByText("Usually updates itself")).toBeNull();
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
       expect(within(claude).getByRole("button", { name: "Retry" })).toBeInTheDocument();
 
       // Retried: the update under way stands where the button was, and
@@ -3483,7 +3483,7 @@ describe("UpdatesPage", () => {
       operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
       expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(rowOf("Claude Code")).getByText("Usually updates itself")).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
       expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
     },
   );
@@ -3503,14 +3503,14 @@ describe("UpdatesPage", () => {
     const { queryClient } = renderWithProviders(<UpdatesPage />);
 
     const claude = await findRow("Claude Code");
-    expect(await within(claude).findByText("Update failed")).toBeInTheDocument();
-    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
+    expect(await within(claude).findByText("Couldn't update")).toBeInTheDocument();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
 
-    // "Update failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
+    // "Couldn't update" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
     updates = [{ ...claudeUpdate, target: "2.1.291" }];
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
-    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Update failed")).toBeNull());
-    expect(within(rowOf("Claude Code")).getByText("Usually updates itself")).toBeInTheDocument();
+    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Couldn't update")).toBeNull());
+    expect(within(rowOf("Claude Code")).getByText("Updates itself")).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
@@ -3539,7 +3539,7 @@ describe("UpdatesPage", () => {
 
     const onyx = await findRow("OnyX");
     expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
-    expect(within(onyx).queryByText("Usually updates itself")).toBeNull();
+    expect(within(onyx).queryByText("Updates itself")).toBeNull();
   });
 
   it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
@@ -3594,7 +3594,7 @@ describe("UpdatesPage", () => {
     const grok = await findRow("Grok Build");
     expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
-    expect(within(grok).queryByText("Usually updates itself")).toBeNull();
+    expect(within(grok).queryByText("Updates itself")).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
   });
 
@@ -3764,8 +3764,8 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(chipDetail(claude, "Can't check").textContent).toBe("Canager can't find its latest version.");
-    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
+    expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 
@@ -3784,7 +3784,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
+    expect(within(claude).queryByText("Updates itself")).toBeNull();
     expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
@@ -3808,12 +3808,12 @@ describe("UpdatesPage", () => {
     expect(getAllByRole("checkbox")).toHaveLength(1);
     expect(getAllByRole("checkbox")[0]).toHaveAccessibleName("Select onyx for update");
     await findByText("1 can be updated");
-    await findByText("Can't update here (1)");
+    await findByText("1 more can't be updated here");
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
     const detail = chipDetail(claude, "Only updates itself");
-    expect(detail.textContent).toBe("It updates itself: open it once and it checks for a new version.");
+    expect(detail.textContent).toBe("It updates itself and can't be updated here. Open it once and it checks for a new version.");
     expect(queryByText(/\.local\/bin\/claude/)).toBeNull();
     // Not the updatable row's chip: this row has no button to point at.
     expect(queryByText(/also update it now/)).toBeNull();
@@ -3835,7 +3835,7 @@ describe("UpdatesPage", () => {
     expect(within(detail).getByText("/Users/someone/.local/bin/claude").tagName).toBe("CODE");
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     expect(
-      within(openMenu(claude)).getByRole("menuitem", { name: "Copy command" }),
+      within(openMenu(claude)).getByRole("menuitem", { name: "Copy Command" }),
     ).toBeInTheDocument();
   });
 
@@ -3868,7 +3868,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByText(noticeTitle)).toBeInTheDocument();
       const claude = await findRow("Claude Code");
-      expect(within(claude).queryByText("Usually updates itself")).toBeNull();
+      expect(within(claude).queryByText("Updates itself")).toBeNull();
       expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
       expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
@@ -3890,7 +3890,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByText(noticeTitle)).toBeInTheDocument();
       expect(await findByText("Everything is up to date")).toBeInTheDocument();
-      expect(queryByText("No updates in the sources Canager could check")).toBeNull();
+      expect(queryByText("No updates in the sources checked")).toBeNull();
     },
   );
 
@@ -3907,7 +3907,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     expect(await findByText("Claude Code's program files are missing")).toBeInTheDocument();
-    expect(await findByText("No updates in the sources Canager could check")).toBeInTheDocument();
+    expect(await findByText("No updates in the sources checked")).toBeInTheDocument();
     expect(queryByText("Everything is up to date")).toBeNull();
   });
 
@@ -3922,7 +3922,7 @@ describe("UpdatesPage", () => {
     expect("selfUpdatingDetail" in zhCN.updates).toBe(false);
     expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("只能自行更新");
     expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).not.toBe(zhCN.updates.selfUpdating);
-    expect(en.updates.selfUpdating).toBe("Usually updates itself");
+    expect(en.updates.selfUpdating).toBe("Updates itself");
     expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Only updates itself");
   });
 
@@ -3938,14 +3938,14 @@ describe("UpdatesPage", () => {
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
 
-    fireEvent.click(getByRole("button", { name: /^Update selected/ }));
+    fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
     const dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
 
     const hints = within(dialog).getAllByText(
-      "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
+      "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
     );
     expect(hints).toHaveLength(1);
     expect(hints[0].closest("div")?.textContent).toContain("onyx");
@@ -3954,7 +3954,7 @@ describe("UpdatesPage", () => {
 
   describe("Select all and Invert selection", () => {
     // Each button's accessible name starts with the words on it ("Select
-    // all", "Invert") and goes on to say which rows it acts on.
+    // all", "Invert Selection") and goes on to say which rows it acts on.
     const SELECT_ALL = "Select all items that can be updated here";
     const INVERT = "Invert selection among the items that can be updated here";
 
@@ -4033,16 +4033,16 @@ describe("UpdatesPage", () => {
       expect(checkboxes).toHaveLength(3);
       expect(queryAllByRole("checkbox")).toHaveLength(3);
       const selectAll = getByRole("button", { name: SELECT_ALL });
-      expect(selectAll.textContent).toBe("Select all");
-      expect(getByRole("button", { name: INVERT }).textContent).toBe("Invert");
-      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+      expect(selectAll.textContent).toBe("Select All");
+      expect(getByRole("button", { name: INVERT }).textContent).toBe("Invert Selection");
+      expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
 
       fireEvent.click(selectAll);
 
       for (const checkbox of checkboxes) expect(checkbox).toBeChecked();
       expect(selectedIds()).toEqual(ids(glibKey, onyxKey, jq.key));
 
-      fireEvent.click(getByRole("button", { name: "Update selected (3)" }));
+      fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
       await findByRole("dialog");
       expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
     });
@@ -4070,10 +4070,10 @@ describe("UpdatesPage", () => {
 
       // Inverting a full selection empties it, and Update selected follows.
       fireEvent.click(getByRole("button", { name: SELECT_ALL }));
-      expect(getByRole("button", { name: "Update selected (3)" })).toBeEnabled();
+      expect(getByRole("button", { name: "Update Selected (3)" })).toBeEnabled();
       fireEvent.click(getByRole("button", { name: INVERT }));
       expect(selectedIds()).toEqual([]);
-      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
     });
 
     it("never selects a row the page does not list, and leaves a pinned row's earlier selection as it was", async () => {
@@ -4096,12 +4096,12 @@ describe("UpdatesPage", () => {
       fireEvent.click(getByRole("button", { name: INVERT }));
       expect(selectedIds()).toEqual(ids(wget.key));
       // A row with no checkbox is all that is left selected: nothing to update.
-      expect(getByRole("button", { name: "Update selected" })).toBeDisabled();
+      expect(getByRole("button", { name: "Update Selected" })).toBeDisabled();
 
       fireEvent.click(getByRole("button", { name: INVERT }));
       expect(selectedIds()).toEqual(ids(wget.key, glibKey, onyxKey, jq.key));
 
-      fireEvent.click(getByRole("button", { name: "Update selected (3)" }));
+      fireEvent.click(getByRole("button", { name: "Update Selected (3)" }));
       await findByRole("dialog");
       expect(sortedPlannedNames()).toEqual(["glib", "jq", "onyx"]);
     });
@@ -4143,7 +4143,7 @@ describe("UpdatesPage's virtualized list", () => {
       this: HTMLElement,
     ) {
       if (this.getAttribute("data-index") === null) return 600;
-      if (this.textContent?.startsWith("Can't update here")) return 40;
+      if (this.textContent?.endsWith("more can't be updated here")) return 40;
       return ROW_HEIGHT;
     });
     const urllib3 = {
@@ -4180,7 +4180,7 @@ describe("UpdatesPage's virtualized list", () => {
 
     // The toggle keeps its own 40px. Keyed by position, the slot at the top
     // kept glib's 56px, and urllib3 would be drawn 16px too low.
-    expect(slotTop(getByText("Can't update here (1)"))).toBe("translateY(0px)");
+    expect(slotTop(getByText("1 more can't be updated here"))).toBe("translateY(0px)");
     expect(slotTop(rowOf("urllib3"))).toBe("translateY(40px)");
   });
 });

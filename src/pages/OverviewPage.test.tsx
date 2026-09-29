@@ -172,11 +172,11 @@ describe("OverviewPage", () => {
     // The ring turns while it waits, and says no number.
     expect(ringOf(container).getAttribute("data-ring")).toBe("checking");
     expect(ringOf(container).textContent).toBe("");
-    // Not "Loading…", and not "Canager found nothing it can manage": the
+    // Not "Loading…", and not "No tools to manage": the
     // placeholder is not an answer.
     expect(queryByText("Loading…")).not.toBeInTheDocument();
-    expect(queryByText("Canager found nothing it can manage")).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
+    expect(queryByText("No tools to manage")).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
   });
 
   it("counts the updates the Updates page offers, and Review updates ticks exactly those and opens it", async () => {
@@ -202,7 +202,7 @@ describe("OverviewPage", () => {
     expect(ringOf(container).getAttribute("data-ring")).toBe("updates");
     expect(ringOf(container).textContent).toBe("2updates");
 
-    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+    fireEvent.click(await findByRole("button", { name: "Review Updates" }));
 
     const state = useUiStore.getState();
     expect(state.page).toBe("updates");
@@ -233,7 +233,7 @@ describe("OverviewPage", () => {
     const { findByRole } = renderOverview();
 
     expect(await findByRole("heading", { level: 2, name: "1 tool can be updated" })).toBeInTheDocument();
-    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+    fireEvent.click(await findByRole("button", { name: "Review Updates" }));
     expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(formula("wget"))]);
   });
 
@@ -260,8 +260,8 @@ describe("OverviewPage", () => {
 
     expect(await findByRole("heading", { level: 2, name: "Updating 1 tool" })).toBeInTheDocument();
     expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("updating");
-    expect(queryByRole("button", { name: "Review updates" })).toBeNull();
-    fireEvent.click(await findByRole("button", { name: "See progress" }));
+    expect(queryByRole("button", { name: "Review Updates" })).toBeNull();
+    fireEvent.click(await findByRole("button", { name: "See Progress" }));
     expect(useUiStore.getState().page).toBe("updates");
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
@@ -273,7 +273,7 @@ describe("OverviewPage", () => {
     useUiStore.setState({ selectedUpdates: [artifactKeyId(formula("wget"))] });
     const { findByRole } = renderOverview();
 
-    fireEvent.click(await findByRole("button", { name: "Review updates" }));
+    fireEvent.click(await findByRole("button", { name: "Review Updates" }));
 
     expect(useUiStore.getState().selectedUpdates).toEqual([
       artifactKeyId(formula("wget")),
@@ -289,7 +289,7 @@ describe("OverviewPage", () => {
     ).toBeInTheDocument();
     expect(ringOf(container).getAttribute("data-ring")).toBe("upToDate");
     expect(ringOf(container).querySelector("svg.text-success")).not.toBeNull();
-    expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
   });
 
   // Each of these has nothing to install and is not up to date: the
@@ -299,7 +299,7 @@ describe("OverviewPage", () => {
   // only where the Updates page lists a row.
   // The headline says nothing to update only of the sources Canager could
   // check where one was not checked in full, as the Updates page does.
-  const NOT_CHECKED = "No updates in the sources Canager could check";
+  const NOT_CHECKED = "No updates in the sources checked";
   const notUpToDate: Array<[string, () => void, string | null, boolean, string]> = [
     [
       "a source that is not running",
@@ -400,7 +400,7 @@ describe("OverviewPage", () => {
           (_content, element) =>
             element?.tagName === "P" &&
             [
-              "No updates in the sources Canager could check",
+              "No updates in the sources checked",
               "Nothing to update here",
               "No updates to handle. The rest are hidden.",
             ].includes(element.textContent ?? ""),
@@ -415,9 +415,9 @@ describe("OverviewPage", () => {
       expect(headline.nextElementSibling?.textContent).toBe(line);
     }
     if (review) {
-      expect(getByRole("button", { name: "Review updates" })).toBeInTheDocument();
+      expect(getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
     } else {
-      expect(queryByRole("button", { name: "Review updates" })).not.toBeInTheDocument();
+      expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
     }
   });
 
@@ -488,15 +488,15 @@ describe("OverviewPage", () => {
       // The stopped Ollama was not checked: the headline says so.
       const headline = await findByRole("heading", {
         level: 2,
-        name: "No updates in the sources Canager could check",
+        name: "No updates in the sources checked",
       });
       expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
       // The same number the Updates page gives its folded rows.
-      expect(await findByRole("button", { name: "Can't update here (2)" })).toBeInTheDocument();
+      expect(await findByRole("button", { name: "2 more can't be updated here" })).toBeInTheDocument();
       // The ring is as it was: grey, with a dash.
       expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");
 
-      fireEvent.click(getByRole("button", { name: "Review updates" }));
+      fireEvent.click(getByRole("button", { name: "Review Updates" }));
       expect(useUiStore.getState().page).toBe("updates");
       // Nothing on that page has a checkbox: nothing is selected.
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
@@ -637,7 +637,7 @@ describe("OverviewPage", () => {
 
     const tile = await findByRole("button", { name: "Unknown 2 items" });
     // Among the tools, after the sources.
-    const tools = within(await findByRole("list", { name: "Your tools" })).getAllByRole("button");
+    const tools = within(await findByRole("list", { name: "Sources" })).getAllByRole("button");
     expect(tools[tools.length - 1]).toBe(tile);
     fireEvent.click(tile);
     expect(useUiStore.getState().page).toBe("unknown");
@@ -679,15 +679,15 @@ describe("OverviewPage", () => {
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
     expect(
-      getByRole("heading", { level: 2, name: "No updates in the sources Canager could check" }),
+      getByRole("heading", { level: 2, name: "No updates in the sources checked" }),
     ).toBeInTheDocument();
   });
 
   it("shows the tiles under Your tools, in a grid, the source's avatar and how many", async () => {
     const { findByRole } = renderOverview();
 
-    const heading = await findByRole("heading", { level: 2, name: "Your tools" });
-    const list = await findByRole("list", { name: "Your tools" });
+    const heading = await findByRole("heading", { level: 2, name: "Sources" });
+    const list = await findByRole("list", { name: "Sources" });
     expect(heading.closest("section")).toBe(list.closest("section"));
     expect(list.className).toContain("grid-cols-3");
     const homebrew = within(list).getByRole("button", { name: "Homebrew 3 items" });
@@ -712,7 +712,7 @@ describe("OverviewPage", () => {
     );
     const { findByRole } = renderOverview({ toolIcons });
 
-    const list = await findByRole("list", { name: "Your tools" });
+    const list = await findByRole("list", { name: "Sources" });
     const avatar = within(list)
       .getByRole("button", { name: "Homebrew 3 items" })
       .querySelector('[aria-hidden="true"]');

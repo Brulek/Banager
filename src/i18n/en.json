@@ -2,7 +2,7 @@
   "app": {
     "name": "Canager",
     "operationBarRegion": "Operation status",
-    "failed": "Something went wrong inside Canager, and the window can't show this page.",
+    "failed": "Couldn't show this page.",
     "reload": "Reload"
   },
   "nav": {
@@ -25,14 +25,14 @@
     "loading": "Loading…",
     "cancel": "Cancel",
     "close": "Close",
-    "viewLog": "View log",
+    "viewLog": "View Log",
     "listSeparator": ", ",
     "listAnd": "{{list}} and {{last}}",
     "checking": "Checking…",
     "firstCheckDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     "details": "Details",
     "detailsLabel": "Details: {{title}}",
-    "copyCommand": "Copy command",
+    "copyCommand": "Copy Command",
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
     "moreActions": "More actions for {{name}}"
@@ -46,7 +46,7 @@
     "checkedDaysAgo_one": "Checked {{count}} day ago",
     "checkedDaysAgo_other": "Checked {{count}} days ago",
     "checkFailed": "Couldn't check",
-    "checkAgain": "Check again"
+    "checkAgain": "Check Again"
   },
   "toolRow": {
     "fallback": {
@@ -66,13 +66,13 @@
     "updatesAvailable_other": "{{count}} tools can be updated",
     "updatesUnit_one": "update",
     "updatesUnit_other": "updates",
-    "reviewUpdates": "Review updates",
+    "reviewUpdates": "Review Updates",
     "upToDate": "Everything is up to date",
     "nothingToUpdate": "Nothing to update",
     "updating_one": "Updating {{count}} tool",
     "updating_other": "Updating {{count}} tools",
-    "seeProgress": "See progress",
-    "nothingToUpdateChecked": "No updates in the sources Canager could check",
+    "seeProgress": "See Progress",
+    "nothingToUpdateChecked": "No updates in the sources checked",
     "hiddenCount_one": "{{count}} hidden",
     "hiddenCount_other": "{{count}} hidden",
     "cantUpdateHereCount_one": "{{count}} can't be updated here",
@@ -80,7 +80,7 @@
     "checksUnfinished_one": "{{count}} check didn't finish",
     "checksUnfinished_other": "{{count}} checks didn't finish",
     "listSeparator": ", ",
-    "yourTools": "Your tools",
+    "yourTools": "Sources",
     "itemCount_one": "{{count}} item",
     "itemCount_other": "{{count}} items",
     "attentionLabel": "Needs attention"
@@ -107,7 +107,7 @@
     "sortByName": "Name",
     "sortBySource": "Source",
     "noMatches": "Nothing matches “{{query}}”",
-    "uninstall": "Uninstall",
+    "uninstall": "Uninstall…",
     "uninstallQueued": "Queued",
     "uninstalling": "Uninstalling…",
     "uninstallHold": {
@@ -124,70 +124,70 @@
     "hideDependencies_one": "Hide {{count}} component",
     "hideDependencies_other": "Hide {{count}} components",
     "unverifiedVersion": "{{source}} {{version}} not tested",
-    "unverifiedVersionDetail": "Canager hasn't tested this version.",
+    "unverifiedVersionDetail": "Not tested with this version of {{source}} yet.",
     "version": "Version",
     "newVersion": "Newer version",
     "location": "Location",
     "blocked": {
       "Pinned": {
         "description": "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",
-        "refused": "It's pinned in {{source}}, so Canager didn't uninstall or change anything. Run {{command}} in Terminal to unpin it first."
+        "refused": "Couldn't uninstall it because it's pinned in {{source}}. Run {{command}} in Terminal to unpin it first."
       },
       "NoSafeMethod": {
         "badge": "Uninstall by hand",
-        "description": "{{source}} has no uninstall command, and Canager can't yet remove its files safely. Follow {{source}}'s official documentation to uninstall it.",
-        "refused": "Canager can't uninstall {{source}} yet. Nothing changed.",
+        "description": "{{source}} has no uninstall command, and its files can't yet be removed safely from here. Follow {{source}}'s official documentation to uninstall it.",
+        "refused": "{{source}} can't be uninstalled from here yet.",
         "standalone-rustup": {
-          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and Canager only uninstalls Rust from those folders. Follow rustup's official documentation and run rustup self uninstall.",
-          "refused": "Rust isn't entirely in ~/.cargo and ~/.rustup, so Canager didn't uninstall or change anything."
+          "description": "Rust on this Mac isn't entirely in ~/.cargo and ~/.rustup, and only Rust in those folders can be uninstalled here. Follow rustup's official documentation and run “rustup self uninstall”.",
+          "refused": "Couldn't uninstall because Rust isn't entirely in ~/.cargo and ~/.rustup."
         }
       },
       "UvToolDirSet": {
         "badge": "Can't uninstall here",
-        "description": "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. Canager uninstalls no uv tool while it's set.",
-        "refused": "UV_TOOL_DIR is set, so Canager didn't uninstall or change anything."
+        "description": "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. So no uv tool can be uninstalled here while it's set.",
+        "refused": "Couldn't uninstall because UV_TOOL_DIR is set."
       }
     }
   },
   "updates": {
     "upToDate": "Everything is up to date",
     "allHidden": "No updates to handle. The rest are hidden.",
-    "noneCheckable": "No updates in the sources Canager could check",
+    "noneCheckable": "No updates in the sources checked",
     "count_one": "{{count}} can be updated",
     "count_other": "{{count}} can be updated",
     "noneActionable": "Nothing to update here",
     "alsoCount_one": "{{count}} more can be updated",
     "alsoCount_other": "{{count}} more can be updated",
-    "cantUpdateHere": "Can't update here ({{number}})",
-    "selectAll": "Select all",
+    "cantUpdateHere": "{{number}} more can't be updated here",
+    "selectAll": "Select All",
     "selectAllLabel": "Select all items that can be updated here",
-    "invertSelection": "Invert",
+    "invertSelection": "Invert Selection",
     "invertSelectionLabel": "Invert selection among the items that can be updated here",
-    "updateSelected": "Update selected",
-    "updateSelectedCount": "Update selected ({{number}})",
-    "updateAll": "Update all",
+    "updateSelected": "Update Selected",
+    "updateSelectedCount": "Update Selected ({{number}})",
+    "updateAll": "Update All",
     "update": "Update",
     "retry": "Retry",
     "selectRow": "Select {{name}} for update",
-    "skipVersion": "Skip this version",
+    "skipVersion": "Skip This Version",
     "skipVersionHint": "You'll be reminded when the next version comes out.",
-    "neverRemind": "Stop reminding me",
+    "neverRemind": "Stop Reminding Me",
     "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "New version",
     "newBuild": "This model has a new version",
-    "selfUpdating": "Usually updates itself",
+    "selfUpdating": "Updates itself",
     "readOnly": "View only",
     "cannotCheck": "Can't check",
-    "cannotCheckShort": "Canager can't find its latest version.",
-    "cannotCheckSummary_one": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
-    "cannotCheckSummary_other": "Canager couldn't check {{count}} of these for updates. To see why, turn on “{{setting}}” in Settings.",
+    "cannotCheckShort": "Couldn't find its latest version.",
+    "cannotCheckSummary_one": "{{count}} tool couldn't be checked for updates. Turn on “{{setting}}” to see why.",
+    "cannotCheckSummary_other": "{{count}} tools couldn't be checked for updates. Turn on “{{setting}}” to see why.",
     "sourceUnavailable": "Can't update now",
     "unavailableDetail": {
-      "NotRunning": "{{source}} isn't running. Open it, then press Check again.",
-      "NotResponding": "{{source}} isn't responding. Press Check again later.",
-      "RefusesAsRoot": "{{source}} doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click."
+      "NotRunning": "{{source}} isn't running. Open it, then click Check Again.",
+      "NotResponding": "{{source}} isn't responding. Click Check Again later.",
+      "RefusesAsRoot": "{{source}} doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click."
     },
     "runInTerminal": "In Terminal: {{command}}",
     "progress": {
@@ -195,9 +195,9 @@
       "running": "Updating…",
       "cancelling": "Cancelling…",
       "succeeded": "Updated",
-      "failed": "Update failed",
+      "failed": "Couldn't update",
       "cancelled": "Cancelled",
-      "check": "Needs attention",
+      "check": "Unexpected result",
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {
@@ -205,16 +205,16 @@
       "clear": "Clear",
       "clearLabel": "Clear the Just updated list"
     },
-    "confirmTitleNamed": "Update {{name}}?",
+    "confirmTitleNamed": "Update “{{name}}”?",
     "confirmTitle_one": "Update {{count}} tool?",
     "confirmTitle_other": "Update {{count}} tools?",
     "preparing": "Preparing…",
-    "warningsTitle": "Before you continue",
-    "notesSummary_one": "{{count}} thing to note",
-    "notesSummary_other": "{{count}} things to note",
+    "warningsTitle": "Notes",
+    "notesSummary_one": "{{count}} note",
+    "notesSummary_other": "{{count}} notes",
     "moreTools_one": "{{count}} more",
     "moreTools_other": "{{count}} more",
-    "fewerTools": "Show fewer",
+    "fewerTools": "Show Fewer",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Couldn't start the update: {{message}}",
@@ -222,18 +222,18 @@
       "Pinned": {
         "badge": "Pinned",
         "detail": "It's pinned in {{source}}. To update it, first run {{command}} in Terminal.",
-        "refused": "It's pinned in {{source}}, so Canager didn't update or change anything."
+        "refused": "Couldn't update it because it's pinned in {{source}}."
       },
       "SelfUpdatesOnly": {
         "badge": "Only updates itself",
-        "detail": "It updates itself: open it once and it checks for a new version.",
-        "refused": "{{source}} updates itself, so Canager didn't try to update it. Nothing has been changed."
+        "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
+        "refused": "{{source}} updates itself and can't be updated here."
       }
     }
   },
   "commandPreview": {
-    "show_one": "Show the command",
-    "show_other": "Show the commands",
+    "show_one": "Show Command",
+    "show_other": "Show Commands",
     "trashLabel": "Moves to the Trash",
     "needsPassword": "Some apps ask for your Mac password at this step."
   },
@@ -243,7 +243,7 @@
     "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
     "compilesLocally": "This compiles on your Mac and takes a while.",
     "nonRegistrySource": "It wasn't installed from crates.io.",
-    "thirdPartyRegistry": "This model downloads from {{host}}, not Ollama's own library. Continue only if you trust it.",
+    "thirdPartyRegistry": "This model comes from {{host}}, not Ollama's own library.",
     "willTrash": {
       "Launcher": "The command: {{path}}",
       "Program": "Program files: {{path}}",
@@ -251,18 +251,18 @@
       "Backups": "Old copy left by an update: {{path}}"
     },
     "willKeep": {
-      "Settings": "Your settings: {{path}}",
+      "Settings": "Settings: {{path}}",
       "SettingsAndHistory": "Settings, login and history: {{path}}",
       "ToolState": "Conversations and history: {{path}}",
       "ToolStateDetail": "Keeps the whole folder, including the program files in it.",
       "ShellConfigLines": "Terminal settings file: {{path}}",
-      "ShellConfigLinesDetail": "Canager never edits this file; lines the installer added are harmless.",
+      "ShellConfigLinesDetail": "This file isn't edited; lines the installer added are harmless.",
       "OutsideHome": "Link that will stop working: {{path}}",
-      "OutsideHomeDetail": "It's outside your home folder, so Canager leaves it. You can delete it after uninstalling.",
+      "OutsideHomeDetail": "It's outside your home folder, so it stays. You can delete it after uninstalling.",
       "NotOurs": "Not confirmed as this tool's: {{path}}",
-      "NotOursDetail": "Canager couldn't confirm it belongs to this tool, so it stays.",
+      "NotOursDetail": "It couldn't be confirmed as this tool's, so it stays.",
       "InstallerCache": "Installer's staging folder: {{path}}",
-      "InstallerCacheDetail": "It's in ~/.cache, which many tools share, so Canager leaves it. You can delete it yourself."
+      "InstallerCacheDetail": "It's in ~/.cache, which many tools share, so it stays. You can delete it yourself."
     },
     "alreadyGone": "Already gone: {{path}}",
     "removesToolchains": "Permanently deletes {{path}}: toolchains {{names}} and everything rustup downloaded.",
@@ -279,21 +279,21 @@
     "leavesShellConfigLineMaybe": "{{path}} has a line that mentions Cargo, which rustup won't remove.",
     "leavesShellConfigLineMaybeDetail": "Check that line after uninstalling; if your terminal shows an error when it starts, delete it.",
     "homebrewAutoremoves": "Homebrew will also remove other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
-    "homebrewAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "homebrewAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets it to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "homebrewPeriodicCleanup": "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
-    "homebrewPeriodicCleanupDetail": "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.",
+    "homebrewPeriodicCleanupDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.",
     "homebrewCleanupAutoremoves": "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
-    "homebrewCleanupAutoremovesDetail": "Canager runs Homebrew with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
+    "homebrewCleanupAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "uninstallScope": {
       "HomebrewFormulaOnly": "Deletes only this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
       "HomebrewFormula": "Deletes this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
       "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}; its settings and data stay.",
       "HomebrewCaskSteps": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; nothing else is deleted.",
       "HomebrewCaskStepsAutoremoves": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; {{name}}'s other files stay.",
-      "HomebrewCaskStepsUnseen": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; Canager can't see what else some of those steps delete.",
+      "HomebrewCaskStepsUnseen": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; what else some of those steps delete can't be seen in advance.",
       "HomebrewCaskStepsOnly": "Runs the uninstall steps Homebrew recorded for {{name}}; other files its installer put on this Mac stay.",
-      "HomebrewCaskStepsOnlyUnseen": "Runs the uninstall steps Homebrew recorded for {{name}}; Canager can't see what else some of those steps delete.",
-      "HomebrewCask": "Canager couldn't tell from Homebrew's records what uninstalling {{name}} deletes.",
+      "HomebrewCaskStepsOnlyUnseen": "Runs the uninstall steps Homebrew recorded for {{name}}; what else some of those steps delete can't be seen in advance.",
+      "HomebrewCask": "Couldn't tell from Homebrew's records what uninstalling {{name}} deletes.",
       "Npm": "Deletes {{name}}'s folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
       "Pipx": "Deletes the Python environment pipx made just for {{name}} and the commands that point into it; its settings and data outside that environment are not deleted.",
       "Uv": "Deletes the Python environment uv made just for {{name}} and the commands it recorded; its settings and data outside that environment are not deleted.",
@@ -355,12 +355,12 @@
     },
     "unreachable": {
       "title": "{{source}} isn't responding",
-      "description": "{{source}} didn't respond, so Canager can't show what it has installed. Press Check again later.",
-      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Press Check again later."
+      "description": "{{source}} didn't respond, so what it has installed can't be shown. Click Check Again later.",
+      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Click Check Again later."
     },
     "refusesAsRoot": {
-      "title": "{{source}} doesn't work while Canager is opened as administrator",
-      "description": "{{source}} doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click."
+      "title": "{{source}} doesn't run as administrator",
+      "description": "{{source}} doesn't work when this app runs as administrator. Quit, then open Canager again with a double-click."
     },
     "notRunning": {
       "title": "{{source}} isn't running",
@@ -368,17 +368,17 @@
     },
     "openOllama": "Open Ollama",
     "openOllamaFailed": {
-      "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then press Open Ollama again.",
+      "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then click Open Ollama again.",
       "notInstalledDetail": "The ollama command from Homebrew doesn't include the app.",
       "launchFailed": "macOS couldn't open Ollama. Open it yourself from Applications; if that fails too, reinstall it from ollama.com."
     },
     "indexMayBeStale": {
       "title": "Couldn't update Homebrew's software list",
-      "description": "Canager checked for updates against the old list. Check your connection, then press Check again."
+      "description": "This check used the old list. Check your connection, then click Check Again."
     },
     "indexUpdating": {
       "title": "Homebrew is updating its software list",
-      "description": "The Updates page shows the previous check's results. Canager checks again by itself when the list finishes updating."
+      "description": "The Updates page shows the previous check's results. A new check starts by itself when the list finishes updating."
     },
     "notOnPath": {
       "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
@@ -386,49 +386,49 @@
     },
     "shadowedByHomebrew": {
       "title": "Typing {{command}} runs a same-named program from Homebrew first",
-      "description": "Canager can't tell whether that one is {{source}}. Look under Homebrew on the Installed page."
+      "description": "Couldn't confirm whether that one is {{source}}. Look under Homebrew on the Installed page."
     },
     "shadowedByNpm": {
       "title": "Typing {{command}} runs a same-named program from npm first",
-      "description": "Canager can't tell whether that one is {{source}}. Look under npm on the Installed page."
+      "description": "Couldn't confirm whether that one is {{source}}. Look under npm on the Installed page."
     },
     "shadowedByOther": {
       "title": "Typing {{command}} runs another program with the same name first",
-      "description": "Canager can't identify that program. If it's on the Unknown page, you can see where it is there."
+      "description": "Couldn't identify that program. If it's on the Unknown page, you can see where it is there."
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and press Check again."
+      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again."
     },
     "more_one": "{{count}} more",
     "more_other": "{{count}} more",
-    "showFewer": "Show fewer"
+    "showFewer": "Show Fewer"
   },
   "planRefused": {
-    "sourceGone": "Canager can't find the tool that manages this, so nothing started. Press Check again.",
+    "sourceGone": "Couldn't start because the tool that manages this can't be found. Click Check Again.",
     "expired": "This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     "unknown": "This confirmation is no longer valid. Close it and start again.",
-    "invalidName": "Canager can't pass “{{name}}” to {{source}}, so it stopped. Nothing changed.",
-    "programMissing": "Couldn't find {{program}}. Nothing changed. Press Check again.",
-    "spawnFailed": "{{source}} couldn't start. Nothing changed. macOS said: {{detail}}",
-    "outputTooLarge": "{{source}} returned too much output, so Canager stopped. Nothing changed.",
-    "indexUpdating": "Homebrew is updating its software list, so Canager can't check dependencies reliably now. Nothing changed. Try again in a minute or two.",
-    "refused": "Something went wrong inside Canager, so it stopped. Nothing changed.",
+    "invalidName": "Couldn't pass “{{name}}” to {{source}}.",
+    "programMissing": "Couldn't find {{program}}. Click Check Again.",
+    "spawnFailed": "{{source}} couldn't start. macOS said: {{detail}}",
+    "outputTooLarge": "{{source}} returned too much output, so this couldn't continue.",
+    "indexUpdating": "Homebrew is updating its software list, so dependencies can't be checked reliably now. Try again in a minute or two.",
+    "refused": "Couldn't continue because of an internal error.",
     "uninstallUnsafe": {
-      "outsideHome": "The folder holding {{path}} leads outside your home folder, so Canager won't move it. Nothing changed.",
-      "sharedFolder": "{{path}} is in a folder other apps share, so Canager won't move it. Nothing changed.",
-      "missing": "{{path}} is gone, so Canager stopped. Nothing changed.",
-      "notOwnedByYou": "{{path}} belongs to another user, so Canager won't move it. Nothing changed.",
-      "notWhatInstructionsExpect": "{{path}} isn't what Canager expected, so it won't move it. Nothing changed.",
+      "outsideHome": "Couldn't move {{path}} because the folder holding it leads outside your home folder.",
+      "sharedFolder": "Couldn't move {{path}} because it's in a folder other apps share.",
+      "missing": "Couldn't continue because {{path}} is gone.",
+      "notOwnedByYou": "Couldn't move {{path}} because it belongs to another user.",
+      "notWhatInstructionsExpect": "Couldn't move {{path}} because it isn't what was expected.",
       "notWhatInstructionsExpectDetail": "It, or a folder it's in, links somewhere else, or it's the wrong kind of file or can't be read.",
-      "overlapsKept": "Canager couldn't confirm that removing the files leaves {{path}}, which it keeps, untouched, so it didn't uninstall or change anything."
+      "overlapsKept": "Couldn't uninstall because there's no way to confirm that removing the files leaves {{path}}, which is kept, untouched."
     }
   },
   "operations": {
     "current": "{{kind}} {{name}}: {{status}}",
     "title": "{{kind}} {{name}}",
-    "noCancelHint": "You can't cancel this once it starts. Keep Canager and your Mac on until it finishes.",
-    "noCancelHintDetail": "Wait until the bottom of the window shows how it went before you quit Canager or turn off your Mac.",
+    "noCancelHint": "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+    "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
     "logDrawerTitle": "Operation log",
     "batch": {
       "running": "Working on {{current}} of {{total}}",
@@ -437,13 +437,13 @@
       "needsAttention_one": "{{count}} of {{total}} needs attention",
       "needsAttention_other": "{{count}} of {{total}} need attention",
       "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
-      "cancelAll": "Cancel all",
-      "cancelRest": "Cancel the rest"
+      "cancelAll": "Cancel All",
+      "cancelRest": "Cancel the Rest"
     },
     "cancelKind": {
-      "Install": "Cancel install",
-      "Uninstall": "Cancel uninstall",
-      "Upgrade": "Cancel update"
+      "Install": "Cancel Install",
+      "Uninstall": "Cancel Uninstall",
+      "Upgrade": "Cancel Update"
     },
     "logNote": {
       "waitingForBrewUpdate": "Homebrew is updating its software list; this starts when it's done, waiting up to {{minutes}} minutes. Cancelling now changes nothing.",
@@ -451,7 +451,7 @@
       "readFailedStderr": "Couldn't read any more error messages: {{error}}",
       "movedToTrash": "Moved {{path}} to the Trash: {{trashedTo}}",
       "trashFailed": "Couldn't move {{path}} to the Trash, so the uninstall stopped: {{error}}",
-      "outOfTime": "Time ran out after {{seconds}} seconds, so Canager stopped before moving {{path}}. What it moved is in the Trash; uninstall again to move the rest.",
+      "outOfTime": "Time ran out after {{seconds}} seconds, so the uninstall stopped before moving {{path}}. What was moved is in the Trash; uninstall again to move the rest.",
       "backAfterUninstall": "Found {{path}} at the final check and left it where it is."
     },
     "kind": {
@@ -462,10 +462,10 @@
     "status": {
       "Queued": "Queued",
       "Running": "Running",
-      "CancelRequested": "Cancelling",
-      "Cancelling": "Cancelling",
-      "Verifying": "Checking the result",
-      "waitingForBrewUpdate": "Waiting for Homebrew's software list"
+      "CancelRequested": "Cancelling…",
+      "Cancelling": "Cancelling…",
+      "Verifying": "Checking the result…",
+      "waitingForBrewUpdate": "Waiting for Homebrew's software list…"
     },
     "outcome": {
       "Succeeded": "Succeeded",
@@ -481,19 +481,19 @@
         "BackAfterUninstall": "Files showed up again after the uninstall",
         "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself."
       },
-      "Failed": "Failed: {{summary}}",
-      "FailedSilent": "Failed, and the program didn't say why",
+      "Failed": "Couldn't finish: {{summary}}",
+      "FailedSilent": "Couldn't finish, and the program didn't say why",
       "FailedSilentDetail": "The operation log shows its output.",
       "CanagerFailed": {
-        "Panicked": "Failed: something went wrong inside Canager",
+        "Panicked": "Couldn't finish because of an internal error",
         "PanickedDetail": "Check the list to see whether anything changed.",
-        "ProgramMissing": "Failed: couldn't find {{program}}. Nothing changed",
-        "SpawnFailed": "Failed: the program couldn't start. Nothing changed. macOS said: {{detail}}",
-        "HomebrewStillUpdating": "Failed: Homebrew was still updating its software list after {{minutes}} minutes, so nothing started",
+        "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",
+        "SpawnFailed": "Couldn't start the program. Nothing changed. macOS said: {{detail}}",
+        "HomebrewStillUpdating": "Couldn't start: Homebrew was still updating its software list after {{minutes}} minutes",
         "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
         "PathChanged": "Stopped: {{path}} changed after the confirmation opened",
         "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
-        "Internal": "Failed: something went wrong inside Canager. Nothing changed"
+        "Internal": "Couldn't finish because of an internal error. Nothing changed"
       }
     }
   },
@@ -520,21 +520,21 @@
       "Uninstall": "{{name}}'s uninstall has started and can't be cancelled. Wait for it to finish before you quit.",
       "Upgrade": "{{name}}'s update has started and can't be cancelled. Wait for it to finish before you quit."
     },
-    "keepWaiting": "Keep waiting",
-    "quitAnyway": "Quit anyway"
+    "keepWaiting": "Cancel",
+    "quitAnyway": "Quit"
   },
   "uninstall": {
-    "title": "Uninstall {{name}}?",
+    "title": "Uninstall “{{name}}”?",
     "checking": "Checking what this affects…",
     "planError": "Couldn't check what this affects: {{message}}",
     "submitError": "Couldn't start the uninstall: {{message}}",
-    "reissued": "Nothing started, so Canager checked again.",
-    "reissuedConfirmAgain": "Nothing started, so Canager checked again. Confirm once more.",
-    "warningsTitle": "Before you continue",
-    "keepListTitle": "Stays where it is",
+    "reissued": "That didn't start, so it was checked again.",
+    "reissuedConfirmAgain": "That didn't start, so it was checked again. Confirm once more.",
+    "warningsTitle": "Notes",
+    "keepListTitle": "Kept",
     "affectedTitle": "These still need it",
     "confirm": "Uninstall",
-    "confirmPermanent": "Uninstall permanently",
+    "confirmPermanent": "Uninstall Permanently",
     "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
     "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
     "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out."
@@ -556,12 +556,12 @@
     },
     "autoCheck": {
       "label": "Check for updates every day",
-      "description": "Checks once a day while Canager is running, and installs none of the updates it finds. Nothing is checked after you quit."
+      "description": "Canager checks for updates once a day while it's running, and doesn't install the updates it finds."
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
       "needsAutoCheck": "Turn on “{{setting}}” above first.",
-      "refused": "Allow Canager in System Settings → Notifications."
+      "refused": "Allow Canager to send notifications in System Settings > Notifications."
     },
     "language": {
       "label": "Language",
@@ -573,14 +573,14 @@
       "title": "Skipped versions",
       "empty": "No skipped versions",
       "newBuild": "New version",
-      "unskip": "Stop skipping",
+      "unskip": "Stop Skipping",
       "unskipAriaLabel": "Stop skipping {{version}} of {{name}}",
       "unskipNewBuildAriaLabel": "Stop skipping the new version of {{name}}"
     },
     "ignoredUpdates": {
       "title": "Tools with reminders off",
       "empty": "No tools with reminders off",
-      "unignore": "Remind me again",
+      "unignore": "Remind Me Again",
       "unignoreAriaLabel": "Remind me again about {{name}}"
     },
     "iconCredits": {
@@ -606,13 +606,13 @@
     "other": "{{detail}}"
   },
   "unknown": {
-    "intro": "Canager can't tell how these command-line programs got here. It only lists them and never runs or deletes them.",
+    "intro": "Couldn't determine how these programs were installed.",
     "lookedIn": "Looked in: {{folders}}",
-    "attributed_one": "Canager recognized {{count}} more program and doesn't list it here.",
-    "attributed_other": "Canager recognized {{count}} more programs and doesn't list them here.",
+    "attributed_one": "{{count}} more program has a known source and isn't listed here.",
+    "attributed_other": "{{count}} more programs have a known source and aren't listed here.",
     "stopped": {
-      "FileLimit": "Canager stopped after {{count}} items and didn't check the rest.",
-      "TimeLimit": "Canager stopped after {{seconds}} seconds and didn't check the rest."
+      "FileLimit": "Stopped after {{count}} items; the rest weren't checked.",
+      "TimeLimit": "Stopped after {{seconds}} seconds; the rest weren't checked."
     },
     "kind": {
       "File": "Program",
@@ -628,8 +628,8 @@
     "showsLinkTarget": "Shows the file this link points to.",
     "targetGone": "The file this link points to is gone.",
     "showInFinderFailed": "Couldn't show it in Finder",
-    "copyPath": "Copy path",
-    "scanAgain": "Scan again",
+    "copyPath": "Copy Path",
+    "scanAgain": "Scan Again",
     "scanning": "Scanning…",
     "scannedJustNow": "Scanned just now",
     "scannedMinutesAgo_one": "Scanned {{count}} min ago",
@@ -640,7 +640,7 @@
     "scannedDaysAgo_other": "Scanned {{count}} days ago",
     "scanFailed": "Couldn't scan: {{message}}",
     "empty": "No programs of unknown origin",
-    "emptyChecked": "No programs of unknown origin in what Canager checked"
+    "emptyChecked": "No programs of unknown origin in the places checked"
   },
   "emptyStates": {
     "loadFailed": {
@@ -648,7 +648,7 @@
       "description": "Reason: {{message}}"
     },
     "noSources": {
-      "title": "Canager found nothing it can manage",
+      "title": "No tools to manage",
       "description": "Install Homebrew first."
     },
     "refreshFailed": {
@@ -657,9 +657,9 @@
       "description_other": "{{sources}} didn't finish checking this time."
     },
     "nothingInstalled": {
-      "title": "Canager found nothing installed",
+      "title": "No installed tools found",
       "description": "Tools you install with Homebrew, npm and the like show up here."
     },
-    "supportedList": "Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and with Claude Code, Antigravity CLI, Grok Build and rustup in their default locations."
+    "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations."
   }
 }
