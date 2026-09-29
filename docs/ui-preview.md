@@ -86,6 +86,11 @@ page's Show in Finder reach this Mac's Finder: it asks the stand-in in
   `pnpm typecheck` like the rest of `src/`; `src/dev/mockBackend.test.ts`
   (run by `pnpm test`) checks that it answers every command `api.ts` sends
   and that an operation runs the way the real backend reports one.
+- Every answer reaches the page in a task of its own, after the one that
+  asked (`invoke` in `src/dev/mockTauri.ts`), as the app's come back over
+  IPC -- even one the mock knows at once, so that a page awaiting one
+  answer after another draws between them here as it does in the app;
+  `src/dev/mockTauri.test.ts` holds it.
 - The logos are not mocked: the avatars draw from the logo pack built
   into the app (`src/assets/tool-icons/`, read by `src/lib/toolIcons.ts`,
   which asks the backend for nothing), so a tool or a source the pack has

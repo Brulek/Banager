@@ -49,8 +49,41 @@ for (const problem of problems) {
   console.warn(`[${MOCK_MARKER}] ${problem}`);
 }
 
+/**
+ * Replies reach the page one message each, after the task that asked, as
+ * over Tauri's IPC: a `MessageChannel`, which the browser does not slow
+ * down the way it does a chain of `setTimeout(0)`s.
+ */
+const replies: Array<() => void> = [];
+const replyChannel = new MessageChannel();
+replyChannel.port1.onmessage = () => replies.shift()?.();
+
+function inATaskOfItsOwn(): Promise<void> {
+  return new Promise((resolve) => {
+    replies.push(resolve);
+    replyChannel.port2.postMessage(null);
+  });
+}
+
+/**
+ * A command, answered as the app's are: in a task of its own. The mock
+ * backend answers at once when it has nothing to wait for; handed back
+ * as it is, a page that awaits one answer after another -- Update all
+ * submitting 120 tools, one after the other -- would run them all in the
+ * task that asked, drawing no frame until the last, which the app, whose
+ * every answer comes back over IPC, never does.
+ */
 export function invoke<T>(cmd: string, args?: InvokeArgs): Promise<T> {
-  return backend.invoke(cmd, args) as Promise<T>;
+  return backend.invoke(cmd, args).then(
+    async (value) => {
+      await inATaskOfItsOwn();
+      return value as T;
+    },
+    async (error: unknown) => {
+      await inATaskOfItsOwn();
+      throw error;
+    },
+  );
 }
 
 // Callable exactly as the real `invoke` is.
