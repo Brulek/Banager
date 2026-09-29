@@ -42,10 +42,11 @@ function headerActions(page: Page): ReactNode {
  * What the window keeps up to date about the updates, out of sight: the
  * Dock's badge (`useDockBadge`) and the update notification's report
  * (`useUpdateNotification`). A component of their own, which draws
- * nothing: both read the operations, which change with every step of
- * every update, and in `App` itself each change drew the whole window
- * again -- the page, its rows, the sidebar -- a few hundred times over
- * while Update all submitted 120 tools.
+ * nothing: both read the operations, which change at every step of every
+ * update -- a few hundred times while Update all submits 120 tools -- and
+ * in `App` itself each change drew all of the window again, whatever it
+ * showed: the header, the log drawer, the page, Settings as much as
+ * Updates. What does show the operations reads them itself.
  */
 function UpdateWatchers() {
   useDockBadge();
