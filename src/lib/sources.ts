@@ -1322,14 +1322,17 @@ export function parseOpenOllamaFailure(message: string): OpenOllamaFailure | nul
 
 /**
  * What a rejected Open Ollama press should read as: the localised copy for
- * a recognised failure, otherwise `raw` verbatim, so an unexpected error
- * is still visible rather than swallowed. Before this existed the button's
- * failures were never shown at all; the backend reported nothing, and so
- * there was nothing to render.
+ * a recognised failure; otherwise `raw` verbatim with "Show technical
+ * details" on, so an unexpected error is still visible rather than
+ * swallowed, and without it that Ollama didn't open and what to do, as
+ * every other raw error is kept behind that setting. Before this existed
+ * the button's failures were never shown at all; the backend reported
+ * nothing, and so there was nothing to render.
  */
-export function openOllamaErrorMessage(t: Translate, raw: string): string {
+export function openOllamaErrorMessage(t: Translate, raw: string, technical: boolean): string {
   const reason = parseOpenOllamaFailure(raw);
-  return reason ? t(OPEN_OLLAMA_FAILURE_KEYS[reason]) : raw;
+  if (reason) return t(OPEN_OLLAMA_FAILURE_KEYS[reason]);
+  return technical ? raw : t("sourceNotice.openOllamaFailed.other");
 }
 
 /** The "Details" of `openOllamaErrorMessage`'s sentence, or null when it has none. */

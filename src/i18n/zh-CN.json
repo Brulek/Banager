@@ -356,7 +356,8 @@
     "openOllamaFailed": {
       "notInstalled": "“应用程序”中没有Ollama App。请从ollama.com下载并安装，然后点按“打开Ollama”。",
       "notInstalledDetail": "用Homebrew安装的ollama命令不包含此App。",
-      "launchFailed": "macOS无法打开Ollama。请在“应用程序”中手动打开；如果仍然无法打开，请从ollama.com重新安装。"
+      "launchFailed": "macOS无法打开Ollama。请在“应用程序”中手动打开；如果仍然无法打开，请从ollama.com重新安装。",
+      "other": "无法打开Ollama。请在“应用程序”中手动打开。"
     },
     "indexMayBeStale": {
       "title": "无法更新Homebrew软件清单",

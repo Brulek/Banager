@@ -109,6 +109,7 @@ function nothingToUpdateLine(
 function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
+  const { data: settings } = useSettings();
   const { checkAgain, checking } = useCheckAgain();
   const showTool = useShowSourceTool();
   const action = notice.action;
@@ -116,7 +117,11 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
 
   let error: ReactNode = null;
   if (opensOllama && openOllamaApp.error) {
-    const message = openOllamaErrorMessage(t, openOllamaApp.error.message);
+    const message = openOllamaErrorMessage(
+      t,
+      openOllamaApp.error.message,
+      settings?.show_technical_details ?? false,
+    );
     const detail = openOllamaErrorDetail(t, openOllamaApp.error.message);
     error =
       detail === null ? (

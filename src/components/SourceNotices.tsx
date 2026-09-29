@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useOpenOllamaApp, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
 import {
   openOllamaErrorDetail,
   openOllamaErrorMessage,
@@ -117,6 +117,7 @@ export interface SourceNoticesProps {
 export function SourceNotices({ notices, layout = "line", fold, grid = "avatar", separator = true }: SourceNoticesProps) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
+  const { data: settings } = useSettings();
   // The header's Check again, and off when that one is: pressed while a
   // check runs, it would queue a second one after it.
   const { checkAgain, checking } = useCheckAgain();
@@ -139,7 +140,11 @@ export function SourceNotices({ notices, layout = "line", fold, grid = "avatar",
   // never reading `open`'s exit status.
   let openOllamaError: ReactNode = undefined;
   if (openOllamaApp.error) {
-    const message = openOllamaErrorMessage(t, openOllamaApp.error.message);
+    const message = openOllamaErrorMessage(
+      t,
+      openOllamaApp.error.message,
+      settings?.show_technical_details ?? false,
+    );
     const detail = openOllamaErrorDetail(t, openOllamaApp.error.message);
     openOllamaError =
       detail === null ? (

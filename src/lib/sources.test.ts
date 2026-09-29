@@ -1019,17 +1019,22 @@ describe("parseOpenOllamaFailure", () => {
 
 describe("openOllamaErrorMessage", () => {
   it("gives each failure its own copy, never the raw JSON", () => {
-    expect(
-      openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"not_installed"}'),
-    ).toBe("sourceNotice.openOllamaFailed.notInstalled");
-    expect(
-      openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"launch_failed"}'),
-    ).toBe("sourceNotice.openOllamaFailed.launchFailed");
+    for (const technical of [false, true]) {
+      expect(
+        openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"not_installed"}', technical),
+      ).toBe("sourceNotice.openOllamaFailed.notInstalled");
+      expect(
+        openOllamaErrorMessage(fakeT, '{"kind":"ollama_open_failed","reason":"launch_failed"}', technical),
+      ).toBe("sourceNotice.openOllamaFailed.launchFailed");
+    }
   });
 
-  it("shows anything it does not recognise verbatim rather than hiding it", () => {
-    expect(openOllamaErrorMessage(fakeT, "command open_ollama_app not found")).toBe(
+  it("shows anything it does not recognise verbatim with technical details on, and plain words without", () => {
+    expect(openOllamaErrorMessage(fakeT, "command open_ollama_app not found", true)).toBe(
       "command open_ollama_app not found",
+    );
+    expect(openOllamaErrorMessage(fakeT, "command open_ollama_app not found", false)).toBe(
+      "sourceNotice.openOllamaFailed.other",
     );
   });
 

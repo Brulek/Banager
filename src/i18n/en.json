@@ -394,7 +394,8 @@
     "openOllamaFailed": {
       "notInstalled": "There's no Ollama app in Applications. Download it from ollama.com, install it, then click Open Ollama again.",
       "notInstalledDetail": "The ollama command from Homebrew doesn't include the app.",
-      "launchFailed": "macOS couldn't open Ollama. Open it yourself from Applications; if that fails too, reinstall it from ollama.com."
+      "launchFailed": "macOS couldn't open Ollama. Open it yourself from Applications; if that fails too, reinstall it from ollama.com.",
+      "other": "Couldn't open Ollama. Open it yourself from Applications."
     },
     "indexMayBeStale": {
       "title": "Couldn't update Homebrew's software list",
