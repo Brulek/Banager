@@ -1124,6 +1124,119 @@ describe("InstalledPage", () => {
       expect(badged).toEqual(["chromium", "offered", "skipped-before"]);
       expect(offered.sort()).toEqual(badged);
     });
+
+    it("undoes a skip in place: 取消跳过 beside 「已跳过」 saves the settings without it, and the row reads as any update", async () => {
+      renderInstalled();
+      const drawer = await openDetails("skipped");
+      const status = drawer.querySelector("[data-status-list]") as HTMLElement;
+      // Settings' own words, after the word and its ⓘ, small and grey.
+      const undo = within(status).getByRole("button", { name: "Stop skipping 2.90.0 of skipped" });
+      expect(undo).toHaveTextContent("Stop Skipping");
+      expect(undo.className).toContain(BUTTON.small.grey);
+      const item = undo.parentElement as HTMLElement;
+      expect(item.firstElementChild).toHaveTextContent("Skipped 2.90.0");
+      expect(within(item).getByRole("button", { name: "Details: Skipped 2.90.0" })).toBeInTheDocument();
+      expect(item.lastElementChild).toBe(undo);
+      // Nothing to update yet: the update is hidden.
+      expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+
+      // Pressed from the keyboard: the focus on it.
+      undo.focus();
+      fireEvent.click(undo);
+
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("set_settings", expect.anything()));
+      const saved = mockInvoke.mock.calls.filter(([cmd]) => cmd === "set_settings");
+      expect(saved).toHaveLength(1);
+      // Only that skip goes; the other skips and the never-remind stay.
+      expect((saved[0][1] as { settings: Settings }).settings).toEqual({
+        ...mixedSettings,
+        skipped_versions: mixedSettings.skipped_versions.filter((skip) => skip.key.name !== "skipped"),
+      });
+      // The plain state: listed again, the version it moves to, Update --
+      // which has the focus the button took with it.
+      await waitFor(() =>
+        expect([...status.children].map((item) => item.firstElementChild?.textContent)).toEqual(["Update available"]),
+      );
+      expect(within(drawer).queryByRole("button", { name: /Stop skipping/ })).toBeNull();
+      const update = within(drawer).getByRole("button", { name: "Update" });
+      expect(update).toHaveFocus();
+      expect(chipsOf(rowOf("skipped"))).toEqual([]);
+      expect(versionShown(rowOf("skipped"))).toBe("2.88.3 → 2.90.0");
+    });
+
+    it("undoes a never-remind in place: 恢复提醒 beside 「不再提醒」 saves the settings without it", async () => {
+      renderInstalled();
+      const drawer = await openDetails("ignored");
+      const status = drawer.querySelector("[data-status-list]") as HTMLElement;
+      const undo = within(status).getByRole("button", { name: "Remind me again about ignored" });
+      expect(undo).toHaveTextContent("Remind Me Again");
+      expect(undo.className).toContain(BUTTON.small.grey);
+
+      fireEvent.click(undo);
+
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("set_settings", expect.anything()));
+      const saved = mockInvoke.mock.calls.filter(([cmd]) => cmd === "set_settings");
+      expect(saved).toHaveLength(1);
+      expect((saved[0][1] as { settings: Settings }).settings).toEqual({ ...mixedSettings, ignored_updates: [] });
+      await waitFor(() =>
+        expect([...status.children].map((item) => item.firstElementChild?.textContent)).toEqual(["Update available"]),
+      );
+      expect(within(drawer).queryByRole("button", { name: /Remind me again/ })).toBeNull();
+      expect(within(drawer).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(chipsOf(rowOf("ignored"))).toEqual([]);
+    });
+
+    it("offers no way back where nothing was hidden, and says in Chinese what Settings says", async () => {
+      await i18n.changeLanguage("zh-CN");
+      // `openDetails`, in Chinese: the row's button is 「详情：…」.
+      const openDetails = async (name: string) => {
+        const row = await findRow(name);
+        fireEvent.click(within(row).getByRole("button", { name: `详情：${name}` }));
+        return screen.findByRole("complementary", { name });
+      };
+      try {
+        renderInstalled();
+        const skipped = await openDetails("skipped");
+        expect(within(skipped).getByRole("button", { name: "取消跳过“skipped”的2.90.0" })).toHaveTextContent("取消跳过");
+        fireEvent.keyDown(skipped, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+        const ignored = await openDetails("ignored");
+        expect(within(ignored).getByRole("button", { name: "恢复“ignored”的更新提醒" })).toHaveTextContent("恢复提醒");
+        fireEvent.keyDown(ignored, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+        // A model skipped at its new build: the version is a digest, never said.
+        const model = await openDetails("skipped-model");
+        expect(within(model).getByRole("button", { name: "取消跳过“skipped-model”的新版本" })).toBeInTheDocument();
+        fireEvent.keyDown(model, { key: "Escape" });
+        await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+        const offered = await openDetails("offered");
+        expect(within(offered).queryByRole("button", { name: /取消跳过|恢复/ })).toBeNull();
+      } finally {
+        await i18n.changeLanguage("en");
+      }
+    });
+
+    it("says in the inspector why a way back could not be saved, and keeps the word", async () => {
+      const answer = mockInvoke.getMockImplementation();
+      mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+        cmd === "set_settings" ? Promise.reject("settings.json is read-only") : answer!(cmd, args),
+      );
+      renderInstalled();
+      const drawer = await openDetails("skipped");
+      fireEvent.click(within(drawer).getByRole("button", { name: "Stop skipping 2.90.0 of skipped" }));
+
+      expect(await within(drawer).findByRole("alert")).toHaveTextContent(
+        "Couldn't save that choice: settings.json is read-only",
+      );
+      const status = drawer.querySelector("[data-status-list]") as HTMLElement;
+      expect([...status.children].map((item) => item.firstElementChild?.textContent)).toEqual(["Skipped 2.90.0"]);
+      expect(within(drawer).getByRole("button", { name: "Stop skipping 2.90.0 of skipped" })).toBeInTheDocument();
+      // Only this tool's inspector says it.
+      fireEvent.keyDown(drawer, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      const other = await openDetails("ignored");
+      expect(within(other).queryByRole("alert")).toBeNull();
+    });
   });
 
   describe("up to date (T1)", () => {

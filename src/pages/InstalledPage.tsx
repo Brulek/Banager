@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useOperations, useSettings, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useOperations, useSaveSettings, useSettings, useSnapshot } from "../lib/queries";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
@@ -9,6 +9,7 @@ import {
   describeTool,
   instanceLabels,
   isAvailable,
+  settingsSaveErrorMessage,
   sourceNoticesFor,
   type SourceNoticeSpec,
   type ToolDescriptionLines,
@@ -21,6 +22,7 @@ import {
   hidingRule,
   leftOutOfUpdateCheck,
   shownSkippedVersion,
+  skippedVersionId,
   updateStateOf,
   upToDateIsKnown,
 } from "../lib/updateState";
@@ -57,7 +59,8 @@ import { Refusal } from "../components/SheetParts";
 import { CloseIcon, DisclosureIcon, SearchIcon } from "../components/icons";
 import { EmptyState } from "../components/EmptyState";
 import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
-import { GROUP } from "../components/ui/group";
+import { focusOrFallback } from "../components/ui/focus";
+import { GROUP, SMALL_WRAPPING } from "../components/ui/group";
 import { InfoDetail } from "../components/InfoDetail";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
@@ -97,6 +100,11 @@ interface RowChip {
   label: string;
   detail?: ReactNode;
   tone: "neutral" | "update" | "upToDate";
+  /**
+   * The way back from what the word says, beside it in the inspector's
+   * 「状态」: 「取消跳过」 by 「已跳过2.102.0」, 「恢复提醒」 by 「不再提醒」.
+   */
+  undo?: { label: string; ariaLabel: string; onUndo: () => void };
 }
 
 /**
@@ -363,6 +371,7 @@ export function InstalledPage() {
   const { t, i18n } = useTranslation();
   const { data: snapshot, isLoading } = useSnapshot();
   const { data: settings } = useSettings();
+  const saveSettings = useSaveSettings();
   const query = useUiStore((s) => s.query);
   const setQuery = useUiStore((s) => s.setQuery);
   const filter = useUiStore((s) => s.installedFilter);
@@ -414,6 +423,22 @@ export function InstalledPage() {
 
   const showTechnicalDetails = settings?.show_technical_details ?? false;
   const inspectorTitleId = useId();
+
+  // Where the focus goes once 取消跳过 or 恢复提醒 has gone with the state
+  // it undid: the inspector's Update, which that leaves in reach, or else
+  // the page's title -- not the window's body, from where the next Tab
+  // would start over at the sidebar.
+  const inspectorUpdate = useRef<HTMLButtonElement>(null);
+  const refocusAfterUndo = useRef(false);
+  // The tool whose 取消跳过 or 恢复提醒 could not be saved, and why: said in
+  // its inspector, and only there, until it is pressed again.
+  const [undoFailed, setUndoFailed] = useState<{ id: string; message: string } | null>(null);
+  useEffect(() => {
+    if (!refocusAfterUndo.current) return;
+    refocusAfterUndo.current = false;
+    const focus = document.activeElement;
+    if (focus === null || focus === document.body || !focus.isConnected) focusOrFallback(inspectorUpdate.current);
+  });
 
   const instancesById = useMemo(() => {
     const byId = new Map<string, ManagerInstance>();
@@ -770,13 +795,39 @@ export function InstalledPage() {
       label,
     );
 
+  // The Settings page's 「取消跳过」 and 「恢复提醒」 for one update, from its
+  // inspector: the skip that hides it -- the one `hidingRule` matched, by
+  // the version it offers -- or its never-remind, out of the settings,
+  // which lists it again. One save at a time, as the Updates page's hiding
+  // items: a second built from the same settings would undo the first.
+  const undoHiding = ({ by, candidate }: HiddenUpdate) => {
+    if (!settings || saveSettings.isPending) return;
+    const id = artifactKeyId(candidate.key);
+    const skip = skippedVersionId({ key: candidate.key, version: candidate.target });
+    setUndoFailed(null);
+    saveSettings.mutate(
+      by === "ignored"
+        ? { ...settings, ignored_updates: settings.ignored_updates.filter((key) => artifactKeyId(key) !== id) }
+        : { ...settings, skipped_versions: settings.skipped_versions.filter((s) => skippedVersionId(s) !== skip) },
+      {
+        onSuccess: () => {
+          refocusAfterUndo.current = true;
+        },
+        onError: (error) => setUndoFailed({ id, message: settingsSaveErrorMessage(t, error.message) }),
+      },
+    );
+  };
+
   // How an update the user hid on the Updates page reads here: how it was
   // hidden, where "Update available" would promise one that page no
-  // longer lists. A skip names the version skipped -- the skip is about
-  // that one -- except an Ollama model's, a digest, never shown
-  // (`shownSkippedVersion`). A `switch` with no default, so a new
-  // `HiddenBy` without a chip here fails `tsc`.
-  const hiddenChip = ({ by, candidate }: HiddenUpdate): RowChip => {
+  // longer lists, with the way back (`undo`), as Settings words it. A skip
+  // names the version skipped -- the skip is about that one -- except an
+  // Ollama model's, a digest, never shown (`shownSkippedVersion`). A
+  // `switch` with no default, so a new `HiddenBy` without a chip here
+  // fails `tsc`.
+  const hiddenChip = (hidden: HiddenUpdate): RowChip => {
+    const { by, candidate } = hidden;
+    const name = nameOf(candidate);
     switch (by) {
       case "ignored":
         return {
@@ -784,6 +835,11 @@ export function InstalledPage() {
           label: t("installed.updateIgnored"),
           detail: detailLines([t("updates.neverRemindHint")]),
           tone: "neutral",
+          undo: {
+            label: t("settings.ignoredUpdates.unignore"),
+            ariaLabel: t("settings.ignoredUpdates.unignoreAriaLabel", { name }),
+            onUndo: () => undoHiding(hidden),
+          },
         };
       case "skipped": {
         const version = shownSkippedVersion({ key: candidate.key, version: candidate.target });
@@ -795,6 +851,14 @@ export function InstalledPage() {
               : t("installed.updateSkipped", { version }),
           detail: detailLines([t("updates.skipVersionHint")]),
           tone: "neutral",
+          undo: {
+            label: t("settings.skippedVersions.unskip"),
+            ariaLabel:
+              version === null
+                ? t("settings.skippedVersions.unskipNewBuildAriaLabel", { name })
+                : t("settings.skippedVersions.unskipAriaLabel", { name, version }),
+            onUndo: () => undoHiding(hidden),
+          },
         };
       }
     }
@@ -1005,7 +1069,8 @@ export function InstalledPage() {
    *   update would bring, when it was installed, its size, where it is
    *   (with technical details on), and 「状态」, every status word it has --
    *   「可更新」, 「已是最新」, 「已跳过2.102.0」 -- each with its why behind
-   *   an ⓘ, as on a row;
+   *   an ⓘ, as on a row, and a hidden update's way back after its word,
+   *   Settings' own 「取消跳过」 or 「恢复提醒」;
    * - 16 under the group, at its right, what can be done: Update, the
    *   default, rightmost, through the Updates page's own confirmation, and
    *   Uninstall…, grey, to its left; while that update runs, its progress
@@ -1061,17 +1126,29 @@ export function InstalledPage() {
     }
     // Where its update stands, and what it is: a row of the group, each
     // word 13 in the label colour as the other values, its why behind an
-    // ⓘ after it -- not a line of its own under the facts.
+    // ⓘ after it -- not a line of its own under the facts -- and after a
+    // hidden update's, the way back, a small grey button (under the word
+    // where the pane is too narrow for both).
     if (chips.length > 0) {
       facts.push({
         term: t("installed.status"),
         value: (
           <ul data-status-list="" className="flex flex-col items-end gap-1">
             {chips.map((chip) => (
-              <li key={chip.id} className="flex items-center gap-1">
+              <li key={chip.id} className="flex flex-wrap items-center justify-end gap-1">
                 <span data-status-word="">{chip.label}</span>
                 {chip.detail !== undefined ? (
                   <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>{chip.detail}</InfoDetail>
+                ) : null}
+                {chip.undo !== undefined ? (
+                  <button
+                    type="button"
+                    aria-label={chip.undo.ariaLabel}
+                    onClick={chip.undo.onUndo}
+                    className={`ml-1 shrink-0 ${BUTTON.small.grey}`}
+                  >
+                    {chip.undo.label}
+                  </button>
                 ) : null}
               </li>
             ))}
@@ -1120,6 +1197,12 @@ export function InstalledPage() {
             </p>
           ) : null}
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
+          {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
+          {undoFailed !== null && undoFailed.id === id ? (
+            <p role="alert" className={`mt-2 ${SMALL_WRAPPING} text-danger-text`}>
+              {t("updates.saveChoiceFailed", { message: undoFailed.message })}
+            </p>
+          ) : null}
           {removable || updatable ? (
             // Under what they act on, at the right, the default rightmost,
             // as a Mac's pane and a dialog's footer set their buttons.
@@ -1141,6 +1224,7 @@ export function InstalledPage() {
                   updating keeps how it ended, with Retry in Update's place. */}
               {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
                 <button
+                  ref={inspectorUpdate}
                   type="button"
                   onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
                   disabled={confirm.dialogOpen}
