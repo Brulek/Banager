@@ -3435,7 +3435,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(coldDetails);
       const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
       expect(text).toHaveTextContent(
-        "Homebrew didn't respond, so what it has installed can't be shown.",
+        "What it has installed can't be shown.",
       );
       expect(text?.textContent).not.toMatch(/What's listed/);
     });

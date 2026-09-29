@@ -168,7 +168,7 @@ describe("sourceNoticesFor", () => {
       "Homebrew",
       0,
     );
-    expect(notice.descriptionKey).toBe("sourceNotice.unreachable.description");
+    expect(notice.descriptionKey).toBe("sourceNotice.unreachable.detail");
     // And the default is the copy that claims nothing: a caller that does
     // not know how many rows it is about to draw must not promise any.
     expect(

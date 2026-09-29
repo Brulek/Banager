@@ -350,6 +350,7 @@
     "unreachable": {
       "title": "{{source}}没有响应",
       "description": "{{source}}没有响应，无法列出它安装的内容。请稍后重新检查。",
+      "detail": "无法列出它安装的内容。请稍后重新检查。",
       "descriptionWithRows": "这里列出的是{{source}}上次响应时的内容，之后的变化不会显示。请稍后重新检查。"
     },
     "refusesAsRoot": {

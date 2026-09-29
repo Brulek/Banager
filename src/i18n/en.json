@@ -388,6 +388,7 @@
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
+      "detail": "What it has installed can't be shown. Check again later.",
       "descriptionWithRows": "Showing what {{source}} reported last time. Newer changes aren't shown. Check again later."
     },
     "refusesAsRoot": {

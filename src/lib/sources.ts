@@ -355,7 +355,10 @@ export function sourceNoticesFor(
       descriptionKey:
         rowsOnScreen > 0
           ? "sourceNotice.unreachable.descriptionWithRows"
-          : "sourceNotice.unreachable.description",
+          : // Under its title, which already names the source; the
+            // self-contained sentence is the refusal's
+            // (`notActionableMessage`).
+            "sourceNotice.unreachable.detail",
       values: { source: sourceLabel },
       action: { id: "checkAgain", labelKey: "header.checkAgain" },
     });

@@ -1605,7 +1605,7 @@ describe("InstalledPage", () => {
     // first refresh after a launch, because the snapshot is in memory
     // only (`Session::new` starts from `Snapshot::empty()`).
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "npm didn't respond, so what it has installed can't be shown.",
+      "What it has installed can't be shown.",
     );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.

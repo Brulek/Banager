@@ -307,7 +307,7 @@ function FactsGroup({ facts }: { facts: InspectorFact[] }) {
  * page says under that title instead: only what the title does not.
  */
 const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
-  "sourceNotice.unreachable.description": "installed.sourceEmpty.unreachable",
+  "sourceNotice.unreachable.detail": "installed.sourceEmpty.unreachable",
 };
 
 /**
