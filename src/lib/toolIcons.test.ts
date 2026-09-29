@@ -388,6 +388,61 @@ describe("the built-in pack", () => {
     expect(unreachable, `no tool resolves to: ${unreachable.join(", ")}`).toEqual([]);
   });
 
+  it("gives the npm packages of projects Simple Icons draws their project's own logo, not npm's (round 3)", () => {
+    // Each checked against its npm registry entry: the repository is the
+    // project's own (typescript is microsoft/TypeScript, bun oven-sh/bun,
+    // meteor the Meteor team's installer …). Framework CLIs are "maker", as
+    // @angular/cli's Angular is.
+    const added: Record<string, string> = {
+      "npm:typescript": "si-typescript",
+      "npm:vite": "si-vite",
+      "npm:vitest": "si-vitest",
+      "npm:jest": "si-jest",
+      "npm:mocha": "si-mocha",
+      "npm:electron": "si-electron",
+      "npm:electron-builder": "si-electronbuilder",
+      "npm:esbuild": "si-esbuild",
+      "npm:rollup": "si-rollupdotjs",
+      "npm:@babel/cli": "si-babel",
+      "npm:tailwindcss": "si-tailwindcss",
+      "npm:@tailwindcss/cli": "si-tailwindcss",
+      "npm:stylelint": "si-stylelint",
+      "npm:bun": "si-bun",
+      "npm:deno": "si-deno",
+      "npm:puppeteer": "si-puppeteer",
+      "npm:appium": "si-appium",
+      "npm:node-red": "si-nodered",
+      "npm:homebridge": "si-homebridge",
+      "npm:typeorm": "si-typeorm",
+      "npm:knex": "si-knexdotjs",
+      "npm:@11ty/eleventy": "si-eleventy",
+      "npm:astro": "si-astro",
+      "npm:storybook": "si-storybook",
+      "npm:renovate": "si-renovate",
+      "npm:gulp": "si-gulp",
+      "npm:meteor": "si-meteor",
+      "npm:@capacitor/cli": "si-capacitor",
+      "npm:nuxi": "si-nuxt",
+      "npm:sv": "si-svelte",
+      "npm:@apollo/rover": "si-apollographql",
+    };
+    for (const [toolKey, id] of Object.entries(added)) expect(built.tools[toolKey], toolKey).toBe(id);
+    // The TypeScript row shows TypeScript's logo, as Homebrew's typescript
+    // does -- not npm's, its source's, which it showed before.
+    const typescript = key("npm:/opt/homebrew", "Package", "typescript");
+    expect(resolveToolIcon(typescript, "npm")).toEqual(resolveToolIcon(key("brew:/opt/homebrew", "Formula", "typescript"), "brew"));
+    expect(resolveToolIcon(typescript, "npm")).not.toEqual(resolveSourceIcon("npm"));
+    // An npm twin of a Homebrew formula has the formula's logo.
+    for (const name of ["typescript", "vite", "esbuild", "tailwindcss", "stylelint", "bun", "deno", "appium", "renovate"]) {
+      expect(built.tools[`npm:${name}`], name).toBe(built.tools[`brew:${name}`]);
+    }
+    // And a reviewed "no logo" stays one: webpack's, Sass's and Vue's
+    // logos carry licenses Canager does not ship.
+    for (const toolKey of ["npm:webpack-cli", "npm:sass", "npm:@vue/cli"]) {
+      expect(built.tools[toolKey], toolKey).toBeUndefined();
+    }
+  });
+
   it("gives mtr no logo: Simple Icons' MTR is Hong Kong's railway, not the network tool", () => {
     expect(Object.keys(built.tools)).not.toContain("brew:mtr");
     expect(resolveToolIcon(key("brew:/opt/homebrew", "Formula", "mtr"), "brew")).toBeNull();

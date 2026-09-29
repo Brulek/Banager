@@ -1,5 +1,5 @@
 {
-  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process.",
+  "note": "Reviewed mapping, 2026-09-28: automatic candidates, each confirmed by two independent reviewers (Simple Icons matches by name/maker; GitHub organization avatars by eye). Standalone tools and sources checked by hand. Glyphs whose own license is non-commercial, no-derivatives, GPL or custom are not used (2026-09-28); those tools fall back to a reviewed organization avatar or to no logo. Round 2 (2026-09-28 night): Homebrew ranks 1001–2500 incl. third-party taps, same two-reviewer process. Round 3 (2026-09-29): npm packages of projects whose Simple Icons logo is shippable -- the npm twin of a Homebrew formula already mapped (typescript, vite, esbuild, bun, deno …) and other widely installed ones -- each checked against its npm registry entry's repository (the project's own), no guesses; framework CLIs as \"maker\", as @angular/cli.",
   "tools": {
     "brew:a2ps": {
       "icon": "si:gnu",
@@ -4769,6 +4769,10 @@
       "icon": "si:zoom",
       "relation": "same"
     },
+    "npm:@11ty/eleventy": {
+      "icon": "si:eleventy",
+      "relation": "same"
+    },
     "npm:@11ty/eleventy-dev-server": {
       "icon": "si:eleventy",
       "relation": "maker"
@@ -4780,6 +4784,10 @@
     "npm:@anthropic-ai/claude-code": {
       "icon": "si:claudecode",
       "relation": "same"
+    },
+    "npm:@apollo/rover": {
+      "icon": "si:apollographql",
+      "relation": "maker"
     },
     "npm:@argos-ci/cli": {
       "icon": "gh:argos-ci",
@@ -4797,6 +4805,10 @@
       "icon": "gh:dequelabs",
       "relation": "maker"
     },
+    "npm:@babel/cli": {
+      "icon": "si:babel",
+      "relation": "same"
+    },
     "npm:@biomejs/biome": {
       "icon": "si:biome",
       "relation": "same"
@@ -4804,6 +4816,10 @@
     "npm:@bitwarden/cli": {
       "icon": "si:bitwarden",
       "relation": "maker"
+    },
+    "npm:@capacitor/cli": {
+      "icon": "si:capacitor",
+      "relation": "same"
     },
     "npm:@cloudflare/wrangler": {
       "icon": "si:cloudflare",
@@ -4981,6 +4997,10 @@
       "icon": "si:swc",
       "relation": "same"
     },
+    "npm:@tailwindcss/cli": {
+      "icon": "si:tailwindcss",
+      "relation": "same"
+    },
     "npm:@tapjs/run": {
       "icon": "gh:tapjs",
       "relation": "same"
@@ -5045,6 +5065,14 @@
       "icon": "gh:microsoft",
       "relation": "maker"
     },
+    "npm:appium": {
+      "icon": "si:appium",
+      "relation": "same"
+    },
+    "npm:astro": {
+      "icon": "si:astro",
+      "relation": "same"
+    },
     "npm:auth": {
       "icon": "si:betterauth",
       "relation": "maker"
@@ -5076,6 +5104,10 @@
     "npm:bump-cli": {
       "icon": "gh:bump-sh",
       "relation": "maker"
+    },
+    "npm:bun": {
+      "icon": "si:bun",
+      "relation": "same"
     },
     "npm:ccusage": {
       "icon": "gh:ccusage",
@@ -5117,6 +5149,10 @@
       "icon": "si:cypress",
       "relation": "same"
     },
+    "npm:deno": {
+      "icon": "si:deno",
+      "relation": "same"
+    },
     "npm:depcheck": {
       "icon": "gh:depcheck",
       "relation": "same"
@@ -5133,9 +5169,21 @@
       "icon": "si:expo",
       "relation": "maker"
     },
+    "npm:electron": {
+      "icon": "si:electron",
+      "relation": "same"
+    },
+    "npm:electron-builder": {
+      "icon": "si:electronbuilder",
+      "relation": "same"
+    },
     "npm:ember-cli": {
       "icon": "si:emberdotjs",
       "relation": "maker"
+    },
+    "npm:esbuild": {
+      "icon": "si:esbuild",
+      "relation": "same"
     },
     "npm:eslint": {
       "icon": "si:eslint",
@@ -5177,6 +5225,10 @@
       "icon": "gh:generaltranslation",
       "relation": "same"
     },
+    "npm:gulp": {
+      "icon": "si:gulp",
+      "relation": "same"
+    },
     "npm:gulp-cli": {
       "icon": "si:gulp",
       "relation": "same"
@@ -5187,6 +5239,10 @@
     },
     "npm:hexo-cli": {
       "icon": "si:hexo",
+      "relation": "same"
+    },
+    "npm:homebridge": {
+      "icon": "si:homebridge",
       "relation": "same"
     },
     "npm:html-minifier-terser": {
@@ -5200,6 +5256,14 @@
     "npm:idna-uts46-hx": {
       "icon": "gh:centralnicgroup-opensource",
       "relation": "maker"
+    },
+    "npm:jest": {
+      "icon": "si:jest",
+      "relation": "same"
+    },
+    "npm:knex": {
+      "icon": "si:knexdotjs",
+      "relation": "same"
     },
     "npm:knip": {
       "icon": "si:knip",
@@ -5237,12 +5301,20 @@
       "icon": "gh:openclaw",
       "relation": "same"
     },
+    "npm:meteor": {
+      "icon": "si:meteor",
+      "relation": "same"
+    },
     "npm:mint": {
       "icon": "si:mintlify",
       "relation": "same"
     },
     "npm:mintlify": {
       "icon": "si:mintlify",
+      "relation": "same"
+    },
+    "npm:mocha": {
+      "icon": "si:mocha",
       "relation": "same"
     },
     "npm:momentic": {
@@ -5281,6 +5353,10 @@
       "icon": "si:nodedotjs",
       "relation": "maker"
     },
+    "npm:node-red": {
+      "icon": "si:nodered",
+      "relation": "same"
+    },
     "npm:nodemon": {
       "icon": "si:nodemon",
       "relation": "same"
@@ -5292,6 +5368,10 @@
     "npm:npm": {
       "icon": "si:npm",
       "relation": "same"
+    },
+    "npm:nuxi": {
+      "icon": "si:nuxt",
+      "relation": "maker"
     },
     "npm:nx": {
       "icon": "si:nx",
@@ -5341,6 +5421,10 @@
       "icon": "si:prisma",
       "relation": "same"
     },
+    "npm:puppeteer": {
+      "icon": "si:puppeteer",
+      "relation": "same"
+    },
     "npm:react-native-cli": {
       "icon": "gh:facebook",
       "relation": "maker"
@@ -5353,8 +5437,16 @@
       "icon": "si:remark",
       "relation": "maker"
     },
+    "npm:renovate": {
+      "icon": "si:renovate",
+      "relation": "same"
+    },
     "npm:retire": {
       "icon": "gh:retirejs",
+      "relation": "same"
+    },
+    "npm:rollup": {
+      "icon": "si:rollupdotjs",
       "relation": "same"
     },
     "npm:sandbox": {
@@ -5397,9 +5489,21 @@
       "icon": "si:storyblok",
       "relation": "same"
     },
+    "npm:storybook": {
+      "icon": "si:storybook",
+      "relation": "same"
+    },
+    "npm:stylelint": {
+      "icon": "si:stylelint",
+      "relation": "same"
+    },
     "npm:supabase": {
       "icon": "si:supabase",
       "relation": "same"
+    },
+    "npm:sv": {
+      "icon": "si:svelte",
+      "relation": "maker"
     },
     "npm:svelte-check": {
       "icon": "si:svelte",
@@ -5411,6 +5515,10 @@
     },
     "npm:swagger-cli": {
       "icon": "gh:apidevtools",
+      "relation": "same"
+    },
+    "npm:tailwindcss": {
+      "icon": "si:tailwindcss",
       "relation": "same"
     },
     "npm:tap": {
@@ -5429,8 +5537,24 @@
       "icon": "si:turborepo",
       "relation": "same"
     },
+    "npm:typeorm": {
+      "icon": "si:typeorm",
+      "relation": "same"
+    },
+    "npm:typescript": {
+      "icon": "si:typescript",
+      "relation": "same"
+    },
     "npm:vercel": {
       "icon": "si:vercel",
+      "relation": "same"
+    },
+    "npm:vite": {
+      "icon": "si:vite",
+      "relation": "same"
+    },
+    "npm:vitest": {
+      "icon": "si:vitest",
       "relation": "same"
     },
     "npm:webpack-cli": {
