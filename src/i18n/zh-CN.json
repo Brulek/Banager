@@ -238,8 +238,7 @@
     },
     "allHiddenTitle": "没有要安装的更新",
     "allHiddenDescription": "其余更新已隐藏。",
-    "showHidden": "查看已隐藏的更新",
-    "lastCheckedSentence": "{{when}}。"
+    "showHidden": "查看已隐藏的更新"
   },
   "commandPreview": {
     "show_other": "查看命令",

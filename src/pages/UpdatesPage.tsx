@@ -758,7 +758,9 @@ export function UpdatesPage() {
     // As macOS says an empty list (`EmptyState`): up to date, when the
     // last check was, and Check Again; every update hidden, and where
     // they are; nothing in what could be checked, over the notices that
-    // say what could not.
+    // say what could not. When the last check was is a label, as in the
+    // toolbar's tooltip and under the Overview's status -- 「上次检查：
+    // 刚才」 -- not a sentence, so no full stop.
     const empty =
       snapshot.updates.length > 0 ? (
         <EmptyState
@@ -771,11 +773,7 @@ export function UpdatesPage() {
           symbol="check"
           title={t("updates.upToDate")}
           description={
-            refreshedAt === null
-              ? undefined
-              : t("updates.lastCheckedSentence", {
-                  when: elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now)),
-                })
+            refreshedAt === null ? undefined : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now))
           }
           action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
         />

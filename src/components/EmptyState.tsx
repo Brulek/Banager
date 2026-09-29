@@ -22,7 +22,10 @@ export interface EmptyStateDetail {
 
 export interface EmptyStateProps {
   title: string;
-  /** One sentence, ending with its full stop; or none. */
+  /**
+   * One sentence, ending with its full stop -- or a label, such as when
+   * the last check was, with none; or nothing.
+   */
   description?: string;
   /** More than the one line, behind a "Details" button after it. */
   detail?: EmptyStateDetail;
@@ -41,7 +44,7 @@ export interface EmptyStateProps {
  * centred in the list's area, a 36 symbol in the tertiary grey -- a ✓ or
  * an ⓘ in a circle, never green: an empty list is not a success to
  * celebrate -- then 24 below it the title, 15/20 semibold, and 8 below
- * that one sentence, 15/20 regular, no wider than 360; both in the
+ * that one line, 15/20 regular, no wider than 360; both in the
  * secondary grey, as the native view sets them. 16 under it, at most one
  * button, regular and grey.
  */

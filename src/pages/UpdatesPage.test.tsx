@@ -3132,7 +3132,7 @@ describe("UpdatesPage", () => {
     expect(useUiStore.getState().page).toBe("settings");
   });
 
-  it("says an empty list as macOS does: a 36 tertiary symbol, the title, one sentence, one grey button", async () => {
+  it("says an empty list as macOS does: a 36 tertiary symbol, the title, when it was checked, one grey button", async () => {
     updates = [];
     const { findByText, getByRole } = renderPage();
 
@@ -3144,14 +3144,29 @@ describe("UpdatesPage", () => {
     expect(symbol.getAttribute("class")).toContain("text-tertiary");
     expect(symbol.getAttribute("class")).not.toContain("text-success");
     expect(title).toHaveClass("text-section", "mt-6");
-    const sentence = title.nextElementSibling as HTMLElement;
-    expect(sentence.textContent).toMatch(/^Checked .*\.$/);
-    expect(sentence).toHaveClass("text-section", "font-normal", "text-muted", "mt-2", "max-w-90");
+    // When it was checked is a label, as the toolbar's tooltip says it:
+    // no full stop.
+    const checked = title.nextElementSibling as HTMLElement;
+    expect(checked.textContent).toMatch(/^Checked (just now|\d+ (min|hours?|days?) ago)$/);
+    expect(checked).toHaveClass("text-section", "font-normal", "text-muted", "mt-2", "max-w-90");
     const again = within(empty).getByRole("button", { name: "Check Again" });
     expect(again.className).toBe(`mt-4 ${BUTTON.regular.grey}`);
     fireEvent.click(again);
     await waitFor(() => expect(calls("refresh").length).toBeGreaterThan(0));
     expect(getByRole("button", { name: "Check Again" })).toBe(again);
+  });
+
+  it("says in Chinese when it was checked with no full stop, as a label", async () => {
+    updates = [];
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByText } = renderPage();
+      const title = await findByText("所有工具都是最新的");
+      const checked = title.nextElementSibling as HTMLElement;
+      expect(checked.textContent).toMatch(/^上次检查：(刚才|\d+(分钟|小时|天)前)$/);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("says everything is up to date only when the backend reports no updates at all", async () => {

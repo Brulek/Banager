@@ -48,7 +48,7 @@ describe("EmptyState", () => {
       <EmptyState
         symbol="check"
         title="Everything is up to date"
-        description="Checked 3 min ago."
+        description="Checked 3 min ago"
         action={{ label: "Check Again", onClick: () => {} }}
       />,
     );
@@ -60,7 +60,7 @@ describe("EmptyState", () => {
     expect(symbol).toHaveAttribute("width", "36");
     expect(symbol.getAttribute("class")).toContain("text-tertiary");
     expect(title).toHaveClass("mt-6", "text-section", "text-muted");
-    expect(screen.getByText("Checked 3 min ago.")).toHaveClass("mt-2", "text-section", "font-normal", "max-w-90");
+    expect(screen.getByText("Checked 3 min ago")).toHaveClass("mt-2", "text-section", "font-normal", "max-w-90");
     expect(screen.getByRole("button", { name: "Check Again" })).toHaveClass("mt-4", "bg-fill");
   });
 

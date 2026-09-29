@@ -258,8 +258,7 @@
     },
     "allHiddenTitle": "No updates to install",
     "allHiddenDescription": "The rest are hidden.",
-    "showHidden": "Show Hidden Updates",
-    "lastCheckedSentence": "{{when}}."
+    "showHidden": "Show Hidden Updates"
   },
   "commandPreview": {
     "show_one": "Show Command",
