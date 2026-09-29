@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow } from "./ToolRow";
+import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow } from "./ToolRow";
 import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
@@ -521,6 +521,76 @@ describe("ToolRow", () => {
       expect(spoken.textContent).toBe("2.1.282 → 2.1.290");
       expect(spoken.className).toBe("sr-only");
       expect(container.querySelector("[data-status-column]")).toBeNull();
+    });
+
+    it("beside the inspector, drops a description left room for fewer than 8 of its characters, rather than cut it to 「G…」", () => {
+      expect(DESCRIPTION_MIN_CHARACTERS).toBe(8);
+      // The description's line `lineWidth` wide; the status word 80; a dot
+      // and each of the version's characters 7, as the font is
+      // (`textMeasurer`, mocked). The words before the description take
+      // 80 + 21 + 119 = 220.
+      const laidOut = (lineWidth: number) =>
+        vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+          const width =
+            this.querySelector(":scope > [data-description]") !== null
+              ? lineWidth
+              : this.hasAttribute("data-status")
+                ? 80
+                : this.hasAttribute("data-line-dot") || this.hasAttribute("data-version")
+                  ? (this.textContent?.length ?? 0) * 7
+                  : 0;
+          return new DOMRect(0, 0, width, 16);
+        });
+      const blurbAt = (lineWidth: number) => {
+        const box = laidOut(lineWidth);
+        try {
+          const { container, unmount } = renderWithProviders(row(451));
+          const blurb = getByText(container, "Anthropic's coding assistant");
+          const line = blurb.parentElement as HTMLElement;
+          const result = {
+            className: blurb.className,
+            text: line.textContent,
+            dots: line.querySelectorAll("[data-line-dot]").length,
+          };
+          unmount();
+          return result;
+        } finally {
+          box.mockRestore();
+        }
+      };
+
+      // 「 · Anthropi」 is 11 characters, 77 wide: with 76 left it goes --
+      // from sight, and its dot with it -- and the status word and the
+      // change stay whole.
+      const dropped = blurbAt(220 + 76);
+      expect(dropped.className).toBe("sr-only");
+      expect(dropped.dots).toBe(1);
+      expect(dropped.text).toBe("Updates itself · 2.1.282 → 2.1.290Anthropic's coding assistant");
+      // A screen reader still hears it; the inspector shows it whole.
+
+      // With 77 left, it stays, cut short by its box.
+      const kept = blurbAt(220 + 77);
+      expect(kept.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "flex-1", "truncate"]));
+      expect(kept.dots).toBe(2);
+      expect(kept.text).toBe("Updates itself · 2.1.282 → 2.1.290 · Anthropic's coding assistant");
+
+      // Nothing laid out (a line 0 wide): it stays, for its box to cut.
+      const unmeasured = blurbAt(0);
+      expect(unmeasured.className).not.toBe("sr-only");
+      expect(unmeasured.dots).toBe(2);
+
+      // A row with nothing before its description keeps it whatever the room.
+      const box = laidOut(10);
+      try {
+        const plain = renderWithProviders(
+          <ListWidthProvider value={451}>
+            <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" version="1.8.2" />
+          </ListWidthProvider>,
+        );
+        expect(getByText(plain.container, "JSON processor").className).not.toBe("sr-only");
+      } finally {
+        box.mockRestore();
+      }
     });
   });
 

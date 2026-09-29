@@ -139,7 +139,9 @@ export interface ToolRowContentProps {
  * the inspector's list in the narrowest window -- the row's button goes
  * too, the version it would bring on that line after its arrow, and only
  * the ⋯ stays at the row's end: what the button did is there and in the
- * inspector. Past that, the description is cut short -- never the name.
+ * inspector. Past that, the description is cut short -- never the name --
+ * and, left room for no more than a few characters after the words before
+ * it, dropped from the line (`DESCRIPTION_MIN_CHARACTERS`).
  */
 export type RowFit = "full" | "compact" | "narrow" | "minimal" | "tiny";
 
@@ -167,6 +169,16 @@ export function rowFitFor(width: number | null): RowFit {
  */
 export const MIDDLE_CUT_FROM = 32;
 const NAME_TAIL = 12;
+
+/**
+ * The fewest characters of a description worth showing after a status
+ * word and a version on its line: with less room than this -- and the dot
+ * before it -- it is dropped from sight rather than cut to 「G…」, which
+ * says nothing (the inspector says it whole). Measured in the
+ * description's own first characters, so a Chinese one asks for more room
+ * than a Latin one.
+ */
+export const DESCRIPTION_MIN_CHARACTERS = 8;
 
 /**
  * The name, on one line: cut short at its end, or -- a very long one, such
@@ -297,6 +309,10 @@ export function ToolRow({
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);
   const openButton = useRef<HTMLButtonElement>(null);
+  // The description's line, and whether the description has room on it
+  // after what goes before it (below).
+  const descriptionLine = useRef<HTMLDivElement>(null);
+  const [descriptionFits, setDescriptionFits] = useState(true);
 
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     event.currentTarget.focus();
@@ -383,10 +399,44 @@ export function ToolRow({
       {" · "}
     </span>
   );
+  // What goes before the description leaves it the rest of the line; with
+  // less than its first few characters' room (`DESCRIPTION_MIN_CHARACTERS`)
+  // it leaves the line, and its dot with it -- still said to a screen
+  // reader. Measured after every layout, as nothing but the text measures
+  // what the words before it take: the room is the line's width less
+  // everything on it but the description and its dot, the same whether it
+  // is in sight or not. Nothing measured (a line not laid out, or jsdom):
+  // it stays, for its box to cut.
+  const hasLeading = leading.length > 0;
+  useLayoutEffect(() => {
+    const line = descriptionLine.current;
+    const width = line?.getBoundingClientRect().width ?? 0;
+    if (!hasLeading || line == null || width === 0) {
+      setDescriptionFits(true);
+      return;
+    }
+    const measure = textMeasurer(line);
+    if (measure === null) {
+      setDescriptionFits(true);
+      return;
+    }
+    let room = width;
+    for (const part of Array.from(line.children)) {
+      if (part.hasAttribute("data-description") || part.hasAttribute("data-description-dot")) continue;
+      room -= part.getBoundingClientRect().width;
+    }
+    setDescriptionFits(room >= measure(` · ${description.slice(0, DESCRIPTION_MIN_CHARACTERS)}`));
+  });
+  const descriptionShown = !hasLeading || descriptionFits;
   const descriptionText = (
     <span
       title={description}
-      className={`min-w-0 truncate ${versionInline ? "flex-1" : ""} ${selectableDescription ? "select-text" : ""}`}
+      data-description=""
+      className={
+        descriptionShown
+          ? `min-w-0 truncate ${versionInline ? "flex-1" : ""} ${selectableDescription ? "select-text" : ""}`
+          : "sr-only"
+      }
     >
       {description}
     </span>
@@ -457,13 +507,18 @@ export function ToolRow({
               <span className={showSource ? "ml-1.5 shrink-0 text-small text-muted" : "sr-only"}>{source}</span>
             ) : null}
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center text-small text-muted">
-            {leading.map((part) => (
+          <div ref={descriptionLine} className="mt-0.5 flex min-w-0 items-center text-small text-muted">
+            {leading.map((part, index) => (
               <Fragment key={part.key}>
+                {index > 0 ? dot : null}
                 {part.node}
-                {dot}
               </Fragment>
             ))}
+            {hasLeading && descriptionShown ? (
+              <span aria-hidden="true" data-line-dot="" data-description-dot="" className="shrink-0 whitespace-pre">
+                {" · "}
+              </span>
+            ) : null}
             {descriptionText}
             {descriptionNote !== undefined ? (
               // The description gives way to the note, cut short first; the
