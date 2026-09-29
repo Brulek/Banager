@@ -8,7 +8,8 @@
  * asks only while the page has said it listens (`askBeforeQuit`), so that a
  * page that could not listen, or has gone, leaves quitting as it was; and
  * Canager quits after all when the page does not say within 2 seconds that
- * the question is on screen (`quitQuestionShown`).
+ * the question is on screen (`quitQuestionShown`), or that the user answered
+ * 「继续等待」 (`quitKeptWaiting`).
  */
 import { useEffect, useRef } from "react";
 import { askBeforeQuit, onQuitRequested } from "./api";
@@ -78,6 +79,26 @@ export const QUIT_NO_CANCEL_KEYS: Record<OpKind, string> = {
   Uninstall: "quit.noCancel.Uninstall",
   Upgrade: "quit.noCancel.Upgrade",
 };
+
+/**
+ * Tells Rust something about the question (`quitQuestionShown`,
+ * `quitKeptWaiting`): `send`, and `send` once more should it fail -- a
+ * word that does not get through leaves Rust to quit 2 seconds after
+ * asking. A second failure is logged, as `what` failed.
+ */
+export async function tellRustTwice(send: () => Promise<void>, what: string): Promise<void> {
+  try {
+    await send();
+    return;
+  } catch (e: unknown) {
+    console.error(`${what} failed, sending it once more`, e);
+  }
+  try {
+    await send();
+  } catch (e: unknown) {
+    console.error(`${what} failed`, e);
+  }
+}
 
 /**
  * Calls `onRequest` with the question's number each time Rust asks

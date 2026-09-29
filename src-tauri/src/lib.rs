@@ -133,6 +133,7 @@ pub fn run() {
             notify::request_notification_permission,
             quit::ask_before_quit,
             quit::quit_question_shown,
+            quit::quit_kept_waiting,
             quit::quit_anyway,
         ])
         .build(tauri::generate_context!())

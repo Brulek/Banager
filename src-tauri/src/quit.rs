@@ -27,7 +27,11 @@
 //! can also go without a word: reloaded, or its web content crashed. So
 //! once asked, the page has `SHOW_WITHIN`, 2 seconds, to say that the
 //! question is on screen (`quit_question_shown`); without that, Canager
-//! quits, as it does on 「仍然退出」 (`quit_unless_shown`).
+//! quits, as it does on 「仍然退出」 (`quit_unless_shown`). 「继续等待」, or
+//! Escape, says so too (`quit_kept_waiting`), which stops that wait from
+//! quitting should the first word not have got through; and a quit
+//! repeated while the question is pending asks it again without a second
+//! wait (`QuitGuard::ask`).
 //!
 //! How every quit reaches `should_quit`: each ends in AppKit's
 //! `terminate:` -- the menu bar's Quit is macOS's own item
@@ -98,6 +102,10 @@ pub enum OnQuit {
     Quit,
     /// The quit is called off, and the page asks whether to quit anyway.
     Ask,
+    /// The quit is called off, and nothing asks: a quit is under way
+    /// already, stopping the operations (`quit_now`), and ends Canager
+    /// within `STOP_WITHIN` -- quitting at once would cut that short.
+    Stopping,
 }
 
 /// What a request to quit does, with `unfinished` operations not `Done`:
@@ -207,18 +215,34 @@ async fn stop_then_quit(
     quit();
 }
 
+/// A question as `QuitGuard::ask` hands it out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Question {
+    /// Its number, which the page hands back (`QuitGuard::shown`,
+    /// `QuitGuard::kept_waiting`).
+    pub number: u64,
+    /// Whether it is a new question, whose fallback is to start
+    /// (`quit_unless_shown`); `false` for the one still pending, asked
+    /// again, whose fallback already runs.
+    pub new: bool,
+}
+
 /// Whether a quit asks first -- whether the page listens for the question,
 /// and whether the user has already answered 「仍然退出」 -- and which
-/// questions the page has said are on screen. Managed on the builder in
-/// `run()`; in memory only, for this run.
+/// questions are settled: on screen, or answered 「继续等待」. Managed on
+/// the builder in `run()`; in memory only, for this run.
 #[derive(Debug, Default)]
 pub struct QuitGuard {
     page_asks: AtomicBool,
     confirmed: AtomicBool,
+    /// A quit is under way, stopping the operations (`quit_now`).
+    stopping: AtomicBool,
     /// The newest question's number, counting from 1; 0 before the first.
     asked: AtomicU64,
-    /// The newest question the page has said is on screen; 0 before any.
-    shown: AtomicU64,
+    /// The newest question the page has said is on screen, or the user
+    /// has answered 「继续等待」 to; 0 before any. A question newer than
+    /// this is pending: its fallback still runs.
+    settled: AtomicU64,
 }
 
 impl QuitGuard {
@@ -234,8 +258,22 @@ impl QuitGuard {
         self.confirmed.store(true, Ordering::SeqCst);
     }
 
-    /// `on_quit` with what this guard knows.
+    /// A quit is under way, stopping the operations before Canager quits
+    /// (`quit_now`): until it does, another quit is called off
+    /// (`OnQuit::Stopping`), so as not to cut it short. Its own
+    /// `AppHandle::exit` asks AppKit nothing -- tao ends with `stop:`, not
+    /// `terminate:` -- so is not called off.
+    pub fn stop(&self) {
+        self.confirm();
+        self.stopping.store(true, Ordering::SeqCst);
+    }
+
+    /// `on_quit` with what this guard knows, and `OnQuit::Stopping` while a
+    /// quit is under way (`stop`).
     pub fn decide(&self, unfinished: usize) -> OnQuit {
+        if self.stopping.load(Ordering::SeqCst) {
+            return OnQuit::Stopping;
+        }
         on_quit(
             unfinished,
             self.page_asks.load(Ordering::SeqCst),
@@ -243,25 +281,51 @@ impl QuitGuard {
         )
     }
 
-    /// A question is about to go to the page: its number, which the page
-    /// hands back once the question is on screen (`shown`).
-    pub fn ask(&self) -> u64 {
-        self.asked.fetch_add(1, Ordering::SeqCst) + 1
+    /// A question is about to go to the page. While the newest one is
+    /// pending -- neither on screen nor answered yet -- that one again, with
+    /// no fallback of its own: a quit repeated while the page has not yet
+    /// answered starts no second one. Otherwise a new one, with the next
+    /// number. Asked on the main thread only (`should_quit`).
+    pub fn ask(&self) -> Question {
+        let asked = self.asked.load(Ordering::SeqCst);
+        if asked > self.settled.load(Ordering::SeqCst) {
+            return Question {
+                number: asked,
+                new: false,
+            };
+        }
+        Question {
+            number: self.asked.fetch_add(1, Ordering::SeqCst) + 1,
+            new: true,
+        }
     }
 
     /// The page has question `question` on screen, and with it every one
     /// asked before: the one sheet answers every quit so far. A number
     /// that no question has had yet is not taken.
     pub fn shown(&self, question: u64) {
+        self.settle(question);
+    }
+
+    /// The user answered question `question` 「继续等待」 -- or the sheet
+    /// went by itself, everything having finished: its fallback, should it
+    /// still run, does not quit, whether or not the page's word that the
+    /// question was on screen got through. A number that no question has
+    /// had yet is not taken.
+    pub fn kept_waiting(&self, question: u64) {
+        self.settle(question);
+    }
+
+    fn settle(&self, question: u64) {
         if question <= self.asked.load(Ordering::SeqCst) {
-            self.shown.fetch_max(question, Ordering::SeqCst);
+            self.settled.fetch_max(question, Ordering::SeqCst);
         }
     }
 
     /// `once_asked` for question `question`, with what this guard knows.
     pub fn once_asked(&self, question: u64) -> OnceAsked {
         once_asked(
-            self.shown.load(Ordering::SeqCst) >= question,
+            self.settled.load(Ordering::SeqCst) >= question,
             self.confirmed.load(Ordering::SeqCst),
         )
     }
@@ -273,7 +337,9 @@ impl QuitGuard {
 /// with the question's number (`window::show_and_send`), and the quit is
 /// called off -- and Canager quits after all should the page not say
 /// within `SHOW_WITHIN` that the question is on screen
-/// (`quit_unless_shown`). Should the page be out of reach, Canager quits
+/// (`quit_unless_shown`). A quit repeated while that question is pending
+/// asks the same question again, and starts no second wait
+/// (`QuitGuard::ask`). Should the page be out of reach, Canager quits
 /// at once, as it always has, rather than not quitting and asking nobody.
 /// So does anything missing here.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -284,11 +350,14 @@ pub fn should_quit<R: Runtime>(app: &AppHandle<R>) -> bool {
     };
     match guard.decide(unfinished(&state.session.operations())) {
         OnQuit::Quit => true,
+        OnQuit::Stopping => false,
         OnQuit::Ask => {
             let question = guard.ask();
-            match window::show_and_send(app, QUIT_REQUESTED_EVENT, question) {
+            match window::show_and_send(app, QUIT_REQUESTED_EVENT, question.number) {
                 Ok(()) => {
-                    quit_unless_shown(app, question);
+                    if question.new {
+                        quit_unless_shown(app, question.number);
+                    }
                     false
                 }
                 Err(e) => {
@@ -329,8 +398,9 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
 }
 
 /// Canager quits: 「仍然退出」 (`quit_anyway`), and a question the page never
-/// showed (`quit_unless_shown`). A quit that comes while this runs quits too
-/// (`confirm`). First every operation that can be cancelled is, as
+/// showed (`quit_unless_shown`). A quit that comes while this runs is called
+/// off, and this goes on (`QuitGuard::stop`). First every operation that can
+/// be cancelled is, as
 /// 「全部取消」 does, and Canager waits for those commands to stop,
 /// `STOP_WITHIN` at the most (`stop_then_quit`); then it quits through
 /// tauri's own `AppHandle::exit`, which asks AppKit nothing and ends in
@@ -348,7 +418,7 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
 /// to its standard output or error after that fails with a broken pipe
 /// (EPIPE, or SIGPIPE, which ends a program that does not ignore it).
 async fn quit_now<R: Runtime>(app: &AppHandle<R>) {
-    app.state::<QuitGuard>().confirm();
+    app.state::<QuitGuard>().stop();
     if let Some(state) = app.try_state::<AppState>() {
         let session = &state.session;
         stop_then_quit(
@@ -382,6 +452,15 @@ pub fn ask_before_quit(guard: State<'_, QuitGuard>, ask: bool) {
 #[tauri::command]
 pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
     guard.shown(question);
+}
+
+/// The user answered question `question` 「继续等待」 (or Escape), or the
+/// sheet went by itself, everything having finished: Canager does not quit
+/// for want of word from the page (`QuitGuard::kept_waiting`) -- which
+/// matters when that word, `quit_question_shown`, did not get through.
+#[tauri::command]
+pub fn quit_kept_waiting(guard: State<'_, QuitGuard>, question: u64) {
+    guard.kept_waiting(question);
 }
 
 /// 「仍然退出」: Canager cancels what can be cancelled, waits for it to stop,
@@ -802,6 +881,25 @@ mod tests {
     }
 
     #[test]
+    fn test_a_quit_while_one_is_stopping_the_operations_is_called_off() {
+        let guard = QuitGuard::default();
+        guard.page_asks(true);
+        guard.stop();
+        assert_eq!(
+            guard.decide(2),
+            OnQuit::Stopping,
+            "it would cut the stop short"
+        );
+        assert_eq!(guard.decide(0), OnQuit::Stopping);
+        let question = guard.ask().number;
+        assert_eq!(
+            guard.once_asked(question),
+            OnceAsked::Wait,
+            "a question asked before stopping does not quit on its own"
+        );
+    }
+
+    #[test]
     fn test_a_page_that_stops_listening_leaves_every_quit_quitting_at_once() {
         let guard = QuitGuard::default();
         guard.page_asks(true);
@@ -840,7 +938,7 @@ mod tests {
     fn test_the_guard_numbers_each_question_and_waits_only_for_one_the_page_has_on_screen() {
         let guard = QuitGuard::default();
         guard.page_asks(true);
-        let first = guard.ask();
+        let first = guard.ask().number;
         assert_eq!(first, 1);
         assert_eq!(
             guard.once_asked(first),
@@ -850,7 +948,7 @@ mod tests {
         guard.shown(first);
         assert_eq!(guard.once_asked(first), OnceAsked::Wait);
 
-        let second = guard.ask();
+        let second = guard.ask().number;
         assert_eq!(second, 2);
         assert_eq!(
             guard.once_asked(second),
@@ -860,20 +958,36 @@ mod tests {
         guard.shown(second);
         assert_eq!(guard.once_asked(second), OnceAsked::Wait);
 
-        // Two quits in a row: the one sheet on screen answers both.
-        let (third, fourth) = (guard.ask(), guard.ask());
-        guard.shown(fourth);
-        assert_eq!(guard.once_asked(third), OnceAsked::Wait);
-        assert_eq!(guard.once_asked(fourth), OnceAsked::Wait);
+        // Two quits in a row, the first not yet on screen: the second asks
+        // the same question again, and starts no second wait.
+        let third = guard.ask();
+        assert!(third.new);
+        let again = guard.ask();
+        assert_eq!(
+            again,
+            Question {
+                number: third.number,
+                new: false
+            }
+        );
+        guard.shown(third.number);
+        assert_eq!(guard.once_asked(third.number), OnceAsked::Wait);
+        // Once it is on screen, a quit asks a new question, with a wait of
+        // its own: the page may have gone since.
+        let fourth = guard.ask();
+        assert_eq!(fourth.number, third.number + 1);
+        assert!(fourth.new);
+        guard.shown(fourth.number);
         // An answer to the older one after the newer one's changes nothing.
-        guard.shown(third);
-        assert_eq!(guard.once_asked(fourth), OnceAsked::Wait);
+        guard.shown(third.number);
+        assert_eq!(guard.once_asked(fourth.number), OnceAsked::Wait);
 
         // A number no question has had yet is not taken: the question that
         // gets it later still has to be on screen.
-        guard.shown(fourth + 1);
-        let fifth = guard.ask();
-        assert_eq!(fifth, fourth + 1);
+        guard.shown(fourth.number + 1);
+        guard.kept_waiting(fourth.number + 1);
+        let fifth = guard.ask().number;
+        assert_eq!(fifth, fourth.number + 1);
         assert_eq!(guard.once_asked(fifth), OnceAsked::Quit);
 
         guard.confirm();
@@ -890,7 +1004,7 @@ mod tests {
     async fn test_a_question_the_page_has_on_screen_in_time_waits_for_the_user() {
         let guard = QuitGuard::default();
         guard.page_asks(true);
-        let question = guard.ask();
+        let question = guard.ask().number;
         let mut waiting = std::pin::pin!(wait_for_the_page(
             &guard,
             question,
@@ -912,7 +1026,7 @@ mod tests {
     async fn test_a_question_nobody_says_is_on_screen_quits_once_the_wait_is_over() {
         let guard = QuitGuard::default();
         guard.page_asks(true);
-        let question = guard.ask();
+        let question = guard.ask().number;
         let within = Duration::from_millis(20);
         let started = std::time::Instant::now();
         assert!(wait_for_the_page(&guard, question, within).await);
@@ -920,8 +1034,33 @@ mod tests {
 
         // An earlier question on screen does not stand for a later quit's.
         guard.shown(question);
-        let next = guard.ask();
+        let next = guard.ask().number;
         assert!(wait_for_the_page(&guard, next, within).await);
+    }
+
+    /// 「继续等待」 while the page's word that the question is on screen has
+    /// not got through: Canager does not quit.
+    #[tokio::test]
+    async fn test_keep_waiting_stops_the_wait_from_quitting_without_word_that_it_was_shown() {
+        let guard = QuitGuard::default();
+        guard.page_asks(true);
+        let question = guard.ask();
+        assert!(question.new);
+        let mut waiting = std::pin::pin!(wait_for_the_page(
+            &guard,
+            question.number,
+            Duration::from_millis(20),
+        ));
+        assert!(tokio::time::timeout(Duration::ZERO, waiting.as_mut())
+            .await
+            .is_err());
+        guard.kept_waiting(question.number);
+        assert!(!waiting.await, "Canager does not quit");
+        assert_eq!(guard.once_asked(question.number), OnceAsked::Wait);
+        // Answered, it is not pending: the next quit asks anew, with a wait.
+        let next = guard.ask();
+        assert_eq!(next.number, question.number + 1);
+        assert!(next.new);
     }
 
     #[test]

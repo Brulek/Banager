@@ -33,10 +33,13 @@ fn main() {
          does there",
         class.name()
     );
+    // In libtest's words, so that it is counted with the rest.
+    println!("\nrunning 1 test");
     println!(
-        "test tao_delegate: {:?} does not answer applicationShouldTerminate: ... ok",
+        "test tao_delegate ({:?} does not answer applicationShouldTerminate:) ... ok",
         class.name()
     );
+    println!("\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n");
 }
 
 #[cfg(not(target_os = "macos"))]

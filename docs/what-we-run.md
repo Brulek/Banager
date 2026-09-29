@@ -193,7 +193,9 @@ operation bar's *Cancel all* does: one still queued never runs, and a
 running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
 of it is left, which can leave the tool it was updating or uninstalling
 half done. Canager quits once those commands have stopped, 7 seconds
-after *Quit anyway* at the most (`quit_now` in `src-tauri/src/quit.rs`).
+after *Quit anyway* at the most (`quit_now` in `src-tauri/src/quit.rs`);
+another quit meanwhile — ⌘Q, the Dock's Quit, a logout — is called off,
+and does not cut that wait short.
 A running operation that cannot be cancelled — rustup's self update or
 self uninstall — is not stopped: Canager sends it no signal, and it runs
 in a process group of its own, so its command runs on without Canager.
@@ -221,7 +223,13 @@ nor once the page has stopped listening, as it does when an error in
 drawing it takes it down; and once asked, the window has 2 seconds to
 say that the question is on screen, or Canager quits — a window that
 was reloaded or stopped working is not there to answer, and a quit
-called off with nobody to ask would never happen. A refresh alone never
+called off with nobody to ask would never happen. *Keep waiting* (or
+Escape, or the question going away once everything has finished) tells
+Canager too, and that 2-second wait then does not quit, even when the
+word that the question was on screen did not get through; the window
+sends each of the two words once more should it fail. A quit repeated
+before the window has said the question is on screen asks the same
+question again and starts no second wait. A refresh alone never
 holds a quit (`src-tauri/src/quit.rs`, `src/lib/quit.ts`,
 `src/components/QuitQuestion.tsx`). Force Quit still quits at once.
 

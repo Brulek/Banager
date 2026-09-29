@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { quitAnyway, quitQuestionShown } from "../lib/api";
+import { quitAnyway, quitKeptWaiting, quitQuestionShown } from "../lib/api";
 import { freshOperations, queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
-import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, useQuitRequests } from "../lib/quit";
+import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "../lib/quit";
 import type { OpSummary } from "../lib/types";
 import { WarningIcon } from "./icons";
 import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
@@ -31,7 +31,11 @@ import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
  * Once it is on screen, it tells Rust so, by the number of the newest
  * question it answers (`quitQuestionShown`): Rust waits 2 seconds for
  * that, then quits, since a page that never showed the question is not
- * there for the user to answer.
+ * there for the user to answer. When it goes without quitting --
+ * 「继续等待」, Escape, or everything having finished -- it tells Rust that
+ * too (`quitKeptWaiting`), which stops that wait from quitting should the
+ * first word not have got through. Each word is sent once more should it
+ * fail (`tellRustTwice`).
  *
  * Mounted once, by `App`. Draws nothing until Rust asks.
  */
@@ -44,7 +48,7 @@ export function QuitQuestion() {
   // The newest question from Rust that the sheet answers, by its number.
   const [question, setQuestion] = useState<number | null>(null);
   const [quitting, setQuitting] = useState(false);
-  const keepWaiting = useRef<HTMLButtonElement>(null);
+  const keepWaitingButton = useRef<HTMLButtonElement>(null);
 
   const quit = useCallback(() => {
     setQuitting(true);
@@ -79,30 +83,38 @@ export function QuitQuestion() {
   const count = active.length;
   const body = quitBodyKey(active);
 
+  // It goes, and Canager stays: Rust is told, so that its wait for word
+  // from the page does not quit.
+  const keepWaiting = useCallback(() => {
+    setAsked(false);
+    if (question !== null) void tellRustTwice(() => quitKeptWaiting(question), "quit_kept_waiting");
+  }, [question]);
+
   // Everything finished while it asked: it goes, and Canager stays -- and
-  // it does not come back by itself when something starts later.
+  // it does not come back by itself when something starts later. Not while
+  // Canager quits: 「仍然退出」 cancels them, and they finish on the way.
   useEffect(() => {
-    if (asked && count === 0) setAsked(false);
-  }, [asked, count]);
+    if (asked && count === 0 && !quitting) keepWaiting();
+  }, [asked, count, quitting, keepWaiting]);
 
   return (
     <Dialog
       open={asked && count > 0}
       onOpenChange={(open) => {
-        if (!open) setAsked(false);
+        if (!open) keepWaiting();
       }}
       title={t("quit.title", { count })}
-      initialFocus={keepWaiting}
+      initialFocus={keepWaitingButton}
       footer={
         <>
           <button type="button" disabled={quitting} onClick={quit} className={SHEET_BUTTON.secondary}>
             {t("quit.quitAnyway")}
           </button>
           <button
-            ref={keepWaiting}
+            ref={keepWaitingButton}
             type="button"
             disabled={quitting}
-            onClick={() => setAsked(false)}
+            onClick={keepWaiting}
             className={SHEET_BUTTON.primary}
           >
             {t("quit.keepWaiting")}
@@ -128,15 +140,14 @@ export function QuitQuestion() {
  * Tells Rust that question `question` is on screen (`quitQuestionShown`),
  * so that Canager waits for the user's answer rather than quitting: drawn
  * inside the sheet, so that it says so once the sheet is in the page, and
- * again for each question that comes while it is up.
+ * again for each question that comes while it is up. Sent once more should
+ * it fail; should that fail too, Canager quits 2 seconds after asking, as
+ * it does with nobody here to answer, unless the user has answered
+ * 「继续等待」 by then (`quitKeptWaiting`).
  */
 function OnScreen({ question }: { question: number }) {
   useEffect(() => {
-    quitQuestionShown(question).catch((e: unknown) => {
-      // Canager then quits 2 seconds after asking, as it does with nobody
-      // here to answer.
-      console.error("quit_question_shown failed", e);
-    });
+    void tellRustTwice(() => quitQuestionShown(question), "quit_question_shown");
   }, [question]);
   return null;
 }

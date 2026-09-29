@@ -44,6 +44,7 @@ export const MOCK_COMMANDS = [
   "request_notification_permission",
   "ask_before_quit",
   "quit_question_shown",
+  "quit_kept_waiting",
   "quit_anyway",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
@@ -516,6 +517,14 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       const { question } = args;
       if (typeof question !== "number" || !Number.isSafeInteger(question) || question < 0) {
         throw `invalid args \`question\` for command \`quit_question_shown\`: ${JSON.stringify(question)}`;
+      }
+    },
+    async quit_kept_waiting(args) {
+      // No question is ever asked here (above), so none is answered; like
+      // the real command, it takes a question's number, a `u64`.
+      const { question } = args;
+      if (typeof question !== "number" || !Number.isSafeInteger(question) || question < 0) {
+        throw `invalid args \`question\` for command \`quit_kept_waiting\`: ${JSON.stringify(question)}`;
       }
     },
     async quit_anyway() {

@@ -292,8 +292,19 @@ export function quitQuestionShown(question: number): Promise<void> {
 }
 
 /**
- * 「仍然退出」: Canager quits now, whatever is under way (`quit_anyway` in
- * src-tauri/src/quit.rs).
+ * The user answered question `question` 「继续等待」 (or Escape), or the
+ * sheet went by itself, everything having finished: Canager does not quit
+ * 2 seconds after asking, even when `quitQuestionShown` did not get through
+ * (`quit_kept_waiting` in src-tauri/src/quit.rs). `QuitQuestion` sends it.
+ */
+export function quitKeptWaiting(question: number): Promise<void> {
+  return call<void>("quit_kept_waiting", { question });
+}
+
+/**
+ * 「仍然退出」: Canager cancels what can be cancelled, waits for it to stop,
+ * and quits (`quit_anyway` in src-tauri/src/quit.rs); the promise settles
+ * only if Canager is still there to answer.
  */
 export function quitAnyway(): Promise<void> {
   return call<void>("quit_anyway");

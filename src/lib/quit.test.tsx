@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { fakeMenuBar } from "../test/menuBar";
 import { QUIT_REQUESTED_EVENT } from "./api";
-import { commandUnderWay, quitBodyKey, quitStops, useQuitRequests } from "./quit";
+import { commandUnderWay, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "./quit";
 import type { OpKind, OpStatus, OpSummary } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -74,6 +74,28 @@ describe("what the question says under its title", () => {
 
   it("says it in words for any kind when more than one kind is under way", () => {
     expect(quitBodyKey([op(1, "Upgrade", "Running"), op(2, "Uninstall", "Running")])).toBe("quit.body.mixed");
+  });
+});
+
+describe("telling Rust about the question", () => {
+  it("sends once when that gets through", async () => {
+    const send = vi.fn(() => Promise.resolve());
+    await tellRustTwice(send, "quit_question_shown");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends once more when the first fails, and no more than that", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const again = vi.fn().mockRejectedValueOnce("busy").mockResolvedValueOnce(undefined);
+    await tellRustTwice(again, "quit_kept_waiting");
+    expect(again).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledWith("quit_kept_waiting failed, sending it once more", "busy");
+
+    const never = vi.fn(() => Promise.reject("gone"));
+    await tellRustTwice(never, "quit_kept_waiting");
+    expect(never).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenLastCalledWith("quit_kept_waiting failed", "gone");
+    error.mockRestore();
   });
 });
 

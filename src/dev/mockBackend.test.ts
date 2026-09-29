@@ -133,6 +133,9 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("quit_question_shown", { question: 1 })).resolves.toBeUndefined();
     await expect(backend.invoke("quit_question_shown", { question: -1 })).rejects.toMatch(/^invalid args/);
     await expect(backend.invoke("quit_question_shown")).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("quit_kept_waiting", { question: 1 })).resolves.toBeUndefined();
+    await expect(backend.invoke("quit_kept_waiting", { question: -1 })).rejects.toMatch(/^invalid args/);
+    await expect(backend.invoke("quit_kept_waiting")).rejects.toMatch(/^invalid args/);
     await expect(backend.invoke("quit_anyway")).resolves.toBeUndefined();
   });
 

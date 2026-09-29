@@ -161,6 +161,10 @@ describe("the question before a quit", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(sent("quit_anyway")).toBe(0);
+    // Rust is told, so that its wait for word from the page does not quit.
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_kept_waiting")).toEqual([
+      ["quit_kept_waiting", { question: 1 }],
+    ]);
   });
 
   it("asks again at the next quit after Keep waiting", async () => {
@@ -198,6 +202,20 @@ describe("the question before a quit", () => {
     await act(async () => quit());
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(sent("quit_anyway")).toBe(1);
+  });
+
+  it("does not tell Rust it keeps waiting when the operations Quit anyway cancels finish", async () => {
+    // Rust cancels them, and waits for them to stop before it quits.
+    const user = userEvent.setup();
+    quitReply = () => new Promise(() => {});
+    operations = [op(1, "wget", "Running")];
+    const { rust, queryClient } = await mounted();
+    const dialog = await asked(rust, "1 operation hasn't finished");
+
+    await user.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    await listNow(queryClient, [op(1, "wget", "Done")]);
+
+    expect(sent("quit_kept_waiting")).toBe(0);
   });
 
   it("asks again, the buttons back, should quitting fail", async () => {
@@ -254,8 +272,11 @@ describe("the question before a quit", () => {
     await listNow(queryClient, [op(1, "wget", "Done"), op(2, "jq", "Done")]);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // Nothing is left to wait for, and Canager stays, with how they went
-    // on the operation bar.
+    // on the operation bar -- Rust told so, once.
     expect(sent("quit_anyway")).toBe(0);
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_kept_waiting")).toEqual([
+      ["quit_kept_waiting", { question: 1 }],
+    ]);
 
     // Nor does it come back by itself when something starts again.
     await listNow(queryClient, [op(3, "git", "Running")]);
@@ -290,8 +311,10 @@ describe("the question before a quit", () => {
     await waitFor(() => expect(shown).toEqual([{ question: 7, onScreen: true }]));
   });
 
-  it("stays on screen, to be answered, when Rust cannot be told it is", async () => {
-    // Rust then quits once its wait is over, as it does with nobody here.
+  it("stays on screen, to be answered, when Rust cannot be told it is, having tried twice", async () => {
+    // Rust then quits once its wait is over, as it does with nobody here --
+    // unless Keep waiting reaches it first.
+    const user = userEvent.setup();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     shownReply = () => Promise.reject("quit_question_shown went wrong");
     operations = [op(1, "wget", "Running")];
@@ -302,8 +325,33 @@ describe("the question before a quit", () => {
     await waitFor(() =>
       expect(error).toHaveBeenCalledWith("quit_question_shown failed", new Error("quit_question_shown went wrong")),
     );
+    expect(error).toHaveBeenCalledWith(
+      "quit_question_shown failed, sending it once more",
+      new Error("quit_question_shown went wrong"),
+    );
+    expect(sent("quit_question_shown")).toBe(2);
     expect(screen.getByRole("dialog", { name: "1 operation hasn't finished" })).toBe(dialog);
     expect(sent("quit_anyway")).toBe(0);
+
+    await user.click(within(dialog).getByRole("button", { name: "Keep waiting" }));
+    await waitFor(() => expect(sent("quit_kept_waiting")).toBe(1));
+    error.mockRestore();
+  });
+
+  it("sends the word that the question is on screen once more when it fails once", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    let replies = 0;
+    shownReply = () => (++replies === 1 ? Promise.reject("busy") : Promise.resolve());
+    operations = [op(1, "wget", "Running")];
+    const { rust } = await mounted();
+
+    await asked(rust, "1 operation hasn't finished");
+
+    await waitFor(() => expect(shown).toEqual([
+      { question: 1, onScreen: true },
+      { question: 1, onScreen: true },
+    ]));
+    expect(error).toHaveBeenCalledTimes(1);
     error.mockRestore();
   });
 
