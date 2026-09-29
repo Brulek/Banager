@@ -189,7 +189,7 @@ cancelled; an upgrade stopped partway is never settled either way
 Canager and its operations running (`src-tauri/src/window.rs`). Quitting
 after the question below — *Quit*, or a question the window never
 showed — first cancels every operation that can be cancelled, as the
-operation bar's *Cancel All* does: one still queued never runs, and a
+operation bar's *Stop All* does: one still queued never runs, and a
 running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
 of it is left, which can leave the tool it was updating or uninstalling
 half done. Canager quits once those commands have stopped, 7 seconds
@@ -1573,7 +1573,7 @@ replaces only rustup's own binary — by unlinking the running one and copying
 the new one in (rustup 1.29.1's `install_bins`, `src/cli/self_update.rs`),
 during which the thirteen linked commands, `cargo` among them, point at
 nothing. So the plan is **not cancellable once it is running** (the preview
-says so; the operation bar offers no Cancel; while it is still queued it
+says so; the operation bar offers no Stop; while it is still queued it
 can be cancelled, since nothing has started), and it holds the Cargo
 source's lock as well as its own. If it exits 0 and the version did not
 move, the operation is reported as needing attention, as for every source.
