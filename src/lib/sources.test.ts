@@ -417,7 +417,7 @@ describe("sourceNoticesFor", () => {
     // may run in Terminal as before, so the detail speaks of this copy
     // only: the source's own command, never 「这一份」, which means nothing
     // to someone who does not know there can be several. To keep the
-    // tool, reinstall it, or drag its files back if an earlier uninstall
+    // tool, reinstall it, or put its files back if an earlier uninstall
     // that stopped partway moved them to the Trash -- "if", as spec §9.2
     // says: the Trash can have been emptied since. Not needed, the row
     // on the Installed page offers Uninstall (its artifact carries no
@@ -425,7 +425,7 @@ describe("sourceNoticesFor", () => {
     // its page, not as a button to press: the notice also stands on the
     // Overview and the Updates page, where its one button is Check Again.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}'s {{command}} can't run any more. To keep using {{source}}, reinstall it, or drag its files back from the Trash if they're there and check again; if you no longer need it, uninstall it on the Installed page.",
+      "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
       "{{source}}的“{{command}}”已无法运行。要继续使用，请重新安装{{source}}，如果文件在废纸篓中，也可以拖回原处后重新检查；不再需要的话，可在“已安装”中卸载。",

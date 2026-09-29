@@ -420,7 +420,7 @@ describe("SettingsPage", () => {
 
     // In plain words, on one line.
     expect(await screen.findByRole("switch", { name: "Show technical details" })).toHaveAccessibleDescription(
-      "Shows tools' own error messages, file locations and commands, with commands expanded in confirmations.",
+      "Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations.",
     );
     expect(zhCN.settings.showTechnicalDetails.description).toBe(
       "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。",
@@ -503,7 +503,7 @@ describe("SettingsPage", () => {
     expect(notify).not.toBeChecked();
     expect(notify).toBeDisabled();
     // Why it does not move, and what turns it on.
-    expect(notify).toHaveAccessibleDescription("Turn on “Check for updates every day” above first.");
+    expect(notify).toHaveAccessibleDescription("Requires “Check for updates every day”.");
     // Under the daily check, the row it depends on.
     const switches = within(updates).getAllByRole("switch");
     expect(switches.indexOf(notify)).toBe(switches.indexOf(daily) + 1);
@@ -530,7 +530,7 @@ describe("SettingsPage", () => {
     expect(notify).not.toBeChecked();
     // Nothing left to say about why it would not move.
     expect(notify).not.toHaveAttribute("aria-describedby");
-    expect(screen.queryByText("Turn on “Check for updates every day” above first.")).toBeNull();
+    expect(screen.queryByText("Requires “Check for updates every day”.")).toBeNull();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(0);
   });
 
@@ -914,7 +914,7 @@ describe("SettingsPage", () => {
     }
     // A second line is 11 with its lines 16 apart, should it wrap, and
     // still 14 high on one line: 1 short at either end.
-    const subtitle = within(technical).getByText("Shows tools' own error messages, file locations and commands, with commands expanded in confirmations.");
+    const subtitle = within(technical).getByText("Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations.");
     expect(subtitle.className.split(" ")).toEqual(
       expect.arrayContaining(["text-small", "leading-4", "-my-px", "text-muted"]),
     );

@@ -1542,7 +1542,7 @@ describe("InstalledPage", () => {
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });
     fireEvent.click(details);
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
+      "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
     );
     // Its next step's button on its own line, after its ⓘ, which checks again.
     const line = details.closest("[data-notice-line]") as HTMLElement;
@@ -1700,10 +1700,10 @@ describe("InstalledPage", () => {
 
   it("keeps a stopped source's rows on screen with Uninstall disabled, and says why behind a chip", async () => {
     // `refresh` carries an unavailable source's last known artifacts
-    // forward, which is what makes the line's "what's listed for Ollama is
-    // from the last time it responded" true instead of a sentence over no
-    // rows. `ollama rm` against a daemon that is not listening cannot
-    // succeed -- spec §2.5's conjunction, on the button rather than only in
+    // forward, which is what makes the line's "showing what Ollama
+    // reported last time" true instead of a sentence over no rows. `ollama
+    // rm` against a daemon that is not listening cannot succeed -- spec
+    // §2.5's conjunction, on the button rather than only in
     // the backend's refusal -- so each row's Uninstall stays, disabled, as
     // it does while Homebrew updates its list, with the same chip saying
     // why and what to do.
@@ -2090,7 +2090,7 @@ describe("InstalledPage", () => {
         "text-body-long",
       );
       expect(within(drawer).getByText("Version").nextElementSibling).toHaveTextContent("1.8.2");
-      expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("1.8.3");
+      expect(within(drawer).getByText("New version").nextElementSibling).toHaveTextContent("1.8.3");
       // Its status word in the facts, and its why, in full, with the
       // command set as code, behind the word's ⓘ.
       expect(within(drawer).getByText("Status").nextElementSibling).toHaveTextContent("Pinned");
@@ -2136,8 +2136,8 @@ describe("InstalledPage", () => {
       const rows = [...facts.children] as HTMLElement[];
       expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
         "Version",
-        "Newer version",
-        "Date Installed",
+        "New version",
+        "Date installed",
         "Size",
         "Status",
       ]);
@@ -2393,7 +2393,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       let inspector = await openDetails("jq");
-      expect(within(inspector).getByText("Date Installed").nextElementSibling).toHaveTextContent(
+      expect(within(inspector).getByText("Date installed").nextElementSibling).toHaveTextContent(
         new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(1783762037 * 1000)),
       );
       expect(within(inspector).getByText("Size").nextElementSibling).toHaveTextContent("1.4 MB");
@@ -2407,7 +2407,7 @@ describe("InstalledPage", () => {
       fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
       inspector = await screen.findByRole("complementary", { name: "wget" });
       expect(within(inspector).queryByText("Size")).toBeNull();
-      expect(within(inspector).getByText("Date Installed")).toBeInTheDocument();
+      expect(within(inspector).getByText("Date installed")).toBeInTheDocument();
     });
 
     it("updates through the Updates page's own confirmation, where that page would, and shows the progress there", async () => {
@@ -2417,7 +2417,7 @@ describe("InstalledPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const drawer = await openDetails("glib");
       expect(within(drawer).getByText("Update available")).toBeInTheDocument();
-      expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("2.90.0");
+      expect(within(drawer).getByText("New version").nextElementSibling).toHaveTextContent("2.90.0");
 
       fireEvent.click(within(drawer).getByRole("button", { name: "Update" }));
       const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
@@ -2551,7 +2551,7 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(
         within(drawer).getByText(
-          "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
+          "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
         ),
       ).toBeInTheDocument();
       // And the button its next step needs, under its sentence.
@@ -2643,7 +2643,7 @@ describe("InstalledPage", () => {
       renderInstalled();
 
       const drawer = await openDetails("Claude Code");
-      const values = ["Version", "Newer version", "Location"].map(
+      const values = ["Version", "New version", "Location"].map(
         (term) => within(drawer).getByText(term).nextElementSibling,
       );
       expect(values.map((value) => value?.textContent)).toEqual([

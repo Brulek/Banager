@@ -3232,7 +3232,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Ollama is from the last time it responded, and later changes aren't shown. Check again later.",
+        "Showing what Ollama reported last time. Newer changes aren't shown. Check again later.",
       );
       for (const name of ["glib", "onyx", "jq"]) {
         const row = rowOf(name);
@@ -3301,7 +3301,7 @@ describe("UpdatesPage", () => {
       expect(
         document.getElementById(details.getAttribute("aria-controls") ?? ""),
       ).toHaveTextContent(
-        "What's listed for Homebrew is from the last time it responded, and later changes aren't shown. Check again later.",
+        "Showing what Homebrew reported last time. Newer changes aren't shown. Check again later.",
       );
       // The next step it names, as its line's own button, which checks again.
       const line = details.closest("[data-notice-line]") as HTMLElement;

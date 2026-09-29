@@ -519,7 +519,7 @@ describe("UninstallDialog", () => {
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
     const sentence = await screen.findByText(
-      "Deletes only this installed version of jq and the links to it; config and data kept elsewhere are not deleted.",
+      "Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept.",
     );
     // The alert's own text, in the label colour, under the question that
     // names the tool.

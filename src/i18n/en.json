@@ -141,7 +141,7 @@
     "unverifiedVersion": "{{source}} {{version}} not tested",
     "unverifiedVersionDetail": "Not tested with this version of {{source}} yet.",
     "version": "Version",
-    "newVersion": "Newer version",
+    "newVersion": "New version",
     "location": "Location",
     "status": "Status",
     "blocked": {
@@ -169,7 +169,7 @@
       "description": "Tools you install with {{source}} show up here.",
       "unreachable": "What it has installed can't be shown. Check again later."
     },
-    "installedOn": "Date Installed",
+    "installedOn": "Date installed",
     "size": "Size"
   },
   "updates": {
@@ -305,8 +305,8 @@
     "homebrewCleanupAutoremoves": "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
     "homebrewCleanupAutoremovesDetail": "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1 and HOMEBREW_NO_AUTOREMOVE=1, but your brew.env sets the first to nothing and the second to a value Homebrew reads as unset, such as 0 or false, and brew.env wins.",
     "uninstallScope": {
-      "HomebrewFormulaOnly": "Deletes only this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
-      "HomebrewFormula": "Deletes this installed version of {{name}} and the links to it; config and data kept elsewhere are not deleted.",
+      "HomebrewFormulaOnly": "Removes only the Homebrew version of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
+      "HomebrewFormula": "Removes the Homebrew version of {{name}} and the links to it. Settings and data stored elsewhere are kept.",
       "HomebrewCaskPlain": "Deletes what Homebrew installed for {{name}}; its settings and data stay.",
       "HomebrewCaskSteps": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; nothing else is deleted.",
       "HomebrewCaskStepsAutoremoves": "Deletes the files Homebrew placed for {{name}} and runs the uninstall steps it recorded; {{name}}'s other files stay.",
@@ -376,7 +376,7 @@
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
-      "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Check again later."
+      "descriptionWithRows": "Showing what {{source}} reported last time. Newer changes aren't shown. Check again later."
     },
     "refusesAsRoot": {
       "title": "{{source}} doesn't run as administrator",
@@ -418,7 +418,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{source}}'s {{command}} can't run any more. To keep using {{source}}, reinstall it, or drag its files back from the Trash if they're there and check again; if you no longer need it, uninstall it on the Installed page."
+      "description": "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it."
     },
     "more_one": "{{count}} more issue",
     "more_other": "{{count}} more issues",
@@ -577,7 +577,7 @@
     },
     "showTechnicalDetails": {
       "label": "Show technical details",
-      "description": "Shows tools' own error messages, file locations and commands, with commands expanded in confirmations."
+      "description": "Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations."
     },
     "includeSelfUpdating": {
       "label": "Show apps that update themselves",
@@ -589,7 +589,7 @@
     },
     "notifyUpdates": {
       "label": "Notify me when there are updates",
-      "needsAutoCheck": "Turn on “{{setting}}” above first.",
+      "needsAutoCheck": "Requires “{{setting}}”.",
       "refused": "Allow Canager to send notifications in System Settings > Notifications."
     },
     "language": {

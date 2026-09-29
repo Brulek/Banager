@@ -1015,7 +1015,7 @@ describe("OverviewPage", () => {
     ]);
     // Reason and next step, the button beside them doing it.
     expect(lines[0]).toHaveTextContent(
-      "What's listed for Homebrew (Apple silicon) is from the last time it responded, and later changes aren't shown. Check again later.",
+      "Showing what Homebrew (Apple silicon) reported last time. Newer changes aren't shown. Check again later.",
     );
     expect(lines[1]).toHaveTextContent("This check used the old list. Check your internet connection, then try again.");
     for (const line of lines.slice(0, 3)) {
