@@ -219,6 +219,9 @@ body {
   color: var(--color-foreground);
   background: var(--color-content);
   accent-color: var(--color-accent);
+  /* A paragraph's last line is not left with a word or two -- 「分钟。」 --
+     where moving one more onto it would even the lines out. */
+  text-wrap: pretty;
   /* Text does not select, as a Mac app's labels do not: a click or a drag
      across a row, a button or a heading highlights nothing. What a user
      copies is marked `select-text`: an operation's log, a command

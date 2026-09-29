@@ -59,6 +59,10 @@ describe("the page", () => {
     expect(CSS).toContain("--color-selection: #3f638b;");
   });
 
+  it("breaks a paragraph's lines so that its last is not left with a word or two", () => {
+    expect(rule("body")).toMatchObject({ "text-wrap": "pretty" });
+  });
+
   it("lets no image or link be dragged out of the window", () => {
     expect(rule("img, a")).toEqual({ "-webkit-user-drag": "none" });
   });
