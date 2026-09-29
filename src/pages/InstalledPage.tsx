@@ -41,7 +41,7 @@ import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
-import { useElementWidth, VirtualList, type VirtualListHandle } from "../components/VirtualList";
+import { useNarrowerThan, VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
@@ -387,10 +387,11 @@ export function InstalledPage() {
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
   const translatedDescription = useTranslatedDescription();
-  // The toolbar's search field, once it is drawn there.
-  const [searchBox, setSearchBox] = useState<HTMLInputElement | null>(null);
+  // The toolbar's search field, once it is drawn there: a ref, not state,
+  // which would draw the page -- and every row of its list in sight --
+  // again as the field is handed over.
+  const searchBox = useRef<HTMLInputElement | null>(null);
   const searchFocusRequested = useUiStore((s) => s.searchFocusRequested);
-  const searchFocused = useUiStore((s) => s.searchFocused);
 
   // Uninstall is destructive, so a button only *targets* an artifact;
   // UninstallDialog is what plans it, shows what it would change and what
@@ -416,9 +417,8 @@ export function InstalledPage() {
   const [selection, setSelection] = useState<{ id: string; filter: string | null } | null>(null);
   const listHandle = useRef<VirtualListHandle | null>(null);
   // The page's width: whether the inspector beside the list is 300 wide or
-  // 260 (`NARROW_INSPECTOR_BELOW`).
-  const [pageBox, setPageBox] = useState<HTMLDivElement | null>(null);
-  const pageWidth = useElementWidth(pageBox);
+  // 260 (`NARROW_INSPECTOR_BELOW`). Not measured (jsdom), 300.
+  const [attachPage, narrowInspector] = useNarrowerThan(NARROW_INSPECTOR_BELOW);
 
   const showTechnicalDetails = settings?.show_technical_details ?? false;
   const inspectorTitleId = useId();
@@ -675,13 +675,26 @@ export function InstalledPage() {
   // The menu bar's Search (⌘F, `searchInstalled`): the field takes the
   // focus as soon as it is in the toolbar, its text selected to be typed
   // over, wherever the focus was. Still loading, or before the toolbar
-  // has its slot, the field is not there yet, and the request waits for it.
+  // has its slot, the field is not there yet, and the request waits for
+  // it: the field answers it as it is drawn (`attachSearch`).
+  const answerSearch = useCallback(() => {
+    const field = searchBox.current;
+    const store = useUiStore.getState();
+    if (field === null || !store.searchFocusRequested) return;
+    field.focus();
+    field.select();
+    store.searchFocused();
+  }, []);
+  const attachSearch = useCallback(
+    (field: HTMLInputElement | null) => {
+      searchBox.current = field;
+      answerSearch();
+    },
+    [answerSearch],
+  );
   useEffect(() => {
-    if (!searchFocusRequested || searchBox === null) return;
-    searchBox.focus();
-    searchBox.select();
-    searchFocused();
-  }, [searchFocusRequested, searchBox, searchFocused]);
+    if (searchFocusRequested) answerSearch();
+  }, [searchFocusRequested, answerSearch]);
 
   if (isLoading) {
     // Before `get_snapshot` answers, the first check is under way too:
@@ -1253,12 +1266,8 @@ export function InstalledPage() {
   // The page on one source that has nothing to list says why in the
   // list's place (`SourceEmpty`), and its notice is not said over it.
   const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
-  // The inspector 260 wide in a window under 900, else 300. Not measured
-  // (jsdom), 300.
-  const narrowInspector = pageWidth !== null && pageWidth < NARROW_INSPECTOR_BELOW;
-
   return (
-    <div ref={setPageBox} className="relative flex h-full">
+    <div ref={attachPage} className="relative flex h-full">
       {/* The page's own controls, in the window's toolbar (spec §3.2):
           how the last Copy command went, for a moment; the sort, a grey
           popup button; and the search field, 200 wide. */}
@@ -1278,7 +1287,7 @@ export function InstalledPage() {
         <span className="relative flex h-6 w-50 shrink-0 items-center">
           <SearchIcon size={14} className="pointer-events-none absolute left-2 text-muted" />
           <input
-            ref={setSearchBox}
+            ref={attachSearch}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
-import { useListWidth, VirtualList, type VirtualListHandle } from "./VirtualList";
+import { useListWidth, useNarrowerThan, VirtualList, type VirtualListHandle } from "./VirtualList";
 import { useRovingRow } from "./rovingRows";
 
 const ROW = 60;
@@ -189,6 +189,63 @@ describe("VirtualList", () => {
       });
       expect(widths[widths.length - 1]).toBe(592);
     } finally {
+      globalThis.ResizeObserver = Observer;
+    }
+  });
+});
+
+describe("useNarrowerThan", () => {
+  it("says whether its element is narrower than the limit, drawing its user again only when that changes", () => {
+    // The observers made: what each watches, and its callback.
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean }> = [];
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly watched: { callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean };
+      constructor(callback: ResizeObserverCallback) {
+        this.watched = { callback, targets: [], disconnected: false };
+        observers.push(this.watched);
+      }
+      observe(target: Element) {
+        this.watched.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {
+        this.watched.disconnected = true;
+      }
+    } as unknown as typeof ResizeObserver;
+    // Laid out 752 wide as it is handed over.
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 752, 500));
+    const draws: boolean[] = [];
+    function Page() {
+      const [attach, narrower] = useNarrowerThan(692);
+      draws.push(narrower);
+      return <div ref={attach} data-testid="page" />;
+    }
+    const resize = (width: number) =>
+      act(() => {
+        for (const observer of observers.filter((o) => !o.disconnected)) {
+          observer.callback([{ contentRect: { width } } as unknown as ResizeObserverEntry], {} as ResizeObserver);
+        }
+      });
+    try {
+      const { getByTestId, unmount } = render(<Page />);
+      // Wide enough, as it was assumed to be: drawn once, not again for it.
+      expect(draws).toEqual([false]);
+      expect(observers.flatMap((o) => o.targets)).toContain(getByTestId("page"));
+      resize(760);
+      expect(draws).toEqual([false]);
+      // Narrower than the limit: drawn again, once; and back.
+      resize(592);
+      resize(600);
+      expect(draws).toEqual([false, true]);
+      resize(692);
+      expect(draws).toEqual([false, true, false]);
+      unmount();
+      expect(observers.every((o) => o.disconnected)).toBe(true);
+    } finally {
+      box.mockRestore();
       globalThis.ResizeObserver = Observer;
     }
   });

@@ -1001,6 +1001,21 @@ describe("UpdatesPage", () => {
     );
   });
 
+  it("lists every tool of a long Update All on its dialog, the first few with it and the rest just after", async () => {
+    updates = Array.from({ length: 20 }, (_, index) => ({
+      ...snapshot.updates[1],
+      key: { ...snapshot.updates[1].key, name: `tool-${String(index).padStart(2, "0")}` },
+    }));
+    const { getByRole, findByRole } = renderPage();
+    await findRow("tool-00");
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const dialog = await findByRole("dialog", { name: "Update 20 tools?" });
+    await waitFor(() => expect(dialog.querySelectorAll("[data-sheet-tool]")).toHaveLength(20));
+    expect([...dialog.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
+      updates.map((update) => update.key.name),
+    );
+  });
+
   it("names pipx and pipx's own unpin command on a pinned pipx tool", async () => {
     // `pipx list --outdated` lists a pinned tool as `cowsay [pinned]: 5.0
     // -> 6.1`, and `pipx upgrade cowsay` then changes nothing and exits 0.

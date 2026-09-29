@@ -6,8 +6,11 @@ import { middleCut, textMeasurer } from "../lib/middleCut";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { RowMenuContext, type OpenMenuAt } from "./ui/Menu";
-import { useListWidth } from "./VirtualList";
+import { useListWidth, useRowFit } from "./VirtualList";
 import { useRovingRow } from "./rovingRows";
+
+// Which columns fit, by the list's width: its own module (./rowFit.ts), said here too.
+export { ROW_FIT_WIDTHS, rowFitFor, type RowFit } from "./rowFit";
 
 export interface RowActionProps {
   /** Handed the event, so what it opens can hand the focus back to the button. */
@@ -136,49 +139,6 @@ export interface ToolRowContentProps {
   selected?: boolean;
 }
 
-/**
- * How much of a row's columns fit in the list's width (spec R9), as the
- * window narrows: `full`, everything; `compact`, the version column says
- * only the version an update brings, after its arrow; `narrow`, that, and
- * the status word moves to the start of the description's line, a dot
- * between them; `minimal` -- a list the Installed page's inspector has
- * narrowed -- the version column goes as well, and an update's versions
- * move to that line after the status word: the inspector says the
- * selected row's version, and the others' are one click away; `slim` --
- * the inspector's list in the narrowest window -- the status word and the
- * versions leave that line too, which is the description's alone: both
- * are in the inspector, and what goes next would be the row's button;
- * `tiny` -- a list too narrow for the avatar, a name's first few
- * characters, the button and the ⋯, which no window this app opens has --
- * the row's button goes as well, and only the ⋯ stays at its end: what
- * the button did is in the inspector. Past that, the description is cut
- * short -- never the name -- and, left room for no more than a few
- * characters after the words before it, dropped from the line
- * (`DESCRIPTION_MIN_CHARACTERS`).
- */
-export type RowFit = "full" | "compact" | "narrow" | "minimal" | "slim" | "tiny";
-
-/**
- * The widths of the list a row is drawn in -- measured, not the window's
- * -- at which its columns give way (`RowFit`): the list is 752 wide in a
- * window at its default 960, with room for everything, and 592 at its
- * narrowest, 800; beside the inspector, 452 at 960 and 332 at 800 (the
- * inspector 260 there). `slim` from 324: what a row with a button needs --
- * 20 in, the avatar 32, 12, a name's first 96, 16, the button ("Uninstall…"
- * 87 wide; 「卸载…」 60, in its column of 80), 16, the ⋯ 24, and 20 -- is
- * 323 in English and 316 in Chinese, so the narrowest window's 332 keeps
- * every row's button.
- */
-export const ROW_FIT_WIDTHS = { full: 700, compact: 640, narrow: 520, minimal: 340, slim: 324 } as const;
-
-/** Which of a row's columns fit a list `width` wide: everything, where nothing measured it. */
-export function rowFitFor(width: number | null): RowFit {
-  if (width === null || width >= ROW_FIT_WIDTHS.full) return "full";
-  if (width >= ROW_FIT_WIDTHS.compact) return "compact";
-  if (width >= ROW_FIT_WIDTHS.narrow) return "narrow";
-  if (width >= ROW_FIT_WIDTHS.minimal) return "minimal";
-  return width >= ROW_FIT_WIDTHS.slim ? "slim" : "tiny";
-}
 
 /**
  * A name longer than this is cut short in its middle when it does not fit,
@@ -243,13 +203,16 @@ const NAME_CLASS = "min-w-0 truncate text-name font-semibold text-foreground";
 
 /**
  * A name long enough to be cut in its middle (`RowName`), fitted to its
- * line after every draw of its row. The line takes what the row's columns
- * leave it, whatever the name says, and the row is drawn again whenever
- * that can change -- the list's width (`useListWidth`), or what a column
+ * line after every draw. The line takes what the row's columns leave it,
+ * whatever the name says, and this is drawn again whenever that can
+ * change -- the list's width (`useListWidth`), or what a column of its row
  * shows -- so it needs no observer of its own. The cut is its own state:
  * fitting it draws the name again, not the row.
  */
 function MiddleCutName({ name, lang }: { name: string; lang: string | undefined }) {
+  // Read to be drawn again, and fitted again, with every new width of the
+  // list, which its row is not drawn again for while the same columns fit.
+  useListWidth();
   const ref = useRef<HTMLParagraphElement>(null);
   const [cut, setCut] = useState<string | null>(null);
   useLayoutEffect(() => {
@@ -367,9 +330,10 @@ export function ToolRow({
   openLabel,
   selected = false,
 }: ToolRowProps) {
-  // The list's width, measured once for the whole list (`VirtualList`):
-  // no row observes or measures its own box to choose what fits.
-  const fit = rowFitFor(useListWidth());
+  // What fits, from the list's width, measured once for the whole list
+  // (`VirtualList`): no row observes or measures its own box to choose it,
+  // and none is drawn again for a new width that fits the same.
+  const fit = useRowFit();
   const roving = useRovingRow();
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);

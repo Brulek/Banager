@@ -8,7 +8,7 @@
  * and a refusal with its why. One set, so the update and the uninstall
  * confirmation read alike.
  */
-import { Fragment, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, startTransition, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import type { WarningLine } from "../lib/warnings";
@@ -160,6 +160,31 @@ export function SheetToolList({ label, children }: { label?: string; children: R
       {children}
     </ul>
   );
+}
+
+/**
+ * How many of a dialog's tools its list draws as it opens
+ * (`useToolsInTurn`): as many as its 320 high box can show, 36 a tool, so
+ * what is in sight is whole from the first.
+ */
+export const TOOLS_DRAWN_FIRST = 9;
+
+/**
+ * How many of a dialog's `count` tools its list (`SheetToolList`) draws:
+ * the first `TOOLS_DRAWN_FIRST` as the dialog opens, and the rest a moment
+ * later, in the background -- a transition, which gives way to the pointer
+ * and the keyboard -- so that Update all over a hundred tools is up as
+ * soon as over ten would be. `batch` names what the dialog is about: a new
+ * one starts over from the first few.
+ */
+export function useToolsInTurn(count: number, batch: number | null): number {
+  const [drawnAll, setDrawnAll] = useState<number | null>(null);
+  const all = batch !== null && drawnAll === batch;
+  useEffect(() => {
+    if (batch === null || all || count <= TOOLS_DRAWN_FIRST) return;
+    startTransition(() => setDrawnAll(batch));
+  }, [batch, all, count]);
+  return all ? count : Math.min(count, TOOLS_DRAWN_FIRST);
 }
 
 /**

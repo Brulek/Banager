@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, planErrorMessage } from "../lib/sources";
@@ -15,6 +15,7 @@ import {
   SheetTool,
   SheetToolList,
   sheetMeta,
+  useToolsInTurn,
 } from "./SheetParts";
 import { CheckIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
@@ -316,6 +317,115 @@ export interface UpdateConfirmDialogProps {
   confirm: UpdateConfirm;
 }
 
+/** The window's words (`useTranslation`'s `t`), for what is drawn outside a component of its own. */
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+/**
+ * The version jump for the confirmation, or null when there is no honest
+ * one to show: a `Digest` candidate says a new version of the model is
+ * available, never two digests -- they are from different hash spaces
+ * (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
+ * rather than a dangling arrow, when a source could name only one side.
+ * Not behind "Show technical details": spec §6 asks this screen to show
+ * the version jump, and a confirmation that names the command but not
+ * the change is not a confirmation.
+ */
+function versionJump(t: Translate, candidate: UpdateCandidate): string | null {
+  if (candidate.channel === "Digest") return t("updates.newBuild");
+  if (candidate.current === "" || candidate.target === "") return null;
+  return t("updates.versionChange", { current: candidate.current, target: candidate.target });
+}
+
+/** What a tool's row -- or the dialog, for one tool -- says under its name. */
+function aboutTool(t: Translate, item: BatchItem, notes: WarningLine[], size: "body" | "small") {
+  const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
+  const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
+  return (
+    <>
+      {item.planError !== null ? (
+        <Refusal text={planFailed} detail={item.planErrorDetail} detailTitle={planFailed} size={size} />
+      ) : null}
+      {item.submitError !== null ? (
+        <Refusal text={submitFailed} detail={item.submitErrorDetail} detailTitle={submitFailed} size={size} />
+      ) : null}
+      {item.submittedOpId !== null ? (
+        <p className="flex items-center gap-1 text-small text-foreground">
+          <CheckIcon size={12} className="shrink-0 text-success" />
+          {t("updates.started")}
+        </p>
+      ) : null}
+      {notes.length > 0 ? <SheetLines lines={notes} /> : null}
+    </>
+  );
+}
+
+interface BatchToolProps {
+  t: Translate;
+  item: BatchItem;
+  /** What to know about it before going on (the dialog's `notesOf`). */
+  notes: WarningLine[];
+  adapterId: string;
+  sourceLabel: string;
+  showSource: boolean;
+}
+
+/**
+ * One tool of the dialog's list (`SheetTool`): its avatar, name and the
+ * version it moves to, and under its name its notes, what became of it and
+ * why not (`aboutTool`). Drawn again only when one of those changes
+ * (`sameBatchTool`): the dialog is drawn again with its page -- as its
+ * plans come back, and at each update Update all starts, a hundred and
+ * more of them -- and every tool on it, each time, was most of that.
+ */
+const BatchTool = memo(function BatchTool({ t, item, notes, adapterId, sourceLabel, showSource }: BatchToolProps) {
+  const jump = versionJump(t, item.candidate);
+  const digest = item.candidate.channel === "Digest";
+  return (
+    <SheetTool
+      adapterId={adapterId}
+      sourceLabel={sourceLabel}
+      showSource={showSource}
+      iconKey={item.candidate.key}
+      name={item.name}
+      // A model's "new version" is a sentence, not a number: under the name.
+      aside={digest ? null : jump}
+    >
+      {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
+      {aboutTool(t, item, notes, "small")}
+    </SheetTool>
+  );
+}, sameBatchTool);
+
+/**
+ * Whether a tool of the list shows the same as it did (`BatchTool`): each
+ * batch's item is a new object at every step, the plan it waited for or
+ * the update it started, while what the tool shows of it rarely changes.
+ */
+function sameBatchTool(was: BatchToolProps, now: BatchToolProps): boolean {
+  const a = was.item;
+  const b = now.item;
+  return (
+    was.t === now.t &&
+    was.adapterId === now.adapterId &&
+    was.sourceLabel === now.sourceLabel &&
+    was.showSource === now.showSource &&
+    a.candidate === b.candidate &&
+    a.name === b.name &&
+    a.planError === b.planError &&
+    a.planErrorDetail === b.planErrorDetail &&
+    a.submittedOpId === b.submittedOpId &&
+    a.submitError === b.submitError &&
+    a.submitErrorDetail === b.submitErrorDetail &&
+    was.notes.length === now.notes.length &&
+    was.notes.every(
+      (line, index) =>
+        line.text === now.notes[index].text &&
+        line.detail === now.notes[index].detail &&
+        line.caution === now.notes[index].caution,
+    )
+  );
+}
+
 /**
  * The confirmation `useUpdateConfirm` drives, as a dialog in the manner of
  * a macOS alert (spec §3.6, R6): 「要更新10个工具吗？」 -- 「要更新“git”吗？」
@@ -357,22 +467,6 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   // More than one tool on the dialog: a list, and each note and command
   // says whose it is.
   const several = items.length > 1;
-
-  /**
-   * The version jump for the confirmation, or null when there is no honest
-   * one to show: a `Digest` candidate says a new version of the model is
-   * available, never two digests -- they are from different hash spaces
-   * (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
-   * rather than a dangling arrow, when a source could name only one side.
-   * Not behind "Show technical details": spec §6 asks this screen to show
-   * the version jump, and a confirmation that names the command but not
-   * the change is not a confirmation.
-   */
-  const versionJump = (candidate: UpdateCandidate): string | null => {
-    if (candidate.channel === "Digest") return t("updates.newBuild");
-    if (candidate.current === "" || candidate.target === "") return null;
-    return t("updates.versionChange", { current: candidate.current, target: candidate.target });
-  };
 
   // The avatar and the source's name go by its adapter: its instance's,
   // or -- for an instance the snapshot has lost -- the one the id names.
@@ -440,36 +534,15 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const rank = ({ item, notes }: { item: BatchItem; notes: WarningLine[] }) =>
     item.planError !== null || item.submitError !== null ? 0 : notes.length > 0 ? 1 : 2;
   const ordered = several ? [...said].sort((a, b) => rank(a) - rank(b)) : said;
+  // The first few drawn with the dialog, the rest just after (`useToolsInTurn`).
+  const drawn = useToolsInTurn(ordered.length, batch?.id ?? null);
   // A name the list has from two sources says which is which (spec R3).
   const names = items.map((item) => item.name);
   const twice = new Set(names.filter((name, index) => names.indexOf(name) !== index));
 
-  /** What a tool's row -- or the dialog, for one tool -- says under its name. */
-  const aboutTool = (item: BatchItem, notes: WarningLine[], size: "body" | "small") => {
-    const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
-    const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
-    return (
-      <>
-        {item.planError !== null ? (
-          <Refusal text={planFailed} detail={item.planErrorDetail} detailTitle={planFailed} size={size} />
-        ) : null}
-        {item.submitError !== null ? (
-          <Refusal text={submitFailed} detail={item.submitErrorDetail} detailTitle={submitFailed} size={size} />
-        ) : null}
-        {item.submittedOpId !== null ? (
-          <p className="flex items-center gap-1 text-small text-foreground">
-            <CheckIcon size={12} className="shrink-0 text-success" />
-            {t("updates.started")}
-          </p>
-        ) : null}
-        {notes.length > 0 ? <SheetLines lines={notes} /> : null}
-      </>
-    );
-  };
-
   const only = items.length === 1 ? items[0] : null;
   const onlyAdapter = only === null ? null : adapterFor(only.candidate.key.instance_id);
-  const onlyJump = only === null ? null : versionJump(only.candidate);
+  const onlyJump = only === null ? null : versionJump(t, only.candidate);
   const onlyDigest = only?.candidate.channel === "Digest";
 
   return (
@@ -530,29 +603,22 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       {only !== null ? (
         <div data-sheet-about="" className="flex flex-col gap-2">
           {onlyDigest && onlyJump !== null ? <SheetText>{onlyJump}</SheetText> : null}
-          {aboutTool(only, said[0].notes, "body")}
+          {aboutTool(t, only, said[0].notes, "body")}
         </div>
       ) : (
         <SheetToolList>
-          {ordered.map(({ item, notes }) => {
+          {ordered.slice(0, drawn).map(({ item, notes }) => {
             const { key } = item.candidate;
-            const jump = versionJump(item.candidate);
-            const digest = item.candidate.channel === "Digest";
-            const adapterId = adapterFor(key.instance_id);
             return (
-              <SheetTool
+              <BatchTool
                 key={artifactKeyId(key)}
-                adapterId={adapterId}
+                t={t}
+                item={item}
+                notes={notes}
+                adapterId={adapterFor(key.instance_id)}
                 sourceLabel={sourceLabelOf(key.instance_id)}
                 showSource={twice.has(item.name)}
-                iconKey={key}
-                name={item.name}
-                // A model's "new version" is a sentence, not a number: under the name.
-                aside={digest ? null : jump}
-              >
-                {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
-                {aboutTool(item, notes, "small")}
-              </SheetTool>
+              />
             );
           })}
         </SheetToolList>

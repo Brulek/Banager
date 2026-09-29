@@ -12,22 +12,45 @@ import {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { RovingRowProvider, type RovingRow } from "./rovingRows";
+import { rowFitFor, type RowFit } from "./rowFit";
 
 /**
- * How wide the list is that a row is drawn in, in CSS px: what a row
- * reads to decide which of its columns give way in a narrow window
- * (`ToolRow`'s `rowFitFor`). Null where nothing has measured it -- a row
- * outside a `VirtualList`, or before the list is laid out -- which a row
- * reads as room enough for everything.
+ * How wide the list is that a row is drawn in, in CSS px: what a long
+ * name is fitted to (`ToolRow`'s middle cut). Null where nothing has
+ * measured it -- a row outside a `VirtualList`, or before the list is laid
+ * out -- which a row reads as room enough for everything.
  */
 const ListWidthContext = createContext<number | null>(null);
 
-/** The list width rows are drawn at, for a list that is not a `VirtualList` -- a test's, or the Unknown page's. */
-export const ListWidthProvider = ListWidthContext.Provider;
+/**
+ * Which of a row's columns fit that width (`rowFitFor`): what a row reads
+ * to decide which give way in a narrow window. Said apart from the width,
+ * so that a new width -- the list laid out as it mounts, a window being
+ * resized -- draws the rows again only where it changes what fits.
+ */
+const RowFitContext = createContext<RowFit>("full");
+
+/**
+ * The list width rows are drawn at, and so what fits on them: a
+ * `VirtualList`'s own, and that of a list that is not one -- a test's, or
+ * the Unknown page's.
+ */
+export function ListWidthProvider({ value, children }: { value: number | null; children: ReactNode }) {
+  return (
+    <ListWidthContext.Provider value={value}>
+      <RowFitContext.Provider value={rowFitFor(value)}>{children}</RowFitContext.Provider>
+    </ListWidthContext.Provider>
+  );
+}
 
 /** The width of the list this is drawn in (`ListWidthContext`). */
 export function useListWidth(): number | null {
   return useContext(ListWidthContext);
+}
+
+/** Which of a row's columns fit the list this is drawn in (`RowFitContext`). */
+export function useRowFit(): RowFit {
+  return useContext(RowFitContext);
 }
 
 /**
@@ -49,6 +72,39 @@ export function useElementWidth(node: HTMLElement | null): number | null {
     return () => observer.disconnect();
   }, [node]);
   return width;
+}
+
+/**
+ * Whether the element handed to the returned ref is narrower than
+ * `limit`, kept up to date as the window is resized; false until it is
+ * measured (jsdom lays nothing out). A state that changes only when the
+ * answer does: where `useElementWidth` draws its user again as the
+ * element is handed over and again for its width -- a page, and every row
+ * of its list in sight with it, twice as it opens -- this draws nothing
+ * again for a width on the same side of `limit`.
+ */
+export function useNarrowerThan(limit: number): [(node: HTMLElement | null) => (() => void) | undefined, boolean] {
+  const [narrower, setNarrower] = useState(false);
+  const known = useRef(false);
+  const attach = useCallback(
+    (node: HTMLElement | null) => {
+      if (node === null) return undefined;
+      const settle = (width: number) => {
+        const next = width > 0 && width < limit;
+        if (next === known.current) return;
+        known.current = next;
+        setNarrower(next);
+      };
+      settle(node.getBoundingClientRect().width);
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) settle(entry.contentRect.width);
+      });
+      observer.observe(node);
+      return () => observer.disconnect();
+    },
+    [limit],
+  );
+  return [attach, narrower];
 }
 
 export interface VirtualListProps<T> {
@@ -298,7 +354,7 @@ export function VirtualList<T>({
       {items.length === 0 && empty !== undefined ? (
         empty
       ) : (
-        <ListWidthContext.Provider value={width}>
+        <ListWidthProvider value={width}>
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const item = items[virtualRow.index];
@@ -333,7 +389,7 @@ export function VirtualList<T>({
               );
             })}
           </div>
-        </ListWidthContext.Provider>
+        </ListWidthProvider>
       )}
     </div>
   );

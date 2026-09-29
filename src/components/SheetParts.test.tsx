@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { SheetText, sheetMeta } from "./SheetParts";
+import { render, screen, waitFor } from "@testing-library/react";
+import { SheetText, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn } from "./SheetParts";
 
 describe("sheetMeta", () => {
   it("says the source and the version, each on its own, apart by a middle dot", () => {
@@ -53,5 +53,37 @@ describe("SheetText", () => {
     const text = screen.getByText(/删除Homebrew/);
     expect(text).toHaveClass("text-body-long");
     expect(text).not.toHaveClass("text-body");
+  });
+});
+
+describe("useToolsInTurn", () => {
+  /** A dialog's list of `count` tools, saying how many it draws each time it is drawn. */
+  function List({ count, batch, drawn }: { count: number; batch: number | null; drawn: number[] }) {
+    const shown = useToolsInTurn(count, batch);
+    drawn.push(shown);
+    return <p data-testid="shown">{shown}</p>;
+  }
+
+  it("draws the first few of a long list with the dialog and the rest just after, starting over for a new batch", async () => {
+    // As many as a 320 high list shows at 36 a tool, and no fewer.
+    expect(TOOLS_DRAWN_FIRST * 36).toBeGreaterThanOrEqual(320);
+    expect((TOOLS_DRAWN_FIRST - 1) * 36).toBeLessThan(320);
+    const drawn: number[] = [];
+    const { rerender } = render(<List count={121} batch={1} drawn={drawn} />);
+    expect(drawn[0]).toBe(TOOLS_DRAWN_FIRST);
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("121"));
+
+    // Update all again: a new batch, from the first few.
+    drawn.length = 0;
+    rerender(<List count={121} batch={2} drawn={drawn} />);
+    expect(drawn[0]).toBe(TOOLS_DRAWN_FIRST);
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("121"));
+
+    // A list that fits is drawn whole at once, and none while there is no batch.
+    drawn.length = 0;
+    rerender(<List count={5} batch={3} drawn={drawn} />);
+    expect(new Set(drawn)).toEqual(new Set([5]));
+    rerender(<List count={0} batch={null} drawn={drawn} />);
+    expect(screen.getByTestId("shown")).toHaveTextContent("0");
   });
 });

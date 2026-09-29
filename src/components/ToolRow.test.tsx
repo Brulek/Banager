@@ -8,7 +8,7 @@ import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
 import { ListWidthProvider, VirtualList } from "./VirtualList";
-import { RovingRowProvider } from "./rovingRows";
+import { RovingRowProvider, useRovingRow } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
 import { readFileSync } from "node:fs";
 
@@ -18,6 +18,12 @@ vi.mock("../lib/middleCut", async (original) => ({
   ...(await original<typeof import("../lib/middleCut")>()),
   textMeasurer: () => (text: string) => text.length * 7,
 }));
+// The real hook, watched: a row calls it once each time it is drawn, and
+// nothing else here calls it, so its calls count a row's draws.
+vi.mock("./rovingRows", async (original) => {
+  const actual = await original<typeof import("./rovingRows")>();
+  return { ...actual, useRovingRow: vi.fn(actual.useRovingRow) };
+});
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -974,6 +980,34 @@ describe("ToolRow as a list mounts it", () => {
         expect({ width, commits }).toEqual({ width, commits: ["mount"] });
         unmount();
       }
+    }
+  });
+
+  it("is not drawn again for a new width of its list that fits the same columns, but a long name is fitted again", () => {
+    const draws = vi.mocked(useRovingRow);
+    draws.mockClear();
+    // The same row each time: only what reads the list can draw it again.
+    const { rerender, container } = renderWithProviders(<ListWidthProvider value={null}>{fullRow}</ListWidthProvider>);
+    expect(draws).toHaveBeenCalledTimes(1);
+    // The list laid out as it mounts, then a window resized: all of it fits still.
+    rerender(<ListWidthProvider value={752}>{fullRow}</ListWidthProvider>);
+    rerender(<ListWidthProvider value={ROW_FIT_WIDTHS.full}>{fullRow}</ListWidthProvider>);
+    expect(draws).toHaveBeenCalledTimes(1);
+    // Narrower than that: drawn again, the version column saying only the new version.
+    rerender(<ListWidthProvider value={ROW_FIT_WIDTHS.full - 1}>{fullRow}</ListWidthProvider>);
+    expect(draws).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("[data-version]")?.textContent).toBe("→ 2.1.2902.1.282 → 2.1.290");
+
+    // A name long enough to be cut in its middle is fitted to every new width.
+    const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    try {
+      const long = <ToolRow adapterId="npm" sourceLabel="npm" name={LONG} description="MCP server" />;
+      const { rerender: again } = renderWithProviders(<ListWidthProvider value={752}>{long}</ListWidthProvider>);
+      box.mockClear();
+      again(<ListWidthProvider value={760}>{long}</ListWidthProvider>);
+      expect(box).toHaveBeenCalled();
+    } finally {
+      box.mockRestore();
     }
   });
 

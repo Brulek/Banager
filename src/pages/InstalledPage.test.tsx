@@ -504,6 +504,12 @@ describe("InstalledPage", () => {
     expect(search.selectionStart).toBe(0);
     expect(search.selectionEnd).toBe(2);
     expect(useUiStore.getState().searchFocusRequested).toBe(false);
+
+    // Pressed again with the page open, the field already there.
+    act(() => search.blur());
+    act(() => useUiStore.getState().searchInstalled());
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
   });
 
   it("draws a source's components as a 32-high line that discloses them: a 10pt triangle, 13 muted", async () => {
