@@ -200,3 +200,31 @@ value falls back to the default and logs a warning in the console.
 | `page` | `overview` (default), `updates`, `installed`, `unknown`, `settings` | The page the window opens on. |
 | `outcome` | `succeeded` (default), `failed`, `cancelled`, `unconfirmed`, `attention`, `canager` | How every operation ends. Only `succeeded` changes anything. |
 | `scan` | `found` (default), `stopped`, `empty`, `error` | What the Unknown page's scan returns. |
+
+## Large list
+
+How the two long pages fare on `?state=many` (792 installed, 121 to
+update, `lang=zh-CN`): timed in headless Chrome against this preview --
+`vite --mode mock`, so React's development build -- in a 1280×800
+window on an M5 Pro, the median of three runs. An interaction is from
+the input to the next frame drawn (Event Timing); a task is one run of
+the main thread. Before is 1eaf5af; after, `VirtualList`
+(`src/components/VirtualList.tsx`), `UpdateWatchers` in `src/App.tsx`
+and the split memo in `useStartableUpdates`.
+
+| | Before | After |
+|---|---|---|
+| Scrolling the Installed list to its end (6000 px/s): longest task, longest frame | 28 ms, 33 ms | 9 ms, 17 ms |
+| The same with the CPU slowed 4×: tasks over 50 ms, frames drawn | 48, 224 | 0, 390 |
+| Scrolling the Updates list: longest task | 13 ms | 5 ms |
+| Update all, submitting 121 plans: main thread busy (4× slower CPU) | 0.48 s (2.61 s) | 0.43 s (2.43 s) |
+
+Every interaction took under 100 ms before and after, and about the
+same: opening Installed from the sidebar 56 ms, each key of a search
+for "py" 32 and 24 ms, a source filter 24 ms, Select all 24–32 ms,
+Update all's sheet 24 ms (ready 0.43 s later, 0.4 s of it the mock's
+planning). What changed is scrolling, which drew the whole page again
+at every step. With the CPU slowed 4×, opening Installed takes 150 ms
+and a key or a filter 64–72 ms, most of it React's development checks:
+a production build of this preview (`vite build --mode mock`) does them
+in 72 ms and 24–32 ms, and scrolls with no task over 8 ms.
