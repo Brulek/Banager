@@ -429,7 +429,15 @@ describe("InstalledPage", () => {
 
     fireEvent.change(search, { target: { value: "nonexistent" } });
     await waitFor(() => expect(queryByText("jq")).not.toBeInTheDocument());
-    expect(getByText("Nothing matches “nonexistent”")).toBeInTheDocument();
+    // One line in the middle of the list's area, 13 muted, no symbol.
+    const line = getByText("Nothing matches “nonexistent”");
+    expect(line.className.split(" ")).toEqual(
+      expect.arrayContaining(["flex", "flex-1", "items-center", "justify-center", "text-body", "text-muted"]),
+    );
+    expect(line.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["flex", "h-full", "flex-col"]));
+    expect(line.parentElement?.parentElement).toHaveAttribute("data-list");
+    expect(line.querySelector("svg")).toBeNull();
+    expect(line.className).not.toMatch(/py-10/);
   });
 
   it("puts its sort and its search field in the toolbar: a grey popup button, then a quiet field 200 wide", async () => {
@@ -2401,7 +2409,17 @@ describe("InstalledPage", () => {
 
         fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "More actions for jq" }));
         menu = screen.getByRole("menu");
-        fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy Command" }));
+        // Copy Command in a group of its own, a hairline over it.
+        const copyItem = within(menu).getByRole("menuitem", { name: "Copy Command" });
+        const separator = within(menu).getByRole("separator");
+        expect(
+          separator.compareDocumentPosition(copyItem) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(
+          separator.compareDocumentPosition(within(menu).getByRole("menuitem", { name: "Details" })) &
+            Node.DOCUMENT_POSITION_PRECEDING,
+        ).toBeTruthy();
+        fireEvent.click(copyItem);
         expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin jq");
         expect(await screen.findByRole("status")).toHaveTextContent("Copied");
       } finally {

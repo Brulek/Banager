@@ -906,14 +906,20 @@ export function InstalledPage() {
   };
 
   // The ⋯ menu: the details, and -- with technical details on -- the
-  // command a chip talks about.
+  // command a chip talks about, in a group of its own under a hairline, as
+  // the Updates page's menu sets it apart.
   const menuItems = (artifact: InstalledArtifact, instance: ManagerInstance): MenuItem[] => {
     const items: MenuItem[] = [
       { id: "details", label: t("common.details"), onSelect: () => select(artifact) },
     ];
     const command = commandOf(artifact, instance);
     if (showTechnicalDetails && command !== null) {
-      items.push({ id: "copy", label: t("common.copyCommand"), onSelect: () => copyCommand(command) });
+      items.push({
+        id: "copy",
+        label: t("common.copyCommand"),
+        separatorBefore: true,
+        onSelect: () => copyCommand(command),
+      });
     }
     return items;
   };
@@ -1228,18 +1234,24 @@ export function InstalledPage() {
             sourceEmpty ? (
               <SourceEmpty instance={instancesById.get(activeFilter)!} label={sourceLabelFor(activeFilter)} />
             ) : (
-              <>
+              // The one line in the middle of the list's area, 13 in the
+              // secondary colour, no symbol (spec §3.9): 「没有找到“xxx”」.
+              // The notices, if any, keep the list's first line over it.
+              <div className="flex h-full flex-col">
                 {notices.length > 0 ? (
                   <div className="px-5">
                     <SourceNotices notices={notices} layout="line" fold={noticeFold} />
                   </div>
                 ) : null}
-                <p className="px-5 py-10 text-center text-body text-muted">
+                <p
+                  data-list-empty=""
+                  className="flex flex-1 items-center justify-center px-5 text-center text-body text-muted"
+                >
                   {needle !== ""
                     ? t("installed.noMatches", { query: query.trim() })
                     : t("emptyStates.nothingInstalled.title")}
                 </p>
-              </>
+              </div>
             )
           }
         />
