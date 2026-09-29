@@ -149,12 +149,16 @@ export function useStartableUpdates(): UpdateCandidate[] | undefined {
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
   const operationFor = useUpdateOperationFor();
+  // What the page offers to install moves with the snapshot and the
+  // settings only; the operations, which move at every step of every
+  // update, only take rows out of it.
+  const actionable = useMemo(
+    () => (snapshot && settings ? actionableUpdatesOf(snapshot, settings) : undefined),
+    [snapshot, settings],
+  );
   return useMemo(
-    () =>
-      snapshot && settings
-        ? actionableUpdatesOf(snapshot, settings).filter((candidate) => !holdsRow(operationFor(candidate)))
-        : undefined,
-    [snapshot, settings, operationFor],
+    () => actionable?.filter((candidate) => !holdsRow(operationFor(candidate))),
+    [actionable, operationFor],
   );
 }
 
