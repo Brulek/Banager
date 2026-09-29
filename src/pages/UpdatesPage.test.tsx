@@ -2431,6 +2431,55 @@ describe("UpdatesPage", () => {
       expect(useUiStore.getState().drawerOpen).toBe(true);
     });
 
+    it("says why an update failed, where the tool's own words say, in the red for text, beside Retry", async () => {
+      operations = [
+        operation(glibKey, {
+          id: 9,
+          status: "Done",
+          outcome: {
+            Failed: {
+              exit_code: 1,
+              summary: 'curl: (6) Could not resolve host: ghcr.io\nError: glib: Failed to download resource "glib (2.90.0)"',
+            },
+          },
+        }),
+      ];
+      started(9, "2.90.0");
+      const { getByRole } = renderPage();
+
+      const glib = await findRow("glib");
+      const word = await within(glib).findByText("Connection failed");
+      expect(within(glib).queryByText("Couldn't update")).toBeNull();
+      // The tool's raw words stay in its log, not in the row.
+      expect(within(glib).queryByText(/Could not resolve host/)).toBeNull();
+      const toLog = getByRole("button", { name: "View log: glib" });
+      expect(toLog).toContainElement(word);
+      expect(toLog).toHaveAccessibleDescription("Connection failed");
+      expect(toLog.className).toContain("text-danger-text");
+      expect(toLog.className).toContain("text-small");
+      expect(within(glib).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+      fireEvent.click(toLog);
+      expect(useUiStore.getState().focusedOpId).toBe(9);
+    });
+
+    it("draws its progress as a Mac list does: a 16 spinner in muted words, and a 12 green tick beside Updated", async () => {
+      operations = [operation(glibKey, { status: "Running" })];
+      const view = renderPage();
+      const running = await within(await findRow("glib")).findByText("Updating…");
+      expect(running.className).toContain("text-muted");
+      expect(running.querySelector("svg")).toHaveAttribute("width", "16");
+      view.unmount();
+
+      operations = [operation(glibKey, { id: 3, status: "Done", outcome: "Succeeded" })];
+      started(3, "2.90.0");
+      renderPage();
+      const done = await within(await findRow("glib")).findByText("Updated");
+      expect(done.className).toContain("text-foreground");
+      const tick = done.querySelector("svg");
+      expect(tick).toHaveAttribute("width", "12");
+      expect(tick?.getAttribute("class")).toContain("text-success");
+    });
+
     it("says a cancelled update was cancelled", async () => {
       operations = [operation(glibKey, { status: "Done", outcome: "Cancelled" })];
       started(7, "2.90.0");
@@ -2447,8 +2496,13 @@ describe("UpdatesPage", () => {
       started(11, "2.90.0");
       const { getByRole } = renderPage();
 
-      expect(await within(await findRow("glib")).findByText("Unexpected result")).toBeInTheDocument();
-      fireEvent.click(getByRole("button", { name: "View log: glib" }));
+      const word = await within(await findRow("glib")).findByText("Unexpected result");
+      // 12 orange ⚠︎ and the word in the label colour.
+      const toLog = getByRole("button", { name: "View log: glib" });
+      expect(toLog.className).toContain("text-foreground");
+      expect(word.previousElementSibling?.getAttribute("class")).toContain("text-warning");
+      expect(word.previousElementSibling).toHaveAttribute("width", "12");
+      fireEvent.click(toLog);
       expect(useUiStore.getState().focusedOpId).toBe(11);
     });
 

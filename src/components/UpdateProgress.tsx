@@ -1,16 +1,17 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useId, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { actionableUpdatesOf } from "../lib/updateState";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { OpSummary, Outcome, UpdateCandidate } from "../lib/types";
-import { CheckIcon, SpinnerIcon } from "./icons";
-import { LINK } from "./ui/controls";
+import { FAILURE_CAUSE_KEYS, outcomeCause, type FailureCause } from "../lib/failureCause";
+import { CheckIcon, SpinnerIcon, WarningFilledIcon } from "./icons";
 
 /**
  * What a row shows in place of its Update button while an update of it is
  * under way or has just finished (`UpdateProgress`). `failed` and `check`
- * keep the operation's id, for the log they offer.
+ * keep the operation's id, for the log they offer; `failed`, why, where
+ * the tool's own words say (`outcomeCause`), or null.
  */
 export type RowProgress =
   | { kind: "queued" }
@@ -18,7 +19,7 @@ export type RowProgress =
   | { kind: "cancelling" }
   | { kind: "succeeded" }
   | { kind: "cancelled" }
-  | { kind: "failed"; opId: number }
+  | { kind: "failed"; opId: number; cause: FailureCause | null }
   | { kind: "check"; opId: number };
 
 /**
@@ -45,7 +46,7 @@ function outcomeProgress(outcome: Outcome | null, opId: number): RowProgress {
     }
   }
   if ("NeedsAttention" in outcome) return { kind: "check", opId };
-  if ("Failed" in outcome || "CanagerFailed" in outcome) return { kind: "failed", opId };
+  if ("Failed" in outcome || "CanagerFailed" in outcome) return { kind: "failed", opId, cause: outcomeCause(outcome) };
   const unhandled: never = outcome;
   return unhandled;
 }
@@ -184,63 +185,72 @@ export interface UpdateProgressProps {
 }
 
 /**
- * The row's own progress, where its Update button was: 360's "the progress
- * is in the row". Waiting, updating with a spinner, a tick when it is
- * done; a failure, or an outcome to check, with the way to its log. An
- * ending the row can retry (`isRetryable`) stands beside the row's Retry,
- * which takes the button's place.
+ * The row's own progress, where its Update button was (spec §3.10): 360's
+ * "the progress is in the row", in a Mac list's words. Waiting, in the
+ * muted grey; updating, a 16 spinner and 「正在更新…」, muted; done, a 12
+ * green ✓ and 「已更新」. How it ended when it did not update is a word
+ * that opens its log: 「未能更新」 in the red for text -- or why, where the
+ * tool's own words say, 「网络连接失败」 (`failureCause`) -- and a 12
+ * orange ⚠︎ and 「结果不符」 where the result is not what the tool said.
+ * An ending the row can retry (`isRetryable`) stands in the status column,
+ * beside the row's Retry, which takes the button's place.
  */
 export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProps) {
   const { t } = useTranslation();
-  const viewLog = (opId: number) => (
+  const wordId = useId();
+  // The word is what shows; the button's name says what pressing it does,
+  // and the word is its description, so a screen reader says both.
+  const toLog = (opId: number, word: string, className: string, symbol?: ReactNode) => (
     <button
       type="button"
       onClick={() => onViewLog(opId)}
       aria-label={t("updates.progress.viewLogLabel", { name })}
-      className={`${LINK} text-small`}
+      aria-describedby={wordId}
+      title={t("common.viewLog")}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm text-small ${className}`}
     >
-      {t("common.viewLog")}
+      {symbol}
+      <span id={wordId}>{word}</span>
     </button>
   );
   switch (progress.kind) {
     case "queued":
-      return <span className="text-small text-muted">{t("updates.progress.queued")}</span>;
+      return <span className="whitespace-nowrap text-small text-muted">{t("updates.progress.queued")}</span>;
     case "running":
       return (
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small font-medium text-accent-text">
-          <SpinnerIcon size={14} />
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
+          <SpinnerIcon size={16} className="shrink-0" />
           {t("updates.progress.running")}
         </span>
       );
     case "cancelling":
       return (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
-          <SpinnerIcon size={14} />
+          <SpinnerIcon size={16} className="shrink-0" />
           {t("updates.progress.cancelling")}
         </span>
       );
     case "succeeded":
       return (
-        <span className="inline-flex items-center gap-1 whitespace-nowrap text-small font-medium text-success">
-          <CheckIcon size={15} />
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-small text-foreground">
+          <CheckIcon size={12} className="shrink-0 text-success" />
           {t("updates.progress.succeeded")}
         </span>
       );
     case "cancelled":
-      return <span className="text-small text-muted">{t("updates.progress.cancelled")}</span>;
+      return <span className="whitespace-nowrap text-small text-muted">{t("updates.progress.cancelled")}</span>;
     case "failed":
-      return (
-        <span className="flex flex-col items-end leading-tight">
-          <span className="text-small font-medium text-danger">{t("updates.progress.failed")}</span>
-          {viewLog(progress.opId)}
-        </span>
+      return toLog(
+        progress.opId,
+        progress.cause === null ? t("updates.progress.failed") : t(FAILURE_CAUSE_KEYS[progress.cause].word),
+        "text-danger-text",
       );
     case "check":
-      return (
-        <span className="flex flex-col items-end leading-tight">
-          <span className="text-small font-medium text-warning">{t("updates.progress.check")}</span>
-          {viewLog(progress.opId)}
-        </span>
+      return toLog(
+        progress.opId,
+        t("updates.progress.check"),
+        "text-foreground",
+        <WarningFilledIcon size={12} className="shrink-0 text-warning" />,
       );
   }
 }
