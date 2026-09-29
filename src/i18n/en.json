@@ -165,8 +165,8 @@
   "updates": {
     "upToDate": "Everything is up to date",
     "noneCheckable": "No updates in the sources checked",
-    "count_one": "{{count}} can be updated",
-    "count_other": "{{count}} can be updated",
+    "count_one": "{{count}} Update Available",
+    "count_other": "{{count}} Updates Available",
     "noneActionable": "Nothing to update here",
     "alsoCount_one": "{{count}} more can be updated",
     "alsoCount_other": "{{count}} more can be updated",

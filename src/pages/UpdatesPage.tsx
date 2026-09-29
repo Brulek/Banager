@@ -27,7 +27,7 @@ import { NOTICE_GRID } from "../components/SourceNotice";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
 import { VirtualList } from "../components/VirtualList";
-import { ToolbarItems } from "../components/Toolbar";
+import { SteadyLabel, ToolbarItems } from "../components/Toolbar";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import { EmptyState } from "../components/EmptyState";
@@ -867,6 +867,12 @@ export function UpdatesPage() {
   };
 
   const startableCount = startableUpdates.length;
+  // Everything the toolbar's one button can say, at its widest -- every
+  // row ticked -- so it keeps that width whatever is ticked (`SteadyLabel`).
+  const primaryWidest = [
+    t("updates.updateAll"),
+    t("updates.updateSelectedCount", { number: Math.max(startableCount, 1) }),
+  ];
   // The checkboxes that are ticked, against those there are: the list
   // header's box is ticked for all, a dash for some (`indeterminate`).
   const selectedCount = selectedVisible.length;
@@ -897,7 +903,7 @@ export function UpdatesPage() {
             onClick={(event) => void openConfirm(selectedVisible, event.currentTarget)}
             className={BUTTON.regular.default}
           >
-            {t("updates.updateSelectedCount", { number: selectedCount })}
+            <SteadyLabel label={t("updates.updateSelectedCount", { number: selectedCount })} widest={primaryWidest} />
           </button>
         ) : (
           <button
@@ -909,7 +915,7 @@ export function UpdatesPage() {
             }}
             className={BUTTON.regular.default}
           >
-            {t("updates.updateAll")}
+            <SteadyLabel label={t("updates.updateAll")} widest={primaryWidest} />
           </button>
         )}
       </ToolbarItems>

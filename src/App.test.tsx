@@ -283,7 +283,7 @@ describe("App", () => {
     };
     const expected: Array<[string, string | null]> = [
       ["Overview", null],
-      ["Updates", "2 can be updated"],
+      ["Updates", "2 Updates Available"],
       ["Installed", "2 tools"],
       ["Unknown", "3 programs"],
       ["Settings", null],
@@ -349,10 +349,10 @@ describe("App", () => {
 
     // The toolbar's subtitle says how many, and the page does not say it
     // again over its list: once a screen.
-    expect(await within(getByRole("banner")).findByText("2 can be updated")).toBeInTheDocument();
+    expect(await within(getByRole("banner")).findByText("2 Updates Available")).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
-    expect(within(getByRole("main")).getAllByText("2 can be updated")).toHaveLength(1);
+    expect(within(getByRole("main")).getAllByText("2 Updates Available")).toHaveLength(1);
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
     // The page's one action, in the toolbar, counting the ticked rows.
     expect(within(getByRole("banner")).getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();

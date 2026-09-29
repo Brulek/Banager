@@ -25,6 +25,29 @@ export function ToolbarItems({ children }: { children: ReactNode }) {
 }
 
 /**
+ * A toolbar button's words, as wide as the widest it ever says: the words
+ * it says now, over the others it can say laid in the same place unseen
+ * (and unheard), so the button keeps one width as its words change --
+ * Update All turning into Update Selected (3) -- and nothing beside it
+ * moves, as the ⟳ before it did by 16. Digits of one width, so no count
+ * of as many digits as the widest is wider.
+ */
+export function SteadyLabel({ label, widest }: { label: string; widest: string[] }) {
+  return (
+    <span className="grid justify-items-center tabular-nums">
+      <span data-button-label="" className="col-start-1 row-start-1">
+        {label}
+      </span>
+      {widest.map((text) => (
+        <span key={text} aria-hidden="true" data-button-sizer="" className="invisible col-start-1 row-start-1">
+          {text}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * Whether what is under the toolbar has scrolled from its top: the
  * toolbar's hairline, which a Mac window draws only once there is content
  * under its edge (the scroll edge), and takes away at the top again.

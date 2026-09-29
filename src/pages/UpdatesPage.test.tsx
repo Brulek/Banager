@@ -783,9 +783,9 @@ describe("UpdatesPage", () => {
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
-    // Counted apart from what can be updated: "1 can be updated", and one under
+    // Counted apart from what can be updated: "1 Update Available", and one under
     // "Can't update here".
-    await findByText("1 can be updated");
+    await findByText("1 Update Available");
     await showCantUpdate();
     expect(getByText("1 more can't be updated here")).toBeInTheDocument();
     const glib = await findRow("glib");
@@ -1024,7 +1024,7 @@ describe("UpdatesPage", () => {
     // One update the user can act on, and one they cannot -- both said out
     // loud. Counting only the first left "0 updates available" above six
     // listed rows on a machine whose only outdated packages were pip's.
-    await findByText("1 can be updated");
+    await findByText("1 Update Available");
     await findByText("1 more can't be updated here");
     await showCantUpdate();
     const detail = chipDetail(await findRow("urllib3"), "View only");
@@ -1105,9 +1105,9 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, queryByText } = renderPage();
 
-    await findByText("1 can be updated");
+    await findByText("1 Update Available");
     await findByText("1 more can't be updated here");
-    expect(queryByText("2 can be updated")).not.toBeInTheDocument();
+    expect(queryByText("2 Updates Available")).not.toBeInTheDocument();
   });
 
   it("says why a row can't be checked even when its source is also read-only", async () => {
@@ -1380,7 +1380,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderPage();
 
     expect(await findByText("Nothing to update here")).toBeInTheDocument();
-    expect(queryByText("0 can be updated")).not.toBeInTheDocument();
+    expect(queryByText("0 Updates Available")).not.toBeInTheDocument();
     // The headline switching to "nothing here" does not excuse dropping the
     // number: two listed rows the user cannot act on are still counted.
     expect(await findByText("2 more can't be updated here")).toBeInTheDocument();
@@ -1697,18 +1697,20 @@ describe("UpdatesPage", () => {
       updates = [...snapshot.updates, brewCandidate("jq"), { ...brewCandidate("wget"), blocked: "Pinned" }];
       const { findByText, getByRole, getAllByRole, queryByRole, container } = renderPage();
 
-      await findByText("3 can be updated");
+      await findByText("3 Updates Available");
       // In the toolbar, not on the page, and the only button there.
       const toolbar = container.querySelector("[data-toolbar-slot]") as HTMLElement;
-      expect(within(toolbar).getAllByRole("button").map((button) => button.textContent)).toEqual(["Update All"]);
+      const labels = () =>
+        within(toolbar)
+          .getAllByRole("button")
+          .map((button) => button.querySelector("[data-button-label]")?.textContent);
+      expect(labels()).toEqual(["Update All"]);
       expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
       // Nor does the page say how many again: the toolbar's subtitle does.
-      expect(screen.getAllByText("3 can be updated")).toHaveLength(1);
+      expect(screen.getAllByText("3 Updates Available")).toHaveLength(1);
 
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
-      expect(within(toolbar).getAllByRole("button").map((button) => button.textContent)).toEqual([
-        "Update Selected (1)",
-      ]);
+      expect(labels()).toEqual(["Update Selected (1)"]);
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[2]);
       expect(getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
       // The accent, as Update all's: the one thing the screen asks for.
@@ -1718,7 +1720,45 @@ describe("UpdatesPage", () => {
       // Unticked again, back to Update all.
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
       fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[2]);
-      expect(within(toolbar).getAllByRole("button").map((button) => button.textContent)).toEqual(["Update All"]);
+      expect(labels()).toEqual(["Update All"]);
+    });
+
+    it("keeps its one button as wide as it is at its widest, so nothing beside it moves as its words change", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const { findByText, getByRole, getAllByRole, container } = renderPage();
+
+      await findByText("3 Updates Available");
+      const toolbar = container.querySelector("[data-toolbar-slot]") as HTMLElement;
+      // Laid under its words, unseen and unheard: everything it can say,
+      // the count at every row ticked.
+      const sizers = () =>
+        [...toolbar.querySelectorAll("[data-button-sizer]")].map((sizer) => {
+          expect(sizer).toHaveAttribute("aria-hidden", "true");
+          expect(sizer).toHaveClass("invisible", "col-start-1", "row-start-1");
+          return sizer.textContent;
+        });
+      expect(sizers()).toEqual(["Update All", "Update Selected (3)"]);
+      const all = getByRole("button", { name: "Update All" });
+      // In the one grid cell with its words, digits of one width.
+      const grid = all.querySelector("[data-button-label]")?.parentElement as HTMLElement;
+      expect(grid).toHaveClass("grid", "justify-items-center", "tabular-nums");
+      expect(all.querySelector("[data-button-label]")).toHaveClass("col-start-1", "row-start-1");
+
+      // Ticked, the same under other words: the same width.
+      fireEvent.click(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]);
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeInTheDocument();
+      expect(sizers()).toEqual(["Update All", "Update Selected (3)"]);
+    });
+
+    it("says how many in the toolbar as Latest does in English, one or several", async () => {
+      updates = [snapshot.updates[0]];
+      const { findByText, unmount } = renderPage();
+      await findByText("1 Update Available");
+      unmount();
+
+      updates = [...snapshot.updates, brewCandidate("jq")];
+      const again = renderPage();
+      await again.findByText("3 Updates Available");
     });
 
     it("says 更新所选（N） in Chinese once rows are ticked", async () => {
@@ -1752,7 +1792,7 @@ describe("UpdatesPage", () => {
       ];
       const { getByRole, findByRole, queryByRole, findByText } = renderPage();
 
-      await findByText("3 can be updated");
+      await findByText("3 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
 
       const dialog = await findByRole("dialog");
@@ -2029,7 +2069,7 @@ describe("UpdatesPage", () => {
     const { findByText, findAllByRole } = renderPage();
 
     await findRow("glib");
-    await findByText("2 can be updated");
+    await findByText("2 Updates Available");
     expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
   });
 
@@ -2042,7 +2082,7 @@ describe("UpdatesPage", () => {
 
     await findRow("onyx");
     expect(queryByText("glib")).not.toBeInTheDocument();
-    expect(await findByText("1 can be updated")).toBeInTheDocument();
+    expect(await findByText("1 Update Available")).toBeInTheDocument();
     // glib's selection outlived its row, and counts for nothing: nothing is
     // ticked, as far as the toolbar and the list's header are concerned.
     expect(queryByRole("button", { name: /^Update Selected/ })).not.toBeInTheDocument();
@@ -2133,7 +2173,7 @@ describe("UpdatesPage", () => {
     const { findByText, findAllByRole } = renderPage();
 
     await findRow("chromium");
-    await findByText("2 can be updated");
+    await findByText("2 Updates Available");
     expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
   });
 
@@ -2339,7 +2379,7 @@ describe("UpdatesPage", () => {
     // words, never counted as one more that can be updated.
     const takesRow: Array<[string, Partial<OpSummary>, string]> = [
       ["under way", { status: "Running" }, "Updating 1 tool, 1 more can be updated"],
-      ["that worked", { status: "Done", outcome: "Succeeded" }, "1 can be updated"],
+      ["that worked", { status: "Done", outcome: "Succeeded" }, "1 Update Available"],
     ];
 
     it.each(takesRow)("leaves a row with an update %s out of its checkbox, the count, the header's box and Update all", async (_name, fields, header) => {
@@ -2381,7 +2421,7 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
-      expect(await findByText("2 can be updated")).toBeInTheDocument();
+      expect(await findByText("2 Updates Available")).toBeInTheDocument();
       expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
       fireEvent.click(getByRole("checkbox", { name: SELECT_ALL }));
       expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(glibKey), artifactKeyId(onyxKey)]);
@@ -2771,7 +2811,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole, findByRole } = renderPage();
 
       const section = await screen.findByRole("region", { name: "Just updated" });
-      expect(await findByText("1 can be updated")).toBeInTheDocument();
+      expect(await findByText("1 Update Available")).toBeInTheDocument();
       expect(within(section).queryByRole("checkbox")).toBeNull();
       expect(within(section).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
         "Clear the Just updated list",
@@ -3171,7 +3211,7 @@ describe("UpdatesPage", () => {
     ];
     const { findByText, findAllByRole } = renderPage();
 
-    expect(await findByText("2 can be updated")).toBeInTheDocument();
+    expect(await findByText("2 Updates Available")).toBeInTheDocument();
     expect(await findByText("1 more can't be updated here")).toBeInTheDocument();
     await showCantUpdate();
     const row = await findRow("qwen3:8b");
@@ -3383,7 +3423,7 @@ describe("UpdatesPage", () => {
       needsPassword.add("onyx");
       const { findByRole, findByText, getByRole } = renderPage();
 
-      await findByText("2 can be updated");
+      await findByText("2 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
       const names = () =>
@@ -3400,7 +3440,7 @@ describe("UpdatesPage", () => {
     it("says nothing about notes beside Update when there are none", async () => {
       const { findByRole, findByText, getByRole } = renderPage();
 
-      await findByText("2 can be updated");
+      await findByText("2 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
 
@@ -3429,7 +3469,7 @@ describe("UpdatesPage", () => {
       ];
       const { findByRole, findByText, getByRole } = renderPage();
 
-      await findByText("3 can be updated");
+      await findByText("3 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 3 tools?" });
       const rows = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
@@ -3449,7 +3489,7 @@ describe("UpdatesPage", () => {
       updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
       const { findByRole, findByText, getByRole } = renderPage();
 
-      await findByText("10 can be updated");
+      await findByText("10 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 10 tools?" });
 
@@ -3472,7 +3512,7 @@ describe("UpdatesPage", () => {
       planFailures["tool-8"] = "tool-8 is pinned";
       const { findByRole, findByText, getByRole } = renderPage();
 
-      await findByText("10 can be updated");
+      await findByText("10 Updates Available");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 9 tools?" });
 
@@ -3511,7 +3551,7 @@ describe("UpdatesPage", () => {
     it("gives the focus back to Update all once the updates it confirmed have started", async () => {
       const { getByRole, findByRole, queryByRole, findByText } = renderPage();
 
-      await findByText("2 can be updated");
+      await findByText("2 Updates Available");
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
@@ -3526,7 +3566,7 @@ describe("UpdatesPage", () => {
       submitFailures["2"] = '{"kind":"expired"}';
       const { getByRole, findByRole, queryByRole, findByText } = renderPage();
 
-      await findByText("2 can be updated");
+      await findByText("2 Updates Available");
       const updateAll = getByRole("button", { name: "Update All" });
       fireEvent.click(updateAll);
       const dialog = await findByRole("dialog");
@@ -4125,7 +4165,7 @@ describe("UpdatesPage", () => {
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
-    await findByText("1 can be updated");
+    await findByText("1 Update Available");
     await findByText("1 more can't be updated here");
     await showCantUpdate();
     const claude = await findRow("Claude Code");
