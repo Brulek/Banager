@@ -87,7 +87,7 @@ describe("PageHeader", () => {
 
   it("is a 52pt toolbar: the title 20 in, 13 bold, with its subtitle under it in the secondary colour", () => {
     const { getByRole, getByText } = renderWithProviders(
-      <PageHeader title="Updates" subtitle={{ text: "10 Updates Available", failed: false }} actions={null} />,
+      <PageHeader title="Updates" subtitle={{ text: "10 updates available", failed: false }} actions={null} />,
     );
     const title = getByRole("heading", { level: 1, name: "Updates" });
     const header = title.closest("header") as HTMLElement;
@@ -96,7 +96,7 @@ describe("PageHeader", () => {
     expect(header.className).not.toMatch(/\bbg-/);
     expect(title.className).toContain("text-title");
 
-    const subtitle = getByText("10 Updates Available");
+    const subtitle = getByText("10 updates available");
     // Under the title, the two centred together.
     expect(subtitle.previousElementSibling).toBe(title);
     expect(subtitle.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
@@ -133,7 +133,7 @@ describe("PageHeader", () => {
 
   it("moves the window from anywhere but its controls, on the traffic lights' line", async () => {
     const { getByRole, getByText } = renderWithProviders(
-      <PageHeader title="Updates" subtitle={{ text: "10 Updates Available", failed: false }} />,
+      <PageHeader title="Updates" subtitle={{ text: "10 updates available", failed: false }} />,
     );
     const title = getByRole("heading", { level: 1, name: "Updates" });
     const header = title.closest("header") as HTMLElement;
@@ -142,7 +142,7 @@ describe("PageHeader", () => {
     // The title, the subtitle and the space around them drag the window...
     expect(dragsWindow(header)).toBe(true);
     expect(dragsWindow(title)).toBe(true);
-    expect(dragsWindow(getByText("10 Updates Available"))).toBe(true);
+    expect(dragsWindow(getByText("10 updates available"))).toBe(true);
     // ...and Check again, its icon too, stays a button.
     expect(dragsWindow(checkAgain)).toBe(false);
     expect(dragsWindow(checkAgain.querySelector("svg") as Element)).toBe(false);

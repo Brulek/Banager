@@ -201,7 +201,7 @@
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {
-      "title": "刚更新的",
+      "title": "最近更新",
       "clear": "清除",
       "clearLabel": "清除“刚更新的”列表"
     },
@@ -223,7 +223,7 @@
         "refused": "{{source}}会自行更新，无法在这里更新。"
       }
     },
-    "allHiddenTitle": "没有要处理的更新",
+    "allHiddenTitle": "没有要安装的更新",
     "allHiddenDescription": "其余更新已隐藏。",
     "showHidden": "查看已隐藏的更新",
     "lastCheckedSentence": "{{when}}。"
@@ -251,7 +251,7 @@
       "ToolState": "对话和历史记录：{{path}}",
       "ToolStateDetail": "保留整个文件夹，包括其中的程序文件。",
       "ShellConfigLines": "终端配置文件：{{path}}",
-      "ShellConfigLinesDetail": "不会修改此文件。安装器添加的行留着也无害。",
+      "ShellConfigLinesDetail": "不会修改此文件，安装器添加的配置也保留。",
       "OutsideHome": "会失效的链接：{{path}}",
       "OutsideHomeDetail": "它在个人文件夹之外，因此保留不动。卸载后可以自行删除。",
       "NotOurs": "无法确认归属：{{path}}",
@@ -354,7 +354,7 @@
     },
     "indexMayBeStale": {
       "title": "无法更新Homebrew软件清单",
-      "description": "这次的更新结果以旧清单为准。请检查网络连接后重试。"
+      "description": "此次检查使用了旧清单。请检查网络连接后重试。"
     },
     "indexUpdating": {
       "title": "Homebrew正在更新软件清单",
@@ -408,7 +408,7 @@
     "title": "{{kind}}{{name}}",
     "noCancelHint": "开始后无法取消。完成前请勿退出Canager或关机。",
     "noCancelHintDetail": "等窗口底部显示结果后，再退出或关机。",
-    "stop": "停止",
+    "stop": "取消",
     "logDrawerTitle": "操作日志",
     "batch": {
       "running": "正在处理第{{current}}个，共{{total}}个",
@@ -417,8 +417,8 @@
       "needsAttention_other": "{{total}}个中有{{count}}个需要查看",
       "notUpdated_other": "{{count}}个未能更新",
       "finished": "{{succeeded}}个已成功，{{cancelled}}个已取消",
-      "cancelAll": "全部停止",
-      "cancelRest": "停止其余"
+      "cancelAll": "全部取消",
+      "cancelRest": "取消其余"
     },
     "cancelKind": {
       "Install": "取消安装",
@@ -448,7 +448,7 @@
       "waitingForBrewUpdate": "正在等待Homebrew更新软件清单…"
     },
     "outcome": {
-      "Succeeded": "已成功",
+      "Succeeded": "已完成",
       "Cancelled": "已取消",
       "Unconfirmed": "结果未确认",
       "UnconfirmedDetail": "请查看列表，确认是否有变化。",
@@ -508,7 +508,7 @@
     "reissuedConfirmAgain": "刚才未能开始，已重新检查。请再确认一次。",
     "warningsTitle": "说明",
     "keepListTitle": "保留",
-    "affectedTitle": "这些软件还要用它",
+    "affectedTitle": "依赖此工具的软件",
     "confirm": "卸载",
     "confirmPermanent": "永久卸载",
     "affectedBlocksConfirm": "要卸载“{{name}}”，请先卸载上面这些软件。",

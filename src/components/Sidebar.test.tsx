@@ -228,7 +228,7 @@ describe("Sidebar", () => {
         </UpdatesToolbar>
       </>,
     );
-    await findByText("2 Updates Available", { selector: "p" });
+    await findByText("2 updates available", { selector: "p" });
 
     for (const [name, count] of [
       ["Updates", "2"],
@@ -273,7 +273,7 @@ describe("Sidebar", () => {
       </>,
     );
 
-    await findByText("2 Updates Available", { selector: "p" });
+    await findByText("2 updates available", { selector: "p" });
     const updatesButton = getByRole("button", { name: "Updates" });
     expect(within(updatesButton).getByText("2")).toBeInTheDocument();
     expect(updatesButton).toHaveAccessibleDescription("2 can be updated");

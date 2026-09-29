@@ -263,7 +263,7 @@ describe("UninstallDialog", () => {
     await waitFor(() => expect(screen.getByText("jq-cli-wrapper")).toBeInTheDocument());
     const confirmButton = screen.getByRole("button", { name: "Uninstall" });
     expect(confirmButton).toBeDisabled();
-    within(group("Notes")).getByText("These still need it");
+    within(group("Notes")).getByText("Software that uses it");
     await showCommand();
     expect(screen.getByText(JQ_COMMAND)).toBeInTheDocument();
     // The reason Confirm is disabled, and what to do about it, is plain text

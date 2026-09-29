@@ -232,7 +232,7 @@ describe("LogDrawer", () => {
 
     const { findByText, queryByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Succeeded");
+    await findByText("Completed");
     expect(queryByText("Running")).toBeNull();
   });
 
@@ -249,7 +249,7 @@ describe("LogDrawer", () => {
   it("offers no Cancel once the operation is done, nor for a running one that cannot be stopped", async () => {
     operations = [{ ...runningOp, status: "Done", outcome: "Succeeded" }];
     const done = renderWithProviders(<LogDrawer />);
-    await done.findByText("Succeeded");
+    await done.findByText("Completed");
     expect(done.queryByRole("button", { name: "Cancel Install" })).toBeNull();
     done.unmount();
 

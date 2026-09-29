@@ -478,7 +478,7 @@ describe("OverviewPage", () => {
             [
               "No updates in the sources checked",
               "Nothing to update here",
-              "No updates to handle",
+              "No updates to install",
             ].includes(element.textContent ?? ""),
         ),
       ).toBeInTheDocument(),

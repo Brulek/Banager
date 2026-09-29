@@ -419,7 +419,7 @@ describe("SettingsPage", () => {
 
     // In plain words, on one line.
     expect(await screen.findByRole("switch", { name: "Show technical details" })).toHaveAccessibleDescription(
-      "Shows tools' own error messages, file locations and commands.",
+      "Shows tools' own error messages, file locations and commands, with commands expanded in confirmations.",
     );
     expect(zhCN.settings.showTechnicalDetails.description).toBe(
       "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。",
@@ -913,7 +913,7 @@ describe("SettingsPage", () => {
     }
     // A second line is 11 with its lines 16 apart, should it wrap, and
     // still 14 high on one line: 1 short at either end.
-    const subtitle = within(technical).getByText("Shows tools' own error messages, file locations and commands.");
+    const subtitle = within(technical).getByText("Shows tools' own error messages, file locations and commands, with commands expanded in confirmations.");
     expect(subtitle.className.split(" ")).toEqual(
       expect.arrayContaining(["text-small", "leading-4", "-my-px", "text-muted"]),
     );

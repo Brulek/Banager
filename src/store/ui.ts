@@ -95,11 +95,11 @@ export interface UiState {
   // When each operation finished, by operation id, in milliseconds: when
   // this window heard its `Finished` event (`useOperationEvents`). An
   // operation carries no time of its own (`OpSummary`); the Updates page's
-  // "Just updated" says when each update finished, and says no time for
+  // "Recently Updated" says when each update finished, and says no time for
   // one that finished before this window was opened.
   opFinishedAt: Record<number, number>;
   rememberOpFinished(opId: number, at: number): void;
-  // The updates "Clear" took off the Updates page's "Just updated", by
+  // The updates "Clear" took off the Updates page's "Recently Updated", by
   // operation id: the section is hidden until an update not among them
   // succeeds.
   clearedJustUpdated: number[];

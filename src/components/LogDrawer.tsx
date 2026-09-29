@@ -75,7 +75,7 @@ function noteText(t: TFunction, note: LogNote): string {
  * to be pasted into a search or a report of what went wrong. While the
  * operation can still be stopped, a button beside Done stops it: the page
  * under the dialog is out of reach while it is open, the operation bar's
- * Stop with it.
+ * Cancel with it.
  *
  * A modal dialog: Escape, Done or a click beside it closes it, Tab stays
  * inside, and the focus goes back to what opened it. It opens by itself
@@ -115,7 +115,7 @@ export function LogDrawer() {
   const logText = () =>
     visibleLogs.map((line) => ("note" in line ? noteText(t, line.note) : line.line)).join("\n");
 
-  /** The subtitle, the next step and the Stop button for one operation. */
+  /** The subtitle, the next step and the Cancel button for one operation. */
   function partsOf(op: OpSummary) {
     const status = statusKey(op, logs);
     const done = op.status === "Done" && op.outcome !== null;

@@ -146,7 +146,7 @@
         "refused": "Couldn't uninstall it because it's pinned in {{source}}. Run {{command}} in Terminal to unpin it first."
       },
       "NoSafeMethod": {
-        "badge": "Uninstall by hand",
+        "badge": "Manual uninstall",
         "description": "{{source}} has no uninstall command, and its files can't yet be removed safely from here. Follow {{source}}'s official documentation to uninstall it.",
         "refused": "{{source}} can't be uninstalled from here yet.",
         "standalone-rustup": {
@@ -171,8 +171,8 @@
   "updates": {
     "upToDate": "Everything is up to date",
     "noneCheckable": "No updates in the sources checked",
-    "count_one": "{{count}} Update Available",
-    "count_other": "{{count}} Updates Available",
+    "count_one": "{{count}} update available",
+    "count_other": "{{count}} updates available",
     "noneActionable": "Nothing to update here",
     "alsoCount_one": "{{count}} more can be updated",
     "alsoCount_other": "{{count}} more can be updated",
@@ -219,7 +219,7 @@
       "viewLogLabel": "View log: {{name}}"
     },
     "justUpdated": {
-      "title": "Just updated",
+      "title": "Recently Updated",
       "clear": "Clear",
       "clearLabel": "Clear the Just updated list"
     },
@@ -242,7 +242,7 @@
         "refused": "{{source}} updates itself and can't be updated here."
       }
     },
-    "allHiddenTitle": "No updates to handle",
+    "allHiddenTitle": "No updates to install",
     "allHiddenDescription": "The rest are hidden.",
     "showHidden": "Show Hidden Updates",
     "lastCheckedSentence": "{{when}}."
@@ -272,7 +272,7 @@
       "ToolState": "Conversations and history: {{path}}",
       "ToolStateDetail": "Keeps the whole folder, including the program files in it.",
       "ShellConfigLines": "Terminal settings file: {{path}}",
-      "ShellConfigLinesDetail": "This file isn't edited; lines the installer added are harmless.",
+      "ShellConfigLinesDetail": "This file and the lines the installer added stay as they are.",
       "OutsideHome": "Link that will stop working: {{path}}",
       "OutsideHomeDetail": "It's outside your home folder, so it stays. You can delete it after uninstalling.",
       "NotOurs": "Not confirmed as this tool's: {{path}}",
@@ -445,7 +445,7 @@
     "title": "{{kind}} {{name}}",
     "noCancelHint": "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
     "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
-    "stop": "Stop",
+    "stop": "Cancel",
     "logDrawerTitle": "Operation log",
     "batch": {
       "running": "Working on {{current}} of {{total}}",
@@ -458,8 +458,8 @@
       "notUpdated_one": "{{count}} couldn't be updated",
       "notUpdated_other": "{{count}} couldn't be updated",
       "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
-      "cancelAll": "Stop All",
-      "cancelRest": "Stop the Rest"
+      "cancelAll": "Cancel All",
+      "cancelRest": "Cancel the Rest"
     },
     "cancelKind": {
       "Install": "Cancel Install",
@@ -489,7 +489,7 @@
       "waitingForBrewUpdate": "Waiting for Homebrew's software list…"
     },
     "outcome": {
-      "Succeeded": "Succeeded",
+      "Succeeded": "Completed",
       "Cancelled": "Cancelled",
       "Unconfirmed": "Result unconfirmed",
       "UnconfirmedDetail": "Check the list to see whether anything changed.",
@@ -556,7 +556,7 @@
     "reissuedConfirmAgain": "That didn't start, so it was checked again. Confirm once more.",
     "warningsTitle": "Notes",
     "keepListTitle": "Kept",
-    "affectedTitle": "These still need it",
+    "affectedTitle": "Software that uses it",
     "confirm": "Uninstall",
     "confirmPermanent": "Uninstall Permanently",
     "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
@@ -573,7 +573,7 @@
     },
     "showTechnicalDetails": {
       "label": "Show technical details",
-      "description": "Shows tools' own error messages, file locations and commands."
+      "description": "Shows tools' own error messages, file locations and commands, with commands expanded in confirmations."
     },
     "includeSelfUpdating": {
       "label": "Show apps that update themselves",

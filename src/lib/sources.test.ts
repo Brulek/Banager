@@ -185,7 +185,7 @@ describe("sourceNoticesFor", () => {
     // One name for every button that runs the check: the header's.
     expect(note.action).toEqual({ id: "checkAgain", labelKey: "header.checkAgain" });
     // Why, and the next step; the button beside it says which.
-    expect(zhCN.sourceNotice.indexMayBeStale.description).toBe("这次的更新结果以旧清单为准。请检查网络连接后重试。");
+    expect(zhCN.sourceNotice.indexMayBeStale.description).toBe("此次检查使用了旧清单。请检查网络连接后重试。");
     expect(en.sourceNotice.indexMayBeStale.description).toBe(
       "This check used the old list. Check your internet connection, then try again.",
     );
@@ -1384,7 +1384,7 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, claude)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.command(key, undefined)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.NoSafeMethod.badge).toBe("installed.blocked.NoSafeMethod.badge");
-    expect(en.installed.blocked.NoSafeMethod.badge).toBe("Uninstall by hand");
+    expect(en.installed.blocked.NoSafeMethod.badge).toBe("Manual uninstall");
     expect(zhCN.installed.blocked.NoSafeMethod.badge).toBe("需手动卸载");
   });
 

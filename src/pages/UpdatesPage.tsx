@@ -68,7 +68,7 @@ import {
 import type { UpdateState } from "../lib/updateState";
 
 // The virtualizer's first guesses: a row, the "N more can't be updated
-// here" line and the line under it, a notice's line, and "Just updated"
+// here" line and the line under it, a notice's line, and "Recently Updated"
 // -- its heading, then a line a tool. Each slot then measures itself
 // through `measureElement`.
 const ROW_ESTIMATE = 52;
@@ -136,7 +136,7 @@ export function useUpdatesHeadline(): string | null {
  * headings the list used to be grouped under. First, while there is
  * anything to say, what the sources had to say about this check -- the
  * list's first row, which scrolls away with it (spec §3.8) -- then, while
- * there is anything in it, "Just updated" (`JustUpdated`).
+ * there is anything in it, "Recently Updated" (`JustUpdated`).
  */
 type ListItem =
   | { type: "notices"; count: number }
@@ -417,7 +417,7 @@ export function UpdatesPage() {
     });
   }, [actionableRows, startableUpdates, selectedUpdates]);
 
-  // "Just updated": this session's updates that worked, once their rows
+  // "Recently Updated": this session's updates that worked, once their rows
   // have gone (`justUpdatedOps`). Out of every count, and of Select all:
   // nothing in it has a checkbox or a button.
   //

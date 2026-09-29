@@ -83,8 +83,8 @@ describe("JustUpdated", () => {
     const onClear = vi.fn();
     renderWithProviders(<JustUpdated entries={[entry]} onClear={onClear} />);
 
-    const section = screen.getByRole("region", { name: "Just updated" });
-    const title = within(section).getByRole("heading", { name: "Just updated" });
+    const section = screen.getByRole("region", { name: "Recently Updated" });
+    const title = within(section).getByRole("heading", { name: "Recently Updated" });
     expect(title).toHaveClass("text-title");
     const clear = within(section).getByRole("button", { name: "Clear the Just updated list" });
     expect(clear.className).toBe(BUTTON.small.grey);
