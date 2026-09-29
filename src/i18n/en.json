@@ -184,6 +184,7 @@
     "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
     "versionChange": "{{current}} → {{target}}",
+    "versionTo": "→ {{target}}",
     "newVersion": "New version",
     "newBuild": "This model has a new version",
     "selfUpdating": "Updates itself",

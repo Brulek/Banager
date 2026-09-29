@@ -167,6 +167,7 @@
     "neverRemindHint": "以后不再提醒此工具的任何更新。可以在“设置”中撤销。",
     "saveChoiceFailed": "无法保存此选择：{{message}}",
     "versionChange": "{{current}} → {{target}}",
+    "versionTo": "→ {{target}}",
     "newVersion": "有新版本",
     "newBuild": "此模型有新版本",
     "selfUpdating": "会自行更新",

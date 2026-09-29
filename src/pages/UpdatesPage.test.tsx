@@ -792,6 +792,17 @@ describe("UpdatesPage", () => {
     // Its name, its line, its word and its ⋯: no version and no button.
     expect(within(glib).queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
     expect(within(glib).queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    // Their columns are there all the same, empty, so its word stands in
+    // the status column the rows above it have: one column down the list.
+    const onyx = await findRow("onyx");
+    const columns = (row: HTMLElement) =>
+      [...row.children].map((child) =>
+        child.hasAttribute("data-status-column") ? "status" : child.hasAttribute("data-version") ? "version" : null,
+      );
+    expect(columns(glib)).toEqual(columns(onyx));
+    expect((glib.querySelector("[data-version]") as HTMLElement).textContent).toBe("");
+    expect(glib.querySelector("[data-status]")).toHaveTextContent("Pinned");
+    expect(onyx.children.length).toBe(glib.children.length);
     const detail = chipDetail(glib, "Pinned");
     expect(
       within(detail).getByText(

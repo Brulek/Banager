@@ -11,6 +11,13 @@ import { ListWidthProvider } from "./VirtualList";
 import { RovingRowProvider } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
 import { readFileSync } from "node:fs";
+
+// jsdom has no canvas to measure text with: a font 7 wide a character,
+// used only where a line has a width (a test that lays one out).
+vi.mock("../lib/middleCut", async (original) => ({
+  ...(await original<typeof import("../lib/middleCut")>()),
+  textMeasurer: () => (text: string) => text.length * 7,
+}));
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -128,12 +135,13 @@ describe("ToolRow", () => {
     expect(row.className).not.toMatch(/rounded|\bbg-|hover:/);
     expect(getByRole("checkbox").parentElement?.className).toContain("mr-3");
     expect(container.querySelector('[title="Homebrew"]')?.nextElementSibling?.className).toContain("ml-3");
-    // The status, version, action and ⋯ columns, 16 apart; the action 80
-    // wide and the ⋯ 24.
+    // The status, version, action and ⋯ columns, 16 apart; the status
+    // 120 wide with its word at its left, the version at least 120, the
+    // action 80 and the ⋯ 24.
     const status = row.querySelector("[data-status]") as HTMLElement;
-    expect(status.className).toContain("ml-4");
+    expect(atRest(status.className)).toEqual(expect.arrayContaining(["ml-4", "min-w-30", "shrink-0", "justify-start"]));
     const version = container.querySelector(".tabular-nums") as HTMLElement;
-    expect(atRest(version.className)).toEqual(expect.arrayContaining(["ml-4", "min-w-16", "text-body", "text-muted"]));
+    expect(atRest(version.className)).toEqual(expect.arrayContaining(["ml-4", "min-w-30", "text-right", "text-body", "text-muted"]));
     expect(getByRole("button", { name: "Update" }).parentElement?.className).toMatch(/\bml-4\b.*\bmin-w-20\b.*\bjustify-end\b/);
     expect(getByRole("button", { name: "More" }).parentElement?.className).toMatch(/\bml-4\b.*\bw-6\b/);
     // The hairline from where the text starts (20 + 16 + 12 + 32 + 12 =
@@ -154,21 +162,45 @@ describe("ToolRow", () => {
     expect(row.querySelector("[data-row-separator]")?.className).toContain("left-[5.75rem]");
   });
 
-  it("cuts a very long name in its middle, keeping its end, and says it whole in its tooltip", () => {
+  it("cuts a very long name in its middle as one string fitted to its line, keeping its end, and says it whole", () => {
     const long = "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M";
     expect(long.length).toBeGreaterThan(MIDDLE_CUT_FROM);
-    const { container } = renderWithProviders(
+    // A line 300 wide, and a font 7 wide a character (`textMeasurer`, mocked).
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return new DOMRect(0, 0, this.tagName === "DIV" ? 300 : 0, 16);
+      });
+    try {
+      const { container } = renderWithProviders(
+        <ToolRow adapterId="ollama" sourceLabel="Ollama" name={long} description="Ollama model" />,
+      );
+      const name = container.querySelector("p[title]") as HTMLElement;
+      expect(name).toHaveAttribute("title", long);
+      expect(name).toHaveAttribute("data-cut-middle");
+      // One string -- the start, "…", the last 12 -- as wide as the line
+      // takes, in one box: no second box to leave a hole before the end.
+      const [shown, spoken] = [...name.children] as HTMLElement[];
+      expect(shown.textContent).toBe(`${long.slice(0, 29)}…-GGUF:Q4_K_M`);
+      expect(shown.textContent!.length * 7).toBeLessThanOrEqual(300);
+      expect(shown).toHaveAttribute("aria-hidden", "true");
+      expect(shown.childElementCount).toBe(0);
+      // A screen reader hears it whole.
+      expect(spoken.textContent).toBe(long);
+      expect(spoken.className).toBe("sr-only");
+    } finally {
+      box.mockRestore();
+    }
+
+    // Nothing measured (a line not laid out): whole, cut at its end.
+    const unmeasured = renderWithProviders(
       <ToolRow adapterId="ollama" sourceLabel="Ollama" name={long} description="Ollama model" />,
     );
-    const name = container.querySelector("p[title]") as HTMLElement;
-    expect(name).toHaveAttribute("title", long);
-    // The two halves, one after the other, read as the whole name.
-    expect(name.textContent).toBe(long);
-    const [head, tail] = [...name.children] as HTMLElement[];
-    // The head gives way, cut at its end; the last 12 characters stay whole.
-    expect(atRest(head.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
-    expect(tail.textContent).toBe("-GGUF:Q4_K_M");
-    expect(atRest(tail.className)).toContain("shrink-0");
+    const uncut = unmeasured.container.querySelector("p[title]") as HTMLElement;
+    expect(uncut.textContent).toBe(long);
+    expect(uncut.childElementCount).toBe(0);
+    expect(atRest(uncut.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    unmeasured.unmount();
 
     // A shorter name is one piece, cut at its end.
     const short = renderWithProviders(
@@ -287,9 +319,15 @@ describe("ToolRow", () => {
     );
     expect(columns()).toBe(withEverything);
 
-    // Left out: no column at all.
+    // Left out: no column at all -- but the status word's, which every
+    // row has, empty or not, so the words line up down a list.
     rerender(<ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="Core application library for C" />);
-    expect(columns()).toBe(withEverything - 4);
+    expect(columns()).toBe(withEverything - 3);
+    const slot = row().querySelector("[data-status-column]") as HTMLElement;
+    expect(slot.childElementCount).toBe(0);
+    expect(slot.className).toContain("min-w-30");
+    // Only a word is `data-status`, what finds a row's word.
+    expect(slot).not.toHaveAttribute("data-status");
   });
 
   it("is a button itself when it opens something, under its own controls, and takes the focus when pressed", () => {
@@ -351,7 +389,7 @@ describe("ToolRow", () => {
       </ListWidthProvider>
     );
 
-    it("gives way column by column as the list narrows: the version first, then the status word's column", () => {
+    it("gives way column by column as the list narrows: the version first, then the status word's column, then the button", () => {
       expect(rowFitFor(null)).toBe("full");
       expect(rowFitFor(752)).toBe("full");
       expect(rowFitFor(ROW_FIT_WIDTHS.full)).toBe("full");
@@ -363,6 +401,11 @@ describe("ToolRow", () => {
       // Beside the Installed page's inspector in a window at its default 960.
       expect(rowFitFor(ROW_FIT_WIDTHS.narrow - 1)).toBe("minimal");
       expect(rowFitFor(451)).toBe("minimal");
+      expect(rowFitFor(ROW_FIT_WIDTHS.minimal)).toBe("minimal");
+      // Beside it in the narrowest window.
+      expect(ROW_FIT_WIDTHS.minimal).toBe(340);
+      expect(rowFitFor(ROW_FIT_WIDTHS.minimal - 1)).toBe("tiny");
+      expect(rowFitFor(291)).toBe("tiny");
     });
 
     it("shows the whole version change, and the status word in its column, with room for everything", () => {
@@ -372,11 +415,13 @@ describe("ToolRow", () => {
       expect(status.className).toContain("ml-4");
     });
 
-    it("says only the new version first, the whole change still to a screen reader", () => {
+    it("says only the new version first, after its arrow, the whole change still to a screen reader", () => {
       const { container, getByText } = renderWithProviders(row(ROW_FIT_WIDTHS.compact));
       const version = container.querySelector(".tabular-nums") as HTMLElement;
       const [shown, spoken] = [...version.children] as HTMLElement[];
-      expect(shown.textContent).toBe("2.1.290");
+      // Not a bare "2.1.290", which would read as the version installed.
+      expect(shown.textContent).toBe("→ 2.1.290");
+      expect(version.className).toContain("min-w-20");
       expect(shown).toHaveAttribute("aria-hidden", "true");
       expect(spoken.textContent).toBe("2.1.282 → 2.1.290");
       expect(spoken.className).toBe("sr-only");
@@ -389,14 +434,31 @@ describe("ToolRow", () => {
       const status = getByText("Updates itself").closest("[data-status]") as HTMLElement;
       const blurb = getByText("Anthropic's coding assistant");
       expect(status.parentElement).toBe(blurb.parentElement);
-      expect(status.nextElementSibling).toBe(blurb);
+      // 「状态词 · 描述」: a dot, spaced, sets the word apart from the description.
+      const dot = status.nextElementSibling as HTMLElement;
+      expect(dot.textContent).toBe(" · ");
+      expect(dot).toHaveAttribute("aria-hidden", "true");
+      expect(dot.className).toContain("whitespace-pre");
+      expect(dot.nextElementSibling).toBe(blurb);
+      expect(blurb.parentElement?.textContent).toBe("Updates itself · Anthropic's coding assistant");
       expect(container.querySelectorAll("[data-status]")).toHaveLength(1);
+      // Its column is gone with it.
+      expect(container.querySelector("[data-status-column]")).toBeNull();
       // The description gives way; the name and the button never shrink
       // below themselves (the button's column is fixed, the name's line
       // loses its description first).
       expect(blurb.className).toContain("truncate");
       expect(getByRole("button", { name: "Update" }).parentElement?.className).toContain("shrink-0");
-      expect(container.querySelector(".tabular-nums")?.textContent).toBe("2.1.2902.1.282 → 2.1.290");
+      expect(container.querySelector(".tabular-nums")?.textContent).toBe("→ 2.1.2902.1.282 → 2.1.290");
+    });
+
+    it("says no dot where the row has no status word", () => {
+      const { getByText } = renderWithProviders(
+        <ListWidthProvider value={592}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" version="1.8.2" />
+        </ListWidthProvider>,
+      );
+      expect(getByText("JSON processor").parentElement?.textContent).toBe("JSON processor");
     });
 
     it("beside the inspector, gives up the version column: an update's change goes after the status word, a plain version goes", () => {
@@ -404,12 +466,22 @@ describe("ToolRow", () => {
       const blurb = getByText("Anthropic's coding assistant");
       const version = container.querySelector("[data-version]") as HTMLElement;
       expect(container.querySelectorAll("[data-version]")).toHaveLength(1);
-      // On the description's line: the word, the change, the description.
+      // On the description's line: the word, the change, the description,
+      // a dot between each.
       expect(version.parentElement).toBe(blurb.parentElement);
-      expect(version.previousElementSibling).toHaveAttribute("data-status");
-      expect(version.nextElementSibling).toBe(blurb);
+      expect(version.previousElementSibling?.textContent).toBe(" · ");
+      expect(version.previousElementSibling?.previousElementSibling).toHaveAttribute("data-status");
+      expect(version.nextElementSibling?.textContent).toBe(" · ");
+      expect(version.nextElementSibling?.nextElementSibling).toBe(blurb);
+      expect(blurb.parentElement?.textContent).toBe("Updates itself · 2.1.282 → 2.1.290 · Anthropic's coding assistant");
       expect(version.textContent).toBe("2.1.282 → 2.1.290");
-      expect(version.className.split(" ")).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums"]));
+      // It gives way only once the description has: the description is
+      // laid out from nothing (`flex-1`, a basis of 0) and takes what is left.
+      expect(version.className.split(" ")).toEqual(
+        expect.arrayContaining(["min-w-0", "truncate", "whitespace-nowrap", "tabular-nums"]),
+      );
+      expect(version.className).not.toMatch(/\bshrink/);
+      expect(blurb.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "flex-1", "truncate"]));
       expect(getByRole("button", { name: "Update" })).toBeInTheDocument();
 
       // No update: no version anywhere on the row -- the inspector says it.
@@ -420,6 +492,35 @@ describe("ToolRow", () => {
       );
       expect(plain.container.querySelector("[data-version]")).toBeNull();
       expect(plain.container.textContent).not.toContain("1.8.2");
+    });
+
+    it("in the narrowest list, gives up the button and the version columns and keeps the ⋯; an update's new version goes on the line after its arrow", () => {
+      const { container, getByText, getByRole, queryByRole } = renderWithProviders(
+        <ListWidthProvider value={291}>
+          <ToolRow
+            adapterId="brew"
+            sourceLabel="Homebrew"
+            name="claude-code"
+            description="Anthropic's coding assistant"
+            status={<StatusChip label="Updates itself" />}
+            version="2.1.282 → 2.1.290"
+            newVersion="2.1.290"
+            action={<button type="button">Update</button>}
+            menu={<Menu label="More actions for claude-code" items={[{ id: "details", label: "Details", onSelect: vi.fn() }]} />}
+          />
+        </ListWidthProvider>,
+      );
+      expect(queryByRole("button", { name: "Update" })).toBeNull();
+      expect(getByRole("button", { name: "More actions for claude-code" })).toBeInTheDocument();
+      const blurb = getByText("Anthropic's coding assistant");
+      const version = container.querySelector("[data-version]") as HTMLElement;
+      expect(container.querySelectorAll("[data-version]")).toHaveLength(1);
+      expect(version.parentElement).toBe(blurb.parentElement);
+      const [shown, spoken] = [...version.children] as HTMLElement[];
+      expect(shown.textContent).toBe("→ 2.1.290");
+      expect(spoken.textContent).toBe("2.1.282 → 2.1.290");
+      expect(spoken.className).toBe("sr-only");
+      expect(container.querySelector("[data-status-column]")).toBeNull();
     });
   });
 

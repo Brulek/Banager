@@ -785,8 +785,9 @@ export function UpdatesPage() {
   //
   // A row under "N more can't be updated here" has its name, its line,
   // its status word and its ⋯, and nothing else (spec §3.3): no version
-  // to move to and no button to press. It keeps a checkbox's room, as
-  // every row here does, so the avatars stay in one column.
+  // to move to and no button to press. It keeps a checkbox's room, and
+  // the version's and the button's, empty, as every row here does, so the
+  // avatars stay in one column and the status words in another.
   const updateRow = (candidate: UpdateCandidate, updatable: boolean) => {
     const instance = instancesById.get(candidate.key.instance_id);
     // Resolved once per row: the status word and the row's own
@@ -847,10 +848,12 @@ export function UpdatesPage() {
             : null
         }
         status={status ?? undefined}
-        version={updatable ? column.version : undefined}
+        // Empty under "can't be updated here", but there: its status word
+        // stands in the column the rows' above stand in.
+        version={updatable ? column.version : null}
         newVersion={updatable ? column.newVersion : undefined}
         // An update under way keeps its progress, wherever its row is now.
-        action={updatable ? action : progress !== null ? action : undefined}
+        action={updatable ? action : progress !== null ? action : null}
         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(candidate, state, instance)} />}
       />
     );
