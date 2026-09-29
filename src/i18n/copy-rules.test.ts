@@ -11,9 +11,17 @@ function entries(value: unknown, prefix = ""): [string, string][] {
   );
 }
 
+/** The keys of the strings in `locale` that `test` holds for. */
+function keysWhere(locale: unknown, test: (text: string) => boolean): string[] {
+  return entries(locale)
+    .filter(([, text]) => test(text))
+    .map(([key]) => key);
+}
+
 /**
  * The copy table's rules that a string can be checked against on its own
- * (docs/superpowers/2026-09-27-ui-redesign.md, 原则 3): no hedging, no
+ * (docs/superpowers/2026-09-27-ui-redesign.md, 原则 3, still in force under
+ * docs/superpowers/2026-09-29-aesthetics-spec.md, 4.1): no hedging, no
  * internal words, no explanation in brackets. The rest -- one line in a
  * row, at most two sentences behind an ⓘ, and above all that a shorter
  * sentence stays true -- is the table's, string by string.
@@ -34,5 +42,130 @@ describe("the copy rules, over every string in both languages", () => {
   it("says nothing about PATH or instances in English either", () => {
     const offenders = entries(en).filter(([, text]) => /\bPATH\b|\binstances?\b/.test(text));
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The polish-3 rules (docs/superpowers/2026-09-29-aesthetics-spec.md, 4.1
+ * and 4.3): Chinese written the way macOS's own strings are, and an app
+ * that is not the subject of its own sentences.
+ */
+describe("the polish-3 copy rules, in Chinese", () => {
+  it("puts no space between Chinese and a Latin letter, a digit or an interpolation", () => {
+    // text-autospace draws the gap (1/8 em, as AppKit does); a typed space
+    // on top of it is twice the gap. Spaces between two Latin words, or a
+    // number and a Latin unit, are not Chinese ones and stay.
+    const hanThenLatin = /\p{Script=Han} [A-Za-z0-9{]/u;
+    const latinThenHan = /[A-Za-z0-9}] \p{Script=Han}/u;
+    expect(keysWhere(zhCN, (text) => hanThenLatin.test(text) || latinThenHan.test(text))).toEqual([]);
+  });
+
+  it("quotes with “ ” and trails off with … only", () => {
+    expect(keysWhere(zhCN, (text) => /[「」]/.test(text))).toEqual([]);
+    expect(keysWhere(zhCN, (text) => text.includes('"'))).toEqual([]);
+    expect(keysWhere(zhCN, (text) => text.includes("...") || text.includes("……"))).toEqual([]);
+  });
+
+  it.each(["您", "我们", "！", "请注意", "需要留意", "加载中", "其它"])("never says %s", (word) => {
+    expect(keysWhere(zhCN, (text) => text.includes(word))).toEqual([]);
+  });
+
+  it("names Canager only where it is the one doing the work, the one to quit, or the name itself", () => {
+    // The app's name, what the daily check does, where to allow its
+    // notifications, not to quit it mid-operation, and whose built-in
+    // logos these are. Everywhere else the sentence has no subject, or
+    // says 无法…, the way macOS's own strings do.
+    const allowed = [
+      "app.name",
+      "operations.noCancelHint",
+      "settings.autoCheck.description",
+      "settings.notifyUpdates.refused",
+      "settings.iconCredits.simpleIcons",
+    ];
+    const naming = keysWhere(zhCN, (text) => text.includes("Canager"));
+    expect(naming.length).toBeLessThanOrEqual(6);
+    expect(naming.filter((key) => !allowed.includes(key))).toEqual([]);
+  });
+
+  it("says 没有改动 only of an operation that had started", () => {
+    // A refusal stops before anything runs; 无法… already says nothing was done.
+    expect(keysWhere(zhCN, (text) => text.includes("没有改动")).filter((key) => !key.startsWith("operations."))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("the polish-3 copy rules, in English", () => {
+  it("never starts a sentence with Canager, but for the app's name and what its daily check does", () => {
+    const allowed = ["app.name", "settings.autoCheck.description"];
+    const sentenceStart = /(^|[.!?]\s+)Canager\b/;
+    expect(keysWhere(en, (text) => sentenceStart.test(text)).filter((key) => !allowed.includes(key))).toEqual([]);
+  });
+
+  it("writes every button and menu item in Title Case", () => {
+    // The keys are named by hand: nothing in a key's name says it is a
+    // button (`updates.update` is one, `updates.newVersion` is not), and
+    // an aria label or a heading is sentence case. A new button's key
+    // belongs in this list.
+    const buttons = [
+      "app.reload",
+      "common.cancel",
+      "common.close",
+      "common.viewLog",
+      "common.details",
+      "common.copyCommand",
+      "header.checkAgain",
+      "overview.reviewUpdates",
+      "overview.seeProgress",
+      "installed.uninstall",
+      "updates.selectAll",
+      "updates.invertSelection",
+      "updates.updateSelected",
+      "updates.updateSelectedCount",
+      "updates.updateAll",
+      "updates.update",
+      "updates.retry",
+      "updates.skipVersion",
+      "updates.neverRemind",
+      "updates.fewerTools",
+      "updates.justUpdated.clear",
+      "commandPreview.show_one",
+      "commandPreview.show_other",
+      "sourceNotice.openOllama",
+      "sourceNotice.showFewer",
+      "operations.batch.cancelAll",
+      "operations.batch.cancelRest",
+      "operations.cancelKind.Install",
+      "operations.cancelKind.Uninstall",
+      "operations.cancelKind.Upgrade",
+      "quit.keepWaiting",
+      "quit.quitAnyway",
+      "uninstall.confirm",
+      "uninstall.confirmPermanent",
+      "settings.skippedVersions.unskip",
+      "settings.ignoredUpdates.unignore",
+      "settings.iconCredits.open",
+      "unknown.showInFinder",
+      "unknown.copyPath",
+      "unknown.scanAgain",
+    ];
+    // Words that stay lower case inside a title (Cancel the Rest, Show in
+    // Finder), never as its first or last word.
+    const minor = new Set(["a", "an", "the", "and", "but", "or", "for", "nor", "in", "on", "at", "to", "of", "by", "as"]);
+    const titleCase = (text: string): boolean => {
+      const words = text
+        .replace(/…$/, "")
+        .split(" ")
+        .filter((word) => !/^[({]/.test(word));
+      return words.every(
+        (word, index) => /^[A-Z]/.test(word) || (index > 0 && index < words.length - 1 && minor.has(word)),
+      );
+    };
+    const strings = new Map(entries(en));
+    for (const key of buttons) {
+      const text = strings.get(key);
+      expect(text, key).toBeTypeOf("string");
+      expect(titleCase(text as string), `${key}: ${text}`).toBe(true);
+    }
   });
 });
