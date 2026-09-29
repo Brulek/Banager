@@ -242,7 +242,7 @@ README 写明、测试核对），和 brew 7.0.6 的 `outdated-pinned.json` 一�
   测试也加上了跳过的行。能跳过，指目标版本只代表一个版本。查不了的行不算（它的目标版本就是已装版本）；声明为
   `version :latest` 的 Homebrew cask 也不算：`brew outdated` 对它贪婪时（Canager 在「包含自更新的应用」打开时传
   `--greedy`，Homebrew 自己的 HOMEBREW_UPGRADE_GREEDY、HOMEBREW_UPGRADE_GREEDY_CASKS 也能让它贪婪），下载一变
-  就把它列出来，目标版本却永远是 latest，跳过 latest 等于永不提醒，按钮说的「你会在它出下一个版本时再看到提醒」
+  就把它列出来，目标版本却永远是 latest，跳过 latest 等于永不提醒，按钮说的「下个版本发布时再提醒你」
   做不到。这两种行只给「不再提醒」，已存下的跳过也不隐藏它们。
 
 ## 阶段 4 之前

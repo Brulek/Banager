@@ -616,7 +616,7 @@ export function InstalledPage() {
             id: "update",
             label: t("installed.updateAvailable"),
             // The drawer's facts give the version it moves to, except a
-            // model's, which has no version to give: "a newer build".
+            // model's, which has no version to give: "a new version".
             drawerDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
             tone: "accent",
           });

@@ -116,7 +116,7 @@
     "updateAvailable": "Update available",
     "updateIgnored": "Reminders off",
     "updateSkipped": "Skipped {{version}}",
-    "updateSkippedNewBuild": "Newer build skipped",
+    "updateSkippedNewBuild": "Skipped the new version",
     "showDependencies_one": "{{count}} more component came with other software",
     "showDependencies_other": "{{count}} more components came with other software",
     "hideDependencies_one": "Hide {{count}} component",
@@ -168,13 +168,13 @@
     "retry": "Retry",
     "selectRow": "Select {{name}} for update",
     "skipVersion": "Skip this version",
-    "skipVersionHint": "You'll be reminded again when its next version is out.",
+    "skipVersionHint": "You'll be reminded when the next version comes out.",
     "neverRemind": "Stop reminding me",
     "neverRemindHint": "You won't be reminded about any update to this tool. Undo it in Settings.",
     "saveChoiceFailed": "Couldn't save that choice: {{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "New version",
-    "newBuild": "A newer build of this model is available",
+    "newBuild": "This model has a new version",
     "selfUpdating": "Usually updates itself",
     "selfUpdatingDetail": "It usually updates itself. You can also update it now.",
     "readOnly": "View only",
@@ -545,10 +545,10 @@
     "skippedVersions": {
       "title": "Skipped versions",
       "empty": "No skipped versions",
-      "newBuild": "A newer build",
+      "newBuild": "New version",
       "unskip": "Stop skipping",
       "unskipAriaLabel": "Stop skipping {{version}} of {{name}}",
-      "unskipNewBuildAriaLabel": "Stop skipping the newer build of {{name}}"
+      "unskipNewBuildAriaLabel": "Stop skipping the new version of {{name}}"
     },
     "ignoredUpdates": {
       "title": "Tools with reminders off",

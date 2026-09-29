@@ -528,7 +528,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               sourceLabel={adapterLabel(t, adapterId)}
               iconKey={key}
               name={item.name}
-              // A model's "newer build" is a sentence, not a number: under the name.
+              // A model's "new version" is a sentence, not a number: under the name.
               aside={digest ? null : jump}
             >
               {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}

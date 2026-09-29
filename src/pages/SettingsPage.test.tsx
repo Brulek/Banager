@@ -235,9 +235,9 @@ describe("SettingsPage", () => {
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
     expect(within(skipped).getByText("qwen3:8b")).toBeInTheDocument();
-    expect(within(skipped).getByText("A newer build")).toBeInTheDocument();
+    expect(within(skipped).getByText("New version")).toBeInTheDocument();
     expect(
-      within(skipped).getByRole("button", { name: "Stop skipping the newer build of qwen3:8b" }),
+      within(skipped).getByRole("button", { name: "Stop skipping the new version of qwen3:8b" }),
     ).toBeInTheDocument();
     expect(container.textContent).not.toContain("sha256");
   });

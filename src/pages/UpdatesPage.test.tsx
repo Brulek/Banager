@@ -2006,7 +2006,7 @@ describe("UpdatesPage", () => {
 
     const menu = openMenu(await findRow("glib"));
     expect(within(menu).getByRole("menuitem", { name: "Skip this version" })).toHaveAccessibleDescription(
-      "You'll be reminded again when its next version is out.",
+      "You'll be reminded when the next version comes out.",
     );
     expect(
       within(menu).getByRole("menuitem", { name: "Stop reminding me" }),
@@ -2028,7 +2028,7 @@ describe("UpdatesPage", () => {
 
   it("calls them 跳过这个版本 and 不再提醒 in Chinese, and says what each does", () => {
     expect(zhCN.updates.skipVersion).toBe("跳过这个版本");
-    expect(zhCN.updates.skipVersionHint).toBe("你会在它出下一个版本时再看到提醒。");
+    expect(zhCN.updates.skipVersionHint).toBe("下个版本发布时再提醒你。");
     expect(zhCN.updates.neverRemind).toBe("不再提醒");
     expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个工具的任何更新，可在设置里撤销。");
     expect(zhCN.common.copyCommand).toBe("拷贝命令");
@@ -3375,7 +3375,7 @@ describe("UpdatesPage", () => {
     const dialog = await findByRole("dialog");
 
     expect(
-      await within(dialog).findByText("A newer build of this model is available"),
+      await within(dialog).findByText("This model has a new version"),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText(/sha256:/)).toBeNull();
     expect(within(dialog).queryByText(/→/)).toBeNull();

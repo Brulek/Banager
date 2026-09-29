@@ -866,7 +866,7 @@ describe("InstalledPage", () => {
       expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't uninstall now", "Can't update now"]);
       // A model's skipped version is a digest, and no digest is printed.
       // Its Ollama is the stopped one too.
-      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Can't uninstall now", "Newer build skipped"]);
+      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Can't uninstall now", "Skipped the new version"]);
       expect(container.textContent).not.toContain("sha256");
       // Not "Skipped latest": a skip of a cask every release of which is
       // offered as "latest" would never end, so it hides nothing.
