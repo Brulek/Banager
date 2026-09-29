@@ -2305,7 +2305,7 @@ describe("UpdatesPage", () => {
   it("hides the row when Never remind me is chosen from its menu, and saves its package, not a version", async () => {
     const { queryByText } = renderPage();
 
-    chooseFromMenu(await findRow("glib"), "Stop Reminding Me");
+    chooseFromMenu(await findRow("glib"), "Don't Remind Me About This Tool");
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     expect(savedSettings().ignored_updates).toEqual([glibKey]);
@@ -2396,7 +2396,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const myForkMenu = openMenu(await findRow("my-fork"));
     expect(
-      within(myForkMenu).getByRole("menuitem", { name: "Stop Reminding Me" }),
+      within(myForkMenu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
     ).toBeInTheDocument();
     expect(within(myForkMenu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -2436,7 +2436,7 @@ describe("UpdatesPage", () => {
     expect(within(chromium).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
     const menu = openMenu(chromium);
     expect(
-      within(menu).getByRole("menuitem", { name: "Stop Reminding Me" }),
+      within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
     ).toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: "Skip This Version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -2488,7 +2488,7 @@ describe("UpdatesPage", () => {
       "You'll be reminded when the next version comes out.",
     );
     expect(
-      within(menu).getByRole("menuitem", { name: "Stop Reminding Me" }),
+      within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
     ).toHaveAccessibleDescription(
       "You won't be reminded about any update to this tool. Undo it in Settings.",
     );
@@ -2505,10 +2505,13 @@ describe("UpdatesPage", () => {
     expect(getByRole("button", { name: "More actions for onyx" })).toBeInTheDocument();
   });
 
-  it("calls them 跳过此版本 and 不再提醒 in Chinese, and says what each does", () => {
+  it("calls them 跳过此版本 and 不再提醒此工具 in Chinese, and says what each does", () => {
     expect(zhCN.updates.skipVersion).toBe("跳过此版本");
     expect(zhCN.updates.skipVersionHint).toBe("下个版本发布时再提醒你。");
-    expect(zhCN.updates.neverRemind).toBe("不再提醒");
+    // An action on this tool, not a state: the status word the row then
+    // shows is 「已关闭提醒」 (`installed.updateIgnored`).
+    expect(zhCN.updates.neverRemind).toBe("不再提醒此工具");
+    expect(zhCN.installed.updateIgnored).toBe("已关闭提醒");
     expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒此工具的任何更新。可以在“设置”中撤销。");
     expect(zhCN.common.copyCommand).toBe("拷贝命令");
   });
@@ -2525,7 +2528,7 @@ describe("UpdatesPage", () => {
     // would drop the earlier one.
     const menu = openMenu(rowOf("onyx"));
     const skip = within(menu).getByRole("menuitem", { name: "Skip This Version" });
-    const never = within(menu).getByRole("menuitem", { name: "Stop Reminding Me" });
+    const never = within(menu).getByRole("menuitem", { name: "Don't Remind Me About This Tool" });
     expect(skip).toHaveAttribute("aria-disabled", "true");
     expect(never).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(skip);
@@ -2543,7 +2546,7 @@ describe("UpdatesPage", () => {
       ),
     );
     expect(
-      within(after).getByRole("menuitem", { name: "Stop Reminding Me" }),
+      within(after).getByRole("menuitem", { name: "Don't Remind Me About This Tool" }),
     ).not.toHaveAttribute("aria-disabled");
     expect(calls("set_settings")).toHaveLength(1);
   });

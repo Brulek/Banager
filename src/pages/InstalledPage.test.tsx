@@ -1257,7 +1257,7 @@ describe("InstalledPage", () => {
       expect(versionShown(rowOf("skipped"))).toBe("2.88.3 → 2.90.0");
     });
 
-    it("undoes a never-remind in place: 恢复提醒 beside 「不再提醒」 saves the settings without it", async () => {
+    it("undoes a never-remind in place: 恢复提醒 beside 「已关闭提醒」 saves the settings without it", async () => {
       renderInstalled();
       const drawer = await openDetails("ignored");
       const status = drawer.querySelector("[data-status-list]") as HTMLElement;

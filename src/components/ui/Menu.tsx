@@ -24,8 +24,8 @@ export interface MenuItem {
   disabled?: boolean;
   /**
    * It starts a group of its own: a hairline over it, as a Mac menu parts
-   * what does different kinds of things -- Skip and Stop Reminding Me from
-   * Copy Command.
+   * what does different kinds of things -- Skip This Version and Don't
+   * Remind Me About This Tool from Copy Command.
    */
   separatorBefore?: boolean;
   onSelect: () => void;

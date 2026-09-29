@@ -104,7 +104,7 @@ interface RowChip {
   tone: "neutral" | "update" | "upToDate";
   /**
    * The way back from what the word says, beside it in the inspector's
-   * 「状态」: 「取消跳过」 by 「已跳过2.102.0」, 「恢复提醒」 by 「不再提醒」.
+   * 「状态」: 「取消跳过」 by 「已跳过2.102.0」, 「恢复提醒」 by 「已关闭提醒」.
    */
   undo?: { label: string; ariaLabel: string; onUndo: () => void };
 }

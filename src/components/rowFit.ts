@@ -17,7 +17,7 @@
  * the inspector's list in the narrowest window -- the versions leave that
  * line too, and it says the status word and the description alone: a
  * version is one click away in the inspector, but a word such as
- * 「不再提醒」 is what the list is scanned for, and a window made
+ * 「已关闭提醒」 is what the list is scanned for, and a window made
  * narrower must not hide it; `tiny` -- a list too narrow for the avatar,
  * a name's first few characters, the button and the ⋯, which no window
  * this app opens has -- the row's button goes as well, and only the ⋯
