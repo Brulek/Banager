@@ -1385,6 +1385,12 @@ export function InstalledPage() {
             className="h-6 w-full appearance-none rounded-control bg-fill-subtle pl-7 pr-2 text-body text-foreground placeholder:text-muted [&::-webkit-search-decoration]:appearance-none"
           />
         </span>
+        {/* That nothing matches, for a screen reader, as it becomes so: one
+            node for as long as the page is open, beside the field typed
+            in, where the list's own line (below) is a new one each time. */}
+        <p role="status" data-search-status="" className="sr-only">
+          {needle !== "" && items.length === 0 && !sourceEmpty ? t("installed.noMatches", { query: query.trim() }) : null}
+        </p>
       </ToolbarItems>
       <div className="flex min-w-0 flex-1 flex-col" onKeyDown={onEscape}>
         {/* Virtualized: a Mac with Homebrew's components unfolded lists
@@ -1442,6 +1448,8 @@ export function InstalledPage() {
                 ) : null}
                 <p
                   data-list-empty=""
+                  // Said by the search's status, as it becomes so: not twice.
+                  aria-hidden={needle !== "" ? true : undefined}
                   className="flex flex-1 items-center justify-center px-5 text-center text-body text-muted"
                 >
                   {needle !== ""

@@ -465,10 +465,19 @@ describe("InstalledPage", () => {
     fireEvent.change(search, { target: { value: "VISUAL-studio" } });
     await waitFor(() => expect(rowNames()).toEqual(["Microsoft Visual Studio Code"]));
 
+    const status = document.querySelector("[data-search-status]") as HTMLElement;
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toBeEmptyDOMElement();
     fireEvent.change(search, { target: { value: "nonexistent" } });
     await waitFor(() => expect(queryByText("jq")).not.toBeInTheDocument());
+    // Said to a screen reader through the search's status, the same node
+    // as before, beside the field -- and not twice.
+    expect(document.querySelector("[data-search-status]")).toBe(status);
+    expect(status).toHaveTextContent("Nothing matches “nonexistent”");
+    expect(status).toHaveClass("sr-only");
     // One line in the middle of the list's area, 13 muted, no symbol.
-    const line = getByText("Nothing matches “nonexistent”");
+    const line = getByText("Nothing matches “nonexistent”", { selector: "[data-list-empty]" });
+    expect(line).toHaveAttribute("aria-hidden", "true");
     expect(line.className.split(" ")).toEqual(
       expect.arrayContaining(["flex", "flex-1", "items-center", "justify-center", "text-body", "text-muted"]),
     );
@@ -476,6 +485,11 @@ describe("InstalledPage", () => {
     expect(line.parentElement?.parentElement).toHaveAttribute("data-list");
     expect(line.querySelector("svg")).toBeNull();
     expect(line.className).not.toMatch(/py-10/);
+
+    // Something matches again: the status has nothing to say.
+    fireEvent.change(search, { target: { value: "jq" } });
+    await waitFor(() => expect(rowNames()).toEqual(["jq"]));
+    expect(status).toBeEmptyDOMElement();
   });
 
   it("puts its sort and its search field in the toolbar: a grey popup button, then a quiet field 200 wide", async () => {
@@ -2839,7 +2853,7 @@ describe("InstalledPage", () => {
         ).toBeTruthy();
         fireEvent.click(copyItem);
         expect(writeText).toHaveBeenCalledWith("/opt/homebrew/bin/brew unpin jq");
-        expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+        expect(await screen.findByText("Copied", { selector: "[role=status]" })).toBeInTheDocument();
       } finally {
         Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
       }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
@@ -211,7 +211,11 @@ describe("App", () => {
     fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
     expect(await findByText("Nothing installed with npm")).toBeInTheDocument();
     expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^npm$/);
-    expect(getByRole("heading", { level: 1 }).nextElementSibling).toBeNull();
+    // No count under it: its status says nothing, out of sight.
+    const status = getByRole("heading", { level: 1 }).nextElementSibling;
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toBeEmptyDOMElement();
+    expect(status).toHaveClass("sr-only");
     expect(useUiStore.getState().installedFilter).toBe(npm.id);
   });
 
@@ -353,9 +357,14 @@ describe("App", () => {
     const { getByRole, findByRole } = renderWithProviders(<App />);
     await findByRole("button", { name: "Review Updates" });
 
+    // The status under the title, which says nothing, out of sight, on a
+    // page with no subtitle.
     const subtitleOf = () => {
-      const title = getByRole("heading", { level: 1 });
-      return title.nextElementSibling?.textContent ?? null;
+      const status = getByRole("heading", { level: 1 }).nextElementSibling;
+      expect(status).toHaveAttribute("role", "status");
+      const text = status?.textContent ?? "";
+      if (text === "") expect(status).toHaveClass("sr-only");
+      return text === "" ? null : text;
     };
     const expected: Array<[string, string | null]> = [
       ["Overview", null],
@@ -370,6 +379,40 @@ describe("App", () => {
     }
   });
 
+  it("says the Unknown page's scan under way, then what it found, through the toolbar's one status node", async () => {
+    const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
+    let release: (() => void) | undefined;
+    const program: UnknownEntry = {
+      path: "~/.local/bin/a",
+      kind: "File",
+      resolved: "/Users/you/.local/bin/a",
+      link_target: null,
+      size_bytes: 1024,
+      modified_at: 1789700000,
+      owned_by_me: true,
+      app_bundle: null,
+    };
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "scan_unknown"
+        ? new Promise((resolve) => {
+            release = () => resolve({ ...emptyScan, entries: [program] });
+          })
+        : answer(cmd, args),
+    );
+    const { getByRole, findByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    const status = getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
+    expect(status).toHaveAttribute("role", "status");
+
+    fireEvent.click(getByRole("button", { name: "Unknown" }));
+    await waitFor(() => expect(status).toHaveTextContent("Scanning…"));
+    expect(getByRole("heading", { level: 1 }).nextElementSibling).toBe(status);
+    await waitFor(() => expect(release).toBeDefined());
+    await act(async () => release?.());
+    await waitFor(() => expect(status).toHaveTextContent("1 program"));
+    expect(getByRole("heading", { level: 1 }).nextElementSibling).toBe(status);
+  });
+
   it("says in the toolbar's subtitle that a check is under way, and as an alert that it failed", async () => {
     const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
     let finish: (() => void) | undefined;
@@ -377,6 +420,10 @@ describe("App", () => {
     await findByText("Everything is up to date");
     fireEvent.click(getByRole("button", { name: "Installed" }));
     await waitFor(() => expect(getByRole("heading", { level: 1 }).nextElementSibling).toHaveTextContent("1 tool"));
+    // One status node, which a screen reader hears change: 「正在检查…」 is
+    // said in it, not in a node of its own.
+    const status = getByRole("heading", { level: 1 }).nextElementSibling as HTMLElement;
+    expect(status).toHaveAttribute("role", "status");
 
     mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
       cmd === "refresh"
@@ -386,7 +433,7 @@ describe("App", () => {
         : answer(cmd, args),
     );
     fireEvent.click(getByRole("button", { name: "Check Again" }));
-    expect(await within(getByRole("banner")).findByText("Checking…")).toBeInTheDocument();
+    expect(await within(getByRole("banner")).findByText("Checking…")).toBe(status);
 
     await waitFor(() => expect(finish).toBeDefined());
     finish?.();

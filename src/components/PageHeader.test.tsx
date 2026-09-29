@@ -100,7 +100,43 @@ describe("PageHeader", () => {
     // Under the title, the two centred together.
     expect(subtitle.previousElementSibling).toBe(title);
     expect(subtitle.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
-    expect(subtitle).not.toHaveAttribute("role");
+    // A status, which a screen reader hears change (below).
+    expect(subtitle).toHaveAttribute("role", "status");
+  });
+
+  it("says its subtitle's changes through one status node, from 「正在检查…」 to the count and back to nothing", () => {
+    const { getByRole, rerender } = renderWithProviders(
+      <PageHeader title="Updates" subtitle={{ text: "Checking…", failed: false }} actions={null} />,
+    );
+    const status = getByRole("status");
+    expect(status).toHaveTextContent("Checking…");
+
+    rerender(<PageHeader title="Updates" subtitle={{ text: "10 updates available", failed: false }} actions={null} />);
+    expect(getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("10 updates available");
+
+    // A page with none: the same node, empty and out of sight.
+    rerender(<PageHeader title="Updates" subtitle={null} actions={null} />);
+    expect(getByRole("status")).toBe(status);
+    expect(status).toBeEmptyDOMElement();
+    expect(status.className).toBe("sr-only");
+
+    rerender(<PageHeader title="Updates" subtitle={{ text: "Checking…", failed: false }} actions={null} />);
+    expect(getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("Checking…");
+  });
+
+  it("says a failure as an alert of its own, the status left with nothing to say", () => {
+    const { getByRole, queryByRole, rerender } = renderWithProviders(
+      <PageHeader title="Updates" subtitle={{ text: "Checking…", failed: false }} actions={null} />,
+    );
+    const status = getByRole("status");
+    expect(queryByRole("alert")).toBeNull();
+
+    rerender(<PageHeader title="Updates" subtitle={{ text: "Couldn't check", failed: true }} actions={null} />);
+    expect(getByRole("alert")).toHaveTextContent("Couldn't check");
+    expect(getByRole("status")).toBe(status);
+    expect(status).toBeEmptyDOMElement();
   });
 
   it("says a failed check in its subtitle as an alert, in the danger colour", () => {
@@ -116,7 +152,11 @@ describe("PageHeader", () => {
   it("has no subtitle where the page has none", () => {
     const { getByRole } = renderWithProviders(<PageHeader title="Overview" subtitle={null} actions={null} />);
     const title = getByRole("heading", { level: 1, name: "Overview" });
-    expect(title.nextElementSibling).toBeNull();
+    // Only its status, empty and out of sight.
+    expect(title.nextElementSibling).toBe(getByRole("status"));
+    expect(title.nextElementSibling).toBeEmptyDOMElement();
+    expect(title.nextElementSibling).toHaveClass("sr-only");
+    expect(title.nextElementSibling?.nextElementSibling).toBeNull();
   });
 
   it("draws a hairline along its foot only once the page under it has scrolled", () => {

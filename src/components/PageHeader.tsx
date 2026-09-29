@@ -181,6 +181,8 @@ export interface PageHeaderProps {
  * it would select the word under it.
  */
 export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled = false }: PageHeaderProps) {
+  // What the status says: the subtitle, but for a failure, which the alert says.
+  const shown = subtitle === null || subtitle.failed ? null : subtitle.text;
   return (
     <header
       data-tauri-drag-region="deep"
@@ -190,11 +192,21 @@ export function PageHeader({ title, subtitle = null, actions, slotRef, scrolled 
         <h1 tabIndex={-1} data-focus-fallback="" className="truncate text-title text-foreground outline-none">
           {title}
         </h1>
-        {subtitle !== null ? (
-          <p
-            role={subtitle.failed ? "alert" : undefined}
-            className={`truncate text-small ${subtitle.failed ? "text-danger-text" : "text-muted"}`}
-          >
+        {/* The subtitle is a status, one node for as long as the toolbar is
+            there -- in sight, or out of it and empty where the page has
+            none -- so a screen reader hears it change: 「正在检查…」, then
+            the count. A node put in the page with its words, or given a
+            role as they change, is one it may never read. A check that
+            failed is an alert of its own, which is heard as it appears. */}
+        <p
+          role="status"
+          data-subtitle=""
+          className={shown === null ? "sr-only" : "truncate text-small text-muted"}
+        >
+          {shown}
+        </p>
+        {subtitle?.failed ? (
+          <p role="alert" className="truncate text-small text-danger-text">
             {subtitle.text}
           </p>
         ) : null}

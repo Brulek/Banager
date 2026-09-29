@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
 import {
@@ -102,7 +102,13 @@ export function OperationBar() {
     </button>
   );
 
-  let body;
+  // What the bar shows, in three parts about the one line it says: what
+  // goes before the line (how a finished run went, as a symbol), the line,
+  // and its buttons after it.
+  let lead: ReactNode;
+  let said: ReactNode;
+  let saidClassName: string;
+  let after: ReactNode;
   const batch = total > 1;
   // What nothing can stop now (`runsToItsEnd`): rustup's self update or
   // self uninstall once it has started. In a run of several, the bar names
@@ -142,16 +148,20 @@ export function OperationBar() {
       }
       for (const op of cancellable) cancelMutation.mutate(op.id);
     };
-    body = (
+    lead = null;
+    said = (
       <>
-        <p aria-live="polite" className="flex min-w-0 flex-1 items-baseline gap-2">
-          {batch ? (
-            <span className="shrink-0">{t("operations.batch.running", { current: Math.min(done + 1, total), total })}</span>
-          ) : null}
-          <span title={line} className="min-w-0 truncate">
-            {line}
-          </span>
-        </p>
+        {batch ? (
+          <span className="shrink-0">{t("operations.batch.running", { current: Math.min(done + 1, total), total })}</span>
+        ) : null}
+        <span title={line} className="min-w-0 truncate">
+          {line}
+        </span>
+      </>
+    );
+    saidClassName = "flex min-w-0 flex-1 items-baseline gap-2";
+    after = (
+      <>
         {batch ? (
           // How much of the run is done, beside the words that say it: a
           // 4 by 60 capsule, the accent over the fill.
@@ -215,14 +225,15 @@ export function OperationBar() {
         cancelled: tones.filter((each) => each === "cancelled").length,
       });
     }
-    body = (
+    lead = <OutcomeIcon tone={tone} size={12} />;
+    said = (
+      <span title={words} className="min-w-0 truncate">
+        {words}
+      </span>
+    );
+    saidClassName = "flex min-w-0 flex-1";
+    after = (
       <>
-        <OutcomeIcon tone={tone} size={12} />
-        <p aria-live="polite" className="flex min-w-0 flex-1">
-          <span title={words} className="min-w-0 truncate">
-            {words}
-          </span>
-        </p>
         {logOf !== undefined ? viewLog(logOf) : null}
         <button
           type="button"
@@ -241,7 +252,14 @@ export function OperationBar() {
       aria-label={t("app.operationBarRegion")}
       className="flex h-7 shrink-0 items-center gap-2 border-t border-separator bg-content px-5 text-small text-muted motion-safe:animate-fade-in"
     >
-      {body}
+      {lead}
+      {/* The one line, live: one node from the first step of a run to how
+          it went, its words changing in it, so a screen reader hears each
+          change -- a new node for the outcome would be one it may not. */}
+      <p aria-live="polite" data-operation-line="" className={saidClassName}>
+        {said}
+      </p>
+      {after}
     </footer>
   );
 }

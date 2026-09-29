@@ -359,6 +359,30 @@ describe("OperationBar", () => {
     expect(useUiStore.getState().focusedOpId).toBe(12);
   });
 
+  it("says each step and how it went in one live line, the same node throughout, so a screen reader hears the change", async () => {
+    const { findByText, container, queryClient } = renderWithProviders(<OperationBar />);
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.operations)).toEqual([]));
+
+    await listNow(queryClient, [op(12, "jq", "Queued"), op(11, "git", "Running")]);
+    await findByText("Update git: Running");
+    const lines = () => container.querySelectorAll("[aria-live]");
+    expect(lines()).toHaveLength(1);
+    const line = lines()[0];
+    expect(line).toHaveAttribute("aria-live", "polite");
+    expect(line).toHaveTextContent("Working on 1 of 2");
+
+    await listNow(queryClient, [op(12, "jq", "Running"), op(11, "git", "Done", "Succeeded")]);
+    await findByText("Update jq: Running");
+    expect(lines()[0]).toBe(line);
+
+    // How it went, where it stood: the same node, not a new one.
+    await listNow(queryClient, [op(12, "jq", "Done", "Succeeded"), op(11, "git", "Done", "Succeeded")]);
+    await findByText("Updated 2 tools");
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toBe(line);
+    expect(line).toHaveTextContent("Updated 2 tools");
+  });
+
   describe("the run's Cancel, in a run of several", () => {
     // rustup's self update: NoCancel, which nothing stops once it runs.
     const rustup = (id: number, status: OpStatus, outcome: Outcome | null = null) =>
