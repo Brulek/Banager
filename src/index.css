@@ -297,8 +297,9 @@ body {
   /* Text does not select, as a Mac app's labels do not: a click or a drag
      across a row, a button or a heading highlights nothing. What a user
      copies is marked `select-text`: an operation's log, a command
-     preview's command, the Unknown page's paths, and the version and the
-     location in a tool's details. A command set into a sentence is
+     preview's command, the Unknown page's paths, the version and the
+     location in a tool's details, and Canager's own version in Settings'
+     About. A command set into a sentence is
      `select-all` (src/components/withCommand.tsx), and text fields have a
      rule of their own below. */
   -webkit-user-select: none;

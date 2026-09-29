@@ -137,9 +137,9 @@ function NoEntries({ text }: { text: string }) {
  * whether Homebrew's self-updating apps are listed -- then the two kinds
  * of hidden update, 「已跳过的版本」 and 「不再提醒的工具」, each entry
  * with the button that takes it back, where the Overview's count of
- * hidden updates opens the page -- and 「关于」, whose 「图标来源」 row
- * opens the credits for the logos built into the app
- * (`IconCreditsDrawer`). Every change is saved at once; one that cannot
+ * hidden updates opens the page -- and 「关于」: the app's 「版本」, then
+ * the 「图标来源」 row that opens the credits for the logos built into
+ * the app (`IconCreditsDrawer`). Every change is saved at once; one that cannot
  * be saved is undone on screen and said at the top.
  */
 export function SettingsPage() {
@@ -517,6 +517,13 @@ export function SettingsPage() {
       </div>
 
       <SettingsGroup title={t("settings.groups.about")}>
+        {/* The version as System Settings' About shows one: a plain row,
+            the value on the right in the muted colour, and text a user
+            can select to copy into a report (`select-text`). */}
+        <SettingRow
+          label={<span className={ROW_LABEL}>{t("settings.version")}</span>}
+          control={<span className="select-text text-body tabular-nums text-muted">{__APP_VERSION__}</span>}
+        />
         <SettingRow
           label={<span className={ROW_LABEL}>{t("settings.iconCredits.label")}</span>}
           control={

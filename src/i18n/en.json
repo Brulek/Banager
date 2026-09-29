@@ -632,6 +632,7 @@
       "unignore": "Remind Me Again",
       "unignoreAriaLabel": "Remind me again about {{name}}"
     },
+    "version": "Version",
     "iconCredits": {
       "label": "Icon credits",
       "open": "View…",

@@ -581,6 +581,7 @@
       "unignore": "恢复提醒",
       "unignoreAriaLabel": "恢复“{{name}}”的更新提醒"
     },
+    "version": "版本",
     "iconCredits": {
       "label": "图标来源",
       "open": "查看…",

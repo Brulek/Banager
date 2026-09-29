@@ -10,7 +10,9 @@ import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 import { BUTTON } from "../components/ui/controls";
+import { GROUP_ROW } from "../components/ui/group";
 import { creditSource } from "../components/IconCreditsDrawer";
+import tauriConfig from "../../src-tauri/tauri.conf.json";
 
 const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
@@ -1035,6 +1037,58 @@ describe("SettingsPage", () => {
   });
 });
 
+describe("SettingsPage's version", () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+  });
+
+  it("is the version in tauri.conf.json, the one Tauri gives the bundle", () => {
+    expect(tauriConfig.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(__APP_VERSION__).toBe(tauriConfig.version);
+  });
+
+  it("heads the About group as System Settings shows it: a plain row, the version on the right, muted and selectable", async () => {
+    renderWithProviders(<SettingsPage />);
+
+    const about = await screen.findByRole("region", { name: "About" });
+    const value = within(about).getByText(tauriConfig.version);
+    const row = value.parentElement as HTMLElement;
+    // The group's first row, 36 high, its label on the left.
+    expect(row).toBe(about.querySelector("h2 + div")?.firstElementChild);
+    expect(row.className).toBe(GROUP_ROW);
+    expect(row.firstElementChild).toHaveTextContent(/^Version$/);
+    // The value: in the muted colour, and text a user can copy.
+    expect(value.className.split(" ")).toEqual(
+      expect.arrayContaining(["text-body", "text-muted", "select-text"]),
+    );
+    // Nothing to press in it: the group's one button is the credits'.
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(within(about).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "View icon credits",
+    ]);
+  });
+
+  it("is called 「版本」 in Chinese, with the same version beside it", async () => {
+    expect(zhCN.settings.version).toBe("版本");
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(<SettingsPage />);
+
+      const about = await screen.findByRole("region", { name: "关于" });
+      expect(within(about).getAllByText(/./).map((node) => node.textContent).slice(0, 3)).toEqual([
+        "关于",
+        "版本",
+        tauriConfig.version,
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+});
+
 describe("SettingsPage's icon credits", () => {
   /**
    * A pack of this test's own: two logos under a license of their own,
@@ -1079,11 +1133,17 @@ describe("SettingsPage's icon credits", () => {
 
     const about = await screen.findByRole("region", { name: "About" });
     expect(screen.getByRole("heading", { level: 2, name: "About" }).className).toContain("text-title");
-    // One row: its name and its button, which opens more (「查看…」), and no
-    // sentence explaining it.
+    // Its row under the version's: its name and its button, which opens
+    // more (「查看…」), and no sentence explaining it.
     const open = within(about).getByRole("button", { name: "View icon credits" });
     expect(open).toHaveTextContent("View…");
-    expect(within(about).getAllByText(/./).map((node) => node.textContent)).toEqual(["About", "Icon credits", "View…"]);
+    expect(within(about).getAllByText(/./).map((node) => node.textContent)).toEqual([
+      "About",
+      "Version",
+      tauriConfig.version,
+      "Icon credits",
+      "View…",
+    ]);
     await user.click(open);
 
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });

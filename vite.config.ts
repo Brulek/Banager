@@ -5,7 +5,17 @@ import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 const host = process.env.TAURI_DEV_HOST;
+
+// The app's version, as Settings' About shows it (`__APP_VERSION__`,
+// declared in src/vite-env.d.ts): the one in tauri.conf.json, which is
+// the version Tauri gives the bundle. Set into the page when it is built
+// rather than asked of Tauri at run time, so the browser preview, which
+// has no Tauri, shows it too.
+const APP_VERSION: string = JSON.parse(
+  readFileSync(new URL("./src-tauri/tauri.conf.json", import.meta.url), "utf-8"),
+).version;
 
 // `vite --mode mock` (`pnpm dev:mock`): the UI in a plain browser with a
 // mock backend and no Tauri, for screenshots (docs/ui-preview.md). Only
@@ -24,6 +34,10 @@ export default defineConfig(({ mode }) => {
   const mock = mode === MOCK_MODE;
   return {
     plugins: [react(), tailwindcss()],
+
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
 
     ...(mock
       ? {
