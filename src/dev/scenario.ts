@@ -24,6 +24,8 @@ import type { Page } from "../store/ui";
  * - `stale`: the last refresh could not finish for two sources.
  * - `notices`: every source notice that has a look of its own.
  * - `offline`: no registry answered; every lookup is "could not check".
+ * - `many`: about 800 things installed, about one in seven with an
+ *   update, for how the long lists feel (`addMany` in ./mockData.ts).
  */
 export const SCENARIO_STATES = [
   "full",
@@ -37,6 +39,7 @@ export const SCENARIO_STATES = [
   "stale",
   "notices",
   "offline",
+  "many",
 ] as const;
 export type ScenarioState = (typeof SCENARIO_STATES)[number];
 

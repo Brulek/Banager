@@ -23,6 +23,16 @@ import type {
   UpdateCandidate,
   Warning,
 } from "../lib/types";
+import {
+  MANY_CARGO,
+  MANY_CASKS,
+  MANY_DEPENDENCIES,
+  MANY_FORMULAE,
+  MANY_MODELS,
+  MANY_NPM,
+  MANY_PIPX,
+  MANY_UV,
+} from "./mockManyNames";
 import type { Scenario, ScenarioScan, ScenarioState } from "./scenario";
 
 /** The home folder every path in the preview is under. */
@@ -535,6 +545,146 @@ function offline(world: World): void {
   world.updates = [...kept, ...failed];
 }
 
+// ------------------------------------------------------------ a long list
+
+/**
+ * A stream of numbers in [0, 1) of `name`'s own (mulberry32, seeded with
+ * the name's FNV-1a hash): the same on every run, and a tool's version
+ * does not move when the list around it does. Nothing in the preview is
+ * random; `?state=many` only looks it.
+ */
+function seededStream(name: string): () => number {
+  let seed = 0x811c9dc5;
+  for (let i = 0; i < name.length; i += 1) {
+    seed = Math.imul(seed ^ name.charCodeAt(i), 0x01000193);
+  }
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+/** A whole number from 0 to `max`, from `next`. */
+function upTo(next: () => number, max: number): number {
+  return Math.floor(next() * (max + 1));
+}
+
+/**
+ * A version as its source would write it: mostly `M.m.p`, one in seven
+ * `M.m`, and -- where `revisions` -- now and then Homebrew's `_1` for a
+ * formula rebuilt at the same version. Low majors are the most common, as
+ * they are on a real Mac; `major` fixes it (`temurin@21`).
+ */
+function plausibleVersion(next: () => number, revisions: boolean, major?: number): string {
+  const roll = next();
+  const M = major ?? (roll < 0.6 ? upTo(next, 3) : roll < 0.9 ? 4 + upTo(next, 5) : 10 + upTo(next, 20));
+  // Never 0.0: a version is at least 0.1.
+  const m = upTo(next, 24) || (M === 0 ? 1 : 0);
+  const p = upTo(next, 12);
+  const shape = next();
+  if (shape < 0.14) return `${M}.${m}`;
+  if (revisions && shape < 0.23) return `${M}.${m}.${p}_1`;
+  return `${M}.${m}.${p}`;
+}
+
+/**
+ * The version a source offers after `version`: most often a later patch,
+ * a quarter of the time the next minor, now and then the next major, and
+ * without the Homebrew revision (`_1`) the installed one may carry.
+ */
+function laterVersion(version: string, next: () => number): string {
+  const parts = version.split("_")[0].split(".").map(Number);
+  const roll = next();
+  const at = roll < 0.05 ? 0 : roll < 0.3 || parts.length < 3 ? 1 : 2;
+  const step = at === 2 ? 1 + upTo(next, 2) : 1;
+  return parts.map((part, i) => (i < at ? part : i === at ? part + step : 0)).join(".");
+}
+
+/** A 64-hex digest, as an Ollama manifest's. */
+function digestFrom(next: () => number): string {
+  let hex = "";
+  while (hex.length < 64) hex += upTo(next, 0xffff_ffff).toString(16).padStart(8, "0");
+  return hex;
+}
+
+/** About one tool in seven has an update to offer (`?state=many`). */
+const MANY_UPDATE_SHARE = 0.15;
+
+/**
+ * `?state=many`: a Mac with about 800 things installed, as real ones with
+ * Homebrew have -- the pretend Mac, and another 741 tools from
+ * ./mockManyNames.ts over its sources, mostly Homebrew's. Each has a
+ * version of its own and was installed some day in the last two and a
+ * half years, about one in seven has an update, and 40 of the formulae
+ * are libraries Homebrew installed for the others; which versions, which
+ * days and which tools have an update come from each tool's own
+ * `seededStream`. No description: npm, pipx, uv and Cargo give none, and
+ * the preview has no Homebrew catalogue to take one from, so a row reads
+ * its line from the app's tables where they have one -- every row in
+ * Chinese, the npm, PyPI and Cargo ones in English -- and otherwise what
+ * its source says it is ("Homebrew package").
+ */
+function addMany(world: World): void {
+  const installedDay = (next: () => number) => daysAgo(1 + upTo(next, 900));
+  // One in seven gets an update, in `updates` -- Homebrew's check -- or,
+  // for an app that updates itself, in `greedyUpdates`, which only
+  // Settings' Show self-updating apps lists.
+  const offerUpdate = (
+    row: InstalledArtifact,
+    next: () => number,
+    channel: UpdateCandidate["channel"],
+    into: UpdateCandidate[] = world.updates,
+  ): InstalledArtifact => {
+    if (next() < MANY_UPDATE_SHARE) {
+      const target = channel === "Digest" ? `sha256:${digestFrom(next)}` : laterVersion(row.version, next);
+      into.push(update(row.key, row.version, target, channel));
+    }
+    return row;
+  };
+  const formula = (name: string, reason: InstalledArtifact["reason"]) => {
+    const next = seededStream(`brew:${name}`);
+    const version = plausibleVersion(next, true);
+    const row = artifact(IDS.brew, "Formula", name, version, { reason, installed_at: installedDay(next) });
+    return offerUpdate(row, next, "Native");
+  };
+  const cask = ({ token, name, app, autoUpdates }: (typeof MANY_CASKS)[number]) => {
+    const next = seededStream(`cask:${token}`);
+    const major = /@(\d+)$/.exec(token)?.[1];
+    const version = plausibleVersion(next, false, major === undefined ? undefined : Number(major));
+    const row = artifact(IDS.brew, "Cask", token, version, {
+      display_name: name,
+      installed_at: installedDay(next),
+      path: app === undefined ? null : `/Applications/${app}`,
+      auto_updates: autoUpdates === true,
+    });
+    return offerUpdate(row, next, "Native", autoUpdates === true ? world.greedyUpdates : world.updates);
+  };
+  const tool = (instanceId: string, kind: ArtifactKind, name: string, path: string | null) => {
+    const next = seededStream(`${instanceId}|${name}`);
+    const version = plausibleVersion(next, false);
+    const row = artifact(instanceId, kind, name, version, { installed_at: installedDay(next), path });
+    return offerUpdate(row, next, instanceId === IDS.cargo ? "Registry" : "Native");
+  };
+  const model = ({ name, sizeBytes }: (typeof MANY_MODELS)[number]) => {
+    const next = seededStream(`ollama|${name}`);
+    const row = artifact(IDS.ollama, "Model", name, digestFrom(next), { size_bytes: sizeBytes });
+    return offerUpdate(row, next, "Digest");
+  };
+
+  world.artifacts.push(
+    ...MANY_FORMULAE.map((name) => formula(name, "Requested")),
+    ...MANY_DEPENDENCIES.map((name) => formula(name, "Dependency")),
+    ...MANY_CASKS.map(cask),
+    ...MANY_NPM.map((name) => tool(IDS.npm, "Package", name, null)),
+    ...MANY_PIPX.map((name) => tool(IDS.pipx, "Tool", name, inHome(`.local/pipx/venvs/${name}`))),
+    ...MANY_UV.map((name) => tool(IDS.uv, "Tool", name, inHome(`.local/share/uv/tools/${name}`))),
+    ...MANY_CARGO.map((name) => tool(IDS.cargo, "Binary", name, inHome(`.cargo/bin/${name}`))),
+    ...MANY_MODELS.map(model),
+  );
+}
+
 /** The world `?state=` describes, fresh. */
 export function buildWorld(state: ScenarioState): World {
   const world = fullWorld();
@@ -586,6 +736,10 @@ export function buildWorld(state: ScenarioState): World {
       return world;
     case "offline":
       offline(world);
+      return world;
+    case "many":
+      allAnswering(world);
+      addMany(world);
       return world;
   }
 }

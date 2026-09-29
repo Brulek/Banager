@@ -13,7 +13,9 @@ import type {
   UiEvent,
   UpdateCandidate,
 } from "../lib/types";
+import { resolveToolIcon } from "../lib/toolIcons";
 import { hidingRule, updateStateOf } from "../lib/updateState";
+import { artifactKeyId } from "../store/ui";
 import { createMockBackend, MOCK_COMMANDS, type MockBackend } from "./mockBackend";
 import { getCurrentWindow as previewWindow } from "./mockTauriWindow";
 import { DEFAULT_SCENARIO, parseScenario, type Scenario } from "./scenario";
@@ -159,6 +161,44 @@ describe("the browser preview's mock backend", () => {
     ]);
     expect(new Set(snapshot.updates.map(hiddenBy))).toEqual(new Set([null, "ignored", "skipped"]));
     expect(snapshot.updates.some((u) => u.channel === "Digest")).toBe(true);
+  });
+
+  it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
+    const { backend } = backendFor({ state: "many" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const again = await answer<Snapshot>(backendFor({ state: "many" }).backend.invoke("refresh"));
+    expect({ ...again, refreshed_at: null }).toEqual({ ...snapshot, refreshed_at: null });
+
+    const { artifacts, updates, instances } = snapshot;
+    expect(artifacts.length).toBe(792);
+    const ids = artifacts.map((a) => artifactKeyId(a.key));
+    expect(new Set(ids).size).toBe(ids.length);
+    const count = (instanceId: string) => artifacts.filter((a) => a.key.instance_id === instanceId).length;
+    expect(count("brew:/opt/homebrew")).toBeGreaterThan(600);
+    expect(artifacts.filter((a) => a.reason === "Dependency" && a.key.instance_id === "brew:/opt/homebrew")).toHaveLength(54);
+    for (const id of ["npm:/opt/homebrew", "pipx", "uv", `cargo:/Users/you/.cargo`, "ollama:http://127.0.0.1:11434"]) {
+      expect(count(id)).toBeGreaterThan(5);
+    }
+    // Every update is of a tool on the list, from a source that answered;
+    // the list is the Updates page's, of which Canager can install ~120.
+    expect(updates.every((u) => ids.includes(artifactKeyId(u.key)))).toBe(true);
+    expect(instances.every((i) => i.status.unavailable === null && i.status.notes.length === 0)).toBe(true);
+    const settings = await answer<Settings>(backend.invoke("get_settings"));
+    const byId = new Map(instances.map((i) => [i.id, i]));
+    const hiddenBy = hidingRule(settings);
+    const actionable = updates.filter(
+      (u) => hiddenBy(u) === null && updateStateOf(u, byId.get(u.key.instance_id)).kind === "actionable",
+    );
+    expect(actionable.length).toBeGreaterThanOrEqual(100);
+    expect(actionable.length).toBeLessThanOrEqual(140);
+    expect(updates.every((u) => !u.checkable || u.channel === "Digest" || u.target !== u.current)).toBe(true);
+
+    // Real names: the logo pack has a logo for nearly every one.
+    const withLogo = artifacts.filter((a) => {
+      const instance = byId.get(a.key.instance_id);
+      return instance !== undefined && resolveToolIcon(a.key, instance.adapter_id) !== null;
+    });
+    expect(withLogo.length / artifacts.length).toBeGreaterThan(0.9);
   });
 
   it("runs an upgrade the way the real backend reports one, and the next refresh shows it done", async () => {
