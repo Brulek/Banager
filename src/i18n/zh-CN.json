@@ -41,6 +41,13 @@
     "checkFailed": "无法完成检查",
     "checkAgain": "重新检查"
   },
+  "toolbar": {
+    "checkAgainShortcut": "{{label}}（⌘R）",
+    "checkAgainTip": "{{label}}（⌘R）· {{status}}",
+    "scanAgainTip": "{{label}} · {{status}}",
+    "toolCount_other": "{{count}}个工具",
+    "programCount_other": "{{count}}个程序"
+  },
   "toolRow": {
     "fallback": {
       "homebrewPackage": "Homebrew软件包",

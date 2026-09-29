@@ -98,7 +98,7 @@ export function StatusRing({ state }: { state: RingState }) {
 export function FirstCheck() {
   const { t } = useTranslation();
   return (
-    <div className="flex min-h-full flex-col items-center px-6 pb-8">
+    <div className="flex min-h-full flex-col items-center px-5 pb-8">
       <section className="flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
         <StatusRing state={{ kind: "checking" }} />
         <div className="flex flex-col items-center gap-1.5">

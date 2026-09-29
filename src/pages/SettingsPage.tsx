@@ -165,7 +165,7 @@ export function SettingsPage() {
   }, [hiddenUpdatesRequested, loaded, hiddenUpdatesShown]);
 
   if (settingsQuery.isLoading || !current) {
-    return <p className="px-6 text-body text-muted">{t("common.loading")}</p>;
+    return <p className="px-5 text-body text-muted">{t("common.loading")}</p>;
   }
 
   // Arrow functions declared *after* the early return, not hoisted function
@@ -254,7 +254,7 @@ export function SettingsPage() {
     // the header's left edge, as the Updates, Installed and Unknown pages'
     // lists are, not centred in the window; no wider than `max-w-2xl`, so
     // that on a wide window a switch stays within reach of its words.
-    <div className="flex w-full max-w-2xl flex-col gap-6 px-6 pb-8">
+    <div className="flex w-full max-w-2xl flex-col gap-6 px-5 pb-8">
       {saveMutation.isError && (
         <p role="alert" className="text-body text-danger">
           {t("settings.saveError", {

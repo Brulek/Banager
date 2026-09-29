@@ -1,6 +1,6 @@
 /**
- * The app's buttons, as macOS draws its own (polish-3 spec §2.7 and §3.5,
- * measured off AppKit on macOS 27: refs/apple-native/native-controls-*.png).
+ * The app's buttons, as macOS draws its own, measured off AppKit on macOS
+ * 27 (docs/superpowers/2026-09-29-aesthetics-spec.md, §2.7 and §3.5).
  * Three sizes -- small 20, regular 24, large 28 -- and two kinds:
  *
  * - grey: the fill, the text in the label colour, a darker fill while it

@@ -376,44 +376,47 @@ describe("UnknownPage", () => {
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
   });
 
-  describe("Scan again, in the page header", () => {
+  describe("Scan Again, in the toolbar", () => {
     afterEach(() => {
       vi.useRealTimers();
     });
 
-    it("says Scanning… with the button off while a scan runs, then when it answered", async () => {
+    it("turns, off, while a scan runs, then says in its tooltip when it answered", async () => {
       // Only the clock and the header's minute tick are fake.
       vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
       vi.setSystemTime(new Date(2026, 8, 28, 9, 0));
       holdScan = true;
-      const { findByText, getByRole, getByText, queryByText } = renderWithProviders(
+      const { getByRole } = renderWithProviders(
         <>
           <ScanAgain />
           <UnknownPage />
         </>,
       );
 
-      expect(await findByText("Scanning…")).toBeInTheDocument();
-      expect(getByRole("button", { name: "Scan Again" })).toBeDisabled();
+      const button = getByRole("button", { name: "Scan Again" });
+      await waitFor(() => expect(button).toBeDisabled());
+      expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-spin");
+      expect(button).toHaveAttribute("title", "Scan Again · Scanning…");
 
       await act(async () => {
         releaseScan();
       });
-      expect(await findByText("Scanned just now")).toBeInTheDocument();
-      expect(queryByText("Scanning…")).toBeNull();
-      expect(getByRole("button", { name: "Scan Again" })).toBeEnabled();
+      await waitFor(() => expect(button).toHaveAttribute("title", "Scan Again · Scanned just now"));
+      expect(button).toBeEnabled();
+      // Its own shortcut is none: ⌘R is Check again's.
+      expect(button.getAttribute("title")).not.toContain("⌘");
 
       act(() => {
         vi.advanceTimersByTime(2 * 60_000);
       });
-      expect(getByText("Scanned 2 min ago")).toBeInTheDocument();
+      expect(button).toHaveAttribute("title", "Scan Again · Scanned 2 min ago");
     });
 
     it("says nothing before a scan has answered, and nothing about one that failed, whose reason the page says", async () => {
       const alone = renderWithProviders(<ScanAgain />);
       // Nothing asked for a scan: no time, and the button ready.
       expect(alone.getByRole("button", { name: "Scan Again" })).toBeEnabled();
-      expect(alone.queryByText(/^Scanned|Scanning…/)).toBeNull();
+      expect(alone.getByRole("button", { name: "Scan Again" })).toHaveAttribute("title", "Scan Again");
       expect(scanCalls()).toBe(0);
       alone.unmount();
 
@@ -425,21 +428,24 @@ describe("UnknownPage", () => {
         </>,
       );
       expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan: boom");
-      expect(failed.queryByText(/^Scanned|Scanning…/)).toBeNull();
-      expect(failed.getByRole("button", { name: "Scan Again" })).toBeEnabled();
+      const button = failed.getByRole("button", { name: "Scan Again" });
+      await waitFor(() => expect(button).toBeEnabled());
+      expect(button).toHaveAttribute("title", "Scan Again");
     });
 
-    it("says when it scanned in Chinese as the header says when it checked", async () => {
+    it("says when it scanned in Chinese as the toolbar says when it checked", async () => {
       await i18n.changeLanguage("zh-CN");
       try {
-        const { findByText, getByRole } = renderWithProviders(
+        const { getByRole } = renderWithProviders(
           <>
             <ScanAgain />
             <UnknownPage />
           </>,
         );
-        expect(await findByText("上次扫描：刚才")).toBeInTheDocument();
-        expect(getByRole("button", { name: "重新扫描" })).toBeInTheDocument();
+        const button = getByRole("button", { name: "重新扫描" });
+        await waitFor(() =>
+          expect(button).toHaveAttribute("title", `重新扫描 · ${i18n.t("unknown.scannedJustNow")}`),
+        );
       } finally {
         await i18n.changeLanguage("en");
       }

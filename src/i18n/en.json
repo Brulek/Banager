@@ -47,6 +47,15 @@
     "checkFailed": "Couldn't check",
     "checkAgain": "Check Again"
   },
+  "toolbar": {
+    "checkAgainShortcut": "{{label}} (⌘R)",
+    "checkAgainTip": "{{label}} (⌘R) · {{status}}",
+    "scanAgainTip": "{{label}} · {{status}}",
+    "toolCount_one": "{{count}} tool",
+    "toolCount_other": "{{count}} tools",
+    "programCount_one": "{{count}} program",
+    "programCount_other": "{{count}} programs"
+  },
   "toolRow": {
     "fallback": {
       "homebrewPackage": "Homebrew package",

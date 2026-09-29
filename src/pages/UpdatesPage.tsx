@@ -71,6 +71,51 @@ const JUST_UPDATED_LINE_ESTIMATE = 36;
 /** No update: what the page starts from until the snapshot and the settings are in. */
 const NO_UPDATES: UpdateCandidate[] = [];
 
+/** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
+type Translate = (key: string, options?: Record<string, string | number>) => string;
+
+/**
+ * How many rows have a checkbox, as the page says it over its list and
+ * the window's toolbar under its title (`useUpdatesHeadline`): 「10个可更新」.
+ * With none, not "0 updates": the rows under "Can't update here" are real,
+ * and simply not Canager's to update. While some are updating, how many,
+ * and how many more have a checkbox.
+ */
+export function updatesHeadline(t: Translate, updatingCount: number, startableCount: number): string {
+  if (updatingCount > 0) {
+    return startableCount > 0
+      ? `${t("overview.updating", { count: updatingCount })}${t("overview.listSeparator")}${t("updates.alsoCount", { count: startableCount })}`
+      : t("overview.updating", { count: updatingCount });
+  }
+  return startableCount === 0 ? t("updates.noneActionable") : t("updates.count", { count: startableCount });
+}
+
+/**
+ * The page's headline (`updatesHeadline`) from outside it, for the
+ * toolbar's subtitle: the same rows counted the same way -- those with a
+ * checkbox (`useStartableUpdates`), and those an update is installing now
+ * (`isUnderway`) -- so the two can never say different numbers. Null
+ * until the snapshot and the settings are in, and while the page lists
+ * nothing at all and says so in a sentence of its own.
+ */
+export function useUpdatesHeadline(): string | null {
+  const { t } = useTranslation();
+  const { data: snapshot } = useSnapshot();
+  const { data: settings } = useSettings();
+  const operationFor = useUpdateOperationFor();
+  const startable = useStartableUpdates();
+  const listed = useMemo(
+    () =>
+      snapshot && settings
+        ? { any: notHidden(snapshot.updates, settings).length > 0, actionable: actionableUpdatesOf(snapshot, settings) }
+        : undefined,
+    [snapshot, settings],
+  );
+  if (listed === undefined || startable === undefined || !listed.any) return null;
+  const updating = listed.actionable.filter((candidate) => isUnderway(operationFor(candidate))).length;
+  return updatesHeadline(t, updating, startable.length);
+}
+
 /**
  * One slot in the virtualized list. The page is one flat list, sorted by
  * name, the way 360's update list is: every row it can update, then the
@@ -613,7 +658,7 @@ export function UpdatesPage() {
 
   const noticeLines =
     notices.length > 0 ? (
-      <div className="flex flex-col gap-1.5 px-6 pb-3">
+      <div className="flex flex-col gap-1.5 px-5 pb-3">
         <SourceNotices notices={notices} layout="line" fold={noticeFold} />
       </div>
     ) : null;
@@ -655,8 +700,8 @@ export function UpdatesPage() {
     return (
       <div className="flex min-h-full flex-col">
         {noticeLines}
-        {justUpdatedSection !== null ? <div className="px-3 pb-3">{justUpdatedSection}</div> : null}
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
+        {justUpdatedSection !== null ? <div className="px-2 pb-3">{justUpdatedSection}</div> : null}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 pb-10 text-center">
           {upToDate ? (
             <CheckCircleIcon size={44} className="text-success" />
           ) : (
@@ -773,21 +818,9 @@ export function UpdatesPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pb-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 pb-3">
         <div className="flex min-w-0 items-baseline gap-3">
-          {/* How many rows have a checkbox. With none, not "0 updates":
-              the rows under "Can't update here" are real, and simply not
-              Canager's to update. While some are updating, how many, and
-              how many more have a checkbox. */}
-          <p className="text-section text-foreground">
-            {updatingCount > 0
-              ? startableCount > 0
-                ? `${t("overview.updating", { count: updatingCount })}${t("overview.listSeparator")}${t("updates.alsoCount", { count: startableCount })}`
-                : t("overview.updating", { count: updatingCount })
-              : startableCount === 0
-                ? t("updates.noneActionable")
-                : t("updates.count", { count: startableCount })}
-          </p>
+          <p className="text-section text-foreground">{updatesHeadline(t, updatingCount, startableCount)}</p>
           <p role="status" className="text-small text-muted">
             {copyStatus === "copied"
               ? t("common.copied")
@@ -861,12 +894,12 @@ export function UpdatesPage() {
             text={text}
             detail={item.planErrorDetail}
             detailTitle={text}
-            className="px-6 pb-2"
+            className="px-5 pb-2"
           />
         );
       })}
       {saveSettings.isError ? (
-        <p role="alert" className="px-6 pb-2 text-body text-danger">
+        <p role="alert" className="px-5 pb-2 text-body text-danger">
           {t("updates.saveChoiceFailed", {
             message: settingsSaveErrorMessage(t, saveSettings.error.message),
           })}

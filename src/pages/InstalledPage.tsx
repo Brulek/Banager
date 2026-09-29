@@ -933,7 +933,7 @@ export function InstalledPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-2.5 px-6 pb-3">
+      <div className="flex shrink-0 flex-col gap-2.5 px-5 pb-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="relative min-w-40 max-w-sm flex-1">
             <SearchIcon
@@ -1001,7 +1001,7 @@ export function InstalledPage() {
         ) : null}
       </div>
       {notices.length > 0 ? (
-        <div className="flex shrink-0 flex-col gap-1.5 px-6 pb-3">
+        <div className="flex shrink-0 flex-col gap-1.5 px-5 pb-3">
           <SourceNotices notices={notices} layout="line" fold={noticeFold} />
         </div>
       ) : null}

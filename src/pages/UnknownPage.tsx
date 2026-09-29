@@ -4,13 +4,7 @@ import { ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { Menu, type MenuItem } from "../components/ui/Menu";
-import {
-  elapsedText,
-  HeaderAction,
-  useMinuteClock,
-  type ElapsedKeys,
-  type HeaderStatus,
-} from "../components/PageHeader";
+import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
 import { CheckCircleIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
 import { SHOWN_FOR_MS, useCopyCommand } from "../lib/clipboard";
 import { elapsedSince, formatBytes } from "../lib/format";
@@ -154,16 +148,18 @@ const SCANNED_KEYS: ElapsedKeys = {
 };
 
 /**
- * The Unknown page's own way to look again, for its page header
- * (`PageHeader`'s `actions`) in place of the sources' Check again: when
- * its scan last answered, and Scan again. It re-runs only this scan,
- * never the sources' refresh; the page itself asks for one whenever the
+ * The Unknown page's own way to look again, for its toolbar
+ * (`PageHeader`'s `actions`) in place of the sources' Check again: Scan
+ * again, and when its scan last answered in its tooltip. It re-runs only
+ * this scan, never the sources' refresh -- so no ⌘R beside it, which is
+ * Check again's -- and the page itself asks for one whenever the
  * sources' snapshot moves.
  *
  * The scan carries no time of its own, so the time is when its answer
- * arrived (`dataUpdatedAt`). "Scanning…" while one runs, whoever asked
- * for it, with the button off; nothing before the first answer, nor after
- * a scan that failed, whose reason the page says.
+ * arrived (`dataUpdatedAt`). A spinner while one runs, whoever asked for
+ * it, with the button off, and 「正在扫描…」 as the page's subtitle
+ * (`usePageSubtitle` in src/App.tsx); no time before the first answer,
+ * nor after a scan that failed, whose reason the page says.
  */
 export function ScanAgain() {
   const { t } = useTranslation();
@@ -171,17 +167,18 @@ export function ScanAgain() {
   const scannedAt = scan.data === undefined || scan.dataUpdatedAt === 0 ? null : scan.dataUpdatedAt;
   const now = useMinuteClock(scannedAt);
 
-  let status: HeaderStatus | null = null;
+  const label = t("unknown.scanAgain");
+  let status: string | null = null;
   if (scan.isFetching) {
-    status = { text: t("unknown.scanning"), failed: false };
+    status = t("unknown.scanning");
   } else if (!scan.isError && scannedAt !== null) {
-    status = { text: elapsedText(t, SCANNED_KEYS, elapsedSince(scannedAt / 1000, now)), failed: false };
+    status = elapsedText(t, SCANNED_KEYS, elapsedSince(scannedAt / 1000, now));
   }
 
   return (
     <HeaderAction
-      status={status}
-      label={t("unknown.scanAgain")}
+      label={label}
+      tooltip={status === null ? label : t("toolbar.scanAgainTip", { label, status })}
       onPress={() => void scan.refetch()}
       busy={scan.isFetching}
     />
@@ -287,7 +284,7 @@ export function UnknownPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-1 px-6 pb-3">
+      <div className="flex shrink-0 flex-col gap-1 px-5 pb-3">
         {/* Scan again is in the page header (`ScanAgain`), where the other
             pages have Check again. */}
         <p className="text-body text-muted">{t("unknown.intro")}</p>
@@ -308,7 +305,7 @@ export function UnknownPage() {
         ) : null}
       </div>
       {scan.isError ? (
-        <p role="alert" className="px-6 pb-2 text-body text-danger">
+        <p role="alert" className="px-5 pb-2 text-body text-danger">
           {t("unknown.scanFailed", { message: scan.error.message })}
         </p>
       ) : null}
@@ -321,7 +318,7 @@ export function UnknownPage() {
       ) : (
         <>
           {stopped !== null ? (
-            <div className="px-6 pb-2">
+            <div className="px-5 pb-2">
               <SourceNoticeLine
                 variant="warning"
                 title={stopped}
@@ -333,14 +330,14 @@ export function UnknownPage() {
           {result.entries.length === 0 ? (
             // A scan that stopped early vouches only for what it checked:
             // no check mark over the rest.
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-10 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 pb-10 text-center">
               {stopped === null ? <CheckCircleIcon size={44} className="text-success" /> : null}
               <p className="text-section text-foreground">
                 {t(stopped === null ? "unknown.empty" : "unknown.emptyChecked")}
               </p>
             </div>
           ) : (
-            <div className="px-3 pb-2">
+            <div className="px-2 pb-2">
               {result.entries.map((entry) => {
                 const name = fileName(entry.path);
                 const app = linkedApp(entry);
@@ -376,7 +373,7 @@ export function UnknownPage() {
             </div>
           )}
           {result.attributed > 0 ? (
-            <p className="px-6 pb-6 pt-2 text-small text-muted">
+            <p className="px-5 pb-6 pt-2 text-small text-muted">
               {t("unknown.attributed", { count: result.attributed })}
             </p>
           ) : null}

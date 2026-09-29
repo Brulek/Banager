@@ -274,8 +274,8 @@ describe("SourceNotices' Check again", () => {
         <SourceNotices notices={[brewStale]} layout="line" />
       </>,
     );
-    await screen.findByText(/^Checked /);
     const [header, notice] = screen.getAllByRole("button", { name: "Check Again" });
+    await waitFor(() => expect(header.getAttribute("title")).toMatch(/Checked /));
     expect(notice).toBeEnabled();
 
     fireEvent.click(header);

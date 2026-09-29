@@ -9,7 +9,7 @@ import { OPEN_UPDATES_EVENT, QUIT_REQUESTED_EVENT } from "./lib/api";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { queryKeys } from "./lib/queryKeys";
 import type { InvokeArgs } from "@tauri-apps/api/core";
-import type { OpRequest, OpSummary, Settings, Snapshot, UnknownScan } from "./lib/types";
+import type { OpRequest, OpSummary, Settings, Snapshot, UnknownEntry, UnknownScan } from "./lib/types";
 
 // The real hook, watched: `App` calls it once each time it draws, and
 // nothing else calls it, so its calls count App's draws.
@@ -177,22 +177,106 @@ describe("App", () => {
       const titles = getAllByRole("heading", { level: 1 });
       expect(titles.map((title) => title.textContent)).toEqual([name]);
       const header = titles[0].closest("header") as HTMLElement;
-      expect(within(header).queryAllByRole("button").map((button) => button.textContent)).toEqual(expected);
+      // An icon button each: its name is its label.
+      expect(within(header).queryAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(
+        expected,
+      );
       // Never a second one stacked under the header.
       expect(queryAllByRole("button", { name: /^(Check|Scan) Again$/ })).toHaveLength(expected.length);
     }
   });
 
-  it("says in the Unknown page's header when its scan answered, and never when the sources were checked", async () => {
-    const { getByRole, findByText, queryByText } = renderWithProviders(<App />);
+  it("says in the Unknown page's toolbar when its scan answered, and never when the sources were checked", async () => {
+    const { getByRole, findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
-    expect(queryByText(/^Checked /)).not.toBeNull();
+    const checkAgain = getByRole("button", { name: "Check Again" });
+    await waitFor(() => expect(checkAgain.getAttribute("title")).toMatch(/^Check Again \(⌘R\) · Checked /));
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
 
-    expect(await findByText("Scanned just now")).toBeInTheDocument();
-    expect(queryByText(/^Checked /)).toBeNull();
-    expect(getByRole("button", { name: "Scan Again" })).toBeEnabled();
+    const scanAgain = getByRole("button", { name: "Scan Again" });
+    await waitFor(() => expect(scanAgain).toHaveAttribute("title", "Scan Again · Scanned just now"));
+    expect(scanAgain).toBeEnabled();
+  });
+
+  it("gives each page's toolbar its subtitle: what the page lists, or none on the Overview and Settings", async () => {
+    const brew = snapshot.instances[0];
+    const update = (name: string) => ({
+      key: { instance_id: brew.id, kind: "Formula" as const, name },
+      current: "1.0.0",
+      target: "1.1.0",
+      channel: "Native" as const,
+      checkable: true,
+      warnings: [],
+      blocked: null,
+    });
+    const artifact = snapshot.artifacts[0];
+    mockBackend({
+      ...snapshot,
+      artifacts: [artifact, { ...artifact, key: { ...artifact.key, name: "wget" }, display_name: "wget" }],
+      updates: [update("jq"), update("wget")],
+    });
+    // Three programs no source accounts for.
+    const program = (name: string): UnknownEntry => ({
+      path: `~/.local/bin/${name}`,
+      kind: "File",
+      resolved: `/Users/you/.local/bin/${name}`,
+      link_target: null,
+      size_bytes: 1024,
+      modified_at: 1789700000,
+      owned_by_me: true,
+      app_bundle: null,
+    });
+    const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "scan_unknown"
+        ? Promise.resolve({ ...emptyScan, entries: ["a", "b", "c"].map(program) })
+        : answer(cmd, args),
+    );
+    const { getByRole, findByRole } = renderWithProviders(<App />);
+    await findByRole("button", { name: "Review Updates" });
+
+    const subtitleOf = () => {
+      const title = getByRole("heading", { level: 1 });
+      return title.nextElementSibling?.textContent ?? null;
+    };
+    const expected: Array<[string, string | null]> = [
+      ["Overview", null],
+      ["Updates", "2 can be updated"],
+      ["Installed", "2 tools"],
+      ["Unknown", "3 programs"],
+      ["Settings", null],
+    ];
+    for (const [name, subtitle] of expected) {
+      fireEvent.click(getByRole("button", { name }));
+      await waitFor(() => expect(subtitleOf()).toBe(subtitle));
+    }
+  });
+
+  it("says in the toolbar's subtitle that a check is under way, and as an alert that it failed", async () => {
+    const answer = mockInvoke.getMockImplementation() as (cmd: string, args?: InvokeArgs) => Promise<unknown>;
+    let finish: (() => void) | undefined;
+    const { getByRole, findByText, findByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    fireEvent.click(getByRole("button", { name: "Installed" }));
+    await waitFor(() => expect(getByRole("heading", { level: 1 }).nextElementSibling).toHaveTextContent("1 tool"));
+
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "refresh"
+        ? new Promise((_, reject) => {
+            finish = () => reject("the session is gone");
+          })
+        : answer(cmd, args),
+    );
+    fireEvent.click(getByRole("button", { name: "Check Again" }));
+    expect(await within(getByRole("banner")).findByText("Checking…")).toBeInTheDocument();
+
+    await waitFor(() => expect(finish).toBeDefined());
+    finish?.();
+    const alert = await findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't check");
+    expect(alert.closest("header")).not.toBeNull();
+    expect(alert.className).toContain("text-danger-text");
   });
 
   it("opens the Updates page from Review updates with every row it can update ticked", async () => {
@@ -222,7 +306,10 @@ describe("App", () => {
 
     fireEvent.click(await findByRole("button", { name: "Review Updates" }));
 
-    expect(await findByText("2 can be updated", { selector: "p" })).toBeInTheDocument();
+    // The page's own headline over its list, and the toolbar's subtitle:
+    // the same words.
+    expect(await findByText("2 can be updated", { selector: "main > div p" })).toBeInTheDocument();
+    expect(within(getByRole("banner")).getByText("2 can be updated")).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
@@ -552,7 +639,7 @@ describe("the menu bar's items that act in the page", () => {
     await waitFor(() => expect(refreshes()).toBe(2));
     // The header says so, as for its own button.
     expect(checkAgain).toBeDisabled();
-    expect(checkAgain.closest("header")).toHaveTextContent("Checking…");
+    expect(checkAgain).toHaveAttribute("title", "Check Again (⌘R) · Checking…");
 
     // Chosen again while it runs: no second check, now or after it.
     menu.choose("checkAgain");

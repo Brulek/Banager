@@ -67,8 +67,11 @@ export function VirtualList<T>({ items, itemKey, estimateSize, renderItem, reusa
     return drawn.get(key);
   };
 
+  // 8 in from either side, and a row's own 12 inside that: its content 20
+  // from the window's edges, where the toolbar's title and the page above
+  // the list start.
   return (
-    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
       {items.length === 0 && empty !== undefined ? (
         empty
       ) : (

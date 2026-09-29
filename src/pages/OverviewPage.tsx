@@ -163,7 +163,7 @@ export function OverviewPage() {
   const unknownCount = scan?.entries.length ?? 0;
 
   return (
-    <div className="flex min-h-full flex-col items-center px-6 pb-8">
+    <div className="flex min-h-full flex-col items-center px-5 pb-8">
       <section className="flex flex-1 flex-col items-center justify-center gap-5 pb-10 pt-6 text-center">
         <StatusRing state={summary} />
         <div className="flex flex-col items-center gap-1.5">

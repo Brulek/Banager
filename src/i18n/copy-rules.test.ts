@@ -32,10 +32,15 @@ describe("the copy rules, over every string in both languages", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps brackets for a count and nothing else", () => {
-    // 「更新所选（3）」 is a count; 「程序（链接）」 and 「（pin）」 were asides.
+  it("keeps brackets for a count or a shortcut and nothing else", () => {
+    // 「更新所选（3）」 is a count, and 「重新检查（⌘R）」 names the keys
+    // that do it, as the toolbar's tooltip says them; 「程序（链接）」 and
+    // 「（pin）」 were asides.
     const count = /[（(]\{\{number\}\}[）)]/g;
-    const offenders = [...entries(zhCN), ...entries(en)].filter(([, text]) => /[（(]/.test(text.replace(count, "")));
+    const shortcut = /[（(]⌘[A-Z,]+[）)]/g;
+    const offenders = [...entries(zhCN), ...entries(en)].filter(([, text]) =>
+      /[（(]/.test(text.replace(count, "").replace(shortcut, "")),
+    );
     expect(offenders).toEqual([]);
   });
 

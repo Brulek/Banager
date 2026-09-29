@@ -3174,7 +3174,7 @@ describe("UpdatesPage", () => {
 
       const update = within(await findRow("glib")).getByRole("button", { name: "Update" });
       expect(update.className).toBe(BUTTON.regular.grey);
-      expect(screen.getByRole("button", { name: "Update all" }).className).toBe(BUTTON.regular.default);
+      expect(screen.getByRole("button", { name: "Update All" }).className).toBe(BUTTON.regular.default);
       expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
     });
 
