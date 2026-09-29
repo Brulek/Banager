@@ -284,6 +284,72 @@ describe("UnknownPage", () => {
     expect(place.className.split(" ")).toEqual(expect.arrayContaining(["flex", "w-48", "justify-end"]));
   });
 
+  it("heads the size and the date as Finder does, over their columns, at 11 in the secondary colour, in either language", async () => {
+    const english = renderWithProviders(<UnknownPage />);
+    const tool = rowOf(await english.findByText("standalone-tool"));
+    const heads = english.container.querySelector("[data-column-heads]") as HTMLElement;
+    expect(heads.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted", "px-5"]));
+    const size = heads.querySelector("[data-size-head]") as HTMLElement;
+    const date = heads.querySelector("[data-date-head]") as HTMLElement;
+    expect(size.textContent).toBe("Size");
+    // `modified_at`: when the program last changed.
+    expect(date.textContent).toBe("Date Modified");
+    // As wide and as far apart as the columns under them, and at their
+    // right as the values are, with the ⋯'s room after them.
+    const column = sizeAndDateOf(tool);
+    expect(column.className.split(" ")).toContain("text-right");
+    const sizeValue = column.querySelector("[data-size]") as HTMLElement;
+    const dateValue = column.querySelector("[data-date]") as HTMLElement;
+    for (const [head, value] of [
+      [size, sizeValue],
+      [date, dateValue],
+    ] as const) {
+      const widths = (element: HTMLElement) => element.className.split(" ").filter((c) => /^(w|ml)-/.test(c));
+      expect(widths(head)).toEqual(widths(value));
+      expect(head.className.split(" ")).toContain("text-right");
+    }
+    expect((heads.lastElementChild as HTMLElement).className.split(" ")).toEqual(
+      expect.arrayContaining(["ml-4", "w-6"]),
+    );
+    // Over the list, and no row of it.
+    expect(heads.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heads.closest("[data-tool-row], [data-list-slot]")).toBeNull();
+    english.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const chinese = renderWithProviders(<UnknownPage />);
+      await chinese.findByText("standalone-tool");
+      const zhHeads = chinese.container.querySelector("[data-column-heads]") as HTMLElement;
+      expect(zhHeads.querySelector("[data-size-head]")?.textContent).toBe("大小");
+      expect(zhHeads.querySelector("[data-date-head]")?.textContent).toBe("修改日期");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("gives the headings no focus: Tab and the arrow keys never stop on them", async () => {
+    const user = userEvent.setup();
+    const { findByText, container } = renderWithProviders(<UnknownPage />);
+    await findByText("standalone-tool");
+    const heads = container.querySelector("[data-column-heads]") as HTMLElement;
+    expect(heads.querySelector("button, a, input, [tabindex]")).toBeNull();
+    expect(heads).not.toHaveAttribute("tabindex");
+    // The page's first stop is still the first row's ⋯.
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "More actions for standalone-tool" }),
+    );
+    expect(heads.contains(document.activeElement)).toBe(false);
+  });
+
+  it("heads nothing over broken links alone, which have no size and no date", async () => {
+    scan = { ...baseScan, entries: baseScan.entries.filter((entry) => entry.kind === "BrokenSymlink") };
+    const { findByText, container } = renderWithProviders(<UnknownPage />);
+    await findByText("old-script");
+    expect(container.querySelector("[data-column-heads]")).toBeNull();
+  });
+
   it("shows where a link leads only with technical details on", async () => {
     const hidden = renderWithProviders(<UnknownPage />);
     const hiddenRow = rowOf(await hidden.findByText("helper-cli"));
@@ -829,6 +895,38 @@ describe("in a narrow window (R9)", () => {
     // Its size and date keep their columns.
     const tool = rowOf(await findByText("standalone-tool"));
     expect(sizeAndDateOf(tool).textContent).toBe(`${formatBytes(144_300_000)}${dateOf(1_758_000_000)}`);
+  });
+});
+
+describe("the size and date headings in a narrow window (R9)", () => {
+  afterEach(() => {
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
+  });
+
+  function listWidth(width: number) {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { width, height: 400, top: 0, left: 0, right: width, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
+    });
+  }
+
+  it("stay over the columns while the rows draw them, at a window's narrowest", async () => {
+    // 592: the list in a window at its narrowest, the `narrow` fit.
+    listWidth(592);
+    const { findByText, queryByText, container } = renderWithProviders(<UnknownPage />);
+    const tool = rowOf(await findByText("standalone-tool"));
+    // Laid out at that width: the app a link points into has left the line.
+    await waitFor(() => expect(queryByText("Points into Helper.app")).toBeNull());
+    expect(sizeAndDateOf(tool)).not.toBeNull();
+    expect(container.querySelector("[data-column-heads]")).not.toBeNull();
+  });
+
+  it("go with the columns where a list too narrow for them drops them", async () => {
+    // 400: the `minimal` fit, which has no version column.
+    listWidth(400);
+    const { findByText, container } = renderWithProviders(<UnknownPage />);
+    const tool = rowOf(await findByText("standalone-tool"));
+    await waitFor(() => expect(sizeAndDateOf(tool)).toBeNull());
+    expect(container.querySelector("[data-column-heads]")).toBeNull();
   });
 });
 

@@ -94,6 +94,36 @@ function SizeAndDate({ entry, language, status }: { entry: UnknownEntry; languag
 }
 
 /**
+ * The size's and the date's headings, over their columns as Finder's list
+ * heads Size and Date Modified: 「大小」 and 「修改日期」, at 11 in the
+ * secondary colour, each at its column's right as the values under it are
+ * (`SizeAndDate`, whose columns take the version column's `text-right`),
+ * with the ⋯'s room after them -- the row's own spacing, so they line up at
+ * any width the columns are drawn at. The date is the program's last
+ * modification (`UnknownEntry.modified_at`, the target's for a link).
+ * Words, not controls: nothing in it takes the focus, so Tab and the arrow
+ * keys go from the page to the rows as before, and it is no row.
+ */
+function ColumnHeads() {
+  const { t } = useTranslation();
+  return (
+    <div data-column-heads="" className="flex px-5 pb-1 text-small text-muted">
+      <span className="min-w-0 flex-1" />
+      <span className="ml-4 flex shrink-0 whitespace-nowrap">
+        <span data-size-head="" className="w-18 truncate text-right">
+          {t("unknown.columns.size")}
+        </span>
+        <span data-date-head="" className="ml-4 w-26 truncate text-right">
+          {t("unknown.columns.modified")}
+        </span>
+      </span>
+      {/* The ⋯'s column, as wide and as far off as on a row. */}
+      <span aria-hidden="true" className="ml-4 w-6 shrink-0" />
+    </div>
+  );
+}
+
+/**
  * What there is to say about a program, a line each: what a broken link
  * pointed at, the app it runs inside, that another account owns it, and
  * -- with technical details on -- where a link leads. A plain file
@@ -219,7 +249,8 @@ export function ScanAgain() {
  * rows like every other list's (spec §3.3): a neutral avatar, the name
  * with the path it was found at -- and, after it, the app a link points
  * into -- its size and its date in two columns where a tool's version
- * would be, or, for a broken link, its status word there with an ⓘ; what
+ * would be, headed 「大小」 and 「修改日期」 as Finder heads them
+ * (`ColumnHeads`), or, for a broken link, its status word there with an ⓘ; what
  * more there is to say of any other row in its tooltip (`factsOf`); and a
  * ⋯ menu to show it in Finder or copy its path. No row has a status
  * column, so every name and every path starts at one x at any width. One
@@ -267,7 +298,14 @@ export function UnknownPage() {
   const listWidth = useElementWidth(listBox);
   // Too narrow for a path and the app a link points into on one line, the
   // app gives way: the row's tooltip says it at more length.
-  const roomForNote = rowFitFor(listWidth) === "full" || rowFitFor(listWidth) === "compact";
+  const fit = rowFitFor(listWidth);
+  const roomForNote = fit === "full" || fit === "compact";
+  // The headings over the size and the date where the rows draw those
+  // columns (`ToolRow`'s version column, down to its `narrow` fit) and a
+  // row has either: over broken links alone they would head nothing.
+  const headed =
+    (roomForNote || fit === "narrow") &&
+    (result?.entries.some((entry) => entry.size_bytes !== null || entry.modified_at !== null) ?? false);
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
 
   // A row's Copy path and Show in Finder, and a word about how the last
@@ -375,6 +413,7 @@ export function UnknownPage() {
             )
           ) : (
             <div ref={setListBox}>
+              {headed ? <ColumnHeads /> : null}
               <ListWidthProvider value={listWidth}>
                 {/* A broken link's word stands where its size and date would
                     (`SizeAndDate`), never in a status column: the rows

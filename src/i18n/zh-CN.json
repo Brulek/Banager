@@ -605,6 +605,10 @@
     "other": "{{detail}}"
   },
   "unknown": {
+    "columns": {
+      "size": "大小",
+      "modified": "修改日期"
+    },
     "intro": "无法确定以下程序的安装来源。",
     "lookedIn": "查找位置：{{folders}}",
     "attributed_other": "另有{{count}}个程序已确定来源，未在这里列出。",

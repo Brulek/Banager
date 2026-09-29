@@ -656,6 +656,10 @@
     "other": "{{detail}}"
   },
   "unknown": {
+    "columns": {
+      "size": "Size",
+      "modified": "Date Modified"
+    },
     "intro": "Couldn't determine how these programs were installed.",
     "lookedIn": "Looked in: {{folders}}",
     "attributed_one": "{{count}} more program has a known source and isn't listed here.",
