@@ -1,7 +1,9 @@
 {
   "app": {
     "name": "Canager",
-    "operationBarRegion": "Operation status"
+    "operationBarRegion": "Operation status",
+    "failed": "Something went wrong inside Canager, and the window can't show this page.",
+    "reload": "Reload"
   },
   "nav": {
     "label": "Navigation",

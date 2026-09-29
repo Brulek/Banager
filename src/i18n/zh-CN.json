@@ -1,7 +1,9 @@
 {
   "app": {
     "name": "Canager",
-    "operationBarRegion": "操作状态"
+    "operationBarRegion": "操作状态",
+    "failed": "Canager 内部出错，窗口没法显示这一页。",
+    "reload": "重新载入"
   },
   "nav": {
     "label": "导航",
