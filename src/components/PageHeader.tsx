@@ -85,7 +85,7 @@ export function HeaderAction({ status, label, onPress, busy }: HeaderActionProps
         type="button"
         onClick={onPress}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:hover:bg-surface"
+        className="inline-flex items-center gap-1.5 rounded-button border border-border bg-surface px-3 py-1.5 text-body font-medium text-foreground disabled:opacity-50"
       >
         <RefreshIcon size={16} />
         {label}

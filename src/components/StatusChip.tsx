@@ -44,7 +44,7 @@ export function StatusChip({ label, detail, align = "end", tone = "neutral" }: S
           <InfoIcon size={13} className="shrink-0 opacity-70" />
         </>
       }
-      triggerClassName={`${CHIP} outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-expanded:text-foreground`}
+      triggerClassName={`${CHIP} hover:text-foreground aria-expanded:text-foreground`}
       align={align}
     >
       {detail}

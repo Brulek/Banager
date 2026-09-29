@@ -168,6 +168,8 @@ export function Menu({ label, items }: MenuProps) {
               title={item.hint}
               onClick={() => choose(item)}
               onMouseEnter={(event) => event.currentTarget.focus()}
+              // Its highlight is its focus, the pointer's or the
+              // keyboard's, as a Mac menu's is: no ring around it besides.
               className="w-full whitespace-nowrap rounded-[6px] px-2.5 py-1.5 text-left text-body text-foreground outline-none focus:bg-accent focus:text-accent-foreground aria-disabled:cursor-default aria-disabled:opacity-50 aria-disabled:focus:bg-hover aria-disabled:focus:text-foreground"
             >
               {item.label}

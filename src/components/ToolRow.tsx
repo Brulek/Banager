@@ -107,14 +107,17 @@ export interface ToolRowContentProps {
  * leave one empty still line up with rows that fill it; leave the prop out
  * to drop the column altogether.
  *
- * No borders between rows but a hairline, which gives way to the hover
- * background; `data-tool-row` marks the row for anything that needs to
- * find it from a name inside it, and `data-status` its chips.
+ * No borders between rows but a hairline, and nothing under the pointer:
+ * a Mac's list rows do not light up as a web page's do. `data-tool-row`
+ * marks the row for anything that needs to find it from a name inside
+ * it, and `data-status` its chips.
  *
  * With `onOpen`, the whole row is a button: one that covers it, under its
  * checkbox, chips, action and menu, which each stay their own control. It
  * takes the focus when pressed -- WebKit leaves a clicked button unfocused
- * -- so whatever it opens can hand the focus back to it.
+ * -- so whatever it opens can hand the focus back to it. Its focus ring
+ * (index.css's, for the keyboard) is drawn just inside the row, where the
+ * list's own edge cannot clip it.
  */
 export function ToolRow({
   adapterId,
@@ -141,14 +144,14 @@ export function ToolRow({
   return (
     <div
       data-tool-row=""
-      className="@container group relative flex min-h-[60px] items-center gap-3 rounded-row px-3 py-2 transition-colors hover:bg-hover"
+      className="@container relative flex min-h-[60px] items-center gap-3 rounded-row px-3 py-2"
     >
       {onOpen ? (
         <button
           type="button"
           aria-label={openLabel}
           onClick={open}
-          className="absolute inset-0 rounded-row outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+          className="absolute inset-0 rounded-row -outline-offset-3"
         />
       ) : null}
       {selectable ? (
@@ -216,7 +219,7 @@ export function ToolRow({
       {/* The hairline under the row, from where its text starts. */}
       <span
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-0 right-3 h-px bg-border transition-opacity group-hover:opacity-0 ${
+        className={`pointer-events-none absolute bottom-0 right-3 h-px bg-border ${
           selectable ? "left-[5.25rem]" : "left-14"
         }`}
       />

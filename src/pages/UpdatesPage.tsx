@@ -895,7 +895,7 @@ export function UpdatesPage() {
                 type="button"
                 aria-expanded={item.expanded}
                 onClick={() => setShowCantUpdate((shown) => !shown)}
-                className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body font-semibold text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+                className="flex w-full items-center gap-1.5 rounded-control px-3 py-2 text-left text-body font-semibold text-muted"
               >
                 <ChevronIcon
                   size={14}

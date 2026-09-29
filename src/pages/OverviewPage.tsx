@@ -81,7 +81,7 @@ function nothingToUpdateLine(
 }
 
 const TILE =
-  "flex w-full items-center gap-3 rounded-row p-2.5 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent";
+  "flex w-full items-center gap-3 rounded-row p-2.5 text-left";
 
 /**
  * The first page: the Mac at a glance, and one thing to do about it.

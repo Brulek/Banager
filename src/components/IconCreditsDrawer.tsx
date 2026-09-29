@@ -37,7 +37,7 @@ export function IconCreditsDrawer({ open, onOpenChange }: IconCreditsDrawerProps
         role="region"
         aria-label={t("settings.iconCredits.title")}
         tabIndex={0}
-        className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto rounded-button px-1 text-body text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto rounded-control px-1 text-body text-foreground"
       >
         <p>{t("settings.iconCredits.simpleIcons")}</p>
         {credits.length > 0 ? (

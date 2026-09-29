@@ -294,8 +294,8 @@ export function SettingsPage() {
                     onClick={() => persist({ ...current, language: lang })}
                     // The choice is marked for the eye, not only for a
                     // screen reader: a raised segment of its own.
-                    className={`rounded-[6px] px-3 py-1 text-small font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
-                      selected ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
+                    className={`rounded-[6px] px-3 py-1 text-small font-medium ${
+                      selected ? "bg-surface text-foreground shadow-sm" : "text-muted"
                     }`}
                   >
                     {t(languageLabelKey(lang))}

@@ -920,10 +920,10 @@ export function InstalledPage() {
       type="button"
       aria-pressed={pressed}
       onClick={onPress}
-      className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2 text-small font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
+      className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2 text-small font-medium ${
         pressed
           ? "border-accent bg-accent text-accent-foreground"
-          : "border-border bg-surface text-foreground hover:bg-hover"
+          : "border-border bg-surface text-foreground"
       }`}
     >
       {label}{" "}
@@ -951,7 +951,7 @@ export function InstalledPage() {
               // as a web page's text field would draw, and nothing
               // corrected as it is typed.
               spellCheck={false}
-              className="h-8 w-full rounded-button border border-border bg-surface pl-8 pr-2.5 text-body text-foreground outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent"
+              className="h-8 w-full rounded-button border border-border bg-surface pl-8 pr-2.5 text-body text-foreground placeholder:text-muted"
             />
           </div>
           <p role="status" className="text-small text-muted">
@@ -972,7 +972,7 @@ export function InstalledPage() {
                   type="button"
                   aria-pressed={sort === option}
                   onClick={() => setSort(option)}
-                  className="rounded-[6px] px-2.5 py-1 text-small font-medium text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
+                  className="rounded-[6px] px-2.5 py-1 text-small font-medium text-muted aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
                 >
                   {t(option === "name" ? "installed.sortByName" : "installed.sortBySource")}
                 </button>
@@ -1024,7 +1024,7 @@ export function InstalledPage() {
                 type="button"
                 aria-expanded={item.expanded}
                 onClick={() => toggleDependencies(item.instance.id)}
-                className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+                className="flex w-full items-center gap-1.5 rounded-control px-3 py-2 text-left text-body text-muted"
               >
                 <ChevronIcon
                   size={14}

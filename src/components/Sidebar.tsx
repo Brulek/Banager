@@ -87,7 +87,7 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
         aria-current={active ? "page" : undefined}
         aria-describedby={described ? descriptionId : undefined}
         onClick={() => onSelectPage(p)}
-        className={`flex w-full items-center gap-2.5 rounded-button px-3 py-2 text-left text-body font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+        className={`flex w-full items-center gap-2.5 rounded-button px-3 py-2 text-left text-body font-medium ${
           active ? "bg-sidebar-active" : ""
         }`}
       >

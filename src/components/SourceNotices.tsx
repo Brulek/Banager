@@ -15,7 +15,7 @@ import { Popover } from "./ui/Popover";
  * the two never read as one more link of the same kind side by side.
  */
 const FOLD_TOGGLE_CLASS =
-  "inline-flex shrink-0 items-center rounded-sm text-small text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent";
+  "inline-flex shrink-0 items-center rounded-sm text-small text-muted";
 
 /** The fold's chevron: › while the lines are folded, ˅ once they show. */
 function FoldChevron({ expanded }: { expanded: boolean }) {

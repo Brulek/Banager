@@ -89,6 +89,44 @@ describe("the page", () => {
   });
 });
 
+describe("hover and focus", () => {
+  /** Each source file that holds `pattern`, with how many times. */
+  function holding(pattern: RegExp): Record<string, number> {
+    const found: Record<string, number> = {};
+    for (const file of sources()) {
+      const count = (readFileSync(file, "utf-8").match(pattern) ?? []).length;
+      if (count > 0) found[path.relative(ROOT, file)] = count;
+    }
+    return found;
+  }
+
+  it("draws one focus ring for everything, the page's: 3px in the focus colour, around the edge", () => {
+    expect(rule(":focus-visible")).toEqual({ outline: "3px solid var(--color-focus)", "outline-offset": "0" });
+    // No component draws a ring of its own for the focus.
+    expect(holding(/focus-visible:ring|ring-offset/g)).toEqual({});
+  });
+
+  it("fades no colour in and out, as a web page's buttons do", () => {
+    expect(holding(/transition-colors/g)).toEqual({});
+  });
+
+  it("underlines no link, under the pointer or not", () => {
+    expect(holding(/hover:underline/g)).toEqual({});
+  });
+
+  it("lights up nothing under the pointer but a toolbar's icon button and a menu's items", () => {
+    // Rows, the sidebar, links and push buttons stay as they are; the
+    // icon button (`ICON_BUTTON`) takes the quietest fill.
+    const fills = holding(/hover:bg-/g);
+    expect(Object.values(fills).reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(4);
+    expect(Object.keys(fills)).toEqual(["src/components/ui/controls.ts"]);
+  });
+
+  it("paints no button red: a destructive action the user chose is the default button", () => {
+    expect(holding(/\bbg-danger\b/g)).toEqual({});
+  });
+});
+
 describe("the web view", () => {
   it("has no browser zoom on ⌘+ and ⌘−", () => {
     // Off unless a window turns it on; on, it would also need the page to

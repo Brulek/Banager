@@ -490,7 +490,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
               <button
                 type="button"
                 onClick={() => notesRef.current?.focus()}
-                className="mr-auto inline-flex min-w-0 items-center gap-1.5 rounded-sm text-small font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+                className="mr-auto inline-flex min-w-0 items-center gap-1.5 rounded-sm text-small font-medium text-foreground"
               >
                 <WarningIcon size={14} className="shrink-0 text-warning" />
                 {t("updates.notesSummary", { count: noteCount })}
@@ -565,7 +565,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           aria-expanded={unfolded}
           aria-controls={toolsId}
           onClick={() => setUnfoldedBatch(unfolded ? null : (batch?.id ?? null))}
-          className="mt-1 flex items-center gap-1.5 rounded-button py-1 text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+          className="mt-1 flex items-center gap-1.5 rounded-control py-1 text-body text-muted"
         >
           <ChevronIcon size={14} className={`shrink-0 transition-transform ${unfolded ? "rotate-90" : ""}`} />
           {unfolded
