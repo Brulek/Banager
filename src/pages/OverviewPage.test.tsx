@@ -867,36 +867,120 @@ describe("OverviewPage", () => {
     // words do (10 + the 16 symbol + 8), not at the symbol.
     expect(list.className).toContain("[&>*+*]:before:left-8.5");
     expect(list.className).not.toContain("[&>*+*]:before:left-2.5");
+    // The warning first, as a row; Homebrew's news folded into the last.
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(2);
-    // Each 46 high: the title, and its explanation under it in small muted
-    // text -- in the row, not behind Details.
-    for (const line of lines) expect(line.className).toContain("min-h-11.5");
-    expect(within(lines[0]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
-    expect(within(lines[1]).getByText("Ollama isn't running")).toBeInTheDocument();
-    const why = within(lines[1]).getByText("Open Ollama to see what it has and check for updates.");
-    // 11, its lines 16 apart when it wraps.
+    expect(lines[0].className).toContain("min-h-11.5");
+    expect(lines[0].className).toContain("px-2.5");
+    expect(within(lines[0]).getByText("Ollama isn't running")).toBeInTheDocument();
+    // The title, and its explanation under it in small muted text -- in
+    // the row, not behind Details. 11, its lines 16 apart when it wraps.
+    const why = within(lines[0]).getByText("Open Ollama to see what it has and check for updates.");
     expect(why.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "leading-4", "text-muted"]));
-    for (const line of lines) expect(line.className).toContain("px-2.5");
-    expect(within(lines[1]).queryByRole("button", { name: /^Details/ })).toBeNull();
-    // Each with a symbol: information, muted; a warning, a filled orange ⚠︎.
-    const icons = lines.map((line) => line.querySelector("svg"));
-    expect(icons[0]?.getAttribute("class")).toContain("text-muted");
-    expect(icons[1]?.getAttribute("class")).toContain("text-warning");
-    expect(icons[1]?.querySelector('path[fill="currentColor"]')).not.toBeNull();
+    expect(within(lines[0]).queryByRole("button", { name: /^Details/ })).toBeNull();
+    // A warning's symbol: a filled orange ⚠︎.
+    const warningIcon = lines[0].querySelector("svg");
+    expect(warningIcon?.getAttribute("class")).toContain("text-warning");
+    expect(warningIcon?.querySelector('path[fill="currentColor"]')).not.toBeNull();
+    expect(queryByText("Homebrew is updating its software list")).toBeNull();
     // No title over the group: the status's is the page's one.
     expect(getAllByRole("heading", { level: 2 })).toHaveLength(1);
     // Ollama's own button, a regular grey one on the right, starts it.
-    const open = within(lines[1]).getByRole("button", { name: "Open Ollama" });
+    const open = within(lines[0]).getByRole("button", { name: "Open Ollama" });
     expect(open.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "bg-fill"]));
     fireEvent.click(open);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
-    expect(within(lines[0]).queryByRole("button")).toBeNull();
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
     expect(
       getByRole("heading", { level: 2, name: "No updates in the sources checked" }),
     ).toBeInTheDocument();
+  });
+
+  it("folds the notes, which ask nothing of the user, into one last row that shows them in place", async () => {
+    const claude = instance("standalone-claude", "standalone-claude", {
+      exe_path: "/Users/someone/.local/bin/claude",
+      prefix: "/Users/someone/.local/share/claude",
+      status: { unavailable: null, notes: ["ShadowedByNpm"] },
+    });
+    served = snapshotWith({
+      instances: [
+        { ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } },
+        pip,
+        stoppedOllama,
+        claude,
+      ],
+    });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    let lines = within(list).getAllByRole("listitem");
+    expect(lines).toHaveLength(2);
+    expect(within(lines[0]).getByText("Ollama isn't running")).toBeInTheDocument();
+    // The last row: a disclosure, 13 muted, a 10pt triangle pointing right.
+    const more = within(lines[1]).getByRole("button", { name: "2 more notes" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(more.className.split(" ")).toEqual(expect.arrayContaining(["text-body", "text-muted"]));
+    expect(more.className).not.toContain("bg-fill");
+    const triangle = more.querySelector("svg");
+    expect(triangle).toHaveAttribute("width", "10");
+    expect(triangle?.getAttribute("class")).not.toContain("rotate-90");
+    expect(list.textContent).not.toContain("Homebrew is updating its software list");
+
+    // Pressed: the row stays where it was, after the warnings, its
+    // triangle down, and the notes show under it in their sources' order,
+    // each with a muted ⓘ.
+    fireEvent.click(more);
+    lines = within(list).getAllByRole("listitem");
+    expect(lines).toHaveLength(4);
+    const hide = within(lines[1]).getByRole("button", { name: "Hide 2 notes" });
+    expect(hide).toBe(more);
+    expect(hide).toHaveAttribute("aria-expanded", "true");
+    expect(hide.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
+    expect(within(lines[2]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
+    expect(within(lines[3]).getByText("Typing claude runs a same-named program from npm first")).toBeInTheDocument();
+    for (const line of lines.slice(2)) {
+      expect(line.className).toContain("min-h-11.5");
+      expect(line.querySelector("svg")?.getAttribute("class")).toContain("text-muted");
+    }
+
+    // Pressed again, they fold.
+    fireEvent.click(hide);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).getByRole("button", { name: "2 more notes" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("makes the group that one folded row when every problem is a note, in Chinese too", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      served = snapshotWith({
+        instances: [{ ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } }, pip],
+      });
+      const { findByRole } = renderOverview();
+
+      const list = await findByRole("list", { name: "需要查看" });
+      const lines = within(list).getAllByRole("listitem");
+      expect(lines).toHaveLength(1);
+      const more = within(lines[0]).getByRole("button", { name: "另有1条提示" });
+      fireEvent.click(more);
+      expect(within(list).getByRole("button", { name: "收起1条提示" })).toBe(more);
+      expect(within(list).getByText("Homebrew正在更新软件清单")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("gives a source its warning rather than a note that comes before it, so that the warning does not fold away", async () => {
+    served = snapshotWith({
+      instances: [{ ...brew, status: { unavailable: null, notes: ["IndexUpdating", "IndexMayBeStale"] } }, pip],
+    });
+    const { findByRole } = renderOverview();
+
+    const list = await findByRole("list", { name: "Needs attention" });
+    const lines = within(list).getAllByRole("listitem");
+    expect(lines).toHaveLength(1);
+    expect(within(lines[0]).getByText("Couldn't update Homebrew's software list")).toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: /more note/ })).toBeNull();
   });
 
   it("gives each problem whose next step is checking again a Check Again of its own, and says the step without pointing at a button", async () => {

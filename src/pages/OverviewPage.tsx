@@ -1,4 +1,4 @@
-import { Fragment, useId } from "react";
+import { Fragment, useId, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
@@ -20,7 +20,7 @@ import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/Updat
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
-import { ChevronIcon, InfoIcon } from "../components/icons";
+import { ChevronIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { Popover } from "../components/ui/Popover";
 import { BUTTON, LINK } from "../components/ui/controls";
 import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from "../components/ui/group";
@@ -166,6 +166,52 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
 }
 
 /**
+ * The group of problems under the daily check: one row per source that
+ * has something to say (`ProblemRow`). The warnings, which want something
+ * of the user, are rows of their own, first. The news -- a list still
+ * downloading, what typing a command runs -- is not a fault, and five
+ * rows of it at once read as a broken Mac: it folds into one last row,
+ * 「另有N条提示」 in the muted colour after a 10pt disclosure triangle, as
+ * the Installed page folds the components that came with other software.
+ * Pressed, the row stays where it is, turns its triangle down and says
+ * 「收起N条提示」, and the notes show under it, each with its own button;
+ * pressed again, they fold. With no warning, the group is that one row.
+ */
+function ProblemsGroup({ problems }: { problems: SourceNoticeSpec[] }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const warnings = problems.filter((notice) => notice.variant === "warning");
+  const notes = problems.filter((notice) => notice.variant !== "warning");
+  return (
+    <ul aria-label={t("overview.attentionLabel")} className={GROUP_WITH_ICONS}>
+      {warnings.map((notice) => (
+        <ProblemRow key={notice.id} notice={notice} />
+      ))}
+      {notes.length > 0 ? (
+        <li>
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+            className="flex min-h-9 w-full items-center gap-2 px-2.5 py-1.5 text-left text-body text-muted"
+          >
+            {/* The triangle centred in the symbols' 16 column, the words
+                where the rows' titles start. */}
+            <span className="flex w-4 shrink-0 justify-center">
+              <DisclosureIcon size={10} className={expanded ? "shrink-0 rotate-90" : "shrink-0"} />
+            </span>
+            {t(expanded ? "overview.hideNotes" : "overview.moreNotes", { count: notes.length })}
+          </button>
+        </li>
+      ) : null}
+      {expanded
+        ? notes.map((notice) => <ProblemRow key={notice.id} notice={notice} />)
+        : null}
+    </ul>
+  );
+}
+
+/**
  * The status row, the first group's one row: a 48 symbol, the title in
  * 13 bold with a line under it in 11 muted, and on the right the row's one
  * button. `alert`: the title and its line are read out as they appear --
@@ -261,9 +307,11 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * Second, the daily check, on or off (`AutoCheckRow`).
  *
  * Last, only when a source has something to say, a group of one row for
- * each: its first notice (`sourceNoticesFor`: not running, not answering,
- * a list it could not download, another program that runs instead), with
- * its own button (`ProblemRow`). What a source lets Canager do at all,
+ * each: its first warning, or else its first notice (`sourceNoticesFor`:
+ * not running, not answering, a list it could not download, another
+ * program that runs instead), with its own button (`ProblemRow`) -- the
+ * warnings first, the notes folded into one row after them
+ * (`ProblemsGroup`). What a source lets Canager do at all,
  * pip being read-only, is not news here; both lists say it on each of its
  * rows. The sources themselves are in the sidebar.
  */
@@ -308,8 +356,11 @@ export function OverviewPage() {
     (candidate) => isUnderway(operationFor(candidate)),
   );
 
+  // Each source's first warning, or else its first notice: a warning must
+  // not fold away with the notes (`ProblemsGroup`) behind one of its own.
   const problems: SourceNoticeSpec[] = snapshot.instances.flatMap((instance) => {
-    const [notice] = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
+    const notices = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
+    const notice = notices.find((each) => each.variant === "warning") ?? notices[0];
     return notice === undefined ? [] : [notice];
   });
 
@@ -394,13 +445,7 @@ export function OverviewPage() {
 
       <AutoCheckRow settings={settings} />
 
-      {problems.length > 0 ? (
-        <ul aria-label={t("overview.attentionLabel")} className={GROUP_WITH_ICONS}>
-          {problems.map((notice) => (
-            <ProblemRow key={notice.id} notice={notice} />
-          ))}
-        </ul>
-      ) : null}
+      {problems.length > 0 ? <ProblemsGroup problems={problems} /> : null}
     </div>
   );
 }

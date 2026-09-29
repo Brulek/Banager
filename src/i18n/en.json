@@ -96,6 +96,10 @@
     "checksUnfinished_other": "{{count}} checks didn't finish",
     "listSeparator": ", ",
     "attentionLabel": "Needs attention",
+    "moreNotes_one": "{{count}} more note",
+    "moreNotes_other": "{{count}} more notes",
+    "hideNotes_one": "Hide {{count}} note",
+    "hideNotes_other": "Hide {{count}} notes",
     "checkFailedTryLater": "Try again later."
   },
   "adapters": {
