@@ -160,8 +160,12 @@ function keyboardRow(item: ListItem): boolean {
  * The line that unfolds a source's components, 32 high: a 10pt triangle
  * and the words, muted -- the Updates page's 「另有5个无法在这里更新」's
  * look (spec §3.3) -- and, where the list mixes sources with no heading
- * to say it, the source's name after them. One of the rows ↑ and ↓ move
- * between, Space or Enter unfolding it.
+ * to say it, the source's name after them. On the rows' grid, as that
+ * line is on its page's: the triangle in a 16 slot centred on the
+ * avatars' column (20 + 8 + 8 = 36, the 32 avatar's middle), the words
+ * where the names start (+ 16 + 20 = 64, the avatar's 32 and 12 past
+ * it). One of the rows ↑ and ↓ move between, Space or Enter unfolding it;
+ * its focus ring is index.css's, inset as the rows' is.
  */
 function FoldLine({
   count,
@@ -184,13 +188,15 @@ function FoldLine({
       data-row-focus=""
       tabIndex={roving?.tabIndex}
       onFocus={roving?.onFocus}
-      className="flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted -outline-offset-3"
+      className="relative flex h-8 w-full items-center px-5 text-left text-body text-muted"
     >
-      <DisclosureIcon size={10} className={`shrink-0 ${expanded ? "rotate-90" : ""}`} />
-      <span className="min-w-0 truncate">
+      <span data-disclosure-symbol="" className="ml-2 flex w-4 shrink-0 justify-center">
+        <DisclosureIcon size={10} className={`shrink-0 ${expanded ? "rotate-90" : ""}`} />
+      </span>
+      <span className="ml-5 min-w-0 truncate">
         {t(expanded ? "installed.hideDependencies" : "installed.showDependencies", { count })}
       </span>{" "}
-      {source !== null ? <span className="shrink-0 text-small text-muted">{source}</span> : null}
+      {source !== null ? <span className="ml-1.5 shrink-0 text-small text-muted">{source}</span> : null}
     </button>
   );
 }

@@ -485,11 +485,28 @@ describe("InstalledPage", () => {
     const fold = screen.getByRole("button", { name: /^1 more component came with other software/ });
     expect(fold.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-5", "text-body", "text-muted"]));
     expect(fold.className).not.toMatch(/rounded|bg-|border/);
-    const triangle = fold.querySelector("svg") as SVGElement;
+    // On the rows' grid, as the Updates page's 「另有N个无法在这里更新」:
+    // the triangle in a 16 slot 8 in from the rows' edge, centred on the
+    // 32 avatars' column (x 36), the words 20 past it, where the names
+    // start (x 64) -- no gap of the line's own to throw either off.
+    expect(fold.className.split(" ")).not.toContain("gap-1.5");
+    const [slot, words] = [...fold.children] as HTMLElement[];
+    expect(slot).toHaveAttribute("data-disclosure-symbol");
+    expect(slot.className.split(" ")).toEqual(
+      expect.arrayContaining(["ml-2", "w-4", "flex", "justify-center", "shrink-0"]),
+    );
+    expect(words.className.split(" ")).toContain("ml-5");
+    expect(words.textContent).toBe("1 more component came with other software");
+    const avatar = rowOf("jq").querySelector("[aria-hidden='true']") as HTMLElement;
+    expect(avatar.className).toMatch(/\bh-8 w-8\b/);
+    expect(avatar.parentElement?.nextElementSibling?.className.split(" ")).toContain("ml-3");
+    const triangle = slot.firstElementChild as SVGElement;
     expect(triangle).toHaveAttribute("width", "10");
     expect(triangle.getAttribute("class")).not.toContain("rotate-90");
-    // One of the rows ↑ ↓ reach, in the Tab order's roving.
+    // One of the rows ↑ ↓ reach, in the Tab order's roving; its inset
+    // focus ring (index.css) is drawn in its own box.
     expect(fold).toHaveAttribute("data-row-focus");
+    expect(fold.className.split(" ")).toContain("relative");
 
     fireEvent.click(fold);
     await findRow("glib");
