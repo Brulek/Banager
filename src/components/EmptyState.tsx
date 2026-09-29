@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Popover } from "./ui/Popover";
 import { DETAILS_TRIGGER_CLASS } from "./SourceNotice";
 import { BUTTON } from "./ui/controls";
-import { CheckCircleIcon, InfoIcon, WarningFilledIcon } from "./icons";
+import { CheckCircleIcon, InfoIcon, WarningFilledIcon, WarningIcon } from "./icons";
 
 export interface EmptyStateAction {
   label: string;
@@ -30,9 +30,10 @@ export interface EmptyStateProps {
   variant?: "empty" | "banner";
   /**
    * Over an empty list, the symbol: a ✓ in a circle where there is
-   * nothing to do, an ⓘ in a circle for anything else (the default).
+   * nothing to do, a ⚠︎ where something went wrong (a source that did not
+   * answer), an ⓘ in a circle for anything else (the default).
    */
-  symbol?: "check" | "info";
+  symbol?: "check" | "info" | "warning";
 }
 
 /**
@@ -83,6 +84,8 @@ export function EmptyState({
     <div data-empty-state="" className="flex h-full flex-1 flex-col items-center justify-center px-5 py-10 text-center">
       {symbol === "check" ? (
         <CheckCircleIcon size={36} className="shrink-0 text-tertiary" />
+      ) : symbol === "warning" ? (
+        <WarningIcon size={36} className="shrink-0 text-tertiary" />
       ) : (
         <InfoIcon size={36} className="shrink-0 text-tertiary" />
       )}

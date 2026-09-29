@@ -89,6 +89,12 @@ describe("EmptyState", () => {
     rerender(<EmptyState symbol="check" title="Everything is up to date" />);
     expect(container.querySelector("svg")?.innerHTML).toContain("M8 12.4");
     expect(container.innerHTML).not.toContain("text-success");
+    // A source that did not answer: a ⚠︎, in the same quiet grey, not orange.
+    rerender(<EmptyState symbol="warning" title="uv isn't responding" />);
+    const warning = container.querySelector("svg") as SVGElement;
+    expect(warning.innerHTML).toContain("M10.3 4.4");
+    expect(warning.getAttribute("class")).toContain("text-tertiary");
+    expect(container.innerHTML).not.toContain("text-warning");
   });
   it("gives the action a visible button style, not bare text", () => {
     // EmptyState's action is the Retry button of the refresh-failed states

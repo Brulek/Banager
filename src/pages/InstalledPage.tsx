@@ -54,7 +54,7 @@ import {
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
-import { CheckIcon, CloseIcon, DisclosureIcon, InfoIcon, SearchIcon, WarningIcon } from "../components/icons";
+import { CheckIcon, CloseIcon, DisclosureIcon, SearchIcon } from "../components/icons";
 import { EmptyState } from "../components/EmptyState";
 import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
 
@@ -240,13 +240,7 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
   const warning = sourceWarningOf(instance, label, 0);
   return (
     <EmptyState
-      icon={
-        warning === null ? (
-          <InfoIcon size={36} className="text-tertiary" />
-        ) : (
-          <WarningIcon size={36} className="text-tertiary" />
-        )
-      }
+      symbol={warning === null ? "info" : "warning"}
       title={
         warning === null ? t("installed.sourceEmpty.title", { source: label }) : t(warning.titleKey, warning.values)
       }
