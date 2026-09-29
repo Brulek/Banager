@@ -667,5 +667,28 @@
       "description": "Tools you install with Homebrew, npm and the like show up here."
     },
     "supportedList": "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations."
+  },
+  "failure": {
+    "cause": {
+      "network": "Connection failed",
+      "diskFull": "Disk is full",
+      "permission": "No permission",
+      "busy": "Another operation is running",
+      "homebrewUpdating": "Homebrew is updating its software list"
+    },
+    "next": {
+      "network": "Check your internet connection, then try again.",
+      "diskFull": "Free up some disk space, then try again.",
+      "permission": "Make sure you can change its files, then try again.",
+      "busy": "Wait for the other operation to finish, then try again.",
+      "homebrewUpdating": "Try again later."
+    },
+    "line": {
+      "network": "The connection failed. Check your internet connection, then try again.",
+      "diskFull": "The disk is full. Free up some space, then try again.",
+      "permission": "There's no permission to change its files. Check the permissions, then try again.",
+      "busy": "Another operation is running. Wait for it to finish, then try again.",
+      "homebrewUpdating": "Homebrew is updating its software list. Try again later."
+    }
   }
 }

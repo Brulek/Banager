@@ -613,5 +613,28 @@
       "description": "用Homebrew、npm等安装的工具会显示在这里。"
     },
     "supportedList": "支持Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及安装在默认位置的Claude Code、Antigravity CLI、Grok Build和rustup。"
+  },
+  "failure": {
+    "cause": {
+      "network": "网络连接失败",
+      "diskFull": "磁盘空间不足",
+      "permission": "没有权限",
+      "busy": "另一个操作正在进行",
+      "homebrewUpdating": "Homebrew正在更新软件清单"
+    },
+    "next": {
+      "network": "请检查网络连接后重试。",
+      "diskFull": "请清理出一些磁盘空间后重试。",
+      "permission": "请确认有权限修改它的文件后重试。",
+      "busy": "请等另一个操作完成后重试。",
+      "homebrewUpdating": "请稍后再试。"
+    },
+    "line": {
+      "network": "网络连接失败，请检查网络连接后重试。",
+      "diskFull": "磁盘空间不足，请清理出一些磁盘空间后重试。",
+      "permission": "没有权限修改它的文件，请确认权限后重试。",
+      "busy": "另一个操作正在进行，请等它完成后重试。",
+      "homebrewUpdating": "Homebrew正在更新软件清单，请稍后再试。"
+    }
   }
 }
