@@ -24,7 +24,7 @@ export function InfoDetail({ label, children }: InfoDetailProps) {
     <Popover
       trigger={<InfoIcon size={12} />}
       triggerLabel={label}
-      triggerClassName="-my-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full align-middle text-muted aria-expanded:text-foreground"
+      triggerClassName="-my-1 inline-flex h-5 w-5 items-center justify-center rounded-full align-middle text-muted aria-expanded:text-foreground"
     >
       {children}
     </Popover>

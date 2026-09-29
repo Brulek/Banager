@@ -66,7 +66,7 @@ export function Popover({ trigger, triggerLabel, triggerClassName, align = "star
           id={panelId}
           data-side={placement.side}
           data-align={placement.align}
-          className={`absolute z-30 w-65 whitespace-normal rounded-group bg-surface p-3 text-left text-body-long font-normal text-foreground shadow-menu ${
+          className={`absolute z-30 w-65 whitespace-normal rounded-group bg-popover p-3 text-left text-body-long font-normal text-foreground shadow-menu ${
             fromEnd ? "right-[calc(50%-24px)]" : "left-[calc(50%-24px)]"
           } ${above ? "bottom-full mb-[9px]" : "top-full mt-[9px]"}`}
         >
@@ -96,7 +96,7 @@ function PopoverArrow({ above, fromEnd }: { above: boolean; fromEnd: boolean }) 
         above ? "top-full rotate-180" : "bottom-full"
       } overflow-visible text-black/15 dark:text-white/15`}
     >
-      <path d="M0 7.5 L5.6 1.3 Q7 -0.1 8.4 1.3 L14 7.5 Z" className="fill-surface" />
+      <path d="M0 7.5 L5.6 1.3 Q7 -0.1 8.4 1.3 L14 7.5 Z" className="fill-popover" />
       <path d="M0 7 L5.6 1.3 Q7 -0.1 8.4 1.3 L14 7" fill="none" stroke="currentColor" strokeWidth={0.5} />
     </svg>
   );

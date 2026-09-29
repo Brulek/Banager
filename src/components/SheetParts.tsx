@@ -106,7 +106,8 @@ export interface SheetToolProps {
  * (`SheetToolList`): 36 high, its 24 avatar, its name in 13, and the
  * version on the right in 11 muted. What there is to know about it is
  * under its name, and belongs to it alone (spec R6). The source is on the
- * avatar's corner, and said to a screen reader after the name.
+ * avatar's corner, and said to a screen reader after the name -- unless
+ * the tool is its own source, such as rustup.
  */
 export function SheetTool({
   adapterId,
@@ -126,7 +127,7 @@ export function SheetTool({
           <span data-sheet-name="" title={name} className="min-w-0 truncate text-body text-foreground">
             {name}
           </span>
-          {showSource ? (
+          {sourceLabel === name ? null : showSource ? (
             <span className="shrink-0 text-small text-muted">{sourceLabel}</span>
           ) : (
             <span className="sr-only">{sourceLabel}</span>

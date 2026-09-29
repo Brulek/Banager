@@ -148,7 +148,7 @@ describe("Popover placement", () => {
   it("is a macOS popover: 260 wide, the corners of a group, the menu's shadow, 12 in, 13/18, no edge", () => {
     layOut(100, 160);
     const panel = openPanel("start");
-    for (const look of ["w-65", "rounded-group", "bg-surface", "shadow-menu", "p-3", "text-body-long", "text-foreground"]) {
+    for (const look of ["w-65", "rounded-group", "bg-popover", "shadow-menu", "p-3", "text-body-long", "text-foreground"]) {
       expect(panel).toHaveClass(look);
     }
     expect(panel.className).not.toMatch(/\bborder\b|shadow-lg/);

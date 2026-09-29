@@ -3384,6 +3384,42 @@ describe("UpdatesPage", () => {
       expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
     });
 
+    it("names the source after a name the list has from two sources, and only there (R3)", async () => {
+      const pipx: Snapshot["instances"][number] = {
+        id: "pipx",
+        adapter_id: "pipx",
+        exe_path: "/opt/homebrew/bin/pipx",
+        prefix: "/opt/homebrew/bin",
+        scope: "User",
+        version: "1.17.3",
+        status: { unavailable: null, notes: [] },
+        unverified_version: null,
+        read_only_reason: null,
+      };
+      instances = [snapshot.instances[0], pipx];
+      updates = [
+        brewCandidate("httpie"),
+        { ...brewCandidate("httpie"), key: { instance_id: "pipx", kind: "Package", name: "httpie" } },
+        brewCandidate("jq"),
+      ];
+      const { findByRole, findByText, getByRole } = renderPage();
+
+      await findByText("3 can be updated");
+      fireEvent.click(getByRole("button", { name: "Update All" }));
+      const dialog = await findByRole("dialog", { name: "Update 3 tools?" });
+      const rows = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
+      const shown = (row: HTMLElement) =>
+        [...row.querySelectorAll("[data-sheet-name] ~ span")].map((span) => [span.textContent, span.className]);
+      const byName = (name: string) => rows.filter((row) => row.querySelector("[data-sheet-name]")?.textContent === name);
+      // Both httpies say which they are, in 11 muted beside the name.
+      expect(byName("httpie").map(shown)).toEqual([
+        [["Homebrew", "shrink-0 text-small text-muted"]],
+        [["pipx", "shrink-0 text-small text-muted"]],
+      ]);
+      // jq says it to a screen reader only.
+      expect(shown(byName("jq")[0])).toEqual([["Homebrew", "sr-only"]]);
+    });
+
     it("lists every tool of a long batch in a grouped list that scrolls inside past 320", async () => {
       updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
       const { findByRole, findByText, getByRole } = renderPage();

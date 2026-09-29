@@ -54,6 +54,9 @@
   --color-content: #ffffff;
   --color-surface: #ffffff;
   --color-background: var(--color-surface);
+  /* A popover's fill: the surface's, but a step lighter over a dialog in
+     the dark (below), where the surface's own would be a hole in it. */
+  --color-popover: #ffffff;
   --color-sidebar: #f0f0f0;
   --color-sidebar-active: rgb(0 0 0 / 0.1);
 
@@ -162,6 +165,7 @@
   :root {
     --color-content: #1e1e1e;
     --color-surface: #282828;
+    --color-popover: #282828;
     --color-sidebar: #282828;
     --color-sidebar-active: rgb(255 255 255 / 0.1);
     --color-foreground: rgb(255 255 255 / 0.847);
@@ -198,6 +202,7 @@
   [data-dialog-width] {
     --color-group: #323232;
     --color-group-separator: #3d3d3d;
+    --color-popover: #383838;
   }
 }
 
