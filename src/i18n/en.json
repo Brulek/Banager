@@ -18,7 +18,8 @@
       "installed_other": "{{count}} installed",
       "unknown_one": "{{count}} found",
       "unknown_other": "{{count}} found"
-    }
+    },
+    "sources": "Sources"
   },
   "common": {
     "loading": "Loading…",
@@ -34,7 +35,8 @@
     "copyCommand": "Copy Command",
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
-    "moreActions": "More actions for {{name}}"
+    "moreActions": "More actions for {{name}}",
+    "sourceWithPlace": "{{source}} ({{place}})"
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -152,6 +154,10 @@
         "description": "With UV_TOOL_DIR set, when uv uninstalls its last tool it also deletes the folder above UV_TOOL_DIR and everything in it, if that folder holds no other folder. So no uv tool can be uninstalled here while it's set.",
         "refused": "Couldn't uninstall because UV_TOOL_DIR is set."
       }
+    },
+    "sourceEmpty": {
+      "title": "Nothing installed with {{source}}",
+      "description": "Tools you install with {{source}} show up here."
     }
   },
   "updates": {

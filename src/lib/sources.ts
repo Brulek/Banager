@@ -901,6 +901,68 @@ export function adapterLabel(t: Translate, adapterId: string): string {
     : adapterId;
 }
 
+/** `path` with the home folder as `~`, as Finder and Terminal show one: the front end has no `HOME`, and a Mac's is `/Users/<name>`. */
+function withHomeAsTilde(path: string): string {
+  return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+}
+
+/**
+ * Where each of `group` -- sources of one kind -- is, in words that tell
+ * them apart: its prefix (`/opt/homebrew`, `/usr/local`); should two share
+ * one, the program's own path; or else the rest of its id, which is
+ * unique (`instance_id` in crates/canager-core/src/model.rs).
+ */
+function placesOf(group: readonly ManagerInstance[]): string[] {
+  const distinct = (places: string[]) => new Set(places).size === places.length;
+  const prefixes = group.map((instance) => withHomeAsTilde(instance.prefix));
+  if (distinct(prefixes)) return prefixes;
+  const programs = group.map((instance) => withHomeAsTilde(instance.exe_path));
+  if (distinct(programs)) return programs;
+  return group.map((instance) => instance.id.slice(instance.id.indexOf(":") + 1) || instance.id);
+}
+
+/**
+ * Each source's name, by instance id: the sidebar's row for it, the
+ * Installed page's title while it shows that source alone, and the words
+ * that page's headings, rows and notices name it by. Its kind's name --
+ * and, where this Mac has two sources of one kind, a Homebrew in
+ * /opt/homebrew and one left in /usr/local by an Intel Mac, where each is
+ * after it: 「Homebrew（/usr/local）」 (spec R8), so that the two are never
+ * two rows of one name, as Mail tells two accounts' Inboxes apart.
+ */
+export function instanceLabels(t: Translate, instances: readonly ManagerInstance[]): Map<string, string> {
+  const byKind = new Map<string, ManagerInstance[]>();
+  for (const instance of instances) {
+    const group = byKind.get(instance.adapter_id) ?? [];
+    group.push(instance);
+    byKind.set(instance.adapter_id, group);
+  }
+  const labels = new Map<string, string>();
+  for (const [adapterId, group] of byKind) {
+    const source = adapterLabel(t, adapterId);
+    const places = group.length === 1 ? null : placesOf(group);
+    group.forEach((instance, index) =>
+      labels.set(instance.id, places === null ? source : t("common.sourceWithPlace", { source, place: places[index] })),
+    );
+  }
+  return labels;
+}
+
+/**
+ * The first warning this source's notices give (`sourceNoticesFor`) --
+ * not running, not answering, a list it could not download, a launcher
+ * with no program -- or null: what the sidebar marks its row with ⚠︎ for
+ * (spec §3.1), in the words the notice says it in. News that is no
+ * problem -- which copy runs, a list being updated -- gets no ⚠︎.
+ */
+export function sourceWarningOf(
+  instance: ManagerInstance,
+  sourceLabel: string,
+  rowsOnScreen: number,
+): SourceNoticeSpec | null {
+  return sourceNoticesFor(instance, sourceLabel, rowsOnScreen).find((notice) => notice.variant === "warning") ?? null;
+}
+
 /**
  * `parseNotActionable`'s result, in the exact copy the source's rows and
  * notice already use for each reason (`READ_ONLY_DETAIL_KEYS`,

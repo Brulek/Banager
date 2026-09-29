@@ -8,6 +8,7 @@ import {
   failedSourceAdapters,
   failedSourceNames,
   hasSourceNotice,
+  instanceLabels,
   isAvailable,
   namesInSentence,
   notActionableMessage,
@@ -22,6 +23,7 @@ import {
   READ_ONLY_DETAIL_KEYS,
   settingsSaveErrorMessage,
   sourceNoticesFor,
+  sourceWarningOf,
   standaloneSummaryKey,
   toolDescription,
   UNAVAILABLE_DETAIL_KEYS,
@@ -731,6 +733,64 @@ describe("adapterIdOf and adapterLabel", () => {
   it("gives an adapter this build has no name for its id, and never a key off the prototype", () => {
     expect(adapterLabel(fakeT, "winget")).toBe("winget");
     expect(adapterLabel(fakeT, "toString")).toBe("toString");
+  });
+});
+
+describe("instanceLabels", () => {
+  it("names a source by its kind alone while it is the only one of its kind", () => {
+    const pip = instance({ id: "pip:/usr/bin/python3", adapter_id: "pip", prefix: "/usr" });
+    expect([...instanceLabels(fakeT, [instance(), pip])]).toEqual([
+      ["brew:/opt/homebrew", "adapters.brew"],
+      ["pip:/usr/bin/python3", "adapters.pip"],
+    ]);
+  });
+
+  it("puts where each is after the name of two sources of one kind: the prefix, the home folder as ~", () => {
+    const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
+    const home = instance({ id: "brew:/Users/you/homebrew", prefix: "/Users/you/homebrew" });
+    const labels = instanceLabels(fakeT, [instance(), intel, home]);
+    expect(labels.get("brew:/opt/homebrew")).toBe(
+      'common.sourceWithPlace({"source":"adapters.brew","place":"/opt/homebrew"})',
+    );
+    expect(labels.get("brew:/usr/local")).toBe('common.sourceWithPlace({"source":"adapters.brew","place":"/usr/local"})');
+    expect(labels.get("brew:/Users/you/homebrew")).toBe(
+      'common.sourceWithPlace({"source":"adapters.brew","place":"~/homebrew"})',
+    );
+  });
+
+  it("tells two of one prefix apart by their programs, and else by the rest of their ids", () => {
+    const system = instance({ id: "pip:/usr/bin/python3", adapter_id: "pip", prefix: "/usr", exe_path: "/usr/bin/python3" });
+    const other = instance({ id: "pip:/usr/bin/python3.12", adapter_id: "pip", prefix: "/usr", exe_path: "/usr/bin/python3.12" });
+    expect([...instanceLabels(fakeT, [system, other]).values()]).toEqual([
+      'common.sourceWithPlace({"source":"adapters.pip","place":"/usr/bin/python3"})',
+      'common.sourceWithPlace({"source":"adapters.pip","place":"/usr/bin/python3.12"})',
+    ]);
+    const a = instance({ id: "ollama:http://127.0.0.1:11434", adapter_id: "ollama", prefix: "/usr/local", exe_path: "/usr/local/bin/ollama" });
+    const b = instance({ id: "ollama:http://127.0.0.1:11435", adapter_id: "ollama", prefix: "/usr/local", exe_path: "/usr/local/bin/ollama" });
+    expect([...instanceLabels(fakeT, [a, b]).values()]).toEqual([
+      'common.sourceWithPlace({"source":"adapters.ollama","place":"http://127.0.0.1:11434"})',
+      'common.sourceWithPlace({"source":"adapters.ollama","place":"http://127.0.0.1:11435"})',
+    ]);
+  });
+
+  it("reads 「Homebrew（/usr/local）」 in Chinese and \"Homebrew (/usr/local)\" in English", () => {
+    expect(zhCN.common.sourceWithPlace).toBe("{{source}}（{{place}}）");
+    expect(en.common.sourceWithPlace).toBe("{{source}} ({{place}})");
+  });
+});
+
+describe("sourceWarningOf", () => {
+  it("is the source's first warning notice, and nothing for news that is no problem", () => {
+    expect(sourceWarningOf(instance(), "Homebrew", 0)).toBeNull();
+    expect(sourceWarningOf(instance({ status: { unavailable: null, notes: ["IndexUpdating"] } }), "Homebrew", 3)).toBeNull();
+    expect(
+      sourceWarningOf(instance({ status: { unavailable: "NotResponding", notes: ["IndexMayBeStale"] } }), "Homebrew", 3)
+        ?.id,
+    ).toBe("brew:/opt/homebrew:unreachable");
+    expect(
+      sourceWarningOf(instance({ status: { unavailable: null, notes: ["IndexUpdating", "IndexMayBeStale"] } }), "Homebrew", 3)
+        ?.id,
+    ).toBe("brew:/opt/homebrew:index-may-be-stale");
   });
 });
 

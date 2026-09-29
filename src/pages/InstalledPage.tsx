@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useOperations, useSettings, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   canWrite,
   describeTool,
+  instanceLabels,
   isAvailable,
   sourceNoticesFor,
   type SourceNoticeSpec,
@@ -14,6 +15,7 @@ import {
   uninstallBlockedCopy,
   uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
+  sourceWarningOf,
 } from "../lib/sources";
 import {
   hidingRule,
@@ -50,7 +52,8 @@ import {
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
-import { CheckIcon, ChevronIcon, SearchIcon } from "../components/icons";
+import { CheckIcon, ChevronIcon, InfoIcon, SearchIcon, WarningIcon } from "../components/icons";
+import { EmptyState } from "../components/EmptyState";
 import { BUTTON } from "../components/ui/controls";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
@@ -155,6 +158,40 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
 }
 
 /**
+ * The page on one source that has nothing to list (spec R8): why, in the
+ * words of its first warning -- 「uv没有响应」 over 「uv没有响应，无法列出
+ * 它安装的内容。」 -- or, for a source that answered, that nothing is
+ * installed with it; and Check again, the header's, which shows what it
+ * has once it answers or has something. In the list's place, so the
+ * source's notice is not said a second time over it.
+ */
+function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: string }) {
+  const { t } = useTranslation();
+  const { checkAgain, checking } = useCheckAgain();
+  const warning = sourceWarningOf(instance, label, 0);
+  return (
+    <EmptyState
+      icon={
+        warning === null ? (
+          <InfoIcon size={36} className="text-tertiary" />
+        ) : (
+          <WarningIcon size={36} className="text-tertiary" />
+        )
+      }
+      title={
+        warning === null ? t("installed.sourceEmpty.title", { source: label }) : t(warning.titleKey, warning.values)
+      }
+      description={
+        warning === null
+          ? t("installed.sourceEmpty.description", { source: label })
+          : t(warning.descriptionKey, warning.values)
+      }
+      action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
+    />
+  );
+}
+
+/**
  * 已安装: everything the sources list, to find and to uninstall
  * (docs/superpowers/2026-09-27-ui-redesign.md, 已安装页).
  *
@@ -250,14 +287,19 @@ export function InstalledPage() {
     if (snapshot && detailsId !== null && !artifactsById.has(detailsId)) setDetailsId(null);
   }, [snapshot, detailsId, artifactsById]);
 
-  // The source's name in the user's language: the filters, the rows'
-  // chips and avatars, the `{{source}}` in a sentence.
+  // The source's name in the user's language, as the sidebar lists it --
+  // with where it is after it where this Mac has two of its kind
+  // (`instanceLabels`): the headings, the rows' avatars and words, the
+  // `{{source}}` in a sentence.
+  const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
   const labelOf = useCallback(
     (instance: ManagerInstance): string => {
+      const label = labels.get(instance.id);
+      if (label !== undefined) return label;
       const labelKey = ADAPTER_LABEL_KEYS[instance.adapter_id];
       return labelKey ? t(labelKey) : instance.adapter_id;
     },
-    [t],
+    [labels, t],
   );
   const sourceLabelFor = useCallback(
     (instanceId: string): string => {
@@ -328,10 +370,14 @@ export function InstalledPage() {
     () => (snapshot?.instances ?? []).filter((instance) => (countByInstance.get(instance.id) ?? 0) > 0),
     [snapshot, countByInstance],
   );
-  // A filter that names a source with nothing installed any more shows
-  // everything -- and is dropped, so a source that gets something again
-  // does not filter the page by surprise.
-  const activeFilter = filter !== null && (countByInstance.get(filter) ?? 0) > 0 ? filter : null;
+  // The source the sidebar's row for it opened the page on. It stays,
+  // with nothing installed or with nothing its source could list, and
+  // says why (`sourceEmpty`): never reset to everything behind the
+  // user's back (spec R8), which would leave the sidebar's row selected
+  // over a list of every source's. Only a source this Mac no longer has
+  // -- gone from the snapshot, and from the sidebar -- is dropped, and
+  // the page shows everything under 「已安装」 again.
+  const activeFilter = filter !== null && instancesById.has(filter) ? filter : null;
   useEffect(() => {
     if (snapshot && filter !== null && activeFilter === null) setFilter(null);
   }, [snapshot, filter, activeFilter, setFilter]);
@@ -938,6 +984,10 @@ export function InstalledPage() {
     );
   };
 
+  // The page on one source that has nothing to list says why in the
+  // list's place (`SourceEmpty`), and its notice is not said over it.
+  const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
+
   const filterChip = (key: string, label: ReactNode, count: number, pressed: boolean, onPress: () => void) => (
     <button
       key={key}
@@ -1024,7 +1074,7 @@ export function InstalledPage() {
           </ChipRow>
         ) : null}
       </div>
-      {notices.length > 0 ? (
+      {notices.length > 0 && !sourceEmpty ? (
         <div className="flex shrink-0 flex-col gap-1.5 px-5 pb-3">
           <SourceNotices notices={notices} layout="line" fold={noticeFold} />
         </div>
@@ -1065,11 +1115,15 @@ export function InstalledPage() {
           )
         }
         empty={
-          <p className="px-5 py-10 text-center text-body text-muted">
-            {needle !== ""
-              ? t("installed.noMatches", { query: query.trim() })
-              : t("emptyStates.nothingInstalled.title")}
-          </p>
+          sourceEmpty ? (
+            <SourceEmpty instance={instancesById.get(activeFilter)!} label={sourceLabelFor(activeFilter)} />
+          ) : (
+            <p className="px-5 py-10 text-center text-body text-muted">
+              {needle !== ""
+                ? t("installed.noMatches", { query: query.trim() })
+                : t("emptyStates.nothingInstalled.title")}
+            </p>
+          )
         }
       />
       {uninstallTarget ? (

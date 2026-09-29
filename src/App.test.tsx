@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
@@ -123,7 +123,7 @@ describe("App", () => {
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 
-  it("opens Installed on everything from the sidebar, after it was opened on one source", async () => {
+  it("opens Installed on one source from its row under Sources, titled and counted as that source, and on everything from Installed", async () => {
     // The Installed list is virtualized: the virtualizer needs a viewport
     // and row heights, which jsdom does not lay out.
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
@@ -147,18 +147,49 @@ describe("App", () => {
     });
     const { findByRole, getByRole, queryByText, findByText } = renderWithProviders(<App />);
     await findByRole("heading", { level: 2, name: "Everything is up to date" });
+    const sources = await findByRole("list", { name: "Sources" });
+    const subtitle = () => getByRole("heading", { level: 1 }).nextElementSibling?.textContent ?? null;
 
-    // Opened on one source, as a source's row in the sidebar opens it (the
-    // Overview's tiles are gone: spec R1), it shows that source's tools.
-    act(() => useUiStore.getState().openInstalled("npm:/opt/homebrew"));
-    expect(await findByRole("button", { name: "npm 1", pressed: true })).toBeInTheDocument();
+    // A source's row, as Mail's mailbox: the page on its tools alone,
+    // titled with its name and counting its own; that row selected, and
+    // Installed's not.
+    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
     expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
     expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^npm$/);
+    await waitFor(() => expect(subtitle()).toBe("1 tool"));
+    expect(within(sources).getByRole("button", { name: "npm" })).toHaveAttribute("aria-current", "page");
+    expect(getByRole("button", { name: "Installed" })).not.toHaveAttribute("aria-current");
 
-    // The sidebar's count is of everything installed.
+    // The sidebar's Installed: everything, which its count counts.
     fireEvent.click(getByRole("button", { name: "Installed" }));
-    expect(await findByRole("button", { name: "All 2", pressed: true })).toBeInTheDocument();
     expect(await findByText("jq", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Installed$/);
+    await waitFor(() => expect(subtitle()).toBe("2 tools"));
+    expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");
+    expect(within(sources).getByRole("button", { name: "npm" })).not.toHaveAttribute("aria-current");
+
+    // Another page selects its own row, and a source's again opens its tools.
+    fireEvent.click(getByRole("button", { name: "Updates" }));
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Updates$/);
+    fireEvent.click(within(sources).getByRole("button", { name: "Homebrew" }));
+    expect(await findByText("jq", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Homebrew$/);
+    expect(queryByText("typescript", { selector: "[data-tool-row] p" })).toBeNull();
+  });
+
+  it("titles a source with nothing installed by its name, with no count, and keeps it", async () => {
+    const brew = snapshot.instances[0];
+    const npm = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" };
+    mockBackend({ ...snapshot, instances: [brew, npm] });
+    const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
+    const sources = await findByRole("list", { name: "Sources" });
+
+    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
+    expect(await findByText("Nothing installed with npm")).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^npm$/);
+    expect(getByRole("heading", { level: 1 }).nextElementSibling).toBeNull();
+    expect(useUiStore.getState().installedFilter).toBe(npm.id);
   });
 
   it("titles every page in one header, with that page's own way to look again beside it", async () => {

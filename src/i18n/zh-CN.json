@@ -15,7 +15,8 @@
       "updates_other": "{{count}}个可更新",
       "installed_other": "已安装{{count}}个",
       "unknown_other": "找到{{count}}个"
-    }
+    },
+    "sources": "来源"
   },
   "common": {
     "loading": "正在载入…",
@@ -31,7 +32,8 @@
     "copyCommand": "拷贝命令",
     "copied": "已拷贝",
     "copyFailed": "无法拷贝",
-    "moreActions": "“{{name}}”的更多操作"
+    "moreActions": "“{{name}}”的更多操作",
+    "sourceWithPlace": "{{source}}（{{place}}）"
   },
   "header": {
     "checkedJustNow": "上次检查：刚才",
@@ -137,6 +139,10 @@
         "description": "设置了UV_TOOL_DIR时，uv卸载最后一个工具会连带删除UV_TOOL_DIR的上一层文件夹及其中的所有文件，只要那一层中没有其他文件夹。因此这时无法在这里卸载任何uv工具。",
         "refused": "无法卸载，因为设置了UV_TOOL_DIR。"
       }
+    },
+    "sourceEmpty": {
+      "title": "没有用{{source}}安装的工具",
+      "description": "用{{source}}安装的工具会显示在这里。"
     }
   },
   "updates": {

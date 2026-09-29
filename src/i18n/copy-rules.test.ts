@@ -64,14 +64,17 @@ describe("the copy rules, over every string in both languages", () => {
     expect(tooLong).toEqual([]);
   });
 
-  it("keeps brackets for a count or a shortcut and nothing else", () => {
+  it("keeps brackets for a count, a shortcut or where a source is, and nothing else", () => {
     // 「更新所选（3）」 is a count, and 「重新检查（⌘R）」 names the keys
-    // that do it, as the toolbar's tooltip says them; 「程序（链接）」 and
+    // that do it, as the toolbar's tooltip says them; 「Homebrew（/usr/local）」
+    // is a name, not copy -- which of two sources of one kind a row in the
+    // sidebar is (`common.sourceWithPlace`, spec R8). 「程序（链接）」 and
     // 「（pin）」 were asides.
     const count = /[（(]\{\{number\}\}[）)]/g;
     const shortcut = /[（(]⌘[A-Z,]+[）)]/g;
+    const place = /^\{\{source\}\} ?[（(]\{\{place\}\}[）)]$/g;
     const offenders = [...entries(zhCN), ...entries(en)].filter(([, text]) =>
-      /[（(]/.test(text.replace(count, "").replace(shortcut, "")),
+      /[（(]/.test(text.replace(count, "").replace(shortcut, "").replace(place, "")),
     );
     expect(offenders).toEqual([]);
   });

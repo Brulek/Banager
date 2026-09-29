@@ -15,6 +15,7 @@ import { SnapshotStatus } from "./components/SnapshotStatus";
 import { QuitQuestion } from "./components/QuitQuestion";
 import { useOperationEvents, useRefreshInFlight, useStartupRefresh } from "./lib/events";
 import { useSnapshot, useUnknownScan } from "./lib/queries";
+import { instanceLabels } from "./lib/sources";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
 import { useDockBadge } from "./lib/dockBadge";
@@ -50,13 +51,16 @@ function headerActions(page: Page): ReactNode {
  * pages about the sources, 「正在检查…」 while a check runs and, as an
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
- * bring up to date. The Unknown page says 「正在扫描…」 while it scans.
+ * bring up to date. On one source alone, the Installed page counts that
+ * source's tools, 「30个工具」, under its name (`useShownSource`). The
+ * Unknown page says 「正在扫描…」 while it scans.
  * The Overview has a status row of its own, which says all of that, and
  * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
  * default, so a page added to `Page` without an answer here fails `tsc`.
  */
 function usePageSubtitle(page: Page): PageSubtitle | null {
   const { t } = useTranslation();
+  const shownSource = useShownSource();
   const checking = useRefreshInFlight();
   const lastCheckFailed = useUiStore((s) => s.startupRefreshError !== null);
   const { data: snapshot } = useSnapshot();
@@ -76,11 +80,32 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
       if (checking) return said(t("common.checking"));
       if (lastCheckFailed) return { text: t("header.checkFailed"), failed: true };
       if (page === "updates") return said(updatesHeadline);
-      return said(counted("toolbar.toolCount", snapshot?.artifacts.length));
+      // On one source alone, that source's: its name is the title.
+      return said(
+        counted(
+          "toolbar.toolCount",
+          shownSource === null
+            ? snapshot?.artifacts.length
+            : snapshot?.artifacts.filter((artifact) => artifact.key.instance_id === shownSource).length,
+        ),
+      );
     case "unknown":
       if (scan.isFetching) return said(t("unknown.scanning"));
       return said(counted("toolbar.programCount", scan.data?.entries.length));
   }
+}
+
+/**
+ * The source the Installed page shows alone, while it is open on one
+ * (`installedFilter`) that the snapshot lists, or null: what its toolbar
+ * titles and counts, as Mail titles its window with the mailbox it shows.
+ */
+function useShownSource(): string | null {
+  const page = useUiStore((s) => s.page);
+  const filter = useUiStore((s) => s.installedFilter);
+  const { data: snapshot } = useSnapshot();
+  if (page !== "installed" || filter === null) return null;
+  return snapshot?.instances.some((instance) => instance.id === filter) ? filter : null;
 }
 
 /**
@@ -93,9 +118,17 @@ function usePageSubtitle(page: Page): PageSubtitle | null {
 function PageToolbar({ page, slotRef, scrolled }: { page: Page; slotRef: Ref<HTMLDivElement>; scrolled: boolean }) {
   const { t } = useTranslation();
   const subtitle = usePageSubtitle(page);
+  const shownSource = useShownSource();
+  const { data: snapshot } = useSnapshot();
+  // The Installed page on one source is titled with that source's name,
+  // the one its row in the sidebar has (`instanceLabels`).
+  const title =
+    shownSource !== null && snapshot !== undefined
+      ? (instanceLabels(t, snapshot.instances).get(shownSource) ?? t(PAGE_LABEL_KEYS[page]))
+      : t(PAGE_LABEL_KEYS[page]);
   return (
     <PageHeader
-      title={t(PAGE_LABEL_KEYS[page])}
+      title={title}
       subtitle={subtitle}
       actions={headerActions(page)}
       slotRef={slotRef}
@@ -126,6 +159,7 @@ function App() {
   const page = useUiStore((s) => s.page);
   const setPage = useUiStore((s) => s.setPage);
   const openInstalled = useUiStore((s) => s.openInstalled);
+  const installedFilter = useUiStore((s) => s.installedFilter);
   useOperationEvents();
   useStartupRefresh();
   useMenuCommands();
@@ -139,9 +173,14 @@ function App() {
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
       <UpdateWatchers />
       {/* The sidebar's Installed opens the page on everything installed,
-          which is what its count counts; `openInstalled` with a source's
-          id opens it on that source alone. */}
-      <Sidebar page={page} onSelectPage={(p) => (p === "installed" ? openInstalled(null) : setPage(p))} />
+          which is what its count counts; a source's row, under 「来源」,
+          opens it on that source alone, and is the row selected then. */}
+      <Sidebar
+        page={page}
+        source={installedFilter}
+        onSelectPage={(p) => (p === "installed" ? openInstalled(null) : setPage(p))}
+        onSelectSource={openInstalled}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex min-h-0 flex-1 flex-col">
           {/* Outside `SnapshotStatus`, so the title and Check again stay

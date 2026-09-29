@@ -1659,14 +1659,44 @@ describe("InstalledPage", () => {
       });
     });
 
-    it("shows everything, and drops the filter, when its source has nothing installed any more", async () => {
+    it("stays on a source with nothing to list, and says why in its notice's words, with Check Again", async () => {
+      // Opened from the sidebar's row for a stopped Ollama: never reset
+      // to every source's list behind the user's back (spec R8).
       served = twoSources();
-      useUiStore.setState({ installedFilter: OLLAMA });
-      const { getByRole } = renderWithProviders(<InstalledPage />);
+      useUiStore.getState().openInstalled(OLLAMA);
+      const { findByText, getByText, getByRole } = renderWithProviders(<InstalledPage />);
+
+      expect(await findByText("Ollama isn't running")).toBeInTheDocument();
+      expect(getByText("Open Ollama to see what it has and check for updates.")).toBeInTheDocument();
+      expect(rowNames()).toEqual([]);
+      // Said once, where the list would be: no notice line over it too.
+      expect(screen.getAllByText("Ollama isn't running")).toHaveLength(1);
+      fireEvent.click(getByRole("button", { name: "Check Again" }));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+      expect(useUiStore.getState().installedFilter).toBe(OLLAMA);
+    });
+
+    it("says a source that answered has nothing installed with it", async () => {
+      const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
+      served = { ...snapshot, instances: [brew, npm] };
+      useUiStore.getState().openInstalled(npm.id);
+      const { findByText, getByText, getByRole } = renderWithProviders(<InstalledPage />);
+
+      expect(await findByText("Nothing installed with npm")).toBeInTheDocument();
+      expect(getByText("Tools you install with npm show up here.")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
+      expect(rowNames()).toEqual([]);
+      expect(useUiStore.getState().installedFilter).toBe(npm.id);
+    });
+
+    it("drops the filter, and shows everything, only once its source is gone from this Mac", async () => {
+      served = twoSources();
+      useUiStore.getState().openInstalled("cargo:/Users/you/.cargo");
+
+      renderWithProviders(<InstalledPage />);
 
       await findRow("requests");
       expect(rowNames()).toEqual(["jq", "requests"]);
-      expect(getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
       await waitFor(() => expect(useUiStore.getState().installedFilter).toBeNull());
     });
   });
