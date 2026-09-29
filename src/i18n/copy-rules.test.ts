@@ -35,7 +35,7 @@ describe("the copy rules, over every string in both languages", () => {
   it("keeps every word a row's status column shows to six Chinese characters at most", () => {
     // A row says its state in one word (spec §3.4): the Updates and
     // Installed pages' status words (`StatusChip`), a model's skipped
-    // version, and the Unknown page's kinds. A version or a name in a
+    // version, and the Unknown page's broken link. A version or a name in a
     // placeholder does not count.
     const statusKeys = entries(zhCN)
       .map(([key]) => key)

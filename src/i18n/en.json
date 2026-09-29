@@ -623,8 +623,6 @@
       "TimeLimit": "Stopped after {{seconds}} seconds; the rest weren't checked."
     },
     "kind": {
-      "File": "Program",
-      "Symlink": "Link",
       "BrokenSymlink": "Broken link"
     },
     "brokenLink": "Points to {{target}}, which is gone",

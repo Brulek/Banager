@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
+import { InfoDetail } from "../components/InfoDetail";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
@@ -12,14 +13,17 @@ import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../
 import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
- * The chip for each kind of entry. A `Record` over `EntryKind`, so a
- * variant added to the mirror without a chip here fails `tsc` -- this
- * project's signature defect is a variant that is defined, mirrored and
- * never rendered.
+ * The status word each kind of entry has, or null: a broken link's
+ * 「链接已失效」, with an orange ⚠︎ -- something is wrong with it -- and
+ * nothing for a program or a link that works, which are the normal
+ * states a row does not put in words (spec §3.3, §3.4). A `Record` over
+ * `EntryKind`, so a variant added to the mirror without an answer here
+ * fails `tsc` -- this project's signature defect is a variant that is
+ * defined, mirrored and never rendered.
  */
-const KIND_KEYS: Record<EntryKind, string> = {
-  File: "unknown.kind.File",
-  Symlink: "unknown.kind.Symlink",
+const STATUS_KEYS: Record<EntryKind, string | null> = {
+  File: null,
+  Symlink: null,
   BrokenSymlink: "unknown.kind.BrokenSymlink",
 };
 
@@ -54,30 +58,34 @@ function formatDate(seconds: number, language: string): string {
 }
 
 /**
- * The size over the date, a line each and nothing between them, in the
- * column where a tool's version goes: what a program has in place of one.
- * A broken link has neither -- there is no target to measure -- and its
- * chip says why. As wide as the widest date, 「2026年10月18日」, so the
- * chips before it line up down the list, a broken link's too.
+ * The size and the date, two columns of one line each, 72 and 104 wide
+ * and 16 apart, in the place of a tool's version: what a program has in
+ * place of one (spec §3.3), as Finder's list shows Size and Date
+ * Modified. 104 holds the widest date, 「2026年10月18日」, so each column
+ * lines up down the list. A broken link has neither -- there is no target
+ * to measure -- and its status word says why; its columns stay, empty.
  */
 function SizeAndDate({ entry, language }: { entry: UnknownEntry; language: string }) {
   const size = entry.size_bytes === null ? null : formatBytes(entry.size_bytes);
   const date = entry.modified_at === null ? null : formatDate(entry.modified_at, language);
   return (
-    <span className="block min-w-[6.25rem]">
-      {size !== null ? <span className="block">{size}</span> : null}
-      {date !== null ? <span className="block">{date}</span> : null}
+    <span className="flex">
+      <span data-size="" className="w-18 truncate">
+        {size}
+      </span>
+      <span data-date="" className="ml-4 w-26 truncate">
+        {date}
+      </span>
     </span>
   );
 }
 
 /**
- * What the kind chip's ⓘ says about a program, a line each: what a broken
- * link pointed at, the app it runs inside, that another account owns it,
- * and -- with technical details on -- where a link leads. A plain file
+ * What a row's ⓘ says about a program, a line each: what a broken link
+ * pointed at, the app it runs inside, that another account owns it, and
+ * -- with technical details on -- where a link leads. A plain file
  * resolves to itself, so that last one is for links only. Empty for a
- * program of the user's own that is none of these, whose chip is then a
- * plain label.
+ * program of the user's own that is none of these, which has no ⓘ.
  */
 function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[] {
   const facts: string[] = [];
@@ -94,8 +102,8 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
 
 /**
  * The app a link leads into, by its folder's name -- "Docker.app" -- for
- * the row's line under its name: "Points into Docker.app", which its
- * chip's ⓘ says at more length. Only for a link, and only when the app the
+ * the row's line under its name: "Points into Docker.app", which its ⓘ
+ * says at more length. Only for a link, and only when the app the
  * scan found (`app_bundle`) is on the way the link leads -- where it
  * resolves, or what a broken link says -- not merely around the folder the
  * link is in. A program that is no link points nowhere: the ⓘ says whose
@@ -115,7 +123,7 @@ function linkedApp(entry: UnknownEntry): string | null {
  * the file it points to, where Finder opens, not the folder the link is
  * in; a broken link has no file to show, and the item is off. A program
  * that is no link shows itself, which needs no word. A `Record` over
- * `EntryKind`, as `KIND_KEYS` is.
+ * `EntryKind`, as `STATUS_KEYS` is.
  */
 const SHOW_IN_FINDER_HINTS: Record<EntryKind, string | null> = {
   File: null,
@@ -187,18 +195,18 @@ export function ScanAgain() {
 
 /**
  * The command-line programs on this Mac that no source accounts for, as
- * rows like every other list's: a neutral avatar, the name with the path
- * it was found at -- and, after it, the app a link points into -- a chip
- * for what kind of entry it is, whose ⓘ says the rest, where there is more
- * to say, its size and date where a tool's version would be, and a ⋯ menu
- * to show it in Finder or copy its path. Canager only lists them: nothing
- * here runs or removes anything, which the page says once, at its top,
- * above the folders it looked in; Scan again is in the page header
+ * rows like every other list's (spec §3.3): a neutral avatar, the name
+ * with the path it was found at -- and, after it, the app a link points
+ * into -- a status word only for a broken link, an ⓘ where there is more
+ * to say, its size and its date in two columns where a tool's version
+ * would be, and a ⋯ menu to show it in Finder or copy its path. One line
+ * over the list says what these are; under it, quieter, the folders it
+ * looked in and how many it recognised. Scan again is in the page header
  * (`ScanAgain`).
  *
  * Its paths select (`select-text`), to be copied into Terminal or into
  * Finder's Go to Folder: each row's, the folders it looked in, and the
- * lines behind a chip's ⓘ, among them where a link leads.
+ * lines behind an ⓘ, among them where a link leads.
  */
 export function UnknownPage() {
   const { t, i18n } = useTranslation();
@@ -284,28 +292,18 @@ export function UnknownPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-1 px-5 pb-3">
-        {/* Scan again is in the page header (`ScanAgain`), where the other
-            pages have Check again. */}
-        <p className="text-body text-muted">{t("unknown.intro")}</p>
-        {result ? (
-          <div className="flex items-baseline gap-4">
-            <p className="min-w-0 flex-1 select-text break-words text-small text-muted">
-              {t("unknown.lookedIn", {
-                // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
-                folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
-              })}
-            </p>
-            {/* How a row's Copy path or Show in Finder went, at the top of
-                the page as the other pages say how a Copy command went. */}
-            <p role="status" className="shrink-0 text-small text-muted">
-              {notice}
-            </p>
-          </div>
-        ) : null}
+      {/* One line over the list: what these are. Scan again is in the
+          page header (`ScanAgain`), where the other pages have Check
+          again. At its right, how a row's Copy path or Show in Finder
+          went, as the other pages say how a Copy command went. */}
+      <div className="flex shrink-0 items-baseline gap-4 px-5 pb-2">
+        <p className="min-w-0 flex-1 text-body text-muted">{t("unknown.intro")}</p>
+        <p role="status" className="shrink-0 text-small text-muted">
+          {notice}
+        </p>
       </div>
       {scan.isError ? (
-        <p role="alert" className="px-5 pb-2 text-body text-danger">
+        <p role="alert" className="px-5 pb-2 text-body text-danger-text">
           {t("unknown.scanFailed", { message: scan.error.message })}
         </p>
       ) : null}
@@ -318,7 +316,7 @@ export function UnknownPage() {
       ) : (
         <>
           {stopped !== null ? (
-            <div className="px-5 pb-2">
+            <div className="px-5">
               <SourceNoticeLine
                 variant="warning"
                 title={stopped}
@@ -337,7 +335,7 @@ export function UnknownPage() {
               </p>
             </div>
           ) : (
-            <div className="pb-2">
+            <div>
               {result.entries.map((entry) => {
                 const name = fileName(entry.path);
                 const app = linkedApp(entry);
@@ -350,11 +348,18 @@ export function UnknownPage() {
                           {fact}
                         </span>
                       ));
+                const statusKey = STATUS_KEYS[entry.kind];
+                const status =
+                  statusKey !== null ? (
+                    <StatusChip label={t(statusKey)} tone="warning" detail={detail} />
+                  ) : detail !== undefined ? (
+                    <InfoDetail label={t("common.detailsLabel", { title: name })}>{detail}</InfoDetail>
+                  ) : undefined;
                 return (
                   // A slot of its own, as a virtualized list's rows have:
                   // a stacking context each, and the one with an open ⓘ
                   // lifted over the rows after it (`data-list-slot` in
-                  // index.css), whose chips would otherwise cover it.
+                  // index.css), whose words would otherwise cover it.
                   <div key={entry.path} data-list-slot="" className="relative z-0">
                     <ToolRow
                       avatar={<ProgramAvatar />}
@@ -363,7 +368,7 @@ export function UnknownPage() {
                       description={entry.path}
                       selectableDescription
                       descriptionNote={app === null ? undefined : t("unknown.pointsInto", { app })}
-                      status={<StatusChip label={t(KIND_KEYS[entry.kind])} detail={detail} />}
+                      status={status}
                       version={<SizeAndDate entry={entry} language={i18n.language} />}
                       menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                     />
@@ -372,11 +377,17 @@ export function UnknownPage() {
               })}
             </div>
           )}
-          {result.attributed > 0 ? (
-            <p className="px-5 pb-6 pt-2 text-small text-muted">
-              {t("unknown.attributed", { count: result.attributed })}
+          {/* Under the list, quieter: where it looked, and how many
+              programs it found a source for. */}
+          <div className="flex flex-col gap-1 px-5 pb-6 pt-3 text-small text-muted">
+            <p className="select-text break-words">
+              {t("unknown.lookedIn", {
+                // 「~/.local/bin、/usr/local/bin」, "~/.local/bin, /usr/local/bin".
+                folders: result.scanned.map((dir) => dir.path).join(t("common.listSeparator")),
+              })}
             </p>
-          ) : null}
+            {result.attributed > 0 ? <p>{t("unknown.attributed", { count: result.attributed })}</p> : null}
+          </div>
         </>
       )}
     </div>

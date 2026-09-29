@@ -128,27 +128,34 @@ function rowOf(name: HTMLElement): HTMLElement {
   return name.closest("[data-tool-row]") as HTMLElement;
 }
 
-/** A row's chips (`ToolRow`'s `data-status`). */
-function chipsOf(row: HTMLElement): HTMLElement {
-  return row.querySelector("[data-status]") as HTMLElement;
+/** A row's status column (`ToolRow`'s `data-status`): a broken link's word, or an ⓘ; null where there is neither. */
+function statusOf(row: HTMLElement): HTMLElement | null {
+  return row.querySelector("[data-status]");
 }
 
-/** A row's size and date: the column after its chips, where a tool's version goes. */
+/** A row's size and date: the column where a tool's version goes. */
 function sizeAndDateOf(row: HTMLElement): HTMLElement {
-  return chipsOf(row).nextElementSibling as HTMLElement;
+  return row.querySelector("[data-version]") as HTMLElement;
 }
 
 describe("UnknownPage", () => {
-  it("scans once when it opens and lists each program as a row, under the chip for its kind", async () => {
-    const { findByText, getByText, container } = renderWithProviders(<UnknownPage />);
+  it("scans once when it opens and lists each program as a row, a status word only on a broken link", async () => {
+    const { findByText, getByText, queryByText, container } = renderWithProviders(<UnknownPage />);
 
     const tool = rowOf(await findByText("standalone-tool"));
     const script = rowOf(getByText("old-script"));
     const helper = rowOf(getByText("helper-cli"));
     expect(container.querySelectorAll("[data-tool-row]")).toHaveLength(3);
-    expect(within(tool).getByText("Program")).toBeInTheDocument();
-    expect(within(script).getByText("Broken link")).toBeInTheDocument();
-    expect(within(helper).getByText("Link")).toBeInTheDocument();
+    // No 「程序」「链接」 pills (spec §3.3): a program and a link that works
+    // are what these rows are, and say nothing about it.
+    expect(queryByText("Program")).toBeNull();
+    expect(queryByText("Link")).toBeNull();
+    expect(statusOf(tool)).toBeNull();
+    // A broken link: the word, muted, after a filled orange ⚠︎.
+    const word = within(script).getByRole("button", { name: "Broken link" });
+    expect(word.className).toContain("text-muted");
+    expect(word.querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    expect(within(helper).queryByText("Broken link")).toBeNull();
     // The path is the row's line under its name, home abbreviated as Rust
     // sent it.
     expect(within(tool).getByText("~/.opencode/bin/standalone-tool")).toBeInTheDocument();
@@ -166,7 +173,7 @@ describe("UnknownPage", () => {
     expect(avatar.textContent).toBe("");
   });
 
-  it("keeps what a broken link pointed at and the app a program belongs to behind its chip's ⓘ", async () => {
+  it("keeps what a broken link pointed at and the app a program belongs to behind an ⓘ", async () => {
     const { findByText, getByText, queryByText } = renderWithProviders(<UnknownPage />);
 
     const script = rowOf(await findByText("old-script"));
@@ -182,8 +189,9 @@ describe("UnknownPage", () => {
     ).toBeInTheDocument();
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
 
+    // A link that works has no word: an ⓘ alone, named after the row.
     const helper = rowOf(getByText("helper-cli"));
-    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
     expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
     // Only what can be confirmed: the file is not the user's.
     expect(within(helper).getByText("Owned by the system or another account")).toBeInTheDocument();
@@ -202,15 +210,17 @@ describe("UnknownPage", () => {
     expect(slot.querySelector("[data-popup-open]")).not.toBeNull();
   });
 
-  it("leaves the chip of a plain program of the user's own a plain label, with nothing behind it", async () => {
+  it("gives a plain program of the user's own nothing in its status column: no word, no ⓘ", async () => {
     const { findByText } = renderWithProviders(<UnknownPage />);
 
     const tool = rowOf(await findByText("standalone-tool"));
-    expect(within(chipsOf(tool)).queryByRole("button")).toBeNull();
-    expect(within(tool).getByText("Program").tagName).toBe("SPAN");
+    expect(statusOf(tool)).toBeNull();
+    expect(within(tool).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "More actions for standalone-tool",
+    ]);
   });
 
-  it("shows the size over the date where a tool's version would be, each its own item, and nothing there for a broken link", async () => {
+  it("shows the size and the date in two columns of one line, 72 and 104 wide, and nothing in them for a broken link", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
 
     for (const [name, bytes, seconds] of [
@@ -218,20 +228,31 @@ describe("UnknownPage", () => {
       ["helper-cli", 2_100_000, 1_700_000_000],
     ] as const) {
       const column = sizeAndDateOf(rowOf(await findByText(name)));
-      const size = within(column).getByText(formatBytes(bytes));
-      const date = within(column).getByText(dateOf(seconds));
-      // The size first, then the date, with nothing between them: no dot.
-      expect(size.compareDocumentPosition(date) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(column.textContent).toBe(`${formatBytes(bytes)}${dateOf(seconds)}`);
+      // Where a tool's version goes: 13, muted, one line, figures lined up.
+      expect(column.className.split(" ")).toEqual(
+        expect.arrayContaining(["text-body", "text-muted", "tabular-nums", "whitespace-nowrap"]),
+      );
+      const size = column.querySelector("[data-size]") as HTMLElement;
+      const date = column.querySelector("[data-date]") as HTMLElement;
+      expect(size.textContent).toBe(formatBytes(bytes));
+      expect(date.textContent).toBe(dateOf(seconds));
+      // Side by side, not one over the other: two columns.
+      expect(size.parentElement).toBe(date.parentElement);
+      expect(size.parentElement?.className).toContain("flex");
+      expect(size.className.split(" ")).toEqual(expect.arrayContaining(["w-18", "truncate"]));
+      expect(date.className.split(" ")).toEqual(expect.arrayContaining(["w-26", "ml-4", "truncate"]));
     }
-    // A broken link has no size and no date.
-    expect(sizeAndDateOf(rowOf(getByText("old-script"))).textContent).toBe("");
+    // A broken link has no size and no date; its columns keep their room.
+    const broken = sizeAndDateOf(rowOf(getByText("old-script")));
+    expect(broken.textContent).toBe("");
+    expect(broken.querySelector("[data-size]")).not.toBeNull();
+    expect(broken.querySelector("[data-date]")).not.toBeNull();
   });
 
   it("shows where a link leads only with technical details on", async () => {
     const hidden = renderWithProviders(<UnknownPage />);
     const hiddenRow = rowOf(await hidden.findByText("helper-cli"));
-    fireEvent.click(within(hiddenRow).getByRole("button", { name: "Link" }));
+    fireEvent.click(within(hiddenRow).getByRole("button", { name: "Details: helper-cli" }));
     expect(
       within(hiddenRow).queryByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
     ).not.toBeInTheDocument();
@@ -240,14 +261,14 @@ describe("UnknownPage", () => {
     settings = { ...settings, show_technical_details: true };
     const shown = renderWithProviders(<UnknownPage />);
     const shownRow = rowOf(await shown.findByText("helper-cli"));
-    fireEvent.click(within(shownRow).getByRole("button", { name: "Link" }));
+    fireEvent.click(within(shownRow).getByRole("button", { name: "Details: helper-cli" }));
     expect(
       within(shownRow).getByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
     ).toBeInTheDocument();
-    // A plain file resolves to itself; there is nothing to add, so its
-    // chip stays a plain label.
+    // A plain file resolves to itself; there is nothing to add, so it
+    // has no ⓘ.
     const tool = rowOf(shown.getByText("standalone-tool"));
-    expect(within(chipsOf(tool)).queryByRole("button")).toBeNull();
+    expect(statusOf(tool)).toBeNull();
   });
 
   it("lets its paths be selected, to be copied, and nothing else on a row", async () => {
@@ -257,12 +278,12 @@ describe("UnknownPage", () => {
     const helper = rowOf(await findByText("helper-cli"));
     const path = within(helper).getByText("/usr/local/bin/helper-cli");
     expect(path).toHaveClass("select-text");
-    // Not its name, its chip, nor its size and date.
+    // Not its name, its ⓘ, nor its size and date.
     expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toHaveClass("select-text");
 
-    // Behind its chip, where it leads and whose it is.
-    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    // Behind its ⓘ, where it leads and whose it is.
+    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
     for (const line of [
       "Part of Helper",
       "Owned by the system or another account",
@@ -272,21 +293,32 @@ describe("UnknownPage", () => {
     }
   });
 
-  it("says where it looked in one quiet line at the top, and how many programs it recognized", async () => {
-    const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+  it("says what these are in one line over the list, and where it looked and how many it recognized under it, quieter", async () => {
+    const { findByText, getByText, container } = renderWithProviders(<UnknownPage />);
 
-    expect(await findByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
-    expect(getByText("4 more programs have a known source and aren't listed here.")).toBeInTheDocument();
+    const lookedIn = await findByText("Looked in: ~/.local/bin, /usr/local/bin");
+    const recognized = getByText("4 more programs have a known source and aren't listed here.");
+    const intro = getByText("Couldn't determine how these programs were installed.");
+    const rows = [...container.querySelectorAll("[data-tool-row]")];
+    // Over the list: the one line, 13 in the secondary colour.
+    expect(intro.className.split(" ")).toEqual(expect.arrayContaining(["text-body", "text-muted"]));
+    expect(intro.compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Under it, 11: where it looked, then how many it knew.
+    for (const line of [lookedIn, recognized]) {
+      expect(rows[rows.length - 1].compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(line.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
+    }
+    expect(lookedIn.compareDocumentPosition(recognized) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("says so in Chinese, the folders run together with 、", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
-      const { findByText, getByText } = renderWithProviders(<UnknownPage />);
+      const { findByText, getByText, queryByText } = renderWithProviders(<UnknownPage />);
       expect(await findByText("查找位置：~/.local/bin、/usr/local/bin")).toBeInTheDocument();
-      expect(getByText("程序")).toBeInTheDocument();
-      expect(getByText("链接")).toBeInTheDocument();
-      expect(getByText("失效的链接")).toBeInTheDocument();
+      expect(queryByText("程序")).toBeNull();
+      expect(queryByText("链接")).toBeNull();
+      expect(getByText("链接已失效")).toBeInTheDocument();
       expect(getByText("另有4个程序已确定来源，未在这里列出。")).toBeInTheDocument();
       expect(getByText("无法确定以下程序是用什么安装的。")).toBeInTheDocument();
     } finally {
@@ -714,7 +746,7 @@ describe("the app a link points into", () => {
     expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
     // The ⓘ says it at more length, as it did.
-    fireEvent.click(within(helper).getByRole("button", { name: "Link" }));
+    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
     expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
 
     // A broken link's: the app it pointed into.
@@ -756,8 +788,8 @@ describe("the app a link points into", () => {
 
     const kit = rowOf(await findByText("kit"));
     expect(queryByText(/^Points into/)).toBeNull();
-    // Its chip's ⓘ still says whose part it is.
-    fireEvent.click(within(kit).getByRole("button", { name: "Program" }));
+    // Its ⓘ still says whose part it is.
+    fireEvent.click(within(kit).getByRole("button", { name: "Details: kit" }));
     expect(within(kit).getByText("Part of Kit")).toBeInTheDocument();
     expect(getByText("kit-helper")).toBeInTheDocument();
   });
