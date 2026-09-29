@@ -485,3 +485,16 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
   plain 的，第三方 tap 可能有。
 - `HOMEBREW_NO_CLEANUP_FORMULAE` 点名的软件不会被安装后清理，`brew_env.rs` 没读这个变量，提示仍说会清理。
 - `brew uninstall` 还会删掉该 cask 自己在 `~/.homebrew/trust.json` 里的信任条目（`cmd/uninstall.rb:122-127`）。
+
+## 第二轮推迟项（2026-09-29 立，分支 feat/ui-round-2）
+
+- **菜单栏图标、登录时启动**：按 Astra 对后台检查规格的建议推迟（`~/dev/Canager/.superpowers/round2/astra-bg.md`）。
+  菜单栏图标要先定：数量为 0 / 检查中 / 检查失败各显示什么，「立即检查」要不要弹窗，退出时有操作在跑怎么办。
+  登录启动用 SMAppService（macOS 13+），读系统的真实授权状态，登录启动时不弹窗口。
+- **点通知真正打开「更新」页**：现在靠"通知在等 + Canager 被带到前台 + 窗口隐藏"来推断（`src-tauri/src/window.rs`），
+  窗口只是被别的 App 挡住时点通知不会切页，⌘Tab 也会误触发。要用 UNUserNotificationCenter 的点击回调才能分清，
+  它需要打包后的 app（开发版没有 bundle），见 Astra 第二轮复审第 4 条。
+- **英文描述**：npm/PyPI/cargo 以外的来源在英文界面用的是来源自己的描述（Homebrew 的 desc），风格与中文表不完全一致。
+- **长列表**：`VirtualList` 复用已画好的行，前提是页面每次都传新的内联 `renderItem`；以后若改成 `useCallback`，
+  要同时把行依赖的数据放进 key，否则会显示旧内容（`src/components/VirtualList.tsx:62`）。
+- **Astra 第二轮复审**：`~/dev/Canager/.superpowers/round2/astra-round2.md`，第 1、2、3、5 条已修，第 4 条见上。
