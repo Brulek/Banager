@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, planErrorMessage } from "../lib/sources";
+import { modelPath } from "../lib/names";
 import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
@@ -387,6 +388,9 @@ const BatchTool = memo(function BatchTool({ t, item, notes, adapterId, sourceLab
       showSource={showSource}
       iconKey={item.candidate.key}
       name={item.name}
+      // A model pulled by a path by its last segment, as its row names it,
+      // so its tag is not what is cut short.
+      shownName={modelPath(item.candidate.key, item.name)?.name}
       // A model's "new version" is a sentence, not a number: under the name.
       aside={digest ? null : jump}
     >

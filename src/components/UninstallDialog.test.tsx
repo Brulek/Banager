@@ -99,6 +99,14 @@ function linesOf(title: string): string[] {
     .map((item) => (item.textContent ?? "").trim());
 }
 
+// A sheet's note by its whole sentence: its last word is held on one line
+// with its ⓘ, in a span of their own (`TextWithInfo`), so no one text node
+// holds the sentence.
+function noteLine(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "SPAN" && element.parentElement?.tagName === "LI" && element.textContent?.trim() === text;
+}
+
 describe("UninstallDialog", () => {
   it("shows a checking message and a disabled confirm button while the plan is loading", async () => {
     vi.mocked(invoke).mockImplementation(() => new Promise(() => {}));
@@ -1771,7 +1779,7 @@ describe("UninstallDialog", () => {
     );
 
     const hint = "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.";
-    expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(await screen.findByText(noteLine(hint))).toBeInTheDocument();
     expect(linesOf("Notes")).toEqual([hint]);
     fireEvent.click(screen.getByRole("button", { name: `Details: ${hint}` }));
     expect(screen.getByText("Wait until the bottom of the window shows the result before you quit or shut down.")).toBeInTheDocument();

@@ -268,6 +268,14 @@ function wholeSentence(text: string) {
     element?.tagName === "P" && element.textContent === text;
 }
 
+// A sheet's note by its whole sentence: its last word is held on one line
+// with its ⓘ, in a span of their own (`TextWithInfo`), so no one text node
+// holds the sentence.
+function noteLine(text: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "SPAN" && element.parentElement?.tagName === "LI" && element.textContent?.trim() === text;
+}
+
 // The list's row for `name` -- the name as the row shows it.
 function rowOf(name: string): HTMLElement {
   const rows = screen
@@ -662,7 +670,7 @@ describe("UpdatesPage", () => {
     const dialog = await findByRole("dialog");
     const line =
       "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
-    await within(dialog).findByText(line);
+    await within(dialog).findByText(noteLine(line));
     const why =
       "Homebrew is run with HOMEBREW_NO_INSTALL_CLEANUP=1, but your brew.env sets it to nothing, and brew.env wins.";
     expect(within(dialog).queryByText(why)).toBeNull();
@@ -682,7 +690,9 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("button", { name: "更新" }))[0]);
       const dialog = await findByRole("dialog");
       await within(dialog).findByText(
-        "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
+        noteLine(
+          "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
+        ),
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -699,10 +709,14 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
-      "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
+      noteLine(
+        "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
+      ),
     );
     await within(dialog).findByText(
-      "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+      noteLine(
+        "Homebrew's periodic clean-up also removes other Homebrew packages that were installed only as dependencies and that nothing needs any more.",
+      ),
     );
   });
 
@@ -1550,8 +1564,9 @@ describe("UpdatesPage", () => {
         warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
         blocked: null,
       },
+      snapshot.updates[0],
     ];
-    const { findByTitle } = renderPage();
+    const { findByTitle, getByRole, findByRole } = renderPage();
 
     const name = await findByTitle(MODELS.coder);
     expect(name.matches("[data-tool-row] p")).toBe(true);
@@ -1561,6 +1576,15 @@ describe("UpdatesPage", () => {
     expect(row.querySelector("[data-description]")?.textContent).toMatch(/^modelscope\.cn\/Qwen · /);
     // The row's checkbox and its details say it whole.
     expect(within(row).getByRole("checkbox", { name: `Select ${MODELS.coder} for update` })).toBeInTheDocument();
+
+    // Update All's list names it as the row does, so its tag is not what
+    // is cut short; whole in its tooltip and for a screen reader.
+    fireEvent.click(getByRole("button", { name: "Update All" }));
+    const dialog = await findByRole("dialog");
+    const inSheet = within(dialog).getByTitle(MODELS.coder);
+    expect(inSheet).toHaveAttribute("data-sheet-name");
+    expect(inSheet.firstElementChild?.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(inSheet.querySelector(".sr-only")?.textContent).toBe(MODELS.coder);
   });
 
   it("shows no version and no digest for an Ollama model Canager could not check", async () => {
@@ -4465,7 +4489,7 @@ describe("UpdatesPage", () => {
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --cask onyx");
 
     const hints = within(dialog).getAllByText(
-      "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+      noteLine("This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes."),
     );
     expect(hints).toHaveLength(1);
     const row = hints[0].closest("[data-sheet-tool]");

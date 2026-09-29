@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { SheetText, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn } from "./SheetParts";
+import { renderWithProviders } from "../test/setup";
+import { Refusal, SheetLines, SheetText, SheetTool, sheetMeta, TOOLS_DRAWN_FIRST, useToolsInTurn } from "./SheetParts";
 
 describe("sheetMeta", () => {
   it("says the source and the version, each on its own, apart by a middle dot", () => {
@@ -85,5 +86,64 @@ describe("useToolsInTurn", () => {
     expect(new Set(drawn)).toEqual(new Set([5]));
     rerender(<List count={0} batch={null} drawn={drawn} />);
     expect(screen.getByTestId("shown")).toHaveTextContent("0");
+  });
+});
+
+describe("SheetLines", () => {
+  it("keeps a line's ⓘ on one line with its last word, so it never wraps alone", () => {
+    const english = "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.";
+    const chinese = "开始后无法取消。完成前请不要退出Canager或关机。";
+    const { container } = renderWithProviders(
+      <SheetLines
+        lines={[
+          { text: english, detail: "Wait for the result.", caution: true },
+          { text: chinese, detail: "等结果出来。", caution: false },
+          { text: "Nothing more to say.", detail: null, caution: false },
+        ]}
+      />,
+    );
+    const tails = [...container.querySelectorAll<HTMLElement>("[data-info-tail]")];
+    expect(tails).toHaveLength(2);
+    for (const tail of tails) {
+      expect(tail.className.split(" ")).toContain("whitespace-nowrap");
+      expect(tail.querySelector("button")).not.toBeNull();
+    }
+    // The last word with its full stop; in Chinese, which wraps between
+    // any two characters, the last character with its 。.
+    expect(tails[0].textContent?.trim()).toBe("finishes.");
+    expect(tails[1].textContent?.trim()).toBe("机。");
+    // The whole sentence is still the line's, in order.
+    const lines = [...container.querySelectorAll("li")].map((line) => line.textContent?.trim());
+    expect(lines).toEqual([english, chinese, "Nothing more to say."]);
+    // A line with no why has no ⓘ to hold.
+    expect(container.querySelectorAll("li")[2].querySelector("[data-info-tail]")).toBeNull();
+  });
+
+  it("keeps a refusal's ⓘ with its last word too", () => {
+    const { container } = renderWithProviders(
+      <Refusal text="Couldn't prepare the update." detail="brew said no" detailTitle="Couldn't prepare the update." />,
+    );
+    const tail = container.querySelector<HTMLElement>("[data-info-tail]");
+    expect(tail?.textContent?.trim()).toBe("update.");
+    expect(tail?.className.split(" ")).toContain("whitespace-nowrap");
+    expect(screen.getByRole("alert").textContent?.trim()).toBe("Couldn't prepare the update.");
+  });
+});
+
+describe("SheetTool", () => {
+  it("shows the name the list shows where it is given, the whole name its tooltip and for a screen reader", () => {
+    const whole = "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M";
+    const { container } = renderWithProviders(
+      <ul>
+        <SheetTool adapterId="ollama" sourceLabel="Ollama" name={whole} shownName="Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M" />
+      </ul>,
+    );
+    const name = container.querySelector("[data-sheet-name]") as HTMLElement;
+    expect(name).toHaveAttribute("title", whole);
+    const [shown, spoken] = [...name.children] as HTMLElement[];
+    expect(shown.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(shown).toHaveAttribute("aria-hidden", "true");
+    expect(spoken.textContent).toBe(whole);
+    expect(spoken.className).toBe("sr-only");
   });
 });

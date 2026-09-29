@@ -30,3 +30,31 @@ export function InfoDetail({ label, children }: InfoDetailProps) {
     </Popover>
   );
 }
+
+/**
+ * The end of `text` that an ⓘ after it keeps with it (`TextWithInfo`):
+ * its last word -- a run of letters, digits and marks up to the end -- or,
+ * in Chinese, which wraps between any two characters, its last character,
+ * with the punctuation after either.
+ */
+const LAST_WORD = /(?:\p{Script=Han}\p{P}*|[^\s\p{Script=Han}]+)$/u;
+
+/**
+ * `text` and an ⓘ after it (`InfoDetail`) with its longer why, the ⓘ held
+ * on one line with the text's last word (`LAST_WORD`), so it never wraps
+ * onto a line of its own.
+ */
+export function TextWithInfo({ text, label, children }: { text: string; label: string; children: ReactNode }) {
+  const match = LAST_WORD.exec(text);
+  const head = match === null ? text : text.slice(0, match.index);
+  const tail = match === null ? "" : match[0];
+  return (
+    <>
+      {head}
+      <span data-info-tail="" className="whitespace-nowrap">
+        {tail}{" "}
+        <InfoDetail label={label}>{children}</InfoDetail>
+      </span>
+    </>
+  );
+}

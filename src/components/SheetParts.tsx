@@ -12,7 +12,7 @@ import { Fragment, startTransition, useEffect, useId, useLayoutEffect, useRef, u
 import { useTranslation } from "react-i18next";
 import type { ArtifactKey } from "../lib/types";
 import type { WarningLine } from "../lib/warnings";
-import { InfoDetail } from "./InfoDetail";
+import { InfoDetail, TextWithInfo } from "./InfoDetail";
 import { SpinnerIcon, WarningFilledIcon } from "./icons";
 import { ToolAvatar } from "./ToolAvatar";
 import { SMALL_WRAPPING } from "./ui/group";
@@ -95,6 +95,13 @@ export interface SheetToolProps {
   /** The tool's key, for its own icon -- a cask's app's, or its logo -- as on its row. */
   iconKey?: ArtifactKey;
   name: string;
+  /**
+   * The name as the list shows it, where that is shorter than `name`: a
+   * model's last path segment (`modelPath`), its tag and quantisation
+   * with it, as its row names it. The whole name stays its tooltip and
+   * what a screen reader hears.
+   */
+  shownName?: string;
   /** On the right: the version it has, or the one it moves to. */
   aside?: ReactNode;
   /** Under the name: what to know about it, what became of it -- started, or why not. */
@@ -115,6 +122,7 @@ export function SheetTool({
   showSource = false,
   iconKey,
   name,
+  shownName,
   aside,
   children,
 }: SheetToolProps) {
@@ -125,7 +133,14 @@ export function SheetTool({
         <ToolAvatar size="sm" adapterId={adapterId} sourceLabel={sourceLabel} iconKey={iconKey} />
         <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
           <span data-sheet-name="" title={name} className="min-w-0 truncate text-body text-foreground">
-            {name}
+            {shownName === undefined ? (
+              name
+            ) : (
+              <>
+                <span aria-hidden="true">{shownName}</span>
+                <span className="sr-only">{name}</span>
+              </>
+            )}
           </span>
           {sourceLabel === name ? null : showSource ? (
             <span className="shrink-0 text-small text-muted">{sourceLabel}</span>
@@ -243,8 +258,9 @@ export function SheetSection({ title, titleHidden = false, children }: SheetSect
  * it wraps -- in the label colour: an alert's small print is text to read,
  * not a caption (spec R6). No bullets; a caution (`isCaution`) has a 12
  * filled ⚠︎ before its words, in systemOrange; its longer why is behind
- * an ⓘ at the end where it has one. Nothing between a line's words and its
- * ⓘ but `<span>`s, so a line is found by its words from the item alone.
+ * an ⓘ at the end where it has one, held on one line with the last word
+ * (`TextWithInfo`). Nothing between a line's words and its ⓘ but
+ * `<span>`s, so a line is found by its words from the item alone.
  */
 export function SheetLines({ lines }: { lines: WarningLine[] }) {
   const { t } = useTranslation();
@@ -253,13 +269,13 @@ export function SheetLines({ lines }: { lines: WarningLine[] }) {
     <ul className="flex flex-col gap-1">
       {lines.map((line, index) => (
         <SheetLine key={`${index}:${line.text}`} caution={line.caution}>
-          {line.text}
           {line.detail !== null ? (
-            <>
-              {" "}
-              <InfoDetail label={t("common.detailsLabel", { title: line.text })}>{line.detail}</InfoDetail>
-            </>
-          ) : null}
+            <TextWithInfo text={line.text} label={t("common.detailsLabel", { title: line.text })}>
+              {line.detail}
+            </TextWithInfo>
+          ) : (
+            line.text
+          )}
         </SheetLine>
       ))}
     </ul>
@@ -292,7 +308,8 @@ export interface RefusalProps {
  * A refusal, said where it happened -- in a sheet, or on the page where
  * Update was pressed and nothing could be planned -- in the red that reads
  * as text (`danger-text`), as an alert: a `<div>`, since the ⓘ's panel is
- * one.
+ * one. Its ⓘ is held on one line with a sentence's last word
+ * (`TextWithInfo`).
  */
 export function Refusal({ text, detail, detailTitle, size = "body", className = "" }: RefusalProps) {
   const { t } = useTranslation();
@@ -301,13 +318,18 @@ export function Refusal({ text, detail, detailTitle, size = "body", className = 
       role="alert"
       className={`break-words text-danger-text ${size === "body" ? "text-body" : SMALL_WRAPPING} ${className}`}
     >
-      {text}
-      {detail !== null ? (
+      {detail === null ? (
+        text
+      ) : typeof text === "string" ? (
+        <TextWithInfo text={text} label={t("common.detailsLabel", { title: detailTitle })}>
+          {detail}
+        </TextWithInfo>
+      ) : (
         <>
-          {" "}
+          {text}{" "}
           <InfoDetail label={t("common.detailsLabel", { title: detailTitle })}>{detail}</InfoDetail>
         </>
-      ) : null}
+      )}
     </div>
   );
 }
