@@ -3936,6 +3936,35 @@ describe("UpdatesPage", () => {
     expect(within(claude).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
+  it("keeps a status column on every row while any row shown has a word, and gives its room to the names where none has", async () => {
+    // glib pinned, under the folded "can't be updated here": the rows
+    // shown -- onyx alone -- have no word, and no column for one.
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    const first = renderPage();
+    await findRow("onyx");
+    expect(document.querySelectorAll("[data-status-column]")).toHaveLength(0);
+    // Unfolded, glib's Pinned is shown: the column is back on every row,
+    // onyx's empty, so the words line up.
+    await showCantUpdate();
+    await findRow("glib");
+    expect(rowOf("onyx").querySelector("[data-status-column]")).not.toBeNull();
+    expect(rowOf("glib").querySelector("[data-status-column]")).toHaveTextContent("Pinned");
+    first.unmount();
+
+    // One row that updates itself keeps the column on the plain rows too.
+    instances = [...snapshot.instances, claudeInstance];
+    updates = [...snapshot.updates, claudeUpdate];
+    artifacts = [...snapshot.artifacts, claudeArtifact];
+    renderPage();
+    await findRow("Claude Code");
+    expect(rowOf("Claude Code").querySelector("[data-status-column]")).toHaveTextContent("Also updates itself");
+    for (const name of ["glib", "onyx"]) {
+      const slot = rowOf(name).querySelector("[data-status-column]");
+      expect(slot).not.toBeNull();
+      expect(slot?.childElementCount).toBe(0);
+    }
+  });
+
   const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
     ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Couldn't update", true],
     ["was cancelled", "Cancelled", "Cancelled", false],

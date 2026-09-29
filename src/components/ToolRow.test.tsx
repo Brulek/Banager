@@ -1,4 +1,4 @@
-import { Profiler, type MouseEvent } from "react";
+import { Profiler, type MouseEvent, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -7,7 +7,7 @@ import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction,
 import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
-import { ListWidthProvider, VirtualList } from "./VirtualList";
+import { ListWidthProvider, StatusColumnProvider, VirtualList } from "./VirtualList";
 import { RovingRowProvider, useRovingRow } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
 import { readFileSync } from "node:fs";
@@ -377,6 +377,35 @@ describe("ToolRow", () => {
     expect(slot.className).toContain("min-w-30");
     // Only a word is `data-status`, what finds a row's word.
     expect(slot).not.toHaveAttribute("data-status");
+  });
+
+  it("gives up its empty status column in a list with no word on any row, but never a word of its own", () => {
+    const row = (status?: ReactNode) => (
+      <ToolRow
+        adapterId="brew"
+        sourceLabel="Homebrew"
+        name="glib"
+        description="Core application library for C"
+        status={status}
+        version="2.88.3 → 2.90.0"
+      />
+    );
+    const { container, rerender } = renderWithProviders(
+      <StatusColumnProvider value={false}>{row()}</StatusColumnProvider>,
+    );
+    // No word anywhere on the list: no column, the name and description
+    // take its room.
+    expect(container.querySelector("[data-status-column]")).toBeNull();
+    expect(container.querySelector("[data-version]")).not.toBeNull();
+
+    // A row with a word keeps its column whatever the list says, so the
+    // word is never lost.
+    rerender(<StatusColumnProvider value={false}>{row(<span>Pinned</span>)}</StatusColumnProvider>);
+    expect(container.querySelector("[data-status-column]")).toHaveTextContent("Pinned");
+
+    // A list with a word on some row: the empty column on this one too.
+    rerender(<StatusColumnProvider value>{row()}</StatusColumnProvider>);
+    expect(container.querySelector("[data-status-column]")?.childElementCount).toBe(0);
   });
 
   it("is a button itself when it opens something, under its own controls, and takes the focus when pressed", () => {

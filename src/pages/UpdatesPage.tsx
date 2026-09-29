@@ -871,6 +871,20 @@ export function UpdatesPage() {
     );
   };
 
+  // Whether a row has anything in its status column: its word
+  // (`statusOf`), or how an update of it ended without updating, with
+  // Retry in its button's place (`updateRow`). Where no row the list shows
+  // has, the rows give that column's room to their names and descriptions
+  // (`VirtualList`'s `statusColumn`).
+  const hasStatusWord = (candidate: UpdateCandidate): boolean => {
+    const state = stateOf(candidate);
+    const op = operationFor(candidate);
+    const progress = op !== null ? progressOf(op) : null;
+    if (progress !== null && state.kind === "actionable" && isRetryable(progress)) return true;
+    return statusOf(candidate, state, instancesById.get(candidate.key.instance_id)) !== undefined;
+  };
+  const statusColumn = items.some((item) => item.type === "update" && hasStatusWord(item.candidate));
+
   const startableCount = startableUpdates.length;
   // Everything the toolbar's one button can say, at its widest -- every
   // row ticked -- so it keeps that width whatever is ticked (`SteadyLabel`).
@@ -981,6 +995,7 @@ export function UpdatesPage() {
         reusable={reusable}
         keyboardRows={keyboardRow}
         hairlineBefore={hairlineBefore}
+        statusColumn={statusColumn}
         renderItem={(item) =>
           item.type === "notices" ? (
             // On the rows' grid: the ⚠︎ in the avatars' column, the

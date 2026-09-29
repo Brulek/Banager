@@ -1018,6 +1018,13 @@ export function InstalledPage() {
     return items;
   };
 
+  // Whether any row the list shows has a word (`rowChipOf`): where none
+  // has, the rows give the status word's column to their names and
+  // descriptions (`VirtualList`'s `statusColumn`).
+  const statusColumn = items.some(
+    (item) => item.type === "row" && rowChipOf(chipsOf(item.artifact, item.instance, item.label)) !== undefined,
+  );
+
   const toolRow = (artifact: InstalledArtifact, instance: ManagerInstance, label: string) => {
     const name = artifact.display_name;
     const chip = rowChipOf(chipsOf(artifact, instance, label));
@@ -1314,6 +1321,7 @@ export function InstalledPage() {
           }}
           handleRef={listHandle}
           anchorKey={selectedId}
+          statusColumn={statusColumn}
           // A hairline over the next row only, and not over the selection.
           hairlineBefore={(next) => next.type === "row" && artifactKeyId(next.artifact.key) !== selectedId}
           renderItem={(item) =>

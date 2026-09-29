@@ -782,6 +782,25 @@ describe("InstalledPage", () => {
     expect(within(rowOf("wget")).getByText("Internet file retriever")).toBeInTheDocument();
   });
 
+  it("keeps a status column on every row while any row has a word, and gives its room to the names where none has", async () => {
+    // jq up to date, glib -- asked for here -- with an update: neither is
+    // a word on its row (the version says the update), so neither row has
+    // the column.
+    const glib = { ...snapshot.artifacts[1], reason: "Requested" as const };
+    served = { ...snapshot, artifacts: [snapshot.artifacts[0], glib] };
+    const first = renderInstalled();
+    expect(chipsOf(await findRow("jq"))).toEqual([]);
+    expect(chipsOf(await findRow("glib"))).toEqual([]);
+    expect(document.querySelectorAll("[data-status-column]")).toHaveLength(0);
+    first.unmount();
+
+    // jq pinned: its word, and glib's empty column beside it.
+    served = { ...snapshot, artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }, glib] };
+    renderInstalled();
+    expect((await findRow("jq")).querySelector("[data-status-column]")).toHaveTextContent("Pinned");
+    expect((await findRow("glib")).querySelector("[data-status-column]")?.childElementCount).toBe(0);
+  });
+
   it("promises nothing about when Uninstall comes back on a silent source's pinned row", async () => {
     // A row carried forward from a Homebrew that did not answer has no
     // Uninstall button until Homebrew answers a check again, pinned or

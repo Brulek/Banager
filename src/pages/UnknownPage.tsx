@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { rowFitFor, ToolRow } from "../components/ToolRow";
-import { ListWidthProvider, useElementWidth } from "../components/VirtualList";
+import { ListWidthProvider, StatusColumnProvider, useElementWidth } from "../components/VirtualList";
 import { StatusChip } from "../components/StatusChip";
 import { SourceNoticeLine } from "../components/SourceNotice";
 import { EmptyState } from "../components/EmptyState";
@@ -372,55 +372,60 @@ export function UnknownPage() {
           ) : (
             <div ref={setListBox}>
               <ListWidthProvider value={listWidth}>
-                {result.entries.map((entry) => {
-                  const name = fileName(entry.path);
-                  const app = linkedApp(entry);
-                  const facts = factsOf(entry, t, technical);
-                  const statusKey = STATUS_KEYS[entry.kind];
-                  // A broken link's word, its facts behind its ⓘ. Any other
-                  // row has no word, and no ⓘ standing alone in its place:
-                  // its facts are its tooltip.
-                  const status =
-                    statusKey === null ? undefined : (
-                      <StatusChip
-                        label={t(statusKey)}
-                        tone="warning"
-                        detail={
-                          facts.length === 0
-                            ? undefined
-                            : facts.map((fact) => (
-                                <span key={fact} className="block select-text break-words">
-                                  {fact}
-                                </span>
-                              ))
-                        }
-                      />
+                {/* A broken link's word stands where its size and date would
+                    (`SizeAndDate`), never in a status column: the rows
+                    have none, and their paths take its room. */}
+                <StatusColumnProvider value={false}>
+                  {result.entries.map((entry) => {
+                    const name = fileName(entry.path);
+                    const app = linkedApp(entry);
+                    const facts = factsOf(entry, t, technical);
+                    const statusKey = STATUS_KEYS[entry.kind];
+                    // A broken link's word, its facts behind its ⓘ. Any other
+                    // row has no word, and no ⓘ standing alone in its place:
+                    // its facts are its tooltip.
+                    const status =
+                      statusKey === null ? undefined : (
+                        <StatusChip
+                          label={t(statusKey)}
+                          tone="warning"
+                          detail={
+                            facts.length === 0
+                              ? undefined
+                              : facts.map((fact) => (
+                                  <span key={fact} className="block select-text break-words">
+                                    {fact}
+                                  </span>
+                                ))
+                          }
+                        />
+                      );
+                    const tooltip = status === undefined ? facts : [];
+                    return (
+                      // A slot of its own, as a virtualized list's rows have:
+                      // a stacking context each, and the one with an open ⓘ
+                      // lifted over the rows after it (`data-list-slot` in
+                      // index.css), whose words would otherwise cover it.
+                      <div
+                        key={entry.path}
+                        data-list-slot=""
+                        title={tooltip.length === 0 ? undefined : tooltip.join("\n")}
+                        className="relative z-0"
+                      >
+                        <ToolRow
+                          avatar={<ProgramAvatar facts={tooltip.join(t("common.listSeparator"))} />}
+                          name={name}
+                          // Home abbreviated as Rust sent it (`UnknownEntry.path`).
+                          description={entry.path}
+                          selectableDescription
+                          descriptionNote={app === null || !roomForNote ? undefined : t("unknown.pointsInto", { app })}
+                          version={<SizeAndDate entry={entry} language={i18n.language} status={status} />}
+                          menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
+                        />
+                      </div>
                     );
-                  const tooltip = status === undefined ? facts : [];
-                  return (
-                    // A slot of its own, as a virtualized list's rows have:
-                    // a stacking context each, and the one with an open ⓘ
-                    // lifted over the rows after it (`data-list-slot` in
-                    // index.css), whose words would otherwise cover it.
-                    <div
-                      key={entry.path}
-                      data-list-slot=""
-                      title={tooltip.length === 0 ? undefined : tooltip.join("\n")}
-                      className="relative z-0"
-                    >
-                      <ToolRow
-                        avatar={<ProgramAvatar facts={tooltip.join(t("common.listSeparator"))} />}
-                        name={name}
-                        // Home abbreviated as Rust sent it (`UnknownEntry.path`).
-                        description={entry.path}
-                        selectableDescription
-                        descriptionNote={app === null || !roomForNote ? undefined : t("unknown.pointsInto", { app })}
-                        version={<SizeAndDate entry={entry} language={i18n.language} status={status} />}
-                        menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
-                      />
-                    </div>
-                  );
-                })}
+                  })}
+                </StatusColumnProvider>
               </ListWidthProvider>
             </div>
           )}

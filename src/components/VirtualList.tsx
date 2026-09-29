@@ -43,6 +43,26 @@ export function ListWidthProvider({ value, children }: { value: number | null; c
   );
 }
 
+/**
+ * Whether the rows of the list keep a status word's column (`ToolRow`):
+ * where any row the list shows has a word, every row keeps the column,
+ * empty or not, so the words line up down the list; where none has, the
+ * rows give its 120 to their names and descriptions. Said by the list's
+ * page, which knows every row's word -- a virtualized list draws only
+ * the rows in sight. A list that says nothing keeps the column.
+ */
+const StatusColumnContext = createContext(true);
+
+/** Whether the rows under it keep a status word's column (`StatusColumnContext`). */
+export function StatusColumnProvider({ value, children }: { value: boolean; children: ReactNode }) {
+  return <StatusColumnContext.Provider value={value}>{children}</StatusColumnContext.Provider>;
+}
+
+/** Whether the list this is drawn in keeps a status word's column (`StatusColumnContext`). */
+export function useStatusColumn(): boolean {
+  return useContext(StatusColumnContext);
+}
+
 /** The width of the list this is drawn in (`ListWidthContext`). */
 export function useListWidth(): number | null {
   return useContext(ListWidthContext);
@@ -166,6 +186,12 @@ export interface VirtualListProps<T> {
    * the rows sliding under a still scrollbar.
    */
   anchorKey?: string | null;
+  /**
+   * Whether any row among `items` has a status word, and so whether the
+   * rows keep that word's column (`StatusColumnContext`): kept, unless
+   * said.
+   */
+  statusColumn?: boolean;
 }
 
 /** What a list's owner can ask of it (`handleRef`). */
@@ -228,6 +254,7 @@ export function VirtualList<T>({
   onKeyboardMove,
   handleRef,
   anchorKey = null,
+  statusColumn = true,
 }: VirtualListProps<T>) {
   const listRef = useRef<HTMLDivElement>(null);
   // Changes with `items`, which is what tells the virtualizer to lay the
@@ -355,40 +382,42 @@ export function VirtualList<T>({
         empty
       ) : (
         <ListWidthProvider value={width}>
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const item = items[virtualRow.index];
-              const key = String(virtualRow.key);
-              const content = contentOf(item, key);
-              const next = items[virtualRow.index + 1];
-              const runEnd = next === undefined || (hairlineBefore !== undefined && !hairlineBefore(next));
-              return (
-                // No fixed height on the slot: each reports its real height
-                // back through `measureElement` instead.
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  data-key={key}
-                  data-list-slot=""
-                  data-run-end={runEnd ? "" : undefined}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  {keyboardRows !== undefined && keyboardRows(item) ? (
-                    <RovingRowProvider value={rovingOf(key)}>{content}</RovingRowProvider>
-                  ) : (
-                    content
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <StatusColumnProvider value={statusColumn}>
+            <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const item = items[virtualRow.index];
+                const key = String(virtualRow.key);
+                const content = contentOf(item, key);
+                const next = items[virtualRow.index + 1];
+                const runEnd = next === undefined || (hairlineBefore !== undefined && !hairlineBefore(next));
+                return (
+                  // No fixed height on the slot: each reports its real height
+                  // back through `measureElement` instead.
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    data-key={key}
+                    data-list-slot=""
+                    data-run-end={runEnd ? "" : undefined}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    {keyboardRows !== undefined && keyboardRows(item) ? (
+                      <RovingRowProvider value={rovingOf(key)}>{content}</RovingRowProvider>
+                    ) : (
+                      content
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </StatusColumnProvider>
         </ListWidthProvider>
       )}
     </div>

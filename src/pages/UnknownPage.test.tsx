@@ -220,6 +220,8 @@ describe("UnknownPage", () => {
       // path's line.
       const status = statusOf(row);
       if (status !== null) expect(status.closest("[data-version]")).not.toBeNull();
+      // Nor an empty status column's 120 on the row: the path takes its room.
+      expect(row.querySelector("[data-status-column]")).toBeNull();
       // Every ⓘ on a row is part of a word's button.
       for (const button of within(row).queryAllByRole("button")) {
         if (button.getAttribute("aria-label")?.startsWith("More actions")) continue;

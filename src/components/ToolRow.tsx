@@ -6,7 +6,7 @@ import { middleCut, textMeasurer } from "../lib/middleCut";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { RowMenuContext, type OpenMenuAt } from "./ui/Menu";
-import { useListWidth, useRowFit } from "./VirtualList";
+import { useListWidth, useRowFit, useStatusColumn } from "./VirtualList";
 import { useRovingRow } from "./rovingRows";
 
 // Which columns fit, by the list's width: its own module (./rowFit.ts), said here too.
@@ -106,7 +106,9 @@ export interface ToolRowContentProps {
    * The row's one status word (`StatusChip`), in a column of its own just
    * before the version: 120 wide, the word at its left, and there on every
    * row whether it has a word or not -- so that down a list the words
-   * start in one line and the versions end in one (spec §3.3).
+   * start in one line and the versions end in one (spec §3.3) -- in a list
+   * where any row has one (`StatusColumnContext`). A row with a word keeps
+   * the column whatever its list says, so no word is ever lost.
    */
   status?: ReactNode;
   /** The version column: "7.1 → 7.2", or a word where a version would mean nothing. */
@@ -279,8 +281,10 @@ function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion:
  * muted), then the columns on the right, 16 apart: the status word in
  * one 120 wide, the version in one at least 120 wide, the row's button in
  * one 80 wide (wider only for a label such as "Uninstall…"), the ⋯ menu
- * in one 24 wide. The status word's column is on every row, so the words
- * line up down a list; the others are drawn whenever their prop is
+ * in one 24 wide. The status word's column is on every row of a list any
+ * of whose rows has a word, so the words line up down it, and on none of
+ * a list with no word at all, whose names and descriptions take its room
+ * (`StatusColumnContext`); the others are drawn whenever their prop is
  * given, even as `null`, so rows that leave one empty still line up with
  * rows that fill it; leave the prop out to drop the column altogether.
  * As the list narrows, they give way in turn (`RowFit`).
@@ -334,6 +338,7 @@ export function ToolRow({
   // (`VirtualList`): no row observes or measures its own box to choose it,
   // and none is drawn again for a new width that fits the same.
   const fit = useRowFit();
+  const listHasStatus = useStatusColumn();
   const roving = useRovingRow();
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);
@@ -376,14 +381,15 @@ export function ToolRow({
   const hasStatus = status !== undefined && status !== null;
   // The status word's column, or -- narrower -- its place at the start of
   // the description's line; narrower still (`slim`, `tiny`), neither: the
-  // inspector says it.
-  const statusColumn = fit === "full" || fit === "compact";
+  // inspector says it. No column in a list with no word on any row.
+  const wide = fit === "full" || fit === "compact";
+  const statusColumn = wide && (listHasStatus || hasStatus);
   const statusInline = (fit === "narrow" || fit === "minimal") && hasStatus;
   const hasUpdate = newVersion !== undefined && version !== undefined && version !== null;
   // Where the version column has gone (`minimal`): an update's versions on
   // the description's line, and nothing for a row with no update; past
   // that, nothing either way.
-  const versionColumn = version !== undefined && (statusColumn || fit === "narrow");
+  const versionColumn = version !== undefined && (wide || fit === "narrow");
   const versionInline = fit === "minimal" && hasUpdate;
   const actionColumn = action !== undefined && fit !== "tiny";
   const shownVersion =
@@ -560,9 +566,9 @@ export function ToolRow({
           </div>
         </div>
         {statusColumn ? (
-          // 120 wide on every row, empty or not, the word at its left: the
-          // words start in one line down the list (wider only for a word
-          // that needs it).
+          // 120 wide on every row of a list with a word, empty or not, the
+          // word at its left: the words start in one line down the list
+          // (wider only for a word that needs it).
           <div
             data-status-column=""
             data-status={hasStatus ? "" : undefined}
