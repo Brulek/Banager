@@ -128,9 +128,14 @@ function rowOf(name: HTMLElement): HTMLElement {
   return name.closest("[data-tool-row]") as HTMLElement;
 }
 
-/** A row's status column (`ToolRow`'s `data-status`): a broken link's word, or an ⓘ; null where there is neither. */
+/** A row's status (`data-status`): a broken link's word, where its size and date would be; null elsewhere. */
 function statusOf(row: HTMLElement): HTMLElement | null {
   return row.querySelector("[data-status]");
+}
+
+/** What a row's tooltip says: the slot's `title`, a line a fact. */
+function tooltipOf(row: HTMLElement): string[] {
+  return (row.parentElement?.getAttribute("title") ?? "").split("\n").filter((line) => line !== "");
 }
 
 /** A row's size and date: the column where a tool's version goes. */
@@ -168,16 +173,19 @@ describe("UnknownPage", () => {
     const row = rowOf(await findByText("standalone-tool"));
     const avatar = row.querySelector('[aria-hidden="true"]') as HTMLElement;
     expect(avatar.className).toContain("bg-neutral-avatar");
+    // systemGray in the light; in the dark the darker #6E6E73, so the
+    // tiles are not the brightest thing on the page.
+    expect(avatar.className.split(" ")).toContain("dark:bg-[#6E6E73]");
     expect(avatar.className).toContain("h-8");
     expect(avatar.querySelector("svg")).not.toBeNull();
     expect(avatar.textContent).toBe("");
   });
 
-  it("keeps what a broken link pointed at and the app a program belongs to behind an ⓘ", async () => {
+  it("keeps what a broken link pointed at behind its word's ⓘ, and what else there is to say of a row in its tooltip", async () => {
     const { findByText, getByText, queryByText } = renderWithProviders(<UnknownPage />);
 
     const script = rowOf(await findByText("old-script"));
-    // One line a row, by default: the explanations are behind the chip.
+    // One line a row, by default: the explanations are behind the word.
     expect(
       queryByText("Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone"),
     ).toBeNull();
@@ -188,13 +196,35 @@ describe("UnknownPage", () => {
       ),
     ).toBeInTheDocument();
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
+    // The word has them; the row's tooltip does not say them again.
+    expect(tooltipOf(script)).toEqual([]);
 
-    // A link that works has no word: an ⓘ alone, named after the row.
+    // A link that works has no word, and no ⓘ standing alone in a word's
+    // place: its facts are the row's tooltip, and said to a screen reader.
     const helper = rowOf(getByText("helper-cli"));
-    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
-    expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
+    expect(within(helper).queryByRole("button", { name: "Details: helper-cli" })).toBeNull();
+    expect(helper.querySelector("[data-status]")).toBeNull();
     // Only what can be confirmed: the file is not the user's.
-    expect(within(helper).getByText("Owned by the system or another account")).toBeInTheDocument();
+    expect(tooltipOf(helper)).toEqual(["Part of Helper", "Owned by the system or another account"]);
+    expect(within(helper).getByText("Part of Helper, Owned by the system or another account")).toHaveClass("sr-only");
+  });
+
+  it("starts every row's name and path at one x: no status column on any row, the ⓘ only after a broken link's word", async () => {
+    const { findByText, container } = renderWithProviders(<UnknownPage />);
+    await findByText("old-script");
+
+    for (const row of container.querySelectorAll<HTMLElement>("[data-tool-row]")) {
+      // The status, where there is one, is in the size-and-date column at
+      // the row's right -- never before the name's column, nor on the
+      // path's line.
+      const status = statusOf(row);
+      if (status !== null) expect(status.closest("[data-version]")).not.toBeNull();
+      // Every ⓘ on a row is part of a word's button.
+      for (const button of within(row).queryAllByRole("button")) {
+        if (button.getAttribute("aria-label")?.startsWith("More actions")) continue;
+        expect(button.textContent).not.toBe("");
+      }
+    }
   });
 
   it("puts each row in a slot of its own, marked open while its ⓘ is, so the rows after it cannot cover it", async () => {
@@ -242,33 +272,30 @@ describe("UnknownPage", () => {
       expect(size.className.split(" ")).toEqual(expect.arrayContaining(["w-18", "truncate"]));
       expect(date.className.split(" ")).toEqual(expect.arrayContaining(["w-26", "ml-4", "truncate"]));
     }
-    // A broken link has no size and no date; its columns keep their room.
+    // A broken link has no size and no date: its word stands in their
+    // place, as wide as the two columns, at their right.
     const broken = sizeAndDateOf(rowOf(getByText("old-script")));
-    expect(broken.textContent).toBe("");
-    expect(broken.querySelector("[data-size]")).not.toBeNull();
-    expect(broken.querySelector("[data-date]")).not.toBeNull();
+    expect(broken.textContent).toBe("Broken link");
+    expect(broken.querySelector("[data-size]")).toBeNull();
+    const place = broken.querySelector("[data-status]") as HTMLElement;
+    expect(place.className.split(" ")).toEqual(expect.arrayContaining(["flex", "w-48", "justify-end"]));
   });
 
   it("shows where a link leads only with technical details on", async () => {
     const hidden = renderWithProviders(<UnknownPage />);
     const hiddenRow = rowOf(await hidden.findByText("helper-cli"));
-    fireEvent.click(within(hiddenRow).getByRole("button", { name: "Details: helper-cli" }));
-    expect(
-      within(hiddenRow).queryByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
-    ).not.toBeInTheDocument();
+    expect(tooltipOf(hiddenRow)).not.toContain("Links to /Applications/Helper.app/Contents/Helpers/helper-cli");
     hidden.unmount();
 
     settings = { ...settings, show_technical_details: true };
     const shown = renderWithProviders(<UnknownPage />);
     const shownRow = rowOf(await shown.findByText("helper-cli"));
-    fireEvent.click(within(shownRow).getByRole("button", { name: "Details: helper-cli" }));
-    expect(
-      within(shownRow).getByText("Links to /Applications/Helper.app/Contents/Helpers/helper-cli"),
-    ).toBeInTheDocument();
+    expect(tooltipOf(shownRow)).toContain("Links to /Applications/Helper.app/Contents/Helpers/helper-cli");
     // A plain file resolves to itself; there is nothing to add, so it
-    // has no ⓘ.
+    // has no tooltip.
     const tool = rowOf(shown.getByText("standalone-tool"));
     expect(statusOf(tool)).toBeNull();
+    expect(tool.parentElement).not.toHaveAttribute("title");
   });
 
   it("lets its paths be selected, to be copied, and nothing else on a row", async () => {
@@ -278,18 +305,18 @@ describe("UnknownPage", () => {
     const helper = rowOf(await findByText("helper-cli"));
     const path = within(helper).getByText("/usr/local/bin/helper-cli");
     expect(path).toHaveClass("select-text");
-    // Not its name, its ⓘ, nor its size and date.
+    // Not its name, nor its size and date.
     expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toHaveClass("select-text");
 
-    // Behind its ⓘ, where it leads and whose it is.
-    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
+    // Behind a broken link's ⓘ, what it pointed at and whose part it was.
+    const script = rowOf(getByText("old-script"));
+    fireEvent.click(within(script).getByRole("button", { name: "Broken link" }));
     for (const line of [
-      "Part of Helper",
-      "Owned by the system or another account",
-      "Links to /Applications/Helper.app/Contents/Helpers/helper-cli",
+      "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
+      "Part of Removed",
     ]) {
-      expect(within(helper).getByText(line)).toHaveClass("select-text");
+      expect(within(script).getByText(line)).toHaveClass("select-text");
     }
   });
 
@@ -343,13 +370,23 @@ describe("UnknownPage", () => {
     expect(byTime.getByText("standalone-tool")).toBeInTheDocument();
   });
 
-  it("says so when nothing is unexplained, and still says where it looked", async () => {
+  it("says so when nothing is unexplained as a Mac's empty list does, and still says where it looked", async () => {
     scan = { ...baseScan, entries: [], attributed: 7 };
-    const { findByText, getByText, container } = renderWithProviders(<UnknownPage />);
+    const { findByText, getByText, queryByText, queryByRole, container } = renderWithProviders(<UnknownPage />);
 
-    expect(await findByText("No programs of unknown origin")).toBeInTheDocument();
+    const title = await findByText("No programs of unknown origin");
+    // The empty state: a ✓ in a circle, in the tertiary grey, the title
+    // 15 semibold under it, and no button.
+    const empty = title.closest("[data-empty-state]") as HTMLElement;
+    expect(empty).not.toBeNull();
+    expect(empty.querySelector("svg")?.getAttribute("class")).toContain("text-tertiary");
+    expect(title).toHaveClass("text-section");
+    expect(within(empty).queryByRole("button")).toBeNull();
+    expect(queryByRole("button", { name: /Scan/ })).toBeNull();
     expect(getByText("Looked in: ~/.local/bin, /usr/local/bin")).toBeInTheDocument();
     expect(container.querySelector("[data-tool-row]")).toBeNull();
+    // 「以下程序」 over nothing would point at nothing.
+    expect(queryByText("Couldn't determine how these programs were installed.")).toBeNull();
   });
 
   it("vouches only for what it checked when a scan that stopped early found nothing, with no check mark", async () => {
@@ -358,13 +395,20 @@ describe("UnknownPage", () => {
     expect(await stoppedEarly.findByText("No programs of unknown origin in the places checked")).toBeInTheDocument();
     expect(stoppedEarly.getByText("Stopped after 10 seconds; the rest weren't checked.")).toBeInTheDocument();
     expect(stoppedEarly.queryByText("No programs of unknown origin")).toBeNull();
-    expect(stoppedEarly.container.querySelector("svg.text-success")).toBeNull();
+    // An ⓘ in a circle, not the ✓.
+    const partial = stoppedEarly.container.querySelector("[data-empty-state]") as HTMLElement;
+    const partialSymbol = partial.querySelector("svg")?.outerHTML;
     stoppedEarly.unmount();
 
     scan = { ...baseScan, entries: [] };
     const whole = renderWithProviders(<UnknownPage />);
     expect(await whole.findByText("No programs of unknown origin")).toBeInTheDocument();
-    expect(whole.container.querySelector("svg.text-success")).not.toBeNull();
+    const wholeSymbol = whole.container.querySelector("[data-empty-state] svg")?.outerHTML;
+    expect(wholeSymbol).toBeDefined();
+    expect(partialSymbol).toBeDefined();
+    expect(partialSymbol).not.toBe(wholeSymbol);
+    // Never green: an empty list is not a success to celebrate.
+    expect(whole.container.querySelector("svg.text-success")).toBeNull();
   });
 
   it("says a scan that stopped early and found nothing vouches only for what it checked, in Chinese", async () => {
@@ -739,20 +783,27 @@ describe("in a narrow window (R9)", () => {
     vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
   });
 
-  it("moves a broken link's word to the start of its line, and leaves the app it pointed into to the ⓘ", async () => {
+  it("keeps a broken link's word where its size and date would be, every path at one x, and leaves the app to the tooltip", async () => {
     // The list as a window at its narrowest lays it out: 592 wide.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       return { width: 592, height: 400, top: 0, left: 0, right: 592, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
     });
-    const { findByText, queryByText } = renderWithProviders(<UnknownPage />);
+    const { findByText, queryByText, container } = renderWithProviders(<UnknownPage />);
 
     const script = rowOf(await findByText("old-script"));
     const word = within(script).getByRole("button", { name: "Broken link" });
     const path = within(script).getByText("~/.local/bin/old-script");
-    // On the path's line, before it: the path keeps its room.
-    expect(word.closest("[data-status]")?.parentElement).toBe(path.parentElement);
+    // Not on the path's line: in the column at the row's right.
+    expect(word.closest("[data-version]")).not.toBeNull();
+    expect(path.parentElement?.querySelector("[data-status]")).toBeNull();
+    // Every path's line holds its path first, and nothing before it.
+    for (const row of container.querySelectorAll<HTMLElement>("[data-tool-row]")) {
+      const line = row.querySelector("[title^='~'], [title^='/']")?.parentElement as HTMLElement;
+      expect(line.firstElementChild?.getAttribute("title")).toMatch(/^[~/]/);
+    }
     expect(queryByText("Points into Removed.app")).toBeNull();
     expect(queryByText("Points into Helper.app")).toBeNull();
+    expect(tooltipOf(rowOf(await findByText("helper-cli")))).toContain("Part of Helper");
     // Said at more length behind the ⓘ, as before.
     fireEvent.click(word);
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
@@ -773,9 +824,8 @@ describe("the app a link points into", () => {
     expect(note.closest("p")).toBe(path.closest("p"));
     expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect([...helper.querySelectorAll(".select-text")]).toEqual([path]);
-    // The ⓘ says it at more length, as it did.
-    fireEvent.click(within(helper).getByRole("button", { name: "Details: helper-cli" }));
-    expect(within(helper).getByText("Part of Helper")).toBeInTheDocument();
+    // The tooltip says it at more length.
+    expect(tooltipOf(helper)).toContain("Part of Helper");
 
     // A broken link's: the app it pointed into.
     expect(within(rowOf(getByText("old-script"))).getByText("Points into Removed.app")).toBeInTheDocument();
@@ -816,9 +866,8 @@ describe("the app a link points into", () => {
 
     const kit = rowOf(await findByText("kit"));
     expect(queryByText(/^Points into/)).toBeNull();
-    // Its ⓘ still says whose part it is.
-    fireEvent.click(within(kit).getByRole("button", { name: "Details: kit" }));
-    expect(within(kit).getByText("Part of Kit")).toBeInTheDocument();
+    // Its tooltip still says whose part it is.
+    expect(tooltipOf(kit)).toEqual(["Part of Kit"]);
     expect(getByText("kit-helper")).toBeInTheDocument();
   });
 

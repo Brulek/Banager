@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { rowFitFor, ToolRow } from "../components/ToolRow";
 import { ListWidthProvider, useElementWidth } from "../components/VirtualList";
 import { StatusChip } from "../components/StatusChip";
-import { InfoDetail } from "../components/InfoDetail";
 import { SourceNoticeLine } from "../components/SourceNotice";
+import { EmptyState } from "../components/EmptyState";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { elapsedText, HeaderAction, useMinuteClock, type ElapsedKeys } from "../components/PageHeader";
-import { CheckCircleIcon, SpinnerIcon, TerminalIcon } from "../components/icons";
+import { SpinnerIcon, TerminalIcon } from "../components/icons";
 import { SHOWN_FOR_MS, useCopyCommand } from "../lib/clipboard";
 import { elapsedSince, formatBytes } from "../lib/format";
 import { useRevealInFinder, useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
@@ -17,10 +17,11 @@ import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
  * The status word each kind of entry has, or null: a broken link's
  * 「链接已失效」, with an orange ⚠︎ -- something is wrong with it -- and
  * nothing for a program or a link that works, which are the normal
- * states a row does not put in words (spec §3.3, §3.4). A `Record` over
- * `EntryKind`, so a variant added to the mirror without an answer here
- * fails `tsc` -- this project's signature defect is a variant that is
- * defined, mirrored and never rendered.
+ * states a row does not put in words (spec §3.3, §3.4). The word stands
+ * where the size and the date would, which a broken link has none of
+ * (`SizeAndDate`). A `Record` over `EntryKind`, so a variant added to the
+ * mirror without an answer here fails `tsc` -- this project's signature
+ * defect is a variant that is defined, mirrored and never rendered.
  */
 const STATUS_KEYS: Record<EntryKind, string | null> = {
   File: null,
@@ -64,9 +65,20 @@ function formatDate(seconds: number, language: string): string {
  * place of one (spec §3.3), as Finder's list shows Size and Date
  * Modified. 104 holds the widest date, 「2026年10月18日」, so each column
  * lines up down the list. A broken link has neither -- there is no target
- * to measure -- and its status word says why; its columns stay, empty.
+ * to measure -- and its status word stands in their place, at their right
+ * (`status`), where it moves no row's name or path at any width: a status
+ * column of its own would go to the start of the path's line in a narrow
+ * window (`ToolRow`'s `narrow` fit), and push that one path out of line
+ * with the rest.
  */
-function SizeAndDate({ entry, language }: { entry: UnknownEntry; language: string }) {
+function SizeAndDate({ entry, language, status }: { entry: UnknownEntry; language: string; status?: ReactNode }) {
+  if (status !== undefined) {
+    return (
+      <span data-status="" className="flex w-48 justify-end">
+        {status}
+      </span>
+    );
+  }
   const size = entry.size_bytes === null ? null : formatBytes(entry.size_bytes);
   const date = entry.modified_at === null ? null : formatDate(entry.modified_at, language);
   return (
@@ -82,11 +94,13 @@ function SizeAndDate({ entry, language }: { entry: UnknownEntry; language: strin
 }
 
 /**
- * What a row's ⓘ says about a program, a line each: what a broken link
+ * What there is to say about a program, a line each: what a broken link
  * pointed at, the app it runs inside, that another account owns it, and
  * -- with technical details on -- where a link leads. A plain file
- * resolves to itself, so that last one is for links only. Empty for a
- * program of the user's own that is none of these, which has no ⓘ.
+ * resolves to itself, so that last one is for links only. Behind a broken
+ * link's word's ⓘ; for any other row, which has no word to hang an ⓘ on
+ * (spec §3.4: no bare ⓘ), its tooltip and what a screen reader says of it.
+ * Empty for a program of the user's own that is none of these.
  */
 function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[] {
   const facts: string[] = [];
@@ -103,12 +117,12 @@ function factsOf(entry: UnknownEntry, t: Translate, technical: boolean): string[
 
 /**
  * The app a link leads into, by its folder's name -- "Docker.app" -- for
- * the row's line under its name: "Points into Docker.app", which its ⓘ
- * says at more length. Only for a link, and only when the app the
- * scan found (`app_bundle`) is on the way the link leads -- where it
- * resolves, or what a broken link says -- not merely around the folder the
- * link is in. A program that is no link points nowhere: the ⓘ says whose
- * part it is.
+ * the row's line under its name: "Points into Docker.app", which its
+ * tooltip (a broken link's ⓘ) says at more length. Only for a link, and
+ * only when the app the scan found (`app_bundle`) is on the way the link
+ * leads -- where it resolves, or what a broken link says -- not merely
+ * around the folder the link is in. A program that is no link points
+ * nowhere: its tooltip says whose part it is.
  */
 function linkedApp(entry: UnknownEntry): string | null {
   if (entry.kind === "File" || entry.app_bundle === null) return null;
@@ -134,17 +148,23 @@ const SHOW_IN_FINDER_HINTS: Record<EntryKind, string | null> = {
 
 /**
  * The avatar of a program no source accounts for: a prompt, in the
- * neutral colour of the Overview's Unknown tile. Decorative, as a
- * source's is: the name is beside it.
+ * neutral colour of the Overview's Unknown tile -- systemGray, and in the
+ * dark the darker #6E6E73, so that the tiles down the list are not the
+ * brightest thing on a dark page. Decorative, as a source's is: the name
+ * is beside it. `facts`, what the row's tooltip says (`factsOf`), are said
+ * to a screen reader here, the row having no ⓘ for them.
  */
-function ProgramAvatar() {
+function ProgramAvatar({ facts }: { facts: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white"
-    >
-      <TerminalIcon size={18} />
-    </span>
+    <>
+      <span
+        aria-hidden="true"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white dark:bg-[#6E6E73]"
+      >
+        <TerminalIcon size={18} />
+      </span>
+      {facts !== "" ? <span className="sr-only">{facts}</span> : null}
+    </>
   );
 }
 
@@ -198,16 +218,19 @@ export function ScanAgain() {
  * The command-line programs on this Mac that no source accounts for, as
  * rows like every other list's (spec §3.3): a neutral avatar, the name
  * with the path it was found at -- and, after it, the app a link points
- * into -- a status word only for a broken link, an ⓘ where there is more
- * to say, its size and its date in two columns where a tool's version
- * would be, and a ⋯ menu to show it in Finder or copy its path. One line
- * over the list says what these are; under it, quieter, the folders it
- * looked in and how many it recognised. Scan again is in the page header
- * (`ScanAgain`).
+ * into -- its size and its date in two columns where a tool's version
+ * would be, or, for a broken link, its status word there with an ⓘ; what
+ * more there is to say of any other row in its tooltip (`factsOf`); and a
+ * ⋯ menu to show it in Finder or copy its path. No row has a status
+ * column, so every name and every path starts at one x at any width. One
+ * line over the list says what these are; under it, quieter, the folders
+ * it looked in and how many it recognised. Scan again is in the page
+ * header (`ScanAgain`). With nothing to list, the empty state in the
+ * list's place (`EmptyState`).
  *
  * Its paths select (`select-text`), to be copied into Terminal or into
  * Finder's Go to Folder: each row's, the folders it looked in, and the
- * lines behind an ⓘ, among them where a link leads.
+ * lines behind a broken link's ⓘ, among them what it pointed at.
  */
 export function UnknownPage() {
   const { t, i18n } = useTranslation();
@@ -242,8 +265,8 @@ export function UnknownPage() {
   // virtualized list tells its own rows.
   const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
   const listWidth = useElementWidth(listBox);
-  // Too narrow for a path, its status word and the app a link points into
-  // on one line, the app gives way: its ⓘ says it at more length.
+  // Too narrow for a path and the app a link points into on one line, the
+  // app gives way: the row's tooltip says it at more length.
   const roomForNote = rowFitFor(listWidth) === "full" || rowFitFor(listWidth) === "compact";
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
 
@@ -301,12 +324,15 @@ export function UnknownPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      {/* One line over the list: what these are. Scan again is in the
-          page header (`ScanAgain`), where the other pages have Check
-          again. At its right, how a row's Copy path or Show in Finder
-          went, as the other pages say how a Copy command went. */}
+      {/* One line over the list: what these are -- 「以下程序」, so not
+          over a list with nothing in it. Scan again is in the page header
+          (`ScanAgain`), where the other pages have Check again. At its
+          right, how a row's Copy path or Show in Finder went, as the other
+          pages say how a Copy command went. */}
       <div className="flex shrink-0 items-baseline gap-4 px-5 pb-2">
-        <p className="min-w-0 flex-1 text-body text-muted">{t("unknown.intro")}</p>
+        <p className="min-w-0 flex-1 text-body text-muted">
+          {result !== undefined && result.entries.length === 0 ? null : t("unknown.intro")}
+        </p>
         <p role="status" className="shrink-0 text-small text-muted">
           {notice}
         </p>
@@ -335,14 +361,14 @@ export function UnknownPage() {
             </div>
           ) : null}
           {result.entries.length === 0 ? (
-            // A scan that stopped early vouches only for what it checked:
-            // no check mark over the rest.
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 pb-10 text-center">
-              {stopped === null ? <CheckCircleIcon size={44} className="text-success" /> : null}
-              <p className="text-section text-foreground">
-                {t(stopped === null ? "unknown.empty" : "unknown.emptyChecked")}
-              </p>
-            </div>
+            // Nothing unexplained, as a Mac list says it has nothing to
+            // show: a ✓ in a circle, no button. A scan that stopped early
+            // vouches only for what it checked: no check mark over the rest.
+            stopped === null ? (
+              <EmptyState symbol="check" title={t("unknown.empty")} />
+            ) : (
+              <EmptyState symbol="info" title={t("unknown.emptyChecked")} />
+            )
           ) : (
             <div ref={setListBox}>
               <ListWidthProvider value={listWidth}>
@@ -350,36 +376,46 @@ export function UnknownPage() {
                   const name = fileName(entry.path);
                   const app = linkedApp(entry);
                   const facts = factsOf(entry, t, technical);
-                  const detail =
-                    facts.length === 0
-                      ? undefined
-                      : facts.map((fact) => (
-                          <span key={fact} className="block select-text break-words">
-                            {fact}
-                          </span>
-                        ));
                   const statusKey = STATUS_KEYS[entry.kind];
+                  // A broken link's word, its facts behind its ⓘ. Any other
+                  // row has no word, and no ⓘ standing alone in its place:
+                  // its facts are its tooltip.
                   const status =
-                    statusKey !== null ? (
-                      <StatusChip label={t(statusKey)} tone="warning" detail={detail} />
-                    ) : detail !== undefined ? (
-                      <InfoDetail label={t("common.detailsLabel", { title: name })}>{detail}</InfoDetail>
-                    ) : undefined;
+                    statusKey === null ? undefined : (
+                      <StatusChip
+                        label={t(statusKey)}
+                        tone="warning"
+                        detail={
+                          facts.length === 0
+                            ? undefined
+                            : facts.map((fact) => (
+                                <span key={fact} className="block select-text break-words">
+                                  {fact}
+                                </span>
+                              ))
+                        }
+                      />
+                    );
+                  const tooltip = status === undefined ? facts : [];
                   return (
                     // A slot of its own, as a virtualized list's rows have:
                     // a stacking context each, and the one with an open ⓘ
                     // lifted over the rows after it (`data-list-slot` in
                     // index.css), whose words would otherwise cover it.
-                    <div key={entry.path} data-list-slot="" className="relative z-0">
+                    <div
+                      key={entry.path}
+                      data-list-slot=""
+                      title={tooltip.length === 0 ? undefined : tooltip.join("\n")}
+                      className="relative z-0"
+                    >
                       <ToolRow
-                        avatar={<ProgramAvatar />}
+                        avatar={<ProgramAvatar facts={tooltip.join(t("common.listSeparator"))} />}
                         name={name}
                         // Home abbreviated as Rust sent it (`UnknownEntry.path`).
                         description={entry.path}
                         selectableDescription
                         descriptionNote={app === null || !roomForNote ? undefined : t("unknown.pointsInto", { app })}
-                        status={status}
-                        version={<SizeAndDate entry={entry} language={i18n.language} />}
+                        version={<SizeAndDate entry={entry} language={i18n.language} status={status} />}
                         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
                       />
                     </div>
