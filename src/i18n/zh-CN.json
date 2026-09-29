@@ -30,7 +30,7 @@
     "copied": "已拷贝",
     "copyFailed": "没能拷贝",
     "moreActions": "{{name}} 的更多操作",
-    "canagerFaultDetail": "这是 Canager 的问题，不是你的 Mac 的问题。"
+    "canagerFaultDetail": "问题出在 Canager，不在你的 Mac。"
   },
   "header": {
     "checkedJustNow": "上次检查：刚刚",

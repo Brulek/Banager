@@ -1559,7 +1559,7 @@ describe("UninstallDialog", () => {
       "Couldn't check what this affects: Something went wrong inside Canager, so it stopped. Nothing changed.";
     await waitFor(() => expect(alert).toHaveTextContent(text));
     fireEvent.click(within(alert).getByRole("button", { name: `Details: ${text}` }));
-    expect(within(alert).getByText("This is a problem in Canager, not on your Mac.")).toBeInTheDocument();
+    expect(within(alert).getByText("The problem is in Canager, not on your Mac.")).toBeInTheDocument();
   });
 
   it("localises the same refusal when it comes back from submit, not from plan", async () => {

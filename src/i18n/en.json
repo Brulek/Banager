@@ -33,7 +33,7 @@
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
     "moreActions": "More actions for {{name}}",
-    "canagerFaultDetail": "This is a problem in Canager, not on your Mac."
+    "canagerFaultDetail": "The problem is in Canager, not on your Mac."
   },
   "header": {
     "checkedJustNow": "Checked just now",

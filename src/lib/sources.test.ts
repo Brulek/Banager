@@ -741,9 +741,9 @@ describe("planErrorDetail", () => {
     );
     expect(planErrorDetail(fakeT, '{"kind":"refused"}')).toBe("common.canagerFaultDetail");
     expect(en.planRefused.refused).toBe("Something went wrong inside Canager, so it stopped. Nothing changed.");
-    expect(en.common.canagerFaultDetail).toBe("This is a problem in Canager, not on your Mac.");
+    expect(en.common.canagerFaultDetail).toBe("The problem is in Canager, not on your Mac.");
     expect(zhCN.planRefused.refused).toBe("Canager 内部出错，已停下，没有改动。");
-    expect(zhCN.common.canagerFaultDetail).toBe("这是 Canager 的问题，不是你的 Mac 的问题。");
+    expect(zhCN.common.canagerFaultDetail).toBe("问题出在 Canager，不在你的 Mac。");
   });
 
   it("has nothing more to say about every other refusal, or about text that is not one", () => {
