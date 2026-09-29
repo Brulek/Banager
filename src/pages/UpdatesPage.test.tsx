@@ -1843,6 +1843,38 @@ describe("UpdatesPage", () => {
       expect(queryByText("glib", { selector: "[data-tool-row] p" })).toBeNull();
     });
 
+    it("is a 32pt line with a 10pt triangle and muted words, and its rows have only a name, a line, a word and a ⋯", async () => {
+      updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+      const { findByRole } = renderPage();
+
+      const toggle = await findByRole("button", { name: "1 more can't be updated here" });
+      expect(toggle.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-5", "text-body", "text-muted"]));
+      // Not the semibold heading it was.
+      expect(toggle.className).not.toContain("font-semibold");
+      const triangle = toggle.firstElementChild as SVGElement;
+      expect(triangle.getAttribute("width")).toBe("10");
+      expect(triangle.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
+      expect(triangle.getAttribute("class")).not.toContain("rotate-90");
+
+      fireEvent.click(toggle);
+      expect(triangle.getAttribute("class")).toContain("rotate-90");
+      const glib = await findRow("glib");
+      const onyx = rowOf("onyx");
+      // The row it can update: a box, a version, a button and a ⋯.
+      expect(within(onyx).getByRole("checkbox")).toBeInTheDocument();
+      expect(within(onyx).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
+      expect(within(onyx).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      // The row it can't: the word and the ⋯, and nothing else to press.
+      expect(within(glib).queryByRole("checkbox")).toBeNull();
+      expect(within(glib).queryByText(/→/)).toBeNull();
+      expect(within(glib).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+        "Pinned",
+        "More actions for glib",
+      ]);
+      // Its avatar in the same column as the rows above: a checkbox's room, empty.
+      expect(glib.querySelector(".w-4")?.childElementCount).toBe(0);
+    });
+
     it("has nothing to fold when every row can be updated", async () => {
       const { queryByRole } = renderPage();
 
@@ -4066,6 +4098,73 @@ describe("UpdatesPage", () => {
     expect(hints).toHaveLength(1);
     expect(hints[0].closest("div")?.textContent).toContain("onyx");
     expect(hints[0].closest("div")?.textContent).not.toContain("glib");
+  });
+
+  describe("the keyboard (R11)", () => {
+    it("moves between the rows with ↑ and ↓, ticks the focused one with Space, and does nothing on Enter", async () => {
+      updates = [...snapshot.updates, brewCandidate("jq"), { ...brewCandidate("wget"), blocked: "Pinned" }];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { findByRole, getByRole, queryByRole } = renderPage();
+
+      await findRow("jq");
+      // The notice's line is the list's first row, and not one the arrows
+      // stop at: the first row is the one in the Tab order.
+      await findByRole("button", { name: "Open Ollama" });
+      const [glib, jq, onyx] = ["glib", "jq", "onyx"].map(rowOf);
+      expect(glib).toHaveAttribute("tabindex", "0");
+      expect(jq).toHaveAttribute("tabindex", "-1");
+      expect(onyx).toHaveAttribute("tabindex", "-1");
+
+      act(() => glib.focus());
+      fireEvent.keyDown(glib, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(jq);
+      expect(jq).toHaveAttribute("tabindex", "0");
+      expect(glib).toHaveAttribute("tabindex", "-1");
+
+      // Space ticks the focused row, as its box would.
+      fireEvent.keyDown(jq, { key: " " });
+      expect(getByRole("checkbox", { name: "Select jq for update" })).toBeChecked();
+      expect(getByRole("button", { name: "Update Selected (1)" })).toBeEnabled();
+      expect((getByRole("checkbox", { name: SELECT_ALL }) as HTMLInputElement).indeterminate).toBe(true);
+      fireEvent.keyDown(jq, { key: " " });
+      expect(getByRole("checkbox", { name: "Select jq for update" })).not.toBeChecked();
+
+      // Enter opens nothing and starts nothing.
+      fireEvent.keyDown(jq, { key: "Enter" });
+      expect(queryByRole("dialog")).toBeNull();
+      expect(calls("plan_operation")).toEqual([]);
+
+      // On to the last row it can update, then the line that discloses
+      // the rest, which Space opens as the button it is.
+      fireEvent.keyDown(jq, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(onyx);
+      fireEvent.keyDown(onyx, { key: "ArrowDown" });
+      const disclosure = getByRole("button", { name: "1 more can't be updated here" });
+      expect(document.activeElement).toBe(disclosure);
+      fireEvent.click(disclosure);
+      const wget = await findRow("wget");
+      fireEvent.keyDown(disclosure, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(wget);
+      // A row with no checkbox: Space does nothing to the selection.
+      fireEvent.keyDown(wget, { key: " " });
+      expect(useUiStore.getState().selectedUpdates).toEqual([]);
+
+      // And back up.
+      fireEvent.keyDown(wget, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(disclosure);
+      fireEvent.keyDown(disclosure, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(onyx);
+    });
+
+    it("leaves ↑ and ↓ to an open ⋯ menu", async () => {
+      renderPage();
+      const glib = await findRow("glib");
+      const menu = openMenu(glib);
+      const [first, second] = within(menu).getAllByRole("menuitem");
+      expect(document.activeElement).toBe(first);
+      fireEvent.keyDown(first, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(second);
+    });
   });
 
   describe("the list header's box", () => {

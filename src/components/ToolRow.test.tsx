@@ -9,6 +9,9 @@ import { Menu } from "./ui/Menu";
 import { ListWidthProvider } from "./VirtualList";
 import { RovingRowProvider } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** The classes a class list holds with no state prefix: how it looks at rest. */
 function atRest(className: string): string[] {
@@ -462,6 +465,27 @@ describe("ToolRow", () => {
     // Space on its own checkbox is the checkbox's, not the row's.
     fireEvent.keyDown(getByRole("checkbox"), { key: " " });
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no hairline under a list's last row, nor under the last of a run a line of another kind follows", () => {
+    // index.css: the rule that hides it, as one rule the browser keeps --
+    // a `:has()` inside a `:has()` would have it dropped whole.
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf-8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = /([^{}]*data-row-separator[^{}]*)\{\s*display:\s*none;?\s*\}/.exec(css);
+    expect(rule).not.toBeNull();
+    const selectors = (rule?.[1] ?? "").split(",").map((selector) => selector.trim());
+    expect(selectors).toEqual([
+      "[data-list-slot]:last-child [data-row-separator]",
+      "[data-list-slot]:has(+ [data-list-slot] > :not([data-tool-row])) [data-row-separator]",
+    ]);
+    for (const selector of selectors) expect(selector).not.toMatch(/:has\([^)]*:has\(/);
+    // A row is its slot's first child, which is what the rule reads.
+    const { container } = renderWithProviders(
+      <div data-list-slot="">
+        <ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="C library" />
+      </div>,
+    );
+    expect((container.querySelector("[data-list-slot]") as HTMLElement).firstElementChild).toHaveAttribute("data-tool-row");
   });
 
   it("takes no part in a list without arrow keys: not focusable itself", () => {

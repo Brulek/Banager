@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { PageHeader } from "../PageHeader";
 import { renderWithProviders } from "../../test/setup";
-import { Menu, type MenuItem } from "./Menu";
+import { createRef } from "react";
+import { act } from "@testing-library/react";
+import { Menu, RowMenuContext, type MenuItem, type OpenMenuAt } from "./Menu";
 
 function items(overrides: Partial<Record<string, Partial<MenuItem>>> = {}): MenuItem[] {
   return [
@@ -150,5 +152,39 @@ describe("Menu", () => {
     rerender(page(false));
 
     expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it("is always there on a row, and quiet: 24 wide, the tertiary grey, no fill", () => {
+    const { button } = renderMenu();
+    expect(button.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "w-6", "text-tertiary"]));
+    expect(button.className).not.toMatch(/(^|\s)(hover:)?bg-/);
+    expect(button.className).toContain("aria-expanded:text-muted");
+  });
+
+  it("opens at a point for its row, and turns up and leftwards where the window has no room", () => {
+    const opener = createRef<OpenMenuAt | null>() as { current: OpenMenuAt | null };
+    const { getByRole } = render(
+      <RowMenuContext.Provider value={opener}>
+        <Menu label="More actions for glib" items={items()} />
+      </RowMenuContext.Provider>,
+    );
+    const button = getByRole("button", { name: "More actions for glib" });
+    const wrapper = button.parentElement as HTMLElement;
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(900, 700, 24, 24));
+    // The menu's own size, as a browser would lay it out.
+    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(90);
+    const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(200);
+    try {
+      expect(opener.current).not.toBeNull();
+      // Near the window's bottom-right corner (jsdom's window is 1024×768).
+      act(() => opener.current?.(950, 720));
+      const menu = getByRole("menu");
+      // Its bottom-right corner at the point instead: 90 up, 200 left.
+      expect(menu.style.left).toBe(`${950 - 900 - 200}px`);
+      expect(menu.style.top).toBe(`${720 - 700 - 90}px`);
+    } finally {
+      height.mockRestore();
+      width.mockRestore();
+    }
   });
 });
