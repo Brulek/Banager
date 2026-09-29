@@ -390,9 +390,10 @@ describe("the built-in pack", () => {
 
   it("gives the npm packages of projects Simple Icons draws their project's own logo, not npm's (round 3)", () => {
     // Each checked against its npm registry entry: the repository is the
-    // project's own (typescript is microsoft/TypeScript, bun oven-sh/bun,
-    // meteor the Meteor team's installer …). Framework CLIs are "maker", as
-    // @angular/cli's Angular is.
+    // project's own (typescript is microsoft/TypeScript, bun oven-sh/bun …).
+    // Framework CLIs are "maker", as @angular/cli's Angular is, and so is
+    // meteor, the Meteor team's installer (it has no repository; its
+    // maintainers are the team's accounts), not the framework itself.
     const added: Record<string, string> = {
       "npm:typescript": "si-typescript",
       "npm:vite": "si-vite",

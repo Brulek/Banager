@@ -5303,7 +5303,7 @@
     },
     "npm:meteor": {
       "icon": "si:meteor",
-      "relation": "same"
+      "relation": "maker"
     },
     "npm:mint": {
       "icon": "si:mintlify",
