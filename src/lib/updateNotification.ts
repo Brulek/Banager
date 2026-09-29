@@ -1,5 +1,5 @@
 /**
- * The page's part in the update notification, Settings' 「有可更新时通知我」
+ * The page's part in the update notification, Settings' 「有更新时通知我」
  * (src-tauri/src/notify.rs): it tells Rust, after each snapshot, which
  * updates Update all would take, and Rust decides whether a notification
  * goes out; and it opens the Updates page when Rust has brought the window

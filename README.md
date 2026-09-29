@@ -10,7 +10,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 1077 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1365
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1366
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -307,7 +307,7 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1077 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1365 个前端测试，但还没有可下载的版本，v0.1 正在
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1366 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -373,7 +373,7 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 所有来源都失败的那次每天检查——Homebrew 的索引没能更新也算失败——不算数：15 分钟后再查，
 之后每连续失败一次，等的时间就翻一倍（30、60、120、240 分钟），最长六小时。你自己检查一次，
 或者某次每天检查不是所有来源都失败，就算数，等待也从头算起（见 `docs/what-we-run.md` 的“The daily check”一节）。
-再打开“每天自动检查”下面的“有可更新时通知我”，
+再打开“每天自动检查”下面的“有更新时通知我”，
 每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Canager 时，会发一条通知，说有几个
 工具可更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了

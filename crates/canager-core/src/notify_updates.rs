@@ -1,4 +1,4 @@
-//! Settings → Updates' 「有可更新时通知我」 (`Settings::notify_updates`),
+//! Settings → Updates' 「有更新时通知我」 (`Settings::notify_updates`),
 //! under the daily check: one notification after a round of the daily
 //! check, when the updates the Updates page offers to start include one
 //! the user has not been told about. What is decided here is pure -- what
@@ -101,7 +101,7 @@ pub enum Notice {
     Post { count: usize },
 }
 
-/// Whether notifications are on: 「有可更新时通知我」, and the daily check
+/// Whether notifications are on: 「有更新时通知我」, and the daily check
 /// it sits under. The Settings page shows the first off while the second
 /// is off (src/pages/SettingsPage.tsx), whatever settings.json holds, so
 /// both have to be.

@@ -72,7 +72,7 @@ pub struct Settings {
     /// instead of `load()` falling back to `Settings::default()`.
     #[serde(default)]
     pub auto_check: bool,
-    /// Settings → Updates' 「有可更新时通知我」, under the daily check: the
+    /// Settings → Updates' 「有更新时通知我」, under the daily check: the
     /// Settings page offers it only while `auto_check` is on, and turning
     /// the daily check off turns this off with it. Read, with `auto_check`,
     /// each time the page reports the updates it offers

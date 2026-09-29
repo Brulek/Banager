@@ -444,7 +444,7 @@ describe("sourceNoticesFor", () => {
     // link is left" was untrue. The title says what holds for every
     // launcher-only row: the program files are gone.
     expect(en.sourceNotice.launcherOnly.title).toBe("{{source}}'s program files are missing");
-    expect(zhCN.sourceNotice.launcherOnly.title).toBe("{{source}}的程序文件不见了");
+    expect(zhCN.sourceNotice.launcherOnly.title).toBe("找不到{{source}}的程序文件");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.launcherOnly.title).not.toMatch(/only|只剩/i);
     }

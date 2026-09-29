@@ -213,7 +213,7 @@ export function reportUpdateSet(round: number, updates: UpdatePair[]): Promise<v
 }
 
 /**
- * Asks for permission to post notifications, as Settings' 「有可更新时通知我」
+ * Asks for permission to post notifications, as Settings' 「有更新时通知我」
  * is turned on (`request_notification_permission` in
  * src-tauri/src/notify.rs): true when it is granted.
  */

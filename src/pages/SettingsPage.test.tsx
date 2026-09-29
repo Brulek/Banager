@@ -722,8 +722,12 @@ describe("SettingsPage", () => {
     // polish-3 copy table's 「不会自动安装」, which claims more than that.
     expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
     expect(zhCN.settings.autoCheck.description).toBe("Canager运行时每天检查一次更新，查到的更新不会自动安装。");
-    expect(zhCN.settings.notifyUpdates.label).toBe("有可更新时通知我");
+    expect(zhCN.settings.notifyUpdates.label).toBe("有更新时通知我");
     expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Canager发送通知。");
+  });
+
+  it("says whose the logos are in the icon credits in few words, in Chinese as the review asked", () => {
+    expect(zhCN.settings.iconCredits.owners).toBe("各标志归其权利人所有，仅用于识别工具。");
   });
 
   it("offers the language as a popup button: the chosen one's name, then ⌃⌄ in a grey capsule, no border", async () => {
@@ -955,7 +959,7 @@ describe("SettingsPage", () => {
     try {
       renderWithProviders(<SettingsPage />);
 
-      const notify = await screen.findByRole("switch", { name: "有可更新时通知我" });
+      const notify = await screen.findByRole("switch", { name: "有更新时通知我" });
       expect(notify).toBeDisabled();
       expect(notify).toHaveAccessibleDescription("请先打开上方的“每天自动检查”。");
     } finally {

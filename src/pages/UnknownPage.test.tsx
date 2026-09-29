@@ -347,7 +347,7 @@ describe("UnknownPage", () => {
       expect(queryByText("链接")).toBeNull();
       expect(getByText("链接已失效")).toBeInTheDocument();
       expect(getByText("另有4个程序已确定来源，未在这里列出。")).toBeInTheDocument();
-      expect(getByText("无法确定以下程序是用什么安装的。")).toBeInTheDocument();
+      expect(getByText("无法确定以下程序的安装来源。")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

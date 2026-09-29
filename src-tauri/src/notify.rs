@@ -1,4 +1,4 @@
-//! The update notification, Settings → Updates' 「有可更新时通知我」
+//! The update notification, Settings → Updates' 「有更新时通知我」
 //! (`Settings::notify_updates`, off by default, and on only with the daily
 //! check it sits under). After each snapshot the page reports the rows its
 //! Update all would take, with the round the snapshot came from
@@ -261,7 +261,7 @@ pub(crate) fn open_updates<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Asks for permission to post notifications, as the Settings page turns
-/// 「有可更新时通知我」 on: yes when tauri-plugin-notification's
+/// 「有更新时通知我」 on: yes when tauri-plugin-notification's
 /// `request_permission` answers `Granted`, and the page turns the switch
 /// back off otherwise. On a Mac the plugin answers `Granted` without
 /// asking macOS; whether macOS shows what Canager posts is then up to

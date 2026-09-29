@@ -133,7 +133,7 @@ function NoEntries({ text }: { text: string }) {
 /**
  * Settings, a grouped form as System Settings' own (spec §3.7), in five
  * groups: 「通用」 -- the language, and whether to show technical details
- * -- 「更新」 -- the daily check, 「有可更新时通知我」 under it, and
+ * -- 「更新」 -- the daily check, 「有更新时通知我」 under it, and
  * whether Homebrew's self-updating apps are listed -- then the two kinds
  * of hidden update, 「已跳过的版本」 and 「不再提醒的工具」, each entry
  * with the button that takes it back, where the Overview's count of
@@ -149,7 +149,7 @@ export function SettingsPage() {
   const { data: snapshot } = useSnapshot();
   const [draft, setDraft] = useState<Settings | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
-  // 「有可更新时通知我」 while the permission it needs is being asked for
+  // 「有更新时通知我」 while the permission it needs is being asked for
   // (`turnNotifyOn`), and whether it was refused the last time it was.
   const [askingToNotify, setAskingToNotify] = useState(false);
   const [notifyRefused, setNotifyRefused] = useState(false);
@@ -218,7 +218,7 @@ export function SettingsPage() {
     });
   };
 
-  // 「有可更新时通知我」 turned on: permission to post is asked for first,
+  // 「有更新时通知我」 turned on: permission to post is asked for first,
   // the switch on and still meanwhile, and the setting saved on only once
   // it is granted -- over what the page holds by then, and only while the
   // daily check is still on. Refused, or the asking itself failed, the

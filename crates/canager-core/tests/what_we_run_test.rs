@@ -866,7 +866,7 @@ fn test_what_we_run_names_the_notification_plugins_permissions_and_says_the_swit
         "the `## The daily check` section of docs/what-we-run.md must name exactly the notification plugin's permissions src-tauri/capabilities/default.json gives the window"
     );
     assert!(
-        folded.contains("\"Notify me when there are updates\" (「有可更新时通知我」), off by default too (`Settings::notify_updates`)"),
+        folded.contains("\"Notify me when there are updates\" (「有更新时通知我」), off by default too (`Settings::notify_updates`)"),
         "the `## The daily check` section of docs/what-we-run.md does not say the notification's switch is off by default"
     );
 }

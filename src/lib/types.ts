@@ -468,7 +468,7 @@ export interface Settings {
    */
   auto_check: boolean;
   /**
-   * 「有可更新时通知我」 in Settings, which offers it only while
+   * 「有更新时通知我」 in Settings, which offers it only while
    * `auto_check` is on and turns it off with it. Off by default.
    */
   notify_updates: boolean;

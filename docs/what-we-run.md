@@ -315,7 +315,7 @@ and installs none of the updates it finds: every write command runs only
 after a preview the user confirmed.
 
 **The notification.** Under the switch is another, "Notify me when there
-are updates" (「有可更新时通知我」), off by default too
+are updates" (「有更新时通知我」), off by default too
 (`Settings::notify_updates`), which Settings offers only while the daily
 check is on and turns off with it. Turning it on asks for permission to
 post first (`request_notification_permission` in
