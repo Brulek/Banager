@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import {
@@ -38,6 +37,7 @@ import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
+import { VirtualList } from "../components/VirtualList";
 import {
   blockedDetail,
   cannotCheckDetail,
@@ -104,6 +104,13 @@ function listItemKey(item: ListItem): string {
     case "row":
       return artifactKeyId(item.artifact.key);
   }
+}
+
+/** A slot's first guess at its height. */
+function estimateSize(item: ListItem): number {
+  if (item.type === "heading") return HEADING_ESTIMATE;
+  if (item.type === "fold") return FOLD_ESTIMATE;
+  return ROW_ESTIMATE;
 }
 
 /**
@@ -181,7 +188,6 @@ export function InstalledPage() {
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
   const translatedDescription = useTranslatedDescription();
-  const listRef = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const searchFocusRequested = useUiStore((s) => s.searchFocusRequested);
   const searchFocused = useUiStore((s) => s.searchFocused);
@@ -417,19 +423,6 @@ export function InstalledPage() {
     [instancesInView, labelOf, countByInstance],
   );
   const noticeFold = useNoticeFold(notices.length);
-
-  const getItemKey = useCallback((index: number) => listItemKey(items[index]), [items]);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => listRef.current,
-    estimateSize: (index) => {
-      const item = items[index];
-      if (item?.type === "heading") return HEADING_ESTIMATE;
-      if (item?.type === "fold") return FOLD_ESTIMATE;
-      return ROW_ESTIMATE;
-    },
-    getItemKey,
-  });
 
   // The menu bar's Search (⌘F, `searchInstalled`): the box takes the
   // focus as soon as it is on screen, its text selected to be typed over,
@@ -1012,70 +1005,51 @@ export function InstalledPage() {
       ) : null}
       {/* Virtualized: a Mac with Homebrew's components unfolded lists
           hundreds of rows. */}
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        {items.length === 0 ? (
+      <VirtualList
+        items={items}
+        itemKey={listItemKey}
+        estimateSize={estimateSize}
+        renderItem={(item) =>
+          item.type === "heading" ? (
+            <h2 className="flex items-center gap-2 px-3 pb-1.5 pt-4 text-body font-semibold text-foreground">
+              <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
+              {item.label}{" "}
+              <span className="font-normal tabular-nums text-muted">{item.count}</span>
+            </h2>
+          ) : item.type === "fold" ? (
+            <div className="pt-1">
+              <button
+                type="button"
+                aria-expanded={item.expanded}
+                onClick={() => toggleDependencies(item.instance.id)}
+                className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <ChevronIcon
+                  size={14}
+                  className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
+                />
+                {t(item.expanded ? "installed.hideDependencies" : "installed.showDependencies", {
+                  count: item.count,
+                })}{" "}
+                {mixed ? (
+                  <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted">
+                    {item.label}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+          ) : (
+            toolRow(item.artifact, item.instance, item.label)
+          )
+        }
+        empty={
           <p className="px-3 py-10 text-center text-body text-muted">
             {needle !== ""
               ? t("installed.noMatches", { query: query.trim() })
               : t("emptyStates.nothingInstalled.title")}
           </p>
-        ) : (
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const item = items[virtualRow.index];
-              return (
-                // No fixed height on the slot: each reports its real
-                // height back through `measureElement` instead.
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  data-list-slot=""
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  {item.type === "heading" ? (
-                    <h2 className="flex items-center gap-2 px-3 pb-1.5 pt-4 text-body font-semibold text-foreground">
-                      <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
-                      {item.label}{" "}
-                      <span className="font-normal tabular-nums text-muted">{item.count}</span>
-                    </h2>
-                  ) : item.type === "fold" ? (
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        aria-expanded={item.expanded}
-                        onClick={() => toggleDependencies(item.instance.id)}
-                        className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
-                      >
-                        <ChevronIcon
-                          size={14}
-                          className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
-                        />
-                        {t(item.expanded ? "installed.hideDependencies" : "installed.showDependencies", {
-                          count: item.count,
-                        })}{" "}
-                        {mixed ? (
-                          <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted">
-                            {item.label}
-                          </span>
-                        ) : null}
-                      </button>
-                    </div>
-                  ) : (
-                    toolRow(item.artifact, item.instance, item.label)
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+        }
+      />
       {uninstallTarget ? (
         <UninstallDialog
           open

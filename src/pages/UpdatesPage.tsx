@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { useUiStore, artifactKeyId } from "../store/ui";
 import {
@@ -24,6 +23,7 @@ import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
+import { VirtualList } from "../components/VirtualList";
 import {
   holdsRow,
   isRetryable,
@@ -110,6 +110,24 @@ function listItemKey(item: ListItem): string {
   }
 }
 
+/** A slot's first guess at its height. */
+function estimateSize(item: ListItem): number {
+  if (item.type === "justUpdated") return JUST_UPDATED_ESTIMATE + item.count * JUST_UPDATED_LINE_ESTIMATE;
+  if (item.type === "section") return SECTION_ESTIMATE;
+  if (item.type === "summary") return SUMMARY_ESTIMATE;
+  return ROW_ESTIMATE;
+}
+
+/**
+ * Whether a slot, once drawn, can be shown again as it was while the page
+ * has nothing new to show (`VirtualList`'s `reusable`): all but "Just
+ * updated", which reads the clock as it is drawn -- a time today, a date
+ * on any other day (`finishedText`).
+ */
+function reusable(item: ListItem): boolean {
+  return item.type !== "justUpdated";
+}
+
 /**
  * Whether each note says that typing the tool's name in Terminal may not
  * run this instance's copy: this copy is not on the PATH Canager sees, so
@@ -154,7 +172,6 @@ export function UpdatesPage() {
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
   const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
 
-  const listRef = useRef<HTMLDivElement>(null);
   // "Can't update here (N)": folded until pressed.
   const [showCantUpdate, setShowCantUpdate] = useState(false);
   // What the last "Copy command" did, said for a moment in the header.
@@ -591,25 +608,6 @@ export function UpdatesPage() {
     return items;
   };
 
-  // Above every early return: hooks cannot be called conditionally, and
-  // the returns below are reached before the list is drawn.
-  //
-  // `getItemKey` changes with `items`, which is what tells the virtualizer
-  // to lay the list out again from its measured heights under the new keys.
-  const getItemKey = useCallback((index: number) => listItemKey(items[index]), [items]);
-  const rowVirtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => listRef.current,
-    estimateSize: (index) => {
-      const item = items[index];
-      if (item?.type === "justUpdated") return JUST_UPDATED_ESTIMATE + item.count * JUST_UPDATED_LINE_ESTIMATE;
-      if (item?.type === "section") return SECTION_ESTIMATE;
-      if (item?.type === "summary") return SUMMARY_ESTIMATE;
-      return ROW_ESTIMATE;
-    },
-    getItemKey,
-  });
-
   if (isLoading) {
     return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
   }
@@ -885,60 +883,44 @@ export function UpdatesPage() {
           into a list as long as everything it has installed -- and it
           would stall exactly when the user is already confused about why
           nothing could be checked. */}
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const item = items[virtualRow.index];
-            return (
-              // No fixed height on the slot: each reports its real height
-              // back through `measureElement` instead.
-              <div
-                // `listItemKey`, through the virtualizer: the key its
-                // measured height is filed under.
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                data-list-slot=""
-                ref={rowVirtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
+      <VirtualList
+        items={items}
+        itemKey={listItemKey}
+        estimateSize={estimateSize}
+        reusable={reusable}
+        renderItem={(item) =>
+          item.type === "justUpdated" ? (
+            // Drawn anew each time the list is (`reusable`): it reads the clock.
+            <div className="pb-3">
+              <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
+            </div>
+          ) : item.type === "section" ? (
+            <div className="pt-4">
+              <button
+                type="button"
+                aria-expanded={item.expanded}
+                onClick={() => setShowCantUpdate((shown) => !shown)}
+                className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body font-semibold text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
               >
-                {item.type === "justUpdated" ? (
-                  <div className="pb-3">{justUpdatedSection}</div>
-                ) : item.type === "section" ? (
-                  <div className="pt-4">
-                    <button
-                      type="button"
-                      aria-expanded={item.expanded}
-                      onClick={() => setShowCantUpdate((shown) => !shown)}
-                      className="flex w-full items-center gap-1.5 rounded-button px-3 py-2 text-left text-body font-semibold text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      <ChevronIcon
-                        size={14}
-                        className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
-                      />
-                      {t("updates.cantUpdateHere", { number: item.count })}
-                    </button>
-                  </div>
-                ) : item.type === "summary" ? (
-                  <p className="px-3 pb-2 text-small text-muted">
-                    {t("updates.cannotCheckSummary", {
-                      count: item.count,
-                      setting: t("settings.showTechnicalDetails.label"),
-                    })}
-                  </p>
-                ) : (
-                  updateRow(item.candidate)
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                <ChevronIcon
+                  size={14}
+                  className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
+                />
+                {t("updates.cantUpdateHere", { number: item.count })}
+              </button>
+            </div>
+          ) : item.type === "summary" ? (
+            <p className="px-3 pb-2 text-small text-muted">
+              {t("updates.cannotCheckSummary", {
+                count: item.count,
+                setting: t("settings.showTechnicalDetails.label"),
+              })}
+            </p>
+          ) : (
+            updateRow(item.candidate)
+          )
+        }
+      />
       <UpdateConfirmDialog confirm={confirm} />
     </div>
   );
