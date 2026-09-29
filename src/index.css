@@ -129,15 +129,6 @@
   --color-source-grok: #2b2b2b;
   --color-source-agy: #6b5bff;
 
-  /* A drawer (`Drawer`) comes in from the right, once, when it opens. */
-  --animate-drawer-in: drawer-in 180ms ease-out;
-  @keyframes drawer-in {
-    from {
-      transform: translateX(24px);
-      opacity: 0;
-    }
-  }
-
   /* A confirmation sheet (`Dialog`) settles into place as it opens, over a
      page that dims in under it. `transform`, not `translate`: the sheet's
      own centring is a `translate`, which this leaves alone. */
