@@ -59,6 +59,10 @@ describe("Switch", () => {
     // slightest shadow, so it reads on the light track.
     expect(knob.className).not.toMatch(/shadow-(sm|md|lg)/);
     expect(knob.className).toContain("shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_1px_1.5px_rgb(0_0_0/0.18)]");
+    // The knob's colour is the token's -- white, a light grey in dark mode
+    // (src/test/darkTheme.test.ts) -- never a plain white of its own.
+    expect(knobClasses).toContain("bg-switch-knob");
+    expect(knobClasses).not.toContain("bg-white");
   });
 
   it("is the switch-off grey while off and the accent while on", () => {

@@ -42,6 +42,16 @@ function rule(css: string, selector: string): Record<string, string> {
   );
 }
 
+/** A variable's value in the theme Tailwind emits: light mode's. */
+function lightTheme(css: string, name: string): string {
+  const start = css.indexOf("@layer theme { :root, :host {");
+  if (start === -1) throw new Error("no theme");
+  const theme = css.slice(start, css.indexOf("@layer base", start));
+  const match = new RegExp(`[{;] ${name}: ([^;{}]+);`).exec(theme);
+  if (match === null) throw new Error(`the theme has no ${name}`);
+  return match[1].trim();
+}
+
 /** The declarations index.css gives `:root` in dark mode. */
 function darkRoot(css: string): Record<string, string> {
   const start = css.indexOf("@media (prefers-color-scheme: dark) { :root {");
@@ -52,7 +62,7 @@ function darkRoot(css: string): Record<string, string> {
 describe("the dark theme, as built", () => {
   let css = "";
   beforeAll(async () => {
-    css = await build(["shadow-dialog", "shadow-menu", "bg-surface", "bg-popover"]);
+    css = await build(["shadow-dialog", "shadow-menu", "bg-surface", "bg-popover", "bg-switch-off", "bg-switch-knob"]);
   });
 
   it("gives a dialog, a menu and a popover the shadow of the mode they are in, not the light one", () => {
@@ -70,5 +80,13 @@ describe("the dark theme, as built", () => {
     expect(darkRoot(css)["--color-sidebar"]).toBe("#282828");
     expect(darkRoot(css)["--color-surface"]).toBe("#2c2c2c");
     expect(darkRoot(css)["--color-popover"]).toBe("#2c2c2c");
+  });
+
+  it("draws a switch's knob a light grey in the dark, not the page's brightest white, on a quieter track", () => {
+    expect(lightTheme(css, "--color-switch-knob")).toBe("#ffffff");
+    expect(lightTheme(css, "--color-switch-off")).toBe("rgb(0 0 0 / 0.11)");
+    expect(darkRoot(css)["--color-switch-knob"]).toBe("#e2e2e2");
+    expect(darkRoot(css)["--color-switch-off"]).toBe("rgb(255 255 255 / 0.1)");
+    expect(rule(css, ".bg-switch-knob")).toEqual({ "background-color": "var(--color-switch-knob)" });
   });
 });

@@ -87,7 +87,11 @@
   --color-group-separator: #ebebeb;
   /* A selected row while the list is not the focus of the keyboard. */
   --color-row-selected: #dcdcdc;
+  /* A switch's track while off, and its knob: white here, and a light
+     grey in the dark (below), where white would be the brightest thing
+     on the page. */
   --color-switch-off: rgb(0 0 0 / 0.11);
+  --color-switch-knob: #ffffff;
 
   /* controlAccentColor's default; the user's own accent below. Pressed,
      a default button darkens by 15% (`BUTTON` in
@@ -186,7 +190,8 @@
     --color-group: #252525;
     --color-group-separator: #2f2f2f;
     --color-row-selected: #464646;
-    --color-switch-off: rgb(255 255 255 / 0.16);
+    --color-switch-off: rgb(255 255 255 / 0.1);
+    --color-switch-knob: #e2e2e2;
     --color-accent-text: #419cff;
     --color-selection: #3f638b;
     --color-focus: rgb(26 169 255 / 0.5);
