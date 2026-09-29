@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { finishedText, justUpdatedOps } from "./JustUpdated";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { renderWithProviders } from "../test/setup";
+import { BUTTON } from "./ui/controls";
+import { JustUpdated, finishedText, justUpdatedOps } from "./JustUpdated";
 import type { OpSummary } from "../lib/types";
 
 function upgrade(id: number, name: string, fields: Partial<OpSummary> = {}): OpSummary {
@@ -62,5 +65,51 @@ describe("finishedText", () => {
     expect(finishedText(morning, nextDay, "en").text).toBe(
       new Intl.DateTimeFormat("en", { month: "numeric", day: "numeric" }).format(morning),
     );
+  });
+});
+
+describe("JustUpdated", () => {
+  const entry = {
+    opId: 4,
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula" as const, name: "git" },
+    adapterId: "brew",
+    sourceLabel: "Homebrew",
+    name: "git",
+    version: "2.55.1",
+    finishedAt: Date.now(),
+  };
+
+  it("is a grouped container under its 13 bold title, with a small grey Clear beside the title", () => {
+    const onClear = vi.fn();
+    renderWithProviders(<JustUpdated entries={[entry]} onClear={onClear} />);
+
+    const section = screen.getByRole("region", { name: "Just updated" });
+    const title = within(section).getByRole("heading", { name: "Just updated" });
+    expect(title).toHaveClass("text-title");
+    const clear = within(section).getByRole("button", { name: "Clear the Just updated list" });
+    expect(clear.className).toBe(BUTTON.small.grey);
+    // Beside the title, not at the far end.
+    expect(clear.parentElement).toBe(title.parentElement);
+    expect(title.parentElement?.className).not.toMatch(/justify-between/);
+    // No card: no edge and no white; the group's fill and corners.
+    expect(section.className).not.toMatch(/border|bg-surface/);
+    const list = within(section).getByRole("list");
+    expect(list).toHaveClass("bg-group", "rounded-group");
+    fireEvent.click(clear);
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws each tool as a quiet 28 line: a 20 icon, the name in 13, then 11 for the rest", () => {
+    renderWithProviders(<JustUpdated entries={[entry]} onClear={() => {}} />);
+
+    const line = screen.getByRole("listitem");
+    expect(line).toHaveClass("h-7");
+    expect(line.querySelector("[aria-hidden]")?.className).toMatch(/h-5 w-5/);
+    expect(within(line).getByText("git")).toHaveClass("text-body");
+    expect(within(line).getByText("2.55.1")).toHaveClass("text-small", "text-muted");
+    const done = within(line).getByText("Updated");
+    expect(done).toHaveClass("text-small", "text-foreground");
+    expect(done.querySelector("svg")).toHaveAttribute("width", "12");
+    expect(line.querySelector("time")?.parentElement).toHaveClass("text-small", "text-muted");
   });
 });

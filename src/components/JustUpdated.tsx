@@ -5,6 +5,7 @@ import type { ArtifactKey, OpSummary } from "../lib/types";
 import { CheckIcon } from "./icons";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
+import { GROUP } from "./ui/group";
 
 /** One update the Updates page's "Just updated" lists, as it shows it. */
 export interface JustUpdatedEntry {
@@ -99,8 +100,10 @@ export interface JustUpdatedProps {
 /**
  * 「刚更新的」: the tools updated this session, at the top of the Updates
  * page, so that an update that worked does not simply vanish from the
- * list. Quiet lines, not rows: the avatar, the name, the version it has
- * now, the tick and 「已更新」 the row showed, and when it finished. Nothing
+ * list. A grouped container (spec §3.10) under its title -- 13 bold, with
+ * a small grey Clear beside it -- of quiet lines, not rows: 28 high, the
+ * 20 icon, the name in 13, the version it has now in 11 muted, the ✓ and
+ * 「已更新」 the row showed, in 11, and when it finished, 11 muted. Nothing
  * to select or press but Clear, which hides the section until the next
  * update succeeds; it is no part of the page's count or of Select all.
  */
@@ -109,13 +112,9 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
   const headingId = useId();
   const now = Date.now();
   return (
-    <section
-      aria-labelledby={headingId}
-      data-just-updated=""
-      className="rounded-panel border border-border bg-surface px-3 pb-1.5 pt-2.5"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h2 id={headingId} className="text-body font-semibold text-foreground">
+    <section aria-labelledby={headingId} data-just-updated="">
+      <div className="mb-2 flex items-center gap-2 px-2.5">
+        <h2 id={headingId} className="text-title text-foreground">
           {t("updates.justUpdated.title")}
         </h2>
         <button
@@ -127,14 +126,19 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
           {t("updates.justUpdated.clear")}
         </button>
       </div>
-      <ul aria-labelledby={headingId} className="mt-1 flex flex-col">
+      <ul aria-labelledby={headingId} className={`py-1 ${GROUP}`}>
         {entries.map((entry) => {
           const finished =
             entry.finishedAt === null ? null : finishedText(entry.finishedAt, now, i18n.language);
           return (
-            <li key={entry.opId} className="flex min-h-9 items-center gap-2.5 py-1">
-              <ToolAvatar size="sm" adapterId={entry.adapterId} sourceLabel={entry.sourceLabel} iconKey={entry.key} />
-              <span title={entry.name} className="min-w-0 flex-1 truncate text-body font-medium text-foreground">
+            <li key={entry.opId} className="flex h-7 items-center gap-2 px-2.5">
+              <ToolAvatar
+                size="compact"
+                adapterId={entry.adapterId}
+                sourceLabel={entry.sourceLabel}
+                iconKey={entry.key}
+              />
+              <span title={entry.name} className="min-w-0 flex-1 truncate text-body text-foreground">
                 {entry.name}
               </span>
               {/* The version and the time each take a column, with or
@@ -142,8 +146,8 @@ export function JustUpdated({ entries, onClear }: JustUpdatedProps) {
               <span className="min-w-20 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">
                 {entry.version}
               </span>
-              <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small font-medium text-success">
-                <CheckIcon size={13} className="shrink-0" />
+              <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-small text-foreground">
+                <CheckIcon size={12} className="shrink-0 text-success" />
                 {t("updates.progress.succeeded")}
               </span>
               <span className="w-16 shrink-0 whitespace-nowrap text-right text-small tabular-nums text-muted">

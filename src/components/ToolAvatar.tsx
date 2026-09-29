@@ -10,16 +10,19 @@ const NO_KEY: ArtifactKey = { instance_id: "", kind: "Formula", name: "" };
 
 /**
  * An app icon's size, as `SourceAvatar`'s of the same name: `md`, 32px, a
- * row's and a sheet line's; `sm`, 24px, a quiet line's, such as the
- * Updates page's "Just updated"; `lg`, 48px, over a dialog's question
- * about one tool, as NSAlert puts an app's icon, and atop the Installed
- * page's inspector. Rounded as an app icon is at that size; the icon's
- * own shape and margin do the rest. Whole class names, for Tailwind.
+ * row's and a sheet line's; `sm`, 24px, a quiet line's, such as a
+ * dialog's list of tools; `compact`, 20px, a line of the Updates page's
+ * "Just updated", which wears no source mark (at 20 a 14 mark would hide
+ * the icon); `lg`, 48px, over a dialog's question about one tool, as
+ * NSAlert puts an app's icon, and atop the Installed page's inspector.
+ * Rounded as an app icon is at that size; the icon's own shape and margin
+ * do the rest. Whole class names, for Tailwind.
  */
 const ICON_CLASSES = {
   sm: "h-6 w-6 rounded-[5px]",
   md: "h-8 w-8 rounded-[7px]",
   lg: "h-12 w-12 rounded-[11px]",
+  compact: "h-5 w-5 rounded-[4px]",
 } as const;
 
 export interface ToolAvatarProps {
@@ -107,7 +110,7 @@ const BADGE_SIZES = { sm: "badge", md: "badge", lg: "xs" } as const;
 interface WithSourceBadgeProps {
   adapterId: string;
   sourceLabel: string;
-  size: keyof typeof BADGE_OFFSET_CLASSES;
+  size: keyof typeof ICON_CLASSES;
   /** The tool's own icon or logo. */
   children: ReactNode;
 }
@@ -117,8 +120,16 @@ interface WithSourceBadgeProps {
  * bottom-right corner, a little over the edge (`data-source-badge`). A
  * ring in the surface's colour cuts the badge out of what is under it, so
  * that a Homebrew badge on an amber logo still reads as a mark of its own.
+ * At 20 (`compact`) there is no room for one: the icon alone.
  */
 function WithSourceBadge({ adapterId, sourceLabel, size, children }: WithSourceBadgeProps) {
+  if (size === "compact") {
+    return (
+      <span aria-hidden="true" className="relative inline-flex shrink-0">
+        {children}
+      </span>
+    );
+  }
   return (
     <span aria-hidden="true" className="relative inline-flex shrink-0">
       {children}
