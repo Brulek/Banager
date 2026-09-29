@@ -109,8 +109,9 @@ fn check_options(state: &AppState) -> CheckOptions {
 /// whatever its generation: one that found nothing new keeps the
 /// generation it read, and without the event the window would never
 /// fetch it. With it, the page takes the snapshot of that round -- the
-/// same generation, a later `refreshed_at`, which `isNewerSnapshot` in
-/// src/lib/events.ts lets in -- so its header's last check moves, and it
+/// same generation, a higher `round`, which is what `isNewerSnapshot` in
+/// src/lib/events.ts orders snapshots by, whatever the clock stamped on
+/// them (`refreshed_at`) -- so its header's last check moves, and it
 /// reports the updates the round offers with the round's number
 /// (`notify::report_update_set`), which is how a notification that
 /// failed, or pairs nobody has seen, are tried again at the next daily

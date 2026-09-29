@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { renderWithProviders } from "../test/setup";
 import { OPEN_UPDATES_EVENT } from "./api";
+import { refreshIntoCache } from "./events";
 import { queryKeys } from "./queries";
 import { updatePairOf, useUpdateNotification } from "./updateNotification";
 import { useUiStore } from "../store/ui";
@@ -109,13 +110,16 @@ const startup: Snapshot = {
 
 let served: Snapshot;
 let operations: OpSummary[];
+let refreshReply: () => Promise<Snapshot>;
 
 beforeEach(() => {
   served = snapshot;
   operations = [];
+  refreshReply = () => Promise.resolve(served);
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === "get_snapshot") return Promise.resolve(served);
+    if (cmd === "refresh") return refreshReply();
     if (cmd === "get_settings") return Promise.resolve(settings);
     if (cmd === "list_operations") return Promise.resolve(operations);
     return Promise.resolve(undefined);
@@ -202,6 +206,59 @@ describe("the update notification's report", () => {
 
     await waitFor(() => expect(reports()).toHaveLength(2));
     expect(reports()[1]).toEqual({ round: 6, updates: [glib, wget].map(updatePairOf) });
+  });
+
+  it("sends the daily check's next round when it found nothing new after the clock was set back", async () => {
+    const { queryClient } = renderWithProviders(<Shell />);
+    await waitFor(() => expect(reports()).toHaveLength(1));
+
+    // The next day's check finds the same updates -- the same generation
+    // -- with the clock put back an hour, so it is stamped before round
+    // 5. The backend announces a round of the daily check's whatever its
+    // generation, and the snapshot query fetches it. Judged by the clock
+    // it was older than round 5 and never cached, and never sent.
+    served = { ...snapshot, round: 6, refreshed_at: 1790586000 - 3600 };
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+    });
+
+    await waitFor(() => expect(reports()).toHaveLength(2));
+    expect(reports()[1]).toEqual({ round: 6, updates: [glib, wget, git].map(updatePairOf) });
+  });
+
+  it("sends no earlier round after a later one, when the two land out of order within a second", async () => {
+    served = { ...snapshot, round: 4 };
+    const { queryClient } = renderWithProviders(<Shell />);
+    await waitFor(() => expect(reports()).toHaveLength(1));
+
+    // A check the window asked for is answered with round 5, and the
+    // reply is slow; the daily check's round 6 -- nothing new, stamped in
+    // the same second -- is announced and fetched first. Equal
+    // generations and equal times let whichever landed last into the
+    // cache, and round 5 was sent after round 6, older than a round
+    // already sent.
+    let answer: (snapshot: Snapshot) => void = () => {};
+    refreshReply = () =>
+      new Promise<Snapshot>((resolve) => {
+        answer = resolve;
+      });
+    let run: Promise<void> = Promise.resolve();
+    act(() => {
+      run = refreshIntoCache(queryClient, "test");
+    });
+    served = { ...snapshot, round: 6 };
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+    });
+    await waitFor(() => expect(reports()).toHaveLength(2));
+
+    await act(async () => {
+      answer(snapshot);
+      await run;
+    });
+
+    expect(queryClient.getQueryData<Snapshot>(queryKeys.snapshot)?.round).toBe(6);
+    expect(reports().map((report) => report.round)).toEqual([4, 6]);
   });
 
   it("sends an empty set when no update can be started", async () => {

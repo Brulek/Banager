@@ -2992,6 +2992,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_a_round_after_the_clock_is_set_back_still_has_the_higher_number() {
+        // What the page tells the later of two snapshots by
+        // (`isNewerSnapshot` in src/lib/events.ts). A round that found
+        // nothing new, run after the clock was put back an hour, keeps the
+        // generation and is stamped before the round it follows: only its
+        // number says it is the later one.
+        static NOW: AtomicI64 = AtomicI64::new(1_790_586_000);
+        let (adapter, state) = FakeAdapter::new("fake");
+        state.lock().unwrap().instances = vec![make_instance("fake", "fake:1")];
+        let sink = Arc::new(VecSink::new());
+        let session =
+            Session::with_adapters(sink, vec![adapter], Some(|| NOW.load(Ordering::SeqCst)));
+        let env = non_root_env();
+        let opts = CheckOptions::default();
+
+        let (first, before) = session.refresh_with_round(&env, &opts).await;
+        NOW.fetch_sub(3600, Ordering::SeqCst);
+        let (second, after) = session.refresh_with_round(&env, &opts).await;
+
+        assert_eq!(after.generation, before.generation, "nothing new");
+        assert!(
+            after.refreshed_at < before.refreshed_at,
+            "stamped by the clock put back: {:?} after {:?}",
+            after.refreshed_at,
+            before.refreshed_at
+        );
+        assert!(second > first, "and still the higher round");
+        assert_eq!((before.round, after.round), (first, second));
+    }
+
+    #[tokio::test]
     async fn test_refresh_recording_records_a_round_before_anyone_can_see_it() {
         // The shell records who asked for a round through `record`: were
         // the round's snapshot committed first, a reader could fetch it --

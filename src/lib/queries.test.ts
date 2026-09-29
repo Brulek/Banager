@@ -76,8 +76,8 @@ describe("queries", () => {
     // React Query stores -- so a `get_snapshot` that raced a concurrent
     // refresh and came back with the older of the two must not be
     // allowed to write itself over the newer one already cached.
-    const newer: Snapshot = { ...snapshot, generation: 5, refreshed_at: 500 };
-    mockInvoke.mockResolvedValue({ ...snapshot, generation: 4, refreshed_at: 400 } as never);
+    const newer: Snapshot = { ...snapshot, generation: 5, round: 7, refreshed_at: 500 };
+    mockInvoke.mockResolvedValue({ ...snapshot, generation: 4, round: 6, refreshed_at: 400 } as never);
     const queryClient = newClient();
     queryClient.setQueryData(["snapshot"], newer);
 

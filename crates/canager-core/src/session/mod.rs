@@ -89,7 +89,10 @@ pub struct Snapshot {
     /// `auto_check::RoundLog` records who asked for each round by. The page
     /// reports the updates it offers with it after each snapshot
     /// (`report_update_set` in src-tauri/src/notify.rs), which looks up
-    /// whether the daily check asked for that round.
+    /// whether the daily check asked for that round, and tells by it which
+    /// of two snapshots is the later (`isNewerSnapshot` in
+    /// src/lib/events.ts): rounds commit in the order they are numbered,
+    /// whatever the clock stamped on them as `refreshed_at`.
     pub round: u64,
     pub detect: DetectOutcome,
     pub instances: Vec<ManagerInstance>,

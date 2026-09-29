@@ -18,21 +18,38 @@ import type { Snapshot, UiEvent } from "./types";
  * event coming to correct it, because as far as the backend is concerned
  * nothing has changed since.
  *
- * `generation` is the right thing to compare, but only with a
- * non-strict `>=`: an unchanged refresh deliberately keeps the same
- * generation (`Snapshot::same_content` in session/refresh.rs), so
- * treating an equal generation as stale would pin `refreshed_at` at the
- * first refresh that saw this content and `SnapshotStatus` would report a
- * "last checked" time that stopped advancing. Two snapshots sharing a
- * generation are the same data by construction, so the only thing that
- * can differ is that timestamp, and the later one wins — with a null
- * (`Snapshot::empty`, nothing has ever been checked) older than any
- * timestamp at all.
+ * `round` is what says which is newer. Each snapshot carries the number
+ * of the refresh round that committed it (`Snapshot::round`), and rounds
+ * commit one at a time in the order they are numbered:
+ * `Session::refresh_round` (crates/canager-core/src/session/refresh.rs)
+ * numbers a round and commits it under one hold of the refresh gate. So
+ * the higher round is the later answer, whether or not it moved
+ * `generation` -- which a refresh that found nothing new deliberately
+ * keeps (`Snapshot::same_content`) -- and whatever the clock said.
+ *
+ * Between two snapshots of one generation this used to compare
+ * `refreshed_at`, and that is the Mac's clock, which can be set back, by
+ * hand or by a time sync. A round that found nothing new, stamped after
+ * the clock went back, read as older than the round before it and was
+ * dropped: the header's "Checked … ago" stayed on the old round, and the
+ * update notification (`useUpdateNotification`), which reports each
+ * round the cache takes, never heard of the new one -- a daily check's
+ * round went unreported, and its notification with it. Two rounds
+ * stamped within the same second were no better told apart: the older
+ * one, arriving last, took the cache back.
+ *
+ * Round 0 is `Snapshot::empty()`, the backend's placeholder before any
+ * round has committed: older than every round, so it never replaces an
+ * answer. Two snapshots of one round are one commit -- nothing else
+ * writes the backend's snapshot (`Session::commit`) -- and so the same
+ * data. `generation` is compared only then, as a guard that never lets an
+ * earlier generation back in; an equal one is let in, since the same
+ * snapshot fetched again is not stale.
  */
 export function isNewerSnapshot(incoming: Snapshot, cached: Snapshot | undefined): boolean {
   if (!cached) return true;
-  if (incoming.generation !== cached.generation) return incoming.generation > cached.generation;
-  return (incoming.refreshed_at ?? -Infinity) >= (cached.refreshed_at ?? -Infinity);
+  if (incoming.round !== cached.round) return incoming.round > cached.round;
+  return incoming.generation >= cached.generation;
 }
 
 /**

@@ -374,7 +374,9 @@ export interface Snapshot {
    * The number of the refresh round that committed this snapshot (Rust
    * `Snapshot::round`): 0 before any has, and higher each round, whether
    * or not `generation` moved. The update notification's report names the
-   * round it is about by it (`useUpdateNotification`).
+   * round it is about by it (`useUpdateNotification`), and the snapshot
+   * cache keeps whichever of two snapshots has the higher one
+   * (`isNewerSnapshot`), never the one whose `refreshed_at` reads later.
    */
   round: number;
   detect: DetectOutcome;

@@ -47,7 +47,10 @@ export function useUpdateNotification(): void {
   const startable = useStartableUpdates();
   const setPage = useUiStore((s) => s.setPage);
   // The last round reported: a round is reported once, whatever changes
-  // after it -- the next snapshot is the next report.
+  // after it -- the next snapshot is the next report. The snapshot cache
+  // orders snapshots by round (`isNewerSnapshot` in src/lib/events.ts),
+  // so a later round is reported however its clock read, and an earlier
+  // one landing after it never takes the cache back to be sent again.
   const reported = useRef<number | null>(null);
   const round = snapshot !== undefined && snapshot.round > 0 ? snapshot.round : null;
 

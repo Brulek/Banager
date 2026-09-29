@@ -143,6 +143,34 @@ describe("PageHeader", () => {
     expect(await findByText("Checked just now")).toBeInTheDocument();
   });
 
+  it("moves on to a check made after the clock was set back, though it found nothing new", async () => {
+    // Round 4 was stamped at 09:00, and then the clock was put back an
+    // hour. The daily check's round 5 finds the same things at 08:00 --
+    // the same generation -- and is announced and fetched. Judged by the
+    // clock it was older than round 4 and never taken: the header went on
+    // timing round 4, an hour ahead of the clock, and said "just now" of
+    // it for the hour.
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime((CHECKED_AT - 3600) * 1000);
+    const { findByText, getByText, queryClient } = renderWithProviders(<PageHeader title="Updates" />);
+    await findByText("Checked just now");
+
+    const setBack: Snapshot = { ...snapshotCheckedAt(CHECKED_AT - 3600), round: 5 };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(setBack);
+      return Promise.resolve(undefined);
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.snapshot });
+    });
+    expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(setBack);
+
+    act(() => {
+      vi.advanceTimersByTime(3 * 60_000);
+    });
+    expect(getByText("Checked 3 min ago")).toBeInTheDocument();
+  });
+
   it("runs the app's refresh on Check again, off and saying Checking… until it is done", async () => {
     const reply = deferredRefresh();
     refreshReply = () => reply.promise;

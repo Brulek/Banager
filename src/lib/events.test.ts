@@ -3,9 +3,9 @@ import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { isNewerSnapshot, useOperationEvents, useStartupRefresh } from "./events";
+import { isNewerSnapshot, refreshIntoCache, useOperationEvents, useStartupRefresh } from "./events";
 import { useUiStore } from "../store/ui";
-import { queryKeys } from "./queries";
+import { queryKeys, useSnapshot } from "./queries";
 import type { Snapshot } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -236,7 +236,7 @@ describe("useOperationEvents", () => {
     pendingRefreshes[0]({ ...refreshedSnapshot, generation: 1 });
     await waitFor(() => expect(refreshCalls()).toBe(2));
 
-    pendingRefreshes[1]({ ...refreshedSnapshot, generation: 2 });
+    pendingRefreshes[1]({ ...refreshedSnapshot, generation: 2, round: 2 });
     await waitFor(() =>
       expect((queryClient.getQueryData(queryKeys.snapshot) as Snapshot).generation).toBe(2),
     );
@@ -245,31 +245,56 @@ describe("useOperationEvents", () => {
 });
 
 describe("isNewerSnapshot", () => {
-  const cached: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 200 };
+  // The backend's round 5, generation 2, stamped at 2026-09-28 09:00 UTC
+  // by the Mac's clock.
+  const cached: Snapshot = { ...refreshedSnapshot, generation: 2, round: 5, refreshed_at: 1790586000 };
 
   it("accepts anything when nothing is cached yet", () => {
     expect(isNewerSnapshot(refreshedSnapshot, undefined)).toBe(true);
   });
 
-  it("rejects an older generation and accepts a newer one", () => {
-    expect(isNewerSnapshot({ ...cached, generation: 1 }, cached)).toBe(false);
+  it("takes a later round and rejects an earlier one", () => {
+    expect(isNewerSnapshot({ ...cached, round: 6, generation: 3 }, cached)).toBe(true);
+    expect(isNewerSnapshot({ ...cached, round: 4, generation: 1 }, cached)).toBe(false);
+  });
+
+  it("takes a later round that found nothing new after the clock was set back", () => {
+    // The next round finds what this one did, so it keeps generation 2
+    // (`Snapshot::same_content`), and the clock was put back an hour
+    // before it ran. Its `refreshed_at` reads earlier than the cached
+    // one's, and by that it was dropped.
+    const setBack: Snapshot = { ...cached, round: 6, refreshed_at: 1790586000 - 3600 };
+    expect(isNewerSnapshot(setBack, cached)).toBe(true);
+    // And round 5, landing after it, stays out, however late its clock read.
+    expect(isNewerSnapshot(cached, setBack)).toBe(false);
+  });
+
+  it("tells two rounds stamped within the same second apart by their numbers", () => {
+    const next: Snapshot = { ...cached, round: 6 };
+    expect(isNewerSnapshot(next, cached)).toBe(true);
+    expect(isNewerSnapshot(cached, next)).toBe(false);
+  });
+
+  it("treats the startup snapshot, round 0, as older than any round", () => {
+    // `Snapshot::empty()`, and the first check of a Mac with no source at
+    // all: nothing new to it, so still generation 0 -- only the round says
+    // which came first.
+    const startup: Snapshot = {
+      ...refreshedSnapshot,
+      generation: 0,
+      round: 0,
+      detect: "Missing",
+      refreshed_at: null,
+    };
+    const firstCheck: Snapshot = { ...startup, round: 1, refreshed_at: 1790586000 };
+    expect(isNewerSnapshot(firstCheck, startup)).toBe(true);
+    expect(isNewerSnapshot(startup, firstCheck)).toBe(false);
+  });
+
+  it("lets the same round in again, but never an earlier generation of it", () => {
+    expect(isNewerSnapshot({ ...cached }, cached)).toBe(true);
     expect(isNewerSnapshot({ ...cached, generation: 3 }, cached)).toBe(true);
-  });
-
-  it("does not treat an equal generation as stale", () => {
-    // A refresh that found nothing new deliberately keeps the same
-    // generation (`Snapshot::same_content`), and only its `refreshed_at`
-    // moves. Rejecting those would freeze the "last checked" time at
-    // whenever this content first appeared.
-    expect(isNewerSnapshot({ ...cached, refreshed_at: 300 }, cached)).toBe(true);
-    expect(isNewerSnapshot({ ...cached, refreshed_at: 200 }, cached)).toBe(true);
-    expect(isNewerSnapshot({ ...cached, refreshed_at: 100 }, cached)).toBe(false);
-  });
-
-  it("treats a never-checked snapshot as older than any checked one", () => {
-    const never: Snapshot = { ...cached, refreshed_at: null };
-    expect(isNewerSnapshot(cached, never)).toBe(true);
-    expect(isNewerSnapshot(never, cached)).toBe(false);
+    expect(isNewerSnapshot({ ...cached, generation: 1 }, cached)).toBe(false);
   });
 });
 
@@ -279,8 +304,8 @@ describe("snapshot cache ordering", () => {
     //   1. a refresh starts (a click, an operation finishing);
     //   2. while it is out, something else — another window's refresh,
     //      or a `SnapshotChanged` invalidating this window's snapshot
-    //      query — caches generation 2;
-    //   3. the refresh from step 1 replies with generation 1.
+    //      query — caches round 3, generation 2;
+    //   3. the refresh from step 1 replies with round 2, generation 1.
     // Written into the cache unconditionally, step 3 rolls the UI back
     // to data the backend has already superseded, and no further event
     // is coming: as far as the backend is concerned nothing has changed
@@ -299,10 +324,10 @@ describe("snapshot cache ordering", () => {
     renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
 
-    const newer: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 1789700200 };
+    const newer: Snapshot = { ...refreshedSnapshot, generation: 2, round: 3, refreshed_at: 1789700200 };
     queryClient.setQueryData(queryKeys.snapshot, newer);
 
-    resolveRefresh({ ...refreshedSnapshot, generation: 1, refreshed_at: 1789700100 });
+    resolveRefresh({ ...refreshedSnapshot, generation: 1, round: 2, refreshed_at: 1789700100 });
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(newer));
     // And it stays: nothing arrives later to put it right.
     await Promise.resolve();
@@ -311,10 +336,10 @@ describe("snapshot cache ordering", () => {
 
   it("still writes a refresh reply whose generation is unchanged", async () => {
     // The companion the rule above must not break: an unchanged refresh
-    // keeps its generation and only moves `refreshed_at`, which is what
-    // `SnapshotStatus` renders as "last checked".
-    const cached: Snapshot = { ...refreshedSnapshot, generation: 2, refreshed_at: 1789700100 };
-    const rechecked: Snapshot = { ...cached, refreshed_at: 1789700900 };
+    // keeps its generation, and it is a later round, whose `refreshed_at`
+    // is what `SnapshotStatus` renders as "last checked".
+    const cached: Snapshot = { ...refreshedSnapshot, generation: 2, round: 3, refreshed_at: 1789700100 };
+    const rechecked: Snapshot = { ...cached, round: 4, refreshed_at: 1789700900 };
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "refresh") return Promise.resolve(rechecked);
       return Promise.resolve(undefined);
@@ -325,6 +350,56 @@ describe("snapshot cache ordering", () => {
     renderHook(() => useStartupRefresh(), { wrapper: wrapper(queryClient) });
 
     await waitFor(() => expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(rechecked));
+  });
+
+  it("writes a later round with nothing new whose clock was set back", async () => {
+    // The clock was put back an hour between two checks that found the
+    // same things: one generation, and the later round stamped earlier.
+    // Judged by the clock, the reply was the older of the two and never
+    // written, so "Checked … ago" stayed on the round before it.
+    const cached: Snapshot = { ...refreshedSnapshot, generation: 2, round: 3, refreshed_at: 1789700900 };
+    const rechecked: Snapshot = { ...cached, round: 4, refreshed_at: 1789700900 - 3600 };
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return Promise.resolve(rechecked);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.snapshot, cached);
+
+    await refreshIntoCache(queryClient, "test");
+
+    expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(rechecked);
+  });
+
+  it("keeps the later of two rounds stamped within the same second when the earlier one lands last", async () => {
+    // A refresh is out for round 3 when round 4 -- nothing new, the same
+    // second on the clock -- is fetched by the snapshot query, as a
+    // `SnapshotChanged` has it do, and cached first. Equal generations
+    // and equal times let whichever landed last win, and round 3's late
+    // reply took the cache back.
+    const earlier: Snapshot = { ...refreshedSnapshot, generation: 2, round: 3, refreshed_at: 1789700100 };
+    const later: Snapshot = { ...earlier, round: 4 };
+    let resolveRefresh: (snapshot: Snapshot) => void = () => {};
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") {
+        return new Promise<Snapshot>((resolve) => {
+          resolveRefresh = resolve;
+        });
+      }
+      if (cmd === "get_snapshot") return Promise.resolve(later);
+      return Promise.resolve(undefined);
+    });
+    const queryClient = new QueryClient();
+
+    const run = refreshIntoCache(queryClient, "test");
+    const { result } = renderHook(() => useSnapshot(), { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(result.current.data).toEqual(later));
+
+    resolveRefresh(earlier);
+    await run;
+
+    expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(later);
+    expect(result.current.data).toEqual(later);
   });
 });
 
