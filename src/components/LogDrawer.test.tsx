@@ -7,6 +7,7 @@ import { LogDrawer } from "./LogDrawer";
 import { useUiStore } from "../store/ui";
 import i18n from "../i18n";
 import type { OpSummary } from "../lib/types";
+import { BUTTON } from "./ui/controls";
 
 /// The drawer as it actually appears: something opened it, and there is
 /// page behind it. Both matter for the keyboard, which is why the focus
@@ -289,6 +290,76 @@ describe("LogDrawer", () => {
     } finally {
       await i18n.changeLanguage("en");
     }
+  });
+
+  it("is a dialog 560 wide, the log in a grouped container in 11 monospace, stderr in the red for text", async () => {
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "==> Fetching jq" });
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: "curl: (6) Could not resolve host: ghcr.io" });
+    });
+
+    const stderr = await findByText("curl: (6) Could not resolve host: ghcr.io");
+    const dialog = getByRole("dialog");
+    expect(dialog).toHaveAttribute("data-dialog-width", "560");
+    const log = getByRole("log");
+    expect(log).toHaveClass("font-mono", "text-small");
+    expect(log.closest(".bg-group")).toHaveClass("rounded-group");
+    expect(stderr).toHaveClass("text-danger-text");
+    expect(getByRole("log").querySelector("p")).not.toHaveClass("text-danger-text");
+  });
+
+  it("has Copy on the left of its foot and Done, the default button, on the right", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    try {
+      const { findByText, findByRole, getByRole } = renderWithProviders(<LogDrawer />);
+      act(() => {
+        useUiStore.getState().appendLog({ opId: 1, stream: "Stdout", line: "Fetching jq" });
+        useUiStore.getState().appendLog({ opId: 1, note: { WaitingForBrewUpdate: { minutes: 10 } } });
+      });
+      await findByText("Fetching jq");
+      await findByRole("button", { name: "Cancel Install" });
+
+      const footer = getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
+      const buttons = within(footer).getAllByRole("button");
+      // Copy, then Cancel Install while it can still be stopped, then Done.
+      expect(buttons.map((button) => button.textContent)).toEqual(["Copy", "Cancel Install", "Done"]);
+      expect(buttons[0].closest(".mr-auto")).not.toBeNull();
+      expect(buttons[0].className).toBe(BUTTON.large.grey);
+      expect(buttons[2].className).toBe(BUTTON.large.default);
+
+      fireEvent.click(buttons[0]);
+      // The whole log, Canager's notes in the user's words.
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(
+          "Fetching jq\nHomebrew is updating its software list; this starts when it's done, waiting up to 10 minutes. Cancelling now changes nothing.",
+        ),
+      );
+      await findByText("Copied");
+
+      fireEvent.click(buttons[2]);
+      expect(useUiStore.getState().drawerOpen).toBe(false);
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
+  });
+
+  it("says the next step for a failure whose cause the tool's own words give", async () => {
+    operations = [
+      {
+        ...runningOp,
+        kind: "Upgrade",
+        status: "Done",
+        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' } },
+      },
+    ];
+    const { findByText } = renderWithProviders(<LogDrawer />);
+
+    await findByText("Check your internet connection, then try again.");
+    // How it ended, in the tool's words, stays under the title.
+    await findByText('Couldn\'t finish: Error: jq: Failed to download resource "jq (1.8.1)"');
   });
 
   it("does not render when the drawer is closed", () => {

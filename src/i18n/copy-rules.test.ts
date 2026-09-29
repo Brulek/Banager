@@ -154,6 +154,8 @@ describe("the polish-3 copy rules, in English", () => {
       "common.viewLog",
       "common.details",
       "common.copyCommand",
+      "common.done",
+      "operations.copyLog",
       "header.checkAgain",
       "overview.reviewUpdates",
       "overview.seeProgress",

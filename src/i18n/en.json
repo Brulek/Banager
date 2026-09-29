@@ -36,7 +36,8 @@
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
     "moreActions": "More actions for {{name}}",
-    "sourceWithPlace": "{{source}} ({{place}})"
+    "sourceWithPlace": "{{source}} ({{place}})",
+    "done": "Done"
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -499,7 +500,8 @@
         "PathChangedDetail": "The log lists anything already moved to the Trash. Open the confirmation again.",
         "Internal": "Couldn't finish because of an internal error. Nothing changed"
       }
-    }
+    },
+    "copyLog": "Copy"
   },
   "quit": {
     "title_one": "{{count}} operation hasn't finished",

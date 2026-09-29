@@ -28,6 +28,12 @@ export interface DialogProps {
   /** Under the title, quieter: the tool's source and version (11/14 muted). */
   subtitle?: ReactNode;
   /**
+   * The first thing in the body, 13 in the label colour, which also
+   * describes the dialog to a screen reader: the icon credits' sentence
+   * about whose the logos are.
+   */
+  description?: ReactNode;
+  /**
    * The buttons, at the foot, on the right: the grey one first, then the
    * one it asks for, the default button -- large, both (`BUTTON.large` in
    * ./controls.ts), and never red, removing something included.
@@ -103,6 +109,7 @@ export function Dialog({
   width = "one",
   icon,
   subtitle,
+  description,
   footer,
   footerStart,
   stackedFooter = false,
@@ -124,7 +131,7 @@ export function Dialog({
         <RadixDialog.Overlay className="fixed inset-0 bg-[var(--color-overlay)] motion-safe:animate-fade-in" />
         <RadixDialog.Content
           ref={contentRef}
-          aria-describedby={undefined}
+          {...(description === undefined ? { "aria-describedby": undefined } : {})}
           data-dialog-width={DIALOG_WIDTHS[width]}
           onOpenAutoFocus={(event) => {
             if (focusSelf) {
@@ -182,6 +189,11 @@ export function Dialog({
               hasFooter ? "" : "pb-5"
             }`}
           >
+            {description !== undefined ? (
+              <RadixDialog.Description className="break-words text-body text-foreground">
+                {description}
+              </RadixDialog.Description>
+            ) : null}
             {children}
           </div>
           {hasFooter ? (

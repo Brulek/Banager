@@ -9,6 +9,7 @@ import i18n from "../i18n";
 import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
+import { BUTTON } from "../components/ui/controls";
 
 const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
@@ -1068,7 +1069,10 @@ describe("SettingsPage's icon credits", () => {
 
     await user.keyboard("{Enter}");
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
-    expect(within(drawer).getByRole("button", { name: "Close" })).toHaveFocus();
+    // Done, its one button and the default one, as the log's.
+    const done = within(drawer).getByRole("button", { name: "Done" });
+    expect(done).toHaveFocus();
+    expect(done.className).toBe(BUTTON.large.default);
     // Nothing in the credits takes the focus, so they do, as a whole.
     await user.tab();
     expect(within(drawer).getByRole("region", { name: "Icon credits" })).toHaveFocus();

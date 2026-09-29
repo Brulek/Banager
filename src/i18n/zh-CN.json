@@ -33,7 +33,8 @@
     "copied": "已拷贝",
     "copyFailed": "无法拷贝",
     "moreActions": "“{{name}}”的更多操作",
-    "sourceWithPlace": "{{source}}（{{place}}）"
+    "sourceWithPlace": "{{source}}（{{place}}）",
+    "done": "完成"
   },
   "header": {
     "checkedJustNow": "上次检查：刚才",
@@ -460,7 +461,8 @@
         "PathChangedDetail": "如有已移到废纸篓的项目，日志中都已列出。请重新打开确认窗口。",
         "Internal": "未能完成：发生内部错误，没有改动"
       }
-    }
+    },
+    "copyLog": "拷贝"
   },
   "quit": {
     "title_other": "还有{{count}}个操作未完成",
