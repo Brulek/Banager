@@ -168,7 +168,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}} 没有运行。打开它，再点「重新检查」。",
       "NotResponding": "{{source}} 没有响应，稍后点「重新检查」再试。",
-      "RefusesAsRoot": "Canager 用管理员身份运行时，{{source}} 不肯工作。像平常那样重新打开 Canager。"
+      "RefusesAsRoot": "Canager 以管理员身份打开时，{{source}} 不能用。退出后双击重新打开。"
     },
     "runInTerminal": "在终端运行：{{command}}",
     "progress": {
@@ -320,8 +320,8 @@
       "descriptionWithRows": "这里列出的是 {{source}} 上次响应时的内容，之后的变化不会显示。稍后点「重新检查」再试。"
     },
     "refusesAsRoot": {
-      "title": "以管理员身份打开时 {{source}} 不工作",
-      "description": "Canager 这次是以管理员身份打开的，{{source}} 不接受。退出后双击正常打开即可。"
+      "title": "Canager 以管理员身份打开时，{{source}} 不能用",
+      "description": "Canager 以管理员身份打开时，{{source}} 不能用。退出后双击重新打开。"
     },
     "notRunning": {
       "title": "{{source}} 没有运行",

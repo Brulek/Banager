@@ -186,7 +186,7 @@
     "unavailableDetail": {
       "NotRunning": "{{source}} isn't running. Open it, then press Check again.",
       "NotResponding": "{{source}} isn't responding. Press Check again later.",
-      "RefusesAsRoot": "{{source}} won't run while Canager has administrator powers. Open Canager again the normal way."
+      "RefusesAsRoot": "{{source}} doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click."
     },
     "runInTerminal": "In Terminal: {{command}}",
     "progress": {
@@ -358,8 +358,8 @@
       "descriptionWithRows": "What's listed for {{source}} is from the last time it responded, and later changes aren't shown. Press Check again later."
     },
     "refusesAsRoot": {
-      "title": "{{source}} doesn't work while Canager runs as administrator",
-      "description": "Canager was opened as administrator this time, and {{source}} refuses to run that way. Quit, then open it again with a double-click."
+      "title": "{{source}} doesn't work while Canager is opened as administrator",
+      "description": "{{source}} doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click."
     },
     "notRunning": {
       "title": "{{source}} isn't running",

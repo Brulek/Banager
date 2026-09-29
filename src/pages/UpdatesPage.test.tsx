@@ -1776,7 +1776,7 @@ describe("UpdatesPage", () => {
         "Cargo isn't responding. Press Check again later.",
       );
       expect(chipDetail(rowOf("glib"), "Can't update now")).toHaveTextContent(
-        "Homebrew won't run while Canager has administrator powers. Open Canager again the normal way.",
+        "Homebrew doesn't work while Canager is opened as administrator. Quit, then open Canager again with a double-click.",
       );
     });
 

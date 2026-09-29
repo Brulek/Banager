@@ -1177,8 +1177,8 @@ describe("the Updates page's chip details", () => {
     }
     expect(en.updates.unavailableDetail.NotRunning).toBe("{{source}} isn't running. Open it, then press Check again.");
     expect(zhCN.updates.unavailableDetail.NotRunning).toBe("{{source}} 没有运行。打开它，再点「重新检查」。");
-    expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Open Canager again/);
-    expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/重新打开 Canager/);
+    expect(en.updates.unavailableDetail.RefusesAsRoot).toMatch(/Quit, then open Canager again/);
+    expect(zhCN.updates.unavailableDetail.RefusesAsRoot).toMatch(/退出后双击重新打开/);
   });
 });
 
