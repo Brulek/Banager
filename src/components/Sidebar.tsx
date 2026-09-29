@@ -1,5 +1,5 @@
-import { useId, useMemo } from "react";
-import type { ComponentType, ReactNode } from "react";
+import { useId, useMemo, useState } from "react";
+import type { ComponentType, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
 import { useSnapshot, useUnknownScan } from "../lib/queries";
@@ -152,6 +152,8 @@ function SidebarRow({
   description,
   descriptionId,
   onPress,
+  tabIndex,
+  onFocus,
 }: {
   glyph: ReactNode;
   label: string;
@@ -176,11 +178,18 @@ function SidebarRow({
   description: string | null;
   descriptionId: string;
   onPress: () => void;
+  /** Its place in the sidebar's roving tabindex (`Sidebar`): 0 for the one row Tab reaches, -1 for the rest. */
+  tabIndex: 0 | -1;
+  /** It has taken the focus: the row Tab comes back to, until the focus leaves the sidebar. */
+  onFocus: () => void;
 }) {
   const counted = count !== undefined && count > 0;
   return (
     <button
       type="button"
+      data-sidebar-row=""
+      tabIndex={tabIndex}
+      onFocus={onFocus}
       aria-current={active ? "page" : undefined}
       aria-label={place === null ? undefined : place.whole}
       title={place === null ? undefined : place.whole}
@@ -229,6 +238,14 @@ function SidebarRow({
   );
 }
 
+/** The keys that move the focus between the sidebar's rows (`Sidebar`), and where each takes it. */
+const ROW_KEYS: Record<string, (at: number, count: number) => number> = {
+  ArrowDown: (at, count) => Math.min(at + 1, count - 1),
+  ArrowUp: (at) => Math.max(at - 1, 0),
+  Home: () => 0,
+  End: (_, count) => count - 1,
+};
+
 export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: SidebarProps) {
   const { t } = useTranslation();
   const counts = useCounts();
@@ -237,6 +254,35 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
   // A source's row stands for the Installed page on that source alone:
   // while it is selected, 「已安装」 is not.
   const sourceShown = page === "installed" ? source : null;
+
+  // One Tab stop for the whole sidebar, as a Mac's source list is one
+  // control (a roving tabindex): Tab comes in on the row selected -- or,
+  // while the focus is in the sidebar, on the row it was last on -- and
+  // the next Tab leaves for the toolbar and the page. ↑ and ↓ move from
+  // row to row, the pages' and the sources' as one list, Home and End to
+  // its ends; Return and Space open a row, as a click does.
+  const currentKey = sourceShown !== null ? `source:${sourceShown}` : `page:${page}`;
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const rowKeys = [...PAGES.map((p) => `page:${p}`), ...sources.map((row) => `source:${row.id}`)];
+  const tabKey = [focusedKey, currentKey].find((key) => key !== null && rowKeys.includes(key)) ?? rowKeys[0];
+  const roving = (key: string) => ({
+    tabIndex: key === tabKey ? (0 as const) : (-1 as const),
+    onFocus: () => setFocusedKey(key),
+  });
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const move = ROW_KEYS[event.key];
+    if (move === undefined || event.altKey || event.metaKey || event.ctrlKey) return;
+    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-sidebar-row]"));
+    const at = rows.indexOf(event.target as HTMLElement);
+    if (at < 0) return;
+    event.preventDefault();
+    rows[move(at, rows.length)].focus();
+  };
+  // The focus gone from the sidebar: the next Tab into it comes in on the
+  // row selected again.
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusedKey(null);
+  };
 
   const entry = (p: Page) => {
     const active = page === p && !(p === "installed" && sourceShown !== null);
@@ -253,6 +299,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
         description={described ? t(descriptionKey, { count }) : null}
         descriptionId={`${idPrefix}-${p}-count`}
         onPress={() => onSelectPage(p)}
+        {...roving(`page:${p}`)}
       />
     );
   };
@@ -276,6 +323,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
         description={said.length > 0 ? said.join(t("common.listSeparator")) : null}
         descriptionId={`${idPrefix}-source-${index}`}
         onPress={() => onSelectSource?.(row.id)}
+        {...roving(`source:${row.id}`)}
       />
     );
   };
@@ -303,7 +351,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
           under the last row, inside what scrolls -- an engine that leaves a
           scroller's own bottom padding out of what it scrolls to would
           leave the last row flush with the window's edge. */}
-      <div data-sidebar-scroller="" className="min-h-0 flex-1 overflow-y-auto">
+      <div data-sidebar-scroller="" onKeyDown={onKeyDown} onBlur={onBlur} className="min-h-0 flex-1 overflow-y-auto">
         <div className="pb-3">
           {/* The first row 8 below the lights' row, 60 from the window's top. */}
           <ul className="flex flex-col px-2.5 pt-2">

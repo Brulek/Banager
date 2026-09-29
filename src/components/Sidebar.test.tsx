@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { dragsWindow } from "../test/dragRegion";
@@ -588,6 +588,89 @@ describe("Sidebar", () => {
       // Another page: its row, whatever the Installed page was left on.
       rerender(<Sidebar page="updates" source={pip.id} onSelectPage={vi.fn()} />);
       expect(current()).toEqual(["Updates"]);
+    });
+
+    describe("as one control for the keyboard (a roving tabindex)", () => {
+      const tabbable = () =>
+        [...document.querySelectorAll<HTMLElement>("[data-sidebar-row]")]
+          .filter((row) => row.tabIndex === 0)
+          .map((row) => row.getAttribute("aria-label") ?? row.querySelector(".truncate")?.textContent);
+
+      it("is one Tab stop: the row selected, a page's or a source's", async () => {
+        const { findByRole, getAllByRole, rerender } = renderWithProviders(
+          <Sidebar page="updates" onSelectPage={vi.fn()} />,
+        );
+        await findByRole("list", { name: "Sources" });
+        expect(getAllByRole("button")).toHaveLength(8);
+        expect(tabbable()).toEqual(["Updates"]);
+        for (const row of getAllByRole("button")) {
+          if (row.textContent?.startsWith("Updates")) continue;
+          expect(row).toHaveAttribute("tabindex", "-1");
+        }
+
+        rerender(<Sidebar page="installed" source={pip.id} onSelectPage={vi.fn()} />);
+        expect(tabbable()).toEqual(["pip"]);
+      });
+
+      it("moves with ↑ and ↓ through the pages and the sources as one list, and Home and End to its ends", async () => {
+        const { findByRole, getByRole } = renderWithProviders(<Sidebar page="settings" onSelectPage={vi.fn()} />);
+        await findByRole("list", { name: "Sources" });
+        const settingsRow = getByRole("button", { name: "Settings" });
+        settingsRow.focus();
+
+        expect(fireEvent.keyDown(settingsRow, { key: "ArrowDown" })).toBe(false);
+        expect(document.activeElement).toBe(getByRole("button", { name: "Homebrew" }));
+        // The row the focus is on is the one Tab stop now.
+        expect(tabbable()).toEqual(["Homebrew"]);
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
+        expect(document.activeElement).toBe(settingsRow);
+        fireEvent.keyDown(settingsRow, { key: "End" });
+        expect(document.activeElement).toBe(getByRole("button", { name: "Ollama" }));
+        // No further at either end.
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
+        expect(document.activeElement).toBe(getByRole("button", { name: "Ollama" }));
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
+        expect(document.activeElement).toBe(getByRole("button", { name: "Overview" }));
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
+        expect(document.activeElement).toBe(getByRole("button", { name: "Overview" }));
+      });
+
+      it("comes back in on the row selected once the focus has left it, and opens a row as a click does", async () => {
+        const onSelectPage = vi.fn();
+        const { findByRole, getByRole } = renderWithProviders(
+          <>
+            <Sidebar page="installed" onSelectPage={onSelectPage} />
+            <button type="button">Beyond</button>
+          </>,
+        );
+        await findByRole("list", { name: "Sources" });
+        const installed = getByRole("button", { name: "Installed" });
+        installed.focus();
+        fireEvent.keyDown(installed, { key: "ArrowUp" });
+        const updates = getByRole("button", { name: "Updates" });
+        expect(document.activeElement).toBe(updates);
+        expect(tabbable()).toEqual(["Updates"]);
+
+        // Out of the sidebar, as Tab takes it to the toolbar: the selected row is the Tab stop again.
+        const beyond = getByRole("button", { name: "Beyond" });
+        fireEvent.blur(updates, { relatedTarget: beyond });
+        beyond.focus();
+        expect(tabbable()).toEqual(["Installed"]);
+
+        // A row is a button still: Return and Space press it.
+        updates.click();
+        expect(onSelectPage).toHaveBeenCalledWith("updates");
+      });
+
+      it("leaves a key with ⌘ or ⌥ alone, and any key but those four", async () => {
+        const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
+        await findByRole("list", { name: "Sources" });
+        const overview = getByRole("button", { name: "Overview" });
+        overview.focus();
+        expect(fireEvent.keyDown(overview, { key: "ArrowDown", metaKey: true })).toBe(true);
+        expect(fireEvent.keyDown(overview, { key: "ArrowRight" })).toBe(true);
+        expect(document.activeElement).toBe(overview);
+      });
     });
 
     it("opens a source's row with its instance id", async () => {
