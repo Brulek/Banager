@@ -492,6 +492,17 @@ describe("Sidebar", () => {
         getByRole("button", { name: "pip" }),
       ]);
       expect(getByRole("button", { name: "Homebrew (/usr/local)" })).toHaveAccessibleDescription("1 installed");
+      // In sight: the name, then where it is, 11 in the secondary colour --
+      // what gives way first in the sidebar's width -- and the whole name
+      // under the pointer.
+      const intelRow = getByRole("button", { name: "Homebrew (/usr/local)" });
+      const place = within(intelRow).getByText("/usr/local");
+      expect(place.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted", "truncate", "min-w-0"]));
+      expect(place.previousElementSibling).toHaveTextContent(/^Homebrew$/);
+      expect(place.previousElementSibling?.className).toContain("shrink-0");
+      expect(intelRow).toHaveAttribute("title", "Homebrew (/usr/local)");
+      // The only one of its kind: its name alone, no tooltip.
+      expect(getByRole("button", { name: "pip" })).not.toHaveAttribute("title");
     });
 
     it("selects one row at a time: a source's while the Installed page shows it alone, Installed's otherwise", async () => {

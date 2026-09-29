@@ -931,21 +931,36 @@ function placesOf(group: readonly ManagerInstance[]): string[] {
  * two rows of one name, as Mail tells two accounts' Inboxes apart.
  */
 export function instanceLabels(t: Translate, instances: readonly ManagerInstance[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const [id, { source, place }] of instanceNames(t, instances)) {
+    labels.set(id, place === null ? source : t("common.sourceWithPlace", { source, place }));
+  }
+  return labels;
+}
+
+/**
+ * `instanceLabels`' two parts, by instance id: the kind's name, and where
+ * the source is -- null for the only one of its kind. The sidebar sets
+ * them apart, the place quieter after the name, where the whole would be
+ * cut short in its width.
+ */
+export function instanceNames(
+  t: Translate,
+  instances: readonly ManagerInstance[],
+): Map<string, { source: string; place: string | null }> {
   const byKind = new Map<string, ManagerInstance[]>();
   for (const instance of instances) {
     const group = byKind.get(instance.adapter_id) ?? [];
     group.push(instance);
     byKind.set(instance.adapter_id, group);
   }
-  const labels = new Map<string, string>();
+  const names = new Map<string, { source: string; place: string | null }>();
   for (const [adapterId, group] of byKind) {
     const source = adapterLabel(t, adapterId);
     const places = group.length === 1 ? null : placesOf(group);
-    group.forEach((instance, index) =>
-      labels.set(instance.id, places === null ? source : t("common.sourceWithPlace", { source, place: places[index] })),
-    );
+    group.forEach((instance, index) => names.set(instance.id, { source, place: places?.[index] ?? null }));
   }
-  return labels;
+  return names;
 }
 
 /**

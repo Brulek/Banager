@@ -3,7 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Page } from "../store/ui";
 import { useSnapshot, useUnknownScan } from "../lib/queries";
-import { instanceLabels, sourceWarningOf } from "../lib/sources";
+import { instanceLabels, instanceNames, sourceWarningOf } from "../lib/sources";
 import { useUpdateCount } from "./UpdateProgress";
 import { SourceAvatar } from "./SourceAvatar";
 import { InstalledIcon, OverviewIcon, SettingsIcon, UnknownIcon, UpdatesIcon, WarningFilledIcon } from "./icons";
@@ -88,7 +88,11 @@ function useCounts(): Partial<Record<Page, number>> {
 interface SourceRow {
   id: string;
   adapterId: string;
+  /** Its whole name, 「Homebrew（/usr/local）」: what a screen reader says, and the tooltip. */
   label: string;
+  /** Its kind's name, and where it is where another of its kind is on the Mac (`instanceNames`). */
+  source: string;
+  place: string | null;
   count: number;
   /** The notice's title (`sourceWarningOf`), for the ⚠︎'s tooltip and a screen reader. */
   warning: string | null;
@@ -106,6 +110,7 @@ function useSourceRows(): SourceRow[] {
   return useMemo(() => {
     if (snapshot === undefined) return [];
     const labels = instanceLabels(t, snapshot.instances);
+    const names = instanceNames(t, snapshot.instances);
     const counts = new Map<string, number>();
     for (const artifact of snapshot.artifacts) {
       const id = artifact.key.instance_id;
@@ -119,6 +124,8 @@ function useSourceRows(): SourceRow[] {
         id: instance.id,
         adapterId: instance.adapter_id,
         label,
+        source: names.get(instance.id)?.source ?? label,
+        place: names.get(instance.id)?.place ?? null,
         count,
         warning: warning === null ? null : t(warning.titleKey, warning.values),
       };
@@ -137,6 +144,7 @@ function useSourceRows(): SourceRow[] {
 function SidebarRow({
   glyph,
   label,
+  place = null,
   active,
   count,
   warning,
@@ -146,6 +154,12 @@ function SidebarRow({
 }: {
   glyph: ReactNode;
   label: string;
+  /**
+   * Where a source is, after its name, 11 and in the secondary colour --
+   * as Mail sets an account's name after a mailbox's -- which gives way
+   * first; the whole name in the tooltip and to a screen reader.
+   */
+  place?: { text: string; whole: string } | null;
   active: boolean;
   count?: number;
   warning?: string | null;
@@ -158,6 +172,8 @@ function SidebarRow({
     <button
       type="button"
       aria-current={active ? "page" : undefined}
+      aria-label={place === null ? undefined : place.whole}
+      title={place === null ? undefined : place.whole}
       aria-describedby={description !== null ? descriptionId : undefined}
       onClick={onPress}
       className={`flex h-8 w-full items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
@@ -165,7 +181,14 @@ function SidebarRow({
       }`}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center text-accent">{glyph}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {place === null ? (
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+      ) : (
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className="shrink-0">{label}</span>
+          <span className="min-w-0 truncate text-small text-muted">{place.text}</span>
+        </span>
+      )}
       {warning !== undefined && warning !== null ? (
         // Before the count, filled and orange, as Mail marks an account
         // it could not reach; the notice's title under the pointer, and
@@ -228,7 +251,8 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
         // The source's own mark, 16, in the 20px box the pages' glyphs
         // have, so the two groups' words start at one x.
         glyph={<SourceAvatar adapterId={row.adapterId} label={row.label} size="xs" />}
-        label={row.label}
+        label={row.source}
+        place={row.place === null ? null : { text: row.place, whole: row.label }}
         active={sourceShown === row.id}
         count={row.count}
         warning={row.warning}

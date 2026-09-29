@@ -181,6 +181,17 @@ describe("the browser preview's mock backend", () => {
     expect(snapshot.updates.some((u) => u.channel === "Digest")).toBe(true);
   });
 
+  it("has two Homebrews with ?state=notices, the second an Intel Mac's in /usr/local that did not answer and lists nothing", async () => {
+    const { backend } = backendFor({ state: "notices" });
+    const snapshot = await answer<Snapshot>(backend.invoke("refresh"));
+    const brews = snapshot.instances.filter((i) => i.adapter_id === "brew");
+    expect(brews.map((i) => [i.id, i.prefix, i.status.unavailable])).toEqual([
+      ["brew:/opt/homebrew", "/opt/homebrew", null],
+      ["brew:/usr/local", "/usr/local", "NotResponding"],
+    ]);
+    expect(snapshot.artifacts.filter((a) => a.key.instance_id === "brew:/usr/local")).toEqual([]);
+  });
+
   it("installs about 800 real tools with ?state=many, one in seven with an update, the same on every run", async () => {
     const { backend } = backendFor({ state: "many" });
     const snapshot = await answer<Snapshot>(backend.invoke("refresh"));

@@ -9,6 +9,7 @@ import {
   failedSourceNames,
   hasSourceNotice,
   instanceLabels,
+  instanceNames,
   isAvailable,
   namesInSentence,
   notActionableMessage,
@@ -776,6 +777,18 @@ describe("instanceLabels", () => {
   it("reads 「Homebrew（/usr/local）」 in Chinese and \"Homebrew (/usr/local)\" in English", () => {
     expect(zhCN.common.sourceWithPlace).toBe("{{source}}（{{place}}）");
     expect(en.common.sourceWithPlace).toBe("{{source}} ({{place}})");
+  });
+});
+
+describe("instanceNames", () => {
+  it("is instanceLabels' two parts: the kind's name, and where it is only where another of its kind is", () => {
+    const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local" });
+    const pip = instance({ id: "pip:/usr/bin/python3", adapter_id: "pip", prefix: "/usr" });
+    expect([...instanceNames(fakeT, [instance(), intel, pip])]).toEqual([
+      ["brew:/opt/homebrew", { source: "adapters.brew", place: "/opt/homebrew" }],
+      ["brew:/usr/local", { source: "adapters.brew", place: "/usr/local" }],
+      ["pip:/usr/bin/python3", { source: "adapters.pip", place: null }],
+    ]);
   });
 });
 

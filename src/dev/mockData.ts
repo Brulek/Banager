@@ -50,6 +50,8 @@ export const IDS = {
   npm: "npm:/opt/homebrew",
   /** npm installed from nodejs.org, whose prefix the user cannot write. */
   npmSystem: "npm:/usr/local",
+  /** An Intel Mac's Homebrew, carried over by Migration Assistant beside Apple silicon's. */
+  brewIntel: "brew:/usr/local",
   ollama: "ollama:http://127.0.0.1:11434",
   pip: "pip:/opt/homebrew/bin/python3",
   pipx: "pipx",
@@ -495,6 +497,18 @@ function withNotices(world: World): void {
     grokRow.path = null;
   }
   world.updates = world.updates.filter((u) => u.key.instance_id !== IDS.grok);
+  // A second Homebrew, in /usr/local, left by Migration Assistant from an
+  // Intel Mac, which did not answer and has nothing carried over from an
+  // earlier check: two sources of one kind, which the sidebar tells apart
+  // by where each is, and one whose page says why it lists nothing (spec
+  // R8). Sorted by adapter id, after the first.
+  world.instances.splice(
+    world.instances.findIndex((i) => i.id === IDS.brew) + 1,
+    0,
+    instance("brew", IDS.brewIntel, "/usr/local/bin/brew", "/usr/local", null, {
+      status: { unavailable: "NotResponding", notes: [] },
+    }),
+  );
 }
 
 /** What each lookup said when nothing could be reached (`?state=offline`). */
