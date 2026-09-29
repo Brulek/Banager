@@ -551,11 +551,11 @@
     },
     "showTechnicalDetails": {
       "label": "Show technical details",
-      "description": "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start."
+      "description": "Shows tools' own error messages, file locations and commands."
     },
     "includeSelfUpdating": {
       "label": "Show apps that update themselves",
-      "description": "Also list Homebrew apps that update themselves, like Chrome, under Updates."
+      "description": "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too."
     },
     "autoCheck": {
       "label": "Check for updates every day",

@@ -68,8 +68,8 @@
     "nothingToUpdate": "没有要更新的工具",
     "updating_other": "正在更新{{count}}个工具",
     "seeProgress": "查看进度",
-    "autoCheckOn": "开",
-    "autoCheckOff": "关",
+    "autoCheckOn": "打开",
+    "autoCheckOff": "关闭",
     "nothingToUpdateChecked": "已检查的来源中没有可更新的工具",
     "hiddenCount_other": "{{count}}个已隐藏",
     "cantUpdateHereCount_other": "{{count}}个无法在这里更新",
@@ -506,7 +506,7 @@
     },
     "includeSelfUpdating": {
       "label": "显示会自行更新的App",
-      "description": "Homebrew安装的Chrome等会自行更新的App也会列在“更新”中。"
+      "description": "打开“显示会自行更新的App”后，Homebrew安装的Chrome等App也会列在“更新”中。"
     },
     "autoCheck": {
       "label": "每天自动检查",

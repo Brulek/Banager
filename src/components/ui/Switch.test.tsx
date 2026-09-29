@@ -29,7 +29,10 @@ describe("Switch", () => {
 
     const toggle = getByRole("switch", { name: "Notify me" });
     expect(toggle).toBeDisabled();
+    // The enabled look at half opacity, in either appearance: no colour of
+    // its own that would fade into the group's grey.
     expect(toggle.className).toContain("disabled:opacity-50");
+    expect(toggle.className).not.toMatch(/disabled:(bg|text)-/);
     toggle.click();
     expect(onCheckedChange).not.toHaveBeenCalled();
     expect(toggle).not.toBeChecked();
@@ -52,8 +55,10 @@ describe("Switch", () => {
     expect(knobClasses).toEqual(
       expect.arrayContaining(["w-5", "h-3", "rounded-full", "translate-x-0.5", "data-[state=checked]:translate-x-3.5"]),
     );
-    // No drop shadow under the knob, only its edge.
+    // No heavy drop shadow under the knob: a hairline edge and the
+    // slightest shadow, so it reads on the light track.
     expect(knob.className).not.toMatch(/shadow-(sm|md|lg)/);
+    expect(knob.className).toContain("shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_1px_1.5px_rgb(0_0_0/0.18)]");
   });
 
   it("is the switch-off grey while off and the accent while on", () => {

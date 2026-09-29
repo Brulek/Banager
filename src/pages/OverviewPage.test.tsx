@@ -176,38 +176,40 @@ function renderOverview(options?: RenderOptions) {
 }
 
 describe("OverviewPage", () => {
-  it("says Checking… while the first check runs, and why it takes a while, with nothing to press", async () => {
+  it("says Checking… while the first check runs, and why it takes a while, in the status row it will answer in", async () => {
     served = startupSnapshot;
-    const { findByRole, getByText, queryByRole, queryByText, container } = renderOverview();
+    const { findByRole, queryByText, container } = renderOverview();
 
     const heading = await findByRole("heading", { level: 2, name: "Checking…" });
-    // 15/20 semibold, as an empty state's title.
-    expect(heading.className).toContain("text-section");
-    // A spinner alone, for as long as Homebrew's list update and every
-    // online lookup took, looked like a window that had frozen.
-    const why = getByText(
-      "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
-    );
-    // 15/20 regular, muted, no wider than 360.
-    expect(why.className.split(" ")).toEqual(
-      expect.arrayContaining(["text-section", "font-normal", "text-muted", "max-w-90"]),
-    );
-    // A 32 spinner over them, centred in the page; no ring, no number.
-    const box = container.querySelector<HTMLElement>("[data-first-check]");
-    expect(box?.className.split(" ")).toEqual(
-      expect.arrayContaining(["min-h-full", "items-center", "justify-center"]),
-    );
-    const spinner = box?.firstElementChild;
-    expect(spinner?.tagName.toLowerCase()).toBe("svg");
+    // The page's own layout, not a block of its own in the middle: the
+    // column, the status row -- a spinner in its symbol's slot, the title,
+    // why it takes a while as its line -- and the daily check's row, so
+    // that nothing moves when the answer comes.
+    const column = container.firstElementChild as HTMLElement;
+    expect(column.className).toContain("w-[min(560px,calc(100%-40px))]");
+    expect(column.className).not.toContain("justify-center");
+    expect(statusRowOf(container)).toContainElement(heading);
+    expect(heading.className).toContain("text-title");
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("busy");
+    const spinner = symbolOf(container).querySelector("svg");
     expect(spinner).toHaveAttribute("width", "32");
     expect(spinner?.getAttribute("class")).toContain("animate-spin");
+    // A spinner alone, for as long as Homebrew's list update and every
+    // online lookup took, looked like a window that had frozen.
+    expect(heading.nextElementSibling?.textContent).toBe(
+      "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    );
+    // Once the settings are in, as they are long before the first check.
+    expect(await findByRole("button", { name: "Check for updates every day Off" })).toBeInTheDocument();
+    expect(heading).toHaveTextContent("Checking…");
+    // Nothing to press in the row yet, no number, no ring.
+    expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
     expect(container.querySelector("[data-ring]")).toBeNull();
     expect(container.textContent).not.toMatch(/\d/);
     // Not "Loading…", and not "No tools to manage": the
     // placeholder is not an answer.
     expect(queryByText("Loading…")).not.toBeInTheDocument();
     expect(queryByText("No tools to manage")).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
   });
 
   it("counts the updates the Updates page offers, and Review updates ticks exactly those and opens it", async () => {
@@ -234,9 +236,15 @@ describe("OverviewPage", () => {
     expect(headline.nextElementSibling?.textContent).toBe("Checked just now");
     expect(headline.nextElementSibling?.className).toContain("text-small");
     expect(headline.nextElementSibling?.className).toContain("text-muted");
-    // The accent's arrow down, in a disc.
+    // The accent's arrow down, in a disc as wide as the 48 slot, which
+    // starts at the group's inset, 10 in: the disc's edge is the row's.
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates");
-    expect(symbolOf(container).querySelector("svg")?.getAttribute("class")).toContain("text-accent");
+    const disc = symbolOf(container).querySelector("svg");
+    expect(disc?.getAttribute("class")).toContain("text-accent");
+    expect(disc).toHaveAttribute("width", "48");
+    expect(disc).toHaveAttribute("viewBox", "2 2 20 20");
+    expect(disc?.querySelector("circle")).toHaveAttribute("r", "10");
+    expect(statusRowOf(container).className).toContain("px-2.5");
     // The number is said once on the page, in the title.
     expect(container.textContent?.match(/2/g)).toHaveLength(1);
     // The row's one button, the default one, of the regular size.
@@ -339,9 +347,15 @@ describe("OverviewPage", () => {
     expect(headline.nextElementSibling?.textContent).toBe("Checked just now");
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("upToDate");
     expect(symbolOf(container).querySelector("svg.text-success")).not.toBeNull();
-    // Nothing to press in the row.
-    expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
+    // The row's one button: a grey Check Again, as macOS's empty states
+    // have, which checks again.
+    const again = within(statusRowOf(container)).getByRole("button");
+    expect(again).toHaveAccessibleName("Check Again");
+    expect(again.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "bg-fill"]));
+    expect(again.className).not.toContain("bg-accent");
     expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
+    fireEvent.click(again);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
     // No problem to list: the status and the daily check, nothing else.
     expect(queryByRole("list", { name: "Needs attention" })).toBeNull();
   });
@@ -447,11 +461,13 @@ describe("OverviewPage", () => {
     // and the heading found first is not the one that stays.
     await waitFor(() => expect(getByRole("heading", { level: 2, name: title })).toBeInTheDocument());
     expect(queryByRole("heading", { name: "Everything is up to date" })).not.toBeInTheDocument();
-    // Not the green check: the same check in the tertiary grey, a mark
-    // and not news.
+    // Not the green check: a check in a circle, in outline and the muted
+    // colour -- a mark, not news, and not a disabled-looking grey disc.
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("quiet");
     expect(symbolOf(container).querySelector(".text-success")).toBeNull();
-    expect(symbolOf(container).querySelector(".text-tertiary")).not.toBeNull();
+    expect(symbolOf(container).querySelector("svg")?.getAttribute("class")).toContain("text-muted");
+    expect(symbolOf(container).querySelector('[fill="currentColor"]')).toBeNull();
+    expect(symbolOf(container).querySelector('g[stroke="currentColor"] circle')).not.toBeNull();
     // The Updates page, on the same snapshot, does not say it either.
     await waitFor(() =>
       expect(
@@ -474,9 +490,17 @@ describe("OverviewPage", () => {
     } else {
       expect(headline.nextElementSibling?.textContent).toBe(line);
     }
+    // One button in the row, whatever the state: Review Updates where the
+    // Updates page lists rows, else Check Again, both grey.
+    const [button, ...more] = within(statusRowOf(container)).getAllByRole("button").filter(
+      (element) => element.closest("h2, p") === null,
+    );
+    expect(more).toEqual([]);
+    expect(button.className).toContain("bg-fill");
     if (review) {
-      expect(getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
+      expect(button).toHaveAccessibleName("Review Updates");
     } else {
+      expect(button).toHaveAccessibleName("Check Again");
       expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
     }
   });
@@ -691,11 +715,11 @@ describe("OverviewPage", () => {
     expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
   });
 
-  it("says the daily check is off, in Chinese as 关", async () => {
+  it("says the daily check is off, in Chinese as System Settings does: 关闭", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByRole } = renderOverview();
-      expect(await findByRole("button", { name: "每天自动检查 关" })).toBeInTheDocument();
+      expect(await findByRole("button", { name: "每天自动检查 关闭" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -718,37 +742,80 @@ describe("OverviewPage", () => {
     act(() => {
       run = refreshIntoCache(queryClient, "test");
     });
+    try {
+      // The verdict stays, its symbol and its button too; only the line
+      // says so (the toolbar's ⟳ is turning already): no second spinner.
+      await waitFor(() => expect(headline.nextElementSibling?.textContent).toBe("Checking…"));
+      expect(headline).toHaveTextContent("1 tool can be updated");
+      expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates");
+      expect(container.querySelector(".animate-spin, [class*='animate-spin']")).toBeNull();
+      expect(within(statusRowOf(container)).getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        answer(served);
+        await run;
+      });
+    }
+    await waitFor(() => expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /));
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates");
+  });
 
-    // The verdict stays; the symbol turns and the line says so.
-    await waitFor(() => expect(symbolOf(container).getAttribute("data-symbol")).toBe("busy"));
-    expect(headline).toHaveTextContent("1 tool can be updated");
-    expect(headline.nextElementSibling?.textContent).toBe("Checking…");
-    // Review Updates is still there to press.
-    expect(within(statusRowOf(container)).getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
-
-    await act(async () => {
-      answer(served);
-      await run;
+  it("offers Check Again off while a check runs, where it is the row's button", async () => {
+    let answer: (snapshot: Snapshot) => void = () => {};
+    const { findByRole, queryClient, container } = renderOverview();
+    await findByRole("heading", { level: 2, name: "Everything is up to date" });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return new Promise<Snapshot>((resolve) => (answer = resolve));
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      return Promise.resolve(undefined);
     });
-    await waitFor(() => expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates"));
-    expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
+    const again = within(statusRowOf(container)).getByRole("button", { name: "Check Again" });
+    expect(again).toBeEnabled();
+
+    let run: Promise<void> = Promise.resolve();
+    act(() => {
+      run = refreshIntoCache(queryClient, "test");
+    });
+    try {
+      await waitFor(() => expect(again).toBeDisabled());
+      expect(symbolOf(container).getAttribute("data-symbol")).toBe("upToDate");
+    } finally {
+      await act(async () => {
+        answer(served);
+        await run;
+      });
+    }
+    await waitFor(() => expect(again).toBeEnabled());
   });
 
   it("says, as an alert, that the last check failed and why, over what the check before it found", async () => {
     served = snapshotWith({ updates: [candidate(formula("glib"))] });
     useUiStore.setState({ startupRefreshError: "brew update timed out" });
-    const { findByRole, getByRole, queryByRole, container } = renderOverview();
+    const { findByRole, queryByRole, container } = renderOverview();
 
     const alert = await findByRole("alert");
     const title = within(alert).getByRole("heading", { level: 2, name: "Couldn't check" });
-    expect(title.className).toContain("text-danger-text");
+    // Said once, not shouted: the title in the label colour, the ⚠︎ at 32
+    // in the middle of the 48 slot, and its reason under it.
+    expect(title.className).toContain("text-foreground");
+    expect(title.className).not.toContain("text-danger");
     expect(title.nextElementSibling?.textContent).toBe("Reason: brew update timed out");
     expect(title.nextElementSibling?.className).toContain("text-muted");
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("failed");
-    expect(symbolOf(container).querySelector("svg")?.getAttribute("class")).toContain("text-warning");
-    // What the check before it found is still there to review.
+    const warning = symbolOf(container).querySelector("svg");
+    expect(warning?.getAttribute("class")).toContain("text-warning");
+    expect(warning).toHaveAttribute("width", "32");
+    expect(symbolOf(container).className).toContain("size-12");
+    // The one thing to do now: check again, the row's default button.
+    const again = within(statusRowOf(container)).getByRole("button");
+    expect(again).toHaveAccessibleName("Check Again");
+    expect(again.className).toContain("bg-accent");
     expect(queryByRole("heading", { name: "1 tool can be updated" })).toBeNull();
-    expect(getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Review Updates" })).toBeNull();
+    fireEvent.click(again);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
 
     // A check that works clears it.
     act(() => useUiStore.setState({ startupRefreshError: null }));
@@ -768,6 +835,10 @@ describe("OverviewPage", () => {
 
     const list = await findByRole("list", { name: "Needs attention" });
     expect(list.className.split(" ")).toEqual(expect.arrayContaining(["bg-group", "rounded-group"]));
+    // Everything 10 in; the hairlines between the rows start where the
+    // words do (10 + the 16 symbol + 8), not at the symbol.
+    expect(list.className).toContain("[&>*+*]:before:left-8.5");
+    expect(list.className).not.toContain("[&>*+*]:before:left-2.5");
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(2);
     // Each 46 high: the title, and its explanation under it in small muted
@@ -776,7 +847,9 @@ describe("OverviewPage", () => {
     expect(within(lines[0]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
     expect(within(lines[1]).getByText("Ollama isn't running")).toBeInTheDocument();
     const why = within(lines[1]).getByText("Open Ollama to see what it has and check for updates.");
-    expect(why.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
+    // 11, its lines 16 apart when it wraps.
+    expect(why.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "leading-4", "text-muted"]));
+    for (const line of lines) expect(line.className).toContain("px-2.5");
     expect(within(lines[1]).queryByRole("button", { name: /^Details/ })).toBeNull();
     // Each with a symbol: information, muted; a warning, a filled orange ⚠︎.
     const icons = lines.map((line) => line.querySelector("svg"));

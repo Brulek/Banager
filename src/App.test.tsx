@@ -184,15 +184,22 @@ describe("App", () => {
       expect(within(header).queryAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(
         expected,
       );
-      // Never a second one stacked under the header.
-      expect(queryAllByRole("button", { name: /^(Check|Scan) Again$/ })).toHaveLength(expected.length);
+      // Never a second one stacked under the header -- but for the
+      // Overview's status row, whose one button it is when there is
+      // nothing else to do there (everything is up to date here), as
+      // macOS's empty states offer one.
+      const again = queryAllByRole("button", { name: /^(Check|Scan) Again$/ });
+      const inStatusRow = again.filter((button) => button.closest("[data-status]") !== null);
+      expect(inStatusRow).toHaveLength(name === "Overview" ? 1 : 0);
+      expect(again.length - inStatusRow.length).toBe(expected.length);
     }
   });
 
   it("says in the Unknown page's toolbar when its scan answered, and never when the sources were checked", async () => {
     const { getByRole, findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
-    const checkAgain = getByRole("button", { name: "Check Again" });
+    const toolbar = getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+    const checkAgain = within(toolbar).getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(checkAgain.getAttribute("title")).toMatch(/^Check Again \(⌘R\) · Checked /));
 
     fireEvent.click(getByRole("button", { name: "Unknown" }));
@@ -637,7 +644,8 @@ describe("the menu bar's items that act in the page", () => {
     });
     const { findByText, getByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
-    const checkAgain = getByRole("button", { name: "Check Again" });
+    const toolbar = getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+    const checkAgain = within(toolbar).getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(checkAgain).toBeEnabled());
     expect(refreshes()).toBe(1);
 

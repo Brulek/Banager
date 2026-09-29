@@ -13,21 +13,25 @@ export interface PopupButtonProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-/** ⌃ over ⌄, as a popup button in a grouped form draws them: 8 wide, 10 high. */
+/**
+ * ⌃ over ⌄, as a popup button in a grouped form draws them: 8 wide, 12
+ * high, in a light stroke, with 2 between the two so they never meet in a
+ * diamond.
+ */
 function UpDownChevrons() {
   return (
     <svg
       width={8}
-      height={10}
-      viewBox="0 0 8 10"
+      height={12}
+      viewBox="0 0 8 12"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.5}
+      strokeWidth={1.25}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M1 4L4 1L7 4M1 6L4 9L7 6" />
+      <path d="M1.25 4.5L4 1.75L6.75 4.5M1.25 7.5L4 10.25L6.75 7.5" />
     </svg>
   );
 }

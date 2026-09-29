@@ -2,7 +2,7 @@ import { Fragment, useId } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
-import { isStartupSnapshot, useRefreshInFlight } from "../lib/events";
+import { isStartupSnapshot } from "../lib/events";
 import { elapsedSince } from "../lib/format";
 import {
   ADAPTER_LABEL_KEYS,
@@ -13,17 +13,16 @@ import {
 import type { SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
 import type { UpdatesSummary } from "../lib/updateState";
-import type { ManagerInstance } from "../lib/types";
+import type { ManagerInstance, Settings } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
-import { FirstCheck } from "../components/StatusRing";
 import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
 import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
 import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
 import { ChevronIcon, InfoIcon } from "../components/icons";
 import { Popover } from "../components/ui/Popover";
 import { BUTTON, LINK } from "../components/ui/controls";
-import { FORM_COLUMN, GROUP, GROUP_ROW } from "../components/ui/group";
+import { FORM_COLUMN, GROUP, GROUP_ROW, GROUP_WITH_ICONS, SMALL_WRAPPING } from "../components/ui/group";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -142,7 +141,7 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
         )}
         <div className="min-w-0">
           <p className="text-body text-foreground">{t(notice.titleKey, notice.values)}</p>
-          <p className="text-small text-muted">{t(notice.descriptionKey, notice.values)}</p>
+          <p className={`${SMALL_WRAPPING} text-muted`}>{t(notice.descriptionKey, notice.values)}</p>
           {/* A <div>: the error's own "Details" panel is one. */}
           {error !== null ? (
             <div role="alert" className="text-small text-danger-text">
@@ -166,31 +165,99 @@ function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
 }
 
 /**
+ * The status row, the first group's one row: a 48 symbol, the title in
+ * 13 bold with a line under it in 11 muted, and on the right the row's one
+ * button. `alert`: the title and its line are read out as they appear --
+ * mounted afresh, so that a screen reader says them.
+ */
+function StatusRow({
+  symbol,
+  title,
+  line,
+  button,
+  alert = false,
+}: {
+  symbol: StatusSymbolKind;
+  title: string;
+  line: ReactNode;
+  button: ReactNode;
+  alert?: boolean;
+}) {
+  return (
+    <div className={GROUP}>
+      <div data-status={symbol} className="flex items-center gap-3 px-2.5 py-2.5">
+        <StatusSymbol kind={symbol} />
+        <div key={alert ? "alert" : "status"} role={alert ? "alert" : undefined} className="min-w-0 flex-1">
+          <h2 className="text-title text-foreground">{title}</h2>
+          {line !== null ? <p className={`${SMALL_WRAPPING} text-muted`}>{line}</p> : null}
+        </div>
+        {button}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The daily check, on or off, as Software Update shows its automatic
+ * updates -- 「打开」/「关闭」, as System Settings words a switch's state --
+ * a row that opens Settings, where it is changed.
+ */
+function AutoCheckRow({ settings }: { settings: Settings }) {
+  const { t } = useTranslation();
+  const setPage = useUiStore((s) => s.setPage);
+  const labelId = useId();
+  const valueId = useId();
+  return (
+    <div className={GROUP}>
+      <button
+        type="button"
+        onClick={() => setPage("settings")}
+        aria-labelledby={`${labelId} ${valueId}`}
+        className={`${GROUP_ROW} w-full text-left`}
+      >
+        <span id={labelId} className="min-w-0 truncate text-body text-foreground">
+          {t("settings.autoCheck.label")}
+        </span>
+        <span className="flex shrink-0 items-center gap-1 text-body text-muted">
+          <span id={valueId}>{settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff")}</span>
+          <ChevronIcon size={14} className="text-tertiary" />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * The first page, laid out as System Settings' Software Update (spec R1):
  * a column of groups, as wide as Settings' and at its top.
  *
- * First, one row: where the updates stand. The Updates page's own verdict
- * (`updatesSummary`) as its title -- how many updates it offers to
- * install, "Everything is up to date" only when that page would say so,
- * and a plain "Nothing to update" when there is nothing to install but
- * that is not the same thing ("No updates in the sources checked" where a
- * source was not checked in full) -- with a symbol for it on the left
- * (`StatusSymbol`) and a line under it: when the sources were last checked,
- * or what there is instead of updates (`nothingToUpdateLine`). On the
- * right, the one button: Review Updates, the default button, which opens
- * the Updates page with all of them selected; a grey one where that page
- * lists only what cannot be updated here; See Progress while they install;
- * none when everything is up to date. The number of updates is said once,
- * in the title. While a check runs the symbol turns and the line says so;
- * when the last one failed -- `startupRefreshError`, which every refresh
- * sets or clears -- the title says so instead, in red, with its reason:
- * what is listed is from the check before it. Before the first check has
- * answered, "Checking…" and why it takes a while (`FirstCheck`, which the
- * Updates and Installed pages show too) -- the startup placeholder is not
- * an answer (`isStartupSnapshot`).
+ * First, one row: where the updates stand (`StatusRow`). The Updates
+ * page's own verdict (`updatesSummary`) as its title -- how many updates
+ * it offers to install, "Everything is up to date" only when that page
+ * would say so, and a plain "Nothing to update" when there is nothing to
+ * install but that is not the same thing ("No updates in the sources
+ * checked" where a source was not checked in full) -- with a symbol for it
+ * on the left (`StatusSymbol`) and a line under it: when the sources were
+ * last checked, or what there is instead of updates
+ * (`nothingToUpdateLine`). On the right, always one button, the one thing
+ * to do: Review Updates, the default button, which opens the Updates page
+ * with all of them selected; a grey one where that page lists only what
+ * cannot be updated here; See Progress while they install; otherwise a
+ * grey Check Again, as macOS's empty states offer, off while a check runs.
+ * The number of updates is said once, in the title.
  *
- * Second, the daily check, on or off, as Software Update shows its
- * automatic updates: a row that opens Settings, where it is changed.
+ * While a check runs, the row keeps what the last one found -- its symbol,
+ * its title, its button -- and only its line says 「正在检查…」: the
+ * toolbar's ⟳ is already turning. When the last check failed --
+ * `startupRefreshError`, which every refresh sets or clears -- the row
+ * says so instead, as an alert, with its reason, and Check Again becomes
+ * its default button: what is listed is from the check before it. Before
+ * the first check has answered, the same row, turning, says 「正在检查…」
+ * and why that takes a while -- the startup placeholder is not an answer
+ * (`isStartupSnapshot`) -- so that nothing on the page moves when the
+ * answer comes.
+ *
+ * Second, the daily check, on or off (`AutoCheckRow`).
  *
  * Last, only when a source has something to say, a group of one row for
  * each: its first notice (`sourceNoticesFor`: not running, not answering,
@@ -207,15 +274,18 @@ export function OverviewPage() {
   const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
   const checkFailure = useUiStore((s) => s.startupRefreshError);
-  const checking = useRefreshInFlight();
+  const { checkAgain, checking } = useCheckAgain();
   const operationFor = useUpdateOperationFor();
   const refreshedAt = snapshot?.refreshed_at ?? null;
   const now = useMinuteClock(refreshedAt);
-  const autoCheckLabelId = useId();
-  const autoCheckValueId = useId();
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
-    return <FirstCheck />;
+    return (
+      <div className={FORM_COLUMN}>
+        <StatusRow symbol="busy" title={t("common.checking")} line={t("common.firstCheckDetail")} button={null} />
+        {settings ? <AutoCheckRow settings={settings} /> : null}
+      </div>
+    );
   }
 
   const labelOf = (instance: ManagerInstance): string => {
@@ -241,8 +311,8 @@ export function OverviewPage() {
     return notice === undefined ? [] : [notice];
   });
 
-  // A check under way says so, over whatever the last one found; a check
-  // that failed says so until one works, but not while the next one runs.
+  // A check that failed says so until one works, but not while the next
+  // one runs.
   const failed = !checking && checkFailure !== null;
   const lastChecked = refreshedAt === null ? null : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now));
   let line: ReactNode = null;
@@ -255,10 +325,17 @@ export function OverviewPage() {
   } else if (summary.kind !== "updating") {
     line = lastChecked;
   }
-  const symbol: StatusSymbolKind = failed ? "failed" : checking ? "busy" : symbolOf(summary);
 
-  let button: ReactNode = null;
-  if (summary.kind === "updates") {
+  const checkAgainButton = (kind: "grey" | "default") => (
+    <button type="button" onClick={checkAgain} disabled={checking} className={BUTTON.regular[kind]}>
+      {t("header.checkAgain")}
+    </button>
+  );
+  let button: ReactNode;
+  if (failed) {
+    // The one thing to do now: check again.
+    button = checkAgainButton("default");
+  } else if (summary.kind === "updates") {
     button = (
       <button
         type="button"
@@ -288,47 +365,24 @@ export function OverviewPage() {
         {t("overview.reviewUpdates")}
       </button>
     );
+  } else {
+    button = checkAgainButton("grey");
   }
 
   return (
     <div className={FORM_COLUMN}>
-      <div className={GROUP}>
-        <div data-status={symbol} className="flex items-center gap-3 px-2.5 py-2.5">
-          <StatusSymbol kind={symbol} />
-          {/* Mounted afresh when the check fails, so that the alert is
-              read out as it appears. */}
-          <div key={failed ? "failed" : "status"} role={failed ? "alert" : undefined} className="min-w-0 flex-1">
-            <h2 className={`text-title ${failed ? "text-danger-text" : "text-foreground"}`}>
-              {failed ? t("header.checkFailed") : headlineText(t, summary)}
-            </h2>
-            {line !== null ? <p className="text-small text-muted">{line}</p> : null}
-          </div>
-          {button}
-        </div>
-      </div>
+      <StatusRow
+        symbol={failed ? "failed" : symbolOf(summary)}
+        title={failed ? t("header.checkFailed") : headlineText(t, summary)}
+        line={line}
+        button={button}
+        alert={failed}
+      />
 
-      <div className={GROUP}>
-        {/* Opens Settings, where the daily check is turned on or off. */}
-        <button
-          type="button"
-          onClick={() => setPage("settings")}
-          aria-labelledby={`${autoCheckLabelId} ${autoCheckValueId}`}
-          className={`${GROUP_ROW} w-full text-left`}
-        >
-          <span id={autoCheckLabelId} className="min-w-0 truncate text-body text-foreground">
-            {t("settings.autoCheck.label")}
-          </span>
-          <span className="flex shrink-0 items-center gap-1 text-body text-muted">
-            <span id={autoCheckValueId}>
-              {settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff")}
-            </span>
-            <ChevronIcon size={14} className="text-tertiary" />
-          </span>
-        </button>
-      </div>
+      <AutoCheckRow settings={settings} />
 
       {problems.length > 0 ? (
-        <ul aria-label={t("overview.attentionLabel")} className={GROUP}>
+        <ul aria-label={t("overview.attentionLabel")} className={GROUP_WITH_ICONS}>
           {problems.map((notice) => (
             <ProblemRow key={notice.id} notice={notice} />
           ))}

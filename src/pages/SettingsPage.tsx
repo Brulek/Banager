@@ -18,6 +18,7 @@ import {
   GROUP_ROW,
   GROUP_ROW_TWO_LINES,
   GROUP_TITLE,
+  SMALL_WRAPPING,
 } from "../components/ui/group";
 
 const LANGUAGES: Language[] = ["System", "En", "ZhCn"];
@@ -102,7 +103,8 @@ function SettingRow({
 const ROW_LABEL = "block text-body text-foreground";
 /** The label of a row whose switch is disabled: in the colour of disabled text, as the switch is faded. */
 const ROW_LABEL_DISABLED = "block text-body text-tertiary";
-const ROW_SUBTITLE = "text-small text-muted";
+/** A row's second line: 11 muted, its lines 16 apart if it wraps (`SMALL_WRAPPING`). */
+const ROW_SUBTITLE = `${SMALL_WRAPPING} text-muted`;
 
 /**
  * A hidden update's row: its software, the way the Updates and Installed
@@ -339,14 +341,14 @@ export function SettingsPage() {
           is on, shown off -- saying so, and what turns it on -- while it
           is not, saved off when the daily check is turned off, and
           turned on only with permission to post (`turnNotifyOn`). What
-          the daily check does is the group's footnote, as System
-          Settings says what its automatic checks do; which apps the last
-          switch adds stays under it, the group's one standing line. */}
+          the daily check does is said under it, the group's one standing
+          line; which apps the last switch adds is the group's footnote,
+          right under that switch. */}
       <SettingsGroup
         title={t("settings.groups.updates")}
         footnote={
-          <p id="settings-auto-check-desc" className={GROUP_FOOTNOTE}>
-            {t("settings.autoCheck.description")}
+          <p id="settings-include-self-updating-desc" className={GROUP_FOOTNOTE}>
+            {t("settings.includeSelfUpdating.description")}
           </p>
         }
       >
@@ -355,6 +357,11 @@ export function SettingsPage() {
             <label htmlFor="settings-auto-check" className={ROW_LABEL}>
               {t("settings.autoCheck.label")}
             </label>
+          }
+          subtitle={
+            <p id="settings-auto-check-desc" className={ROW_SUBTITLE}>
+              {t("settings.autoCheck.description")}
+            </p>
           }
           control={
             <Switch
@@ -408,11 +415,6 @@ export function SettingsPage() {
             <label htmlFor="settings-include-self-updating" className={ROW_LABEL}>
               {t("settings.includeSelfUpdating.label")}
             </label>
-          }
-          subtitle={
-            <p id="settings-include-self-updating-desc" className={ROW_SUBTITLE}>
-              {t("settings.includeSelfUpdating.description")}
-            </p>
           }
           control={
             <Switch

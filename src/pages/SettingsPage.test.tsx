@@ -377,8 +377,9 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
+    // In plain words, on one line.
     expect(await screen.findByRole("switch", { name: "Show technical details" })).toHaveAccessibleDescription(
-      "Shows tools' own error messages, file locations and the commands to run, and opens a confirmation's command from the start.",
+      "Shows tools' own error messages, file locations and commands.",
     );
     expect(zhCN.settings.showTechnicalDetails.description).toBe(
       "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。",
@@ -711,7 +712,11 @@ describe("SettingsPage", () => {
     expect(value).toHaveTextContent("English");
     expect(value.className).toContain("text-body");
     expect(capsule.className.split(" ")).toEqual(expect.arrayContaining(["w-5", "rounded-full", "bg-fill"]));
-    expect(capsule.querySelector("svg")).not.toBeNull();
+    // ⌃ over ⌄ in a light stroke, 2 apart so they do not meet in a diamond.
+    const chevrons = capsule.querySelector("svg");
+    expect(chevrons).toHaveAttribute("height", "12");
+    expect(chevrons).toHaveAttribute("stroke-width", "1.25");
+    expect(chevrons?.querySelector("path")).toHaveAttribute("d", "M1.25 4.5L4 1.75L6.75 4.5M1.25 7.5L4 10.25L6.75 7.5");
     expect(popup.className.split(" ")).toEqual(expect.arrayContaining(["absolute", "inset-0", "opacity-0"]));
     // No border and no fill behind the value.
     expect(control.className).not.toMatch(/\bborder\b|\bbg-/);
@@ -788,7 +793,7 @@ describe("SettingsPage", () => {
     expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
     expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
-      "Also list Homebrew apps that update themselves, like Chrome, under Updates.",
+      "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too.",
     );
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toBeInTheDocument();
     expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
@@ -822,7 +827,12 @@ describe("SettingsPage", () => {
       expect(classes).not.toContain("border");
       // A hairline between each two rows, 10 in from either side.
       expect(classes).toEqual(
-        expect.arrayContaining(["[&>*+*]:before:inset-x-2.5", "[&>*+*]:before:h-px", "[&>*+*]:before:bg-group-separator"]),
+        expect.arrayContaining([
+          "[&>*+*]:before:left-2.5",
+          "[&>*+*]:before:right-2.5",
+          "[&>*+*]:before:h-px",
+          "[&>*+*]:before:bg-group-separator",
+        ]),
       );
     }
   });
@@ -852,31 +862,46 @@ describe("SettingsPage", () => {
         .filter((row) => row.className.includes("min-h-11.5"));
     expect(twoLines(screen.getByRole("region", { name: "General" }))).toHaveLength(1);
     expect(twoLines(screen.getByRole("region", { name: "Updates" }))).toEqual([
-      rowOf(screen.getByRole("switch", { name: "Show apps that update themselves" })),
+      rowOf(screen.getByRole("switch", { name: "Check for updates every day" })),
     ]);
-    for (const name of ["Check for updates every day", "Notify me when there are updates"]) {
+    for (const name of ["Notify me when there are updates", "Show apps that update themselves"]) {
       expect(rowOf(screen.getByRole("switch", { name })).className).toContain("min-h-9");
     }
+    // A second line is 11 with its lines 16 apart, should it wrap, and
+    // still 14 high on one line: 1 short at either end.
+    const subtitle = within(technical).getByText("Shows tools' own error messages, file locations and commands.");
+    expect(subtitle.className.split(" ")).toEqual(
+      expect.arrayContaining(["text-small", "leading-4", "-my-px", "text-muted"]),
+    );
   });
 
-  it("says what the daily check does in a footnote under the Updates group, 6 below it, and describes the switch with it", async () => {
+  it("says what the daily check does under its switch, and which apps the last switch adds in the group's footnote", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
       throw new Error(`unexpected command ${cmd}`);
     });
 
     renderWithProviders(<SettingsPage />);
 
     const updates = await screen.findByRole("region", { name: "Updates" });
-    const footnote = within(updates).getByText(
+    const daily = within(updates).getByRole("switch", { name: "Check for updates every day" });
+    const what = within(updates).getByText(
       "Canager checks for updates once a day while it's running, and doesn't install the updates it finds.",
     );
-    // After the container, not in it: the group's own note, in small muted text.
+    // In the daily check's own row, under its label.
+    expect(daily.closest(".px-2\\.5")?.contains(what)).toBe(true);
+    expect(daily).toHaveAccessibleDescription(what.textContent ?? "");
+    // After the container, not in it: the footnote, in small muted text,
+    // naming the switch it is about.
     const group = screen.getByRole("heading", { level: 2, name: "Updates" }).nextElementSibling as HTMLElement;
-    expect(group.contains(footnote)).toBe(false);
-    expect(group.nextElementSibling).toBe(footnote);
-    expect(footnote.className.split(" ")).toEqual(expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "text-muted"]));
-    expect(within(updates).getByRole("switch", { name: "Check for updates every day" })).toHaveAccessibleDescription(
+    const footnote = group.nextElementSibling as HTMLElement;
+    expect(footnote).toHaveTextContent(
+      "With “Show apps that update themselves” on, Homebrew apps like Chrome are listed under Updates too.",
+    );
+    expect(footnote.className.split(" ")).toEqual(
+      expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "leading-4", "text-muted"]),
+    );
+    expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
       footnote.textContent ?? "",
     );
   });
