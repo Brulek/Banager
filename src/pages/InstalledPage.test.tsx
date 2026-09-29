@@ -364,7 +364,7 @@ describe("InstalledPage", () => {
     const { findByText, queryByText, getByRole, getByText } = renderWithProviders(<InstalledPage />);
 
     await findByText("jq");
-    const search = getByRole("searchbox", { name: "Search installed items" });
+    const search = getByRole("searchbox", { name: "Search installed tools" });
     expect(search).toHaveAttribute("placeholder", "Search");
 
     fireEvent.change(search, { target: { value: "VISUAL-studio" } });
@@ -378,7 +378,7 @@ describe("InstalledPage", () => {
   it("checks no spelling in the search box: a tool's name is no word", async () => {
     const { findByRole } = renderWithProviders(<InstalledPage />);
 
-    expect(await findByRole("searchbox", { name: "Search installed items" })).toHaveAttribute("spellcheck", "false");
+    expect(await findByRole("searchbox", { name: "Search installed tools" })).toHaveAttribute("spellcheck", "false");
   });
 
   it("opens the uninstall dialog and plans it when the row's Uninstall is pressed", async () => {
@@ -1151,7 +1151,7 @@ describe("InstalledPage", () => {
     const { getByRole } = renderWithProviders(<InstalledPage />);
 
     await findRow("jq");
-    fireEvent.change(getByRole("searchbox", { name: "Search installed items" }), {
+    fireEvent.change(getByRole("searchbox", { name: "Search installed tools" }), {
       target: { value: "nothing-like-it" },
     });
     const details = await screen.findByRole("button", { name: "Details: Homebrew isn't responding" });

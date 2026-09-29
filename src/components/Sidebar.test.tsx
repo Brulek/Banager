@@ -221,7 +221,7 @@ describe("Sidebar", () => {
       </>,
     );
 
-    await findByText("2 updates");
+    await findByText("2 can be updated", { selector: "p" });
     const updatesButton = getByRole("button", { name: "Updates" });
     expect(within(updatesButton).getByText("2")).toBeInTheDocument();
     expect(updatesButton).toHaveAccessibleDescription("2 can be updated");

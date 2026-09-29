@@ -138,7 +138,7 @@ describe("SnapshotStatus", () => {
     );
 
     expect(
-      await screen.findByText("Homebrew didn't finish this check, so what Canager shows for it wasn't refreshed."),
+      await screen.findByText("Homebrew didn't finish checking this time."),
     ).toBeInTheDocument();
   });
 
@@ -181,7 +181,7 @@ describe("SnapshotStatus", () => {
       );
 
       expect(await screen.findByText("部分检查没完成")).toBeInTheDocument();
-      expect(screen.getByText("Homebrew、npm 和 uv 这次没查完，这部分内容没能刷新。")).toBeInTheDocument();
+      expect(screen.getByText("Homebrew、npm 和 uv 这次没检查完。")).toBeInTheDocument();
       // The header's Check again, right above it, runs the same check.
       expect(screen.queryByRole("button")).toBeNull();
     } finally {
@@ -235,7 +235,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
@@ -264,7 +264,7 @@ describe("SnapshotStatus", () => {
 
     expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
     expect(screen.getByText("installed list")).toBeInTheDocument();
-    expect(screen.queryByText("Couldn't load what's installed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load installed tools")).not.toBeInTheDocument();
   });
 
   it("shows the backend's error verbatim when the snapshot itself cannot be loaded", async () => {
@@ -278,7 +278,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
@@ -318,7 +318,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "refresh")).toBe(true),
@@ -348,7 +348,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     const button = screen.getByRole("button", { name: "Check again" });
     fireEvent.click(button);
     await waitFor(() => expect(button).toBeDisabled());
@@ -381,7 +381,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Couldn't load what's installed")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
     const button = screen.getByRole("button", { name: "Check again" });
     expect(button).toBeEnabled();
 
@@ -397,7 +397,7 @@ describe("SnapshotStatus", () => {
       await run;
     });
     // The check read what the snapshot could not.
-    await waitFor(() => expect(screen.queryByText("Couldn't load what's installed")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Couldn't load installed tools")).toBeNull());
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
   });
 

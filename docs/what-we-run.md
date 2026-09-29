@@ -308,7 +308,7 @@ Dock posts nothing and marks nothing, so its updates are still news to
 the next daily check that finds them.
 
 The notification is titled Canager and says "N tools can be updated"
-(「有 N 个工具可以更新」) in the window's language, N being every update
+(「有 N 个工具可更新」) in the window's language, N being every update
 Update all would take. It is handed to macOS's Notification Center
 (`NSUserNotificationCenter`) through notify-rust, the crate the plugin
 posts through, on a thread of its own (`post` and `hand_off` in

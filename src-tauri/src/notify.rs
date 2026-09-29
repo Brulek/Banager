@@ -152,7 +152,7 @@ pub fn body(language: MenuLanguage, count: usize) -> String {
     match language {
         MenuLanguage::En if count == 1 => "1 tool can be updated".to_string(),
         MenuLanguage::En => format!("{count} tools can be updated"),
-        MenuLanguage::ZhCn => format!("有 {count} 个工具可以更新"),
+        MenuLanguage::ZhCn => format!("有 {count} 个工具可更新"),
     }
 }
 
@@ -578,8 +578,8 @@ mod tests {
     fn test_the_notification_says_how_many_tools_can_be_updated_in_the_windows_language() {
         assert_eq!(body(MenuLanguage::En, 1), "1 tool can be updated");
         assert_eq!(body(MenuLanguage::En, 3), "3 tools can be updated");
-        assert_eq!(body(MenuLanguage::ZhCn, 1), "有 1 个工具可以更新");
-        assert_eq!(body(MenuLanguage::ZhCn, 12), "有 12 个工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhCn, 1), "有 1 个工具可更新");
+        assert_eq!(body(MenuLanguage::ZhCn, 12), "有 12 个工具可更新");
     }
 
     #[test]

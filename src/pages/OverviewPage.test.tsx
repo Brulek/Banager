@@ -432,7 +432,7 @@ describe("OverviewPage", () => {
     const { findByText, getByRole } = renderOverview();
 
     expect(
-      await findByText("Homebrew didn't finish this check, so what Canager shows for it wasn't refreshed."),
+      await findByText("Homebrew didn't finish checking this time."),
     ).toBeInTheDocument();
     await waitFor(() => expect(getByRole("heading", { level: 2, name: NOT_CHECKED })).toBeInTheDocument());
     expect(getByRole("heading", { level: 2, name: NOT_CHECKED }).nextElementSibling?.textContent).toBe(
@@ -508,7 +508,7 @@ describe("OverviewPage", () => {
       served = snapshotWith({ instances: [{ ...brew, status: { unavailable: null, notes: [note] } }] });
       const { findByRole, queryByRole } = renderOverview();
 
-      const headline = await findByRole("heading", { level: 2, name: "已检查的来源里没有要更新的工具" });
+      const headline = await findByRole("heading", { level: 2, name: "已检查的来源里没有可更新的工具" });
       expect(headline.nextElementSibling).toBeNull();
       expect(queryByRole("heading", { level: 2, name: "没有要更新的工具" })).not.toBeInTheDocument();
     } finally {
@@ -743,7 +743,7 @@ describe("OverviewPage", () => {
       served = snapshotWith({ updates: [candidate(formula("glib")), candidate(formula("wget"))] });
       const { findByRole, container } = renderOverview();
 
-      expect(await findByRole("heading", { level: 2, name: "有 2 个工具可以更新" })).toBeInTheDocument();
+      expect(await findByRole("heading", { level: 2, name: "有 2 个工具可更新" })).toBeInTheDocument();
       expect(ringOf(container).textContent).toBe("2个可更新");
       expect(await findByRole("heading", { level: 2, name: "你的工具" })).toBeInTheDocument();
     } finally {

@@ -11,7 +11,7 @@
     "unknown": "来源不明",
     "settings": "设置",
     "count": {
-      "updates_other": "{{count}} 个可以更新",
+      "updates_other": "{{count}} 个可更新",
       "installed_other": "已安装 {{count}} 个",
       "unknown_other": "找到 {{count}} 个"
     }
@@ -54,14 +54,14 @@
     }
   },
   "overview": {
-    "updatesAvailable_other": "有 {{count}} 个工具可以更新",
+    "updatesAvailable_other": "有 {{count}} 个工具可更新",
     "updatesUnit_other": "个可更新",
     "reviewUpdates": "查看更新",
     "upToDate": "所有工具都是最新的",
     "nothingToUpdate": "没有要更新的工具",
     "updating_other": "正在更新 {{count}} 个工具",
     "seeProgress": "查看进度",
-    "nothingToUpdateChecked": "已检查的来源里没有要更新的工具",
+    "nothingToUpdateChecked": "已检查的来源里没有可更新的工具",
     "hiddenCount_other": "{{count}} 个已隐藏",
     "cantUpdateHereCount_other": "{{count}} 个不能在这里更新",
     "checksUnfinished_other": "{{count}} 项检查没完成",
@@ -84,7 +84,7 @@
     "standalone-grok": "Grok Build"
   },
   "installed": {
-    "filterLabel": "搜索已安装的内容",
+    "filterLabel": "搜索已安装的工具",
     "filterPlaceholder": "搜索",
     "filterBySource": "按来源筛选",
     "all": "全部",
@@ -133,9 +133,9 @@
     }
   },
   "updates": {
-    "upToDate": "所有内容都已是最新",
+    "upToDate": "所有工具都是最新的",
     "allHidden": "没有要处理的更新，其余的已隐藏。",
-    "noneCheckable": "已检查的来源里没有可更新的内容",
+    "noneCheckable": "已检查的来源里没有可更新的工具",
     "count_other": "{{count}} 个可更新",
     "noneActionable": "这里没有可更新的",
     "alsoCount_other": "另有 {{count}} 个可更新",
@@ -571,7 +571,7 @@
   },
   "emptyStates": {
     "loadFailed": {
-      "title": "没能读取已安装的内容",
+      "title": "没能读取已安装的工具",
       "description": "原因：{{message}}"
     },
     "noSources": {
@@ -580,7 +580,7 @@
     },
     "refreshFailed": {
       "title": "部分检查没完成",
-      "description_other": "{{sources}} 这次没查完，这部分内容没能刷新。"
+      "description_other": "{{sources}} 这次没检查完。"
     },
     "nothingInstalled": {
       "title": "没有找到已安装的工具",

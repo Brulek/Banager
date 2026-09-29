@@ -114,7 +114,7 @@ describe("App", () => {
     await findByText("Everything is up to date");
 
     fireEvent.click(getByRole("button", { name: "Installed" }));
-    await findByLabelText("Search installed items");
+    await findByLabelText("Search installed tools");
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Updates" }));
@@ -222,7 +222,7 @@ describe("App", () => {
 
     fireEvent.click(await findByRole("button", { name: "Review updates" }));
 
-    expect(await findByText("2 updates")).toBeInTheDocument();
+    expect(await findByText("2 can be updated", { selector: "p" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
@@ -521,7 +521,7 @@ describe("the menu bar's items that act in the page", () => {
 
     menu.choose("search");
 
-    const box = await findByLabelText("Search installed items");
+    const box = await findByLabelText("Search installed tools");
     await waitFor(() => expect(document.activeElement).toBe(box));
     expect(getByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");
@@ -532,7 +532,7 @@ describe("the menu bar's items that act in the page", () => {
     const { findByText, findByLabelText, getByRole } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
     fireEvent.click(getByRole("button", { name: "Installed" }));
-    const box = (await findByLabelText("Search installed items")) as HTMLInputElement;
+    const box = (await findByLabelText("Search installed tools")) as HTMLInputElement;
     fireEvent.change(box, { target: { value: "jq" } });
     getByRole("button", { name: "Installed" }).focus();
 
@@ -572,11 +572,11 @@ describe("the menu bar's items that act in the page", () => {
     menu.choose("search");
 
     expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
-    expect(queryByLabelText("Search installed items")).toBeNull();
+    expect(queryByLabelText("Search installed tools")).toBeNull();
     await waitFor(() => expect(finishFirstCheck).toBeDefined());
     finishFirstCheck?.(snapshot);
 
-    const box = await findByLabelText("Search installed items");
+    const box = await findByLabelText("Search installed tools");
     await waitFor(() => expect(document.activeElement).toBe(box));
   });
 
@@ -597,11 +597,11 @@ describe("the menu bar's items that act in the page", () => {
     menu.choose("search");
 
     expect(await findByRole("heading", { level: 1, name: "Installed" })).toBeInTheDocument();
-    expect(queryByLabelText("Search installed items")).toBeNull();
+    expect(queryByLabelText("Search installed tools")).toBeNull();
     await waitFor(() => expect(answers.has("get_snapshot")).toBe(true));
     answers.get("get_snapshot")?.(snapshot);
 
-    const box = await findByLabelText("Search installed items");
+    const box = await findByLabelText("Search installed tools");
     await waitFor(() => expect(document.activeElement).toBe(box));
     // The startup check, which nothing here waited on, finishes too.
     answers.get("refresh")?.(snapshot);

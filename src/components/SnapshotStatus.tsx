@@ -125,9 +125,9 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     //
     // It names the sources whose check did not finish (`failedSourceNames`)
     // -- "2 checks didn't finish" said neither which nor what that meant --
-    // and says only that what is shown for them was not refreshed: their
-    // rows may be last round's, or, on the first check since Canager
-    // opened, none. It has no button: the header's Check again, right
+    // and says only that their check did not finish this time, nothing
+    // about their rows: those may be last round's, or, on the first check
+    // since Canager opened, none. It has no button: the header's Check again, right
     // above it, runs the same check (`useCheckAgain`), and says so when
     // that check fails.
     //

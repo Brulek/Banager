@@ -97,7 +97,7 @@
     "standalone-grok": "Grok Build"
   },
   "installed": {
-    "filterLabel": "Search installed items",
+    "filterLabel": "Search installed tools",
     "filterPlaceholder": "Search",
     "filterBySource": "Filter by source",
     "all": "All",
@@ -151,8 +151,8 @@
     "upToDate": "Everything is up to date",
     "allHidden": "No updates to handle. The rest are hidden.",
     "noneCheckable": "No updates in the sources Canager could check",
-    "count_one": "{{count}} update",
-    "count_other": "{{count}} updates",
+    "count_one": "{{count}} can be updated",
+    "count_other": "{{count}} can be updated",
     "noneActionable": "Nothing to update here",
     "alsoCount_one": "{{count}} more can be updated",
     "alsoCount_other": "{{count}} more can be updated",
@@ -617,7 +617,7 @@
   },
   "emptyStates": {
     "loadFailed": {
-      "title": "Couldn't load what's installed",
+      "title": "Couldn't load installed tools",
       "description": "Reason: {{message}}"
     },
     "noSources": {
@@ -626,8 +626,8 @@
     },
     "refreshFailed": {
       "title": "Some checks didn't finish",
-      "description_one": "{{sources}} didn't finish this check, so what Canager shows for it wasn't refreshed.",
-      "description_other": "{{sources}} didn't finish this check, so what Canager shows for them wasn't refreshed."
+      "description_one": "{{sources}} didn't finish checking this time.",
+      "description_other": "{{sources}} didn't finish checking this time."
     },
     "nothingInstalled": {
       "title": "Canager found nothing installed",

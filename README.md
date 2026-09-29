@@ -45,7 +45,7 @@ Canager checks every source when it opens, after each operation, and whenever yo
 again** in the header of the Overview, Updates and Installed pages, which also says how long ago the
 last check finished, or choose **Check Again** (⌘R) in the menu bar's View menu, on any page; while
 a check runs, neither starts another. The **Check again** on the page Canager shows when it couldn't
-load what's installed, and the one on the notice of a Homebrew index Canager couldn't update, run the
+load installed tools, and the one on the notice of a Homebrew index Canager couldn't update, run the
 same check, and a Homebrew index update left running in the
 background starts one on its own when it ends (`ipc::refresh_on_background_change`,
 `src-tauri/src/lib.rs:70-73`). Checks run Homebrew's own `brew update`, which updates Homebrew and
@@ -214,8 +214,8 @@ Three kinds of text are shown as-is:
   every source with trouble gets a notice of its own. A source that has gone unavailable to Canager (not
   running, unreachable, or refusing to run as root) is reported in your language, through its own
   notice. A source that Canager could still reach, but whose software list or update check failed,
-  gets no notice of its own: the "Some checks didn't finish" banner names it, and says that what
-  Canager shows for it wasn't refreshed.
+  gets no notice of its own: the "Some checks didn't finish" banner names it, and says it didn't
+  finish checking this time.
 - **A number of technical details that are still Canager's own**, which appear in English inside an
   otherwise translated sentence. This is a known gap, not a design choice, and it is not just the
   one case the wording used to name: with "Show technical details" turned on, whenever a package
@@ -324,7 +324,7 @@ Rust 侧返回的拒绝理由也会翻译，不只是外面那层框。操作所
   “没能检查”）。除此之外，Canager 自己从不会让整次刷新失败，但不是每个出问题的
   来源都有自己的提示。一个来源如果对 Canager 而言已经不可用了（没在运行、连不上、或者因为以 root 身份
   运行而被拒绝），会用你的语言、通过它自己的提示告诉你；一个来源如果本身能联系上，只是软件列表或更新
-  检查失败了，就没有自己的提示——只会由“部分检查没完成”横幅点名，说这部分内容没能刷新。
+  检查失败了，就没有自己的提示——只会由“部分检查没完成”横幅点名，说它这次没检查完。
 - **还有几处技术细节仍属于 Canager 自己**，会以英文出现在一句已翻译的话里。这是已知的缺口，不是有意
   为之，而且不只是以前说的那一处：打开“显示技术细节”后，只要某个包没法检查更新，Canager 自己给出的
   原因就会原样显示成英文，而不是翻译过的句子——关掉开关时，看到的只是一句简短的通用提示。这样的原因
@@ -352,7 +352,7 @@ formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该�
 
 Canager 在打开时、每次操作完成后，以及你按下“概览”“更新”“已安装”三页页头的“重新检查”、或在任一页
 从菜单栏选“显示”菜单里的“重新检查”（⌘R）时检查各来源，页头上也写着上次检查是多久以前；正在检查时，
-再按也不会多查一遍。没能读取已安装的内容时页面上的“重新检查”，和 Homebrew 软件清单没更新成功时提示里的“重新检查”，做的是同一次检查；
+再按也不会多查一遍。没能读取已安装的工具时页面上的“重新检查”，和 Homebrew 软件清单没更新成功时提示里的“重新检查”，做的是同一次检查；
 后台运行的 Homebrew 索引更新自行结束时，它也会自己再查一遍（`ipc::refresh_on_background_change`，
 `src-tauri/src/lib.rs:70-73`，不需要用户动手）。检查时会运行 Homebrew 自己的 `brew update`，
 它会更新 Homebrew 本身和它的索引；Homebrew 把你装的某个软件在 formula 和 cask 之间挪了位置或者改了名时，
@@ -367,7 +367,7 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 或者某次每天检查不是所有来源都失败，就算数，等待也从头算起（见 `docs/what-we-run.md` 的“The daily check”一节）。
 再打开“每天自动检查”下面的“有可更新时通知我”，
 每天的检查发现你还没看到过的更新、而最前面的是别的应用、不是 Canager 时，会发一条通知，说有几个
-工具可以更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
+工具可更新。点这条通知会把 Canager 切到最前面；如果 Canager 的窗口关着或最小化在程序坞里，
 而且发通知以后还没到过最前面，窗口会回来，并打开“更新”页。Canager 收不到点击本身，只知道自己到了
 最前面，所以在窗口再到最前面之前，窗口关着或最小化时用别的办法把 Canager 切到前面——⌘-Tab、
 点程序坞图标——也会这样。
