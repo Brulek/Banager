@@ -95,11 +95,9 @@
   "installed": {
     "filterLabel": "搜索已安装的工具",
     "filterPlaceholder": "搜索",
-    "filterBySource": "按来源筛选",
-    "all": "全部",
-    "sortLabel": "排序",
-    "sortByName": "名称",
-    "sortBySource": "来源",
+    "sortLabel": "排序方式",
+    "sortByName": "按名称",
+    "sortBySource": "按来源",
     "noMatches": "没有找到“{{query}}”",
     "uninstall": "卸载…",
     "uninstallQueued": "排队中",
@@ -143,7 +141,9 @@
     "sourceEmpty": {
       "title": "没有用{{source}}安装的工具",
       "description": "用{{source}}安装的工具会显示在这里。"
-    }
+    },
+    "installedOn": "安装日期",
+    "size": "大小"
   },
   "updates": {
     "upToDate": "所有工具都是最新的",

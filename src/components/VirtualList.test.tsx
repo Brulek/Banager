@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { useListWidth, VirtualList } from "./VirtualList";
+import { createRef } from "react";
+import { useListWidth, VirtualList, type VirtualListHandle } from "./VirtualList";
 import { useRovingRow } from "./rovingRows";
 
 const ROW = 60;
@@ -271,5 +272,127 @@ describe("VirtualList's arrow keys", () => {
     expect(fireEvent.keyDown(box, { key: "ArrowDown" })).toBe(true);
     expect(document.activeElement).toBe(box);
     expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(0);
+  });
+});
+
+describe("VirtualList's selection helpers", () => {
+  function KeyRow({ item }: { item: string }) {
+    const roving = useRovingRow();
+    return <div data-row-focus="" tabIndex={roving?.tabIndex} onFocus={roving?.onFocus} aria-label={item} />;
+  }
+
+  it("says which row ↑ or ↓ moved to, and only when one did", () => {
+    const moved = vi.fn();
+    const { getByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => <KeyRow item={item} />}
+        keyboardRows={() => true}
+        onKeyboardMove={moved}
+      />,
+    );
+    const row = (item: string) => getByLabelText(item, { selector: "[data-row-focus]" });
+    act(() => row("tool-3").focus());
+    fireEvent.keyDown(row("tool-3"), { key: "ArrowDown" });
+    expect(moved).toHaveBeenLastCalledWith("tool-4");
+    fireEvent.keyDown(row("tool-4"), { key: "ArrowUp" });
+    expect(moved).toHaveBeenLastCalledWith("tool-3");
+    // Nowhere to go: nothing to say.
+    moved.mockClear();
+    act(() => row("tool-0").focus());
+    fireEvent.keyDown(row("tool-0"), { key: "ArrowUp" });
+    expect(moved).not.toHaveBeenCalled();
+  });
+
+  it("puts the focus back on a row by its key, and makes it the one in the Tab order", async () => {
+    const handle = createRef<VirtualListHandle>();
+    const { getByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => <KeyRow item={item} />}
+        keyboardRows={() => true}
+        handleRef={handle}
+      />,
+    );
+    act(() => handle.current?.focusKey("tool-6"));
+    const row = getByLabelText("tool-6", { selector: "[data-row-focus]" });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(row).toHaveAttribute("tabindex", "0");
+    // A key the list does not have: nothing moves.
+    act(() => handle.current?.focusKey("gone"));
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("keeps its anchor where it was on screen when a new list adds or takes slots above it", () => {
+    const renderItem = (item: string) => <p>{item}</p>;
+    const { container, rerender } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={renderItem} anchorKey="tool-40" />,
+    );
+    const box = container.firstElementChild as HTMLElement;
+    let top = 30 * ROW;
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    });
+
+    // Two slots above it: the list moves down by two.
+    rerender(
+      <VirtualList
+        items={["new-a", "new-b", ...TOOLS]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(32 * ROW);
+
+    // One gone above it: back up by one.
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+
+    // Slots below it change nothing; nor does a new anchor.
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS, "new-z"]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-40"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+    rerender(
+      <VirtualList
+        items={["new-b", ...TOOLS, "new-z"]}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        anchorKey="tool-3"
+      />,
+    );
+    expect(top).toBe(31 * ROW);
+  });
+
+  it("marks its box as the list, for the selection's colours", () => {
+    const { container } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <p>{item}</p>} />,
+    );
+    expect(container.firstElementChild).toHaveAttribute("data-list");
   });
 });

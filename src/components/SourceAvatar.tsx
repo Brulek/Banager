@@ -28,9 +28,10 @@ const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
 
 /**
  * `badge`, 14px: the source's mark on the corner of a tool's own icon or
- * logo (`ToolAvatar`). `xs`, 16px: a source's mark inside a chip, such as
- * the Installed page's filters. `sm`, 24px: a list's small mark. `md`,
- * 32px: a tool's row (`ToolRow`).
+ * logo (`ToolAvatar`). `xs`, 16px: a source's mark on a line of text,
+ * such as its row in the sidebar or its heading on the Installed page.
+ * `sm`, 24px: a list's small mark. `md`, 32px: a tool's row (`ToolRow`).
+ * `lg`, 48px: the top of the Installed page's inspector.
  * The square and its corners, whatever is drawn on it. Whole class names,
  * for Tailwind.
  */
@@ -39,6 +40,7 @@ const SIZE_CLASSES = {
   xs: "h-4 w-4 rounded-[4px]",
   sm: "h-6 w-6 rounded-[5px]",
   md: "h-8 w-8 rounded-[7px]",
+  lg: "h-12 w-12 rounded-[11px]",
 } as const;
 
 export type SourceAvatarSize = keyof typeof SIZE_CLASSES;
@@ -49,6 +51,7 @@ const LETTER_CLASSES: Record<SourceAvatarSize, string> = {
   xs: "text-[10px] leading-none",
   sm: "text-small",
   md: "text-body",
+  lg: "text-section",
 };
 
 /**
@@ -62,6 +65,7 @@ const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
   xs: "h-2.5 w-2.5",
   sm: "h-3.5 w-3.5",
   md: "h-[18px] w-[18px]",
+  lg: "h-7 w-7",
 };
 
 /**

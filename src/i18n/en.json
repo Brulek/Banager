@@ -108,11 +108,9 @@
   "installed": {
     "filterLabel": "Search installed tools",
     "filterPlaceholder": "Search",
-    "filterBySource": "Filter by source",
-    "all": "All",
-    "sortLabel": "Sort by",
-    "sortByName": "Name",
-    "sortBySource": "Source",
+    "sortLabel": "Sort Order",
+    "sortByName": "By Name",
+    "sortBySource": "By Source",
     "noMatches": "Nothing matches “{{query}}”",
     "uninstall": "Uninstall…",
     "uninstallQueued": "Queued",
@@ -158,7 +156,9 @@
     "sourceEmpty": {
       "title": "Nothing installed with {{source}}",
       "description": "Tools you install with {{source}} show up here."
-    }
+    },
+    "installedOn": "Date Installed",
+    "size": "Size"
   },
   "updates": {
     "upToDate": "Everything is up to date",

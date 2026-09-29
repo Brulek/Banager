@@ -77,3 +77,67 @@ export function PopupButton<T extends string>({ id, value, options, onChange }: 
     </span>
   );
 }
+
+export interface ToolbarPopupButtonProps<T extends string> {
+  /** Its accessible name, which no label beside it gives: 「排序方式」/"Sort Order". */
+  label: string;
+  value: T;
+  options: PopupOption<T>[];
+  onChange: (value: T) => void;
+}
+
+/** ⌄, as a toolbar's popup button draws it after its value: 8 wide, 5 high, in the same light stroke. */
+function DownChevron() {
+  return (
+    <svg
+      width={8}
+      height={5}
+      viewBox="0 0 8 5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.25}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1 1L4 4L7 1" />
+    </svg>
+  );
+}
+
+/**
+ * A toolbar's popup button, as a Mac toolbar draws one (spec §2.7, §3.2):
+ * a regular grey button -- 24 high, a control's corners, the fill, the
+ * value in the body size -- with ⌄ after the value: 「按名称 ⌄」.
+ *
+ * Underneath it, as with `PopupButton`, a transparent `<select>` over
+ * the whole: pressed, WebKit opens the Mac's own menu with a check by the
+ * value, and the keyboard and a screen reader get a select's behaviour,
+ * named by `label`. The fill darkens while it is pressed, as a grey
+ * button's does, and the focus ring goes round the whole.
+ */
+export function ToolbarPopupButton<T extends string>({ label, value, options, onChange }: ToolbarPopupButtonProps<T>) {
+  const current = options.find((option) => option.value === value);
+  return (
+    <span className="relative inline-flex h-6 shrink-0 items-center gap-1.5 rounded-control bg-fill pl-3 pr-2 text-body text-foreground has-[:active]:bg-fill-pressed has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-focus">
+      <span aria-hidden="true" className="whitespace-nowrap">
+        {current?.label}
+      </span>
+      <span aria-hidden="true" className="flex text-muted">
+        <DownChevron />
+      </span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange(event.target.value as T)}
+        className="absolute inset-0 h-full w-full appearance-none opacity-0 outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}

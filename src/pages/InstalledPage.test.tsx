@@ -2,11 +2,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
+import { WithToolbarSlot } from "../test/toolbarSlot";
 import { InstalledPage } from "./InstalledPage";
 import { BUTTON } from "../components/ui/controls";
 import { UpdatesPage } from "./UpdatesPage";
 import { SnapshotStatus } from "../components/SnapshotStatus";
 import { useUiStore } from "../store/ui";
+import { queryKeys } from "../lib/queries";
 import i18n from "../i18n";
 import { loadToolIcons } from "../lib/toolIcons";
 import { lazyDescriptionTable } from "../lib/toolDescriptions";
@@ -263,6 +265,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The page as `App` draws it: its sort and search field in the toolbar's slot. */
+function renderInstalled(options?: Parameters<typeof renderWithProviders>[1]) {
+  return renderWithProviders(
+    <WithToolbarSlot>
+      <InstalledPage />
+    </WithToolbarSlot>,
+    options,
+  );
+}
+
 // The list's row for `name` -- the name as the row shows it.
 function rowOf(name: string): HTMLElement {
   const rows = screen
@@ -298,14 +310,14 @@ function versionShown(row: HTMLElement): string | null {
 }
 
 // Every status word `name`'s details list, in order -- the row shows the
-// first that is not a normal state, and the details every one -- read
-// from its drawer, which is closed again.
+// first that is not a normal state, and the inspector every one -- read
+// from its inspector, which is closed again.
 async function drawerChips(name: string): Promise<string[]> {
-  const drawer = await openDetails(name);
-  const list = drawer.querySelector("[data-status-list]");
+  const inspector = await openDetails(name);
+  const list = inspector.querySelector("[data-status-list]");
   const words = list === null ? [] : [...list.children].map((item) => item.firstElementChild?.textContent ?? "");
-  fireEvent.keyDown(drawer, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  fireEvent.keyDown(inspector, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
   return words;
 }
 
@@ -331,11 +343,11 @@ function showCommand(dialog: HTMLElement) {
   if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
 }
 
-// Presses `name`'s row itself, and returns the drawer that opens.
+// Presses `name`'s row itself, and returns the inspector that shows it.
 async function openDetails(name: string): Promise<HTMLElement> {
   const row = await findRow(name);
   fireEvent.click(within(row).getByRole("button", { name: `Details: ${name}` }));
-  return screen.findByRole("dialog", { name });
+  return screen.findByRole("complementary", { name });
 }
 
 describe("InstalledPage", () => {
@@ -346,7 +358,7 @@ describe("InstalledPage", () => {
     mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
       cmd === "get_snapshot" ? new Promise(() => {}) : answer!(cmd, args),
     );
-    const { findByRole, getByText, queryByText, container } = renderWithProviders(<InstalledPage />);
+    const { findByRole, getByText, queryByText, container } = renderInstalled();
 
     expect(await findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
     expect(
@@ -357,7 +369,7 @@ describe("InstalledPage", () => {
   });
 
   it("shows the requested artifact and folds the one other software brought in into a line", async () => {
-    const { findByText, queryByText, getByRole } = renderWithProviders(<InstalledPage />);
+    const { findByText, queryByText, getByRole } = renderInstalled();
 
     await findByText("jq");
     expect(queryByText("glib")).not.toBeInTheDocument();
@@ -368,7 +380,7 @@ describe("InstalledPage", () => {
   });
 
   it("unfolds the component under its line, and folds it back", async () => {
-    const { findByText, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { findByText, getByRole, queryByText } = renderInstalled();
 
     await findByText("jq");
     fireEvent.click(getByRole("button", { name: /^1 more component came with other software/ }));
@@ -396,7 +408,7 @@ describe("InstalledPage", () => {
         }),
       ],
     };
-    const { findByText, queryByText, getByRole, getByText } = renderWithProviders(<InstalledPage />);
+    const { findByText, queryByText, getByRole, getByText } = renderInstalled();
 
     await findByText("jq");
     const search = getByRole("searchbox", { name: "Search installed tools" });
@@ -410,14 +422,89 @@ describe("InstalledPage", () => {
     expect(getByText("Nothing matches “nonexistent”")).toBeInTheDocument();
   });
 
+  it("puts its sort and its search field in the toolbar: a grey popup button, then a quiet field 200 wide", async () => {
+    const { findByRole, getByRole, container } = renderInstalled();
+
+    const search = await findByRole("searchbox", { name: "Search installed tools" });
+    const slot = container.querySelector("[data-toolbar-slot]") as HTMLElement;
+    expect(slot.contains(search)).toBe(true);
+    // 24 high, a control's corners, the quietest fill and no outline.
+    expect(search.className.split(" ")).toEqual(
+      expect.arrayContaining(["h-6", "rounded-control", "bg-fill-subtle", "text-body", "appearance-none"]),
+    );
+    expect(search.className).not.toMatch(/\bborder\b|shadow/);
+    expect((search.parentElement as HTMLElement).className.split(" ")).toEqual(expect.arrayContaining(["w-50", "h-6"]));
+    expect(search.parentElement?.querySelector("svg")).not.toBeNull();
+
+    // The sort before it (spec §3.2): the value and ⌄ on a grey button.
+    const sort = getByRole("combobox", { name: "Sort Order" });
+    expect(slot.contains(sort)).toBe(true);
+    expect(sort.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const popup = sort.parentElement as HTMLElement;
+    expect(popup.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "rounded-control", "bg-fill", "text-body"]));
+    expect(within(sort).getAllByRole("option").map((option) => option.textContent)).toEqual(["By Name", "By Source"]);
+    // Nothing of either over the list any more.
+    const list = container.querySelector("[data-list]") as HTMLElement;
+    expect(list.parentElement?.previousElementSibling).toBeNull();
+  });
+
+  it("focuses its search field for ⌘F once it is in the toolbar, its text selected to be typed over", async () => {
+    useUiStore.setState({ page: "installed", query: "gl" });
+    act(() => useUiStore.getState().searchInstalled());
+    const { findByRole } = renderInstalled();
+
+    const search = (await findByRole("searchbox", { name: "Search installed tools" })) as HTMLInputElement;
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe(2);
+    expect(useUiStore.getState().searchFocusRequested).toBe(false);
+  });
+
+  it("draws a source's components as a 32-high line that discloses them: a 10pt triangle, 13 muted", async () => {
+    renderInstalled();
+
+    await findRow("jq");
+    const fold = screen.getByRole("button", { name: /^1 more component came with other software/ });
+    expect(fold.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-5", "text-body", "text-muted"]));
+    expect(fold.className).not.toMatch(/rounded|bg-|border/);
+    const triangle = fold.querySelector("svg") as SVGElement;
+    expect(triangle).toHaveAttribute("width", "10");
+    expect(triangle.getAttribute("class")).not.toContain("rotate-90");
+    // One of the rows ↑ ↓ reach, in the Tab order's roving.
+    expect(fold).toHaveAttribute("data-row-focus");
+
+    fireEvent.click(fold);
+    await findRow("glib");
+    const open = screen.getByRole("button", { name: /^Hide 1 component/ });
+    expect(open.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
+  });
+
+  it("lies over the list's right side, with a floating edge, when the page is too narrow for both", async () => {
+    // The page as a window at its narrowest lays it out: 592 wide.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { width: 592, height: 500, top: 0, left: 0, right: 592, bottom: 500, x: 0, y: 0, toJSON: () => ({}) };
+    });
+    renderInstalled();
+
+    const inspector = await openDetails("jq");
+    expect(inspector).toHaveAttribute("data-inspector", "overlay");
+    expect(inspector.className.split(" ")).toEqual(
+      expect.arrayContaining(["absolute", "inset-y-0", "right-0", "w-75", "shadow-menu", "bg-content"]),
+    );
+    expect(inspector.className).not.toContain("border-l");
+    // The list keeps its width under it: its rows' names stay whole.
+    const list = document.querySelector("[data-list]") as HTMLElement;
+    expect(list.parentElement?.className).toContain("flex-1");
+  });
+
   it("checks no spelling in the search box: a tool's name is no word", async () => {
-    const { findByRole } = renderWithProviders(<InstalledPage />);
+    const { findByRole } = renderInstalled();
 
     expect(await findByRole("searchbox", { name: "Search installed tools" })).toHaveAttribute("spellcheck", "false");
   });
 
   it("opens the uninstall dialog and plans it when the row's Uninstall is pressed", async () => {
-    const { findByRole } = renderWithProviders(<InstalledPage />);
+    const { findByRole } = renderInstalled();
 
     const jq = await findRow("jq");
     fireEvent.click(within(jq).getByRole("button", { name: "Uninstall…" }));
@@ -434,30 +521,35 @@ describe("InstalledPage", () => {
     await within(dialog).findByRole("button", { name: "Show Command" });
     showCommand(dialog);
     expect(within(dialog).getByText("/opt/homebrew/bin/brew uninstall --formula jq")).toBeInTheDocument();
-    // The row's button, not the row: no details drawer under the dialog.
-    expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull();
+    // The row's button, not the row: nothing selected under the dialog.
+    expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull();
   });
 
-  it("offers Uninstall as a grey button, on the row and in the drawer, where the drawer's Update is the default", async () => {
+  it("offers Uninstall as a grey button, on the row and in the inspector, where the inspector's Update is the default", async () => {
     // Uninstall must not look like the thing to do, nor like a warning: a
     // grey button with nothing red about it, under the pointer or not
     // (`RowAction`).
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
 
     const rowUninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     expect(rowUninstall.className).toBe(BUTTON.regular.grey);
     expect(rowUninstall.className).not.toMatch(/danger|accent/);
 
     fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
-    const drawer = await openDetails("glib");
-    const drawerUninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
-    expect(drawerUninstall.className).toBe(BUTTON.large.grey);
-    expect(drawerUninstall.className).not.toMatch(/danger|accent/);
-    expect(within(drawer).getByRole("button", { name: "Update" }).className).toBe(BUTTON.large.default);
+    // The inspector is a pane, not a dialog: a pane's regular buttons,
+    // Uninstall at the left of its foot and Update at the right.
+    const inspector = await openDetails("glib");
+    const inspectorUninstall = within(inspector).getByRole("button", { name: "Uninstall…" });
+    expect(inspectorUninstall.className).toBe(BUTTON.regular.grey);
+    expect(inspectorUninstall.className).not.toMatch(/danger|accent/);
+    const update = within(inspector).getByRole("button", { name: "Update" });
+    expect(update.className).toBe(BUTTON.regular.default);
+    expect(inspectorUninstall.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(update.parentElement).toBe(inspectorUninstall.parentElement);
   });
 
   it("gives the focus back to the row's Uninstall when its confirmation is cancelled", async () => {
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
 
     const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     fireEvent.click(uninstall);
@@ -474,7 +566,7 @@ describe("InstalledPage", () => {
     // The log drawer gives the focus back to what had it as it opened: so
     // it opens after the sheet has handed the focus back, and closing it
     // lands on the row's Uninstall, where the user began.
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
 
     const uninstall = within(await findRow("jq")).getByRole("button", { name: "Uninstall…" });
     fireEvent.click(uninstall);
@@ -491,7 +583,7 @@ describe("InstalledPage", () => {
 
   it("disables the dialog's confirm button when the plan reports dependents", async () => {
     planAffected = ["jq-cli-wrapper"];
-    const { findByRole } = renderWithProviders(<InstalledPage />);
+    const { findByRole } = renderInstalled();
 
     fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "Uninstall…" }));
 
@@ -502,7 +594,7 @@ describe("InstalledPage", () => {
 
   it("says in a line that a source's version has not been tested, with why behind Details", async () => {
     served = { ...snapshot, instances: [{ ...brew, unverified_version: "99.9.9" }] };
-    const { findByText, getByRole } = renderWithProviders(<InstalledPage />);
+    const { findByText, getByRole } = renderInstalled();
 
     await findByText("jq");
     // Named: the list is not grouped by source, so the line says whose.
@@ -543,7 +635,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
 
     await findRow("Claude Code");
     expect(screen.getByText("uv isn't responding")).toBeInTheDocument();
@@ -586,7 +678,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    const { getAllByRole } = renderWithProviders(<InstalledPage />);
+    const { getAllByRole } = renderInstalled();
 
     await findRow("wget");
     // Only wget's.
@@ -619,7 +711,7 @@ describe("InstalledPage", () => {
       artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }],
       updates: [],
     };
-    const { queryAllByRole } = renderWithProviders(<InstalledPage />);
+    const { queryAllByRole } = renderInstalled();
 
     const jq = await findRow("jq");
     expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
@@ -642,7 +734,7 @@ describe("InstalledPage", () => {
       artifacts: [{ ...claudeArtifact, uninstall_blocked: "NoSafeMethod" }],
       updates: [],
     };
-    const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
+    const { queryAllByRole, container } = renderInstalled();
 
     const claude = await findRow("Claude Code");
     expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
@@ -678,7 +770,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    const { queryAllByRole, container } = renderWithProviders(<InstalledPage />);
+    const { queryAllByRole, container } = renderInstalled();
 
     const ruff = await findRow("ruff");
     expect(queryAllByRole("button", { name: "Uninstall…" })).toHaveLength(0);
@@ -701,7 +793,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    const { queryAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { queryAllByRole, queryByText } = renderInstalled();
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
@@ -719,7 +811,7 @@ describe("InstalledPage", () => {
     // `Session::issue_plan` lets the plan through (`blocked_uninstall` in
     // session/plans.rs refuses only an artifact that carries one).
     served = { ...snapshot, instances: [claudeInstance], artifacts: [claudeArtifact], updates: [] };
-    const { getAllByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { getAllByRole, queryByText } = renderInstalled();
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
@@ -758,7 +850,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    const { queryByText } = renderWithProviders(<InstalledPage />);
+    const { queryByText } = renderInstalled();
 
     expect(within(await findRow("iTerm2")).getByText("App installed with Homebrew")).toBeInTheDocument();
     expect(within(rowOf("JetBrains Mono")).getByText("Homebrew package")).toBeInTheDocument();
@@ -881,7 +973,7 @@ describe("InstalledPage", () => {
     });
 
     it("says an update the Updates page offers with the version it moves to, and why every other row has none", async () => {
-      const { container } = renderWithProviders(<InstalledPage />);
+      const { container } = renderInstalled();
       await findRow("current");
 
       // An update to be had is a normal state: no word, the version column
@@ -943,7 +1035,7 @@ describe("InstalledPage", () => {
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
-      const installed = renderWithProviders(<InstalledPage />);
+      const installed = renderInstalled();
       await findRow("current");
       const badged: string[] = [];
       for (const name of mixed.artifacts.map((a) => a.display_name)) {
@@ -1021,7 +1113,7 @@ describe("InstalledPage", () => {
         // round: its rows are last round's.
         errors: [{ instance_id: cargo.id, message: "could not read ~/.cargo/.crates2.json" }],
       };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       // A row does not say it -- up to date goes without saying (spec
       // §3.4) -- but its details do, where it is so.
@@ -1048,7 +1140,7 @@ describe("InstalledPage", () => {
       ["IndexMayBeStale", "Couldn't update Homebrew's software list", []],
     ] as const)("says nothing about updates while Homebrew's list is %s, and the line says why", async (note, line, chips) => {
       served = { ...snapshot, instances: [{ ...brew, status: { unavailable: null, notes: [note] } }], updates: [] };
-      const { queryByText } = renderWithProviders(<InstalledPage />);
+      const { queryByText } = renderInstalled();
 
       expect(chipsOf(await findRow("jq"))).toEqual(chips);
       expect(await drawerChips("jq")).toEqual(chips);
@@ -1063,7 +1155,7 @@ describe("InstalledPage", () => {
         artifacts: [{ ...claudeArtifact, version: "", path: null }],
         updates: [],
       };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
       expect(await drawerChips("Claude Code")).toEqual([]);
@@ -1087,7 +1179,7 @@ describe("InstalledPage", () => {
           artifacts: [cask("onyx"), cask("zoom", { auto_updates: true }), cask("chromium", { version: "latest" })],
           updates: [],
         };
-        renderWithProviders(<InstalledPage />);
+        renderInstalled();
 
         // Never on the rows; in the details, where Homebrew checked it.
         for (const name of ["onyx", "zoom", "chromium"]) expect(chipsOf(await findRow(name)), name).toEqual([]);
@@ -1100,7 +1192,7 @@ describe("InstalledPage", () => {
 
   it("marks a read-only source's rows View only, offers no Uninstall on them, and keeps pip's way out behind the chip", async () => {
     served = pipSnapshot;
-    const { queryByRole, queryAllByText } = renderWithProviders(<InstalledPage />);
+    const { queryByRole, queryAllByText } = renderInstalled();
 
     const requests = await findRow("requests");
     expect(queryByRole("button", { name: "Uninstall…" })).not.toBeInTheDocument();
@@ -1140,7 +1232,7 @@ describe("InstalledPage", () => {
       ],
       updates: [],
     };
-    const { queryAllByRole } = renderWithProviders(<InstalledPage />);
+    const { queryAllByRole } = renderInstalled();
 
     const detail = chipDetail(await findRow("typescript"), "View only");
     expect(detail).toHaveTextContent(
@@ -1159,7 +1251,7 @@ describe("InstalledPage", () => {
     // slot would overflow and the next one, later in DOM order and so
     // painted on top, would cover its tail.
     rowHeights[0] = 128;
-    const { container } = renderWithProviders(<InstalledPage />);
+    const { container } = renderInstalled();
 
     await findRow("jq");
     const slotAt = (index: number) => container.querySelector<HTMLElement>(`[data-index="${index}"]`);
@@ -1169,7 +1261,7 @@ describe("InstalledPage", () => {
     expect(slotAt(1)?.style.height).toBe("");
   });
 
-  it("names a silent source in a line at the top, and says it can't show what it has when it has no rows", async () => {
+  it("names a silent source in the list's first line, and says it can't show what it has when it has no rows", async () => {
     // brew, npm, uv, pipx and cargo can all report `NotResponding`,
     // and it means the same thing for all five: the CLI is on PATH but
     // Canager could not talk to it. The backend keeps such an instance in
@@ -1191,12 +1283,16 @@ describe("InstalledPage", () => {
         },
       ],
     };
-    const { findByText, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { findByText, getByRole, queryByText } = renderInstalled();
 
     await findByText("jq");
     const line = await findByText("npm isn't responding");
-    // Above the list, not in it.
-    expect(line.closest("[data-index]")).toBeNull();
+    // The list's first line, which scrolls away with it (spec §3.8), 20
+    // in as the rows' content is -- not a band over the list.
+    const slot = line.closest("[data-index]") as HTMLElement;
+    expect(slot).toHaveAttribute("data-index", "0");
+    expect(slot.firstElementChild?.className).toBe("px-5");
+    expect(slot.nextElementSibling?.querySelector("[data-tool-row]")).not.toBeNull();
     const details = getByRole("button", { name: "Details: npm isn't responding" });
     fireEvent.click(details);
     // Nothing was carried forward for npm -- and nothing ever is on the
@@ -1219,7 +1315,7 @@ describe("InstalledPage", () => {
       ...snapshot,
       instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }],
     };
-    const { getByRole } = renderWithProviders(<InstalledPage />);
+    const { getByRole } = renderInstalled();
 
     await findRow("jq");
     fireEvent.change(getByRole("searchbox", { name: "Search installed tools" }), {
@@ -1252,7 +1348,7 @@ describe("InstalledPage", () => {
     };
     for (const technical of [false, true]) {
       servedSettings = { ...settings, show_technical_details: technical };
-      const { unmount, queryByText } = renderWithProviders(<InstalledPage />);
+      const { unmount, queryByText } = renderInstalled();
 
       const jq = await findRow("jq");
       expect(within(jq).getByText("1.8.2").className).toContain("tabular-nums");
@@ -1387,7 +1483,7 @@ describe("InstalledPage", () => {
       artifacts: [formula("pre-commit", { key: { instance_id: uv.id, kind: "Tool", name: "pre-commit" } })],
       updates: [],
     };
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
 
     const row = await findRow("pre-commit");
     expect(within(row).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
@@ -1396,7 +1492,7 @@ describe("InstalledPage", () => {
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
-    // The drawer says the same: Uninstall disabled, and why under the chip.
+    // The inspector says the same: Uninstall disabled, and why under the chip.
     const drawer = await openDetails("pre-commit");
     expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     expect(within(drawer).getByText("uv isn't responding. Click Check Again later.")).toBeInTheDocument();
@@ -1416,7 +1512,7 @@ describe("InstalledPage", () => {
       updates: [],
     };
     served = updating;
-    const { queryClient } = renderWithProviders(<InstalledPage />);
+    const { queryClient } = renderInstalled();
 
     const jq = await findRow("jq");
     const held = within(jq).getByRole("button", { name: "Uninstall…" });
@@ -1440,7 +1536,7 @@ describe("InstalledPage", () => {
       within(drawer).getByText("Homebrew is updating its software list. Uninstall once it's done."),
     ).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "jq" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull());
 
     served = { ...updating, instances: [brew, claudeInstance] };
     await act(() => queryClient.invalidateQueries());
@@ -1471,7 +1567,7 @@ describe("InstalledPage", () => {
         },
       ],
     };
-    const { findByRole, getByRole, queryByText } = renderWithProviders(<InstalledPage />);
+    const { findByRole, getByRole, queryByText } = renderInstalled();
 
     await findRow("requests");
     expect(queryByText("glib")).not.toBeInTheDocument();
@@ -1496,20 +1592,14 @@ describe("InstalledPage", () => {
       artifacts: [...snapshot.artifacts, ...pipSnapshot.artifacts],
     });
 
-    it("offers All and one filter per source with something installed, each with how much, and shows one source at a time", async () => {
+    it("has no filter chips: the sidebar's rows choose the source, and the page shows it alone", async () => {
       served = twoSources();
-      const { getByRole, queryByRole, findByRole } = renderWithProviders(<InstalledPage />);
+      const { queryByRole, findByRole } = renderInstalled();
 
       await findRow("requests");
-      const group = getByRole("group", { name: "Filter by source" });
-      // Named by their words and counts; the avatar's letter is decoration.
-      const [all, homebrew, pipChip, ...rest] = within(group).getAllByRole("button");
-      expect(rest).toEqual([]);
-      expect(all).toBe(within(group).getByRole("button", { name: "All 3" }));
-      expect(homebrew).toBe(within(group).getByRole("button", { name: "Homebrew 2" }));
-      expect(pipChip).toBe(within(group).getByRole("button", { name: "pip 1" }));
-      expect(within(group).getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
-      expect(queryByRole("button", { name: /^Ollama/ })).toBeNull();
+      // The sidebar's 「来源」 took the chips' place (spec §3.3, R8).
+      expect(queryByRole("group", { name: "Filter by source" })).toBeNull();
+      expect(document.querySelector("[aria-pressed='true']")).toBeNull();
       // Every source's rows, each naming its source where it is not its own:
       // to a screen reader, and in its avatar's tooltip -- in sight only
       // where two sources list the same name (R3).
@@ -1517,146 +1607,25 @@ describe("InstalledPage", () => {
       expect(within(rowOf("jq")).getByText("Homebrew")).toHaveClass("sr-only");
       expect(within(rowOf("jq")).getByTitle("Homebrew")).toBeInTheDocument();
 
-      fireEvent.click(within(group).getByRole("button", { name: "pip 1" }));
+      act(() => useUiStore.getState().openInstalled(pip.id));
       await waitFor(() => expect(rowNames()).toEqual(["requests"]));
-      expect(within(group).getByRole("button", { name: "pip 1" })).toHaveAttribute("aria-pressed", "true");
-      expect(useUiStore.getState().installedFilter).toBe(pip.id);
       // One source: nothing in sight about it on its rows, and only its own lines.
       expect(within(rowOf("requests")).getByText("pip", { selector: "span" })).toHaveClass("sr-only");
       expect(screen.queryByText("Ollama isn't running")).toBeNull();
 
-      fireEvent.click(within(group).getByRole("button", { name: "All 3" }));
+      act(() => useUiStore.getState().openInstalled(null));
       await waitFor(() => expect(rowNames()).toEqual(["jq", "requests"]));
       expect(await findByRole("button", { name: "Open Ollama" })).toBeInTheDocument();
     });
 
-    it("opens on the source whatever opened the page asked for, as an Overview tile does", async () => {
+    it("opens on the source whatever opened the page asked for, as the sidebar's row does", async () => {
       served = twoSources();
       useUiStore.getState().openInstalled(brew.id);
-      const { getByRole } = renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       expect(rowNames()).toEqual(["jq"]);
-      expect(getByRole("button", { name: "Homebrew 2" })).toHaveAttribute("aria-pressed", "true");
       expect(useUiStore.getState().page).toBe("installed");
-    });
-
-    describe("as one line", () => {
-      // jsdom lays nothing out and has no `scrollIntoView`: the row's
-      // widths are given, and each chip scrolled into view is noted.
-      let scrolledIntoView: Element[];
-      beforeEach(() => {
-        scrolledIntoView = [];
-        Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
-          expect(options).toEqual({ block: "nearest", inline: "nearest" });
-          scrolledIntoView.push(this);
-        };
-      });
-      afterEach(() => {
-        delete (Element.prototype as Partial<Element>).scrollIntoView;
-      });
-
-      // The row as a browser would measure it: `scrollWidth` of chips in a
-      // `clientWidth`-wide window onto them.
-      function measureAs(row: HTMLElement, scrollWidth: number, clientWidth: number) {
-        Object.defineProperty(row, "scrollWidth", { configurable: true, get: () => scrollWidth });
-        Object.defineProperty(row, "clientWidth", { configurable: true, get: () => clientWidth });
-      }
-
-      it("keeps the filters on one line that scrolls sideways, with its scrollbar hidden and every chip whole", async () => {
-        served = twoSources();
-        const { getByRole } = renderWithProviders(<InstalledPage />);
-
-        await findRow("requests");
-        const group = getByRole("group", { name: "Filter by source" });
-        expect(group.className).toContain("flex-nowrap");
-        expect(group.className).not.toMatch(/(^|\s)flex-wrap(\s|$)/);
-        expect(group.className).toContain("overflow-x-auto");
-        expect(group.className).toContain("[scrollbar-width:none]");
-        expect(group.className).toContain("[&::-webkit-scrollbar]:hidden");
-        for (const chip of within(group).getAllByRole("button")) {
-          expect(chip.className).toContain("shrink-0");
-          expect(chip.className).toContain("whitespace-nowrap");
-        }
-        // Everything fits here: no fade either side.
-        expect(group).not.toHaveAttribute("data-more-before");
-        expect(group).not.toHaveAttribute("data-more-after");
-      });
-
-      it("fades the edge past which chips are hidden, and follows the row as it scrolls", async () => {
-        served = twoSources();
-        const { getByRole } = renderWithProviders(<InstalledPage />);
-
-        await findRow("requests");
-        const group = getByRole("group", { name: "Filter by source" });
-        measureAs(group, 900, 500);
-
-        fireEvent.scroll(group);
-        expect(group).toHaveAttribute("data-more-after");
-        expect(group).not.toHaveAttribute("data-more-before");
-
-        group.scrollLeft = 200;
-        fireEvent.scroll(group);
-        expect(group).toHaveAttribute("data-more-before");
-        expect(group).toHaveAttribute("data-more-after");
-
-        group.scrollLeft = 400;
-        fireEvent.scroll(group);
-        expect(group).toHaveAttribute("data-more-before");
-        expect(group).not.toHaveAttribute("data-more-after");
-      });
-
-      it("keeps every chip in the tab order, and scrolls one into view as it takes the focus", async () => {
-        served = twoSources();
-        const { getByRole } = renderWithProviders(<InstalledPage />);
-
-        await findRow("requests");
-        const group = getByRole("group", { name: "Filter by source" });
-        const pipChip = within(group).getByRole("button", { name: "pip 1" });
-        for (const chip of within(group).getAllByRole("button")) {
-          expect(chip).not.toHaveAttribute("tabindex");
-        }
-        scrolledIntoView = [];
-
-        act(() => pipChip.focus());
-        expect(document.activeElement).toBe(pipChip);
-        expect(scrolledIntoView).toEqual([pipChip]);
-      });
-
-      it("scrolls the chosen chip into view when the choice changes, as when a tile opens the page on it", async () => {
-        served = twoSources();
-        useUiStore.getState().openInstalled(pip.id);
-        const { getByRole } = renderWithProviders(<InstalledPage />);
-
-        await findRow("requests");
-        const group = getByRole("group", { name: "Filter by source" });
-        const pipChip = within(group).getByRole("button", { name: "pip 1" });
-        expect(pipChip).toHaveAttribute("aria-pressed", "true");
-        expect(scrolledIntoView).toContain(pipChip);
-
-        scrolledIntoView = [];
-        fireEvent.click(within(group).getByRole("button", { name: "All 3" }));
-        await waitFor(() => expect(scrolledIntoView).toEqual([within(group).getByRole("button", { name: "All 3" })]));
-      });
-
-      it("moves sideways under a mouse's up-and-down wheel only while it has chips hidden", async () => {
-        served = twoSources();
-        const { getByRole } = renderWithProviders(<InstalledPage />);
-
-        await findRow("requests");
-        const group = getByRole("group", { name: "Filter by source" });
-        measureAs(group, 500, 500);
-        // Nothing hidden: the wheel is the page's.
-        expect(fireEvent.wheel(group, { deltaY: 120 })).toBe(true);
-        expect(group.scrollLeft).toBe(0);
-
-        measureAs(group, 900, 500);
-        expect(fireEvent.wheel(group, { deltaY: 120 })).toBe(false);
-        expect(group.scrollLeft).toBe(120);
-        // A sideways swipe is the trackpad's own.
-        expect(fireEvent.wheel(group, { deltaX: 40, deltaY: 5 })).toBe(true);
-        expect(group.scrollLeft).toBe(120);
-      });
     });
 
     it("stays on a source with nothing to list, and says why in its notice's words, with Check Again", async () => {
@@ -1664,7 +1633,7 @@ describe("InstalledPage", () => {
       // to every source's list behind the user's back (spec R8).
       served = twoSources();
       useUiStore.getState().openInstalled(OLLAMA);
-      const { findByText, getByText, getByRole } = renderWithProviders(<InstalledPage />);
+      const { findByText, getByText, getByRole } = renderInstalled();
 
       expect(await findByText("Ollama isn't running")).toBeInTheDocument();
       expect(getByText("Open Ollama to see what it has and check for updates.")).toBeInTheDocument();
@@ -1680,7 +1649,7 @@ describe("InstalledPage", () => {
       const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
       served = { ...snapshot, instances: [brew, npm] };
       useUiStore.getState().openInstalled(npm.id);
-      const { findByText, getByText, getByRole } = renderWithProviders(<InstalledPage />);
+      const { findByText, getByText, getByRole } = renderInstalled();
 
       expect(await findByText("Nothing installed with npm")).toBeInTheDocument();
       expect(getByText("Tools you install with npm show up here.")).toBeInTheDocument();
@@ -1693,7 +1662,7 @@ describe("InstalledPage", () => {
       served = twoSources();
       useUiStore.getState().openInstalled("cargo:/Users/you/.cargo");
 
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("requests");
       expect(rowNames()).toEqual(["jq", "requests"]);
@@ -1713,22 +1682,32 @@ describe("InstalledPage", () => {
         { ...pipSnapshot.artifacts[0], key: { ...pipSnapshot.artifacts[0].key, name: "black" }, display_name: "black" },
       ],
     };
-    const { getByRole, queryAllByRole } = renderWithProviders(<InstalledPage />);
+    const { getByRole, queryAllByRole } = renderInstalled();
 
     await findRow("aria2");
-    const sortBy = getByRole("group", { name: "Sort by" });
-    expect(within(sortBy).getByRole("button", { name: "Name" })).toHaveAttribute("aria-pressed", "true");
+    // The sort is a popup button in the toolbar: its value, and ⌄.
+    const sortBy = getByRole("combobox", { name: "Sort Order" });
+    expect(sortBy.closest("[data-toolbar-slot]")).not.toBeNull();
+    expect(sortBy).toHaveValue("name");
+    expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Name$/);
     // By name, case aside, whichever source a row is from; no headings.
     expect(rowNames()).toEqual(["aria2", "black", "requests", "wget", "Zstd"]);
     expect(queryAllByRole("heading", { level: 2 })).toHaveLength(0);
 
-    fireEvent.click(within(sortBy).getByRole("button", { name: "Source" }));
+    fireEvent.change(sortBy, { target: { value: "source" } });
     await waitFor(() => expect(rowNames()).toEqual(["aria2", "wget", "Zstd", "black", "requests"]));
-    expect(within(sortBy).getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true");
+    expect(sortBy.parentElement?.firstElementChild).toHaveTextContent(/^By Source$/);
     const [homebrewHeading, pipHeading, ...more] = queryAllByRole("heading", { level: 2 });
     expect(more).toEqual([]);
     expect(homebrewHeading).toBe(getByRole("heading", { level: 2, name: "Homebrew 3" }));
     expect(pipHeading).toBe(getByRole("heading", { level: 2, name: "pip 2" }));
+    // A group's heading: 13 bold, its count 13 in the secondary colour,
+    // the source's mark at 16 -- no pill.
+    expect(homebrewHeading.className.split(" ")).toEqual(expect.arrayContaining(["text-title", "text-foreground"]));
+    const count = within(homebrewHeading).getByText("3");
+    expect(count.className.split(" ")).toEqual(expect.arrayContaining(["text-body", "font-normal", "text-muted"]));
+    expect(homebrewHeading.querySelector("[aria-hidden='true']")?.className).toContain("h-4 w-4");
+    expect(homebrewHeading.className).not.toMatch(/rounded|border|bg-/);
     // A heading says the source; the rows under it say it in sight only
     // for a name another source lists too.
     expect(within(rowOf("wget")).getByText("Homebrew")).toHaveClass("sr-only");
@@ -1747,7 +1726,7 @@ describe("InstalledPage", () => {
         { ...pipSnapshot.artifacts[0], key: { ...pipSnapshot.artifacts[0].key, name: "black" }, display_name: "black" },
       ],
     };
-    renderWithProviders(<InstalledPage />);
+    renderInstalled();
     await findRow("jq");
 
     const blacks = screen
@@ -1763,27 +1742,39 @@ describe("InstalledPage", () => {
     expect(within(rowOf("jq")).getByText("Homebrew")).toHaveClass("sr-only");
 
     // Filtered to one source, the name is that source's alone: out of sight again.
-    fireEvent.click(screen.getByRole("button", { name: "pip 1" }));
+    act(() => useUiStore.getState().openInstalled(pip.id));
     await waitFor(() => expect(rowNames()).toEqual(["black"]));
     expect(within(rowOf("black")).getByText("pip")).toHaveClass("sr-only");
   });
 
-  describe("the details drawer", () => {
+  describe("the inspector", () => {
     it("opens from the row itself, not from its buttons, with all the row had no room for", async () => {
       served = {
         ...snapshot,
         artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }],
         updates: [{ ...snapshot.updates[0], key: snapshot.artifacts[0].key, current: "1.8.2", target: "1.8.3", blocked: "Pinned" }],
       };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       const jq = await findRow("jq");
-      // The chip opens its own detail, not the drawer.
+      // The chip opens its own detail, not the inspector.
       chipDetail(jq, "Pinned");
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByRole("complementary")).toBeNull();
 
       const drawer = await openDetails("jq");
-      expect(within(drawer).getByText("Homebrew")).toBeInTheDocument();
+      // A pane beside the list, no dialog: its name, 13 bold, over its
+      // source, 11 in the secondary colour, by the tool's icon at 48.
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(within(drawer).getByRole("heading", { level: 2, name: "jq" }).className.split(" ")).toEqual(
+        expect.arrayContaining(["text-title", "text-foreground"]),
+      );
+      expect(within(drawer).getByText("Homebrew").className.split(" ")).toEqual(
+        expect.arrayContaining(["text-small", "text-muted"]),
+      );
+      expect(drawer.querySelector(".h-12.w-12")).not.toBeNull();
+      expect(within(drawer).getByText("Lightweight and flexible command-line JSON processor")).toHaveClass(
+        "text-body-long",
+      );
       expect(within(drawer).getByText("Lightweight and flexible command-line JSON processor")).toBeInTheDocument();
       expect(within(drawer).getByText("Version").nextElementSibling).toHaveTextContent("1.8.2");
       expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("1.8.3");
@@ -1800,43 +1791,210 @@ describe("InstalledPage", () => {
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
     });
 
-    it("closes with Escape and with its close button, giving the focus back to the row", async () => {
-      renderWithProviders(<InstalledPage />);
+    it("closes with Escape, from the row or from inside it, and with its close button, the focus back on the row", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      renderInstalled();
 
       const jq = await findRow("jq");
       const rowButton = within(jq).getByRole("button", { name: "Details: jq" });
-      let drawer = await openDetails("jq");
-      await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true));
+      let inspector = await openDetails("jq");
+      // Pressed, the row keeps the focus: nothing moves into the pane.
+      expect(document.activeElement).toBe(rowButton);
 
-      fireEvent.keyDown(document.activeElement ?? drawer, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+      fireEvent.keyDown(rowButton, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      // The row itself, where ↑ ↓ go on from.
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
 
-      drawer = await openDetails("jq");
-      fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+      inspector = await openDetails("jq");
+      const close = within(inspector).getByRole("button", { name: "Close" });
+      act(() => close.focus());
+      fireEvent.keyDown(close, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
+
+      inspector = await openDetails("jq");
+      fireEvent.click(within(inspector).getByRole("button", { name: "Close" }));
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
     });
 
-    it("keeps Tab inside itself while it is open", async () => {
-      renderWithProviders(<InstalledPage />);
+    it("closes when its row is pressed again, and shows another row when that one is pressed", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      renderInstalled();
 
-      const drawer = await openDetails("jq");
-      const close = within(drawer).getByRole("button", { name: "Close" });
-      const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
-      await waitFor(() => expect(document.activeElement).toBe(close));
-      // The page under it is out of reach.
-      expect(screen.queryByRole("searchbox")).toBeNull();
+      await openDetails("jq");
+      const jqButton = within(rowOf("jq")).getByRole("button", { name: "Details: jq" });
+      expect(jqButton).toHaveAttribute("aria-pressed", "true");
+      expect(rowOf("jq")).toHaveAttribute("data-selected");
 
-      uninstall.focus();
-      fireEvent.keyDown(uninstall, { key: "Tab" });
-      expect(document.activeElement).toBe(close);
-      fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-      expect(document.activeElement).toBe(uninstall);
+      // The list stays in reach beside it.
+      fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
+      expect(await screen.findByRole("complementary", { name: "wget" })).toBeInTheDocument();
+      expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull();
+      expect(rowOf("jq")).not.toHaveAttribute("data-selected");
+      expect(rowOf("wget")).toHaveAttribute("data-selected");
+
+      fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      expect(rowOf("wget")).not.toHaveAttribute("data-selected");
+      expect(within(rowOf("wget")).getByRole("button", { name: "Details: wget" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("is no dialog: nothing dimmed, nothing kept from the keyboard, the list narrowed beside it", async () => {
+      renderInstalled();
+
+      const inspector = await openDetails("jq");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      // The page's own controls are still there, and still work.
+      const search = screen.getByRole("searchbox", { name: "Search installed tools" });
+      act(() => search.focus());
+      expect(document.activeElement).toBe(search);
+      // 300 wide, a hairline at its left, the window's own background, the
+      // page's full height; the list beside it, not under it.
+      expect(inspector.className.split(" ")).toEqual(
+        expect.arrayContaining(["w-75", "shrink-0", "border-l", "border-separator", "bg-content"]),
+      );
+      expect(inspector).toHaveAttribute("data-inspector", "beside");
+      expect(inspector.className).not.toMatch(/absolute|shadow/);
+      const list = document.querySelector("[data-list]") as HTMLElement;
+      expect(list.parentElement?.nextElementSibling).toBe(inspector);
+    });
+
+    it("follows ↑ and ↓ through the rows, as a Mac list's selection does, the lines between them passed over", async () => {
+      served = { ...snapshot, artifacts: [...snapshot.artifacts, formula("wget"), formula("zlib")] };
+      renderInstalled();
+
+      await openDetails("jq");
+      const rowButton = within(rowOf("jq")).getByRole("button", { name: "Details: jq" });
+      fireEvent.keyDown(rowButton, { key: "ArrowDown" });
+      expect(await screen.findByRole("complementary", { name: "wget" })).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("wget")));
+      expect(rowOf("wget")).toHaveAttribute("data-selected");
+
+      fireEvent.keyDown(rowOf("wget"), { key: "ArrowDown" });
+      expect(await screen.findByRole("complementary", { name: "zlib" })).toBeInTheDocument();
+      // The line under the rows unfolds, and selects nothing: the inspector
+      // stays on the last row.
+      fireEvent.keyDown(rowOf("zlib"), { key: "ArrowDown" });
+      const fold = screen.getByRole("button", { name: /^1 more component came with other software/ });
+      await waitFor(() => expect(document.activeElement).toBe(fold));
+      expect(screen.getByRole("complementary", { name: "zlib" })).toBeInTheDocument();
+
+      fireEvent.keyDown(fold, { key: "ArrowUp" });
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("zlib")));
+      fireEvent.keyDown(rowOf("zlib"), { key: "ArrowUp" });
+      expect(await screen.findByRole("complementary", { name: "wget" })).toBeInTheDocument();
+    });
+
+    it("opens with ↓ from the list, and with Space on a row, as Quick Look opens a Finder selection", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      renderInstalled();
+
+      await findRow("jq");
+      act(() => rowOf("jq").focus());
+      fireEvent.keyDown(rowOf("jq"), { key: "ArrowDown" });
+      expect(await screen.findByRole("complementary", { name: "wget" })).toBeInTheDocument();
+
+      fireEvent.keyDown(rowOf("wget"), { key: " " });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      fireEvent.keyDown(rowOf("wget"), { key: " " });
+      expect(await screen.findByRole("complementary", { name: "wget" })).toBeInTheDocument();
+    });
+
+    it("keeps its row, and where the list is scrolled, through a check that adds a row above it", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      // Rows as high as the list first guesses, so the new one's place is
+      // known before it measures itself.
+      rowHeights = { 0: 52, 1: 52, 2: 52 };
+      const { queryClient } = renderInstalled();
+
+      await openDetails("wget");
+      // Where the list is scrolled, read and written as a browser would.
+      const list = document.querySelector("[data-list]") as HTMLElement;
+      let scrollTop = 100;
+      Object.defineProperty(list, "scrollTop", {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      });
+
+      // The next check finds a tool whose name sorts before wget's.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, {
+          ...served,
+          generation: served.generation + 1,
+          artifacts: [...served.artifacts, formula("curl")],
+        });
+      });
+      await findRow("curl");
+      expect(rowNames()).toEqual(["curl", "jq", "wget"]);
+      expect(screen.getByRole("complementary", { name: "wget" })).toBeInTheDocument();
+      expect(rowOf("wget")).toHaveAttribute("data-selected");
+      // One row more above it: the list moved by one row's height, so wget
+      // stays where it was on screen.
+      await waitFor(() => expect(scrollTop).toBe(100 + 52));
+    });
+
+    it("closes for good once its tool is gone", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      const { queryClient } = renderInstalled();
+
+      await openDetails("wget");
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, { ...served, generation: 2, artifacts: [snapshot.artifacts[0]] });
+      });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      // Back again later: listed, not selected.
+      act(() => {
+        queryClient.setQueryData(queryKeys.snapshot, { ...served, generation: 3 });
+      });
+      await findRow("wget");
+      expect(screen.queryByRole("complementary")).toBeNull();
+      expect(rowOf("wget")).not.toHaveAttribute("data-selected");
+    });
+
+    it("starts with nothing selected on another source", async () => {
+      served = { ...snapshot, instances: [brew, pip], artifacts: [...snapshot.artifacts, ...pipSnapshot.artifacts] };
+      renderInstalled();
+
+      await openDetails("jq");
+      act(() => useUiStore.getState().openInstalled(pip.id));
+      await findRow("requests");
+      expect(screen.queryByRole("complementary")).toBeNull();
+      act(() => useUiStore.getState().openInstalled(null));
+      await findRow("jq");
+      expect(screen.queryByRole("complementary")).toBeNull();
+    });
+
+    it("says when a tool was installed and how big it is, where its source said", async () => {
+      served = {
+        ...snapshot,
+        artifacts: [{ ...snapshot.artifacts[0], installed_at: 1783762037, size_bytes: 1_450_000 }, formula("wget")],
+      };
+      renderInstalled();
+
+      let inspector = await openDetails("jq");
+      expect(within(inspector).getByText("Date Installed").nextElementSibling).toHaveTextContent(
+        new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(1783762037 * 1000)),
+      );
+      expect(within(inspector).getByText("Size").nextElementSibling).toHaveTextContent("1.4 MB");
+      // Labels 72 wide, in the secondary colour; the values tabular.
+      const grid = within(inspector).getByText("Size").parentElement?.parentElement as HTMLElement;
+      expect(grid.className).toContain("grid-cols-[4.5rem_1fr]");
+      expect(within(inspector).getByText("Size")).toHaveClass("text-muted");
+      expect(within(inspector).getByText("Size").nextElementSibling).toHaveClass("tabular-nums");
+
+      fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
+      inspector = await screen.findByRole("complementary", { name: "wget" });
+      expect(within(inspector).queryByText("Size")).toBeNull();
+      expect(within(inspector).getByText("Date Installed")).toBeInTheDocument();
     });
 
     it("updates through the Updates page's own confirmation, where that page would, and shows the progress there", async () => {
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
@@ -1870,7 +2028,7 @@ describe("InstalledPage", () => {
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update “glib”?" })).toBeNull());
       // Where the button was, as on the Updates page's row.
-      const open = screen.getByRole("dialog", { name: "glib" });
+      const open = screen.getByRole("complementary", { name: "glib" });
       expect(await within(open).findByText("Updating…")).toBeInTheDocument();
       expect(within(open).queryByRole("button", { name: "Update" })).toBeNull();
       expect(useUiStore.getState().updateTargets).toEqual({ 7: "2.90.0" });
@@ -1891,7 +2049,7 @@ describe("InstalledPage", () => {
         },
       ];
       useUiStore.setState({ updateTargets: { 9: "2.90.0" } });
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
@@ -1907,12 +2065,12 @@ describe("InstalledPage", () => {
       });
     });
 
-    it("shows an update that could not start in its own tool's drawer, not in another's", async () => {
+    it("shows an update that could not start in its own tool's inspector, not in another's", async () => {
       const answer = mockInvoke.getMockImplementation()!;
       mockInvoke.mockImplementation((cmd, args) =>
         cmd === "plan_operation" ? Promise.reject("brew is busy") : answer(cmd, args),
       );
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
@@ -1921,7 +2079,7 @@ describe("InstalledPage", () => {
       expect(await within(glib).findByText(/^Couldn't prepare the update/)).toBeInTheDocument();
 
       fireEvent.click(within(glib).getByRole("button", { name: "Close" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "glib" })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("complementary", { name: "glib" })).toBeNull());
       const jq = await openDetails("jq");
       expect(within(jq).queryByText(/^Couldn't prepare the update/)).toBeNull();
     });
@@ -1929,7 +2087,7 @@ describe("InstalledPage", () => {
     it.each([
       ["Queued", "Queued"],
       ["Running", "Uninstalling…"],
-    ] as const)("offers no second Uninstall while one is %s, on the row and in the drawer", async (status, label) => {
+    ] as const)("offers no second Uninstall while one is %s, on the row and in the inspector", async (status, label) => {
       operations = [
         {
           id: 11,
@@ -1943,7 +2101,7 @@ describe("InstalledPage", () => {
           cancel_policy: "KillThenReconcile",
         },
       ];
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       const row = await findRow("jq");
       expect(await within(row).findByRole("button", { name: label })).toBeDisabled();
@@ -1958,7 +2116,7 @@ describe("InstalledPage", () => {
         ...snapshot,
         instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }],
       };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
@@ -1978,12 +2136,12 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
     });
 
-    it("uninstalls through the row's own dialog, then gives way to the log", async () => {
-      renderWithProviders(<InstalledPage />);
+    it("uninstalls through the row's own dialog, then opens the log beside it", async () => {
+      renderInstalled();
 
-      const rowButton = within(await findRow("jq")).getByRole("button", { name: "Details: jq" });
       const drawer = await openDetails("jq");
-      fireEvent.click(within(drawer).getByRole("button", { name: "Uninstall…" }));
+      const uninstall = within(drawer).getByRole("button", { name: "Uninstall…" });
+      fireEvent.click(uninstall);
       const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
       await within(dialog).findByRole("button", { name: "Show Command" });
       showCommand(dialog);
@@ -1991,18 +2149,18 @@ describe("InstalledPage", () => {
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
       await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("submit_operation", { planId: "1" }));
-      // The drawer closes for the log drawer, which it would otherwise
-      // keep out of reach.
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
       expect(useUiStore.getState().focusedOpId).toBe(7);
-      // What the log drawer will give the focus back to when it closes: the
-      // row that opened the details, not a button that went with them.
-      await waitFor(() => expect(document.activeElement).toBe(rowButton));
+      // No dialog to get out of the log's way: the inspector stays until
+      // its tool is gone, and the focus is back on the button that asked,
+      // which the log gives it back to when it closes.
+      expect(screen.getByRole("complementary", { name: "jq" })).toBe(drawer);
+      await waitFor(() => expect(document.activeElement).toBe(uninstall));
     });
 
     it("gives the focus back to its own Uninstall and Update when their confirmations are dismissed", async () => {
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
@@ -2015,8 +2173,8 @@ describe("InstalledPage", () => {
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "Uninstall “glib”?" })).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(uninstall));
-      // The drawer stays: only the question went.
-      expect(screen.getByRole("dialog", { name: "glib" })).toBe(drawer);
+      // The inspector stays: only the question went.
+      expect(screen.getByRole("complementary", { name: "glib" })).toBe(drawer);
 
       fireEvent.click(update);
       const confirm = await screen.findByRole("dialog", { name: "Update “glib”?" });
@@ -2027,13 +2185,13 @@ describe("InstalledPage", () => {
 
     it("says where a tool is only with technical details on", async () => {
       served = { ...snapshot, instances: [claudeInstance], artifacts: [claudeArtifact], updates: [] };
-      const first = renderWithProviders(<InstalledPage />);
+      const first = renderInstalled();
       let drawer = await openDetails("Claude Code");
       expect(within(drawer).queryByText("Location")).toBeNull();
       first.unmount();
 
       servedSettings = { ...settings, show_technical_details: true };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
       drawer = await openDetails("Claude Code");
       expect(within(drawer).getByText("Location").nextElementSibling).toHaveTextContent(
         "/Users/someone/.local/share/claude/versions/2.1.281",
@@ -2058,7 +2216,7 @@ describe("InstalledPage", () => {
         ],
       };
       servedSettings = { ...settings, show_technical_details: true };
-      renderWithProviders(<InstalledPage />);
+      renderInstalled();
 
       const drawer = await openDetails("Claude Code");
       const values = ["Version", "Newer version", "Location"].map(
@@ -2085,16 +2243,17 @@ describe("InstalledPage", () => {
           artifacts: [{ ...snapshot.artifacts[0], uninstall_blocked: "Pinned" }, formula("wget")],
           updates: [],
         };
-        const first = renderWithProviders(<InstalledPage />);
+        const first = renderInstalled();
         fireEvent.click(within(await findRow("jq")).getByRole("button", { name: "More actions for jq" }));
         let menu = screen.getByRole("menu");
         expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Details"]);
         fireEvent.click(within(menu).getByRole("menuitem", { name: "Details" }));
-        expect(await screen.findByRole("dialog", { name: "jq" })).toBeInTheDocument();
+        expect(await screen.findByRole("complementary", { name: "jq" })).toBeInTheDocument();
+        expect(rowOf("jq")).toHaveAttribute("data-selected");
         first.unmount();
 
         servedSettings = { ...settings, show_technical_details: true };
-        renderWithProviders(<InstalledPage />);
+        renderInstalled();
         // A plain row has no command it could copy without a plan.
         fireEvent.click(within(await findRow("wget")).getByRole("button", { name: "More actions for wget" }));
         expect(within(screen.getByRole("menu")).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
@@ -2160,7 +2319,7 @@ describe("InstalledPage", () => {
     }
 
     it("gives a row its line in Chinese where the table has one, and what it said where the table has none", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: { "zh-CN": chinese() } });
+      renderInstalled({ toolDescriptions: { "zh-CN": chinese() } });
 
       expect(within(await findRow("jq")).getByText(JQ)).toBeInTheDocument();
       expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
@@ -2181,30 +2340,29 @@ describe("InstalledPage", () => {
     });
 
     it("shows the line in a tool's details, with the source's own words under it, quieter", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: { "zh-CN": chinese() } });
+      renderInstalled({ toolDescriptions: { "zh-CN": chinese() } });
       await findRow("jq");
 
       await inChinese(async () => {
         await within(rowOf("jq")).findByText("命令行 JSON 处理工具");
         fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "详情：jq" }));
-        const drawer = await screen.findByRole("dialog", { name: "jq" });
+        const drawer = await screen.findByRole("complementary", { name: "jq" });
         const line = within(drawer).getByText("命令行 JSON 处理工具");
         const original = within(drawer).getByText(JQ);
-        // Under the line, in the drawer's description, smaller and muted.
-        expect(line.contains(original)).toBe(true);
-        expect(line.firstChild?.textContent).toBe("命令行 JSON 处理工具");
+        // Under the line, smaller and muted.
+        expect(line.nextElementSibling).toBe(original);
         expect(original).toHaveAttribute("data-original-description");
-        expect(original).toHaveClass("block", "text-small", "text-muted");
+        expect(original).toHaveClass("text-small", "text-muted");
         fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
-        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+        await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
 
         // prettier's source said nothing: its line alone.
         fireEvent.click(within(rowOf("prettier")).getByRole("button", { name: "详情：prettier" }));
-        const prettier = await screen.findByRole("dialog", { name: "prettier" });
+        const prettier = await screen.findByRole("complementary", { name: "prettier" });
         expect(within(prettier).getByText("代码格式化工具")).toBeInTheDocument();
         expect(prettier.querySelector("[data-original-description]")).toBeNull();
         fireEvent.click(within(prettier).getByRole("button", { name: "关闭" }));
-        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+        await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       });
 
       // In English: the source's words, once.
@@ -2215,7 +2373,7 @@ describe("InstalledPage", () => {
     });
 
     it("gives a package's row its line in English where the English table has one, and switches it with the language", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: { en: english(), "zh-CN": chinese() } });
+      renderInstalled({ toolDescriptions: { en: english(), "zh-CN": chinese() } });
 
       // prettier's line, where the row said what npm lists; corepack, which
       // the table has no line for, still that; jq its source's own words,
@@ -2239,7 +2397,7 @@ describe("InstalledPage", () => {
     });
 
     it("shows a package's line in English alone in its details: its source said nothing", async () => {
-      renderWithProviders(<InstalledPage />, { toolDescriptions: { en: english() } });
+      renderInstalled({ toolDescriptions: { en: english() } });
       await within(await findRow("prettier")).findByText(PRETTIER);
 
       const drawer = await openDetails("prettier");
@@ -2271,7 +2429,7 @@ describe("InstalledPage", () => {
     const glyph = (path: string) => `path[d="${path}"]`;
 
     it("shows a tool's logo with its source's on the corner, on its row and in its details", async () => {
-      renderWithProviders(<InstalledPage />, { toolIcons });
+      renderInstalled({ toolIcons });
       // jq's logo, not on the corner, and Homebrew's, on it.
       const expectLogos = (avatarHolder: Element) => {
         const logo = avatarHolder.querySelector(glyph(JQ));
@@ -2284,13 +2442,13 @@ describe("InstalledPage", () => {
       expectLogos(await openDetails("jq"));
     });
 
-    it("shows the source's logo on a tool with none of its own, on its filter and over its group, and the initial where the source has none", async () => {
+    it("shows the source's logo on a tool with none of its own and over its group, and the initial where the source has none", async () => {
       served = {
         ...snapshot,
         instances: [brew, pip],
         artifacts: [...snapshot.artifacts, ...pipSnapshot.artifacts],
       };
-      renderWithProviders(<InstalledPage />, { toolIcons });
+      renderInstalled({ toolIcons });
 
       fireEvent.click(await screen.findByRole("button", { name: /^1 more component came with other software/ }));
       const glib = await findRow("glib");
@@ -2298,17 +2456,11 @@ describe("InstalledPage", () => {
       expect(glib.querySelector("[data-source-badge]")).toBeNull();
       expect(within(await findRow("requests")).getByText("P")).toHaveAttribute("aria-hidden", "true");
 
-      const filters = screen.getByRole("group", { name: "Filter by source" });
-      expect(within(filters).getByRole("button", { name: "Homebrew 2" }).querySelector(glyph(HOMEBREW))).not.toBeNull();
-      expect(within(within(filters).getByRole("button", { name: "pip 1" })).getByText("P")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
-
-      const sortBy = screen.getByRole("group", { name: "Sort by" });
-      fireEvent.click(within(sortBy).getByRole("button", { name: "Source" }));
+      fireEvent.change(screen.getByRole("combobox", { name: "Sort Order" }), { target: { value: "source" } });
       const heading = await screen.findByRole("heading", { level: 2, name: "Homebrew 2" });
       expect(heading.querySelector(glyph(HOMEBREW))).not.toBeNull();
+      const pipHeading = screen.getByRole("heading", { level: 2, name: "pip 1" });
+      expect(within(pipHeading).getByText("P")).toHaveAttribute("aria-hidden", "true");
     });
   });
 });

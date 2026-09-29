@@ -304,3 +304,32 @@ body {
 [data-list-slot]:has(+ [data-list-slot] > :not([data-tool-row])) [data-row-separator] {
   display: none;
 }
+
+/*
+ * The selected row (`ToolRow`'s `selected`, the Installed page's
+ * inspector): filled as a Mac list fills its selection -- the grey
+ * unemphasized fill while the list is not the keyboard's focus, and the
+ * accent with every word on the row white while it is, as the focused
+ * list's selection is drawn. The words of a panel opened from the row
+ * (a status word's ⓘ, the ⋯ menu) keep their own colours. No hairline
+ * under the selection, nor over it (the row before's), and no focus ring
+ * round it: the fill is where the focus is.
+ */
+[data-row-selection] {
+  background-color: var(--color-row-selected);
+}
+[data-list]:focus-within [data-row-selection] {
+  background-color: var(--color-accent);
+}
+[data-list]:focus-within [data-tool-row][data-selected]
+  :is(.text-foreground, .text-muted, .text-tertiary):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) {
+  color: #fff;
+}
+[data-tool-row][data-selected] [data-row-separator],
+[data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] {
+  display: none;
+}
+[data-tool-row][data-selected]:focus-visible,
+[data-tool-row][data-selected] > [data-row-open]:focus-visible {
+  outline: none;
+}

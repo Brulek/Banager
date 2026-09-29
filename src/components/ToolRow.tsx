@@ -110,28 +110,40 @@ export interface ToolRowContentProps {
   onOpen?: () => void;
   /** That button's accessible name: 「详情：jq」/"Details: jq". */
   openLabel?: string;
+  /**
+   * The row is the one selected -- the Installed page's, whose inspector
+   * shows it (spec R11): filled as a Mac list fills its selection, the
+   * accent with white words while the list has the focus, the grey
+   * `row-selected` while it does not (index.css).
+   */
+  selected?: boolean;
 }
 
 /**
  * How much of a row's columns fit in the list's width (spec R9), as the
  * window narrows: `full`, everything; `compact`, the version column says
  * only the version an update brings; `narrow`, that, and the status word
- * moves to the start of the description's line. Past that, the
- * description is cut short -- never the name, never the row's button.
+ * moves to the start of the description's line; `minimal` -- a list the
+ * Installed page's inspector has narrowed -- the version column goes as
+ * well, and an update's versions move to that line after the status word:
+ * the inspector says the selected row's version, and the others' are one
+ * click away. Past that, the description is cut short -- never the name,
+ * never the row's button.
  */
-export type RowFit = "full" | "compact" | "narrow";
+export type RowFit = "full" | "compact" | "narrow" | "minimal";
 
 /**
  * The list widths at which a row's columns give way (`RowFit`): the list
  * is 752 wide in a window at its default 960, with room for everything,
- * and 592 at its narrowest, 800.
+ * and 592 at its narrowest, 800; beside the inspector at 960, 451.
  */
-export const ROW_FIT_WIDTHS = { full: 700, compact: 640 } as const;
+export const ROW_FIT_WIDTHS = { full: 700, compact: 640, narrow: 520 } as const;
 
 /** Which of a row's columns fit a list `width` wide: everything, where nothing measured it. */
 export function rowFitFor(width: number | null): RowFit {
   if (width === null || width >= ROW_FIT_WIDTHS.full) return "full";
-  return width >= ROW_FIT_WIDTHS.compact ? "compact" : "narrow";
+  if (width >= ROW_FIT_WIDTHS.compact) return "compact";
+  return width >= ROW_FIT_WIDTHS.narrow ? "narrow" : "minimal";
 }
 
 /**
@@ -201,7 +213,11 @@ function RowName({ name }: { name: string }) {
  *
  * In a list whose rows ↑ and ↓ move between (`VirtualList`'s
  * `keyboardRows`), the row itself takes the focus: Space ticks its
- * checkbox, and Enter does nothing -- it opens nothing and starts nothing.
+ * checkbox -- or, on a row with none that opens, does what pressing it
+ * does -- and Enter does nothing: it opens nothing and starts nothing.
+ *
+ * `selected` fills it as a Mac list's selection (index.css), with no
+ * hairline under it or over it.
  */
 export function ToolRow({
   adapterId,
@@ -221,6 +237,7 @@ export function ToolRow({
   menu,
   onOpen,
   openLabel,
+  selected = false,
 }: ToolRowProps) {
   const fit = rowFitFor(useListWidth());
   const roving = useRovingRow();
@@ -243,7 +260,11 @@ export function ToolRow({
     if (event.target !== event.currentTarget) return;
     if (event.key === " ") {
       event.preventDefault();
-      selectable?.onToggle();
+      // Its checkbox, or -- a row with none that opens (the Installed
+      // page's) -- what pressing it does, as Space shows a Finder
+      // selection in Quick Look.
+      if (selectable !== undefined && selectable !== null) selectable.onToggle();
+      else if (selectable === undefined) onOpen?.();
     } else if (event.key === "Enter") {
       event.preventDefault();
     }
@@ -255,7 +276,11 @@ export function ToolRow({
   // its own installer, its own source: its name would only come twice.
   const source = sourceLabel !== undefined && sourceLabel !== name ? sourceLabel : undefined;
   const hasStatus = status !== undefined && status !== null;
-  const statusInline = fit === "narrow" && hasStatus;
+  const statusInline = (fit === "narrow" || fit === "minimal") && hasStatus;
+  // Where the version column has gone (`minimal`): an update's versions
+  // on the description's line, and nothing for a row with no update.
+  const versionColumn = version !== undefined && fit !== "minimal";
+  const versionInline = fit === "minimal" && newVersion !== undefined && version !== undefined && version !== null;
   const shownVersion =
     fit !== "full" && newVersion !== undefined ? (
       <>
@@ -280,13 +305,30 @@ export function ToolRow({
         onFocus={roving?.onFocus}
         onKeyDown={roving === null ? undefined : onKeyDown}
         onContextMenu={onContextMenu}
-        className="group/row relative flex h-13 items-center px-5 -outline-offset-3"
+        data-selected={selected ? "" : undefined}
+        className="group/row relative isolate flex h-13 items-center px-5 -outline-offset-3"
       >
+        {selected ? (
+          // The selection's fill, 10 in from either side with a control's
+          // corners, as a Mac's inset list draws it, under the row's words
+          // (the row is a stacking context of its own for it); its colour,
+          // and the words' over it, are index.css's.
+          <span
+            aria-hidden="true"
+            data-row-selection=""
+            className="pointer-events-none absolute inset-y-0 left-2.5 right-2.5 -z-10 rounded-control"
+          />
+        ) : null}
         {onOpen ? (
           <button
             ref={openButton}
             type="button"
             aria-label={openLabel}
+            aria-pressed={selected}
+            data-row-open=""
+            // In a list the arrow keys move through, the row itself is
+            // what Tab and ↑ ↓ reach; this is for the pointer.
+            tabIndex={roving === null ? undefined : -1}
             onClick={open}
             className="absolute inset-0 -outline-offset-3"
           />
@@ -325,6 +367,11 @@ export function ToolRow({
                 {status}
               </span>
             ) : null}
+            {versionInline ? (
+              <span data-version="" className="mr-2 shrink-0 whitespace-nowrap tabular-nums">
+                {version}
+              </span>
+            ) : null}
             {descriptionText}
             {descriptionNote !== undefined ? (
               // The description gives way to the note, cut short first; the
@@ -339,8 +386,11 @@ export function ToolRow({
             {status}
           </div>
         ) : null}
-        {version !== undefined ? (
-          <div className="ml-4 min-w-16 shrink-0 whitespace-nowrap text-right text-body tabular-nums text-muted">
+        {versionColumn ? (
+          <div
+            data-version=""
+            className="ml-4 min-w-16 shrink-0 whitespace-nowrap text-right text-body tabular-nums text-muted"
+          >
             {shownVersion}
           </div>
         ) : null}

@@ -31,13 +31,14 @@ export function useListWidth(): number | null {
 }
 
 /**
- * `element`'s width, kept up to date as the window is resized; null until
- * it has one (jsdom lays nothing out, so there it stays null).
+ * `node`'s width, kept up to date as the window is resized; null until it
+ * has one (jsdom lays nothing out, so there it stays null), and measured
+ * again whenever the element is a new one -- a page's box that mounts
+ * only once its data is in, handed over through a callback ref.
  */
-function useWidthOf(element: RefObject<HTMLElement | null>): number | null {
+export function useElementWidth(node: HTMLElement | null): number | null {
   const [width, setWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
-    const node = element.current;
     if (node === null) return;
     const settle = (next: number) => setWidth(next > 0 ? Math.round(next) : null);
     settle(node.getBoundingClientRect().width);
@@ -46,7 +47,7 @@ function useWidthOf(element: RefObject<HTMLElement | null>): number | null {
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [element]);
+  }, [node]);
   return width;
 }
 
@@ -81,6 +82,30 @@ export interface VirtualListProps<T> {
   keyboardRows?: (item: T) => boolean;
   /** What the list's box shows in place of the list while there are no items. */
   empty?: ReactNode;
+  /**
+   * Called with the slot ↑ or ↓ has just moved the focus to: the
+   * Installed page's selection follows the keyboard, as a Mac list's does.
+   */
+  onKeyboardMove?: (item: T) => void;
+  /** Handed a way to put the focus back on a slot by its key (`VirtualListHandle`). */
+  handleRef?: RefObject<VirtualListHandle | null>;
+  /**
+   * The slot to hold still when `items` changes -- the selected row: a
+   * check that adds or takes away slots above it moves the list by as
+   * much, so the row stays where it was on screen (spec R11), rather than
+   * the rows sliding under a still scrollbar.
+   */
+  anchorKey?: string | null;
+}
+
+/** What a list's owner can ask of it (`handleRef`). */
+export interface VirtualListHandle {
+  /**
+   * Puts the focus on the slot `key` names -- its row's own focus
+   * (`data-row-focus`), drawn first and scrolled into sight if it is not
+   * -- as Escape hands it back from the inspector to its row.
+   */
+  focusKey(key: string): void;
 }
 
 /** What each slot showed, by its key. */
@@ -129,6 +154,9 @@ export function VirtualList<T>({
   reusable,
   keyboardRows,
   empty,
+  onKeyboardMove,
+  handleRef,
+  anchorKey = null,
 }: VirtualListProps<T>) {
   const listRef = useRef<HTMLDivElement>(null);
   // Changes with `items`, which is what tells the virtualizer to lay the
@@ -151,7 +179,13 @@ export function VirtualList<T>({
     return drawn.get(key);
   };
 
-  const width = useWidthOf(listRef);
+  // The box, as state too: what its width is measured from.
+  const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
+  const attachList = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    setListBox(node);
+  }, []);
+  const width = useElementWidth(listBox);
 
   // The row in the Tab order: the one last focused, while it is listed,
   // and the first row until then.
@@ -205,13 +239,47 @@ export function VirtualList<T>({
     setActiveKey(key);
     setPendingFocus(key);
     virtualizer.scrollToIndex(next, { align: "auto" });
+    onKeyboardMove?.(items[next]);
   };
+
+  // Escape's way back from the inspector to its row (`handleRef`).
+  const focusKey = useCallback(
+    (key: string) => {
+      const index = items.findIndex((item) => itemKey(item) === key);
+      if (index < 0) return;
+      setActiveKey(key);
+      setPendingFocus(key);
+      virtualizer.scrollToIndex(index, { align: "auto" });
+    },
+    [items, itemKey, virtualizer],
+  );
+  useLayoutEffect(() => {
+    if (handleRef === undefined) return;
+    handleRef.current = { focusKey };
+    return () => {
+      if (handleRef.current?.focusKey === focusKey) handleRef.current = null;
+    };
+  }, [handleRef, focusKey]);
+
+  // Where the anchor started when the list was last laid out; a new list
+  // of items that moves it moves the scroll position by as much.
+  const anchorAt = useRef<{ key: string; start: number } | null>(null);
+  useLayoutEffect(() => {
+    const index = anchorKey === null ? -1 : items.findIndex((item) => itemKey(item) === anchorKey);
+    const measured = index < 0 ? undefined : virtualizer.measurementsCache[index];
+    const was = anchorAt.current;
+    anchorAt.current = anchorKey === null || measured === undefined ? null : { key: anchorKey, start: measured.start };
+    const scroller = listRef.current;
+    if (was === null || measured === undefined || was.key !== anchorKey || scroller === null) return;
+    if (measured.start !== was.start) scroller.scrollTop += measured.start - was.start;
+    // Only a new list moves it: a new anchor is taken where it is.
+  }, [items, anchorKey]);
 
   // Edge to edge: a row keeps its own 20 in from either side, where the
   // toolbar's title and the page above the list start, and its hairline
   // ends 20 from the right.
   return (
-    <div ref={listRef} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto pb-4">
+    <div ref={attachList} data-list="" onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto pb-4">
       {items.length === 0 && empty !== undefined ? (
         empty
       ) : (

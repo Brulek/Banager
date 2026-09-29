@@ -10,14 +10,16 @@ const NO_KEY: ArtifactKey = { instance_id: "", kind: "Formula", name: "" };
 
 /**
  * An app icon's size, as `SourceAvatar`'s of the same name: `md`, 32px, a
- * row's, a sheet line's and a drawer's; `sm`, 24px, a quiet line's, such as
- * the Updates page's "Just updated". Rounded as an app icon is at that
+ * row's and a sheet line's; `sm`, 24px, a quiet line's, such as the
+ * Updates page's "Just updated"; `lg`, 48px, the Installed page's
+ * inspector's. Rounded as an app icon is at that
  * size; the icon's own shape and margin do the rest. Whole class names,
  * for Tailwind.
  */
 const ICON_CLASSES = {
   sm: "h-6 w-6 rounded-[5px]",
   md: "h-8 w-8 rounded-[7px]",
+  lg: "h-12 w-12 rounded-[11px]",
 } as const;
 
 export interface ToolAvatarProps {
@@ -88,13 +90,14 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
 }
 
 /**
- * How far over the avatar's corner its badge sits: 2px on a row's 32px;
+ * How far over the avatar's corner its badge sits: 2px on a row's 32px and the inspector's 48px;
  * 4px on a quiet line's 24px, where it would otherwise hide a good part of
  * the logo. Whole class names, for Tailwind.
  */
 const BADGE_OFFSET_CLASSES = {
   sm: "-bottom-1 -right-1",
   md: "-bottom-0.5 -right-0.5",
+  lg: "-bottom-0.5 -right-0.5",
 } as const;
 
 interface WithSourceBadgeProps {

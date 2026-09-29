@@ -358,6 +358,10 @@ describe("ToolRow", () => {
       expect(rowFitFor(ROW_FIT_WIDTHS.compact)).toBe("compact");
       expect(rowFitFor(ROW_FIT_WIDTHS.compact - 1)).toBe("narrow");
       expect(rowFitFor(592)).toBe("narrow");
+      expect(rowFitFor(ROW_FIT_WIDTHS.narrow)).toBe("narrow");
+      // Beside the Installed page's inspector in a window at its default 960.
+      expect(rowFitFor(ROW_FIT_WIDTHS.narrow - 1)).toBe("minimal");
+      expect(rowFitFor(451)).toBe("minimal");
     });
 
     it("shows the whole version change, and the status word in its column, with room for everything", () => {
@@ -392,6 +396,29 @@ describe("ToolRow", () => {
       expect(blurb.className).toContain("truncate");
       expect(getByRole("button", { name: "Update" }).parentElement?.className).toContain("shrink-0");
       expect(container.querySelector(".tabular-nums")?.textContent).toBe("2.1.2902.1.282 → 2.1.290");
+    });
+
+    it("beside the inspector, gives up the version column: an update's change goes after the status word, a plain version goes", () => {
+      const { container, getByText, getByRole } = renderWithProviders(row(451));
+      const blurb = getByText("Anthropic's coding assistant");
+      const version = container.querySelector("[data-version]") as HTMLElement;
+      expect(container.querySelectorAll("[data-version]")).toHaveLength(1);
+      // On the description's line: the word, the change, the description.
+      expect(version.parentElement).toBe(blurb.parentElement);
+      expect(version.previousElementSibling).toHaveAttribute("data-status");
+      expect(version.nextElementSibling).toBe(blurb);
+      expect(version.textContent).toBe("2.1.282 → 2.1.290");
+      expect(version.className.split(" ")).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums"]));
+      expect(getByRole("button", { name: "Update" })).toBeInTheDocument();
+
+      // No update: no version anywhere on the row -- the inspector says it.
+      const plain = renderWithProviders(
+        <ListWidthProvider value={451}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" version="1.8.2" />
+        </ListWidthProvider>,
+      );
+      expect(plain.container.querySelector("[data-version]")).toBeNull();
+      expect(plain.container.textContent).not.toContain("1.8.2");
     });
   });
 
@@ -484,6 +511,87 @@ describe("ToolRow", () => {
     // Space on its own checkbox is the checkbox's, not the row's.
     fireEvent.keyDown(getByRole("checkbox"), { key: " " });
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  describe("selected (the Installed page's inspector, R11)", () => {
+    const selectedRow = (selected: boolean, roving = false) => {
+      const content = (
+        <ToolRow
+          adapterId="brew"
+          sourceLabel="Homebrew"
+          name="jq"
+          description="JSON processor"
+          onOpen={vi.fn()}
+          openLabel="Details: jq"
+          selected={selected}
+        />
+      );
+      return roving ? <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>{content}</RovingRowProvider> : content;
+    };
+
+    it("fills the row 10 in from either side with a control's corners, and says it is pressed", () => {
+      const { container, getByRole } = renderWithProviders(selectedRow(true));
+      const row = container.querySelector("[data-tool-row]") as HTMLElement;
+      expect(row).toHaveAttribute("data-selected");
+      const fill = row.querySelector("[data-row-selection]") as HTMLElement;
+      expect(fill).toHaveAttribute("aria-hidden", "true");
+      expect(fill.className.split(" ")).toEqual(
+        expect.arrayContaining(["absolute", "inset-y-0", "left-2.5", "right-2.5", "rounded-control", "pointer-events-none"]),
+      );
+      // Under the row's words, not over them: the row is its own stacking
+      // context, and the fill sits at its bottom.
+      expect(fill.className).toContain("-z-10");
+      expect(row.className.split(" ")).toContain("isolate");
+      // Under everything else on the row.
+      expect(row.firstElementChild).toBe(fill);
+      expect(getByRole("button", { name: "Details: jq" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("has no fill while it is not selected", () => {
+      const { container, getByRole } = renderWithProviders(selectedRow(false));
+      expect(container.querySelector("[data-tool-row]")).not.toHaveAttribute("data-selected");
+      expect(container.querySelector("[data-row-selection]")).toBeNull();
+      expect(getByRole("button", { name: "Details: jq" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("is filled in the accent with white words while its list has the focus, grey while it has not, with no hairline beside it", () => {
+      const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf-8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\s+/g, " ");
+      expect(css).toContain("[data-row-selection] { background-color: var(--color-row-selected); }");
+      expect(css).toContain("[data-list]:focus-within [data-row-selection] { background-color: var(--color-accent); }");
+      // Every word on it white -- but a panel's opened from it, which
+      // keeps the window's colours.
+      expect(css).toContain(
+        "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: #fff; }",
+      );
+      expect(css).toContain(
+        "[data-tool-row][data-selected] [data-row-separator], [data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] { display: none; }",
+      );
+      expect(css).not.toMatch(/:has\([^)]*:has\(/);
+    });
+
+    it("in a list with arrow keys, leaves Tab to the row and opens it with Space, having no checkbox", () => {
+      const onOpen = vi.fn();
+      const { container, getByRole } = renderWithProviders(
+        <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" onOpen={onOpen} openLabel="Details: jq" />
+        </RovingRowProvider>,
+      );
+      const row = container.querySelector("[data-tool-row]") as HTMLElement;
+      // The pointer's button is out of the Tab order: the row is what Tab and ↑ ↓ reach.
+      expect(getByRole("button", { name: "Details: jq" })).toHaveAttribute("tabindex", "-1");
+      expect(row).toHaveAttribute("tabindex", "0");
+      expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(row, { key: "Enter" });
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps its button in the Tab order in a list without arrow keys", () => {
+      const { getByRole } = renderWithProviders(selectedRow(false));
+      expect(getByRole("button", { name: "Details: jq" })).not.toHaveAttribute("tabindex");
+    });
   });
 
   it("has no hairline under a list's last row, nor under the last of a run a line of another kind follows", () => {

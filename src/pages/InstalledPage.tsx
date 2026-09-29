@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSettings, useSnapshot } from "../lib/queries";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -26,21 +26,23 @@ import {
 } from "../lib/updateState";
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
+import { formatBytes } from "../lib/format";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { nameKey, namesUnderSeveralSources } from "../lib/names";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
-import { Drawer } from "../components/ui/Drawer";
-import { ChipRow } from "../components/ui/ChipRow";
+import { ToolbarPopupButton } from "../components/ui/PopupButton";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { ToolAvatar } from "../components/ToolAvatar";
 import { UninstallDialog } from "../components/UninstallDialog";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { isRetryable, progressOf, UpdateProgress, useUpdateOperationFor } from "../components/UpdateProgress";
-import { VirtualList } from "../components/VirtualList";
+import { useElementWidth, VirtualList, type VirtualListHandle } from "../components/VirtualList";
+import { ToolbarItems } from "../components/Toolbar";
+import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
   blockedDetail,
@@ -52,16 +54,28 @@ import {
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
-import { CheckIcon, ChevronIcon, InfoIcon, SearchIcon, WarningIcon } from "../components/icons";
+import { CheckIcon, CloseIcon, DisclosureIcon, InfoIcon, SearchIcon, WarningIcon } from "../components/icons";
 import { EmptyState } from "../components/EmptyState";
-import { BUTTON } from "../components/ui/controls";
+import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
-// source), and a "N more components" line. Each slot then measures itself
-// through `measureElement`.
-const ROW_ESTIMATE = 60;
-const HEADING_ESTIMATE = 44;
-const FOLD_ESTIMATE = 40;
+// source), a "N more components" line and the notices' line. Each slot
+// then measures itself through `measureElement`.
+const ROW_ESTIMATE = 52;
+const HEADING_ESTIMATE = 40;
+const FOLD_ESTIMATE = 32;
+const NOTICES_ESTIMATE = 32;
+
+/** The inspector's width (spec R11), and the hairline to its left. */
+const INSPECTOR_WIDTH = 300 + 1;
+/**
+ * The narrowest the list may be beside the inspector: a row's avatar,
+ * name, button and ⋯ with room for a name such as 「Android SDK
+ * Platform-Tools」 uncut (`ToolRow`'s `minimal` fit). A window whose page
+ * is narrower than this and the inspector -- the 800 at its narrowest --
+ * has the inspector lie over the list's right side instead.
+ */
+const LIST_BESIDE_INSPECTOR = 440;
 
 /** An update the user hid on the Updates page, and how (`hidingRule`). */
 interface HiddenUpdate {
@@ -71,18 +85,18 @@ interface HiddenUpdate {
 
 /**
  * One of a row's status words: its word, the why behind its ⓘ (on the
- * row) or under it (in the drawer), and what kind it is -- what the row is
+ * row) or under it (in the inspector), and what kind it is -- what the row is
  * and why it can't do something, an update to be had, or up to date. The
  * last two are normal states, which a row does not put in words (spec
  * §3.4): the version column says the first, and silence the second. The
- * drawer lists every one.
+ * inspector lists every one.
  */
 interface RowChip {
   id: string;
   label: string;
   detail?: ReactNode;
-  /** What the drawer says under the word when the row's ⓘ says nothing: a model's new version. */
-  drawerDetail?: ReactNode;
+  /** What the inspector says under the word when the row's ⓘ says nothing: a model's new version. */
+  inspectorDetail?: ReactNode;
   tone: "neutral" | "update" | "upToDate";
 }
 
@@ -97,12 +111,15 @@ function rowChipOf(chips: RowChip[]): RowChip | undefined {
 }
 
 /**
- * One slot in the virtualized list: a tool's row; a source's heading, only
- * when the list is sorted by source and shows every source; and a
- * source's "N more components came with other software" line, which
- * unfolds its components under it.
+ * One slot in the virtualized list: first, while there is anything to
+ * say, what the sources had to say about this check -- the list's first
+ * row, which scrolls away with it, as on the Updates page (spec §3.8);
+ * then a tool's row; a source's heading, only when the list is sorted by
+ * source and shows every source; and a source's "N more components came
+ * with other software" line, which unfolds its components under it.
  */
 type ListItem =
+  | { type: "notices" }
   | { type: "heading"; instance: ManagerInstance; label: string; count: number }
   | { type: "row"; artifact: InstalledArtifact; instance: ManagerInstance; label: string }
   | { type: "fold"; instance: ManagerInstance; label: string; count: number; expanded: boolean };
@@ -116,6 +133,8 @@ type ListItem =
  */
 function listItemKey(item: ListItem): string {
   switch (item.type) {
+    case "notices":
+      return "notices";
     case "heading":
       return `heading:${item.instance.id}`;
     case "fold":
@@ -129,7 +148,57 @@ function listItemKey(item: ListItem): string {
 function estimateSize(item: ListItem): number {
   if (item.type === "heading") return HEADING_ESTIMATE;
   if (item.type === "fold") return FOLD_ESTIMATE;
+  if (item.type === "notices") return NOTICES_ESTIMATE;
   return ROW_ESTIMATE;
+}
+
+/** The slots ↑ and ↓ move between (`VirtualList`'s `keyboardRows`): the rows, and the lines that unfold components. */
+function keyboardRow(item: ListItem): boolean {
+  return item.type === "row" || item.type === "fold";
+}
+
+/**
+ * The line that unfolds a source's components, 32 high: a 10pt triangle
+ * and the words, muted -- the Updates page's 「另有5个无法在这里更新」's
+ * look (spec §3.3) -- and, where the list mixes sources with no heading
+ * to say it, the source's name after them. One of the rows ↑ and ↓ move
+ * between, Space or Enter unfolding it.
+ */
+function FoldLine({
+  count,
+  expanded,
+  source,
+  onToggle,
+}: {
+  count: number;
+  expanded: boolean;
+  source: string | null;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const roving = useRovingRow();
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      data-row-focus=""
+      tabIndex={roving?.tabIndex}
+      onFocus={roving?.onFocus}
+      className="flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted -outline-offset-3"
+    >
+      <DisclosureIcon size={10} className={`shrink-0 ${expanded ? "rotate-90" : ""}`} />
+      <span className="min-w-0 truncate">
+        {t(expanded ? "installed.hideDependencies" : "installed.showDependencies", { count })}
+      </span>{" "}
+      {source !== null ? <span className="shrink-0 text-small text-muted">{source}</span> : null}
+    </button>
+  );
+}
+
+/** An absolute date in the user's language: the day a tool was installed, which "3 days ago" would blur. */
+function formatDate(seconds: number, language: string): string {
+  return new Intl.DateTimeFormat(language, { dateStyle: "medium" }).format(new Date(seconds * 1000));
 }
 
 /**
@@ -144,7 +213,7 @@ function versionOf(artifact: InstalledArtifact): string | null {
   return artifact.version;
 }
 
-/** A chip's word on a row, or in the drawer: up to date with a quiet tick before it. */
+/** A chip's word on a row, or in the inspector: up to date with a quiet tick before it. */
 function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean }) {
   if (chip.tone === "upToDate") {
     return (
@@ -193,31 +262,31 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
 
 /**
  * 已安装: everything the sources list, to find and to uninstall
- * (docs/superpowers/2026-09-27-ui-redesign.md, 已安装页).
+ * (docs/superpowers/2026-09-27-ui-redesign.md, 已安装页;
+ * docs/superpowers/2026-09-29-aesthetics-spec.md §3.3, R8, R11).
  *
- * At the top a search box and the sort, and a row of filters: 「全部」 and
- * one per source with something installed, each with how much -- an
- * Overview tile opens the page on its own (`openInstalled`). One line
- * however many sources there are, which scrolls sideways when they do not
- * fit (`ChipRow`), so the list keeps its room at 800×600. Under them,
- * one line per thing a source had to say this time (`SourceNoticeLine`,
- * as on the Updates page), folded into one while there are two or more
- * (`SourceNotices`).
+ * Its search field and its sort are in the window's toolbar, as a Mac
+ * app's are (`ToolbarItems`); which source it shows is the sidebar's to
+ * say -- 「已安装」 for every one, a source's row under 「来源」 for that
+ * one alone (`installedFilter`), whose name then titles the window.
  *
- * Then one list. By name, it is one flat list, each row naming its source
- * with the avatar and, where the list mixes sources, a chip: a tool is
- * found by its name, and at the window's default 800×600 a heading per
- * source would take the room of a row each for nothing the avatars do not
- * already say. By source, it is grouped under a heading per source -- only
- * while every source is shown; one source's list needs none. Either way,
- * what other software brought in is folded into one line per source,
- * 「另有 14 个被其它软件带来的组件」, which unfolds them under it.
+ * Then one list, its first line what the sources had to say this time
+ * (`SourceNoticeLine`, as on the Updates page), folded into one while
+ * there are two or more (`SourceNotices`). By name, it is one flat list,
+ * each row naming its source with the avatar's mark and, where two
+ * sources list one name, in words: a tool is found by its name. By
+ * source, it is grouped under a heading per source -- only while every
+ * source is shown; one source's list needs none. Either way, what other
+ * software brought in is folded into one line per source,
+ * 「另有14个随其他软件安装的组件」, which unfolds them under it.
  *
- * Each row: what it is, its version, its chips -- the why behind an ⓘ --
- * Uninstall where the source and the tool allow it (disabled, with a chip
- * saying why, while the source refuses one for now), and a ⋯ menu.
- * Pressing the row itself opens its details in a drawer from the right:
- * everything a row has no room for, and its Update.
+ * Each row: what it is, its version, one status word -- the why behind
+ * its ⓘ -- Uninstall where the source and the tool allow it (disabled,
+ * with a word saying why, while the source refuses one for now), and a ⋯
+ * menu. Pressing the row, or moving to it with ↑ ↓, selects it, and the
+ * inspector on the right shows it: everything a row has no room for, and
+ * its Update (`Inspector`). Not a dialog: the list stays in reach beside
+ * it, and Escape or pressing the row again closes it.
  */
 export function InstalledPage() {
   const { t, i18n } = useTranslation();
@@ -239,7 +308,8 @@ export function InstalledPage() {
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
   const translatedDescription = useTranslatedDescription();
-  const searchBox = useRef<HTMLInputElement>(null);
+  // The toolbar's search field, once it is drawn there.
+  const [searchBox, setSearchBox] = useState<HTMLInputElement | null>(null);
   const searchFocusRequested = useUiStore((s) => s.searchFocusRequested);
   const searchFocused = useUiStore((s) => s.searchFocused);
 
@@ -252,23 +322,27 @@ export function InstalledPage() {
     displayName: string;
   } | null>(null);
   // What opened the uninstall dialog -- a row's Uninstall, or the
-  // drawer's -- which gets the focus back when it closes.
+  // inspector's -- which gets the focus back when it closes.
   const uninstallOpener = useRef<HTMLElement | null>(null);
   // The operation an uninstall just started. Its log opens once the dialog
   // has closed and given the focus back to what opened it, so that the log
   // drawer, which hands the focus back to what had it as it opened, hands
   // it back there too.
   const startedUninstall = useRef<number | null>(null);
-  // The row whose details are open, by artifact key id; looked up in the
-  // snapshot each time, so the drawer shows what the last check found.
-  const [detailsId, setDetailsId] = useState<string | null>(null);
-  // What opened those details: the row itself, or its ⋯ menu's button.
-  const detailsOpener = useRef<HTMLElement | null>(null);
-  // Set when the drawer closes for the log drawer to open: the focus goes
-  // there, not back to the row.
-  const leaveFocusOnClose = useRef(false);
+  // The row selected, by artifact key id, and the source the page showed
+  // when it was: looked up in the snapshot each time, so the inspector
+  // shows what the last check found, and kept through a check by the
+  // tool's key (spec R11). Another source in the sidebar starts with
+  // nothing selected.
+  const [selection, setSelection] = useState<{ id: string; filter: string | null } | null>(null);
+  const listHandle = useRef<VirtualListHandle | null>(null);
+  // The page's width: whether the inspector fits beside the list or lies
+  // over its right side (`LIST_BESIDE_INSPECTOR`).
+  const [pageBox, setPageBox] = useState<HTMLDivElement | null>(null);
+  const pageWidth = useElementWidth(pageBox);
 
   const showTechnicalDetails = settings?.show_technical_details ?? false;
+  const inspectorTitleId = useId();
 
   const instancesById = useMemo(() => {
     const byId = new Map<string, ManagerInstance>();
@@ -281,11 +355,12 @@ export function InstalledPage() {
     for (const artifact of snapshot?.artifacts ?? []) byId.set(artifactKeyId(artifact.key), artifact);
     return byId;
   }, [snapshot]);
-  // A tool that is gone -- uninstalled, or no longer listed -- closes its
-  // drawer for good, so the same name listed again later does not open it.
+  // A tool that is gone -- uninstalled, or no longer listed -- is no
+  // longer selected, for good, so the same name listed again later does
+  // not open the inspector.
   useEffect(() => {
-    if (snapshot && detailsId !== null && !artifactsById.has(detailsId)) setDetailsId(null);
-  }, [snapshot, detailsId, artifactsById]);
+    if (snapshot && selection !== null && !artifactsById.has(selection.id)) setSelection(null);
+  }, [snapshot, selection, artifactsById]);
 
   // The source's name in the user's language, as the sidebar lists it --
   // with where it is after it where this Mac has two of its kind
@@ -332,7 +407,7 @@ export function InstalledPage() {
     [collator, nameOf],
   );
 
-  // The Updates page's own confirmation, for the drawer's Update: the same
+  // The Updates page's own confirmation, for the inspector's Update: the same
   // plan, command, warnings and submission (`useUpdateConfirm`).
   const confirm = useUpdateConfirm({ nameOf, compare: compareCandidates, sourceLabelFor });
 
@@ -353,8 +428,8 @@ export function InstalledPage() {
     return { listedUpdates: listed, hiddenUpdates: hidden };
   }, [snapshot, settings]);
 
-  // How much each source has installed: its filter's count, the number an
-  // Overview tile shows for it.
+  // How much each source has installed: the number its row in the
+  // sidebar shows.
   const countByInstance = useMemo(() => {
     const counts = new Map<string, number>();
     for (const artifact of snapshot?.artifacts ?? []) {
@@ -364,12 +439,6 @@ export function InstalledPage() {
     return counts;
   }, [snapshot]);
 
-  // One filter per source with something installed, in the snapshot's
-  // order -- the Overview's tiles' order.
-  const filterSources = useMemo(
-    () => (snapshot?.instances ?? []).filter((instance) => (countByInstance.get(instance.id) ?? 0) > 0),
-    [snapshot, countByInstance],
-  );
   // The source the sidebar's row for it opened the page on. It stays,
   // with nothing installed or with nothing its source could list, and
   // says why (`sourceEmpty`): never reset to everything behind the
@@ -381,6 +450,11 @@ export function InstalledPage() {
   useEffect(() => {
     if (snapshot && filter !== null && activeFilter === null) setFilter(null);
   }, [snapshot, filter, activeFilter, setFilter]);
+  const selectedId = selection !== null && selection.filter === activeFilter ? selection.id : null;
+  // Another source, or every source again: nothing selected, for good.
+  useEffect(() => {
+    setSelection((was) => (was === null || was.filter === activeFilter ? was : null));
+  }, [activeFilter]);
   // Headings only while the list is sorted by source and shows every
   // source; a "N more components" line names its source only where the
   // list mixes sources and has no heading saying it.
@@ -414,7 +488,7 @@ export function InstalledPage() {
     [snapshot, activeFilter],
   );
 
-  const items = useMemo<ListItem[]>(() => {
+  const rowItems = useMemo<ListItem[]>(() => {
     const result: ListItem[] = [];
     const rows: ListItem[] = [];
     const folds: ListItem[] = [];
@@ -459,11 +533,11 @@ export function InstalledPage() {
   const namedTwice = useMemo(
     () =>
       namesUnderSeveralSources(
-        items.flatMap((item) =>
+        rowItems.flatMap((item) =>
           item.type === "row" ? [{ name: item.artifact.display_name, instanceId: item.instance.id }] : [],
         ),
       ),
-    [items],
+    [rowItems],
   );
 
   // What each source in view has to say about this check, a line each
@@ -495,19 +569,23 @@ export function InstalledPage() {
     [instancesInView, labelOf, countByInstance],
   );
   const noticeFold = useNoticeFold(notices.length);
+  // The notices are the list's first line while it has rows to be the
+  // first of; with none, they stand over the sentence that says so.
+  const items = useMemo<ListItem[]>(
+    () => (rowItems.length > 0 && notices.length > 0 ? [{ type: "notices" }, ...rowItems] : rowItems),
+    [rowItems, notices.length],
+  );
 
-  // The menu bar's Search (⌘F, `searchInstalled`): the box takes the
-  // focus as soon as it is on screen, its text selected to be typed over,
-  // wherever the focus was. Still loading, the box is not there yet, and
-  // the request waits for it.
-  const hasSearchBox = !isLoading && snapshot !== undefined;
+  // The menu bar's Search (⌘F, `searchInstalled`): the field takes the
+  // focus as soon as it is in the toolbar, its text selected to be typed
+  // over, wherever the focus was. Still loading, or before the toolbar
+  // has its slot, the field is not there yet, and the request waits for it.
   useEffect(() => {
-    const box = searchBox.current;
-    if (!searchFocusRequested || box === null) return;
-    box.focus();
-    box.select();
+    if (!searchFocusRequested || searchBox === null) return;
+    searchBox.focus();
+    searchBox.select();
     searchFocused();
-  }, [searchFocusRequested, hasSearchBox, searchFocused]);
+  }, [searchFocusRequested, searchBox, searchFocused]);
 
   if (isLoading) {
     // Before `get_snapshot` answers, the first check is under way too:
@@ -577,11 +655,32 @@ export function InstalledPage() {
     });
   };
 
-  // The row itself and its ⋯ menu's Details both put the focus on what
-  // was pressed before they get here (`ToolRow`, `Menu`).
-  const openDetails = (artifact: InstalledArtifact) => {
-    detailsOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setDetailsId(artifactKeyId(artifact.key));
+  // Selects a row, and the inspector shows it: its ⋯ menu's Details, and
+  // ↑ ↓ (`VirtualList`'s `onKeyboardMove`).
+  const select = (artifact: InstalledArtifact) => setSelection({ id: artifactKeyId(artifact.key), filter: activeFilter });
+  // Pressing a row: selects it, or -- the one selected -- closes the
+  // inspector, the focus staying on the row (`ToolRow` put it there).
+  const pressRow = (artifact: InstalledArtifact) => {
+    const id = artifactKeyId(artifact.key);
+    setSelection(id === selectedId ? null : { id, filter: activeFilter });
+  };
+  // Escape: the inspector closes, and the focus goes back to its row,
+  // wherever it was -- on the row, or in the inspector.
+  const closeInspector = () => {
+    const id = selectedId;
+    setSelection(null);
+    if (id !== null) listHandle.current?.focusKey(id);
+  };
+  // Escape inside the list or the inspector, when nothing nearer has it: a
+  // status word's ⓘ, the ⋯ menu and a text field close or clear with it
+  // themselves (a dialog opened from here is outside both, in React's
+  // tree as in the page's).
+  const onEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Escape" || event.defaultPrevented || selectedId === null) return;
+    if (document.querySelector("[data-popup-open]") !== null) return;
+    if ((event.target as HTMLElement).closest('[role="menu"], input:not([type="checkbox"]), textarea') !== null) return;
+    event.preventDefault();
+    closeInspector();
   };
 
   // What a row says it is, and what its details show under that: the
@@ -689,9 +788,9 @@ export function InstalledPage() {
           chips.push({
             id: "update",
             label: t("installed.updateAvailable"),
-            // The drawer's facts give the version it moves to, except a
+            // The inspector's facts give the version it moves to, except a
             // model's, which has no version to give: "a new version".
-            drawerDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
+            inspectorDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
             tone: "update",
           });
           break;
@@ -760,7 +859,7 @@ export function InstalledPage() {
   // command a chip talks about.
   const menuItems = (artifact: InstalledArtifact, instance: ManagerInstance): MenuItem[] => {
     const items: MenuItem[] = [
-      { id: "details", label: t("common.details"), onSelect: () => openDetails(artifact) },
+      { id: "details", label: t("common.details"), onSelect: () => select(artifact) },
     ];
     const command = commandOf(artifact, instance);
     if (showTechnicalDetails && command !== null) {
@@ -800,44 +899,45 @@ export function InstalledPage() {
           ) : null
         }
         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(artifact, instance)} />}
-        onOpen={() => openDetails(artifact)}
+        onOpen={() => pressRow(artifact)}
         openLabel={t("common.detailsLabel", { title: name })}
+        selected={artifactKeyId(artifact.key) === selectedId}
       />
     );
   };
 
   // The log drawer at the foot of the window, for an operation just
-  // started or finished. The details drawer, a modal over the page, closes
-  // first: the log drawer is not inside it, and would be out of reach. The
-  // row that opened the details takes the focus on the way, where the
-  // details drawer lets it -- after an uninstall's dialog has closed over
-  // it -- so that the log drawer gives it back to the row, not to a button
-  // that went with the details. From inside the details, the drawer keeps
-  // the focus to itself until it closes.
+  // started or finished. The inspector stays: it is no dialog, and the
+  // log opens over the page beside it.
   const openLog = (opId: number) => {
-    if (detailsId !== null) {
-      leaveFocusOnClose.current = true;
-      if (detailsOpener.current?.isConnected) detailsOpener.current.focus();
-      setDetailsId(null);
-    }
     setFocusedOpId(opId);
     setDrawerOpen(true);
   };
 
-  const details = detailsId === null ? undefined : artifactsById.get(detailsId);
+  const details = selectedId === null ? undefined : artifactsById.get(selectedId);
   const detailsInstance = details === undefined ? undefined : instancesById.get(details.key.instance_id);
 
   /**
-   * A row's details: all of its description -- and under it, quieter, the
-   * source's own words where the line is their translation -- its version
-   * and the one an update would bring, where it is (with technical details
-   * on), every chip with its why in full, what its source had to say this
-   * time, and what can be done -- Uninstall, and Update where the Updates
-   * page offers one, through that page's own confirmation; while that
-   * update runs, its progress where the button was, and once it has ended
-   * without updating, how it ended beside Retry.
+   * The inspector (spec R11; cork-package-info.png): a pane on the right,
+   * 300 wide and the page's full height, the list narrowed beside it -- no
+   * dialog, no dimming, the list still in reach. From the top: the tool's
+   * icon at 48, its name and its source; all of its description, and
+   * under it, quieter, the source's own words where the line is their
+   * translation; its facts -- its version and the one an update would
+   * bring, when it was installed, its size, and where it is (with
+   * technical details on) -- each one selectable, to be copied; every
+   * status word with its why in full; what its source had to say this
+   * time; and at its foot what can be done -- Uninstall, and Update where
+   * the Updates page offers one, through that page's own confirmation;
+   * while that update runs, its progress where the button was, and once it
+   * has ended without updating, how it ended beside Retry.
+   *
+   * Where the page is too narrow for it and a list whose names stay whole
+   * (`LIST_BESIDE_INSPECTOR`) -- the 800 of the window at its narrowest --
+   * it lies over the list's right side instead, with a floating thing's
+   * shadow along its edge, and the list keeps its width under it.
    */
-  const detailsDrawer = (artifact: InstalledArtifact, instance: ManagerInstance) => {
+  const inspector = (artifact: InstalledArtifact, instance: ManagerInstance, overlay: boolean) => {
     const label = labelOf(instance);
     const name = artifact.display_name;
     const chips = chipsOf(artifact, instance, label);
@@ -864,6 +964,10 @@ export function InstalledPage() {
     const facts: Array<{ term: string; value: ReactNode }> = [];
     if (version !== null) facts.push({ term: t("installed.version"), value: version });
     if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer });
+    if (artifact.installed_at !== null) {
+      facts.push({ term: t("installed.installedOn"), value: formatDate(artifact.installed_at, i18n.language) });
+    }
+    if (artifact.size_bytes !== null) facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes) });
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
     if (showTechnicalDetails && artifact.path !== null) {
@@ -875,257 +979,215 @@ export function InstalledPage() {
     const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
     const { line, original } = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);
-    const footer =
-      removable || updatable ? (
-        <>
-          {removable ? (
-            // Grey beside Update's accent, as the row's is: offered, not
-            // recommended, and not red (`RowAction`).
-            <button
-              type="button"
-              disabled={uninstallHeld(artifact, instance)}
-              onClick={(event) => uninstall(artifact, event.currentTarget)}
-              className={BUTTON.large.grey}
-            >
-              {uninstallUnderway(artifact) ?? t("installed.uninstall")}
-            </button>
-          ) : null}
-          {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
-          {/* As on the Updates page's row: an update that ended without
-              updating keeps how it ended, with Retry in Update's place. */}
-          {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
-            <button
-              type="button"
-              onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
-              disabled={confirm.dialogOpen}
-              className={BUTTON.large.default}
-            >
-              {progress === null ? t("updates.update") : t("updates.retry")}
-            </button>
-          ) : null}
-        </>
-      ) : undefined;
+    const refusals = confirm.pageErrors.filter((item) => artifactKeyId(item.candidate.key) === id);
     return (
-      <Drawer
-        open
-        onOpenChange={(open) => {
-          if (!open) setDetailsId(null);
-        }}
-        title={name}
-        subtitle={label === name ? undefined : label}
-        leading={<ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} />}
-        description={
-          original === null ? (
-            line
-          ) : (
-            <>
-              {line}
-              <span data-original-description="" className="mt-1 block text-small text-muted">
-                {original}
-              </span>
-            </>
-          )
-        }
-        closeLabel={t("common.close")}
-        onCloseAutoFocus={(event) => {
-          if (leaveFocusOnClose.current) {
-            leaveFocusOnClose.current = false;
-            event.preventDefault();
-          }
-        }}
-        footer={footer}
+      <aside
+        aria-labelledby={inspectorTitleId}
+        data-inspector={overlay ? "overlay" : "beside"}
+        onKeyDown={onEscape}
+        className={`flex w-75 shrink-0 flex-col bg-content ${
+          overlay ? "absolute inset-y-0 right-0 z-20 shadow-menu" : "border-l border-separator"
+        }`}
       >
-        {facts.length > 0 ? (
-          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-body">
-            {facts.map((fact) => (
-              <div key={fact.term} className="contents">
-                <dt className="text-muted">{fact.term}</dt>
-                <dd className="min-w-0 select-text tabular-nums text-foreground">{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
-        {chips.length > 0 ? (
-          <ul data-status-list="" className="mt-5 flex flex-col gap-3">
-            {chips.map((chip) => (
-              <li key={chip.id} className="flex flex-col items-start gap-1">
-                <RowChipView chip={chip} withDetail={false} />
-                {chip.detail !== undefined ? (
-                  <div className="text-body text-foreground">{chip.detail}</div>
-                ) : chip.drawerDetail !== undefined ? (
-                  <p className="break-words text-body text-foreground">{chip.drawerDetail}</p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {sourceNotices.length > 0 ? (
-          <div className="mt-5 flex flex-col gap-2">
-            <SourceNotices notices={sourceNotices} layout="block" />
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-5">
+          <div className="flex items-center gap-3">
+            <ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} size="lg" />
+            <div className="min-w-0 flex-1">
+              <h2 id={inspectorTitleId} className="break-words text-title text-foreground">
+                {name}
+              </h2>
+              {label === name ? null : <p className="truncate text-small text-muted">{label}</p>}
+            </div>
+            {/* Escape and pressing the row again close it too; this is
+                the way that shows. */}
+            <button
+              type="button"
+              aria-label={t("common.close")}
+              onClick={closeInspector}
+              className={`${ICON_BUTTON} -mr-2 self-start`}
+            >
+              <CloseIcon size={16} />
+            </button>
+          </div>
+          <p className="mt-4 break-words text-body-long text-foreground">{line}</p>
+          {original !== null ? (
+            <p data-original-description="" className="mt-1 break-words text-small text-muted">
+              {original}
+            </p>
+          ) : null}
+          {facts.length > 0 ? (
+            // Labels 72 wide, as a Mac's info pane lines its values up.
+            <dl className="mt-4 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 text-body">
+              {facts.map((fact) => (
+                <div key={fact.term} className="contents">
+                  <dt className="text-muted">{fact.term}</dt>
+                  <dd className="min-w-0 select-text break-words tabular-nums text-foreground">{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {chips.length > 0 ? (
+            <ul data-status-list="" className="mt-4 flex flex-col gap-3">
+              {chips.map((chip) => (
+                <li key={chip.id} className="flex flex-col items-start gap-1">
+                  <RowChipView chip={chip} withDetail={false} />
+                  {chip.detail !== undefined ? (
+                    <div className="text-body-long text-foreground">{chip.detail}</div>
+                  ) : chip.inspectorDetail !== undefined ? (
+                    <p className="break-words text-body-long text-foreground">{chip.inspectorDetail}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {sourceNotices.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-2">
+              <SourceNotices notices={sourceNotices} layout="block" />
+            </div>
+          ) : null}
+          {/* This tool's own refusal only: the update that failed to start
+              may have been pressed for another tool. */}
+          {refusals.map((item) => {
+            const text = t("updates.planFailed", { message: item.planError });
+            return <Refusal key={id} text={text} detail={item.planErrorDetail} detailTitle={text} className="mt-4" />;
+          })}
+        </div>
+        {removable || updatable ? (
+          // Uninstall at the left, grey -- offered, not recommended, and
+          // not red (`RowAction`) -- and Update, the default, at the right,
+          // as a Mac's dialog footer sets them.
+          <div className="flex shrink-0 items-center gap-2 px-5 pb-5 pt-3">
+            {removable ? (
+              <button
+                type="button"
+                disabled={uninstallHeld(artifact, instance)}
+                onClick={(event) => uninstall(artifact, event.currentTarget)}
+                className={BUTTON.regular.grey}
+              >
+                {uninstallUnderway(artifact) ?? t("installed.uninstall")}
+              </button>
+            ) : null}
+            <span className="flex-1" />
+            {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
+            {/* As on the Updates page's row: an update that ended without
+                updating keeps how it ended, with Retry in Update's place. */}
+            {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
+              <button
+                type="button"
+                onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
+                disabled={confirm.dialogOpen}
+                className={BUTTON.regular.default}
+              >
+                {progress === null ? t("updates.update") : t("updates.retry")}
+              </button>
+            ) : null}
           </div>
         ) : null}
-        {/* This tool's own refusal only: the update that failed to start
-            may have been pressed in another tool's drawer. */}
-        {confirm.pageErrors
-          .filter((item) => artifactKeyId(item.candidate.key) === id)
-          .map((item) => {
-            const text = t("updates.planFailed", { message: item.planError });
-            return (
-              <Refusal
-                key={id}
-                text={text}
-                detail={item.planErrorDetail}
-                detailTitle={text}
-                className="mt-4"
-              />
-            );
-          })}
-      </Drawer>
+      </aside>
     );
   };
 
   // The page on one source that has nothing to list says why in the
   // list's place (`SourceEmpty`), and its notice is not said over it.
   const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
-
-  const filterChip = (key: string, label: ReactNode, count: number, pressed: boolean, onPress: () => void) => (
-    <button
-      key={key}
-      type="button"
-      aria-pressed={pressed}
-      onClick={onPress}
-      className={`inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2 text-small font-medium ${
-        pressed
-          ? "border-accent bg-accent text-accent-foreground"
-          : "border-border bg-surface text-foreground"
-      }`}
-    >
-      {label}{" "}
-      <span className={`font-normal tabular-nums ${pressed ? "text-accent-foreground/80" : "text-muted"}`}>{count}</span>
-    </button>
-  );
+  // The inspector beside the list, or -- the page too narrow for both --
+  // over its right side. Not measured (jsdom), beside.
+  const overlay = pageWidth !== null && pageWidth - INSPECTOR_WIDTH < LIST_BESIDE_INSPECTOR;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-2.5 px-5 pb-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="relative min-w-40 max-w-sm flex-1">
-            <SearchIcon
-              size={15}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
-            />
-            <input
-              ref={searchBox}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("installed.filterPlaceholder")}
-              aria-label={t("installed.filterLabel")}
-              // A tool's name is no word: no red underline under "ffmpeg",
-              // as a web page's text field would draw, and nothing
-              // corrected as it is typed.
-              spellCheck={false}
-              className="h-8 w-full rounded-button border border-border bg-surface pl-8 pr-2.5 text-body text-foreground placeholder:text-muted"
-            />
-          </div>
-          <p role="status" className="text-small text-muted">
-            {copyStatus === "copied"
-              ? t("common.copied")
-              : copyStatus === "failed"
-                ? t("common.copyFailed")
-                : null}
-          </p>
-          <div role="group" aria-label={t("installed.sortLabel")} className="ml-auto flex items-center gap-2">
-            <span aria-hidden="true" className="text-small text-muted">
-              {t("installed.sortLabel")}
-            </span>
-            <div className="flex rounded-button bg-hover p-0.5">
-              {(["name", "source"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={sort === option}
-                  onClick={() => setSort(option)}
-                  className="rounded-[6px] px-2.5 py-1 text-small font-medium text-muted aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
-                >
-                  {t(option === "name" ? "installed.sortByName" : "installed.sortBySource")}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {filterSources.length > 0 ? (
-          <ChipRow label={t("installed.filterBySource")}>
-            {filterChip("all", t("installed.all"), snapshot.artifacts.length, activeFilter === null, () =>
-              setFilter(null),
-            )}
-            {filterSources.map((instance) =>
-              filterChip(
-                instance.id,
-                <>
-                  <SourceAvatar adapterId={instance.adapter_id} label={labelOf(instance)} size="xs" />
-                  {labelOf(instance)}
-                </>,
-                countByInstance.get(instance.id) ?? 0,
-                activeFilter === instance.id,
-                () => setFilter(instance.id),
-              ),
-            )}
-          </ChipRow>
-        ) : null}
+    <div ref={setPageBox} className="relative flex h-full">
+      {/* The page's own controls, in the window's toolbar (spec §3.2):
+          how the last Copy command went, for a moment; the sort, a grey
+          popup button; and the search field, 200 wide. */}
+      <ToolbarItems>
+        <p role="status" className="max-w-40 truncate text-small text-muted empty:hidden">
+          {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
+        </p>
+        <ToolbarPopupButton
+          label={t("installed.sortLabel")}
+          value={sort}
+          options={[
+            { value: "name", label: t("installed.sortByName") },
+            { value: "source", label: t("installed.sortBySource") },
+          ]}
+          onChange={setSort}
+        />
+        <span className="relative flex h-6 w-50 shrink-0 items-center">
+          <SearchIcon size={14} className="pointer-events-none absolute left-2 text-muted" />
+          <input
+            ref={setSearchBox}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("installed.filterPlaceholder")}
+            aria-label={t("installed.filterLabel")}
+            // A tool's name is no word: no red underline under "ffmpeg",
+            // as a web page's text field would draw, and nothing
+            // corrected as it is typed.
+            spellCheck={false}
+            className="h-6 w-full appearance-none rounded-control bg-fill-subtle pl-7 pr-2 text-body text-foreground placeholder:text-muted [&::-webkit-search-decoration]:appearance-none"
+          />
+        </span>
+      </ToolbarItems>
+      <div className="flex min-w-0 flex-1 flex-col" onKeyDown={onEscape}>
+        {/* Virtualized: a Mac with Homebrew's components unfolded lists
+            hundreds of rows. */}
+        <VirtualList
+          items={items}
+          itemKey={listItemKey}
+          estimateSize={estimateSize}
+          keyboardRows={keyboardRow}
+          onKeyboardMove={(item) => {
+            if (item.type === "row") select(item.artifact);
+          }}
+          handleRef={listHandle}
+          anchorKey={selectedId}
+          renderItem={(item) =>
+            item.type === "notices" ? (
+              <div className="px-5">
+                <SourceNotices notices={notices} layout="line" fold={noticeFold} />
+              </div>
+            ) : item.type === "heading" ? (
+              // A group's heading, as a Mac's grouped list sets one: 13
+              // bold, how many in the secondary colour after it, and the
+              // source's mark at 16 -- no pill.
+              <h2 className="flex h-10 items-end gap-2 px-5 pb-2 text-title text-foreground">
+                <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
+                <span className="min-w-0 truncate">{item.label}</span>{" "}
+                <span className="shrink-0 text-body font-normal tabular-nums text-muted">{item.count}</span>
+              </h2>
+            ) : item.type === "fold" ? (
+              <FoldLine
+                count={item.count}
+                expanded={item.expanded}
+                source={mixed ? item.label : null}
+                onToggle={() => toggleDependencies(item.instance.id)}
+              />
+            ) : (
+              toolRow(item.artifact, item.instance, item.label)
+            )
+          }
+          empty={
+            sourceEmpty ? (
+              <SourceEmpty instance={instancesById.get(activeFilter)!} label={sourceLabelFor(activeFilter)} />
+            ) : (
+              <>
+                {notices.length > 0 ? (
+                  <div className="px-5">
+                    <SourceNotices notices={notices} layout="line" fold={noticeFold} />
+                  </div>
+                ) : null}
+                <p className="px-5 py-10 text-center text-body text-muted">
+                  {needle !== ""
+                    ? t("installed.noMatches", { query: query.trim() })
+                    : t("emptyStates.nothingInstalled.title")}
+                </p>
+              </>
+            )
+          }
+        />
       </div>
-      {notices.length > 0 && !sourceEmpty ? (
-        <div className="flex shrink-0 flex-col gap-1.5 px-5 pb-3">
-          <SourceNotices notices={notices} layout="line" fold={noticeFold} />
-        </div>
-      ) : null}
-      {/* Virtualized: a Mac with Homebrew's components unfolded lists
-          hundreds of rows. */}
-      <VirtualList
-        items={items}
-        itemKey={listItemKey}
-        estimateSize={estimateSize}
-        renderItem={(item) =>
-          item.type === "heading" ? (
-            <h2 className="flex items-center gap-2 px-5 pb-1.5 pt-4 text-body font-semibold text-foreground">
-              <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
-              {item.label}{" "}
-              <span className="font-normal tabular-nums text-muted">{item.count}</span>
-            </h2>
-          ) : item.type === "fold" ? (
-            <div className="pt-1">
-              <button
-                type="button"
-                aria-expanded={item.expanded}
-                onClick={() => toggleDependencies(item.instance.id)}
-                className="flex w-full items-center gap-1.5 rounded-control px-5 py-2 text-left text-body text-muted"
-              >
-                <ChevronIcon
-                  size={14}
-                  className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
-                />
-                {t(item.expanded ? "installed.hideDependencies" : "installed.showDependencies", {
-                  count: item.count,
-                })}{" "}
-                {mixed ? <span className="shrink-0 text-small text-muted">{item.label}</span> : null}
-              </button>
-            </div>
-          ) : (
-            toolRow(item.artifact, item.instance, item.label)
-          )
-        }
-        empty={
-          sourceEmpty ? (
-            <SourceEmpty instance={instancesById.get(activeFilter)!} label={sourceLabelFor(activeFilter)} />
-          ) : (
-            <p className="px-5 py-10 text-center text-body text-muted">
-              {needle !== ""
-                ? t("installed.noMatches", { query: query.trim() })
-                : t("emptyStates.nothingInstalled.title")}
-            </p>
-          )
-        }
-      />
+      {details !== undefined && detailsInstance !== undefined ? inspector(details, detailsInstance, overlay) : null}
       {uninstallTarget ? (
         <UninstallDialog
           open
@@ -1147,7 +1209,6 @@ export function InstalledPage() {
         />
       ) : null}
       <UpdateConfirmDialog confirm={confirm} />
-      {details !== undefined && detailsInstance !== undefined ? detailsDrawer(details, detailsInstance) : null}
     </div>
   );
 }
