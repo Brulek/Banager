@@ -344,6 +344,16 @@ function showCommand(dialog: HTMLElement) {
 }
 
 // Presses `name`'s row itself, and returns the inspector that shows it.
+// Opens the ⓘ after `word` in the inspector's 「状态」 row, and returns
+// what it shows: the word's why, as a row's ⓘ shows it.
+function statusWhy(inspector: HTMLElement, word: string): HTMLElement {
+  const info = within(inspector).getByRole("button", { name: `Details: ${word}` });
+  fireEvent.click(info);
+  const panel = document.getElementById(info.getAttribute("aria-controls") ?? "");
+  if (panel === null) throw new Error(`the ${word} ⓘ opened nothing`);
+  return panel;
+}
+
 async function openDetails(name: string): Promise<HTMLElement> {
   const row = await findRow(name);
   fireEvent.click(within(row).getByRole("button", { name: `Details: ${name}` }));
@@ -479,22 +489,35 @@ describe("InstalledPage", () => {
     expect(open.querySelector("svg")?.getAttribute("class")).toContain("rotate-90");
   });
 
-  it("lies over the list's right side, with a floating edge, when the page is too narrow for both", async () => {
-    // The page as a window at its narrowest lays it out: 592 wide.
+  it("narrows the inspector to 260 in a window under 900 wide, beside the list, never over it", async () => {
+    // The page as a window at its narrowest lays it out: 592 wide (800
+    // less the sidebar's 208).
+    let pageWidth = 592;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      return { width: 592, height: 500, top: 0, left: 0, right: 592, bottom: 500, x: 0, y: 0, toJSON: () => ({}) };
+      const width = pageWidth;
+      return { width, height: 500, top: 0, left: 0, right: width, bottom: 500, x: 0, y: 0, toJSON: () => ({}) };
     });
-    renderInstalled();
+    const { unmount } = renderInstalled();
 
-    const inspector = await openDetails("jq");
-    expect(inspector).toHaveAttribute("data-inspector", "overlay");
+    let inspector = await openDetails("jq");
+    expect(inspector).toHaveAttribute("data-inspector", "narrow");
     expect(inspector.className.split(" ")).toEqual(
-      expect.arrayContaining(["absolute", "inset-y-0", "right-0", "w-75", "shadow-menu", "bg-content"]),
+      expect.arrayContaining(["w-65", "shrink-0", "border-l", "border-separator", "bg-content"]),
     );
-    expect(inspector.className).not.toContain("border-l");
-    // The list keeps its width under it: its rows' names stay whole.
+    expect(inspector.className).not.toMatch(/\bw-75\b|absolute|shadow/);
+    // The list its own box before it, its right edge the inspector's
+    // hairline: its rows' selection and separators end there.
     const list = document.querySelector("[data-list]") as HTMLElement;
-    expect(list.parentElement?.className).toContain("flex-1");
+    expect(list.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
+    expect(list.parentElement?.nextElementSibling).toBe(inspector);
+    unmount();
+
+    // A window 900 wide: the page 692, and the inspector 300.
+    pageWidth = 692;
+    renderInstalled();
+    inspector = await openDetails("jq");
+    expect(inspector).toHaveAttribute("data-inspector", "wide");
+    expect(inspector.className.split(" ")).toContain("w-75");
   });
 
   it("checks no spelling in the search box: a tool's name is no word", async () => {
@@ -1021,7 +1044,8 @@ describe("InstalledPage", () => {
       );
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
-      // The details say every word, each with its why.
+      // The inspector's 「状态」 says every word, each with its why behind
+      // an ⓘ, and up to date in a word too -- no tick.
       expect(await drawerChips("offered")).toEqual(["Update available"]);
       expect(await drawerChips("pinned-current")).toEqual(["Pinned", "Up to date"]);
       expect(await drawerChips("current")).toEqual(["Up to date"]);
@@ -1031,7 +1055,10 @@ describe("InstalledPage", () => {
         "Can't uninstall now",
         "Can't update now",
       ]);
-      expect(drawer).toHaveTextContent("Ollama isn't running. Open it, then click Check Again.");
+      expect(statusWhy(drawer, "Can't update now")).toHaveTextContent(
+        "Ollama isn't running. Open it, then click Check Again.",
+      );
+      expect(drawer.querySelector(".text-success")).toBeNull();
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
@@ -1492,10 +1519,11 @@ describe("InstalledPage", () => {
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
-    // The inspector says the same: Uninstall disabled, and why under the chip.
+    // The inspector says the same: Uninstall disabled, and why behind its
+    // status word's ⓘ.
     const drawer = await openDetails("pre-commit");
     expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
-    expect(within(drawer).getByText("uv isn't responding. Click Check Again later.")).toBeInTheDocument();
+    expect(statusWhy(drawer, "Can't uninstall now")).toHaveTextContent("uv isn't responding. Click Check Again later.");
   });
 
   it("keeps Homebrew's Uninstall disabled while it updates its list, says why behind a chip, and gives it back after", async () => {
@@ -1529,12 +1557,14 @@ describe("InstalledPage", () => {
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Uninstall…" })).toBeEnabled();
     expect(chipsOf(rowOf("Claude Code"))).not.toContain("Can't uninstall now");
 
-    // The drawer says the same: Uninstall disabled, and why under the chip.
+    // The inspector says the same: Uninstall disabled, and why behind its
+    // status word's ⓘ.
     const drawer = await openDetails("jq");
     expect(within(drawer).getByRole("button", { name: "Uninstall…" })).toBeDisabled();
-    expect(
-      within(drawer).getByText("Homebrew is updating its software list. Uninstall once it's done."),
-    ).toBeInTheDocument();
+    expect(statusWhy(drawer, "Can't uninstall now")).toHaveTextContent(
+      "Homebrew is updating its software list. Uninstall once it's done.",
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull());
 
@@ -1762,11 +1792,11 @@ describe("InstalledPage", () => {
       expect(screen.queryByRole("complementary")).toBeNull();
 
       const drawer = await openDetails("jq");
-      // A pane beside the list, no dialog: its name, 13 bold, over its
+      // A pane beside the list, no dialog: its name, 15 semibold, over its
       // source, 11 in the secondary colour, by the tool's icon at 48.
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(within(drawer).getByRole("heading", { level: 2, name: "jq" }).className.split(" ")).toEqual(
-        expect.arrayContaining(["text-title", "text-foreground"]),
+        expect.arrayContaining(["text-section", "text-foreground"]),
       );
       expect(within(drawer).getByText("Homebrew").className.split(" ")).toEqual(
         expect.arrayContaining(["text-small", "text-muted"]),
@@ -1775,20 +1805,122 @@ describe("InstalledPage", () => {
       expect(within(drawer).getByText("Lightweight and flexible command-line JSON processor")).toHaveClass(
         "text-body-long",
       );
-      expect(within(drawer).getByText("Lightweight and flexible command-line JSON processor")).toBeInTheDocument();
       expect(within(drawer).getByText("Version").nextElementSibling).toHaveTextContent("1.8.2");
       expect(within(drawer).getByText("Newer version").nextElementSibling).toHaveTextContent("1.8.3");
-      // The chip's why, in full, with the command set as code.
+      // Its status word in the facts, and its why, in full, with the
+      // command set as code, behind the word's ⓘ.
+      expect(within(drawer).getByText("Status").nextElementSibling).toHaveTextContent("Pinned");
       expect(
-        within(drawer).getByText(
+        within(statusWhy(drawer, "Pinned")).getByText(
           wholeSentence("It's pinned in Homebrew. To uninstall it, first run /opt/homebrew/bin/brew unpin jq in Terminal."),
         ),
       ).toBeInTheDocument();
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       // Pinned against its update too: said once.
       expect(within(drawer).getAllByText("Pinned")).toHaveLength(1);
       // Neither uninstalled nor updated from here.
       expect(within(drawer).queryByRole("button", { name: "Uninstall…" })).toBeNull();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
+    });
+
+    it("lays out as a Mac's info pane: name, description, one group of facts with the status in it, the buttons under it", async () => {
+      served = {
+        ...snapshot,
+        artifacts: [{ ...snapshot.artifacts[0], installed_at: 1783762037, size_bytes: 1_400_000 }],
+        updates: [{ ...snapshot.updates[0], key: snapshot.artifacts[0].key, current: "1.8.2", target: "1.8.3" }],
+      };
+      renderInstalled();
+
+      const inspector = await openDetails("jq");
+      const content = inspector.querySelector("[data-inspector-content]") as HTMLElement;
+      expect(content.className.split(" ")).toEqual(expect.arrayContaining(["px-5", "pt-5", "pb-5"]));
+      const [header, description, facts, actions] = [...content.children] as HTMLElement[];
+      // The name 15/20 semibold, as a pane's title; the source under it.
+      expect(within(header).getByRole("heading", { name: "jq" })).toHaveClass("text-section", "break-words");
+      expect(header.querySelector(".h-12.w-12")).not.toBeNull();
+      // The description, 13/18, wrapping: a pane's text, not a row's line.
+      expect(description).toHaveAttribute("data-description");
+      expect(description).toHaveClass("text-body-long", "whitespace-normal", "break-words", "mt-4");
+      expect(description.className).not.toMatch(/truncate|nowrap|line-clamp/);
+      // One grouped container: the group fill, corners of 10, hairlines
+      // 10 in between its rows.
+      expect(facts).toHaveAttribute("data-facts");
+      expect(facts.tagName).toBe("DL");
+      expect(facts.className.split(" ")).toEqual(
+        expect.arrayContaining(["mt-4", "rounded-group", "bg-group", "[&>*+*]:before:left-2.5", "[&>*+*]:before:right-2.5"]),
+      );
+      const rows = [...facts.children] as HTMLElement[];
+      expect(rows.map((row) => row.firstElementChild?.textContent)).toEqual([
+        "Version",
+        "Newer version",
+        "Date Installed",
+        "Size",
+        "Status",
+      ]);
+      for (const row of rows) {
+        // 28 high, 10 in; the label 13 muted on the left, the value 13 on
+        // the right, figures of one width.
+        expect(row.className.split(" ")).toEqual(
+          expect.arrayContaining(["flex", "min-h-7", "py-1.5", "px-2.5", "justify-between", "text-body"]),
+        );
+        expect(row.firstElementChild).toHaveClass("text-muted", "whitespace-nowrap");
+        expect(row.lastElementChild).toHaveClass("text-right", "tabular-nums", "text-foreground");
+      }
+      // The status a row of the group, in words: no line of its own, no tick.
+      const status = rows[4].lastElementChild as HTMLElement;
+      expect(status.querySelector("[data-status-list]")).not.toBeNull();
+      expect(status).toHaveTextContent("Update available");
+      expect(status).not.toHaveClass("select-text");
+      expect(inspector.querySelector(".text-success")).toBeNull();
+      expect(rows[0].lastElementChild).toHaveClass("select-text");
+      // The buttons 16 under the group, at its right: Update, the default,
+      // rightmost; Uninstall…, grey, before it. Nothing pushed to the foot.
+      expect(actions).toHaveAttribute("data-inspector-actions");
+      expect(actions.className.split(" ")).toEqual(expect.arrayContaining(["mt-4", "flex", "justify-end", "gap-2"]));
+      const buttons = within(actions).getAllByRole("button");
+      expect(buttons.map((button) => button.textContent)).toEqual(["Uninstall…", "Update"]);
+      expect(buttons[1].className).toContain("bg-accent");
+      expect(buttons[0].className).toContain("bg-fill");
+      expect(actions.parentElement).toBe(content);
+      expect(content.parentElement?.parentElement).toBe(inspector);
+    });
+
+    it("scrolls only when its content is taller than the pane, so a status word's ⓘ panel may stand over the list's edge", async () => {
+      // jsdom lays nothing out: the pane (the scroller, the aside's child)
+      // is 500 high, and the content the viewport's 600 (`offsetHeight`
+      // above), then 400.
+      let paneHeight = 500;
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+        return this.parentElement?.tagName === "ASIDE" ? paneHeight : 0;
+      });
+      const { unmount } = renderInstalled();
+
+      let inspector = await openDetails("jq");
+      let scroller = inspector.firstElementChild as HTMLElement;
+      expect(scroller).toHaveAttribute("data-inspector-scroll");
+      expect(scroller.className.split(" ")).toEqual(expect.arrayContaining(["min-h-0", "flex-1", "overflow-y-auto"]));
+      unmount();
+
+      paneHeight = 700;
+      renderInstalled();
+      inspector = await openDetails("jq");
+      scroller = inspector.firstElementChild as HTMLElement;
+      expect(scroller).not.toHaveAttribute("data-inspector-scroll");
+      expect(scroller.className).not.toContain("overflow");
+    });
+
+    it("lets a long English description wrap, whole", async () => {
+      const long =
+        "A very long description of a tool that goes on well past the width of the pane beside the list, as an npm package's may";
+      served = { ...snapshot, artifacts: [{ ...snapshot.artifacts[0], description: long }] };
+      renderInstalled();
+
+      const inspector = await openDetails("jq");
+      const description = within(inspector).getByText(long);
+      expect(description.textContent).toBe(long);
+      expect(description).toHaveClass("whitespace-normal", "break-words");
+      expect(description.className).not.toMatch(/truncate|nowrap|line-clamp/);
+      expect(description.getAttribute("title")).toBeNull();
     });
 
     it("closes with Escape, from the row or from inside it, and with its close button, the focus back on the row", async () => {
@@ -1855,7 +1987,7 @@ describe("InstalledPage", () => {
       expect(inspector.className.split(" ")).toEqual(
         expect.arrayContaining(["w-75", "shrink-0", "border-l", "border-separator", "bg-content"]),
       );
-      expect(inspector).toHaveAttribute("data-inspector", "beside");
+      expect(inspector).toHaveAttribute("data-inspector", "wide");
       expect(inspector.className).not.toMatch(/absolute|shadow/);
       const list = document.querySelector("[data-list]") as HTMLElement;
       expect(list.parentElement?.nextElementSibling).toBe(inspector);
@@ -1981,11 +2113,12 @@ describe("InstalledPage", () => {
         new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(1783762037 * 1000)),
       );
       expect(within(inspector).getByText("Size").nextElementSibling).toHaveTextContent("1.4 MB");
-      // Labels 72 wide, in the secondary colour; the values tabular.
-      const grid = within(inspector).getByText("Size").parentElement?.parentElement as HTMLElement;
-      expect(grid.className).toContain("grid-cols-[minmax(4.5rem,auto)_1fr]");
+      // A row of the facts' group: the label in the secondary colour, the
+      // value at the right, tabular.
+      const group = within(inspector).getByText("Size").parentElement?.parentElement as HTMLElement;
+      expect(group).toHaveAttribute("data-facts");
       expect(within(inspector).getByText("Size")).toHaveClass("text-muted", "whitespace-nowrap");
-      expect(within(inspector).getByText("Size").nextElementSibling).toHaveClass("tabular-nums");
+      expect(within(inspector).getByText("Size").nextElementSibling).toHaveClass("tabular-nums", "text-right");
 
       fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));
       inspector = await screen.findByRole("complementary", { name: "wget" });
@@ -2123,8 +2256,13 @@ describe("InstalledPage", () => {
       const drawer = await openDetails("glib");
       expect(within(drawer).getByText("Can't update now")).toBeInTheDocument();
       expect(within(drawer).getByText("Can't uninstall now")).toBeInTheDocument();
-      // What to do, under each of the two chips.
-      expect(within(drawer).getAllByText("Homebrew isn't responding. Click Check Again later.")).toHaveLength(2);
+      // What to do, behind each of the two words' ⓘ.
+      expect(statusWhy(drawer, "Can't update now")).toHaveTextContent("Homebrew isn't responding. Click Check Again later.");
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      expect(statusWhy(drawer, "Can't uninstall now")).toHaveTextContent(
+        "Homebrew isn't responding. Click Check Again later.",
+      );
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       // Its source's own line, whole.
       expect(within(drawer).getByText("Homebrew isn't responding")).toBeInTheDocument();
       expect(

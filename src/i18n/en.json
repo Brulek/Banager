@@ -139,6 +139,7 @@
     "version": "Version",
     "newVersion": "Newer version",
     "location": "Location",
+    "status": "Status",
     "blocked": {
       "Pinned": {
         "description": "It's pinned in {{source}}. To uninstall it, first run {{command}} in Terminal.",

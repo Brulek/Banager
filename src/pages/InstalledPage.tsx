@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSettings, useSnapshot } from "../lib/queries";
@@ -54,9 +54,11 @@ import {
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
-import { CheckIcon, CloseIcon, DisclosureIcon, SearchIcon } from "../components/icons";
+import { CloseIcon, DisclosureIcon, SearchIcon } from "../components/icons";
 import { EmptyState } from "../components/EmptyState";
 import { BUTTON, ICON_BUTTON } from "../components/ui/controls";
+import { GROUP } from "../components/ui/group";
+import { InfoDetail } from "../components/InfoDetail";
 
 // The virtualizer's first guesses: a row, a source's heading (sorted by
 // source), a "N more components" line and the notices' line. Each slot
@@ -66,16 +68,15 @@ const HEADING_ESTIMATE = 40;
 const FOLD_ESTIMATE = 32;
 const NOTICES_ESTIMATE = 32;
 
-/** The inspector's width (spec R11), and the hairline to its left. */
-const INSPECTOR_WIDTH = 300 + 1;
 /**
- * The narrowest the list may be beside the inspector: a row's avatar,
- * name, button and ⋯ with room for a name such as 「Android SDK
- * Platform-Tools」 uncut (`ToolRow`'s `minimal` fit). A window whose page
- * is narrower than this and the inspector -- the 800 at its narrowest --
- * has the inspector lie over the list's right side instead.
+ * The page's width under which the inspector is 260 wide, not 300 (spec
+ * R11): a window under 900 wide, less the sidebar's 208. At the window's
+ * narrowest, 800, that leaves the list beside it 331 of the page's 592 --
+ * a list of its own, with its own right edge, the rows' selection and
+ * hairlines ending at it (`ToolRow`'s narrowest fit), never under the
+ * inspector.
  */
-const LIST_BESIDE_INSPECTOR = 440;
+const NARROW_INSPECTOR_BELOW = 900 - 208;
 
 /** An update the user hid on the Updates page, and how (`hidingRule`). */
 interface HiddenUpdate {
@@ -84,10 +85,10 @@ interface HiddenUpdate {
 }
 
 /**
- * One of a row's status words: its word, the why behind its ⓘ (on the
- * row) or under it (in the inspector), and what kind it is -- what the row is
- * and why it can't do something, an update to be had, or up to date. The
- * last two are normal states, which a row does not put in words (spec
+ * One of a row's status words: its word, the why behind its ⓘ -- on the
+ * row, and in the inspector's 「状态」 -- and what kind it is: what the row
+ * is and why it can't do something, an update to be had, or up to date.
+ * The last two are normal states, which a row does not put in words (spec
  * §3.4): the version column says the first, and silence the second. The
  * inspector lists every one.
  */
@@ -95,8 +96,6 @@ interface RowChip {
   id: string;
   label: string;
   detail?: ReactNode;
-  /** What the inspector says under the word when the row's ⓘ says nothing: a model's new version. */
-  inspectorDetail?: ReactNode;
   tone: "neutral" | "update" | "upToDate";
 }
 
@@ -213,17 +212,78 @@ function versionOf(artifact: InstalledArtifact): string | null {
   return artifact.version;
 }
 
-/** A chip's word on a row, or in the inspector: up to date with a quiet tick before it. */
-function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean }) {
-  if (chip.tone === "upToDate") {
-    return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap text-small text-muted">
-        <CheckIcon size={13} className="shrink-0 text-success" />
-        {chip.label}
-      </span>
-    );
-  }
-  return <StatusChip label={chip.label} detail={withDetail ? chip.detail : undefined} />;
+/**
+ * The inspector's content, scrolling only when it is taller than the pane.
+ * A pane that always scrolled would cut off a status word's ⓘ panel at its
+ * edge -- 260 wide, it is as wide as the narrow inspector itself -- where
+ * it may otherwise stand over the list's edge, as a popover does. Measured
+ * from the content's own height, which an open panel does not add to.
+ */
+function InspectorScroll({ children }: { children: ReactNode }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    const inner = content.current;
+    if (box === null || inner === null) return;
+    const measure = () => setScrolls(inner.offsetHeight > box.clientHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div
+      ref={scroller}
+      data-inspector-scroll={scrolls ? "" : undefined}
+      className={`min-h-0 flex-1 ${scrolls ? "overflow-y-auto" : ""}`}
+    >
+      <div ref={content} data-inspector-content="" className="px-5 pb-5 pt-5">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One fact in the inspector's group: its label, and its value -- which
+ * selects, to be copied (a version into a search, a path into Terminal),
+ * unless it is the status words, which are buttons.
+ */
+interface InspectorFact {
+  term: string;
+  value: ReactNode;
+  selectable: boolean;
+}
+
+/**
+ * The inspector's facts, as a Mac's info pane groups them (cork-package-
+ * info.png, System Settings' About): one grouped container -- the group
+ * fill, corners of 10 -- a row each, 28 high, the label on the left, 13 in
+ * the secondary colour, and the value on the right, 13 in the label colour
+ * with figures of one width; a hairline in the group's separator colour
+ * between each two, 10 in from either side (`GROUP`). A value too long for
+ * its line -- a path -- wraps under itself, still at the right.
+ */
+function FactsGroup({ facts }: { facts: InspectorFact[] }) {
+  return (
+    <dl data-facts="" className={`mt-4 ${GROUP}`}>
+      {facts.map((fact) => (
+        <div key={fact.term} className="flex min-h-7 items-start justify-between gap-3 px-2.5 py-1.5 text-body">
+          <dt className="shrink-0 whitespace-nowrap text-muted">{fact.term}</dt>
+          <dd
+            className={`min-w-0 break-words text-right tabular-nums text-foreground ${
+              fact.selectable ? "select-text" : ""
+            }`}
+          >
+            {fact.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 /**
@@ -330,8 +390,8 @@ export function InstalledPage() {
   // nothing selected.
   const [selection, setSelection] = useState<{ id: string; filter: string | null } | null>(null);
   const listHandle = useRef<VirtualListHandle | null>(null);
-  // The page's width: whether the inspector fits beside the list or lies
-  // over its right side (`LIST_BESIDE_INSPECTOR`).
+  // The page's width: whether the inspector beside the list is 300 wide or
+  // 260 (`NARROW_INSPECTOR_BELOW`).
   const [pageBox, setPageBox] = useState<HTMLDivElement | null>(null);
   const pageWidth = useElementWidth(pageBox);
 
@@ -357,9 +417,9 @@ export function InstalledPage() {
   }, [snapshot, selection, artifactsById]);
 
   // The source's name in the user's language, as the sidebar lists it --
-  // with where it is after it where this Mac has two of its kind
-  // (`instanceLabels`): the headings, the rows' avatars and words, the
-  // `{{source}}` in a sentence.
+  // with which one it is after it where this Mac has two of its kind,
+  // 「Homebrew（Intel）」 (`instanceLabels`): the headings, the rows' avatars
+  // and words, the `{{source}}` in a sentence.
   const labels = useMemo(() => instanceLabels(t, snapshot?.instances ?? []), [t, snapshot]);
   const labelOf = useCallback(
     (instance: ManagerInstance): string => {
@@ -780,14 +840,9 @@ export function InstalledPage() {
       const state = updateStateOf(listed, instance);
       switch (state.kind) {
         case "actionable":
-          chips.push({
-            id: "update",
-            label: t("installed.updateAvailable"),
-            // The inspector's facts give the version it moves to, except a
-            // model's, which has no version to give: "a new version".
-            inspectorDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
-            tone: "update",
-          });
+          // The inspector's 「新版本」 gives the version it moves to --
+          // except a model's, a digest, which the word alone says.
+          chips.push({ id: "update", label: t("installed.updateAvailable"), tone: "update" });
           break;
         case "readOnly":
           // "View only" is said above; that this check found nothing is
@@ -880,7 +935,7 @@ export function InstalledPage() {
         name={name}
         showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label).line}
-        status={chip === undefined ? undefined : <RowChipView chip={chip} withDetail />}
+        status={chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} />}
         version={change?.version ?? versionOf(artifact)}
         newVersion={change?.newVersion}
         action={
@@ -914,25 +969,30 @@ export function InstalledPage() {
 
   /**
    * The inspector (spec R11; cork-package-info.png): a pane on the right,
-   * 300 wide and the page's full height, the list narrowed beside it -- no
-   * dialog, no dimming, the list still in reach. From the top: the tool's
-   * icon at 48, its name and its source; all of its description, and
-   * under it, quieter, the source's own words where the line is their
-   * translation; its facts -- its version and the one an update would
-   * bring, when it was installed, its size, and where it is (with
-   * technical details on) -- each one selectable, to be copied; every
-   * status word with its why in full; what its source had to say this
-   * time; and at its foot what can be done -- Uninstall, and Update where
-   * the Updates page offers one, through that page's own confirmation;
-   * while that update runs, its progress where the button was, and once it
-   * has ended without updating, how it ended beside Retry.
+   * the page's full height, the list narrowed beside it -- no dialog, no
+   * dimming, the list still in reach -- 300 wide, or 260 in a window under
+   * 900 (`NARROW_INSPECTOR_BELOW`). From the top, as a Mac's info pane:
    *
-   * Where the page is too narrow for it and a list whose names stay whole
-   * (`LIST_BESIDE_INSPECTOR`) -- the 800 of the window at its narrowest --
-   * it lies over the list's right side instead, with a floating thing's
-   * shadow along its edge, and the list keeps its width under it.
+   * - the tool's icon at 48, its name beside it (15/20 semibold, wrapping)
+   *   and its source under that, 11 in the secondary colour;
+   * - all of its description, 13/18, wrapping as a pane's text does --
+   *   never cut to a line as a row's -- and under it, quieter, the source's
+   *   own words where the line is their translation;
+   * - its facts in one group (`FactsGroup`): its version and the one an
+   *   update would bring, when it was installed, its size, where it is
+   *   (with technical details on), and 「状态」, every status word it has --
+   *   「可更新」, 「已是最新」, 「已跳过2.102.0」 -- each with its why behind
+   *   an ⓘ, as on a row;
+   * - 16 under the group, at its right, what can be done: Update, the
+   *   default, rightmost, through the Updates page's own confirmation, and
+   *   Uninstall…, grey, to its left; while that update runs, its progress
+   *   where the button was, and once it has ended without updating, how it
+   *   ended beside Retry. Not pinned to the pane's foot: under what it acts
+   *   on, whatever the pane's height;
+   * - an update that could not start, and what its source had to say this
+   *   time.
    */
-  const inspector = (artifact: InstalledArtifact, instance: ManagerInstance, overlay: boolean) => {
+  const inspector = (artifact: InstalledArtifact, instance: ManagerInstance, narrow: boolean) => {
     const label = labelOf(instance);
     const name = artifact.display_name;
     const chips = chipsOf(artifact, instance, label);
@@ -954,16 +1014,18 @@ export function InstalledPage() {
       candidate.target !== artifact.version
         ? candidate.target
         : null;
-    // Each value selects (`select-text` on its `<dd>`), to be copied: a
-    // version into a search, a path into Terminal or Finder's Go to Folder.
-    const facts: Array<{ term: string; value: ReactNode }> = [];
-    if (version !== null) facts.push({ term: t("installed.version"), value: version });
-    if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer });
+    const facts: InspectorFact[] = [];
+    if (version !== null) facts.push({ term: t("installed.version"), value: version, selectable: true });
+    if (newer !== null) facts.push({ term: t("installed.newVersion"), value: newer, selectable: true });
     if (artifact.installed_at !== null) {
-      facts.push({ term: t("installed.installedOn"), value: formatDate(artifact.installed_at, i18n.language) });
+      facts.push({
+        term: t("installed.installedOn"),
+        value: formatDate(artifact.installed_at, i18n.language),
+        selectable: true,
+      });
     }
     if (artifact.size_bytes !== null) {
-      facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes) });
+      facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes), selectable: true });
     }
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
@@ -971,6 +1033,28 @@ export function InstalledPage() {
       facts.push({
         term: t("installed.location"),
         value: <code className="break-all font-mono text-small">{artifact.path}</code>,
+        selectable: true,
+      });
+    }
+    // Where its update stands, and what it is: a row of the group, each
+    // word 13 in the label colour as the other values, its why behind an
+    // ⓘ after it -- not a line of its own under the facts.
+    if (chips.length > 0) {
+      facts.push({
+        term: t("installed.status"),
+        value: (
+          <ul data-status-list="" className="flex flex-col items-end gap-1">
+            {chips.map((chip) => (
+              <li key={chip.id} className="flex items-center gap-1">
+                <span data-status-word="">{chip.label}</span>
+                {chip.detail !== undefined ? (
+                  <InfoDetail label={t("common.detailsLabel", { title: chip.label })}>{chip.detail}</InfoDetail>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ),
+        selectable: false,
       });
     }
     const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
@@ -980,20 +1064,18 @@ export function InstalledPage() {
     return (
       <aside
         aria-labelledby={inspectorTitleId}
-        data-inspector={overlay ? "overlay" : "beside"}
+        data-inspector={narrow ? "narrow" : "wide"}
         onKeyDown={onEscape}
-        className={`flex w-75 shrink-0 flex-col bg-content ${
-          overlay ? "absolute inset-y-0 right-0 z-20 shadow-menu" : "border-l border-separator"
-        }`}
+        className={`flex ${narrow ? "w-65" : "w-75"} shrink-0 flex-col border-l border-separator bg-content`}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-5">
-          <div className="flex items-center gap-3">
+        <InspectorScroll>
+          <div className="flex items-start gap-3">
             <ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} size="lg" />
-            <div className="min-w-0 flex-1">
-              <h2 id={inspectorTitleId} className="break-words text-title text-foreground">
+            <div className="min-w-0 flex-1 self-center">
+              <h2 id={inspectorTitleId} className="break-words text-section text-foreground">
                 {name}
               </h2>
-              {label === name ? null : <p className="truncate text-small text-muted">{label}</p>}
+              {label === name ? null : <p className="mt-0.5 break-words text-small text-muted">{label}</p>}
             </div>
             {/* Escape and pressing the row again close it too; this is
                 the way that shows. */}
@@ -1006,41 +1088,44 @@ export function InstalledPage() {
               <CloseIcon size={16} />
             </button>
           </div>
-          <p className="mt-4 break-words text-body-long text-foreground">{line}</p>
+          <p data-description="" className="mt-4 whitespace-normal break-words text-body-long text-foreground">
+            {line}
+          </p>
           {original !== null ? (
-            <p data-original-description="" className="mt-1 break-words text-small text-muted">
+            <p data-original-description="" className="mt-1 whitespace-normal break-words text-small text-muted">
               {original}
             </p>
           ) : null}
-          {facts.length > 0 ? (
-            // Labels 72 wide -- wider only for one that would wrap, such as
-            // "Date Installed" -- as a Mac's info pane lines its values up.
-            <dl className="mt-4 grid grid-cols-[minmax(4.5rem,auto)_1fr] gap-x-3 gap-y-1.5 text-body">
-              {facts.map((fact) => (
-                <div key={fact.term} className="contents">
-                  <dt className="whitespace-nowrap text-muted">{fact.term}</dt>
-                  <dd className="min-w-0 select-text break-words tabular-nums text-foreground">{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {chips.length > 0 ? (
-            <ul data-status-list="" className="mt-4 flex flex-col gap-3">
-              {chips.map((chip) => (
-                <li key={chip.id} className="flex flex-col items-start gap-1">
-                  <RowChipView chip={chip} withDetail={false} />
-                  {chip.detail !== undefined ? (
-                    <div className="text-body-long text-foreground">{chip.detail}</div>
-                  ) : chip.inspectorDetail !== undefined ? (
-                    <p className="break-words text-body-long text-foreground">{chip.inspectorDetail}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {sourceNotices.length > 0 ? (
-            <div className="mt-4 flex flex-col gap-2">
-              <SourceNotices notices={sourceNotices} layout="block" />
+          {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
+          {removable || updatable ? (
+            // Under what they act on, at the right, the default rightmost,
+            // as a Mac's pane and a dialog's footer set their buttons.
+            // Uninstall is grey -- offered, not recommended, and not red
+            // (`RowAction`).
+            <div data-inspector-actions="" className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              {removable ? (
+                <button
+                  type="button"
+                  disabled={uninstallHeld(artifact, instance)}
+                  onClick={(event) => uninstall(artifact, event.currentTarget)}
+                  className={BUTTON.regular.grey}
+                >
+                  {uninstallUnderway(artifact) ?? t("installed.uninstall")}
+                </button>
+              ) : null}
+              {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
+              {/* As on the Updates page's row: an update that ended without
+                  updating keeps how it ended, with Retry in Update's place. */}
+              {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
+                <button
+                  type="button"
+                  onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
+                  disabled={confirm.dialogOpen}
+                  className={BUTTON.regular.default}
+                >
+                  {progress === null ? t("updates.update") : t("updates.retry")}
+                </button>
+              ) : null}
             </div>
           ) : null}
           {/* This tool's own refusal only: the update that failed to start
@@ -1049,38 +1134,12 @@ export function InstalledPage() {
             const text = t("updates.planFailed", { message: item.planError });
             return <Refusal key={id} text={text} detail={item.planErrorDetail} detailTitle={text} className="mt-4" />;
           })}
-        </div>
-        {removable || updatable ? (
-          // Uninstall at the left, grey -- offered, not recommended, and
-          // not red (`RowAction`) -- and Update, the default, at the right,
-          // as a Mac's dialog footer sets them.
-          <div className="flex shrink-0 items-center gap-2 px-5 pb-5 pt-3">
-            {removable ? (
-              <button
-                type="button"
-                disabled={uninstallHeld(artifact, instance)}
-                onClick={(event) => uninstall(artifact, event.currentTarget)}
-                className={BUTTON.regular.grey}
-              >
-                {uninstallUnderway(artifact) ?? t("installed.uninstall")}
-              </button>
-            ) : null}
-            <span className="flex-1" />
-            {progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={openLog} /> : null}
-            {/* As on the Updates page's row: an update that ended without
-                updating keeps how it ended, with Retry in Update's place. */}
-            {updatable && listed !== undefined && (progress === null || isRetryable(progress)) ? (
-              <button
-                type="button"
-                onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
-                disabled={confirm.dialogOpen}
-                className={BUTTON.regular.default}
-              >
-                {progress === null ? t("updates.update") : t("updates.retry")}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+          {sourceNotices.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-2">
+              <SourceNotices notices={sourceNotices} layout="block" />
+            </div>
+          ) : null}
+        </InspectorScroll>
       </aside>
     );
   };
@@ -1088,9 +1147,9 @@ export function InstalledPage() {
   // The page on one source that has nothing to list says why in the
   // list's place (`SourceEmpty`), and its notice is not said over it.
   const sourceEmpty = activeFilter !== null && (countByInstance.get(activeFilter) ?? 0) === 0;
-  // The inspector beside the list, or -- the page too narrow for both --
-  // over its right side. Not measured (jsdom), beside.
-  const overlay = pageWidth !== null && pageWidth - INSPECTOR_WIDTH < LIST_BESIDE_INSPECTOR;
+  // The inspector 260 wide in a window under 900, else 300. Not measured
+  // (jsdom), 300.
+  const narrowInspector = pageWidth !== null && pageWidth < NARROW_INSPECTOR_BELOW;
 
   return (
     <div ref={setPageBox} className="relative flex h-full">
@@ -1185,7 +1244,7 @@ export function InstalledPage() {
           }
         />
       </div>
-      {details !== undefined && detailsInstance !== undefined ? inspector(details, detailsInstance, overlay) : null}
+      {details !== undefined && detailsInstance !== undefined ? inspector(details, detailsInstance, narrowInspector) : null}
       {uninstallTarget ? (
         <UninstallDialog
           open

@@ -124,6 +124,7 @@
     "version": "版本",
     "newVersion": "新版本",
     "location": "位置",
+    "status": "状态",
     "blocked": {
       "Pinned": {
         "description": "它在{{source}}中固定了版本。要卸载，请先在终端运行{{command}}。",
