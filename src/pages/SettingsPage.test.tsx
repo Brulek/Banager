@@ -89,10 +89,7 @@ describe("SettingsPage", () => {
     expect(
       await screen.findByRole("switch", { name: "Show technical details" }),
     ).toBeChecked();
-    expect(screen.getByRole("radio", { name: "System" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveValue("System");
     expect(screen.getByText("jq")).toBeInTheDocument();
   });
 
@@ -139,7 +136,8 @@ describe("SettingsPage", () => {
     const remindButton = await screen.findByRole("button", { name: "Remind me again about jq" });
     fireEvent.click(remindButton);
 
-    await waitFor(() => expect(screen.getByText("No tools with reminders off")).toBeInTheDocument());
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
+    await waitFor(() => expect(within(never).getByText("None")).toBeInTheDocument());
     // The optimistic draft shows the empty list before the save resolves, so
     // the line above alone cannot tell a correct payload from a wrong one.
     expect(lastSaved().ignored_updates).toEqual([]);
@@ -161,9 +159,10 @@ describe("SettingsPage", () => {
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
     const never = screen.getByRole("region", { name: "Tools with reminders off" });
-    // A skip names the version it hides; that version is what the entry is.
+    // A skip names the version it hides; that version is what the entry
+    // is, beside its source.
     expect(within(skipped).getByText("glib")).toBeInTheDocument();
-    expect(within(skipped).getByText("2.90.0")).toBeInTheDocument();
+    expect(within(skipped).getByText("Homebrew · 2.90.0")).toBeInTheDocument();
     expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toHaveTextContent(
       "Stop Skipping",
     );
@@ -175,9 +174,9 @@ describe("SettingsPage", () => {
     expect(within(never).queryByText("glib")).toBeNull();
   });
 
-  it("says each list is empty on its own", async () => {
+  it("says each list is empty on its own, in one row of muted text", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "get_settings") return baseSettings();
+      if (cmd === "get_settings") return baseSettings({ ignored_updates: [jqKey] });
       throw new Error(`unexpected command ${cmd}`);
     });
 
@@ -185,8 +184,19 @@ describe("SettingsPage", () => {
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
     const never = screen.getByRole("region", { name: "Tools with reminders off" });
-    expect(within(skipped).getByText("No skipped versions")).toBeInTheDocument();
-    expect(within(never).getByText("No tools with reminders off")).toBeInTheDocument();
+    const none = within(skipped).getByText("None");
+    // One row, 36 high, in the group's container; no list, and no button.
+    expect(none.className).toContain("min-h-9");
+    expect(none.parentElement?.className).toContain("bg-group");
+    expect(none.parentElement?.children).toHaveLength(1);
+    expect(within(skipped).queryByRole("list")).toBeNull();
+    expect(within(skipped).queryByRole("button")).toBeNull();
+    // What it says is information: muted, never the tertiary of disabled text.
+    expect(none.className).toContain("text-muted");
+    expect(none.className).not.toContain("text-tertiary");
+    // The other group is not empty, and says nothing of the kind.
+    expect(within(never).queryByText("None")).toBeNull();
+    expect(within(never).getByRole("list")).toBeInTheDocument();
   });
 
   it("removes one skipped version and saves the shorter list, leaving every other entry alone", async () => {
@@ -235,7 +245,7 @@ describe("SettingsPage", () => {
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
     expect(within(skipped).getByText("qwen3:8b")).toBeInTheDocument();
-    expect(within(skipped).getByText("New version")).toBeInTheDocument();
+    expect(within(skipped).getByText("Ollama · New version")).toBeInTheDocument();
     expect(
       within(skipped).getByRole("button", { name: "Stop skipping the new version of qwen3:8b" }),
     ).toBeInTheDocument();
@@ -276,7 +286,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
-    expect(within(skipped).getByText("2.89.0")).toBeInTheDocument();
+    expect(within(skipped).getByText("Homebrew · 2.89.0")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("switch", { name: "Show technical details" }));
     await waitFor(() => expect(lastSaved().show_technical_details).toBe(true));
@@ -328,7 +338,7 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(lines(skipped)).toEqual([
         ["Claude Code", "2.1.3"],
-        ["Microsoft Visual Studio Code", "Homebrew", "1.105.0"],
+        ["Microsoft Visual Studio Code", "Homebrew · 1.105.0"],
       ]),
     );
     expect(lines(never)).toEqual([
@@ -675,11 +685,7 @@ describe("SettingsPage", () => {
     expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Canager发送通知。");
   });
 
-  it("marks the chosen language visibly, not only through aria-checked", async () => {
-    // Under Tailwind's preflight a class-less <button> has no background, no
-    // border and no padding, so the three languages rendered as three bare
-    // words and the only marker of the current one was aria-checked, which a
-    // sighted user cannot see.
+  it("offers the language as a popup button: the chosen one's name, then ⌃⌄ in a grey capsule, no border", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ language: "En" });
       throw new Error(`unexpected command ${cmd}`);
@@ -687,15 +693,36 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const english = await screen.findByRole("radio", { name: "English" });
-    const system = screen.getByRole("radio", { name: "System" });
-
-    expect(english.className).not.toBe("");
-    expect(system.className).not.toBe("");
-    expect(english.className).not.toBe(system.className);
+    const popup = await screen.findByRole("combobox", { name: "Language" });
+    // A native select, so that WebKit opens the Mac's own menu, with the
+    // three choices in it and the current one chosen.
+    expect(popup.tagName).toBe("SELECT");
+    expect(popup).toHaveValue("En");
+    expect(within(popup).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "System",
+      "English",
+      "简体中文",
+    ]);
+    // What shows is drawn beside it: the value in the body size, and the
+    // 20-wide grey capsule with its chevrons; the select itself is laid
+    // over them, unseen.
+    const control = popup.parentElement as HTMLElement;
+    const [value, capsule] = [...control.children] as HTMLElement[];
+    expect(value).toHaveTextContent("English");
+    expect(value.className).toContain("text-body");
+    expect(capsule.className.split(" ")).toEqual(expect.arrayContaining(["w-5", "rounded-full", "bg-fill"]));
+    expect(capsule.querySelector("svg")).not.toBeNull();
+    expect(popup.className.split(" ")).toEqual(expect.arrayContaining(["absolute", "inset-0", "opacity-0"]));
+    // No border and no fill behind the value.
+    expect(control.className).not.toMatch(/\bborder\b|\bbg-/);
+    // The keyboard's ring goes round the whole, since the select is not seen.
+    expect(control.className).toContain("has-[:focus-visible]:outline-3");
+    // Not a segmented control any more.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 
-  it("gives the language group one tab stop and moves the choice with the arrow keys", async () => {
+  it("saves the language chosen from the popup, and shows it", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") return baseSettings({ language: "System" });
       if (cmd === "set_settings") return undefined;
@@ -704,30 +731,18 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const system = await screen.findByRole("radio", { name: "System" });
-    const english = screen.getByRole("radio", { name: "English" });
-    const chinese = screen.getByRole("radio", { name: "简体中文" });
+    const popup = await screen.findByRole("combobox", { name: "Language" });
+    expect(popup.parentElement?.firstElementChild).toHaveTextContent("System");
 
-    // Roving tabindex: Tab reaches the group once and lands on the current
-    // choice, rather than stopping at all three buttons in turn.
-    expect(system).toHaveAttribute("tabindex", "0");
-    expect(english).toHaveAttribute("tabindex", "-1");
-    expect(chinese).toHaveAttribute("tabindex", "-1");
+    fireEvent.change(popup, { target: { value: "ZhCn" } });
 
-    fireEvent.keyDown(system, { key: "ArrowRight" });
-
-    await waitFor(() => expect(english).toHaveAttribute("aria-checked", "true"));
-    expect(english).toHaveAttribute("tabindex", "0");
-    expect(english).toHaveFocus();
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
-      settings: expect.objectContaining({ language: "En" }),
-    });
-
-    // The group wraps, so the arrow keys never dead-end.
-    fireEvent.keyDown(english, { key: "ArrowLeft" });
-    await waitFor(() => expect(system).toHaveAttribute("aria-checked", "true"));
-    fireEvent.keyDown(system, { key: "ArrowLeft" });
-    await waitFor(() => expect(chinese).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_settings", {
+        settings: expect.objectContaining({ language: "ZhCn" }),
+      }),
+    );
+    expect(popup).toHaveValue("ZhCn");
+    expect(popup.parentElement?.firstElementChild).toHaveTextContent("简体中文");
   });
 
   it("styles the Remind me again and Stop skipping buttons so they read as controls", async () => {
@@ -749,7 +764,7 @@ describe("SettingsPage", () => {
     expect(unskip.className).toBe(remind.className);
   });
 
-  it("groups the settings in three cards: General, Updates and Hidden updates", async () => {
+  it("groups the settings in five groups: General, Updates, the two kinds of hidden update, and About", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_settings") {
         return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
@@ -761,19 +776,109 @@ describe("SettingsPage", () => {
 
     const general = await screen.findByRole("region", { name: "General" });
     const updates = screen.getByRole("region", { name: "Updates" });
-    const hidden = screen.getByRole("region", { name: "Hidden updates" });
-    expect(within(general).getByRole("radiogroup", { name: "Language" })).toBeInTheDocument();
+    const skipped = screen.getByRole("region", { name: "Skipped versions" });
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual([
+      "General",
+      "Updates",
+      "Skipped versions",
+      "Tools with reminders off",
+      "About",
+    ]);
+    expect(within(general).getByRole("combobox", { name: "Language" })).toBeInTheDocument();
     expect(within(general).getByRole("switch", { name: "Show technical details" })).toBeInTheDocument();
     expect(within(updates).getByRole("switch", { name: "Show apps that update themselves" })).toHaveAccessibleDescription(
       "Also list Homebrew apps that update themselves, like Chrome, under Updates.",
     );
-    expect(within(hidden).getByRole("region", { name: "Skipped versions" })).toBeInTheDocument();
-    expect(within(hidden).getByRole("region", { name: "Tools with reminders off" })).toBeInTheDocument();
-    // The groups' titles in the section style; nothing else is on the switches' cards.
-    for (const name of ["General", "Updates", "Hidden updates"]) {
-      expect(screen.getByRole("heading", { level: 2, name }).className).toContain("text-section");
-    }
+    expect(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" })).toBeInTheDocument();
+    expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
     expect(within(general).queryByRole("button", { name: "Remind me again about jq" })).toBeNull();
+    // The old single group of hidden updates, with two small titles in it, is gone.
+    expect(screen.queryByRole("region", { name: "Hidden updates" })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+  });
+
+  it("draws each group as System Settings does: a 13 bold title over the rows' text, a grey container with no edge", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ ignored_updates: [jqKey] });
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    const { container } = renderWithProviders(<SettingsPage />);
+
+    await screen.findByRole("region", { name: "General" });
+    // The column: as wide as 560 or the page less 40, centred, 20 under the toolbar.
+    const column = container.firstElementChild as HTMLElement;
+    expect(column.className.split(" ")).toEqual(
+      expect.arrayContaining(["mx-auto", "w-[min(560px,calc(100%-40px))]", "pt-5", "gap-6"]),
+    );
+    for (const name of ["General", "Updates", "Skipped versions", "Tools with reminders off", "About"]) {
+      const heading = screen.getByRole("heading", { level: 2, name });
+      // 13/16 bold, 10 in (in line with the rows' words), 8 over the container.
+      expect(heading.className.split(" ")).toEqual(expect.arrayContaining(["text-title", "px-2.5", "mb-2"]));
+      const group = heading.nextElementSibling as HTMLElement;
+      const classes = group.className.split(" ");
+      expect(classes).toEqual(expect.arrayContaining(["bg-group", "rounded-group"]));
+      expect(classes).not.toContain("border");
+      // A hairline between each two rows, 10 in from either side.
+      expect(classes).toEqual(
+        expect.arrayContaining(["[&>*+*]:before:inset-x-2.5", "[&>*+*]:before:h-px", "[&>*+*]:before:bg-group-separator"]),
+      );
+    }
+  });
+
+  it("makes a row 36 high on one line and 46 with a second, and gives a group one standing second line at most", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings({ auto_check: true });
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const rowOf = (control: HTMLElement) => control.closest(".px-2\\.5") as HTMLElement;
+    const language = rowOf(await screen.findByRole("combobox", { name: "Language" }));
+    expect(language.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "px-2.5"]));
+    const technical = rowOf(screen.getByRole("switch", { name: "Show technical details" }));
+    expect(technical.className).toContain("min-h-11.5");
+    // Labels in the regular weight.
+    expect(within(language).getByText("Language").className).not.toMatch(/font-(medium|semibold|bold)/);
+
+    // With the daily check on, nothing passing to say: one row with a
+    // second line in each group that has any.
+    const twoLines = (region: HTMLElement) =>
+      within(region)
+        .getAllByRole("switch")
+        .map(rowOf)
+        .filter((row) => row.className.includes("min-h-11.5"));
+    expect(twoLines(screen.getByRole("region", { name: "General" }))).toHaveLength(1);
+    expect(twoLines(screen.getByRole("region", { name: "Updates" }))).toEqual([
+      rowOf(screen.getByRole("switch", { name: "Show apps that update themselves" })),
+    ]);
+    for (const name of ["Check for updates every day", "Notify me when there are updates"]) {
+      expect(rowOf(screen.getByRole("switch", { name })).className).toContain("min-h-9");
+    }
+  });
+
+  it("says what the daily check does in a footnote under the Updates group, 6 below it, and describes the switch with it", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return baseSettings();
+      throw new Error(`unexpected command ${cmd}`);
+    });
+
+    renderWithProviders(<SettingsPage />);
+
+    const updates = await screen.findByRole("region", { name: "Updates" });
+    const footnote = within(updates).getByText(
+      "Canager checks for updates once a day while it's running, and doesn't install the updates it finds.",
+    );
+    // After the container, not in it: the group's own note, in small muted text.
+    const group = screen.getByRole("heading", { level: 2, name: "Updates" }).nextElementSibling as HTMLElement;
+    expect(group.contains(footnote)).toBe(false);
+    expect(group.nextElementSibling).toBe(footnote);
+    expect(footnote.className.split(" ")).toEqual(expect.arrayContaining(["mt-1.5", "px-2.5", "text-small", "text-muted"]));
+    expect(within(updates).getByRole("switch", { name: "Check for updates every day" })).toHaveAccessibleDescription(
+      footnote.textContent ?? "",
+    );
   });
 
   it("says in Chinese what turns the notification on while the daily check is off", async () => {
@@ -794,16 +899,18 @@ describe("SettingsPage", () => {
   });
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
-    expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新", about: "关于" });
+    expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", about: "关于" });
     expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自行更新的App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
     // its line names Homebrew.
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");
-    expect(zhCN.settings.skippedVersions.empty).toBe("没有跳过的版本");
-    expect(zhCN.settings.ignoredUpdates.empty).toBe("没有不再提醒的工具");
+    // An empty group of hidden updates says so in one word, as System
+    // Settings' lists do.
+    expect(zhCN.settings.hiddenNone).toBe("无");
+    expect(zhCN.settings.hiddenEntryMeta).toBe("{{source}} · {{version}}");
   });
 
-  it("puts a skipped version back with its own undo, from its card, and leaves the other list alone", async () => {
+  it("puts a skipped version back with its own undo, from its group, and leaves the other list alone", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string, _args?: unknown) => {
       if (cmd === "get_settings") {
         return baseSettings({ ignored_updates: [jqKey], skipped_versions: [{ key: glibKey, version: "2.90.0" }] });
@@ -814,14 +921,14 @@ describe("SettingsPage", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const hidden = await screen.findByRole("region", { name: "Hidden updates" });
-    fireEvent.click(within(hidden).getByRole("button", { name: "Stop skipping 2.90.0 of glib" }));
+    const skipped = await screen.findByRole("region", { name: "Skipped versions" });
+    fireEvent.click(within(skipped).getByRole("button", { name: "Stop skipping 2.90.0 of glib" }));
 
-    const skipped = within(hidden).getByRole("region", { name: "Skipped versions" });
-    await waitFor(() => expect(within(skipped).getByText("No skipped versions")).toBeInTheDocument());
+    await waitFor(() => expect(within(skipped).getByText("None")).toBeInTheDocument());
     expect(lastSaved().skipped_versions).toEqual([]);
     expect(lastSaved().ignored_updates).toEqual([jqKey]);
-    expect(within(hidden).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
+    expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
   });
 });
 
@@ -868,8 +975,13 @@ describe("SettingsPage's icon credits", () => {
     renderWithProviders(<SettingsPage />, { toolIcons });
 
     const about = await screen.findByRole("region", { name: "About" });
-    expect(screen.getByRole("heading", { level: 2, name: "About" }).className).toContain("text-section");
-    await user.click(within(about).getByRole("button", { name: "View icon credits" }));
+    expect(screen.getByRole("heading", { level: 2, name: "About" }).className).toContain("text-title");
+    // One row: its name and its button, which opens more (「查看…」), and no
+    // sentence explaining it.
+    const open = within(about).getByRole("button", { name: "View icon credits" });
+    expect(open).toHaveTextContent("View…");
+    expect(within(about).getAllByText(/./).map((node) => node.textContent)).toEqual(["About", "Icon credits", "View…"]);
+    await user.click(open);
 
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
     expect(drawer).toHaveAccessibleDescription(
@@ -944,7 +1056,7 @@ describe("SettingsPage's icon credits", () => {
   it("calls the credits 图标来源 in Chinese, with a verb on the button", () => {
     expect(zhCN.settings.iconCredits.label).toBe("图标来源");
     expect(zhCN.settings.iconCredits.title).toBe("图标来源");
-    expect(zhCN.settings.iconCredits.open).toBe("查看");
+    expect(zhCN.settings.iconCredits.open).toBe("查看…");
     expect(zhCN.settings.iconCredits.openAriaLabel).toBe("查看图标来源");
   });
 });
@@ -972,19 +1084,21 @@ describe("SettingsPage, opened at its hidden updates", () => {
     });
   }
 
-  it("brings them into view and puts the focus on their title, from the Overview's count of them", async () => {
+  it("brings them into view and puts the focus on their first title, from the Overview's count of them", async () => {
     serve(async () => baseSettings({ ignored_updates: [jqKey] }));
     useUiStore.getState().showHiddenUpdates();
 
     renderWithProviders(<SettingsPage />);
 
-    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    const heading = await screen.findByRole("heading", { level: 2, name: "Skipped versions" });
     await waitFor(() => expect(heading).toHaveFocus());
     expect(heading).toHaveAttribute("tabindex", "-1");
-    // The whole group, its title and the card under it, as little moved as will show it.
-    expect(scrolledIntoView).toEqual([
-      { element: screen.getByRole("region", { name: "Hidden updates" }), options: { block: "nearest" } },
-    ]);
+    // Both groups, their titles and their rows, as little moved as will show them.
+    const skipped = screen.getByRole("region", { name: "Skipped versions" });
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
+    expect(scrolledIntoView).toEqual([{ element: skipped.parentElement, options: { block: "nearest" } }]);
+    expect(skipped.parentElement?.contains(never)).toBe(true);
+    expect(skipped.parentElement?.contains(screen.getByRole("region", { name: "About" }))).toBe(false);
     expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
   });
 
@@ -998,7 +1112,7 @@ describe("SettingsPage, opened at its hidden updates", () => {
     expect(await screen.findByText("Loading…")).toBeInTheDocument();
     expect(useUiStore.getState().hiddenUpdatesRequested).toBe(true);
     await act(async () => answer(baseSettings()));
-    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    const heading = await screen.findByRole("heading", { level: 2, name: "Skipped versions" });
     await waitFor(() => expect(heading).toHaveFocus());
     expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
   });
@@ -1009,7 +1123,7 @@ describe("SettingsPage, opened at its hidden updates", () => {
 
     renderWithProviders(<SettingsPage />);
 
-    const heading = await screen.findByRole("heading", { level: 2, name: "Hidden updates" });
+    const heading = await screen.findByRole("heading", { level: 2, name: "Skipped versions" });
     expect(await screen.findByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
     expect(heading).not.toHaveFocus();
     expect(scrolledIntoView).toEqual([]);

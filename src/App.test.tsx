@@ -368,7 +368,7 @@ describe("App", () => {
     await waitFor(() => expect(document.activeElement).toBe(uninstall));
   });
 
-  it("opens Settings at the hidden updates from the Overview's count of them, the focus on their title", async () => {
+  it("opens Settings at the hidden updates from the Overview's count of them, the focus on their first title", async () => {
     // jq's update, which the user asked never to be reminded about: the
     // Updates page lists nothing, and Settings lists it.
     const jq = snapshot.artifacts[0].key;
@@ -395,10 +395,13 @@ describe("App", () => {
 
       expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
       expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
-      const hidden = getByRole("region", { name: "Hidden updates" });
-      await waitFor(() => expect(getByRole("heading", { level: 2, name: "Hidden updates" })).toHaveFocus());
-      expect(scrolled).toEqual([hidden]);
-      expect(within(hidden).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
+      // Its two groups of hidden updates, the focus on the first one's title.
+      const skipped = getByRole("region", { name: "Skipped versions" });
+      const never = getByRole("region", { name: "Tools with reminders off" });
+      await waitFor(() => expect(getByRole("heading", { level: 2, name: "Skipped versions" })).toHaveFocus());
+      expect(scrolled).toEqual([skipped.parentElement]);
+      expect(skipped.parentElement?.contains(never)).toBe(true);
+      expect(within(never).getByRole("button", { name: "Remind me again about jq" })).toBeInTheDocument();
     } finally {
       delete (Element.prototype as Partial<Element>).scrollIntoView;
     }

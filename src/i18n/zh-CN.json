@@ -499,7 +499,6 @@
     "groups": {
       "general": "通用",
       "updates": "更新",
-      "hidden": "已隐藏的更新",
       "about": "关于"
     },
     "showTechnicalDetails": {
@@ -527,7 +526,6 @@
     },
     "skippedVersions": {
       "title": "已跳过的版本",
-      "empty": "没有跳过的版本",
       "newBuild": "新版本",
       "unskip": "取消跳过",
       "unskipAriaLabel": "取消跳过“{{name}}”的{{version}}",
@@ -535,14 +533,12 @@
     },
     "ignoredUpdates": {
       "title": "不再提醒的工具",
-      "empty": "没有不再提醒的工具",
       "unignore": "恢复提醒",
       "unignoreAriaLabel": "恢复“{{name}}”的更新提醒"
     },
     "iconCredits": {
       "label": "图标来源",
-      "description": "各工具标志的出处和许可。",
-      "open": "查看",
+      "open": "查看…",
       "openAriaLabel": "查看图标来源",
       "title": "图标来源",
       "owners": "每个标志都归其所有者所有，这里只用来识别工具。",
@@ -553,6 +549,8 @@
       "source": "出处",
       "avatars": "内置标志中不来自Simple Icons的，都是各项目GitHub组织的头像。"
     },
+    "hiddenNone": "无",
+    "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "无法保存：{{message}}。已恢复原来的设置。"
   },
   "settingsSaveFailed": {

@@ -550,7 +550,6 @@
     "groups": {
       "general": "General",
       "updates": "Updates",
-      "hidden": "Hidden updates",
       "about": "About"
     },
     "showTechnicalDetails": {
@@ -578,7 +577,6 @@
     },
     "skippedVersions": {
       "title": "Skipped versions",
-      "empty": "No skipped versions",
       "newBuild": "New version",
       "unskip": "Stop Skipping",
       "unskipAriaLabel": "Stop skipping {{version}} of {{name}}",
@@ -586,14 +584,12 @@
     },
     "ignoredUpdates": {
       "title": "Tools with reminders off",
-      "empty": "No tools with reminders off",
       "unignore": "Remind Me Again",
       "unignoreAriaLabel": "Remind me again about {{name}}"
     },
     "iconCredits": {
       "label": "Icon credits",
-      "description": "Where the tools' logos come from, and their licenses.",
-      "open": "View",
+      "open": "View…",
       "openAriaLabel": "View icon credits",
       "title": "Icon credits",
       "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
@@ -604,6 +600,8 @@
       "source": "Source",
       "avatars": "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations."
     },
+    "hiddenNone": "None",
+    "hiddenEntryMeta": "{{source}} · {{version}}",
     "saveError": "Couldn't save: {{message}}. Your previous setting is back."
   },
   "settingsSaveFailed": {
