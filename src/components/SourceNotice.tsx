@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { InfoIcon, WarningIcon } from "./icons";
+import { InfoIcon, WarningFilledIcon } from "./icons";
 import { Popover } from "./ui/Popover";
 import { BUTTON, LINK } from "./ui/controls";
 
@@ -37,12 +37,16 @@ export interface SourceNoticeProps {
   error?: ReactNode;
 }
 
-/** The notice's icon: a warning, or information. */
-function NoticeIcon({ variant }: { variant: SourceNoticeVariant }) {
+/**
+ * The notice's icon, 16: a warning, the orange ⚠︎ filled as macOS marks
+ * one -- the colour the symbol's, never the text's -- or information, a
+ * muted ⓘ.
+ */
+function NoticeIcon({ variant, className = "" }: { variant: SourceNoticeVariant; className?: string }) {
   return variant === "warning" ? (
-    <WarningIcon size={16} className="mt-px shrink-0 text-warning" />
+    <WarningFilledIcon size={16} className={`shrink-0 text-warning ${className}`} />
   ) : (
-    <InfoIcon size={16} className="mt-px shrink-0 text-muted" />
+    <InfoIcon size={16} className={`shrink-0 text-muted ${className}`} />
   );
 }
 
@@ -59,12 +63,15 @@ function NoticeIcon({ variant }: { variant: SourceNoticeVariant }) {
  * action does; this component never calls `invoke`.
  */
 export function SourceNotice({ variant, title, description, action, error }: SourceNoticeProps) {
+  // No fill and no corners (spec §3.8): the icon, the title, and the
+  // description on the line under it, quieter, as a Mac list's secondary
+  // line is.
   return (
-    <div className="flex gap-2.5 rounded-row bg-hover/60 px-3 py-2.5 text-body">
+    <div className="flex gap-2 text-body">
       <NoticeIcon variant={variant} />
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{title}</p>
-        {description ? <p className="mt-0.5 text-muted">{description}</p> : null}
+        <p className="text-foreground">{title}</p>
+        {description ? <p className="mt-0.5 text-small text-muted">{description}</p> : null}
         {action ? (
           <button
             type="button"
@@ -77,7 +84,7 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
         ) : null}
         {/* A <div>: the error's own "Details" panel is one. */}
         {error ? (
-          <div role="alert" className="mt-1.5 text-small font-medium text-danger">
+          <div role="alert" className="mt-1.5 text-small text-danger-text">
             {error}
           </div>
         ) : null}
@@ -99,11 +106,14 @@ export interface SourceNoticeLineProps extends SourceNoticeProps {
 }
 
 /**
- * The same notice as one compact line, for the top of a list -- the
- * Updates page's and the Installed page's: an icon, the short title, and
- * "Details" -- a popover with the description -- then the notice's own
- * button, if it has one (Open Ollama, Check again), which stays in the line
- * rather than behind the popover. A failed press says so under the line.
+ * The same notice as one line of a list, 32 high (spec §3.8; the
+ * disclosed rows in cork-outdated.png): the icon, the short title, and
+ * "Details" -- a link that shows the description under it -- then the
+ * notice's own button, if it has one (Open Ollama, Check again), small and
+ * grey, which stays in the line rather than behind the popover. The Updates
+ * page makes the line its list's first row; the Installed page puts it
+ * over its list. A failed press says so under the line. The line's edges
+ * are its container's: the lists put it 20 in, where their rows start.
  */
 export function SourceNoticeLine({
   variant,
@@ -116,13 +126,9 @@ export function SourceNoticeLine({
   trailing,
 }: SourceNoticeLineProps) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex min-w-0 items-center gap-2 text-body">
-        {variant === "warning" ? (
-          <WarningIcon size={16} className="shrink-0 text-warning" />
-        ) : (
-          <InfoIcon size={16} className="shrink-0 text-muted" />
-        )}
+    <div className="flex flex-col">
+      <div data-notice-line="" className="flex h-8 min-w-0 items-center gap-2 text-body">
+        <NoticeIcon variant={variant} />
         <span title={title} className="min-w-0 truncate text-foreground">
           {title}
         </span>
@@ -144,8 +150,9 @@ export function SourceNoticeLine({
         {trailing}
       </div>
       {/* A <div>: the error's own "Details" panel is one. */}
+      {/* Under the title, past the icon. */}
       {error ? (
-        <div role="alert" className="pl-6 text-small font-medium text-danger">
+        <div role="alert" className="pb-1 pl-6 text-small text-danger-text">
           {error}
         </div>
       ) : null}

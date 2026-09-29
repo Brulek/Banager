@@ -4,22 +4,22 @@ import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp } from "../lib/queries";
 import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
 import { DETAILS_TRIGGER_CLASS, SourceNotice, SourceNoticeLine } from "./SourceNotice";
-import { ChevronIcon } from "./icons";
+import { DisclosureIcon } from "./icons";
 import { Popover } from "./ui/Popover";
 
 /**
- * The look of the fold's own buttons, 「还有 N 条」 and 「收起」: a
- * disclosure, not a link. The muted colour and a chevron -- pointing
- * right while the lines are folded, turned down once they show, as the
- * lists' other folds do -- where each line's "Details" has the accent, so
- * the two never read as one more link of the same kind side by side.
+ * The look of the fold's own buttons, 「还有N个问题」 and 「收起」: a
+ * disclosure, not a link. Words in the muted colour and a 10pt disclosure
+ * triangle -- pointing right while the lines are folded, turned down once
+ * they show, as the lists' other disclosures do -- where each line's
+ * "Details" has the accent, so the two never read as one more link of the
+ * same kind side by side.
  */
-const FOLD_TOGGLE_CLASS =
-  "inline-flex shrink-0 items-center rounded-sm text-small text-muted";
+const FOLD_TOGGLE_CLASS = "inline-flex shrink-0 items-center gap-1 rounded-sm text-body text-muted";
 
-/** The fold's chevron: › while the lines are folded, ˅ once they show. */
-function FoldChevron({ expanded }: { expanded: boolean }) {
-  return <ChevronIcon size={14} className={expanded ? "shrink-0 rotate-90" : "shrink-0"} />;
+/** The fold's triangle: ▸ while the lines are folded, ▾ once they show. */
+function FoldTriangle({ expanded }: { expanded: boolean }) {
+  return <DisclosureIcon size={10} className={expanded ? "shrink-0 rotate-90" : "shrink-0"} />;
 }
 
 /** Whether a page's notice lines are unfolded, and how to fold or unfold them (`useNoticeFold`). */
@@ -77,11 +77,11 @@ export interface SourceNoticesProps {
  *
  * Under a page's `fold`, two lines or more fold into one rather than
  * stack up over the list: the first warning, or else the first line, with
- * 「还有 N 条」 at its end for the rest. Pressed, it shows every line in its
- * order, and 「收起」 after the last folds them again. The focus goes with
- * the button, to the one that now says the other thing: the one pressed
- * is gone from where it was. Each line keeps its "Details" and its own
- * button, folded or not.
+ * 「还有N个问题」 and a triangle at its end for the rest. Pressed, it shows
+ * every line in its order, and 「收起」 after the last folds them again.
+ * The focus goes with the button, to the one that now says the other
+ * thing: the one pressed is gone from where it was. Each line keeps its
+ * "Details" and its own button, folded or not.
  */
 export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesProps) {
   const { t } = useTranslation();
@@ -166,7 +166,7 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
   if (!expanded) {
     const shown = notices.find((notice) => notice.variant === "warning") ?? notices[0];
     return (
-      <div id={linesId} className="flex flex-col gap-1.5">
+      <div id={linesId} className="flex flex-col">
         {noticeView(
           shown,
           // Set apart from the line's own "Details" and button by more
@@ -177,10 +177,10 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
             aria-expanded={false}
             aria-controls={linesId}
             onClick={() => toggle(true)}
-            className={`${FOLD_TOGGLE_CLASS} ml-3 gap-0.5`}
+            className={`${FOLD_TOGGLE_CLASS} ml-3`}
           >
-            <FoldChevron expanded={false} />
             {t("sourceNotice.more", { count: notices.length - 1 })}
+            <FoldTriangle expanded={false} />
           </button>,
         )}
       </div>
@@ -189,12 +189,12 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
 
   return (
     <>
-      <div id={linesId} className="flex flex-col gap-1.5">
+      <div id={linesId} className="flex flex-col">
         {notices.map((notice) => noticeView(notice))}
       </div>
-      {/* Its own line under the last: the chevron in the icons' column,
-          the words under the titles. */}
-      <div>
+      {/* Its own line under the last, as high as a notice's: the
+          triangle in the icons' column, the words under the titles. */}
+      <div className="flex h-8 items-center">
         <button
           ref={toggleRef}
           type="button"
@@ -204,7 +204,7 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
           className={`${FOLD_TOGGLE_CLASS} gap-2`}
         >
           <span className="flex w-4 shrink-0 justify-center">
-            <FoldChevron expanded={true} />
+            <FoldTriangle expanded={true} />
           </span>
           {t("sourceNotice.showFewer")}
         </button>

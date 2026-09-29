@@ -16,6 +16,7 @@ import { warningMessage } from "../lib/warnings";
 import { useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
+import { nameKey, namesUnderSeveralSources } from "../lib/names";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -24,6 +25,8 @@ import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
 import { VirtualList } from "../components/VirtualList";
+import { ToolbarItems } from "../components/Toolbar";
+import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
 import {
   holdsRow,
@@ -39,8 +42,9 @@ import {
   cannotCheckDetail,
   readOnlyDetail,
   unavailableDetail,
+  updateVersionColumn,
 } from "../components/updateDetails";
-import { CheckCircleIcon, ChevronIcon, InfoIcon } from "../components/icons";
+import { CheckCircleIcon, DisclosureIcon, InfoIcon } from "../components/icons";
 import { BUTTON } from "../components/ui/controls";
 import type {
   InstanceNote,
@@ -59,12 +63,14 @@ import {
 } from "../lib/updateState";
 import type { UpdateState } from "../lib/updateState";
 
-// The virtualizer's first guesses: a row, the "Can't update here" toggle
-// and the line under it, and "Just updated" -- its heading, then a line a
-// tool. Each slot then measures itself through `measureElement`.
-const ROW_ESTIMATE = 60;
-const SECTION_ESTIMATE = 48;
-const SUMMARY_ESTIMATE = 36;
+// The virtualizer's first guesses: a row, the "N more can't be updated
+// here" line and the line under it, a notice's line, and "Just updated"
+// -- its heading, then a line a tool. Each slot then measures itself
+// through `measureElement`.
+const ROW_ESTIMATE = 52;
+const SECTION_ESTIMATE = 32;
+const SUMMARY_ESTIMATE = 32;
+const NOTICE_ESTIMATE = 32;
 const JUST_UPDATED_ESTIMATE = 52;
 const JUST_UPDATED_LINE_ESTIMATE = 36;
 
@@ -119,15 +125,19 @@ export function useUpdatesHeadline(): string | null {
 /**
  * One slot in the virtualized list. The page is one flat list, sorted by
  * name, the way 360's update list is: every row it can update, then the
- * toggle for the rows it cannot ("Can't update here (5)"), folded until
- * pressed. Each row carries its source -- the avatar's colour and a small
- * chip -- in place of the per-source headings the list used to be grouped
- * under. Above them all, while there is anything in it, "Just updated"
- * (`JustUpdated`): one slot, which scrolls away with the list.
+ * line that discloses the rows it cannot ("5 more can't be updated
+ * here"), folded until pressed, as Cork's list folds its unmanaged
+ * packages. Each row carries its source in its avatar's mark, and in words
+ * where two sources list the same name, in place of the per-source
+ * headings the list used to be grouped under. First, while there is
+ * anything to say, what the sources had to say about this check -- the
+ * list's first row, which scrolls away with it (spec §3.8) -- then, while
+ * there is anything in it, "Just updated" (`JustUpdated`).
  */
 type ListItem =
+  | { type: "notices"; count: number }
   | { type: "justUpdated"; count: number }
-  | { type: "update"; candidate: UpdateCandidate }
+  | { type: "update"; candidate: UpdateCandidate; updatable: boolean }
   | { type: "section"; count: number; expanded: boolean }
   | { type: "summary"; count: number };
 
@@ -145,6 +155,8 @@ type ListItem =
  */
 function listItemKey(item: ListItem): string {
   switch (item.type) {
+    case "notices":
+      return "section:notices";
     case "justUpdated":
       return "section:just-updated";
     case "update":
@@ -161,7 +173,40 @@ function estimateSize(item: ListItem): number {
   if (item.type === "justUpdated") return JUST_UPDATED_ESTIMATE + item.count * JUST_UPDATED_LINE_ESTIMATE;
   if (item.type === "section") return SECTION_ESTIMATE;
   if (item.type === "summary") return SUMMARY_ESTIMATE;
+  if (item.type === "notices") return NOTICE_ESTIMATE;
   return ROW_ESTIMATE;
+}
+
+/**
+ * The slots ↑ and ↓ move between (`VirtualList`'s `keyboardRows`): the
+ * rows, and the line that discloses the rows that can't be updated here.
+ */
+function keyboardRow(item: ListItem): boolean {
+  return item.type === "update" || item.type === "section";
+}
+
+/**
+ * The line that discloses the rows that can't be updated here, 32 high:
+ * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png).
+ * One of the rows ↑ and ↓ move between, Space or Enter opening it.
+ */
+function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
+  const roving = useRovingRow();
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      data-row-focus=""
+      tabIndex={roving?.tabIndex}
+      onFocus={roving?.onFocus}
+      className="flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted -outline-offset-3"
+    >
+      <DisclosureIcon size={10} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+      {t("updates.cantUpdateHere", { number: count })}
+    </button>
+  );
 }
 
 /**
@@ -204,7 +249,7 @@ export function UpdatesPage() {
   const selectedUpdates = useUiStore((s) => s.selectedUpdates);
   const toggleUpdate = useUiStore((s) => s.toggleUpdate);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
-  const invertUpdateSelection = useUiStore((s) => s.invertUpdateSelection);
+  const deselectUpdates = useUiStore((s) => s.deselectUpdates);
   const setFocusedOpId = useUiStore((s) => s.setFocusedOpId);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
   const operationFor = useUpdateOperationFor();
@@ -215,9 +260,9 @@ export function UpdatesPage() {
   const clearedJustUpdated = useUiStore((s) => s.clearedJustUpdated);
   const clearJustUpdated = useUiStore((s) => s.clearJustUpdated);
 
-  // "Can't update here (N)": folded until pressed.
+  // "N more can't be updated here": folded until pressed.
   const [showCantUpdate, setShowCantUpdate] = useState(false);
-  // What the last "Copy command" did, said for a moment in the header.
+  // What the last "Copy command" did, said for a moment over the list.
   const { status: copyStatus, copy: copyCommand } = useCopyCommand();
   // A tool's line in the window's language: Chinese in Chinese, and
   // English in English for an npm, PyPI or crates.io package.
@@ -451,8 +496,9 @@ export function UpdatesPage() {
 
   const items = useMemo<ListItem[]>(
     () => [
+      ...(notices.length > 0 ? [{ type: "notices", count: notices.length } as const] : []),
       ...(justUpdated.length > 0 ? [{ type: "justUpdated", count: justUpdated.length } as const] : []),
-      ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate })),
+      ...actionableRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: true })),
       ...(otherRows.length > 0
         ? [{ type: "section", count: otherRows.length, expanded: showCantUpdate } as const]
         : []),
@@ -460,10 +506,22 @@ export function UpdatesPage() {
         ? [{ type: "summary", count: hiddenReasonCount } as const]
         : []),
       ...(showCantUpdate
-        ? otherRows.map((candidate): ListItem => ({ type: "update", candidate }))
+        ? otherRows.map((candidate): ListItem => ({ type: "update", candidate, updatable: false }))
         : []),
     ],
-    [justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
+    [notices.length, justUpdated.length, actionableRows, otherRows, showCantUpdate, hiddenReasonCount],
+  );
+
+  // The names the list shows under more than one source (spec R3), whose
+  // rows say their source's name after the tool's.
+  const namedTwice = useMemo(
+    () =>
+      namesUnderSeveralSources(
+        items.flatMap((item) =>
+          item.type === "update" ? [{ name: nameOf(item.candidate), instanceId: item.candidate.key.instance_id }] : [],
+        ),
+      ),
+    [items, nameOf],
   );
 
   const viewLog = (opId: number) => {
@@ -494,84 +552,55 @@ export function UpdatesPage() {
     !instance.status.notes.some((note) => NAME_MAY_NOT_RUN_THIS_COPY[note]);
 
   /**
-   * The row's status chips, one per `UpdateState`, each with its why
-   * behind an ⓘ. A `switch` with no default, so a state added to
-   * `UpdateState` without a chip here fails `tsc`. A read-only source's
-   * row that could not be checked either says both: "View only" is the
-   * fact that no button will ever appear on it, whatever the next check
-   * finds, and that this check found nothing is its own news.
+   * The row's status word, one per `UpdateState`, with its why behind an
+   * ⓘ -- or none, for a row that can simply be updated. A `switch` with no
+   * default, so a state added to `UpdateState` without a word here fails
+   * `tsc`. One word a row (spec §3.4): a read-only source's row that
+   * could not be checked either says "Can't check", this check's news and
+   * the words the line over these rows counts, and its why says both --
+   * that it could not be checked, then that no button will ever appear on
+   * it, whatever the next check finds.
    */
-  const statusChips = (
+  const statusOf = (
     candidate: UpdateCandidate,
     state: UpdateState,
     instance: ManagerInstance | undefined,
-  ): ReactNode[] => {
+  ): ReactNode | undefined => {
     const showTechnicalDetails = settings?.show_technical_details ?? false;
     const source = sourceLabelFor(candidate.key.instance_id);
-    const cannotCheck = (
-      <StatusChip
-        key="cannot-check"
-        label={t("updates.cannotCheck")}
-        detail={cannotCheckDetail(t, candidate, showTechnicalDetails)}
-      />
-    );
     switch (state.kind) {
       case "actionable":
-        return saysItUpdatesItself(candidate, instance)
-          ? [
-              <StatusChip key="updates-itself" label={t("updates.selfUpdating")} />,
-            ]
-          : [];
+        return saysItUpdatesItself(candidate, instance) ? <StatusChip label={t("updates.selfUpdating")} /> : undefined;
       case "readOnly":
-        return [
-          <StatusChip key="read-only" label={t("updates.readOnly")} detail={readOnlyDetail(t, instance)} />,
-          ...(candidate.checkable ? [] : [cannotCheck]),
-        ];
-      case "cannotCheck":
-        return [cannotCheck];
-      case "blocked":
-        return [
+        return candidate.checkable ? (
+          <StatusChip label={t("updates.readOnly")} detail={readOnlyDetail(t, instance)} />
+        ) : (
           <StatusChip
-            key="blocked"
+            label={t("updates.cannotCheck")}
+            detail={
+              <>
+                {cannotCheckDetail(t, candidate, showTechnicalDetails)}
+                <div className="mt-1.5">{readOnlyDetail(t, instance)}</div>
+              </>
+            }
+          />
+        );
+      case "cannotCheck":
+        return (
+          <StatusChip label={t("updates.cannotCheck")} detail={cannotCheckDetail(t, candidate, showTechnicalDetails)} />
+        );
+      case "blocked":
+        return (
+          <StatusChip
             label={t(UPDATE_BLOCKED_KEYS[state.reason].badge)}
             detail={blockedDetail(t, candidate, state.reason, instance, source, showTechnicalDetails)}
-          />,
-        ];
+          />
+        );
       case "sourceUnavailable":
-        return [
-          <StatusChip
-            key="unavailable"
-            label={t("updates.sourceUnavailable")}
-            detail={unavailableDetail(t, instance, source)}
-          />,
-        ];
+        return (
+          <StatusChip label={t("updates.sourceUnavailable")} detail={unavailableDetail(t, instance, source)} />
+        );
     }
-  };
-
-  /**
-   * The version column: "7.1 → 7.2", in tabular numerals.
-   *
-   * A `Digest` candidate is Ollama: `current` is the local manifest digest
-   * that /api/tags reported and `target` is the registry manifest's config
-   * digest -- **different hash spaces**, not two readings of one
-   * identifier, and they will not be equal even after a successful pull.
-   * The adapter's own comment (crates/canager-core/src/adapters/ollama/
-   * mod.rs) says never to render them as a version jump, and a 64-hex
-   * string is not something to put in front of this audience either way:
-   * such a row says "New version" -- only when it was checked. A row
-   * Canager could not check has no version to move to (its `target` is
-   * its installed version, `uncheckable_candidate` in crates/canager-core/
-   * src/adapters/mod.rs), so it shows the version it has, and a model's
-   * nothing at all.
-   */
-  const versionOf = (candidate: UpdateCandidate): string | null => {
-    const { current, target } = candidate;
-    if (!candidate.checkable) {
-      return candidate.channel === "Digest" || current === "" ? null : current;
-    }
-    if (candidate.channel === "Digest") return t("updates.newVersion");
-    if (current !== "" && target !== "") return t("updates.versionChange", { current, target });
-    return target !== "" ? target : current !== "" ? current : null;
   };
 
   // What a row's two hiding items share: `next` builds the settings to
@@ -656,9 +685,11 @@ export function UpdatesPage() {
     return null;
   }
 
+  // Over the sentence the page says when it lists nothing, where there is
+  // no list for them to be the first row of.
   const noticeLines =
     notices.length > 0 ? (
-      <div className="flex flex-col gap-1.5 px-5 pb-3">
+      <div className="flex flex-col px-5 pb-3">
         <SourceNotices notices={notices} layout="line" fold={noticeFold} />
       </div>
     ) : null;
@@ -726,12 +757,17 @@ export function UpdatesPage() {
   // same name, a different package. While an update of it is under way,
   // or has just finished, its progress stands where the button was --
   // except an update that ended without updating on a row that still
-  // offers Update: how it ended takes the chips' place, and Retry takes
-  // the button's place, opening the confirmation Update opens.
-  const updateRow = (candidate: UpdateCandidate) => {
+  // offers Update: how it ended takes the status word's place, and Retry
+  // takes the button's place, opening the confirmation Update opens.
+  //
+  // A row under "N more can't be updated here" has its name, its line,
+  // its status word and its ⋯, and nothing else (spec §3.3): no version
+  // to move to and no button to press. It keeps a checkbox's room, as
+  // every row here does, so the avatars stay in one column.
+  const updateRow = (candidate: UpdateCandidate, updatable: boolean) => {
     const instance = instancesById.get(candidate.key.instance_id);
-    // Resolved once per row: the chips and the row's own actionability
-    // must agree.
+    // Resolved once per row: the status word and the row's own
+    // actionability must agree.
     const state = stateOf(candidate);
     const actionable = state.kind === "actionable";
     const name = nameOf(candidate);
@@ -740,15 +776,21 @@ export function UpdatesPage() {
     const progress = op !== null ? progressOf(op) : null;
     const retry = progress !== null && actionable && isRetryable(progress);
     const outcome =
-      progress !== null ? <UpdateProgress key="outcome" progress={progress} name={name} onViewLog={viewLog} /> : null;
-    // How it ended has the chips' column to itself: beside a chip -- the
-    // only one an updatable row has, "Usually updates itself" -- it left
-    // the name a few letters at the window's default width ("Clau…"). The
-    // chips come back once it clears: a Retry under way, a newer version
-    // offered.
-    const chips = retry ? [outcome] : statusChips(candidate, state, instance);
+      progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
+    // How it ended has the status word's column to itself: it comes back
+    // once the outcome clears -- a Retry under way, a newer version offered.
+    const status = retry ? outcome : statusOf(candidate, state, instance);
     const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
+    const column = updateVersionColumn(t, candidate);
+    const action =
+      progress !== null && !retry ? (
+        outcome
+      ) : actionable ? (
+        <RowAction onClick={(event) => void openConfirm([candidate], event.currentTarget)} disabled={dialogOpen}>
+          {retry ? t("updates.retry") : t("updates.update")}
+        </RowAction>
+      ) : null;
     return (
       <ToolRow
         adapterId={adapterId}
@@ -756,9 +798,7 @@ export function UpdatesPage() {
         // The tool's logo, and a cask's app's own icon once it arrives.
         iconKey={candidate.key}
         name={name}
-        // A tool with its own installer is its own source: the chip would
-        // only say its name again.
-        nameChip={source === name ? undefined : source}
+        showSource={namedTwice.has(nameKey(name))}
         // The same line the Installed page's row has (`toolDescription`):
         // the tool's line in the window's language, the source's
         // description, a standalone tool's summary, or what its source
@@ -781,97 +821,52 @@ export function UpdatesPage() {
                 onToggle: () => toggleUpdate(candidate.key),
                 ariaLabel: t("updates.selectRow", { name }),
               }
-            : undefined
+            : null
         }
-        status={chips.length > 0 ? chips : undefined}
-        version={versionOf(candidate)}
-        action={
-          progress !== null && !retry ? (
-            outcome
-          ) : actionable ? (
-            <RowAction
-              onClick={(event) => void openConfirm([candidate], event.currentTarget)}
-              disabled={dialogOpen}
-            >
-              {retry ? t("updates.retry") : t("updates.update")}
-            </RowAction>
-          ) : null
-        }
-        menu={
-          <Menu
-            label={t("common.moreActions", { name })}
-            items={menuItems(candidate, state, instance)}
-          />
-        }
+        status={status ?? undefined}
+        version={updatable ? column.version : undefined}
+        newVersion={updatable ? column.newVersion : undefined}
+        // An update under way keeps its progress, wherever its row is now.
+        action={updatable ? action : progress !== null ? action : undefined}
+        menu={<Menu label={t("common.moreActions", { name })} items={menuItems(candidate, state, instance)} />}
       />
     );
   };
 
   const startableCount = startableUpdates.length;
-  // The rows an update is installing now -- queued, running, being
-  // cancelled or read back (`isUnderway`) -- which have no checkbox and
-  // are not in `startableCount`, nor in the sidebar's count
-  // (`useUpdateCount`). The header says them in words, the Overview's
-  // 「正在更新 N 个工具」, so that it never reads 「这里没有可更新的」 over
-  // rows that are updating, nor a number beside the sidebar's other one.
-  const updatingCount = actionableRows.filter((candidate) => isUnderway(operationFor(candidate))).length;
+  // The checkboxes that are ticked, against those there are: the list
+  // header's box is ticked for all, a dash for some (`indeterminate`).
+  const selectedCount = selectedVisible.length;
+  const allSelected = startableCount > 0 && selectedCount === startableCount;
+  const toggleAll = () => {
+    const keys = startableUpdates.map((u) => u.key);
+    if (allSelected) deselectUpdates(keys);
+    else selectUpdates(keys);
+  };
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 pb-3">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <p className="text-section text-foreground">{updatesHeadline(t, updatingCount, startableCount)}</p>
-          <p role="status" className="text-small text-muted">
-            {copyStatus === "copied"
-              ? t("common.copied")
-              : copyStatus === "failed"
-                ? t("common.copyFailed")
-                : null}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Select all, Invert selection and Update all act on the rows
-              that show a checkbox (`startableUpdates`) and on no others.
-              A row in any other `UpdateState` -- read-only, could not be
-              checked, blocked, its source not answering -- has no
-              checkbox, and a row the user hid (skipped, or never to be
-              reminded about) is not listed at all, so none of them selects
-              one. `selectUpdates` and `invertUpdateSelection` change only
-              the ids they are handed, so a row selected before a refresh
-              took its checkbox away keeps its id in `selectedUpdates`,
-              where `selectedVisible` already leaves it out. The words on
-              the two are short; their accessible names also say which rows
-              they act on. */}
+      {/* The page's one action, in the toolbar (spec §3.2, §3.5): the
+          rows that are ticked, or else every row it can update -- one
+          confirmation for either, the one a row's own Update opens, and
+          the one accent-coloured button on the screen. Update all ticks
+          them all first, as Select all would, so the list shows what the
+          confirmation is about. Both act on the rows that show a checkbox
+          (`startableUpdates`) and on no others: a row in any other
+          `UpdateState` -- read-only, could not be checked, blocked, its
+          source not answering -- has no checkbox, and a row the user hid
+          (skipped, or never to be reminded about) is not listed at all. */}
+      <ToolbarItems>
+        {selectedCount > 0 ? (
           <button
             type="button"
-            disabled={startableCount === 0}
-            onClick={() => selectUpdates(startableUpdates.map((u) => u.key))}
-            aria-label={t("updates.selectAllLabel")}
-            className={BUTTON.regular.grey}
-          >
-            {t("updates.selectAll")}
-          </button>
-          <button
-            type="button"
-            disabled={startableCount === 0}
-            onClick={() => invertUpdateSelection(startableUpdates.map((u) => u.key))}
-            aria-label={t("updates.invertSelectionLabel")}
-            className={BUTTON.regular.grey}
-          >
-            {t("updates.invertSelection")}
-          </button>
-          <button
-            type="button"
-            disabled={selectedVisible.length === 0 || dialogOpen}
+            disabled={dialogOpen}
             onClick={(event) => void openConfirm(selectedVisible, event.currentTarget)}
-            className={BUTTON.regular.grey}
+            className={BUTTON.regular.default}
           >
-            {selectedVisible.length === 0
-              ? t("updates.updateSelected")
-              : t("updates.updateSelectedCount", { number: selectedVisible.length })}
+            {t("updates.updateSelectedCount", { number: selectedCount })}
           </button>
-          {/* Every row with a checkbox, ticked, into the same confirmation
-              Update selected opens: one batch flow, not two. */}
+        ) : (
           <button
             type="button"
             disabled={startableCount === 0 || dialogOpen}
@@ -883,9 +878,8 @@ export function UpdatesPage() {
           >
             {t("updates.updateAll")}
           </button>
-        </div>
-      </div>
-      {noticeLines}
+        )}
+      </ToolbarItems>
       {pageErrors.map((item) => {
         const text = t("updates.planFailed", { message: item.planError });
         return (
@@ -899,12 +893,37 @@ export function UpdatesPage() {
         );
       })}
       {saveSettings.isError ? (
-        <p role="alert" className="px-5 pb-2 text-body text-danger">
+        <p role="alert" className="px-5 pb-2 text-body text-danger-text">
           {t("updates.saveChoiceFailed", {
             message: settingsSaveErrorMessage(t, saveSettings.error.message),
           })}
         </p>
       ) : null}
+      {/* The list's header, 28 high, over the list and still while it
+          scrolls: a box that ticks every row that has one, in the rows'
+          checkbox column -- ticked for all, a dash for some -- and, at its
+          right, how the last Copy command went. */}
+      <div className="flex h-7 shrink-0 items-center gap-3 border-b border-separator px-5">
+        <label className="flex min-w-0 items-center gap-3 text-body text-foreground">
+          <input
+            type="checkbox"
+            ref={(box) => {
+              if (box !== null) box.indeterminate = selectedCount > 0 && !allSelected;
+            }}
+            checked={allSelected}
+            disabled={startableCount === 0}
+            onChange={toggleAll}
+            aria-label={t("updates.selectAllLabel")}
+            className="h-4 w-4 shrink-0"
+          />
+          <span aria-hidden="true" className={startableCount === 0 ? "text-tertiary" : undefined}>
+            {t("updates.selectAll")}
+          </span>
+        </label>
+        <p role="status" className="ml-auto truncate text-small text-muted">
+          {copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null}
+        </p>
+      </div>
       {/* Virtualized, like the Installed page. A source that cannot reach
           its registry reports one `checkable: false` candidate per
           installed package, so a Mac that is merely offline turns this
@@ -916,36 +935,41 @@ export function UpdatesPage() {
         itemKey={listItemKey}
         estimateSize={estimateSize}
         reusable={reusable}
+        keyboardRows={keyboardRow}
         renderItem={(item) =>
-          item.type === "justUpdated" ? (
+          item.type === "notices" ? (
+            <div className="px-5">
+              <SourceNotices notices={notices} layout="line" fold={noticeFold} />
+            </div>
+          ) : item.type === "justUpdated" ? (
             // Drawn anew each time the list is (`reusable`): it reads the clock.
-            <div className="pb-3">
+            <div className="px-2 pb-3">
               <JustUpdated entries={justUpdated} onClear={clearJustUpdatedList} />
             </div>
           ) : item.type === "section" ? (
-            <div className="pt-4">
+            <CantUpdateHere
+              count={item.count}
+              expanded={item.expanded}
+              onToggle={() => setShowCantUpdate((shown) => !shown)}
+            />
+          ) : item.type === "summary" ? (
+            // Why these rows could not be checked is the tool's own words,
+            // hidden while "Show technical details" is off: a button that
+            // turns it on, rather than a sentence that says where it is.
+            <div className="flex min-h-8 items-center gap-2 px-5 text-small text-muted">
+              <p className="min-w-0">{t("updates.cannotCheckSummary", { count: item.count })}</p>
               <button
                 type="button"
-                aria-expanded={item.expanded}
-                onClick={() => setShowCantUpdate((shown) => !shown)}
-                className="flex w-full items-center gap-1.5 rounded-control px-3 py-2 text-left text-body font-semibold text-muted"
+                disabled={saveSettings.isPending}
+                title={t("updates.showReasonsHint", { setting: t("settings.showTechnicalDetails.label") })}
+                onClick={() => saveSettings.mutate({ ...settings, show_technical_details: true })}
+                className={BUTTON.small.grey}
               >
-                <ChevronIcon
-                  size={14}
-                  className={`shrink-0 transition-transform ${item.expanded ? "rotate-90" : ""}`}
-                />
-                {t("updates.cantUpdateHere", { number: item.count })}
+                {t("updates.showReasons")}
               </button>
             </div>
-          ) : item.type === "summary" ? (
-            <p className="px-3 pb-2 text-small text-muted">
-              {t("updates.cannotCheckSummary", {
-                count: item.count,
-                setting: t("settings.showTechnicalDetails.label"),
-              })}
-            </p>
           ) : (
-            updateRow(item.candidate)
+            updateRow(item.candidate, item.updatable)
           )
         }
       />

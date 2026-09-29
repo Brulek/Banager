@@ -91,3 +91,41 @@ export function readOnlyDetail(t: TFunction, instance: ManagerInstance | undefin
   const reason = instance?.read_only_reason ?? null;
   return reason === null ? undefined : detailLines([t(READ_ONLY_DETAIL_KEYS[reason])]);
 }
+
+/** What a row's version column says about an update (`ToolRow`'s `version` and `newVersion`). */
+export interface UpdateVersionColumn {
+  /** "7.1 → 7.2"; a word where a version would mean nothing; null for nothing. */
+  version: string | null;
+  /** "7.2": what the column says alone once the window is too narrow for both. */
+  newVersion?: string;
+}
+
+/**
+ * The version column of a row with an update listed -- the Updates page's
+ * rows, and the Installed page's where an update is to be had, in place of
+ * an "Update available" word: "7.1 → 7.2", in tabular numerals.
+ *
+ * A `Digest` candidate is Ollama: `current` is the local manifest digest
+ * that /api/tags reported and `target` is the registry manifest's config
+ * digest -- **different hash spaces**, not two readings of one
+ * identifier, and they will not be equal even after a successful pull.
+ * The adapter's own comment (crates/canager-core/src/adapters/ollama/
+ * mod.rs) says never to render them as a version jump, and a 64-hex
+ * string is not something to put in front of this audience either way:
+ * such a row says "New version" -- only when it was checked. A row
+ * Canager could not check has no version to move to (its `target` is its
+ * installed version, `uncheckable_candidate` in crates/canager-core/src/
+ * adapters/mod.rs), so it shows the version it has, and a model's
+ * nothing at all.
+ */
+export function updateVersionColumn(t: TFunction, candidate: UpdateCandidate): UpdateVersionColumn {
+  const { current, target } = candidate;
+  if (!candidate.checkable) {
+    return { version: candidate.channel === "Digest" || current === "" ? null : current };
+  }
+  if (candidate.channel === "Digest") return { version: t("updates.newVersion") };
+  if (current !== "" && target !== "") {
+    return { version: t("updates.versionChange", { current, target }), newVersion: target };
+  }
+  return { version: target !== "" ? target : current !== "" ? current : null };
+}

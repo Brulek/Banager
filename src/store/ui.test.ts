@@ -209,7 +209,7 @@ describe("useUiStore", () => {
     ]);
   });
 
-  it("invertUpdateSelection flips each key it is given and leaves every other id alone", () => {
+  it("deselectUpdates unticks each key it is given and leaves every other id alone", () => {
     // wget is selected and not handed over: the Updates page passes only
     // the rows that show a checkbox, and a row without one keeps whatever
     // selection it had.
@@ -218,17 +218,12 @@ describe("useUiStore", () => {
     useUiStore.getState().toggleUpdate(wget);
     useUiStore.getState().toggleUpdate(key);
 
-    useUiStore.getState().invertUpdateSelection([key, glib]);
-    expect(useUiStore.getState().selectedUpdates).toEqual([
-      artifactKeyId(wget),
-      artifactKeyId(glib),
-    ]);
+    // glib was never ticked: nothing to take away for it.
+    useUiStore.getState().deselectUpdates([key, glib]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(wget)]);
 
-    useUiStore.getState().invertUpdateSelection([key, glib]);
-    expect(useUiStore.getState().selectedUpdates).toEqual([
-      artifactKeyId(wget),
-      artifactKeyId(key),
-    ]);
+    useUiStore.getState().deselectUpdates([key, glib]);
+    expect(useUiStore.getState().selectedUpdates).toEqual([artifactKeyId(wget)]);
   });
 
   it("remembers when an operation finished the first time it hears so", () => {

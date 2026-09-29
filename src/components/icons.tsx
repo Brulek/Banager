@@ -148,6 +148,37 @@ export function WarningIcon(props: IconProps) {
   );
 }
 
+/**
+ * A warning, as macOS marks one beside a word (exclamationmark.triangle.fill):
+ * the triangle filled in the colour it is given -- systemOrange -- and the
+ * exclamation mark cut out of it in white, whatever the appearance.
+ */
+export function WarningFilledIcon({ size = 18, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        d="M10.27 3.5 1.9 18a2 2 0 0 0 1.73 3h16.74a2 2 0 0 0 1.73-3L13.73 3.5a2 2 0 0 0-3.46 0Z"
+        fill="currentColor"
+      />
+      <path d="M12 8.75v5.5" stroke="#fff" strokeWidth={2.25} strokeLinecap="round" />
+      <circle cx="12" cy="17.4" r="1.3" fill="#fff" />
+    </svg>
+  );
+}
+
+/**
+ * A disclosure triangle, as a Mac list's (NSDisclosureButton): filled,
+ * pointing right while what it discloses is hidden; turned down by its
+ * owner (`rotate-90`) once it shows.
+ */
+export function DisclosureIcon({ size = 10, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 10 10" aria-hidden="true" className={className}>
+      <path d="M3 1.5 7.5 5 3 8.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** The row's other actions: three dots in a row. */
 export function MoreIcon(props: IconProps) {
   return (

@@ -62,6 +62,18 @@ function scrollingAncestor(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
+/** The box a panel opened from `element` must stay inside: the list it is in, or else the window. */
+export function panelBounds(element: HTMLElement): { top: number; bottom: number; left: number; right: number } {
+  return (
+    scrollingAncestor(element)?.getBoundingClientRect() ?? {
+      top: 0,
+      bottom: window.innerHeight,
+      left: 0,
+      right: window.innerWidth,
+    }
+  );
+}
+
 /** Which side of its button a panel opens on, and which of the button's edges it lines up with. */
 export interface Placement {
   side: "below" | "above";
@@ -98,12 +110,7 @@ export function usePlacement(
     const button = trigger.current;
     const content = panel.current;
     if (button === null || content === null) return;
-    const bounds = scrollingAncestor(button)?.getBoundingClientRect() ?? {
-      top: 0,
-      bottom: window.innerHeight,
-      left: 0,
-      right: window.innerWidth,
-    };
+    const bounds = panelBounds(button);
     const rect = button.getBoundingClientRect();
     const needed = content.offsetHeight + 8;
     const below = bounds.bottom - rect.bottom;

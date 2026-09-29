@@ -25,6 +25,7 @@ import {
 import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
+import { nameKey, namesUnderSeveralSources } from "../lib/names";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -45,6 +46,7 @@ import {
   detailLines,
   readOnlyDetail,
   unavailableDetail,
+  updateVersionColumn,
 } from "../components/updateDetails";
 import { COMMAND_SLOT, withCommand } from "../components/withCommand";
 import { Refusal } from "../components/SheetParts";
@@ -65,18 +67,30 @@ interface HiddenUpdate {
 }
 
 /**
- * One of a row's chips: its word, the why behind its ⓘ (on the row) or
- * under it (in the drawer), and how it looks -- grey for what the row is
- * and why it can't do something, the accent for an update to be had, and
- * a quiet tick for up to date.
+ * One of a row's status words: its word, the why behind its ⓘ (on the
+ * row) or under it (in the drawer), and what kind it is -- what the row is
+ * and why it can't do something, an update to be had, or up to date. The
+ * last two are normal states, which a row does not put in words (spec
+ * §3.4): the version column says the first, and silence the second. The
+ * drawer lists every one.
  */
 interface RowChip {
   id: string;
   label: string;
   detail?: ReactNode;
-  /** What the drawer says under the chip when the row's ⓘ says nothing: a model's new version. */
+  /** What the drawer says under the word when the row's ⓘ says nothing: a model's new version. */
   drawerDetail?: ReactNode;
-  tone: "neutral" | "accent" | "upToDate";
+  tone: "neutral" | "update" | "upToDate";
+}
+
+/**
+ * The one word a row shows (spec §3.4: one at most): the first of its
+ * chips that is not a normal state, in `chipsOf`'s order -- what the
+ * source allows, then the tool's own refusal to be removed, why its
+ * Uninstall waits, then where its update stands, then how the user hid it.
+ */
+function rowChipOf(chips: RowChip[]): RowChip | undefined {
+  return chips.find((chip) => chip.tone === "neutral");
 }
 
 /**
@@ -127,7 +141,7 @@ function versionOf(artifact: InstalledArtifact): string | null {
   return artifact.version;
 }
 
-/** A chip on a row, or its word in the drawer. */
+/** A chip's word on a row, or in the drawer: up to date with a quiet tick before it. */
 function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean }) {
   if (chip.tone === "upToDate") {
     return (
@@ -137,9 +151,7 @@ function RowChipView({ chip, withDetail }: { chip: RowChip; withDetail: boolean 
       </span>
     );
   }
-  return (
-    <StatusChip label={chip.label} detail={withDetail ? chip.detail : undefined} tone={chip.tone} />
-  );
+  return <StatusChip label={chip.label} detail={withDetail ? chip.detail : undefined} />;
 }
 
 /**
@@ -324,8 +336,8 @@ export function InstalledPage() {
     if (snapshot && filter !== null && activeFilter === null) setFilter(null);
   }, [snapshot, filter, activeFilter, setFilter]);
   // Headings only while the list is sorted by source and shows every
-  // source; a row names its source with a chip only where the list mixes
-  // sources and has no heading saying it.
+  // source; a "N more components" line names its source only where the
+  // list mixes sources and has no heading saying it.
   const grouped = sort === "source" && activeFilter === null;
   const mixed = activeFilter === null && !grouped;
 
@@ -395,6 +407,18 @@ export function InstalledPage() {
     }
     return result;
   }, [instancesInView, matchingByInstance, labelOf, compareArtifacts, expandedDependencies, grouped]);
+
+  // The names the list shows under more than one source (spec R3), whose
+  // rows say their source's name after the tool's.
+  const namedTwice = useMemo(
+    () =>
+      namesUnderSeveralSources(
+        items.flatMap((item) =>
+          item.type === "row" ? [{ name: item.artifact.display_name, instanceId: item.instance.id }] : [],
+        ),
+      ),
+    [items],
+  );
 
   // What each source in view has to say about this check, a line each
   // (`sourceNoticesFor`, the rule the Updates page and the Overview read):
@@ -622,7 +646,7 @@ export function InstalledPage() {
             // The drawer's facts give the version it moves to, except a
             // model's, which has no version to give: "a new version".
             drawerDetail: listed.channel === "Digest" ? t("updates.newBuild") : undefined,
-            tone: "accent",
+            tone: "update",
           });
           break;
         case "readOnly":
@@ -701,7 +725,12 @@ export function InstalledPage() {
 
   const toolRow = (artifact: InstalledArtifact, instance: ManagerInstance, label: string) => {
     const name = artifact.display_name;
-    const chips = chipsOf(artifact, instance, label);
+    const chip = rowChipOf(chipsOf(artifact, instance, label));
+    // Where an update is listed, the version it moves to, as the Updates
+    // page's row says it ("7.1 → 7.2"), in place of an "Update available"
+    // word; a hidden one leaves the version installed.
+    const listed = listedUpdates.get(artifactKeyId(artifact.key));
+    const change = listed !== undefined && listed.checkable ? updateVersionColumn(t, listed) : null;
     return (
       <ToolRow
         adapterId={instance.adapter_id}
@@ -709,16 +738,11 @@ export function InstalledPage() {
         // The tool's logo, and a cask's app's own icon once it arrives.
         iconKey={artifact.key}
         name={name}
-        // A tool with its own installer is its own source: the chip would
-        // only say its name again.
-        nameChip={mixed && label !== name ? label : undefined}
+        showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label).line}
-        status={
-          chips.length > 0
-            ? chips.map((chip) => <RowChipView key={chip.id} chip={chip} withDetail />)
-            : undefined
-        }
-        version={versionOf(artifact)}
+        status={chip === undefined ? undefined : <RowChipView chip={chip} withDetail />}
+        version={change?.version ?? versionOf(artifact)}
+        newVersion={change?.newVersion}
         action={
           canUninstall(artifact, instance) ? (
             <RowAction
@@ -876,7 +900,7 @@ export function InstalledPage() {
           </dl>
         ) : null}
         {chips.length > 0 ? (
-          <ul className="mt-5 flex flex-col gap-3">
+          <ul data-status-list="" className="mt-5 flex flex-col gap-3">
             {chips.map((chip) => (
               <li key={chip.id} className="flex flex-col items-start gap-1">
                 <RowChipView chip={chip} withDetail={false} />
@@ -1013,7 +1037,7 @@ export function InstalledPage() {
         estimateSize={estimateSize}
         renderItem={(item) =>
           item.type === "heading" ? (
-            <h2 className="flex items-center gap-2 px-3 pb-1.5 pt-4 text-body font-semibold text-foreground">
+            <h2 className="flex items-center gap-2 px-5 pb-1.5 pt-4 text-body font-semibold text-foreground">
               <SourceAvatar adapterId={item.instance.adapter_id} label={item.label} size="xs" />
               {item.label}{" "}
               <span className="font-normal tabular-nums text-muted">{item.count}</span>
@@ -1024,7 +1048,7 @@ export function InstalledPage() {
                 type="button"
                 aria-expanded={item.expanded}
                 onClick={() => toggleDependencies(item.instance.id)}
-                className="flex w-full items-center gap-1.5 rounded-control px-3 py-2 text-left text-body text-muted"
+                className="flex w-full items-center gap-1.5 rounded-control px-5 py-2 text-left text-body text-muted"
               >
                 <ChevronIcon
                   size={14}
@@ -1033,11 +1057,7 @@ export function InstalledPage() {
                 {t(item.expanded ? "installed.hideDependencies" : "installed.showDependencies", {
                   count: item.count,
                 })}{" "}
-                {mixed ? (
-                  <span className="shrink-0 rounded-full border border-border px-1.5 text-[11px] leading-4 text-muted">
-                    {item.label}
-                  </span>
-                ) : null}
+                {mixed ? <span className="shrink-0 text-small text-muted">{item.label}</span> : null}
               </button>
             </div>
           ) : (
@@ -1045,7 +1065,7 @@ export function InstalledPage() {
           )
         }
         empty={
-          <p className="px-3 py-10 text-center text-body text-muted">
+          <p className="px-5 py-10 text-center text-body text-muted">
             {needle !== ""
               ? t("installed.noMatches", { query: query.trim() })
               : t("emptyStates.nothingInstalled.title")}

@@ -5,6 +5,7 @@ import { renderWithProviders, type RenderOptions } from "../test/setup";
 import { loadToolIcons } from "../lib/toolIcons";
 import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
+import { UpdatesToolbar } from "../test/updatesToolbar";
 import { SnapshotStatus } from "../components/SnapshotStatus";
 import { queryKeys } from "../lib/queries";
 import i18n from "../i18n";
@@ -381,7 +382,10 @@ describe("OverviewPage", () => {
         <SnapshotStatus showsFirstCheck>
           <OverviewPage />
         </SnapshotStatus>
-        <UpdatesPage />
+        {/* With the toolbar's subtitle, where the page says how many it can update. */}
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
       </>,
     );
 

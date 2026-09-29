@@ -5,6 +5,7 @@ import { renderWithProviders } from "../test/setup";
 import { dragsWindow } from "../test/dragRegion";
 import { Sidebar } from "./Sidebar";
 import { UpdatesPage } from "../pages/UpdatesPage";
+import { UpdatesToolbar } from "../test/updatesToolbar";
 import { queryKeys } from "../lib/queries";
 import type {
   ArtifactKey,
@@ -219,7 +220,9 @@ describe("Sidebar", () => {
     const { getByRole, findByText } = renderWithProviders(
       <>
         <Sidebar page="installed" onSelectPage={vi.fn()} />
-        <UpdatesPage />
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
       </>,
     );
     await findByText("2 can be updated", { selector: "p" });
@@ -261,7 +264,9 @@ describe("Sidebar", () => {
     const { getByRole, findByText } = renderWithProviders(
       <>
         <Sidebar page="updates" onSelectPage={vi.fn()} />
-        <UpdatesPage />
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
       </>,
     );
 
@@ -271,7 +276,7 @@ describe("Sidebar", () => {
     expect(updatesButton).toHaveAccessibleDescription("2 can be updated");
   });
 
-  it("leaves an update being installed out of its count, as the Updates page's header does", async () => {
+  it("leaves an update being installed out of its count, as the Updates page's toolbar does", async () => {
     // glib's update is running: the page says so in words, and counts wget
     // alone among those that can be updated; the sidebar counts the same.
     mockInvoke.mockImplementation((cmd: string) => {
@@ -297,7 +302,9 @@ describe("Sidebar", () => {
     const { getByRole, findByText } = renderWithProviders(
       <>
         <Sidebar page="updates" onSelectPage={vi.fn()} />
-        <UpdatesPage />
+        <UpdatesToolbar>
+          <UpdatesPage />
+        </UpdatesToolbar>
       </>,
     );
 

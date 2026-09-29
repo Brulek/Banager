@@ -64,17 +64,16 @@ export interface UiState {
   appendLog(l: LogEntry): void;
   selectedUpdates: string[];
   toggleUpdate(key: ArtifactKey): void;
-  // What the Updates page's Select all and Invert selection call, with the
-  // keys of the rows that show a checkbox. Each changes the ids of the keys
-  // it is given and no others: an id already in `selectedUpdates` for any
-  // other key -- a row selected before a refresh took its checkbox away --
-  // stays exactly as it was.
+  // What the Updates page's list header box calls, ticked and unticked,
+  // and Update all, with the keys of the rows that show a checkbox. Each
+  // changes the ids of the keys it is given and no others: an id already
+  // in `selectedUpdates` for any other key -- a row selected before a
+  // refresh took its checkbox away -- stays exactly as it was.
   //
   // Adds the id of every key given that is not selected yet.
   selectUpdates(keys: ArtifactKey[]): void;
-  // Removes the id of every key given that is selected, and adds the id of
-  // every one that is not.
-  invertUpdateSelection(keys: ArtifactKey[]): void;
+  // Removes the id of every key given that is selected.
+  deselectUpdates(keys: ArtifactKey[]): void;
   // The version each update Canager started was for, by operation id:
   // the `target` of the candidate it was started from (`useUpdateConfirm`,
   // on the Updates page or in the Installed page's detail). An operation
@@ -190,16 +189,10 @@ export const useUiStore = create<UiState>((set) => ({
       // ids already selected, then the new ones in the order given.
       selectedUpdates: [...new Set([...s.selectedUpdates, ...keys.map(artifactKeyId)])],
     })),
-  invertUpdateSelection: (keys) =>
+  deselectUpdates: (keys) =>
     set((s) => {
       const given = new Set(keys.map(artifactKeyId));
-      const selected = new Set(s.selectedUpdates);
-      return {
-        selectedUpdates: [
-          ...s.selectedUpdates.filter((id) => !given.has(id)),
-          ...[...given].filter((id) => !selected.has(id)),
-        ],
-      };
+      return { selectedUpdates: s.selectedUpdates.filter((id) => !given.has(id)) };
     }),
   updateTargets: {},
   rememberUpdateTarget: (opId, target) =>

@@ -337,7 +337,7 @@ export function UnknownPage() {
               </p>
             </div>
           ) : (
-            <div className="px-2 pb-2">
+            <div className="pb-2">
               {result.entries.map((entry) => {
                 const name = fileName(entry.path);
                 const app = linkedApp(entry);

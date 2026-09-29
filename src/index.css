@@ -289,3 +289,15 @@ body {
 [data-list-slot]:has([data-popup-open]) {
   z-index: 10;
 }
+
+/*
+ * A row's hairline (`ToolRow`) separates it from the next row, as a Mac
+ * list's does: none under the last row of the list, nor under the last
+ * of a run that a line of another kind follows -- a heading, a
+ * disclosure. A virtualized list's last slot in the DOM is either the
+ * list's last row or one drawn out of sight below it.
+ */
+[data-list-slot]:last-child [data-row-separator],
+[data-list-slot]:has(+ [data-list-slot]:not(:has([data-tool-row]))) [data-row-separator] {
+  display: none;
+}

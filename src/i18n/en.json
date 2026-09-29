@@ -169,9 +169,6 @@
     "cantUpdateHere": "{{number}} more can't be updated here",
     "selectAll": "Select All",
     "selectAllLabel": "Select all items that can be updated here",
-    "invertSelection": "Invert Selection",
-    "invertSelectionLabel": "Invert selection among the items that can be updated here",
-    "updateSelected": "Update Selected",
     "updateSelectedCount": "Update Selected ({{number}})",
     "updateAll": "Update All",
     "update": "Update",
@@ -189,8 +186,10 @@
     "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Couldn't find its latest version.",
-    "cannotCheckSummary_one": "{{count}} tool couldn't be checked for updates. Turn on “{{setting}}” to see why.",
-    "cannotCheckSummary_other": "{{count}} tools couldn't be checked for updates. Turn on “{{setting}}” to see why.",
+    "cannotCheckSummary_one": "{{count}} tool couldn't be checked for updates.",
+    "cannotCheckSummary_other": "{{count}} tools couldn't be checked for updates.",
+    "showReasons": "Show Reasons",
+    "showReasonsHint": "Turns on “{{setting}}” in Settings",
     "sourceUnavailable": "Can't update now",
     "unavailableDetail": {
       "NotRunning": "{{source}} isn't running. Open it, then click Check Again.",
@@ -408,8 +407,8 @@
       "title": "{{source}}'s program files are missing",
       "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again."
     },
-    "more_one": "{{count}} more",
-    "more_other": "{{count}} more",
+    "more_one": "{{count}} More Issue",
+    "more_other": "{{count}} More Issues",
     "showFewer": "Show Fewer"
   },
   "planRefused": {

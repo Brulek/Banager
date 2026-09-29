@@ -286,10 +286,27 @@ function rowNames(): string[] {
   );
 }
 
-// The words of a row's chips, in order.
+// The words of a row's status: one at most (spec §3.4).
 function chipsOf(row: HTMLElement): string[] {
   const status = row.querySelector("[data-status]");
   return status === null ? [] : [...status.children].map((chip) => chip.textContent ?? "");
+}
+
+// What a row's version column says: "2.88.3 → 2.90.0" where an update is listed.
+function versionShown(row: HTMLElement): string | null {
+  return row.querySelector(".tabular-nums")?.textContent ?? null;
+}
+
+// Every status word `name`'s details list, in order -- the row shows the
+// first that is not a normal state, and the details every one -- read
+// from its drawer, which is closed again.
+async function drawerChips(name: string): Promise<string[]> {
+  const drawer = await openDetails(name);
+  const list = drawer.querySelector("[data-status-list]");
+  const words = list === null ? [] : [...list.children].map((item) => item.firstElementChild?.textContent ?? "");
+  fireEvent.keyDown(drawer, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  return words;
 }
 
 // Opens the chip called `label` on `row`, and returns what it shows.
@@ -533,7 +550,7 @@ describe("InstalledPage", () => {
     expect(screen.queryByText("Typing claude runs a same-named program from npm first")).toBeNull();
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "2 more" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 More Issues" }));
 
     const fewer = screen.getByRole("button", { name: "Show Fewer" });
     const lines = document.getElementById(fewer.getAttribute("aria-controls") ?? "");
@@ -863,49 +880,76 @@ describe("InstalledPage", () => {
       viewport = 1200;
     });
 
-    it("says Update available only for an update the Updates page offers, and why every other row has none", async () => {
+    it("says an update the Updates page offers with the version it moves to, and why every other row has none", async () => {
       const { container } = renderWithProviders(<InstalledPage />);
       await findRow("current");
 
-      expect(chipsOf(rowOf("offered"))).toEqual(["Update available"]);
+      // An update to be had is a normal state: no word, the version column
+      // says it (spec §3.4), as the Updates page's row does.
+      expect(chipsOf(rowOf("offered"))).toEqual([]);
+      expect(versionShown(rowOf("offered"))).toBe("2.88.3 → 2.90.0");
       expect(chipsOf(rowOf("pinned-outdated"))).toEqual(["Pinned"]);
+      // Pinned, and a newer version is out: both said, the second by the version.
+      expect(versionShown(rowOf("pinned-outdated"))).toBe("2.88.3 → 2.90.0");
       expect(chipsOf(rowOf("pipx-pinned"))).toEqual(["Pinned"]);
       expect(chipsOf(rowOf("unchecked"))).toEqual(["Can't check"]);
+      // No version found to move to: the version installed.
+      expect(versionShown(rowOf("unchecked"))).toBe("1.8.2");
       expect(chipsOf(rowOf("ignored"))).toEqual(["Reminders off"]);
+      // Hidden, so the version installed, and no arrow.
+      expect(versionShown(rowOf("ignored"))).toBe("1.8.2");
       // The version the skip is about, which is what brings the reminder
       // back once the source offers another.
       expect(chipsOf(rowOf("skipped"))).toEqual(["Skipped 2.90.0"]);
-      expect(chipsOf(rowOf("skipped-before"))).toEqual(["Update available"]);
-      // Pinned in Homebrew and up to date: still pinned, from the inventory.
-      expect(chipsOf(rowOf("pinned-current"))).toEqual(["Pinned", "Up to date"]);
-      expect(chipsOf(rowOf("current"))).toEqual(["Up to date"]);
+      expect(chipsOf(rowOf("skipped-before"))).toEqual([]);
+      expect(versionShown(rowOf("skipped-before"))).toBe("2.88.3 → 2.90.0");
+      // Pinned in Homebrew and up to date: still pinned, from the
+      // inventory; up to date goes without saying.
+      expect(chipsOf(rowOf("pinned-current"))).toEqual(["Pinned"]);
+      expect(versionShown(rowOf("pinned-current"))).toBe("1.8.2");
+      expect(chipsOf(rowOf("current"))).toEqual([]);
       // Its source is not running, so there is no Update button for it,
-      // and its Uninstall waits too.
-      expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't uninstall now", "Can't update now"]);
+      // and its Uninstall waits too: the row says the second, the one its
+      // own button is about.
+      expect(chipsOf(rowOf("stopped-model"))).toEqual(["Can't uninstall now"]);
       // A model's skipped version is a digest, and no digest is printed.
       // Its Ollama is the stopped one too.
-      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Can't uninstall now", "Skipped the new version"]);
+      expect(chipsOf(rowOf("skipped-model"))).toEqual(["Can't uninstall now"]);
       expect(container.textContent).not.toContain("sha256");
       // Not "Skipped latest": a skip of a cask every release of which is
       // offered as "latest" would never end, so it hides nothing.
-      expect(chipsOf(rowOf("chromium"))).toEqual(["Update available"]);
-      // Each "why" behind its chip.
-      expect(chipDetail(rowOf("stopped-model"), "Can't update now")).toHaveTextContent(
-        "Ollama isn't running. Open it, then click Check Again.",
+      expect(chipsOf(rowOf("chromium"))).toEqual([]);
+      expect(versionShown(rowOf("chromium"))).toBe("latest → latest");
+      // Never "Update available" or "Up to date" on a row.
+      expect(container.querySelector("[data-tool-row]")?.parentElement?.parentElement?.textContent).not.toMatch(
+        /Update available|Up to date/,
       );
-      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       expect(chipDetail(rowOf("ignored"), "Reminders off")).toHaveTextContent(
         "You won't be reminded about any update to this tool. Undo it in Settings.",
       );
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+      // The details say every word, each with its why.
+      expect(await drawerChips("offered")).toEqual(["Update available"]);
+      expect(await drawerChips("pinned-current")).toEqual(["Pinned", "Up to date"]);
+      expect(await drawerChips("current")).toEqual(["Up to date"]);
+      expect(await drawerChips("skipped-model")).toEqual(["Can't uninstall now", "Skipped the new version"]);
+      const drawer = await openDetails("stopped-model");
+      expect([...(drawer.querySelector("[data-status-list]")?.children ?? [])].map((item) => item.firstElementChild?.textContent)).toEqual([
+        "Can't uninstall now",
+        "Can't update now",
+      ]);
+      expect(drawer).toHaveTextContent("Ollama isn't running. Open it, then click Check Again.");
     });
 
     it("agrees with the Updates page's buttons row for row", async () => {
       const installed = renderWithProviders(<InstalledPage />);
       await findRow("current");
-      const badged = mixed.artifacts
-        .map((a) => a.display_name)
-        .filter((name) => chipsOf(rowOf(name)).includes("Update available"))
-        .sort();
+      const badged: string[] = [];
+      for (const name of mixed.artifacts.map((a) => a.display_name)) {
+        if ((await drawerChips(name)).includes("Update available")) badged.push(name);
+      }
+      badged.sort();
       installed.unmount();
 
       const updates = renderWithProviders(<UpdatesPage />);
@@ -979,17 +1023,22 @@ describe("InstalledPage", () => {
       };
       renderWithProviders(<InstalledPage />);
 
-      expect(chipsOf(await findRow("answered"))).toEqual(["Up to date"]);
+      // A row does not say it -- up to date goes without saying (spec
+      // §3.4) -- but its details do, where it is so.
+      expect(chipsOf(await findRow("answered"))).toEqual([]);
+      expect(await drawerChips("answered")).toEqual(["Up to date"]);
       // Nothing about updates; the two whose source did not answer say
       // only that their Uninstall waits.
       expect(chipsOf(rowOf("failed"))).toEqual([]);
+      expect(await drawerChips("failed")).toEqual([]);
       for (const name of ["silent", "stopped"]) {
         expect(chipsOf(rowOf(name)), name).toEqual(["Can't uninstall now"]);
+        expect(await drawerChips(name), name).toEqual(["Can't uninstall now"]);
       }
       // The two that did not answer say so in their own line, the second
       // folded behind the first (`SourceNotices`).
       expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "1 more" }));
+      fireEvent.click(screen.getByRole("button", { name: "1 More Issue" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });
 
@@ -1002,6 +1051,7 @@ describe("InstalledPage", () => {
       const { queryByText } = renderWithProviders(<InstalledPage />);
 
       expect(chipsOf(await findRow("jq"))).toEqual(chips);
+      expect(await drawerChips("jq")).toEqual(chips);
       expect(queryByText("Up to date")).toBeNull();
       expect(screen.getByText(line)).toBeInTheDocument();
     });
@@ -1016,6 +1066,7 @@ describe("InstalledPage", () => {
       renderWithProviders(<InstalledPage />);
 
       expect(chipsOf(await findRow("Claude Code"))).toEqual([]);
+      expect(await drawerChips("Claude Code")).toEqual([]);
       expect(screen.getByText("Claude Code's program files are missing")).toBeInTheDocument();
     });
 
@@ -1038,9 +1089,11 @@ describe("InstalledPage", () => {
         };
         renderWithProviders(<InstalledPage />);
 
-        expect(chipsOf(await findRow("onyx"))).toEqual(["Up to date"]);
-        expect(chipsOf(rowOf("zoom"))).toEqual(leftOut);
-        expect(chipsOf(rowOf("chromium"))).toEqual(leftOut);
+        // Never on the rows; in the details, where Homebrew checked it.
+        for (const name of ["onyx", "zoom", "chromium"]) expect(chipsOf(await findRow(name)), name).toEqual([]);
+        expect(await drawerChips("onyx")).toEqual(["Up to date"]);
+        expect(await drawerChips("zoom")).toEqual(leftOut);
+        expect(await drawerChips("chromium")).toEqual(leftOut);
       },
     );
   });
@@ -1051,7 +1104,7 @@ describe("InstalledPage", () => {
 
     const requests = await findRow("requests");
     expect(queryByRole("button", { name: "Uninstall…" })).not.toBeInTheDocument();
-    expect(chipsOf(requests)).toEqual(["View only", "Up to date"]);
+    expect(chipsOf(requests)).toEqual(["View only"]);
     expect(chipDetail(requests, "View only")).toHaveTextContent(
       "You can only view pip installs here. Install Python tools with pipx or uv to update and uninstall them here.",
     );
@@ -1392,7 +1445,8 @@ describe("InstalledPage", () => {
     served = { ...updating, instances: [brew, claudeInstance] };
     await act(() => queryClient.invalidateQueries());
     await waitFor(() => expect(within(rowOf("jq")).getByRole("button", { name: "Uninstall…" })).toBeEnabled());
-    expect(chipsOf(rowOf("jq"))).toEqual(["Up to date"]);
+    // Its word goes with the hold; up to date goes without saying.
+    expect(chipsOf(rowOf("jq"))).toEqual([]);
     fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "Uninstall…" }));
     expect(await screen.findByRole("dialog", { name: "Uninstall “jq”?" })).toBeInTheDocument();
   });
@@ -1456,16 +1510,19 @@ describe("InstalledPage", () => {
       expect(pipChip).toBe(within(group).getByRole("button", { name: "pip 1" }));
       expect(within(group).getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
       expect(queryByRole("button", { name: /^Ollama/ })).toBeNull();
-      // Every source's rows, each naming its source where it is not its own.
+      // Every source's rows, each naming its source where it is not its own:
+      // to a screen reader, and in its avatar's tooltip -- in sight only
+      // where two sources list the same name (R3).
       expect(rowNames()).toEqual(["jq", "requests"]);
-      expect(within(rowOf("jq")).getByText("Homebrew")).toBeInTheDocument();
+      expect(within(rowOf("jq")).getByText("Homebrew")).toHaveClass("sr-only");
+      expect(within(rowOf("jq")).getByTitle("Homebrew")).toBeInTheDocument();
 
       fireEvent.click(within(group).getByRole("button", { name: "pip 1" }));
       await waitFor(() => expect(rowNames()).toEqual(["requests"]));
       expect(within(group).getByRole("button", { name: "pip 1" })).toHaveAttribute("aria-pressed", "true");
       expect(useUiStore.getState().installedFilter).toBe(pip.id);
-      // One source: no chip on its rows, and only its own lines.
-      expect(within(rowOf("requests")).queryByText("pip", { selector: "span" })).toBeNull();
+      // One source: nothing in sight about it on its rows, and only its own lines.
+      expect(within(rowOf("requests")).getByText("pip", { selector: "span" })).toHaveClass("sr-only");
       expect(screen.queryByText("Ollama isn't running")).toBeNull();
 
       fireEvent.click(within(group).getByRole("button", { name: "All 3" }));
@@ -1642,9 +1699,43 @@ describe("InstalledPage", () => {
     expect(more).toEqual([]);
     expect(homebrewHeading).toBe(getByRole("heading", { level: 2, name: "Homebrew 3" }));
     expect(pipHeading).toBe(getByRole("heading", { level: 2, name: "pip 2" }));
-    // A heading says the source, so the rows under it do not.
-    expect(within(rowOf("wget")).queryByText("Homebrew")).toBeNull();
+    // A heading says the source; the rows under it say it in sight only
+    // for a name another source lists too.
+    expect(within(rowOf("wget")).getByText("Homebrew")).toHaveClass("sr-only");
     expect(useUiStore.getState().installedSort).toBe("source");
+  });
+
+  it("says the source after a name two sources list, and only there (R3)", async () => {
+    // black from Homebrew and from pip: two rows of one name, told apart
+    // by the source's name after it. jq is Homebrew's alone.
+    served = {
+      ...snapshot,
+      instances: [brew, pip],
+      artifacts: [
+        formula("black"),
+        formula("jq"),
+        { ...pipSnapshot.artifacts[0], key: { ...pipSnapshot.artifacts[0].key, name: "black" }, display_name: "black" },
+      ],
+    };
+    renderWithProviders(<InstalledPage />);
+    await findRow("jq");
+
+    const blacks = screen
+      .getAllByText("black", { selector: "[data-tool-row] p" })
+      .map((name) => name.closest("[data-tool-row]") as HTMLElement);
+    expect(blacks).toHaveLength(2);
+    const sources = blacks.map((row) => within(row).getByText(/^(Homebrew|pip)$/));
+    expect(sources.map((source) => source.textContent).sort()).toEqual(["Homebrew", "pip"]);
+    for (const source of sources) {
+      expect(source).not.toHaveClass("sr-only");
+      expect(source).toHaveClass("text-small", "text-muted");
+    }
+    expect(within(rowOf("jq")).getByText("Homebrew")).toHaveClass("sr-only");
+
+    // Filtered to one source, the name is that source's alone: out of sight again.
+    fireEvent.click(screen.getByRole("button", { name: "pip 1" }));
+    await waitFor(() => expect(rowNames()).toEqual(["black"]));
+    expect(within(rowOf("black")).getByText("pip")).toHaveClass("sr-only");
   });
 
   describe("the details drawer", () => {

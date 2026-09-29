@@ -150,9 +150,6 @@
     "cantUpdateHere": "另有{{number}}个无法在这里更新",
     "selectAll": "全选",
     "selectAllLabel": "全选可在这里更新的项目",
-    "invertSelection": "反选",
-    "invertSelectionLabel": "反选可在这里更新的项目",
-    "updateSelected": "更新所选",
     "updateSelectedCount": "更新所选（{{number}}）",
     "updateAll": "全部更新",
     "update": "更新",
@@ -170,7 +167,9 @@
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "无法查到它的最新版本。",
-    "cannotCheckSummary_other": "{{count}}个工具无法检查更新。打开“{{setting}}”可查看原因。",
+    "cannotCheckSummary_other": "{{count}}个工具无法检查更新。",
+    "showReasons": "显示原因",
+    "showReasonsHint": "在设置中打开“{{setting}}”",
     "sourceUnavailable": "暂时不能更新",
     "unavailableDetail": {
       "NotRunning": "{{source}}没有运行。请打开它，然后点按“重新检查”。",
@@ -368,7 +367,7 @@
       "title": "{{source}}的程序文件不见了",
       "description": "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处，然后点按“重新检查”。"
     },
-    "more_other": "还有{{count}}条",
+    "more_other": "还有{{count}}个问题",
     "showFewer": "收起"
   },
   "planRefused": {

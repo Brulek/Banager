@@ -302,18 +302,19 @@ describe("App", () => {
       ...snapshot,
       updates: [update("glib"), update("jq", "Pinned"), update("wget")],
     });
-    const { findByRole, getByRole, findByText } = renderWithProviders(<App />);
+    const { findByRole, getByRole } = renderWithProviders(<App />);
 
     fireEvent.click(await findByRole("button", { name: "Review Updates" }));
 
-    // The page's own headline over its list, and the toolbar's subtitle:
-    // the same words.
-    expect(await findByText("2 can be updated", { selector: "main > div p" })).toBeInTheDocument();
-    expect(within(getByRole("banner")).getByText("2 can be updated")).toBeInTheDocument();
+    // The toolbar's subtitle says how many, and the page does not say it
+    // again over its list: once a screen.
+    expect(await within(getByRole("banner")).findByText("2 can be updated")).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
     expect(await findByRole("checkbox", { name: "Select glib for update" })).toBeChecked();
+    expect(within(getByRole("main")).getAllByText("2 can be updated")).toHaveLength(1);
     expect(getByRole("checkbox", { name: "Select wget for update" })).toBeChecked();
-    expect(getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
+    // The page's one action, in the toolbar, counting the ticked rows.
+    expect(within(getByRole("banner")).getByRole("button", { name: "Update Selected (2)" })).toBeEnabled();
   });
 
   it("hands the focus from an uninstall's confirmation to its log, and back to the row's Uninstall when the log closes", async () => {

@@ -40,7 +40,7 @@ function onSelectedText(selection: Selection | null, x: number, y: number): bool
 }
 
 /** Whether a right-click keeps the web view's own menu: on a text field, or on selected text. */
-function keepsOwnMenu(event: MouseEvent, selection: Selection | null): boolean {
+export function keepsOwnMenu(event: MouseEvent, selection: Selection | null): boolean {
   return isTextField(event.target) || onSelectedText(selection, event.clientX, event.clientY);
 }
 

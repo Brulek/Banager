@@ -1,9 +1,13 @@
 import type { MouseEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { RowAction, ToolRow } from "./ToolRow";
+import { MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow } from "./ToolRow";
+import { StatusChip } from "./StatusChip";
+import { Menu } from "./ui/Menu";
+import { ListWidthProvider } from "./VirtualList";
+import { RovingRowProvider } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
 
 /** The classes a class list holds with no state prefix: how it looks at rest. */
@@ -44,13 +48,12 @@ describe("RowAction", () => {
 });
 
 describe("ToolRow", () => {
-  it("shows the source's avatar, the name with its source chip, and one line about it", () => {
+  it("shows the source's avatar, the name, and one line about it: no pill, the source in the avatar's tooltip and for a screen reader", () => {
     const { container, getByText } = renderWithProviders(
       <ToolRow
         adapterId="brew"
         sourceLabel="Homebrew"
         name="jq"
-        nameChip="Homebrew"
         description="Lightweight and flexible command-line JSON processor"
       />,
     );
@@ -61,12 +64,115 @@ describe("ToolRow", () => {
     expect(avatar?.className).toContain("bg-source-homebrew");
     // 32px: the size a row's avatar is.
     expect(avatar?.className).toContain("h-8");
-    expect(getByText("jq").tagName).toBe("P");
-    expect(getByText("Homebrew", { selector: "span" })).toBeInTheDocument();
-    // One line, cut off at the end, with the whole sentence on hover.
+    // The source's name over the avatar, on a layer above the row.
+    expect(avatar?.parentElement).toHaveAttribute("title", "Homebrew");
+    expect(avatar?.parentElement?.className).toContain("z-10");
+    // The name: 13, semibold.
+    const name = getByText("jq");
+    expect(name.tagName).toBe("P");
+    expect(atRest(name.className)).toEqual(expect.arrayContaining(["text-name", "font-semibold", "truncate"]));
+    // The source said after it, to a screen reader only: no pill, no outline.
+    const source = getByText("Homebrew", { selector: "span" });
+    expect(source.className).toBe("sr-only");
+    expect(row.querySelector('[class*="rounded-full"], [class*="border"]')).toBeNull();
+    // One line, 11 muted, cut off at the end, with the whole sentence on hover.
     const blurb = getByText("Lightweight and flexible command-line JSON processor");
     expect(blurb.className).toContain("truncate");
+    expect(blurb.parentElement?.className).toContain("text-small");
+    expect(blurb.parentElement?.className).toContain("text-muted");
     expect(blurb).toHaveAttribute("title", "Lightweight and flexible command-line JSON processor");
+  });
+
+  it("says the source after the name, small and muted, where the list has the name under two sources (R3)", () => {
+    const { getByText } = renderWithProviders(
+      <ToolRow adapterId="pipx" sourceLabel="pipx" name="black" showSource description="Python code formatter" />,
+    );
+    const source = getByText("pipx", { selector: "span" });
+    expect(atRest(source.className)).toEqual(expect.arrayContaining(["text-small", "text-muted", "shrink-0"]));
+    expect(source.className).not.toContain("sr-only");
+    expect(source.className).not.toMatch(/rounded|border|bg-/);
+    // Right after the name, on its line.
+    expect(source.previousElementSibling).toBe(getByText("black"));
+  });
+
+  it("says nothing more for a tool that is its own source", () => {
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="standalone-claude" sourceLabel="Claude Code" name="Claude Code" showSource description="Anthropic's coding assistant" />,
+    );
+    expect(container.querySelectorAll(".sr-only")).toHaveLength(0);
+    expect(container.textContent).toBe("CClaude CodeAnthropic's coding assistant");
+  });
+
+  it("is laid out as a Mac list's row: 52 high, 20 in, the avatar 12 after the box, the text 12 after that, the columns 16 apart", () => {
+    const { container, getByRole } = renderWithProviders(
+      <ToolRow
+        adapterId="brew"
+        sourceLabel="Homebrew"
+        name="glib"
+        description="Core application library for C"
+        selectable={{ checked: false, onToggle: () => {}, ariaLabel: "Select glib for update" }}
+        status={<StatusChip label="Pinned" />}
+        version="2.88.3 → 2.90.0"
+        action={<button type="button">Update</button>}
+        menu={<button type="button">More</button>}
+      />,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    const rest = atRest(row.className);
+    expect(rest).toEqual(expect.arrayContaining(["h-13", "px-5", "items-center"]));
+    // No corners, no fill, nothing under the pointer.
+    expect(row.className).not.toMatch(/rounded|\bbg-|hover:/);
+    expect(getByRole("checkbox").parentElement?.className).toContain("mr-3");
+    expect(container.querySelector('[title="Homebrew"]')?.nextElementSibling?.className).toContain("ml-3");
+    // The status, version, action and ⋯ columns, 16 apart; the action 80
+    // wide and the ⋯ 24.
+    const status = row.querySelector("[data-status]") as HTMLElement;
+    expect(status.className).toContain("ml-4");
+    const version = container.querySelector(".tabular-nums") as HTMLElement;
+    expect(atRest(version.className)).toEqual(expect.arrayContaining(["ml-4", "min-w-16", "text-body", "text-muted"]));
+    expect(getByRole("button", { name: "Update" }).parentElement?.className).toMatch(/\bml-4\b.*\bw-20\b.*\bjustify-end\b/);
+    expect(getByRole("button", { name: "More" }).parentElement?.className).toMatch(/\bml-4\b.*\bw-6\b/);
+    // The hairline from where the text starts (20 + 16 + 12 + 32 + 12 =
+    // 92) to 20 from the right; 64 in without a checkbox.
+    const hairline = row.querySelector("[data-row-separator]") as HTMLElement;
+    expect(atRest(hairline.className)).toEqual(expect.arrayContaining(["left-[5.75rem]", "right-5", "h-px", "bg-separator"]));
+  });
+
+  it("keeps a checkbox's room for a row with none, so the avatars stay in one column", () => {
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="C library" selectable={null} />,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    expect(row.querySelector("input")).toBeNull();
+    const slot = row.querySelector(".w-4") as HTMLElement;
+    expect(slot).not.toBeNull();
+    expect(slot.childElementCount).toBe(0);
+    expect(row.querySelector("[data-row-separator]")?.className).toContain("left-[5.75rem]");
+  });
+
+  it("cuts a very long name in its middle, keeping its end, and says it whole in its tooltip", () => {
+    const long = "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M";
+    expect(long.length).toBeGreaterThan(MIDDLE_CUT_FROM);
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="ollama" sourceLabel="Ollama" name={long} description="Ollama model" />,
+    );
+    const name = container.querySelector("p[title]") as HTMLElement;
+    expect(name).toHaveAttribute("title", long);
+    // The two halves, one after the other, read as the whole name.
+    expect(name.textContent).toBe(long);
+    const [head, tail] = [...name.children] as HTMLElement[];
+    // The head gives way, cut at its end; the last 12 characters stay whole.
+    expect(atRest(head.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(tail.textContent).toBe("-GGUF:Q4_K_M");
+    expect(atRest(tail.className)).toContain("shrink-0");
+
+    // A shorter name is one piece, cut at its end.
+    const short = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="Microsoft Visual Studio Code" description="Editor" />,
+    );
+    const whole = short.container.querySelector("p[title]") as HTMLElement;
+    expect(whole.childElementCount).toBe(0);
+    expect(whole.className).toContain("truncate");
   });
 
   it("lets its description be selected only where asked, for a path to copy", () => {
@@ -96,7 +202,7 @@ describe("ToolRow", () => {
 
     const path = getByText("/usr/local/bin/docker");
     const note = getByText("Points into Docker.app");
-    expect(note.closest("p")).toBe(path.closest("p"));
+    expect(note.parentElement).toBe(path.parentElement);
     expect(path.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The path is cut short first, its whole text in its tooltip; the note
     // does not shrink, short of a row too narrow for it alone.
@@ -106,7 +212,7 @@ describe("ToolRow", () => {
     // Only the path selects; space sets the note apart, with no dot between them.
     expect([...container.querySelectorAll(".select-text")]).toEqual([path]);
     expect(note.previousElementSibling).toBe(path);
-    expect(path.closest("p")?.textContent).not.toContain("·");
+    expect(path.parentElement?.textContent).not.toContain("·");
   });
 
   it("ticks its checkbox through onToggle, named for what it selects", () => {
@@ -206,16 +312,165 @@ describe("ToolRow", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the source's chip give way to the name on a narrow row, and still says it to a screen reader", () => {
-    const { container, getByText } = renderWithProviders(
-      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" nameChip="Homebrew" description="A JSON processor" />,
+  describe("in a narrow window (R9)", () => {
+    const row = (width: number | null) => (
+      <ListWidthProvider value={width}>
+        <ToolRow
+          adapterId="brew"
+          sourceLabel="Homebrew"
+          name="claude-code"
+          description="Anthropic's coding assistant"
+          status={<StatusChip label="Updates itself" />}
+          version="2.1.282 → 2.1.290"
+          newVersion="2.1.290"
+          action={<button type="button">Update</button>}
+        />
+      </ListWidthProvider>
     );
-    // A container query: the row measures itself, not the window.
-    expect((container.querySelector("[data-tool-row]") as HTMLElement).className).toContain("@container");
-    // Visually hidden, not removed: the avatar is aria-hidden, so the chip
-    // is all a screen reader has of the source.
-    expect(getByText("Homebrew", { selector: "span" }).className).toContain("@max-2xl:sr-only");
-    expect(getByText("Homebrew", { selector: "span" }).className).not.toContain("hidden");
+
+    it("gives way column by column as the list narrows: the version first, then the status word's column", () => {
+      expect(rowFitFor(null)).toBe("full");
+      expect(rowFitFor(752)).toBe("full");
+      expect(rowFitFor(ROW_FIT_WIDTHS.full)).toBe("full");
+      expect(rowFitFor(ROW_FIT_WIDTHS.full - 1)).toBe("compact");
+      expect(rowFitFor(ROW_FIT_WIDTHS.compact)).toBe("compact");
+      expect(rowFitFor(ROW_FIT_WIDTHS.compact - 1)).toBe("narrow");
+      expect(rowFitFor(592)).toBe("narrow");
+    });
+
+    it("shows the whole version change, and the status word in its column, with room for everything", () => {
+      const { container, getByText } = renderWithProviders(row(752));
+      expect(container.querySelector(".tabular-nums")?.textContent).toBe("2.1.282 → 2.1.290");
+      const status = getByText("Updates itself").closest("[data-status]") as HTMLElement;
+      expect(status.className).toContain("ml-4");
+    });
+
+    it("says only the new version first, the whole change still to a screen reader", () => {
+      const { container, getByText } = renderWithProviders(row(ROW_FIT_WIDTHS.compact));
+      const version = container.querySelector(".tabular-nums") as HTMLElement;
+      const [shown, spoken] = [...version.children] as HTMLElement[];
+      expect(shown.textContent).toBe("2.1.290");
+      expect(shown).toHaveAttribute("aria-hidden", "true");
+      expect(spoken.textContent).toBe("2.1.282 → 2.1.290");
+      expect(spoken.className).toBe("sr-only");
+      // The status word keeps its column still.
+      expect(getByText("Updates itself").closest("[data-status]")?.className).toContain("ml-4");
+    });
+
+    it("then moves the status word to the start of the description's line; the name and the button stay whole", () => {
+      const { container, getByText, getByRole } = renderWithProviders(row(592));
+      const status = getByText("Updates itself").closest("[data-status]") as HTMLElement;
+      const blurb = getByText("Anthropic's coding assistant");
+      expect(status.parentElement).toBe(blurb.parentElement);
+      expect(status.nextElementSibling).toBe(blurb);
+      expect(container.querySelectorAll("[data-status]")).toHaveLength(1);
+      // The description gives way; the name and the button never shrink
+      // below themselves (the button's column is fixed, the name's line
+      // loses its description first).
+      expect(blurb.className).toContain("truncate");
+      expect(getByRole("button", { name: "Update" }).parentElement?.className).toContain("shrink-0");
+      expect(container.querySelector(".tabular-nums")?.textContent).toBe("2.1.2902.1.282 → 2.1.290");
+    });
+  });
+
+  it("opens its ⋯ menu at the pointer on a right-click anywhere on it", () => {
+    const { container, getByRole, queryByRole } = renderWithProviders(
+      <ToolRow
+        adapterId="brew"
+        sourceLabel="Homebrew"
+        name="glib"
+        description="Core application library for C"
+        menu={<Menu label="More actions for glib" items={[{ id: "skip", label: "Skip This Version", onSelect: vi.fn() }]} />}
+      />,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    const trigger = getByRole("button", { name: "More actions for glib" });
+    // The ⋯ is always there, quiet: tertiary at rest, muted under the
+    // pointer or the focus, never a fill.
+    expect(atRest(trigger.className)).toEqual(expect.arrayContaining(["text-tertiary", "h-6", "w-6"]));
+    expect(trigger.className).toMatch(/group-hover\/row:text-muted/);
+    expect(trigger.className).toMatch(/group-focus-within\/row:text-muted/);
+    expect(trigger.className).not.toMatch(/\bbg-/);
+    expect(row.className).toContain("group/row");
+
+    const wrapper = trigger.parentElement as HTMLElement;
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(700, 300, 24, 24));
+    const event = fireEvent.contextMenu(getByText(container, "Core application library for C"), { clientX: 240, clientY: 310 });
+    // The web view's own menu does not show.
+    expect(event).toBe(false);
+
+    const menu = getByRole("menu", { name: "More actions for glib" });
+    // Its corner at the pointer: measured from the ⋯ button's box.
+    expect(menu.style.left).toBe("-460px");
+    expect(menu.style.top).toBe("10px");
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    // No item picked until the pointer or an arrow key picks one.
+    expect(document.activeElement).toBe(menu);
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(getByRole("menuitem", { name: "Skip This Version" }));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    expect(queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    // The ⋯ itself still opens it under the button.
+    fireEvent.click(trigger);
+    expect(getByRole("menu").style.left).toBe("");
+  });
+
+  it("leaves a right-click alone on a row with no menu", () => {
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="Core application library for C" />,
+    );
+    const event = fireEvent.contextMenu(container.querySelector("[data-tool-row]") as HTMLElement);
+    expect(event).toBe(true);
+  });
+
+  it("takes the focus itself in a list with arrow keys: Space ticks its box, Enter does nothing", () => {
+    const onToggle = vi.fn();
+    const onFocus = vi.fn();
+    const onUpdate = vi.fn();
+    const { container, getByRole } = renderWithProviders(
+      <RovingRowProvider value={{ tabIndex: 0, onFocus }}>
+        <ToolRow
+          adapterId="brew"
+          sourceLabel="Homebrew"
+          name="glib"
+          description="Core application library for C"
+          selectable={{ checked: false, onToggle, ariaLabel: "Select glib for update" }}
+          action={
+            <button type="button" onClick={onUpdate}>
+              Update
+            </button>
+          }
+        />
+      </RovingRowProvider>,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    expect(row).toHaveAttribute("tabindex", "0");
+    expect(row).toHaveAttribute("data-row-focus");
+    // Its focus ring just inside it, where the list's edge cannot clip it.
+    expect(row.className).toContain("-outline-offset-3");
+
+    row.focus();
+    expect(onFocus).toHaveBeenCalled();
+    expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+
+    // Space on its own checkbox is the checkbox's, not the row's.
+    fireEvent.keyDown(getByRole("checkbox"), { key: " " });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes no part in a list without arrow keys: not focusable itself", () => {
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="Core application library for C" />,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    expect(row).not.toHaveAttribute("tabindex");
+    expect(row).not.toHaveAttribute("data-row-focus");
   });
 
   it("draws an avatar of its own in place of a source's, for a row that belongs to no source", () => {
