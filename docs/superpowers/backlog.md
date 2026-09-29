@@ -498,3 +498,46 @@ Opus max 全分支终审：3 项必修（已修），其余推迟。按主题分
 - **长列表**：`VirtualList` 复用已画好的行，前提是页面每次都传新的内联 `renderItem`；以后若改成 `useCallback`，
   要同时把行依赖的数据放进 key，否则会显示旧内容（`src/components/VirtualList.tsx:62`）。
 - **Astra 第二轮复审**：`~/dev/Canager/.superpowers/round2/astra-round2.md`，第 1、2、3、5 条已修，第 4 条见上。
+
+## 整体小白走查（2026-09-29 中午）
+
+走查确认、今天没改的几条。【大改动】要动较多代码；【待作者定】要作者先拍板；【可先做】前半是小改动，后半要等打包后的
+app 或更多工作。
+- 【大改动】**别的来源要靠它运行的程序也给「卸载」**（node、npm 本身、pipx、ollama、python）：在 Rust 的卸载预览里
+  判断这个包是不是列表里另一个来源运行所靠的——解析每个来源的 `exe_path`（npm → node，pip → python，pipx / uv 环境背后的
+  解释器，ollama），看它是否落在这个 formula 的 keg / opt 路径下；是就把那个来源和它的工具数列在「这些软件还要用它」下
+  （如「npm 和它的 4 个工具」），「卸载」保持不可点，与 Homebrew 的依赖者一样。npm 适配器拒绝卸载 `npm` 自己，行上用
+  标签代替按钮。
+- 【待作者定】**每次更新都留下旧版本，之后的卸载会"又回来"**：`HOMEBREW_NO_INSTALL_CLEANUP=1`
+  （`crates/canager-core/src/adapters/brew/mod.rs:225`）让更新不删旧版本，不带 `--force` 的 `brew uninstall` 只删当前
+  那一版（Homebrew `cmd/uninstall.rb:45`、`uninstall.rb:63-69`），剩下的旧版本又出现在已安装里。定一条规则：(a) 更新时
+  删掉它所更新的那个包的旧版本，并在更新确认框里说（「会删除旧版本 1.25.0」），autoremove 与定期全面清理仍然关着；
+  (b) 保留旧版本，但「卸载」删掉所有已装版本，确认框逐个列出（「删除 wget 的 2 个版本：1.25.0、1.26.0」），另加
+  「清理旧版本」并显示能腾出多少空间。无论哪条，Canager 自己造成的状态都不能落到「显示卸载了，但它还在」。
+- 【可先做】**更新失败只给英文原始报错、没有下一步，操作条还把失败叫「需要留意」**（`operations.batch.needsAttention`）：
+  先做——有更新失败时操作条说「N 个更新失败，M 个已成功」，「需要留意」只留给 NeedsAttention 与 Unconfirmed；每个
+  Failed 结果在工具原话下面加一句固定的中文下一步，如：上面是 wget 自己的报错。可以稍后点「重试」；还是失败，就点
+  「拷贝日志」发给懂的人看。日志抽屉底部加「拷贝日志」。以后——认出常见原因（没网或 DNS、要管理员密码、磁盘满、
+  Homebrew 被锁），各用一句中文说。
+- 【待作者定】**管理员密码的承诺兑现不了：要 sudo 的 App 直接失败**（`commandPreview.needsPassword`「部分 App 在这一步
+  会要求输入 Mac 密码。」）：先做完搁着的 askpass 试验（`docs/spikes/2026-09-askpass.md`，上文「需要作者本人操作的
+  事项」任务 13），再二选一：(1) 带一个 askpass 助手，让 macOS 真的弹出密码框；(2) 说实话：只在 cask 记录里有 pkg 或
+  sudo 步骤时才显示提示，大意是「这个 App 要管理员密码，Canager 不能代你输入；到时这一项会失败，并给出在终端运行的
+  命令」（原则 3 不写"可能"）。失败确实来自 sudo 时，用中文说明，并给出确切命令和「拷贝」按钮。
+- 【大改动】**更新进行中退出没有任何提醒，确认框却叫人别退出**（`operations.noCancelHint`）：有操作在排队或运行时
+  拦下退出（`RunEvent::ExitRequested` → `prevent_exit`；现在 `src-tauri/src/window.rs:164` 的 `on_run_event` 只处理
+  Reopen），菜单栏的「退出」也经过页面。问「还有 3 个更新没完成，现在退出会中断它们。」，两个按钮：「完成后退出」
+  （默认，最后一个结束时退出）和「仍然退出」（先取消排队中的，并点名取消不了的）。
+- 【待作者定】**概览几乎到不了明确的「都好了」，还怪到不点名的「来源」头上**：按 Canager 能动手的来判断圆环。没有可更新
+  的、每个来源都回答了，就显示绿勾和「能在这里更新的都已是最新」，其余放进一行安静的小字（「1 个已隐藏、1 个只能
+  查看」）。有来源没回答时点它的名，不说「来源」：「uv 这次没检查，其余都是最新的」或「Ollama 没有运行，没检查」。
+  更新页的 `updates.noneCheckable`（与 `overview.nothingToUpdateChecked` 同为「已检查的来源里没有可更新的工具」）用
+  同样的说法。
+- 【可先做】**每天自动检查和通知会悄悄停掉**（`settings.autoCheck.description`）：先做——说明改成「关掉窗口也会每天
+  检查；退出 Canager 或重启 Mac 后不再检查，直到你再打开它。」，开关下显示「上次自动检查：今天 9:12」（或「还没自动
+  检查过」）。以后——在打包后的 app 里读真实的通知权限（UNUserNotificationCenter 的设置），关着时就显示
+  `settings.notifyUpdates.refused` 那行「在系统设置 → 通知里允许 Canager」。
+- 【大改动】**第一次检查要等每个来源都答完才显示任何东西**（今天只补了说明：三页同一个圆环和「第一次检查要联网查每个
+  工具的新版本，有时要一两分钟。」）：清单一读到就先提交一版快照，让「已安装」马上有内容，更新随各来源回答陆续补上。
+  现在一轮只在末尾提交一次（`crates/canager-core/src/session/refresh.rs:681`），Homebrew 一轮最多等 `brew update`
+  120 秒（`adapters/brew/mod.rs:233`）。上文的本地快照缓存只帮得到以后的启动，帮不到第一次。
