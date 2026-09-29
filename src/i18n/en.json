@@ -72,14 +72,14 @@
   "overview": {
     "updatesAvailable_one": "{{count}} tool can be updated",
     "updatesAvailable_other": "{{count}} tools can be updated",
-    "updatesUnit_one": "update",
-    "updatesUnit_other": "updates",
     "reviewUpdates": "Review Updates",
     "upToDate": "Everything is up to date",
     "nothingToUpdate": "Nothing to update",
     "updating_one": "Updating {{count}} tool",
     "updating_other": "Updating {{count}} tools",
     "seeProgress": "See Progress",
+    "autoCheckOn": "On",
+    "autoCheckOff": "Off",
     "nothingToUpdateChecked": "No updates in the sources checked",
     "hiddenCount_one": "{{count}} hidden",
     "hiddenCount_other": "{{count}} hidden",
@@ -88,9 +88,6 @@
     "checksUnfinished_one": "{{count}} check didn't finish",
     "checksUnfinished_other": "{{count}} checks didn't finish",
     "listSeparator": ", ",
-    "yourTools": "Sources",
-    "itemCount_one": "{{count}} item",
-    "itemCount_other": "{{count}} items",
     "attentionLabel": "Needs attention"
   },
   "adapters": {

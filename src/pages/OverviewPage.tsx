@@ -1,33 +1,34 @@
 import { Fragment, useId } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useSettings, useSnapshot, useUnknownScan } from "../lib/queries";
-import { isStartupSnapshot } from "../lib/events";
-import { ADAPTER_LABEL_KEYS, sourceNoticesFor } from "../lib/sources";
+import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
+import { isStartupSnapshot, useRefreshInFlight } from "../lib/events";
+import { elapsedSince } from "../lib/format";
+import {
+  ADAPTER_LABEL_KEYS,
+  openOllamaErrorDetail,
+  openOllamaErrorMessage,
+  sourceNoticesFor,
+} from "../lib/sources";
 import type { SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
 import type { UpdatesSummary } from "../lib/updateState";
 import type { ManagerInstance } from "../lib/types";
 import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
-import { SourceAvatar } from "../components/SourceAvatar";
-import { SourceNotices } from "../components/SourceNotices";
-import { FirstCheck, StatusRing } from "../components/StatusRing";
-import { UnknownIcon } from "../components/icons";
+import { FirstCheck } from "../components/StatusRing";
+import { CHECKED_KEYS, elapsedText, useMinuteClock } from "../components/PageHeader";
+import { DETAILS_TRIGGER_CLASS } from "../components/SourceNotice";
+import { FilledWarningIcon, StatusSymbol, type StatusSymbolKind } from "../components/StatusSymbol";
+import { ChevronIcon, InfoIcon } from "../components/icons";
+import { Popover } from "../components/ui/Popover";
 import { BUTTON, LINK } from "../components/ui/controls";
+import { FORM_COLUMN, GROUP, GROUP_ROW } from "../components/ui/group";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
 
-/** One source with something installed: its avatar, its name and how many. */
-interface SourceTile {
-  instanceId: string;
-  adapterId: string;
-  label: string;
-  count: number;
-}
-
-/** The headline. A `switch` with no default, so a new summary without words here fails `tsc`. */
+/** The status's title. A `switch` with no default, so a new summary without words here fails `tsc`. */
 function headlineText(t: Translate, summary: UpdatesSummary): string {
   switch (summary.kind) {
     case "updates":
@@ -41,16 +42,31 @@ function headlineText(t: Translate, summary: UpdatesSummary): string {
   }
 }
 
+/** The status's symbol for a verdict. A `switch` with no default, as `headlineText`. */
+function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
+  switch (summary.kind) {
+    case "updates":
+      return "updates";
+    case "upToDate":
+      return "upToDate";
+    case "updating":
+      return "busy";
+    case "nothingToUpdate":
+      return "quiet";
+  }
+}
+
 /**
  * The line under "Nothing to update": what there is instead, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
  * hid, the ones under its "Can't update here", the checks that did not
  * finish -- or null when there is none of that. A source not checked in
- * full says so under "Needs attention" instead.
+ * full says so in the problems group under the status instead.
  *
  * The Updates page lists no hidden update, and Settings lists them all,
- * under 「已隐藏的更新」: their count is the way there (`showHidden`), a
- * link in the line. The rest of it is text.
+ * under 「已跳过的版本」 and 「不再提醒的工具」: their count is the way
+ * there (`showHidden`), a link in the line -- the one link on the page.
+ * The rest of it is text.
  */
 function nothingToUpdateLine(
   t: Translate,
@@ -80,49 +96,123 @@ function nothingToUpdateLine(
   ));
 }
 
-const TILE =
-  "flex w-full items-center gap-3 rounded-row p-2.5 text-left";
+/**
+ * One source's problem, a row of the group under the status: the notice
+ * the Updates and Installed pages give it (`sourceNoticesFor`, in their
+ * words) -- a filled orange ⚠︎ for a warning, a muted ⓘ for news -- its
+ * title, its description under it, and on the right its own button where
+ * it has one: Open Ollama, Check again, wired as the lists wire theirs
+ * (`SourceNotices`), Check again off while a check runs. A press of Open
+ * Ollama that failed says so under the description, with its Details.
+ */
+function ProblemRow({ notice }: { notice: SourceNoticeSpec }) {
+  const { t } = useTranslation();
+  const openOllamaApp = useOpenOllamaApp();
+  const { checkAgain, checking } = useCheckAgain();
+  const opensOllama = notice.action?.id === "openOllama";
+
+  let error: ReactNode = null;
+  if (opensOllama && openOllamaApp.error) {
+    const message = openOllamaErrorMessage(t, openOllamaApp.error.message);
+    const detail = openOllamaErrorDetail(t, openOllamaApp.error.message);
+    error =
+      detail === null ? (
+        message
+      ) : (
+        <>
+          {message}{" "}
+          <Popover
+            trigger={t("common.details")}
+            triggerLabel={t("common.detailsLabel", { title: message })}
+            triggerClassName={DETAILS_TRIGGER_CLASS}
+          >
+            {detail}
+          </Popover>
+        </>
+      );
+  }
+
+  return (
+    <li className="flex min-h-11.5 items-center gap-4 px-2.5 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {notice.variant === "warning" ? (
+          <FilledWarningIcon size={16} className="text-warning" />
+        ) : (
+          <InfoIcon size={16} className="shrink-0 text-muted" />
+        )}
+        <div className="min-w-0">
+          <p className="text-body text-foreground">{t(notice.titleKey, notice.values)}</p>
+          <p className="text-small text-muted">{t(notice.descriptionKey, notice.values)}</p>
+          {/* A <div>: the error's own "Details" panel is one. */}
+          {error !== null ? (
+            <div role="alert" className="text-small text-danger-text">
+              {error}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {notice.action ? (
+        <button
+          type="button"
+          onClick={opensOllama ? () => openOllamaApp.mutate() : checkAgain}
+          disabled={opensOllama ? false : checking}
+          className={BUTTON.regular.grey}
+        >
+          {t(notice.action.labelKey)}
+        </button>
+      ) : null}
+    </li>
+  );
+}
 
 /**
- * The first page: the Mac at a glance, and one thing to do about it.
+ * The first page, laid out as System Settings' Software Update (spec R1):
+ * a column of groups, as wide as Settings' and at its top.
  *
- * In the middle, the ring and the headline under it: the Updates page's
- * own verdict (`updatesSummary`) -- how many updates it offers to
- * install, with one button that opens it with all of them selected;
- * "Everything is up to date" only when that page would say so; and a
- * plain "Nothing to update" when there is nothing to install but that is
- * not the same thing -- "No updates in the sources Canager could check"
- * where a source was not checked in full -- with a line under it saying what there is instead
- * (`nothingToUpdateLine`) and, when the Updates page lists any of it, a
- * quieter Review updates that opens it. Before the first check has
+ * First, one row: where the updates stand. The Updates page's own verdict
+ * (`updatesSummary`) as its title -- how many updates it offers to
+ * install, "Everything is up to date" only when that page would say so,
+ * and a plain "Nothing to update" when there is nothing to install but
+ * that is not the same thing ("No updates in the sources checked" where a
+ * source was not checked in full) -- with a symbol for it on the left
+ * (`StatusSymbol`) and a line under it: when the sources were last checked,
+ * or what there is instead of updates (`nothingToUpdateLine`). On the
+ * right, the one button: Review Updates, the default button, which opens
+ * the Updates page with all of them selected; a grey one where that page
+ * lists only what cannot be updated here; See Progress while they install;
+ * none when everything is up to date. The number of updates is said once,
+ * in the title. While a check runs the symbol turns and the line says so;
+ * when the last one failed -- `startupRefreshError`, which every refresh
+ * sets or clears -- the title says so instead, in red, with its reason:
+ * what is listed is from the check before it. Before the first check has
  * answered, "Checking…" and why it takes a while (`FirstCheck`, which the
  * Updates and Installed pages show too) -- the startup placeholder is not
  * an answer (`isStartupSnapshot`).
  *
- * Below it, quietly, two panels. "Your tools": a tile for each source
- * with something installed and how much, which opens the Installed page on
- * that source's tools, and one for the programs the Unknown page's last
- * scan could not place, once a scan has found some (nothing starts one
- * here). "Needs attention": one line for each source that needs it -- its
- * first notice (`sourceNoticesFor`: not running, not answering, a list it
- * could not download, another program that runs instead), as the lists
- * draw it (`SourceNotices`): its title, its Details, and its own button
- * where it has one -- Open Ollama, Check again. A line with nothing to
- * press was a dead end. What a source lets Canager do at all, pip being
- * read-only, is not news here; both lists say it on each of its rows.
+ * Second, the daily check, on or off, as Software Update shows its
+ * automatic updates: a row that opens Settings, where it is changed.
+ *
+ * Last, only when a source has something to say, a group of one row for
+ * each: its first notice (`sourceNoticesFor`: not running, not answering,
+ * a list it could not download, another program that runs instead), with
+ * its own button (`ProblemRow`). What a source lets Canager do at all,
+ * pip being read-only, is not news here; both lists say it on each of its
+ * rows. The sources themselves are in the sidebar.
  */
 export function OverviewPage() {
   const { t } = useTranslation();
   const { data: snapshot } = useSnapshot();
   const { data: settings } = useSettings();
-  const { data: scan } = useUnknownScan();
   const setPage = useUiStore((s) => s.setPage);
-  const openInstalled = useUiStore((s) => s.openInstalled);
   const showHiddenUpdates = useUiStore((s) => s.showHiddenUpdates);
   const selectUpdates = useUiStore((s) => s.selectUpdates);
+  const checkFailure = useUiStore((s) => s.startupRefreshError);
+  const checking = useRefreshInFlight();
   const operationFor = useUpdateOperationFor();
-  const toolsHeadingId = useId();
-  const attentionHeadingId = useId();
+  const refreshedAt = snapshot?.refreshed_at ?? null;
+  const now = useMinuteClock(refreshedAt);
+  const autoCheckLabelId = useId();
+  const autoCheckValueId = useId();
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
     return <FirstCheck />;
@@ -145,139 +235,105 @@ export function OverviewPage() {
     (candidate) => holdsRow(operationFor(candidate)),
     (candidate) => isUnderway(operationFor(candidate)),
   );
-  const whyNothing =
-    summary.kind === "nothingToUpdate" ? nothingToUpdateLine(t, summary, showHiddenUpdates) : null;
 
-  const tiles: SourceTile[] = snapshot.instances.flatMap((instance) => {
-    const count = installedByInstance.get(instance.id) ?? 0;
-    return count === 0
-      ? []
-      : [{ instanceId: instance.id, adapterId: instance.adapter_id, label: labelOf(instance), count }];
-  });
-
-  const attention: SourceNoticeSpec[] = snapshot.instances.flatMap((instance) => {
+  const problems: SourceNoticeSpec[] = snapshot.instances.flatMap((instance) => {
     const [notice] = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
     return notice === undefined ? [] : [notice];
   });
 
-  const unknownCount = scan?.entries.length ?? 0;
+  // A check under way says so, over whatever the last one found; a check
+  // that failed says so until one works, but not while the next one runs.
+  const failed = !checking && checkFailure !== null;
+  const lastChecked = refreshedAt === null ? null : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now));
+  let line: ReactNode = null;
+  if (failed) {
+    line = t("emptyStates.loadFailed.description", { message: checkFailure });
+  } else if (checking) {
+    line = t("common.checking");
+  } else if (summary.kind === "nothingToUpdate") {
+    line = nothingToUpdateLine(t, summary, showHiddenUpdates) ?? lastChecked;
+  } else if (summary.kind !== "updating") {
+    line = lastChecked;
+  }
+  const symbol: StatusSymbolKind = failed ? "failed" : checking ? "busy" : symbolOf(summary);
+
+  let button: ReactNode = null;
+  if (summary.kind === "updates") {
+    button = (
+      <button
+        type="button"
+        onClick={() => {
+          // Every row the Updates page would tick with Select all, and
+          // no other; any row selected earlier stays as it was.
+          selectUpdates(summary.actionable.map((candidate) => candidate.key));
+          setPage("updates");
+        }}
+        className={BUTTON.regular.default}
+      >
+        {t("overview.reviewUpdates")}
+      </button>
+    );
+  } else if (summary.kind === "updating") {
+    // Where each one's progress is: in its own row.
+    button = (
+      <button type="button" onClick={() => setPage("updates")} className={BUTTON.regular.grey}>
+        {t("overview.seeProgress")}
+      </button>
+    );
+  } else if (summary.kind === "nothingToUpdate" && summary.cantUpdateHere > 0) {
+    // The Updates page has rows to show, every one under "Can't update
+    // here": nothing to select, only a page to open.
+    button = (
+      <button type="button" onClick={() => setPage("updates")} className={BUTTON.regular.grey}>
+        {t("overview.reviewUpdates")}
+      </button>
+    );
+  }
 
   return (
-    <div className="flex min-h-full flex-col items-center px-5 pb-8">
-      <section className="flex flex-1 flex-col items-center justify-center gap-5 pb-10 pt-6 text-center">
-        <StatusRing state={summary} />
-        <div className="flex flex-col items-center gap-1.5">
-          <h2 className="text-headline text-foreground">{headlineText(t, summary)}</h2>
-          {whyNothing !== null ? <p className="text-body text-muted">{whyNothing}</p> : null}
+    <div className={FORM_COLUMN}>
+      <div className={GROUP}>
+        <div data-status={symbol} className="flex items-center gap-3 px-2.5 py-2.5">
+          <StatusSymbol kind={symbol} />
+          {/* Mounted afresh when the check fails, so that the alert is
+              read out as it appears. */}
+          <div key={failed ? "failed" : "status"} role={failed ? "alert" : undefined} className="min-w-0 flex-1">
+            <h2 className={`text-title ${failed ? "text-danger-text" : "text-foreground"}`}>
+              {failed ? t("header.checkFailed") : headlineText(t, summary)}
+            </h2>
+            {line !== null ? <p className="text-small text-muted">{line}</p> : null}
+          </div>
+          {button}
         </div>
-        {summary.kind === "nothingToUpdate" && summary.cantUpdateHere > 0 ? (
-          // The Updates page has rows to show, every one under "Can't
-          // update here": nothing to select, only a page to open.
-          <button
-            type="button"
-            onClick={() => setPage("updates")}
-            className={BUTTON.large.grey}
-          >
-            {t("overview.reviewUpdates")}
-          </button>
-        ) : null}
-        {summary.kind === "updating" ? (
-          // Where each one's progress is: in its own row.
-          <button
-            type="button"
-            onClick={() => setPage("updates")}
-            className={BUTTON.large.grey}
-          >
-            {t("overview.seeProgress")}
-          </button>
-        ) : null}
-        {summary.kind === "updates" ? (
-          <button
-            type="button"
-            onClick={() => {
-              // Every row the Updates page would tick with Select all, and
-              // no other; any row selected earlier stays as it was.
-              selectUpdates(summary.actionable.map((candidate) => candidate.key));
-              setPage("updates");
-            }}
-            className={BUTTON.large.default}
-          >
-            {t("overview.reviewUpdates")}
-          </button>
-        ) : null}
-      </section>
-
-      <div className="flex w-full max-w-3xl flex-col gap-4">
-        {tiles.length > 0 || unknownCount > 0 ? (
-          <section
-            aria-labelledby={toolsHeadingId}
-            className="rounded-panel border border-border bg-surface p-3"
-          >
-            <h2 id={toolsHeadingId} className="px-2.5 pb-2 pt-1 text-section text-foreground">
-              {t("overview.yourTools")}
-            </h2>
-            <ul
-              aria-labelledby={toolsHeadingId}
-              className="grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-4"
-            >
-              {tiles.map((tile) => (
-                <li key={tile.instanceId}>
-                  {/* Opens the Installed page on this source's tools: the
-                      ones its count counted. */}
-                  <button type="button" onClick={() => openInstalled(tile.instanceId)} className={TILE}>
-                    <SourceAvatar adapterId={tile.adapterId} label={tile.label} size="md" />
-                    <span className="min-w-0">
-                      <span className="block truncate text-body font-semibold text-foreground">
-                        {tile.label}
-                      </span>{" "}
-                      <span className="block text-small tabular-nums text-muted">
-                        {t("overview.itemCount", { count: tile.count })}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {unknownCount > 0 ? (
-                <li>
-                  <button type="button" onClick={() => setPage("unknown")} className={TILE}>
-                    <span
-                      aria-hidden="true"
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white"
-                    >
-                      <UnknownIcon size={18} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-body font-semibold text-foreground">
-                        {t("nav.unknown")}
-                      </span>{" "}
-                      <span className="block text-small tabular-nums text-muted">
-                        {t("overview.itemCount", { count: unknownCount })}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ) : null}
-            </ul>
-          </section>
-        ) : null}
-
-        {attention.length > 0 ? (
-          <section aria-labelledby={attentionHeadingId} className="rounded-panel bg-hover/60 p-3">
-            <h2 id={attentionHeadingId} className="px-2.5 pb-1 pt-1 text-section text-foreground">
-              {t("overview.attentionLabel")}
-            </h2>
-            <ul aria-labelledby={attentionHeadingId} className="flex flex-col">
-              {attention.map((notice) => (
-                // The line the Updates and Installed pages give the same
-                // notice: its Details, and its own button where it has one.
-                <li key={notice.id} className="px-2.5 py-1.5">
-                  <SourceNotices notices={[notice]} layout="line" />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </div>
+
+      <div className={GROUP}>
+        {/* Opens Settings, where the daily check is turned on or off. */}
+        <button
+          type="button"
+          onClick={() => setPage("settings")}
+          aria-labelledby={`${autoCheckLabelId} ${autoCheckValueId}`}
+          className={`${GROUP_ROW} w-full text-left`}
+        >
+          <span id={autoCheckLabelId} className="min-w-0 truncate text-body text-foreground">
+            {t("settings.autoCheck.label")}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-body text-muted">
+            <span id={autoCheckValueId}>
+              {settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff")}
+            </span>
+            <ChevronIcon size={14} className="text-tertiary" />
+          </span>
+        </button>
+      </div>
+
+      {problems.length > 0 ? (
+        <ul aria-label={t("overview.attentionLabel")} className={GROUP}>
+          {problems.map((notice) => (
+            <ProblemRow key={notice.id} notice={notice} />
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

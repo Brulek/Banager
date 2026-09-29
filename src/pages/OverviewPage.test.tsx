@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders, type RenderOptions } from "../test/setup";
-import { loadToolIcons } from "../lib/toolIcons";
 import { OverviewPage } from "./OverviewPage";
 import { UpdatesPage } from "./UpdatesPage";
 import { UpdatesToolbar } from "../test/updatesToolbar";
 import { SnapshotStatus } from "../components/SnapshotStatus";
-import { queryKeys } from "../lib/queries";
+import { refreshIntoCache } from "../lib/events";
 import i18n from "../i18n";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type {
@@ -18,7 +17,6 @@ import type {
   OpSummary,
   Settings,
   Snapshot,
-  UnknownScan,
   UpdateCandidate,
 } from "../lib/types";
 
@@ -143,11 +141,29 @@ beforeEach(() => {
   });
 });
 
-/** The large ring over the headline. */
-function ringOf(container: HTMLElement): HTMLElement {
-  const ring = container.querySelector<HTMLElement>("[data-ring]");
-  if (ring === null) throw new Error("no ring");
-  return ring;
+afterEach(() => {
+  useUiStore.setState({ startupRefreshError: null });
+  vi.useRealTimers();
+});
+
+/** The 48 symbol at the left of the status row. */
+function symbolOf(container: HTMLElement): HTMLElement {
+  const symbol = container.querySelector<HTMLElement>("[data-symbol]");
+  if (symbol === null) throw new Error("no symbol");
+  return symbol;
+}
+
+/** The status row: its symbol, its title and the line under it, and its button. */
+function statusRowOf(container: HTMLElement): HTMLElement {
+  const row = container.querySelector<HTMLElement>("[data-status]");
+  if (row === null) throw new Error("no status row");
+  return row;
+}
+
+/** The time the tests' snapshots were checked at, and a clock 30 s later: "Checked just now". */
+function clockJustAfterTheCheck() {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime((1790586000 + 30) * 1000);
 }
 
 function renderOverview(options?: RenderOptions) {
@@ -164,15 +180,29 @@ describe("OverviewPage", () => {
     served = startupSnapshot;
     const { findByRole, getByText, queryByRole, queryByText, container } = renderOverview();
 
-    expect(await findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
-    // A turning ring alone, for as long as Homebrew's list update and
-    // every online lookup took, looked like a window that had frozen.
-    expect(
-      getByText("The first check looks up every tool's newest version online, and sometimes takes a minute or two."),
-    ).toBeInTheDocument();
-    // The ring turns while it waits, and says no number.
-    expect(ringOf(container).getAttribute("data-ring")).toBe("checking");
-    expect(ringOf(container).textContent).toBe("");
+    const heading = await findByRole("heading", { level: 2, name: "Checking…" });
+    // 15/20 semibold, as an empty state's title.
+    expect(heading.className).toContain("text-section");
+    // A spinner alone, for as long as Homebrew's list update and every
+    // online lookup took, looked like a window that had frozen.
+    const why = getByText(
+      "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+    );
+    // 15/20 regular, muted, no wider than 360.
+    expect(why.className.split(" ")).toEqual(
+      expect.arrayContaining(["text-section", "font-normal", "text-muted", "max-w-90"]),
+    );
+    // A 32 spinner over them, centred in the page; no ring, no number.
+    const box = container.querySelector<HTMLElement>("[data-first-check]");
+    expect(box?.className.split(" ")).toEqual(
+      expect.arrayContaining(["min-h-full", "items-center", "justify-center"]),
+    );
+    const spinner = box?.firstElementChild;
+    expect(spinner?.tagName.toLowerCase()).toBe("svg");
+    expect(spinner).toHaveAttribute("width", "32");
+    expect(spinner?.getAttribute("class")).toContain("animate-spin");
+    expect(container.querySelector("[data-ring]")).toBeNull();
+    expect(container.textContent).not.toMatch(/\d/);
     // Not "Loading…", and not "No tools to manage": the
     // placeholder is not an answer.
     expect(queryByText("Loading…")).not.toBeInTheDocument();
@@ -194,16 +224,27 @@ describe("OverviewPage", () => {
     });
     settings.ignored_updates = [formula("ffmpeg")];
     useUiStore.setState({ page: "overview" });
+    clockJustAfterTheCheck();
     const { findByRole, container } = renderOverview();
 
-    expect(
-      await findByRole("heading", { level: 2, name: "2 tools can be updated" }),
-    ).toBeInTheDocument();
-    // The same number, large, in the ring over it.
-    expect(ringOf(container).getAttribute("data-ring")).toBe("updates");
-    expect(ringOf(container).textContent).toBe("2updates");
+    const headline = await findByRole("heading", { level: 2, name: "2 tools can be updated" });
+    // 13/16 bold, the one title of the row; under it, when the sources
+    // were last checked.
+    expect(headline.className).toContain("text-title");
+    expect(headline.nextElementSibling?.textContent).toBe("Checked just now");
+    expect(headline.nextElementSibling?.className).toContain("text-small");
+    expect(headline.nextElementSibling?.className).toContain("text-muted");
+    // The accent's arrow down, in a disc.
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates");
+    expect(symbolOf(container).querySelector("svg")?.getAttribute("class")).toContain("text-accent");
+    // The number is said once on the page, in the title.
+    expect(container.textContent?.match(/2/g)).toHaveLength(1);
+    // The row's one button, the default one, of the regular size.
+    const review = await findByRole("button", { name: "Review Updates" });
+    expect(within(statusRowOf(container)).getByRole("button")).toBe(review);
+    expect(review.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "bg-accent"]));
 
-    fireEvent.click(await findByRole("button", { name: "Review Updates" }));
+    fireEvent.click(review);
 
     const state = useUiStore.getState();
     expect(state.page).toBe("updates");
@@ -259,10 +300,18 @@ describe("OverviewPage", () => {
     useUiStore.setState({ page: "overview", selectedUpdates: [], updateTargets: { 9: "1.1.0" } });
     const { findByRole, queryByRole, container } = renderOverview();
 
-    expect(await findByRole("heading", { level: 2, name: "Updating 1 tool" })).toBeInTheDocument();
-    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("updating");
+    const headline = await findByRole("heading", { level: 2, name: "Updating 1 tool" });
+    // A spinner, and no line: when the sources were checked is not news
+    // while they install.
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("busy");
+    expect(symbolOf(container).querySelector("svg")).toHaveAttribute("width", "32");
+    expect(headline.nextElementSibling).toBeNull();
     expect(queryByRole("button", { name: "Review Updates" })).toBeNull();
-    fireEvent.click(await findByRole("button", { name: "See Progress" }));
+    const progress = await findByRole("button", { name: "See Progress" });
+    // Grey: nothing on this page to start.
+    expect(progress.className).toContain("bg-fill");
+    expect(progress.className).not.toContain("bg-accent");
+    fireEvent.click(progress);
     expect(useUiStore.getState().page).toBe("updates");
     expect(useUiStore.getState().selectedUpdates).toEqual([]);
   });
@@ -282,15 +331,19 @@ describe("OverviewPage", () => {
     ]);
   });
 
-  it("says everything is up to date with a check mark when every source answered and nothing needs updating", async () => {
+  it("says everything is up to date with a green check when every source answered and nothing needs updating", async () => {
+    clockJustAfterTheCheck();
     const { findByRole, queryByRole, container } = renderOverview();
 
-    expect(
-      await findByRole("heading", { level: 2, name: "Everything is up to date" }),
-    ).toBeInTheDocument();
-    expect(ringOf(container).getAttribute("data-ring")).toBe("upToDate");
-    expect(ringOf(container).querySelector("svg.text-success")).not.toBeNull();
+    const headline = await findByRole("heading", { level: 2, name: "Everything is up to date" });
+    expect(headline.nextElementSibling?.textContent).toBe("Checked just now");
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("upToDate");
+    expect(symbolOf(container).querySelector("svg.text-success")).not.toBeNull();
+    // Nothing to press in the row.
+    expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
     expect(queryByRole("button", { name: "Review Updates" })).not.toBeInTheDocument();
+    // No problem to list: the status and the daily check, nothing else.
+    expect(queryByRole("list", { name: "Needs attention" })).toBeNull();
   });
 
   // Each of these has nothing to install and is not up to date: the
@@ -394,9 +447,11 @@ describe("OverviewPage", () => {
     // and the heading found first is not the one that stays.
     await waitFor(() => expect(getByRole("heading", { level: 2, name: title })).toBeInTheDocument());
     expect(queryByRole("heading", { name: "Everything is up to date" })).not.toBeInTheDocument();
-    // Neither the green ring nor its check: a grey ring with a dash.
-    expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");
-    expect(ringOf(container).querySelector(".text-success, .stroke-success")).toBeNull();
+    // Not the green check: the same check in the tertiary grey, a mark
+    // and not news.
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("quiet");
+    expect(symbolOf(container).querySelector(".text-success")).toBeNull();
+    expect(symbolOf(container).querySelector(".text-tertiary")).not.toBeNull();
     // The Updates page, on the same snapshot, does not say it either.
     await waitFor(() =>
       expect(
@@ -414,7 +469,8 @@ describe("OverviewPage", () => {
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
     const headline = getByRole("heading", { level: 2, name: title });
     if (line === null) {
-      expect(headline.nextElementSibling).toBeNull();
+      // Nothing instead to say: when the sources were last checked.
+      expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
     } else {
       expect(headline.nextElementSibling?.textContent).toBe(line);
     }
@@ -497,10 +553,13 @@ describe("OverviewPage", () => {
       expect(headline.nextElementSibling?.textContent).toBe("2 hidden, 2 can't be updated here");
       // The same number the Updates page gives its folded rows.
       expect(await findByRole("button", { name: "2 more can't be updated here" })).toBeInTheDocument();
-      // The ring is as it was: grey, with a dash.
-      expect(ringOf(container).getAttribute("data-ring")).toBe("nothingToUpdate");
+      // The quiet check, and a grey button: nothing to select there.
+      expect(symbolOf(container).getAttribute("data-symbol")).toBe("quiet");
+      const review = getByRole("button", { name: "Review Updates" });
+      expect(review.className).toContain("bg-fill");
+      expect(review.className).not.toContain("bg-accent");
 
-      fireEvent.click(getByRole("button", { name: "Review Updates" }));
+      fireEvent.click(review);
       expect(useUiStore.getState().page).toBe("updates");
       // Nothing on that page has a checkbox: nothing is selected.
       expect(useUiStore.getState().selectedUpdates).toEqual([]);
@@ -518,7 +577,8 @@ describe("OverviewPage", () => {
       const { findByRole, queryByRole } = renderOverview();
 
       const headline = await findByRole("heading", { level: 2, name: "已检查的来源中没有可更新的工具" });
-      expect(headline.nextElementSibling).toBeNull();
+      // Nothing instead to say: when the sources were last checked.
+      expect(headline.nextElementSibling?.textContent).toMatch(/^上次检查：/);
       expect(queryByRole("heading", { level: 2, name: "没有要更新的工具" })).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
@@ -585,69 +645,118 @@ describe("OverviewPage", () => {
     expect(within(line).queryByRole("button")).toBeNull();
   });
 
-  it("shows each source with something installed and how much, and a tile opens Installed on that source", async () => {
+  it("is a column of groups as wide as Settings', at the top, with no source tiles and no 22 headline", async () => {
     served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
-    useUiStore.setState({ page: "overview" });
-    const { findByRole, getByRole, queryByRole } = renderOverview();
+    const { findByRole, queryByRole, container } = renderOverview();
 
-    const homebrew = await findByRole("button", { name: "Homebrew 3 items" });
-    expect(getByRole("button", { name: "pip 1 item" })).toBeInTheDocument();
-    // Nothing installed from the stopped Ollama: no tile for it.
-    expect(queryByRole("button", { name: /^Ollama/ })).not.toBeInTheDocument();
-
-    fireEvent.click(homebrew);
-    expect(useUiStore.getState().page).toBe("installed");
-    // The three its count counted.
-    expect(useUiStore.getState().installedFilter).toBe(brew.id);
+    await findByRole("heading", { level: 2, name: "No updates in the sources checked" });
+    const column = container.firstElementChild as HTMLElement;
+    // Settings' column: min(560, the page less 40), centred, 20 under the
+    // toolbar -- not centred in the window's height.
+    expect(column.className.split(" ")).toEqual(
+      expect.arrayContaining(["mx-auto", "w-[min(560px,calc(100%-40px))]", "pt-5"]),
+    );
+    expect(column.className).not.toContain("justify-center");
+    // Three groups: the status, the daily check, the problems.
+    const groups = [...column.children] as HTMLElement[];
+    expect(groups).toHaveLength(3);
+    for (const group of groups) {
+      expect(group.className.split(" ")).toEqual(expect.arrayContaining(["bg-group", "rounded-group"]));
+      expect(group.className).not.toContain("border");
+    }
+    expect(groups[0]).toContainElement(statusRowOf(container));
+    // The sources are in the sidebar: no tiles here, no "Sources" panel.
+    expect(queryByRole("heading", { name: "Sources" })).toBeNull();
+    expect(queryByRole("button", { name: /^Homebrew/ })).toBeNull();
+    expect(queryByRole("button", { name: /^pip/ })).toBeNull();
+    // One title on the page, the status's, in the 13 bold style.
+    expect(container.querySelectorAll("h2")).toHaveLength(1);
+    expect(container.querySelector(".text-headline")).toBeNull();
   });
 
-  it("gives the programs the last scan could not place a tile of their own, which opens the Unknown page", async () => {
-    const scan: UnknownScan = {
-      scanned: [{ path: "~/.local/bin", entries: 2 }],
-      entries: [
-        {
-          path: "~/.local/bin/tool-a",
-          kind: "File",
-          resolved: "/Users/you/.local/bin/tool-a",
-          link_target: null,
-          size_bytes: 10,
-          modified_at: 1789000000,
-          owned_by_me: true,
-          app_bundle: null,
-        },
-        {
-          path: "~/.local/bin/tool-b",
-          kind: "File",
-          resolved: "/Users/you/.local/bin/tool-b",
-          link_target: null,
-          size_bytes: 10,
-          modified_at: 1789000000,
-          owned_by_me: true,
-          app_bundle: null,
-        },
-      ],
-      attributed: 0,
-      stopped: null,
-    };
-    const { findByRole, queryByRole, queryClient } = renderOverview();
-    await findByRole("heading", { level: 2, name: "Everything is up to date" });
-    // No scan yet, and the Overview does not start one.
-    expect(queryByRole("button", { name: /^Unknown/ })).not.toBeInTheDocument();
-    expect(mockInvoke).not.toHaveBeenCalledWith("scan_unknown");
+  it("shows whether the daily check is on in a row of its own, which opens Settings", async () => {
+    settings.auto_check = true;
+    useUiStore.setState({ page: "overview" });
+    const { findByRole } = renderOverview();
 
-    act(() => {
-      queryClient.setQueryData(queryKeys.unknown, scan);
+    const row = await findByRole("button", { name: "Check for updates every day On" });
+    // A row of its group, 36 high, the value muted with a chevron after it.
+    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "w-full"]));
+    expect(within(row).getByText("On").parentElement?.className).toContain("text-muted");
+    expect(row.querySelector("svg")).not.toBeNull();
+
+    fireEvent.click(row);
+    expect(useUiStore.getState().page).toBe("settings");
+    // Not the hidden updates: Settings opens at its top.
+    expect(useUiStore.getState().hiddenUpdatesRequested).toBe(false);
+  });
+
+  it("says the daily check is off, in Chinese as 关", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByRole } = renderOverview();
+      expect(await findByRole("button", { name: "每天自动检查 关" })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("turns the symbol and says Checking… under the verdict while a check runs", async () => {
+    served = snapshotWith({ updates: [candidate(formula("glib"))] });
+    let answer: (snapshot: Snapshot) => void = () => {};
+    const { findByRole, queryClient, container } = renderOverview();
+    const headline = await findByRole("heading", { level: 2, name: "1 tool can be updated" });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "refresh") return new Promise<Snapshot>((resolve) => (answer = resolve));
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      return Promise.resolve(undefined);
     });
 
-    const tile = await findByRole("button", { name: "Unknown 2 items" });
-    // Among the tools, after the sources.
-    const tools = within(await findByRole("list", { name: "Sources" })).getAllByRole("button");
-    expect(tools[tools.length - 1]).toBe(tile);
-    fireEvent.click(tile);
-    expect(useUiStore.getState().page).toBe("unknown");
+    let run: Promise<void> = Promise.resolve();
+    act(() => {
+      run = refreshIntoCache(queryClient, "test");
+    });
+
+    // The verdict stays; the symbol turns and the line says so.
+    await waitFor(() => expect(symbolOf(container).getAttribute("data-symbol")).toBe("busy"));
+    expect(headline).toHaveTextContent("1 tool can be updated");
+    expect(headline.nextElementSibling?.textContent).toBe("Checking…");
+    // Review Updates is still there to press.
+    expect(within(statusRowOf(container)).getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
+
+    await act(async () => {
+      answer(served);
+      await run;
+    });
+    await waitFor(() => expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates"));
+    expect(headline.nextElementSibling?.textContent).toMatch(/^Checked /);
   });
 
-  it("gives each source that needs attention one line, with its Details and its own button, as the lists do", async () => {
+  it("says, as an alert, that the last check failed and why, over what the check before it found", async () => {
+    served = snapshotWith({ updates: [candidate(formula("glib"))] });
+    useUiStore.setState({ startupRefreshError: "brew update timed out" });
+    const { findByRole, getByRole, queryByRole, container } = renderOverview();
+
+    const alert = await findByRole("alert");
+    const title = within(alert).getByRole("heading", { level: 2, name: "Couldn't check" });
+    expect(title.className).toContain("text-danger-text");
+    expect(title.nextElementSibling?.textContent).toBe("Reason: brew update timed out");
+    expect(title.nextElementSibling?.className).toContain("text-muted");
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("failed");
+    expect(symbolOf(container).querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    // What the check before it found is still there to review.
+    expect(queryByRole("heading", { name: "1 tool can be updated" })).toBeNull();
+    expect(getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
+
+    // A check that works clears it.
+    act(() => useUiStore.setState({ startupRefreshError: null }));
+    expect(await findByRole("heading", { level: 2, name: "1 tool can be updated" })).toBeInTheDocument();
+    expect(queryByRole("alert")).toBeNull();
+  });
+
+  it("gives each source with a problem one row in a group of its own, with its words and its own button, as the lists do", async () => {
     served = snapshotWith({
       instances: [
         { ...brew, status: { unavailable: null, notes: ["IndexUpdating"] } },
@@ -655,31 +764,33 @@ describe("OverviewPage", () => {
         stoppedOllama,
       ],
     });
-    const { findByRole, getByRole, queryByText } = renderOverview();
+    const { findByRole, getByRole, getAllByRole, queryByText } = renderOverview();
 
     const list = await findByRole("list", { name: "Needs attention" });
+    expect(list.className.split(" ")).toEqual(expect.arrayContaining(["bg-group", "rounded-group"]));
     const lines = within(list).getAllByRole("listitem");
     expect(lines).toHaveLength(2);
+    // Each 46 high: the title, and its explanation under it in small muted
+    // text -- in the row, not behind Details.
+    for (const line of lines) expect(line.className).toContain("min-h-11.5");
     expect(within(lines[0]).getByText("Homebrew is updating its software list")).toBeInTheDocument();
     expect(within(lines[1]).getByText("Ollama isn't running")).toBeInTheDocument();
-    // Each with an icon: information, and a warning.
+    const why = within(lines[1]).getByText("Open Ollama to see what it has and check for updates.");
+    expect(why.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
+    expect(within(lines[1]).queryByRole("button", { name: /^Details/ })).toBeNull();
+    // Each with a symbol: information, muted; a warning, a filled orange ⚠︎.
     const icons = lines.map((line) => line.querySelector("svg"));
     expect(icons[0]?.getAttribute("class")).toContain("text-muted");
     expect(icons[1]?.getAttribute("class")).toContain("text-warning");
-    // In a panel of its own, apart from the tools.
-    expect(getByRole("heading", { level: 2, name: "Needs attention" })).toBeInTheDocument();
-    // Not a dead end: the explanation behind Details, and Ollama's own
-    // button, which starts it, in the line.
-    expect(queryByText("Open Ollama to see what it has and check for updates.")).not.toBeInTheDocument();
-    const details = within(lines[1]).getByRole("button", { name: "Details: Ollama isn't running" });
-    fireEvent.click(details);
-    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "Open Ollama to see what it has and check for updates.",
-    );
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    fireEvent.click(within(lines[1]).getByRole("button", { name: "Open Ollama" }));
+    expect(icons[1]?.querySelector('path[fill="currentColor"]')).not.toBeNull();
+    // No title over the group: the status's is the page's one.
+    expect(getAllByRole("heading", { level: 2 })).toHaveLength(1);
+    // Ollama's own button, a regular grey one on the right, starts it.
+    const open = within(lines[1]).getByRole("button", { name: "Open Ollama" });
+    expect(open.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "bg-fill"]));
+    fireEvent.click(open);
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("open_ollama_app"));
-    expect(within(lines[0]).queryByRole("button", { name: "Open Ollama" })).toBeNull();
+    expect(within(lines[0]).queryByRole("button")).toBeNull();
     // pip being read-only is what it always is, not something to attend to.
     expect(queryByText("View only")).not.toBeInTheDocument();
     expect(
@@ -687,74 +798,38 @@ describe("OverviewPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the tiles under Your tools, in a grid, the source's avatar and how many", async () => {
+  it("says under the row when Open Ollama did not work", async () => {
+    served = snapshotWith({ instances: [brew, pip, stoppedOllama] });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_snapshot") return Promise.resolve(served);
+      if (cmd === "get_settings") return Promise.resolve(settings);
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      if (cmd === "open_ollama_app") return Promise.reject(new Error("open exited with status 1"));
+      return Promise.resolve(undefined);
+    });
     const { findByRole } = renderOverview();
 
-    const heading = await findByRole("heading", { level: 2, name: "Sources" });
-    const list = await findByRole("list", { name: "Sources" });
-    expect(heading.closest("section")).toBe(list.closest("section"));
-    expect(list.className).toContain("grid-cols-3");
-    const homebrew = within(list).getByRole("button", { name: "Homebrew 3 items" });
-    const avatar = homebrew.querySelector('[aria-hidden="true"]');
-    expect(avatar).toHaveTextContent("H");
-    // The 32px avatar, the one a tool's row has.
-    expect(avatar?.className).toContain("h-8");
+    const list = await findByRole("list", { name: "Needs attention" });
+    fireEvent.click(within(list).getByRole("button", { name: "Open Ollama" }));
+
+    const alert = await within(list).findByRole("alert");
+    expect(alert.className).toContain("text-danger-text");
+    expect(alert.textContent).not.toBe("");
   });
 
-  it("shows the source's logo on its tile, where the logo pack has one", async () => {
-    // A pack of this test's own, with Homebrew's logo in it.
-    const toolIcons = loadToolIcons(
-      {
-        version: 1,
-        generated: "2026-09-28",
-        glyphs: { "si-homebrew": { path: "M3 3h18v18H3z", hex: "FBB040", title: "Homebrew" } },
-        rasters: {},
-        tools: {},
-        sources: { brew: "si-homebrew" },
-      },
-      new Map(),
-    );
-    const { findByRole } = renderOverview({ toolIcons });
-
-    const list = await findByRole("list", { name: "Sources" });
-    const avatar = within(list)
-      .getByRole("button", { name: "Homebrew 3 items" })
-      .querySelector('[aria-hidden="true"]');
-    expect(avatar).toHaveAttribute("data-logo", "glyph");
-    expect(avatar?.querySelector("path")).toHaveAttribute("d", "M3 3h18v18H3z");
-    expect(avatar?.className).toContain("h-8");
-  });
-
-  it("names a tool with its own installer by its product name alone on its tile", async () => {
-    // "Grok Build", not "Grok Build (grok)": the redesign has no
-    // parenthetical asides, and the command is said where typing it
-    // matters (the PATH notices' {{command}}).
-    const grok = instance("standalone-grok", "standalone-grok");
-    const agy = instance("standalone-agy", "standalone-agy");
-    served = snapshotWith({
-      instances: [brew, grok, agy],
-      artifacts: [
-        artifact(formula("glib")),
-        artifact({ instance_id: grok.id, kind: "Binary", name: "grok" }),
-        artifact({ instance_id: agy.id, kind: "Binary", name: "agy" }),
-      ],
-    });
-    const { findByRole, container } = renderOverview();
-
-    expect(await findByRole("button", { name: "Grok Build 1 item" })).toBeInTheDocument();
-    expect(await findByRole("button", { name: "Antigravity CLI 1 item" })).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/\(grok\)|\(agy\)|（grok）|（agy）/);
-  });
-
-  it("draws the ring in Chinese with the words the author asked for", async () => {
+  it("says it in Chinese with the words the author asked for", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
       served = snapshotWith({ updates: [candidate(formula("glib")), candidate(formula("wget"))] });
-      const { findByRole, container } = renderOverview();
+      clockJustAfterTheCheck();
+      const { findByRole, queryByRole, container } = renderOverview();
 
-      expect(await findByRole("heading", { level: 2, name: "2个工具可以更新" })).toBeInTheDocument();
-      expect(ringOf(container).textContent).toBe("2个可更新");
-      expect(await findByRole("heading", { level: 2, name: "来源" })).toBeInTheDocument();
+      const headline = await findByRole("heading", { level: 2, name: "2个工具可以更新" });
+      expect(headline.nextElementSibling?.textContent).toBe("上次检查：刚才");
+      expect(within(statusRowOf(container)).getByRole("button", { name: "查看更新" })).toBeInTheDocument();
+      expect(queryByRole("heading", { level: 2, name: "来源" })).toBeNull();
+      // 「2」 once, in the title.
+      expect(container.textContent?.match(/2/g)).toHaveLength(1);
     } finally {
       await i18n.changeLanguage("en");
     }

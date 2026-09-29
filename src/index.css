@@ -20,12 +20,10 @@
   --font-sans: -apple-system, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Four sizes, as macOS's text styles: 22 (Title 1, the Overview's one
-     sentence), 15 (Title 3: an empty state's title), 13 (Body and
-     Headline) and 11 (Subheadline: a row's description, a count). */
-  --text-headline: 22px;
-  --text-headline--line-height: 26px;
-  --text-headline--font-weight: 700;
+  /* Three sizes, as macOS's text styles: 15 (Title 3: an empty state's
+     title), 13 (Body and Headline) and 11 (Subheadline: a row's
+     description, a count). The Overview's 22 sentence went with its
+     centred status (spec R1): its status is a row with a 13 title. */
   --text-title: 13px;
   --text-title--line-height: 16px;
   --text-title--font-weight: 700;

@@ -443,7 +443,7 @@ afterEach(() => {
 });
 
 describe("UpdatesPage", () => {
-  it("shows the first check's ring and why it takes a while until the backend has answered, not Loading…", async () => {
+  it("shows the first check's spinner and why it takes a while until the backend has answered, not Loading…", async () => {
     // At launch `get_snapshot` has not answered yet: the first check is
     // under way, as the Overview says in the same words.
     const answer = mockInvoke.getMockImplementation();
@@ -456,7 +456,7 @@ describe("UpdatesPage", () => {
     expect(
       getByText("The first check looks up every tool's newest version online, and sometimes takes a minute or two."),
     ).toBeInTheDocument();
-    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("checking");
+    expect(container.querySelector("[data-first-check] svg")).toHaveAttribute("width", "32");
     expect(queryByText("Loading…")).not.toBeInTheDocument();
   });
 

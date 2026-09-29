@@ -17,8 +17,11 @@ type Translate = (key: string, options?: Record<string, string | number>) => str
  */
 export type ElapsedKeys = Record<Elapsed["unit"], string>;
 
-/** "Checked 3 min ago", 「上次检查：3 分钟前」: when the sources were last checked. */
-const CHECKED_KEYS: ElapsedKeys = {
+/**
+ * "Checked 3 min ago", 「上次检查：3分钟前」: when the sources were last
+ * checked -- in Check again's tooltip, and under the Overview's status.
+ */
+export const CHECKED_KEYS: ElapsedKeys = {
   justNow: "header.checkedJustNow",
   minutes: "header.checkedMinutesAgo",
   hours: "header.checkedHoursAgo",

@@ -69,7 +69,7 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
-  it("shows the first check's ring and why it takes a while, not the no-sources state, before the first refresh has completed", async () => {
+  it("shows the first check's spinner and why it takes a while, not the no-sources state, before the first refresh has completed", async () => {
     // Session boots with Snapshot::empty(): generation 0, detect Missing,
     // refreshed_at null. Only a completed refresh ever sets refreshed_at —
     // including a refresh that finds Homebrew genuinely missing.
@@ -92,7 +92,7 @@ describe("SnapshotStatus", () => {
         "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
       ),
     ).toBeInTheDocument();
-    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("checking");
+    expect(container.querySelector("[data-first-check] svg")).toHaveAttribute("width", "32");
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
     expect(screen.queryByText("No tools to manage")).not.toBeInTheDocument();

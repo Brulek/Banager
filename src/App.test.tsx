@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
@@ -8,6 +8,7 @@ import App from "./App";
 import { OPEN_UPDATES_EVENT, QUIT_REQUESTED_EVENT } from "./lib/api";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { queryKeys } from "./lib/queryKeys";
+import { useUiStore } from "./store/ui";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type { OpRequest, OpSummary, Settings, Snapshot, UnknownEntry, UnknownScan } from "./lib/types";
 
@@ -122,7 +123,7 @@ describe("App", () => {
     expect(await findByText("Everything is up to date")).toBeInTheDocument();
   });
 
-  it("opens Installed on one source from an Overview tile, and on everything from the sidebar", async () => {
+  it("opens Installed on everything from the sidebar, after it was opened on one source", async () => {
     // The Installed list is virtualized: the virtualizer needs a viewport
     // and row heights, which jsdom does not lay out.
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
@@ -145,9 +146,11 @@ describe("App", () => {
       ],
     });
     const { findByRole, getByRole, queryByText, findByText } = renderWithProviders(<App />);
+    await findByRole("heading", { level: 2, name: "Everything is up to date" });
 
-    // The tile's count is what the page then shows.
-    fireEvent.click(await findByRole("button", { name: "npm 1 item" }));
+    // Opened on one source, as a source's row in the sidebar opens it (the
+    // Overview's tiles are gone: spec R1), it shows that source's tools.
+    act(() => useUiStore.getState().openInstalled("npm:/opt/homebrew"));
     expect(await findByRole("button", { name: "npm 1", pressed: true })).toBeInTheDocument();
     expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
     expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();
