@@ -147,12 +147,14 @@ fn language<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> MenuLanguage {
 }
 
 /// What the notification says under its title: how many tools can be
-/// updated -- every update the report offers, not only the new ones.
+/// updated -- every update the report offers, not only the new ones. The
+/// Chinese is the Overview's sentence, with no space around the number:
+/// macOS spaces Chinese from digits itself, as it does the window's text.
 pub fn body(language: MenuLanguage, count: usize) -> String {
     match language {
         MenuLanguage::En if count == 1 => "1 tool can be updated".to_string(),
         MenuLanguage::En => format!("{count} tools can be updated"),
-        MenuLanguage::ZhCn => format!("有 {count} 个工具可更新"),
+        MenuLanguage::ZhCn => format!("{count}个工具可以更新"),
     }
 }
 
@@ -578,8 +580,8 @@ mod tests {
     fn test_the_notification_says_how_many_tools_can_be_updated_in_the_windows_language() {
         assert_eq!(body(MenuLanguage::En, 1), "1 tool can be updated");
         assert_eq!(body(MenuLanguage::En, 3), "3 tools can be updated");
-        assert_eq!(body(MenuLanguage::ZhCn, 1), "有 1 个工具可更新");
-        assert_eq!(body(MenuLanguage::ZhCn, 12), "有 12 个工具可更新");
+        assert_eq!(body(MenuLanguage::ZhCn, 1), "1个工具可以更新");
+        assert_eq!(body(MenuLanguage::ZhCn, 12), "12个工具可以更新");
     }
 
     #[test]
