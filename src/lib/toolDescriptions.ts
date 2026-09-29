@@ -1,6 +1,6 @@
 /**
  * Each tool's line in the window's language, which a row shows under the
- * tool's name (`describeTool`, src/lib/sources.ts). Two tables, each one
+ * tool's name (`toolDescription`, src/lib/sources.ts). Two tables, each one
  * object from a tool's key to its line, made at development time and
  * committed: nothing is fetched to show a line, so no server learns what
  * is installed.

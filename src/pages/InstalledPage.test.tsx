@@ -2728,7 +2728,7 @@ describe("InstalledPage", () => {
       expect(within(rowOf("prettier")).getByText("npm package")).toBeInTheDocument();
     });
 
-    it("shows the line in a tool's details, with the source's own words under it, quieter", async () => {
+    it("shows only the Chinese line in a tool's details where there is one, not the source's English under it", async () => {
       renderInstalled({ toolDescriptions: { "zh-CN": chinese() } });
       await findRow("jq");
 
@@ -2737,19 +2737,16 @@ describe("InstalledPage", () => {
         fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "详情：jq" }));
         const drawer = await screen.findByRole("complementary", { name: "jq" });
         const line = within(drawer).getByText("命令行 JSON 处理工具");
-        const original = within(drawer).getByText(JQ);
-        // Under the line, smaller and muted.
-        expect(line.nextElementSibling).toBe(original);
-        expect(original).toHaveAttribute("data-original-description");
-        expect(original).toHaveClass("text-small", "text-muted");
+        expect(line).toHaveAttribute("data-description");
+        expect(within(drawer).queryByText(JQ)).toBeNull();
+        expect(drawer.textContent).not.toContain(JQ);
         fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
         await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
 
         // prettier's source said nothing: its line alone.
         fireEvent.click(within(rowOf("prettier")).getByRole("button", { name: "详情：prettier" }));
         const prettier = await screen.findByRole("complementary", { name: "prettier" });
-        expect(within(prettier).getByText("代码格式化工具")).toBeInTheDocument();
-        expect(prettier.querySelector("[data-original-description]")).toBeNull();
+        expect(within(prettier).getAllByText("代码格式化工具")).toHaveLength(1);
         fireEvent.click(within(prettier).getByRole("button", { name: "关闭" }));
         await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       });
@@ -2758,7 +2755,23 @@ describe("InstalledPage", () => {
       const drawer = await openDetails("jq");
       expect(within(drawer).getAllByText(JQ)).toHaveLength(1);
       expect(within(drawer).queryByText("命令行 JSON 处理工具")).toBeNull();
-      expect(drawer.querySelector("[data-original-description]")).toBeNull();
+    });
+
+    it("shows the source's own words in a tool's details in Chinese where there is no Chinese line", async () => {
+      // A table with no line for jq: its source's English is all there is.
+      renderInstalled({
+        toolDescriptions: { "zh-CN": lazyDescriptionTable(async () => ({ "npm:prettier": "代码格式化工具" })) },
+      });
+      await findRow("jq");
+
+      await inChinese(async () => {
+        await within(rowOf("prettier")).findByText("代码格式化工具");
+        fireEvent.click(within(rowOf("jq")).getByRole("button", { name: "详情：jq" }));
+        const drawer = await screen.findByRole("complementary", { name: "jq" });
+        const own = within(drawer).getByText(JQ);
+        expect(own).toHaveAttribute("data-description");
+        expect(within(drawer).getAllByText(JQ)).toHaveLength(1);
+      });
     });
 
     it("gives a package's row its line in English where the English table has one, and switches it with the language", async () => {
@@ -2792,7 +2805,7 @@ describe("InstalledPage", () => {
       const drawer = await openDetails("prettier");
       expect(within(drawer).getByText(PRETTIER)).toBeInTheDocument();
       expect(within(drawer).queryByText("npm package")).toBeNull();
-      expect(drawer.querySelector("[data-original-description]")).toBeNull();
+      expect(within(drawer).getAllByText(PRETTIER)).toHaveLength(1);
     });
   });
 

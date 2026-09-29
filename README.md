@@ -10,7 +10,7 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
 > **Status: pre-release.** The core and the UI work and are covered by 1077 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1373
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1374
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -282,9 +282,9 @@ row says a line in Chinese instead wherever Canager has one: about 2,000 of them
 formulae and casks and for npm, PyPI and crates.io packages, each translated from the description
 the tool's own source gives it. Both are built into the app, in
 `src/assets/tool-descriptions/en.json` and `zh-CN.json`, each read only once the window is in its
-language, and fetched from nowhere: showing one makes no network request. A tool's details show the
-Chinese line with its source's own description under it, so nothing the source said is lost; a tool
-Canager has no line for in the window's language reads as it did before.
+language, and fetched from nowhere: showing one makes no network request. A tool's details show that
+one line too, without its source's own description beside it; a tool Canager has no line for in the
+window's language reads as it did before.
 
 ## License
 
@@ -307,7 +307,7 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
 **目前处于发布前阶段**，核心与界面已经可用、有 1077 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1373 个前端测试，但还没有可下载的版本，v0.1 正在
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1374 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -353,7 +353,7 @@ Canager 有它的英文说明，就改显示这一句：约 600 条，每条都�
 更简短。中文界面里，只要 Canager 有这个软件的中文说明，就改显示中文：约 2,000 条，涵盖 Homebrew 的
 formula 与 cask，以及 npm、PyPI、crates.io 上的包，每条都译自该软件所在来源自己的说明。这些说明内置在应用里
 （`src/assets/tool-descriptions/en.json` 与 `zh-CN.json`），界面是哪种语言才读取哪一份，不从任何地方下载，
-显示时不发任何网络请求。软件详情里，中文说明下面用小字附上来源的原文，来源说过的话一句不丢；当前语言下没有
+显示时不发任何网络请求。软件详情里也只显示这一行，不再附上来源的原文；当前语言下没有
 说明的软件，照旧显示原来那一行。
 
 尚未支持：搜索与软件目录、安装新东西、macOS 以外的平台。

@@ -128,19 +128,6 @@ export interface DescribedTool {
   path: string | null | undefined;
 }
 
-/** A tool's line (`describeTool`), and what its details show under it. */
-export interface ToolDescriptionLines {
-  /** The one line a row says the tool is. Never empty. */
-  line: string;
-  /**
-   * The source's own description where `line` is the window's line
-   * (`translated`) shown in its place, for the tool's details to show
-   * under it, quieter, so that nothing the source said is lost; `null`
-   * where `line` is the source's own words, or the source gave none.
-   */
-  original: string | null;
-}
-
 /** `text`, or `null` for none: `null`, `undefined` or empty. */
 function nonEmpty(text: string | null | undefined): string | null {
   return text === null || text === undefined || text === "" ? null : text;
@@ -148,48 +135,41 @@ function nonEmpty(text: string | null | undefined): string | null {
 
 /**
  * A row's one line about what it is, on the Installed and the Updates
- * page alike, so a tool reads the same on both, and the source's own
- * description when the line is in its place: the tool's line in the
- * window's language (`translated`); else the source's own description;
- * else, for a standalone tool, its summary (`standaloneSummaryKey`) --
- * which is in the window's language already, in both, and so is never
- * replaced by a translated line; else a line from its source
- * (`FALLBACK_DESCRIPTION_KEYS`). `adapterId` is the instance's, or the
- * part of the key's `instance_id` before any `:` when the snapshot lacks
- * the instance (the id starts with its adapter's); `sourceLabel` is the
- * source's name in the user's language.
+ * page alike, so a tool reads the same on both, and in the inspector: the
+ * tool's line in the window's language (`translated`); else the source's
+ * own description; else, for a standalone tool, its summary
+ * (`standaloneSummaryKey`) -- which is in the window's language already,
+ * in both, and so is never replaced by a translated line; else a line
+ * from its source (`FALLBACK_DESCRIPTION_KEYS`). Never empty.
+ *
+ * One line, never two: where the window's line takes the place of the
+ * source's own words, those words are not shown under it, not even in the
+ * inspector. A window in Chinese that says what a tool is in Chinese and
+ * then again in English reads as a translation left half done.
+ *
+ * `adapterId` is the instance's, or the part of the key's `instance_id`
+ * before any `:` when the snapshot lacks the instance (the id starts with
+ * its adapter's); `sourceLabel` is the source's name in the user's
+ * language.
  */
-export function describeTool(
-  t: Translate,
-  tool: DescribedTool,
-  adapterId: string,
-  sourceLabel: string,
-): ToolDescriptionLines {
-  const own = nonEmpty(tool.description);
-  const summaryKey = standaloneSummaryKey(adapterId);
-  const translated = summaryKey === null ? nonEmpty(tool.translated) : null;
-  if (translated !== null) return { line: translated, original: own === translated ? null : own };
-  if (own !== null) return { line: own, original: null };
-  if (summaryKey !== null) return { line: t(summaryKey), original: null };
-  if (adapterId === "brew" && tool.kind === "Cask" && tool.path !== null && tool.path !== undefined) {
-    return { line: t("toolRow.fallback.homebrewApp"), original: null };
-  }
-  return {
-    line: Object.prototype.hasOwnProperty.call(FALLBACK_DESCRIPTION_KEYS, adapterId)
-      ? t(FALLBACK_DESCRIPTION_KEYS[adapterId])
-      : t("toolRow.fallback.other", { source: sourceLabel }),
-    original: null,
-  };
-}
-
-/** A row's one line about what it is: `describeTool`'s `line`. Never empty. */
 export function toolDescription(
   t: Translate,
   tool: DescribedTool,
   adapterId: string,
   sourceLabel: string,
 ): string {
-  return describeTool(t, tool, adapterId, sourceLabel).line;
+  const summaryKey = standaloneSummaryKey(adapterId);
+  const translated = summaryKey === null ? nonEmpty(tool.translated) : null;
+  if (translated !== null) return translated;
+  const own = nonEmpty(tool.description);
+  if (own !== null) return own;
+  if (summaryKey !== null) return t(summaryKey);
+  if (adapterId === "brew" && tool.kind === "Cask" && tool.path !== null && tool.path !== undefined) {
+    return t("toolRow.fallback.homebrewApp");
+  }
+  return Object.prototype.hasOwnProperty.call(FALLBACK_DESCRIPTION_KEYS, adapterId)
+    ? t(FALLBACK_DESCRIPTION_KEYS[adapterId])
+    : t("toolRow.fallback.other", { source: sourceLabel });
 }
 
 /**

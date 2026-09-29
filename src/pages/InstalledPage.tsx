@@ -6,13 +6,12 @@ import { artifactKeyId, useUiStore } from "../store/ui";
 import {
   ADAPTER_LABEL_KEYS,
   canWrite,
-  describeTool,
   instanceLabels,
   isAvailable,
   settingsSaveErrorMessage,
   sourceNoticesFor,
   type SourceNoticeSpec,
-  type ToolDescriptionLines,
+  toolDescription,
   uninstallBlockedCopy,
   uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
@@ -781,10 +780,10 @@ export function InstalledPage() {
     closeInspector();
   };
 
-  // What a row says it is, and what its details show under that: the
-  // source's own words, where the line is their translation.
-  const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): ToolDescriptionLines =>
-    describeTool(
+  // What a row says it is, and its inspector: the line in the window's
+  // language where there is one, else the source's own words -- one line.
+  const describe = (artifact: InstalledArtifact, instance: ManagerInstance, label: string): string =>
+    toolDescription(
       t,
       {
         description: artifact.description,
@@ -1025,7 +1024,7 @@ export function InstalledPage() {
         // its line; whole in the inspector.
         namePath={modelPath(artifact.key, name)}
         showSource={namedTwice.has(nameKey(name))}
-        description={describe(artifact, instance, label).line}
+        description={describe(artifact, instance, label)}
         status={chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} />}
         version={change?.version ?? versionOf(artifact)}
         newVersion={change?.newVersion}
@@ -1067,8 +1066,9 @@ export function InstalledPage() {
    * - the tool's icon at 48, its name beside it (15/20 semibold, wrapping)
    *   and its source under that, 11 in the secondary colour;
    * - all of its description, 13/18, wrapping as a pane's text does --
-   *   never cut to a line as a row's -- and under it, quieter, the source's
-   *   own words where the line is their translation;
+   *   never cut to a line as a row's: its line in the window's language
+   *   where it has one, and else its source's own words, never both
+   *   (`toolDescription`);
    * - its facts in one group (`FactsGroup`): its version and the one an
    *   update would bring, when it was installed, its size, where it is
    *   (with technical details on), and 「状态」, every status word it has --
@@ -1162,7 +1162,7 @@ export function InstalledPage() {
       });
     }
     const sourceNotices = sourceNoticesFor(instance, label, countByInstance.get(instance.id) ?? 0);
-    const { line, original } = describe(artifact, instance, label);
+    const line = describe(artifact, instance, label);
     const removable = canUninstall(artifact, instance);
     const refusals = confirm.pageErrors.filter((item) => artifactKeyId(item.candidate.key) === id);
     return (
@@ -1195,11 +1195,6 @@ export function InstalledPage() {
           <p data-description="" className="mt-4 whitespace-normal break-words text-body-long text-foreground">
             {line}
           </p>
-          {original !== null ? (
-            <p data-original-description="" className="mt-1 whitespace-normal break-words text-small text-muted">
-              {original}
-            </p>
-          ) : null}
           {facts.length > 0 ? <FactsGroup facts={facts} /> : null}
           {/* 取消跳过 or 恢复提醒 could not be saved: the word is still true. */}
           {undoFailed !== null && undoFailed.id === id ? (
