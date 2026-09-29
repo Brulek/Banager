@@ -415,6 +415,26 @@ describe("InstalledPage", () => {
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
   });
 
+  it("parts a row by a hairline from the next row only: none over a fold's line, the selected row, or under the last", async () => {
+    served = { ...snapshot, artifacts: [...snapshot.artifacts, formula("wget"), formula("zlib")] };
+    const { getByRole } = renderInstalled();
+    await findRow("zlib");
+    expect(rowNames()).toEqual(["jq", "wget", "zlib"]);
+    // A slot with no hairline under it is marked for index.css, from the
+    // list's items (`hairlineBefore`), not found by the stylesheet.
+    const runEnds = () =>
+      ["jq", "wget", "zlib"].map((name) => rowOf(name).closest("[data-list-slot]")?.hasAttribute("data-run-end"));
+    expect(runEnds()).toEqual([false, false, true]);
+    const fold = getByRole("button", { name: /^1 more component came with other software/ });
+    expect(fold.closest("[data-list-slot]")).toHaveAttribute("data-run-end");
+
+    // None over the selection: the row before's is hidden, its own by index.css.
+    await openDetails("wget");
+    expect(runEnds()).toEqual([true, false, true]);
+    await openDetails("jq");
+    expect(runEnds()).toEqual([false, false, true]);
+  });
+
   it("filters rows by the search box, by the name a row shows or the package's own, and says when nothing matches", async () => {
     served = {
       ...snapshot,

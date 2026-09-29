@@ -778,6 +778,19 @@ describe("UpdatesPage", () => {
     expect(plannedNames()).toEqual(["glib"]);
   });
 
+  it("draws no hairline over the line that discloses what can't be updated here, nor under the list's last row", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+    // A slot with no hairline under it is marked for index.css, from the
+    // list's items (`hairlineBefore`), not found by the stylesheet.
+    const onyx = await findRow("onyx");
+    expect(onyx.closest("[data-list-slot]")).toHaveAttribute("data-run-end");
+    await showCantUpdate();
+    const line = screen.getByRole("button", { name: "1 more can't be updated here" });
+    expect(line.closest("[data-list-slot]")).not.toHaveAttribute("data-run-end");
+    expect((await findRow("glib")).closest("[data-list-slot]")).toHaveAttribute("data-run-end");
+  });
+
   it("offers no Update button and no checkbox for a pinned formula, and says how to release it", async () => {
     // `brew outdated` lists a pinned formula like any other, and `brew
     // upgrade glib` then exits 1 with "Not upgrading 1 pinned package".

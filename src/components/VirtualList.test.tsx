@@ -112,6 +112,43 @@ describe("VirtualList", () => {
     expect(renderItem).not.toHaveBeenCalled();
   });
 
+  it("marks a slot with no hairline under it as a run's end: the last, and one the page parts from the next with none", () => {
+    const items = TOOLS.slice(0, 6);
+    const ends = (container: HTMLElement) =>
+      [...container.querySelectorAll<HTMLElement>("[data-list-slot]")]
+        .filter((slot) => slot.hasAttribute("data-run-end"))
+        .map((slot) => slot.dataset.key);
+    const renderItem = (item: string) => <p>{item}</p>;
+    // Left to itself: every slot keeps its hairline but the last.
+    const { container, rerender } = render(
+      <VirtualList items={items} itemKey={keyOf} estimateSize={estimate} renderItem={renderItem} />,
+    );
+    expect(ends(container)).toEqual(["tool-5"]);
+
+    // No hairline over tool-3 -- a heading, say, or the selected row.
+    rerender(
+      <VirtualList
+        items={items}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        hairlineBefore={(next) => next !== "tool-3"}
+      />,
+    );
+    expect(ends(container)).toEqual(["tool-2", "tool-5"]);
+    // A new answer -- the selection moved -- moves the mark with it.
+    rerender(
+      <VirtualList
+        items={items}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={renderItem}
+        hairlineBefore={(next) => next !== "tool-1"}
+      />,
+    );
+    expect(ends(container)).toEqual(["tool-0", "tool-5"]);
+  });
+
   it("tells its rows how wide it is, once it has been laid out, and again as the window is resized", () => {
     // jsdom lays nothing out: a width of 0 is no width, which rows read as
     // room for everything.

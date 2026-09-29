@@ -80,6 +80,20 @@ export interface VirtualListProps<T> {
    * keys do nothing here.
    */
   keyboardRows?: (item: T) => boolean;
+  /**
+   * Whether a line's hairline (`data-row-separator`: a row's, the notices
+   * line's) shows over `next`, the item after it: a Mac list parts a row
+   * from the next row and from nothing else -- no hairline over a heading
+   * or a disclosure, nor over the selected row, whose fill is its own
+   * edge. A slot with none under it -- this says no, or it holds the
+   * list's last item -- is marked `data-run-end`, which index.css hides
+   * the hairline in. Left out, every slot but the last keeps its hairline.
+   *
+   * Said here, where the items are, rather than read off the next slot by
+   * the stylesheet (`:has(+ …)`): a rule about a slot's next sibling has
+   * the browser restyle every slot in sight at every step of a scroll.
+   */
+  hairlineBefore?: (next: T) => boolean;
   /** What the list's box shows in place of the list while there are no items. */
   empty?: ReactNode;
   /**
@@ -153,6 +167,7 @@ export function VirtualList<T>({
   renderItem,
   reusable,
   keyboardRows,
+  hairlineBefore,
   empty,
   onKeyboardMove,
   handleRef,
@@ -289,6 +304,8 @@ export function VirtualList<T>({
               const item = items[virtualRow.index];
               const key = String(virtualRow.key);
               const content = contentOf(item, key);
+              const next = items[virtualRow.index + 1];
+              const runEnd = next === undefined || (hairlineBefore !== undefined && !hairlineBefore(next));
               return (
                 // No fixed height on the slot: each reports its real height
                 // back through `measureElement` instead.
@@ -297,6 +314,7 @@ export function VirtualList<T>({
                   data-index={virtualRow.index}
                   data-key={key}
                   data-list-slot=""
+                  data-run-end={runEnd ? "" : undefined}
                   ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",

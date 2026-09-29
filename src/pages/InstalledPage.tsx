@@ -1305,6 +1305,8 @@ export function InstalledPage() {
           }}
           handleRef={listHandle}
           anchorKey={selectedId}
+          // A hairline over the next row only, and not over the selection.
+          hairlineBefore={(next) => next.type === "row" && artifactKeyId(next.artifact.key) !== selectedId}
           renderItem={(item) =>
             item.type === "notices" ? (
               <div className="px-5">

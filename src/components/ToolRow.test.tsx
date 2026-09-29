@@ -817,9 +817,9 @@ describe("ToolRow", () => {
       expect(css).toContain(
         "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: #fff; }",
       );
-      expect(css).toContain(
-        "[data-tool-row][data-selected] [data-row-separator], [data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] { display: none; }",
-      );
+      // No hairline under it; none over it either -- the row before's,
+      // whose slot the page marks as a run's end (InstalledPage's tests).
+      expect(css).toContain("[data-tool-row][data-selected] [data-row-separator] { display: none; }");
       expect(css).not.toMatch(/:has\([^)]*:has\(/);
     });
 
@@ -866,24 +866,28 @@ describe("ToolRow", () => {
   });
 
   it("has no hairline under a list's last row, nor under the last of a run a line of another kind follows", () => {
-    // index.css: the rule that hides it, as one rule the browser keeps --
-    // a `:has()` inside a `:has()` would have it dropped whole.
+    // index.css: the rule that hides it -- under a list's last slot, and
+    // under one its list marks as a run's end (`VirtualList`'s
+    // `data-run-end`, from its items).
     const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf-8").replace(/\/\*[\s\S]*?\*\//g, "");
     const rule = /([^{}]*data-row-separator[^{}]*)\{\s*display:\s*none;?\s*\}/.exec(css);
     expect(rule).not.toBeNull();
     const selectors = (rule?.[1] ?? "").split(",").map((selector) => selector.trim());
     expect(selectors).toEqual([
       "[data-list-slot]:last-child [data-row-separator]",
-      "[data-list-slot]:has(+ [data-list-slot] > :not([data-tool-row])) [data-row-separator]",
+      "[data-list-slot][data-run-end] [data-row-separator]",
     ]);
-    for (const selector of selectors) expect(selector).not.toMatch(/:has\([^)]*:has\(/);
-    // A row is its slot's first child, which is what the rule reads.
+    // Nothing in the stylesheet reads a slot's next sibling (`:has(+ …)`,
+    // `:has(~ …)`): such a rule has the browser restyle every slot in
+    // sight at every step of a scroll.
+    expect(css).not.toMatch(/:has\(\s*[+~]/);
+    // The row's hairline is inside its slot, where the rule reaches it.
     const { container } = renderWithProviders(
-      <div data-list-slot="">
+      <div data-list-slot="" data-run-end="">
         <ToolRow adapterId="brew" sourceLabel="Homebrew" name="glib" description="C library" />
       </div>,
     );
-    expect((container.querySelector("[data-list-slot]") as HTMLElement).firstElementChild).toHaveAttribute("data-tool-row");
+    expect(container.querySelector("[data-list-slot][data-run-end] [data-row-separator]")).not.toBeNull();
   });
 
   it("rings the keyboard's focus inset and rounded, as the selection is, never square round the row", () => {

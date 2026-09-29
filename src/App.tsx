@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type Ref } from "react";
+import { useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useLanguageSync } from "./i18n/useLanguageSync";
 import { PAGE_LABEL_KEYS, Sidebar } from "./components/Sidebar";
@@ -113,10 +113,22 @@ function useShownSource(): string | null {
  * and its way to look again. A component of its own, so that what the
  * subtitle reads -- the operations, which move at every step of every
  * update (`useUpdatesHeadline`) -- redraws the toolbar alone, as
- * `UpdateWatchers` keeps the Dock's badge from redrawing the window.
+ * `UpdateWatchers` keeps the Dock's badge from redrawing the window. So
+ * does its hairline, once `pageBox` has scrolled from its top
+ * (`useScrollEdge`): in `App`, the first step of every scroll drew the
+ * page again, and every row of its list in sight with it.
  */
-function PageToolbar({ page, slotRef, scrolled }: { page: Page; slotRef: Ref<HTMLDivElement>; scrolled: boolean }) {
+function PageToolbar({
+  page,
+  slotRef,
+  pageBox,
+}: {
+  page: Page;
+  slotRef: Ref<HTMLDivElement>;
+  pageBox: RefObject<HTMLDivElement | null>;
+}) {
   const { t } = useTranslation();
+  const scrolled = useScrollEdge(pageBox, page);
   const subtitle = usePageSubtitle(page);
   const shownSource = useShownSource();
   const { data: snapshot } = useSnapshot();
@@ -164,10 +176,9 @@ function App() {
   useStartupRefresh();
   useMenuCommands();
   // The toolbar's box for the page's own actions (`ToolbarItems`), once
-  // it is drawn, and whether the page under it has scrolled from its top.
+  // it is drawn, and the page's own box, whose scroll the toolbar follows.
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
   const pageBox = useRef<HTMLDivElement>(null);
-  const scrolled = useScrollEdge(pageBox, page);
 
   return (
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
@@ -186,7 +197,7 @@ function App() {
           {/* Outside `SnapshotStatus`, so the title and Check again stay
               put whatever the page below shows -- the first check under
               way, a failed first check, an empty Mac. */}
-          <PageToolbar page={page} slotRef={setToolbarSlot} scrolled={scrolled} />
+          <PageToolbar page={page} slotRef={setToolbarSlot} pageBox={pageBox} />
           {/* The page's own box. The Installed and Updates pages size
               their lists to its height (`h-full`) and scroll inside them;
               the other pages scroll here. Either way the toolbar's

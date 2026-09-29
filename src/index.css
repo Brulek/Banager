@@ -305,13 +305,16 @@ body {
  * A row's hairline (`ToolRow`) separates it from the next row, as a Mac
  * list's does: none under the last row of the list, nor under the last
  * of a run that a line of another kind follows -- a heading, a
- * disclosure -- which a slot holds in place of a row. A virtualized
- * list's last slot in the DOM is either the list's last row or one drawn
- * out of sight below it. (`:has()` cannot hold another `:has()`: a rule
- * that tried would be dropped whole.)
+ * disclosure -- which a slot holds in place of a row, nor over the
+ * selected row (below). A virtualized list marks such a slot itself
+ * (`VirtualList`'s `data-run-end`), from its items: a rule here that
+ * looked at a slot's next sibling (`:has(+ …)`) had the browser restyle
+ * every slot in sight at every step of a scroll. A list that is not
+ * virtualized (the Unknown page's) has its last slot's hairline hidden
+ * as its last child.
  */
 [data-list-slot]:last-child [data-row-separator],
-[data-list-slot]:has(+ [data-list-slot] > :not([data-tool-row])) [data-row-separator] {
+[data-list-slot][data-run-end] [data-row-separator] {
   display: none;
 }
 
@@ -322,8 +325,9 @@ body {
  * accent with every word on the row white while it is, as the focused
  * list's selection is drawn. The words of a panel opened from the row
  * (a status word's ⓘ, the ⋯ menu) keep their own colours. No hairline
- * under the selection, nor over it (the row before's), and no focus ring
- * round it (below): the fill is where the focus is.
+ * under the selection, nor over it -- the row before's, whose slot the
+ * page marks as a run's end (`VirtualList`'s `hairlineBefore`) -- and no
+ * focus ring round it (below): the fill is where the focus is.
  */
 [data-row-selection] {
   background-color: var(--color-row-selected);
@@ -354,8 +358,7 @@ body {
 [data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) {
   color: rgb(255 255 255 / 0.5);
 }
-[data-tool-row][data-selected] [data-row-separator],
-[data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] {
+[data-tool-row][data-selected] [data-row-separator] {
   display: none;
 }
 /*

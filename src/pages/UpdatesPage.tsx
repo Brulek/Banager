@@ -189,6 +189,11 @@ function keyboardRow(item: ListItem): boolean {
   return item.type === "update" || item.type === "section";
 }
 
+/** Where a line's hairline shows (`VirtualList`'s `hairlineBefore`): over a row, and over nothing else. */
+function hairlineBefore(next: ListItem): boolean {
+  return next.type === "update";
+}
+
 /**
  * The line that discloses the rows that can't be updated here, 32 high:
  * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png),
@@ -975,6 +980,7 @@ export function UpdatesPage() {
         estimateSize={estimateSize}
         reusable={reusable}
         keyboardRows={keyboardRow}
+        hairlineBefore={hairlineBefore}
         renderItem={(item) =>
           item.type === "notices" ? (
             // On the rows' grid: the ⚠︎ in the avatars' column, the

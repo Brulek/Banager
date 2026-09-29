@@ -110,6 +110,29 @@ describe("App", () => {
     expect(getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("draws the toolbar's hairline once the page has scrolled from its top, and takes it away at the top, without drawing the window again", async () => {
+    const { findByText, getByRole, container } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    const header = getByRole("heading", { level: 1, name: "Overview" }).closest("header") as HTMLElement;
+    // The page's own box, under the toolbar: jsdom lays nothing out, so it
+    // says how tall its content and its box are.
+    const box = header.nextElementSibling as HTMLElement;
+    expect(box.className.split(" ")).toContain("overflow-y-auto");
+    Object.defineProperty(box, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 500 });
+    const appDraws = vi.mocked(useNoBrowserContextMenu).mock.calls.length;
+
+    box.scrollTop = 120;
+    fireEvent.scroll(box);
+    expect(container.querySelector("[data-scroll-edge]")).not.toBeNull();
+    box.scrollTop = 0;
+    fireEvent.scroll(box);
+    expect(container.querySelector("[data-scroll-edge]")).toBeNull();
+    // The toolbar drew again; the window -- the page and its list's rows,
+    // at the first step of every scroll -- did not.
+    expect(vi.mocked(useNoBrowserContextMenu).mock.calls.length).toBe(appDraws);
+  });
+
   it("switches the content area when a sidebar link is clicked", async () => {
     const { getByRole, findByLabelText, findByText, queryByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
