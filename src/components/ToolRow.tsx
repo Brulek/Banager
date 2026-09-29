@@ -152,15 +152,19 @@ const NAME_TAIL = 12;
  */
 function RowName({ name }: { name: string }) {
   const className = "min-w-0 text-name font-semibold text-foreground";
+  // A name in Latin letters is not Chinese whatever the window's language:
+  // said so, its "…" is the system font's, not a full-width Chinese one
+  // that leaves a gap where the name is cut.
+  const lang = /^[\u0020-\u024f]*$/.test(name) ? "en" : undefined;
   if (name.length <= MIDDLE_CUT_FROM) {
     return (
-      <p title={name} className={`truncate ${className}`}>
+      <p title={name} lang={lang} className={`truncate ${className}`}>
         {name}
       </p>
     );
   }
   return (
-    <p title={name} data-cut-middle="" className={`flex ${className}`}>
+    <p title={name} lang={lang} data-cut-middle="" className={`flex ${className}`}>
       <span className="min-w-0 truncate">{name.slice(0, -NAME_TAIL)}</span>
       <span className="shrink-0 whitespace-pre">{name.slice(-NAME_TAIL)}</span>
     </p>
@@ -175,8 +179,9 @@ function RowName({ name }: { name: string }) {
  * the checkbox, the avatar 12 after it, 32 square, then 12 after that the
  * name (13, semibold) with its one line of description under it (11,
  * muted), then the columns on the right, 16 apart: the status word, the
- * version, the row's button in a column 80 wide, the ⋯ menu in one 24
- * wide. A column is drawn whenever its prop is given, even as `null`, so
+ * version, the row's button in a column 80 wide (wider only for a label
+ * such as "Uninstall…"), the ⋯ menu in one 24 wide. A column is drawn
+ * whenever its prop is given, even as `null`, so
  * rows that leave one empty still line up with rows that fill it; leave
  * the prop out to drop the column altogether.
  *
@@ -340,7 +345,7 @@ export function ToolRow({
           </div>
         ) : null}
         {action !== undefined ? (
-          <div className="relative z-10 ml-4 flex w-20 shrink-0 justify-end">{action}</div>
+          <div className="relative z-10 ml-4 flex min-w-20 shrink-0 justify-end">{action}</div>
         ) : null}
         {menu !== undefined ? <div className="relative z-10 ml-4 flex w-6 shrink-0 justify-end">{menu}</div> : null}
         {/* The hairline under the row, from where its text starts to 20

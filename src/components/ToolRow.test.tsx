@@ -133,7 +133,7 @@ describe("ToolRow", () => {
     expect(status.className).toContain("ml-4");
     const version = container.querySelector(".tabular-nums") as HTMLElement;
     expect(atRest(version.className)).toEqual(expect.arrayContaining(["ml-4", "min-w-16", "text-body", "text-muted"]));
-    expect(getByRole("button", { name: "Update" }).parentElement?.className).toMatch(/\bml-4\b.*\bw-20\b.*\bjustify-end\b/);
+    expect(getByRole("button", { name: "Update" }).parentElement?.className).toMatch(/\bml-4\b.*\bmin-w-20\b.*\bjustify-end\b/);
     expect(getByRole("button", { name: "More" }).parentElement?.className).toMatch(/\bml-4\b.*\bw-6\b/);
     // The hairline from where the text starts (20 + 16 + 12 + 32 + 12 =
     // 92) to 20 from the right; 64 in without a checkbox.
@@ -176,6 +176,18 @@ describe("ToolRow", () => {
     const whole = short.container.querySelector("p[title]") as HTMLElement;
     expect(whole.childElementCount).toBe(0);
     expect(whole.className).toContain("truncate");
+  });
+
+  it("marks a name in Latin letters as English, so a Chinese window cuts it with the system font's …", () => {
+    const { container } = renderWithProviders(
+      <>
+        <ToolRow adapterId="brew" sourceLabel="Homebrew" name="Android SDK Platform-Tools" description="SDK" />
+        <ToolRow adapterId="brew" sourceLabel="Homebrew" name="modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" description="Model" />
+        <ToolRow avatar={<span />} name="微信开发者工具" description="WeChat DevTools" />
+      </>,
+    );
+    const names = [...container.querySelectorAll("p[title]")];
+    expect(names.map((name) => name.getAttribute("lang"))).toEqual(["en", "en", null]);
   });
 
   it("lets its description be selected only where asked, for a path to copy", () => {
