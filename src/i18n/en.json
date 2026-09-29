@@ -172,7 +172,7 @@
     "sourceEmpty": {
       "title": "Nothing installed with {{source}}",
       "description": "Tools you install with {{source}} show up here.",
-      "unreachable": "What it has installed can't be shown. Check again later."
+      "unreachable": "Couldn't list what it has installed. Check again later."
     },
     "installedOn": "Date installed",
     "size": "Size"
@@ -271,7 +271,7 @@
     "wouldBreak_one": "{{names}} still needs this.",
     "wouldBreak_other": "{{count}} other tools still need this: {{names}}.",
     "compilesLocally": "This compiles on your Mac and takes a while.",
-    "downloadsModelChanges": "Downloads the model files that changed; this can take a while.",
+    "downloadsModelChanges": "Downloads the model files that changed.",
     "nonRegistrySource": "It wasn't installed from crates.io.",
     "thirdPartyRegistry": "This model comes from {{host}}, not Ollama's own library.",
     "willTrash": {
@@ -386,7 +386,7 @@
     "unreachable": {
       "title": "{{source}} isn't responding",
       "description": "{{source}} didn't respond, so what it has installed can't be shown. Check again later.",
-      "detail": "What it has installed can't be shown. Check again later.",
+      "detail": "Couldn't list what it has installed. Check again later.",
       "descriptionWithRows": "Showing what {{source}} reported last time. Newer changes aren't shown. Check again later."
     },
     "refusesAsRoot": {
@@ -431,7 +431,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it."
+      "description": "{{command}} can't run any more: reinstall {{source}}, or put its files back from the Trash if they're there and check again. If you no longer need {{source}}, uninstall it in Installed."
     },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
@@ -640,7 +640,7 @@
       "title": "Icon credits",
       "owners": "Each logo belongs to its owner and is shown only to identify the tool.",
       "simpleIcons": "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
-      "ownLicense": "These have a license of their own:",
+      "ownLicense": "The following logos use other licenses:",
       "license": "License",
       "source": "Source",
       "avatars": "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations."

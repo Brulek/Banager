@@ -1157,7 +1157,7 @@ describe("SettingsPage's icon credits", () => {
         "Most of the logos built into Canager come from Simple Icons, which is released under CC0.",
       ),
     ).toBeInTheDocument();
-    const list = within(drawer).getByRole("list", { name: "These have a license of their own:" });
+    const list = within(drawer).getByRole("list", { name: "The following logos use other licenses:" });
     const items = within(list).getAllByRole("listitem");
     // By title, each with its license's name and the site Simple Icons
     // took it from -- never a whole address, which breaks mid-word at this
@@ -1211,7 +1211,7 @@ describe("SettingsPage's icon credits", () => {
 
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
     expect(within(drawer).queryByRole("list")).toBeNull();
-    expect(within(drawer).queryByText("These have a license of their own:")).toBeNull();
+    expect(within(drawer).queryByText("The following logos use other licenses:")).toBeNull();
     expect(within(drawer).getByText(/^Most of the logos built into Canager/)).toBeInTheDocument();
     expect(within(drawer).getByText(/^Built-in logos that do not come from Simple Icons/)).toBeInTheDocument();
   });

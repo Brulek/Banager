@@ -249,7 +249,7 @@
     "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
     "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
     "compilesLocally": "需要在这台Mac上编译，会花一些时间。",
-    "downloadsModelChanges": "需要下载模型有变化的文件，可能要一段时间。",
+    "downloadsModelChanges": "需要下载已更改的模型文件。",
     "nonRegistrySource": "它不是从crates.io安装的。",
     "thirdPartyRegistry": "此模型来自{{host}}，不是Ollama官方模型库。",
     "willTrash": {
@@ -394,7 +394,7 @@
     },
     "launcherOnly": {
       "title": "找不到{{source}}的程序文件",
-      "description": "{{source}}的“{{command}}”已无法运行。要继续使用，请重新安装{{source}}，如果文件在废纸篓中，也可以拖回原处后重新检查；不再需要的话，可在“已安装”中卸载。"
+      "description": "“{{command}}”已无法运行，请重新安装{{source}}；如果程序文件在废纸篓中，也可以拖回原处后重新检查。不再需要时，可在“已安装”中卸载{{source}}。"
     },
     "checksUnfinished": {
       "title": "部分检查未完成",

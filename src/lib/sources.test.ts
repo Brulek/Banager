@@ -439,10 +439,10 @@ describe("sourceNoticesFor", () => {
     // Overview and the Updates page, where its one button is Show, which
     // opens that page on the tool.
     expect(en.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it.",
+      "{{command}} can't run any more: reinstall {{source}}, or put its files back from the Trash if they're there and check again. If you no longer need {{source}}, uninstall it in Installed.",
     );
     expect(zhCN.sourceNotice.launcherOnly.description).toBe(
-      "{{source}}的“{{command}}”已无法运行。要继续使用，请重新安装{{source}}，如果文件在废纸篓中，也可以拖回原处后重新检查；不再需要的话，可在“已安装”中卸载。",
+      "“{{command}}”已无法运行，请重新安装{{source}}；如果程序文件在废纸篓中，也可以拖回原处后重新检查。不再需要时，可在“已安装”中卸载{{source}}。",
     );
     expect(JSON.stringify(zhCN.sourceNotice)).not.toContain("这一份");
     for (const locale of [en, zhCN]) {

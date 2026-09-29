@@ -1667,7 +1667,7 @@ describe("UpdatesPage", () => {
     const en = renderPage();
     expect(await linesUnder(ROW_UPDATE)).toEqual([
       { text: "This model comes from modelscope.cn, not Ollama's own library.", caution: true },
-      { text: "Downloads the model files that changed; this can take a while.", caution: false },
+      { text: "Downloads the model files that changed.", caution: false },
     ]);
     en.unmount();
 
@@ -1676,7 +1676,7 @@ describe("UpdatesPage", () => {
       renderPage();
       expect(await linesUnder(/^更新(?!所选|全部)/)).toEqual([
         { text: "此模型来自modelscope.cn，不是Ollama官方模型库。", caution: true },
-        { text: "需要下载模型有变化的文件，可能要一段时间。", caution: false },
+        { text: "需要下载已更改的模型文件。", caution: false },
       ]);
     } finally {
       await i18n.changeLanguage("en");
@@ -3556,7 +3556,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(coldDetails);
       const text = document.getElementById(coldDetails.getAttribute("aria-controls") ?? "");
       expect(text).toHaveTextContent(
-        "What it has installed can't be shown.",
+        "Couldn't list what it has installed.",
       );
       expect(text?.textContent).not.toMatch(/What's listed/);
     });

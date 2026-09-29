@@ -1608,7 +1608,7 @@ describe("InstalledPage", () => {
     // first refresh after a launch, because the snapshot is in memory
     // only (`Session::new` starts from `Snapshot::empty()`).
     expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-      "What it has installed can't be shown.",
+      "Couldn't list what it has installed.",
     );
     expect(queryByText(/What's listed/)).not.toBeInTheDocument();
     // And no promise of a recovery that may never come.
@@ -2035,7 +2035,7 @@ describe("InstalledPage", () => {
       const { findByText, getByRole } = renderInstalled();
 
       const title = await findByText("Homebrew (Intel) isn't responding");
-      const sentence = screen.getByText("What it has installed can't be shown. Check again later.");
+      const sentence = screen.getByText("Couldn't list what it has installed. Check again later.");
       expect(sentence).not.toHaveTextContent(/isn't responding|didn't respond/);
       expect(title.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
