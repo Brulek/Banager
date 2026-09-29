@@ -105,7 +105,7 @@ export function progressOf(op: OpSummary): RowProgress {
  * still under way, always: a second click could only queue the same
  * update behind it. A finished one only while the row still offers the
  * version it was started for (`updateTargets`, remembered when the update
- * was submitted): "Updated" or "Failed" is about that version, and a
+ * was submitted): "Updated" or "Update failed" is about that version, and a
  * newer one the source offers later gets its button back. An operation
  * this window has no record of -- one from before it was reloaded -- is
  * not shown once it has finished.

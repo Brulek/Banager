@@ -1757,7 +1757,7 @@ describe("InstalledPage", () => {
       await findRow("jq");
       fireEvent.click(screen.getByRole("button", { name: /^1 more component came with other software/ }));
       const drawer = await openDetails("glib");
-      expect(await within(drawer).findByText("Failed")).toBeInTheDocument();
+      expect(await within(drawer).findByText("Update failed")).toBeInTheDocument();
       expect(within(drawer).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
       expect(within(drawer).queryByRole("button", { name: "Update" })).toBeNull();
 

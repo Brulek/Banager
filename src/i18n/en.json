@@ -190,11 +190,11 @@
     },
     "runInTerminal": "In Terminal: {{command}}",
     "progress": {
-      "queued": "Waiting",
+      "queued": "Queued",
       "running": "Updating…",
       "cancelling": "Cancelling…",
       "succeeded": "Updated",
-      "failed": "Failed",
+      "failed": "Update failed",
       "cancelled": "Cancelled",
       "check": "Needs attention",
       "viewLogLabel": "View log: {{name}}"

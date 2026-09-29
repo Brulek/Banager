@@ -2146,7 +2146,7 @@ describe("UpdatesPage", () => {
     }
 
     const cases: Array<[string, Partial<OpSummary>, string]> = [
-      ["waiting its turn", { status: "Queued" }, "Waiting"],
+      ["waiting its turn", { status: "Queued" }, "Queued"],
       ["running", { status: "Running" }, "Updating…"],
       ["being checked afterwards", { status: "Verifying" }, "Updating…"],
       ["being cancelled", { status: "CancelRequested" }, "Cancelling…"],
@@ -2203,7 +2203,7 @@ describe("UpdatesPage", () => {
       const { findByText, getByRole } = renderWithProviders(<UpdatesPage />);
 
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
       expect(await findByText("2 can be updated")).toBeInTheDocument();
       expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "Select all items that can be updated here" }));
@@ -2263,7 +2263,7 @@ describe("UpdatesPage", () => {
       const { getByRole } = renderWithProviders(<UpdatesPage />);
 
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
       fireEvent.click(getByRole("button", { name: "View log: glib" }));
       expect(useUiStore.getState().focusedOpId).toBe(9);
       expect(useUiStore.getState().drawerOpen).toBe(true);
@@ -2291,7 +2291,7 @@ describe("UpdatesPage", () => {
     });
 
     const endings: Array<[string, OpSummary["outcome"], string]> = [
-      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Failed"],
+      ["failed", { Failed: { exit_code: 1, summary: "Error: glib: no bottle" } }, "Update failed"],
       ["was cancelled", "Cancelled", "Cancelled"],
       ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention"],
     ];
@@ -2362,7 +2362,7 @@ describe("UpdatesPage", () => {
 
       await showCantUpdate();
       const glib = await findRow("glib");
-      expect(await within(glib).findByText("Failed")).toBeInTheDocument();
+      expect(await within(glib).findByText("Update failed")).toBeInTheDocument();
       expect(within(glib).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
       expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
       expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
@@ -2511,7 +2511,7 @@ describe("UpdatesPage", () => {
       started(12, "1.1.0");
       renderWithProviders(<UpdatesPage />);
 
-      expect(await within(await findRow("glib")).findByText("Failed")).toBeInTheDocument();
+      expect(await within(await findRow("glib")).findByText("Update failed")).toBeInTheDocument();
       expect(within(rowOf("onyx")).getByText("Needs attention")).toBeInTheDocument();
       expect(justUpdated()).toBeNull();
     });
@@ -3435,7 +3435,7 @@ describe("UpdatesPage", () => {
   });
 
   const claudeEndings: Array<[string, OpSummary["outcome"], string, boolean]> = [
-    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Failed", true],
+    ["failed", { Failed: { exit_code: 1, summary: "Error: download failed" } }, "Update failed", true],
     ["was cancelled", "Cancelled", "Cancelled", false],
     ["asks to be checked", { NeedsAttention: "UnchangedAfterUpgrade" }, "Needs attention", true],
   ];
@@ -3485,13 +3485,13 @@ describe("UpdatesPage", () => {
     const { queryClient } = renderWithProviders(<UpdatesPage />);
 
     const claude = await findRow("Claude Code");
-    expect(await within(claude).findByText("Failed")).toBeInTheDocument();
+    expect(await within(claude).findByText("Update failed")).toBeInTheDocument();
     expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
 
-    // "Failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
+    // "Update failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
     updates = [{ ...claudeUpdate, target: "2.1.291" }];
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
-    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Failed")).toBeNull());
+    await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Update failed")).toBeNull());
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Usually updates itself" })).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });

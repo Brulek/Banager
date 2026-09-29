@@ -80,7 +80,7 @@ export interface UiState {
   // on the Updates page or in the Installed page's detail). An operation
   // carries no version (`OpSummary`), and a finished one stays in the
   // backend's list, so this is how a row tells an outcome that is still
-  // about the version it offers -- "Updated", "Failed" -- from one about a
+  // about the version it offers -- "Updated", "Update failed" -- from one about a
   // version it no longer offers, whose row gets its Update button back.
   updateTargets: Record<number, string>;
   rememberUpdateTarget(opId: number, target: string): void;
