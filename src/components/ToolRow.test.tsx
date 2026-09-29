@@ -211,6 +211,49 @@ describe("ToolRow", () => {
     expect(whole.className).toContain("truncate");
   });
 
+  it("names a model by its last path segment, cut at its end, with where it is from at the start of its line, and says it whole", () => {
+    const long = "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M";
+    // A line 300 wide and a font 7 wide a character, as above: the middle
+    // cut would fit the whole path to it; a model's name is not cut so.
+    const box = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return new DOMRect(0, 0, this.tagName === "DIV" ? 300 : 0, 16);
+      });
+    try {
+      const { container, getByText } = renderWithProviders(
+        <ToolRow
+          adapterId="ollama"
+          sourceLabel="Ollama"
+          name={long}
+          namePath={{ name: "Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M", from: "modelscope.cn/Qwen" }}
+          description="Ollama model"
+        />,
+      );
+      const name = container.querySelector("p[title]") as HTMLElement;
+      // The whole path in its tooltip and for a screen reader.
+      expect(name).toHaveAttribute("title", long);
+      expect(name).not.toHaveAttribute("data-cut-middle");
+      const [shown, spoken] = [...name.children] as HTMLElement[];
+      expect(shown.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+      expect(shown).toHaveAttribute("aria-hidden", "true");
+      expect(spoken.textContent).toBe(long);
+      expect(spoken.className).toBe("sr-only");
+      // Cut at its end if it still does not fit.
+      expect(atRest(name.className)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+      expect(name).toHaveAttribute("lang", "en");
+      // Where it is from, first on the description's line, in sight only.
+      const line = getByText("Ollama model", { exact: false }) as HTMLElement;
+      expect(line.textContent).toBe("modelscope.cn/Qwen · Ollama model");
+      expect(line).toHaveAttribute("title", "modelscope.cn/Qwen · Ollama model");
+      const from = line.querySelector("[data-name-from]") as HTMLElement;
+      expect(from.textContent).toBe("modelscope.cn/Qwen · ");
+      expect(from).toHaveAttribute("aria-hidden", "true");
+    } finally {
+      box.mockRestore();
+    }
+  });
+
   it("marks a name in Latin letters as English, so a Chinese window cuts it with the system font's …", () => {
     const { container } = renderWithProviders(
       <>

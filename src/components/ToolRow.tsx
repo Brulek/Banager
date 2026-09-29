@@ -55,6 +55,15 @@ export interface ToolRowContentProps {
   /** The tool's name as the user knows it. */
   name: string;
   /**
+   * For a name that is a path -- an Ollama model pulled from another
+   * registry (`modelPath` in src/lib/names.ts) -- its two parts: `name`,
+   * the last, which the row shows as the tool's name, cut at its end if it
+   * still does not fit, never in its middle; and `from`, the rest, at the
+   * start of the description's line. The whole name stays the row's
+   * tooltip and what a screen reader hears.
+   */
+  namePath?: { name: string; from: string } | null;
+  /**
    * Whether the source's name follows the tool's, in small muted words:
    * where the list being shown has this name under more than one source
    * (spec R3), as Mail names the account beside a mailbox two accounts
@@ -173,9 +182,10 @@ export function rowFitFor(width: number | null): RowFit {
 
 /**
  * A name longer than this is cut short in its middle when it does not fit,
- * keeping its last `NAME_TAIL` characters: a model's tag and quantisation
- * ("…Instruct-GGUF:Q4_K_M"). Shorter names are cut at their end, as any
- * other text -- which at the window's narrowest they do not reach.
+ * keeping its last `NAME_TAIL` characters: a scoped npm package's own name
+ * ("…server-filesystem"). Shorter names are cut at their end, as any other
+ * text -- which at the window's narrowest they do not reach -- and so is a
+ * model's last path segment (`namePath`).
  */
 export const MIDDLE_CUT_FROM = 32;
 const NAME_TAIL = 12;
@@ -192,10 +202,11 @@ export const DESCRIPTION_MIN_CHARACTERS = 8;
 
 /**
  * The name, on one line: cut short at its end, or -- a very long one, such
- * as `modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF` -- in its middle,
- * keeping its end, as Finder cuts a long file name: the end is what tells
- * two such names apart. Its whole text in its tooltip either way, and for
- * a screen reader.
+ * as `@modelcontextprotocol/server-filesystem` -- in its middle, keeping its
+ * end, as Finder cuts a long file name: the end is what tells two such
+ * names apart. A model's path shows only its last segment (`shown`), cut at
+ * its end. Its whole text in its tooltip either way, and for a screen
+ * reader.
  *
  * The middle cut is one string, the start, "…" and the end
  * (`middleCut`), fitted to the room the name's line leaves it -- measured
@@ -204,14 +215,14 @@ export const DESCRIPTION_MIN_CHARACTERS = 8;
  * glyph before the second. Where nothing can be measured (a test's
  * jsdom), the whole name, cut at its end.
  */
-function RowName({ name, lineWidth }: { name: string; lineWidth: number | null }) {
+function RowName({ name, shown, lineWidth }: { name: string; shown?: string; lineWidth: number | null }) {
   const className = "min-w-0 truncate text-name font-semibold text-foreground";
   // A name in Latin letters is not Chinese whatever the window's language:
   // said so, its "…" is the system font's, not a full-width Chinese one.
-  const lang = /^[\u0020-\u024f]*$/.test(name) ? "en" : undefined;
+  const lang = /^[\u0020-\u024f]*$/.test(shown ?? name) ? "en" : undefined;
   const ref = useRef<HTMLParagraphElement>(null);
   const [cut, setCut] = useState<string | null>(null);
-  const cuts = name.length > MIDDLE_CUT_FROM;
+  const cuts = shown === undefined && name.length > MIDDLE_CUT_FROM;
   useLayoutEffect(() => {
     const paragraph = ref.current;
     const line = paragraph?.parentElement;
@@ -234,6 +245,14 @@ function RowName({ name, lineWidth }: { name: string; lineWidth: number | null }
     const fitted = middleCut(name, Math.floor(room), measure, NAME_TAIL);
     setCut(fitted === name ? null : fitted);
   }, [cuts, name, lineWidth]);
+  if (shown !== undefined) {
+    return (
+      <p ref={ref} title={name} lang={lang} data-name-path="" className={className}>
+        <span aria-hidden="true">{shown}</span>
+        <span className="sr-only">{name}</span>
+      </p>
+    );
+  }
   if (cut === null) {
     return (
       <p ref={ref} title={name} lang={lang} data-cut-middle={cuts ? "" : undefined} className={className}>
@@ -295,6 +314,7 @@ export function ToolRow({
   iconKey,
   avatar,
   name,
+  namePath,
   showSource = false,
   description,
   selectableDescription = false,
@@ -315,7 +335,7 @@ export function ToolRow({
   // The name's line, measured only where a long name may be cut in its
   // middle to fit it (`RowName`).
   const [nameLine, setNameLine] = useState<HTMLDivElement | null>(null);
-  const nameLineWidth = useElementWidth(name.length > MIDDLE_CUT_FROM ? nameLine : null);
+  const nameLineWidth = useElementWidth(!namePath && name.length > MIDDLE_CUT_FROM ? nameLine : null);
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);
   const openButton = useRef<HTMLButtonElement>(null);
@@ -418,6 +438,9 @@ export function ToolRow({
   // is in sight or not. Nothing measured (a line not laid out, or jsdom):
   // it stays, for its box to cut.
   const hasLeading = leading.length > 0;
+  // A model's path, before its description (`namePath`): what it says in
+  // sight; a screen reader has heard it in the name.
+  const lineText = namePath ? `${namePath.from} · ${description}` : description;
   useLayoutEffect(() => {
     const line = descriptionLine.current;
     const width = line?.getBoundingClientRect().width ?? 0;
@@ -435,12 +458,12 @@ export function ToolRow({
       if (part.hasAttribute("data-description") || part.hasAttribute("data-description-dot")) continue;
       room -= part.getBoundingClientRect().width;
     }
-    setDescriptionFits(room >= measure(` · ${description.slice(0, DESCRIPTION_MIN_CHARACTERS)}`));
+    setDescriptionFits(room >= measure(` · ${lineText.slice(0, DESCRIPTION_MIN_CHARACTERS)}`));
   });
   const descriptionShown = !hasLeading || descriptionFits;
   const descriptionText = (
     <span
-      title={description}
+      title={lineText}
       data-description=""
       className={
         descriptionShown
@@ -448,6 +471,12 @@ export function ToolRow({
           : "sr-only"
       }
     >
+      {namePath ? (
+        <span aria-hidden="true" data-name-from="">
+          {namePath.from}
+          {" · "}
+        </span>
+      ) : null}
       {description}
     </span>
   );
@@ -512,7 +541,7 @@ export function ToolRow({
         )}
         <div className="ml-3 min-w-0 flex-1">
           <div ref={setNameLine} className="flex min-w-0 items-baseline">
-            <RowName name={name} lineWidth={nameLineWidth} />
+            <RowName name={name} shown={namePath?.name} lineWidth={nameLineWidth} />
             {source !== undefined ? (
               <span className={showSource ? "ml-1.5 shrink-0 text-small text-muted" : "sr-only"}>{source}</span>
             ) : null}

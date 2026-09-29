@@ -24,6 +24,14 @@ import type {
 
 const mockInvoke = vi.mocked(invoke);
 
+// The pretend Mac's two models (`MODELS` in src/dev/mockData.ts, which no
+// test outside src/dev may import): one from another registry, one from
+// Ollama's own.
+const MODELS = {
+  coder: "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M",
+  llama: "llama3.2:3b",
+} as const;
+
 const brew: ManagerInstance = {
   id: "brew:/opt/homebrew",
   adapter_id: "brew",
@@ -1529,6 +1537,55 @@ describe("InstalledPage", () => {
       expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("names a model pulled from another registry by the model itself, where it is from on its line, and whole in its inspector", async () => {
+    // Cut in its middle, the pretend Mac's model read
+    // "modelscope.cn/Q…-GGUF:Q4_K_M": the host and the quantisation, the
+    // model gone.
+    served = {
+      ...snapshot,
+      instances: [brew, ollama],
+      artifacts: [
+        ...snapshot.artifacts,
+        formula(MODELS.coder, {
+          key: { instance_id: OLLAMA, kind: "Model", name: MODELS.coder },
+          version: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+          description: null,
+        }),
+        formula(MODELS.llama, {
+          key: { instance_id: OLLAMA, kind: "Model", name: MODELS.llama },
+          version: "8e4cdead7463ce276b20d4e33341950d7bb40847f70a9882567a188e24ec1f66",
+          description: null,
+        }),
+        // Between the registry's m and the model's Q.
+        formula("node"),
+      ],
+    };
+    renderInstalled();
+
+    await findRow("jq");
+    const name = document.querySelector(`[data-tool-row] p[title="${MODELS.coder}"]`) as HTMLElement;
+    const row = name.closest("[data-tool-row]") as HTMLElement;
+    const [shown, spoken] = [...name.children] as HTMLElement[];
+    expect(shown.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(spoken.textContent).toBe(MODELS.coder);
+    const line = row.querySelector("[data-description]") as HTMLElement;
+    expect(line.textContent).toBe("modelscope.cn/Qwen · Ollama model");
+    // A model named without a path is named as it is.
+    expect(rowOf(MODELS.llama).querySelector("[data-description]")?.textContent).toBe("Ollama model");
+    // And each is in the list where its name, as shown, puts it: Qwen
+    // under Q, after node -- not under the registry's m, before it.
+    const shownNames = [...document.querySelectorAll("[data-tool-row] p[title]")].map(
+      (p) => p.firstElementChild?.getAttribute("aria-hidden") === "true" ? p.firstElementChild.textContent : p.textContent,
+    );
+    expect(shownNames).toEqual([...shownNames].sort((a, b) => (a ?? "").localeCompare(b ?? "", "en", { numeric: true, sensitivity: "base" })));
+    expect(shownNames.indexOf("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M")).toBeGreaterThan(shownNames.indexOf("node"));
+
+    // Its inspector, opened from the row, has it whole.
+    fireEvent.click(within(row).getByRole("button", { name: `Details: ${MODELS.coder}` }));
+    const inspector = await screen.findByRole("complementary", { name: MODELS.coder });
+    expect(within(inspector).getByRole("heading", { level: 2 })).toHaveTextContent(MODELS.coder);
   });
 
   // Rendered through SnapshotStatus, exactly as App.tsx does. Rendering

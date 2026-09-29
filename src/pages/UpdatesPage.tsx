@@ -17,7 +17,7 @@ import { warningMessage } from "../lib/warnings";
 import { useCopyCommand } from "../lib/clipboard";
 import { useOperationName } from "../lib/operations";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
-import { nameKey, namesUnderSeveralSources } from "../lib/names";
+import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -333,13 +333,14 @@ export function UpdatesPage() {
     [artifactsById],
   );
 
-  // By name, as the user reads it: case and accents aside, and "node@22"
-  // after "node@9". The key breaks a tie between two sources' same-named
+  // By name, as the user reads it -- a model's as its row shows it
+  // (`listedName`) -- case and accents aside, and "node@22" after
+  // "node@9". The key breaks a tie between two sources' same-named
   // packages, so the order never depends on the snapshot's.
   const compareRows = useMemo(() => {
     const collator = new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" });
     return (a: UpdateCandidate, b: UpdateCandidate) =>
-      collator.compare(nameOf(a), nameOf(b)) ||
+      collator.compare(listedName(a.key, nameOf(a)), listedName(b.key, nameOf(b))) ||
       collator.compare(artifactKeyId(a.key), artifactKeyId(b.key));
   }, [i18n.language, nameOf]);
 
@@ -825,6 +826,9 @@ export function UpdatesPage() {
         // The tool's logo, and a cask's app's own icon once it arrives.
         iconKey={candidate.key}
         name={name}
+        // A model's path: the model as the name, where it is from before
+        // its line.
+        namePath={modelPath(candidate.key, name)}
         showSource={namedTwice.has(nameKey(name))}
         // The same line the Installed page's row has (`toolDescription`):
         // the tool's line in the window's language, the source's

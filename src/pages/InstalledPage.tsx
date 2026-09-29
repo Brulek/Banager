@@ -30,7 +30,7 @@ import type { HiddenBy } from "../lib/updateState";
 import { useCopyCommand } from "../lib/clipboard";
 import { formatBytes } from "../lib/format";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
-import { nameKey, namesUnderSeveralSources } from "../lib/names";
+import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
@@ -480,16 +480,17 @@ export function InstalledPage() {
     [instancesById, labelOf],
   );
 
-  // By name, as the user reads it: case and accents aside, and "node@22"
-  // after "node@9"; the key breaks a tie, so the order never depends on
-  // the snapshot's. The Updates page sorts the same way.
+  // By name, as the user reads it -- a model's as its row shows it
+  // (`listedName`) -- case and accents aside, and "node@22" after
+  // "node@9"; the key breaks a tie, so the order never depends on the
+  // snapshot's. The Updates page sorts the same way.
   const collator = useMemo(
     () => new Intl.Collator(i18n.language, { numeric: true, sensitivity: "base" }),
     [i18n.language],
   );
   const compareArtifacts = useCallback(
     (a: InstalledArtifact, b: InstalledArtifact) =>
-      collator.compare(a.display_name, b.display_name) ||
+      collator.compare(listedName(a.key, a.display_name), listedName(b.key, b.display_name)) ||
       collator.compare(artifactKeyId(a.key), artifactKeyId(b.key)),
     [collator],
   );
@@ -1020,6 +1021,9 @@ export function InstalledPage() {
         // The tool's logo, and a cask's app's own icon once it arrives.
         iconKey={artifact.key}
         name={name}
+        // A model's path: the model as the name, where it is from before
+        // its line; whole in the inspector.
+        namePath={modelPath(artifact.key, name)}
         showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label).line}
         status={chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} />}

@@ -24,6 +24,14 @@ import type {
 
 const mockInvoke = vi.mocked(invoke);
 
+// The pretend Mac's two models (`MODELS` in src/dev/mockData.ts, which no
+// test outside src/dev may import): one from another registry, one from
+// Ollama's own.
+const MODELS = {
+  coder: "modelscope.cn/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M",
+  llama: "llama3.2:3b",
+} as const;
+
 // The page as the window draws it: under the toolbar's subtitle, which
 // says how many can be updated, and with its Update all / Update selected
 // in the toolbar (`UpdatesToolbar`).
@@ -1499,6 +1507,32 @@ describe("UpdatesPage", () => {
     expect(within(qwen).getByText("New version")).toBeInTheDocument();
     expect(queryByText(/5642e97495e1a0888838/)).not.toBeInTheDocument();
     expect(container.textContent).not.toMatch(/sha256|→/);
+  });
+
+  it("names a model pulled from another registry by the model itself, with where it is from on its line", async () => {
+    const coderKey: ArtifactKey = { ...qwenKey, name: MODELS.coder };
+    instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
+    updates = [
+      {
+        key: coderKey,
+        current: "52e05d4a30959ae2542932b2c473f476dca0ce371aaf9a2227badf4e3eeec4f4",
+        target: "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b",
+        channel: "Digest",
+        checkable: true,
+        warnings: [{ ThirdPartyRegistry: { host: "modelscope.cn" } }],
+        blocked: null,
+      },
+    ];
+    const { findByTitle } = renderPage();
+
+    const name = await findByTitle(MODELS.coder);
+    expect(name.matches("[data-tool-row] p")).toBe(true);
+    expect(name.firstElementChild?.textContent).toBe("Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M");
+    expect(name.querySelector(".sr-only")?.textContent).toBe(MODELS.coder);
+    const row = name.closest("[data-tool-row]") as HTMLElement;
+    expect(row.querySelector("[data-description]")?.textContent).toMatch(/^modelscope\.cn\/Qwen · /);
+    // The row's checkbox and its details say it whole.
+    expect(within(row).getByRole("checkbox", { name: `Select ${MODELS.coder} for update` })).toBeInTheDocument();
   });
 
   it("shows no version and no digest for an Ollama model Canager could not check", async () => {
