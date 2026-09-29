@@ -6,7 +6,7 @@ import { middleCut, textMeasurer } from "../lib/middleCut";
 import { ToolAvatar } from "./ToolAvatar";
 import { BUTTON } from "./ui/controls";
 import { RowMenuContext, type OpenMenuAt } from "./ui/Menu";
-import { useElementWidth, useListWidth } from "./VirtualList";
+import { useListWidth } from "./VirtualList";
 import { useRovingRow } from "./rovingRows";
 
 export interface RowActionProps {
@@ -214,57 +214,95 @@ export const DESCRIPTION_MIN_CHARACTERS = 8;
  * boxes side by side, the first cut at its end, left a hole of up to a
  * glyph before the second. Where nothing can be measured (a test's
  * jsdom), the whole name, cut at its end.
+ *
+ * Only a name long enough to be cut so is measured (`MiddleCutName`): any
+ * other is drawn once, as it is, and reads nothing of the layout -- a list
+ * mounts a dozen rows at every step of a scroll.
  */
-function RowName({ name, shown, lineWidth }: { name: string; shown?: string; lineWidth: number | null }) {
-  const className = "min-w-0 truncate text-name font-semibold text-foreground";
+function RowName({ name, shown }: { name: string; shown?: string }) {
   // A name in Latin letters is not Chinese whatever the window's language:
   // said so, its "…" is the system font's, not a full-width Chinese one.
   const lang = /^[\u0020-\u024f]*$/.test(shown ?? name) ? "en" : undefined;
-  const ref = useRef<HTMLParagraphElement>(null);
-  const [cut, setCut] = useState<string | null>(null);
-  const cuts = shown === undefined && name.length > MIDDLE_CUT_FROM;
-  useLayoutEffect(() => {
-    const paragraph = ref.current;
-    const line = paragraph?.parentElement;
-    if (!cuts || lineWidth === null || paragraph == null || line == null) {
-      setCut(null);
-      return;
-    }
-    const measure = textMeasurer(paragraph);
-    if (measure === null) {
-      setCut(null);
-      return;
-    }
-    // The line's width less what else stands on it in sight: the source's
-    // name, where it follows (R3). Its screen reader's copy takes no room.
-    let room = line.getBoundingClientRect().width;
-    for (const other of Array.from(line.children)) {
-      if (other === paragraph || getComputedStyle(other).position === "absolute") continue;
-      room -= other.getBoundingClientRect().width + parseFloat(getComputedStyle(other).marginLeft || "0");
-    }
-    const fitted = middleCut(name, Math.floor(room), measure, NAME_TAIL);
-    setCut(fitted === name ? null : fitted);
-  }, [cuts, name, lineWidth]);
   if (shown !== undefined) {
     return (
-      <p ref={ref} title={name} lang={lang} data-name-path="" className={className}>
+      <p title={name} lang={lang} data-name-path="" className={NAME_CLASS}>
         <span aria-hidden="true">{shown}</span>
         <span className="sr-only">{name}</span>
       </p>
     );
   }
+  if (name.length > MIDDLE_CUT_FROM) return <MiddleCutName name={name} lang={lang} />;
+  return (
+    <p title={name} lang={lang} className={NAME_CLASS}>
+      {name}
+    </p>
+  );
+}
+
+const NAME_CLASS = "min-w-0 truncate text-name font-semibold text-foreground";
+
+/**
+ * A name long enough to be cut in its middle (`RowName`), fitted to its
+ * line after every draw of its row. The line takes what the row's columns
+ * leave it, whatever the name says, and the row is drawn again whenever
+ * that can change -- the list's width (`useListWidth`), or what a column
+ * shows -- so it needs no observer of its own. The cut is its own state:
+ * fitting it draws the name again, not the row.
+ */
+function MiddleCutName({ name, lang }: { name: string; lang: string | undefined }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [cut, setCut] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    const paragraph = ref.current;
+    const line = paragraph?.parentElement;
+    const lineWidth = line?.getBoundingClientRect().width ?? 0;
+    // A line not laid out (a test's jsdom): whole, for its box to cut.
+    const measure = paragraph == null || line == null || lineWidth === 0 ? null : textMeasurer(paragraph);
+    let fitted: string | null = null;
+    if (measure !== null && line != null) {
+      // The line's width less what else stands on it in sight: the source's
+      // name, where it follows (R3). Its screen reader's copy takes no room.
+      let room = lineWidth;
+      for (const other of Array.from(line.children)) {
+        if (other === paragraph || getComputedStyle(other).position === "absolute") continue;
+        room -= other.getBoundingClientRect().width + parseFloat(getComputedStyle(other).marginLeft || "0");
+      }
+      const shown = middleCut(name, Math.floor(room), measure, NAME_TAIL);
+      fitted = shown === name ? null : shown;
+    }
+    // Set only when it changes: a state set to what it already is can
+    // still draw the name once more.
+    if (fitted !== cut) setCut(fitted);
+  });
   if (cut === null) {
     return (
-      <p ref={ref} title={name} lang={lang} data-cut-middle={cuts ? "" : undefined} className={className}>
+      <p ref={ref} title={name} lang={lang} data-cut-middle="" className={NAME_CLASS}>
         {name}
       </p>
     );
   }
   return (
-    <p ref={ref} title={name} lang={lang} data-cut-middle="" className={className}>
+    <p ref={ref} title={name} lang={lang} data-cut-middle="" className={NAME_CLASS}>
       <span aria-hidden="true">{cut}</span>
       <span className="sr-only">{name}</span>
     </p>
+  );
+}
+
+/**
+ * The version an update brings, alone, after its arrow ("→ 7.2", for a
+ * version column narrower than "7.1 → 7.2"), the whole change for a screen
+ * reader. A component of its own, the only words on a row the window's
+ * language gives: only a row that says it asks for them (`useTranslation`,
+ * which each asker pays for as it is drawn).
+ */
+function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion: string }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <span aria-hidden="true">{t("updates.versionTo", { target: newVersion })}</span>
+      <span className="sr-only">{version}</span>
+    </>
   );
 }
 
@@ -329,13 +367,10 @@ export function ToolRow({
   openLabel,
   selected = false,
 }: ToolRowProps) {
-  const { t } = useTranslation();
+  // The list's width, measured once for the whole list (`VirtualList`):
+  // no row observes or measures its own box to choose what fits.
   const fit = rowFitFor(useListWidth());
   const roving = useRovingRow();
-  // The name's line, measured only where a long name may be cut in its
-  // middle to fit it (`RowName`).
-  const [nameLine, setNameLine] = useState<HTMLDivElement | null>(null);
-  const nameLineWidth = useElementWidth(!namePath && name.length > MIDDLE_CUT_FROM ? nameLine : null);
   // The ⋯ menu's way to open at the pointer, which it leaves here (`Menu`).
   const openMenuAt = useRef<OpenMenuAt | null>(null);
   const openButton = useRef<HTMLButtonElement>(null);
@@ -387,15 +422,8 @@ export function ToolRow({
   const versionColumn = version !== undefined && (statusColumn || fit === "narrow");
   const versionInline = fit === "minimal" && hasUpdate;
   const actionColumn = action !== undefined && fit !== "tiny";
-  // The version an update brings, alone, after its arrow; the whole
-  // change for a screen reader.
-  const toNewVersion = (
-    <>
-      <span aria-hidden="true">{t("updates.versionTo", { target: newVersion })}</span>
-      <span className="sr-only">{version}</span>
-    </>
-  );
-  const shownVersion = fit !== "full" && newVersion !== undefined ? toNewVersion : version;
+  const shownVersion =
+    fit !== "full" && newVersion !== undefined ? <ToNewVersion version={version} newVersion={newVersion} /> : version;
   // What the description's line says before the description, in order,
   // set apart from it and from each other by a dot: the status word, then
   // an update's versions (beside the inspector).
@@ -424,11 +452,6 @@ export function ToolRow({
       ),
     });
   }
-  const dot = (
-    <span aria-hidden="true" data-line-dot="" className="shrink-0 whitespace-pre">
-      {" · "}
-    </span>
-  );
   // What goes before the description leaves it the rest of the line; with
   // less than its first few characters' room (`DESCRIPTION_MIN_CHARACTERS`)
   // it leaves the line, and its dot with it -- still said to a screen
@@ -436,29 +459,30 @@ export function ToolRow({
   // what the words before it take: the room is the line's width less
   // everything on it but the description and its dot, the same whether it
   // is in sight or not. Nothing measured (a line not laid out, or jsdom):
-  // it stays, for its box to cut.
+  // it stays, for its box to cut. A line with nothing before its
+  // description -- every row but in a narrow list -- is not measured at
+  // all: nothing on it can crowd the description out.
   const hasLeading = leading.length > 0;
   // A model's path, before its description (`namePath`): what it says in
   // sight; a screen reader has heard it in the name.
   const lineText = namePath ? `${namePath.from} · ${description}` : description;
   useLayoutEffect(() => {
+    if (!hasLeading) return;
     const line = descriptionLine.current;
     const width = line?.getBoundingClientRect().width ?? 0;
-    if (!hasLeading || line == null || width === 0) {
-      setDescriptionFits(true);
-      return;
+    const measure = line == null || width === 0 ? null : textMeasurer(line);
+    let fits = true;
+    if (measure !== null && line != null) {
+      let room = width;
+      for (const part of Array.from(line.children)) {
+        if (part.hasAttribute("data-description") || part.hasAttribute("data-description-dot")) continue;
+        room -= part.getBoundingClientRect().width;
+      }
+      fits = room >= measure(` · ${lineText.slice(0, DESCRIPTION_MIN_CHARACTERS)}`);
     }
-    const measure = textMeasurer(line);
-    if (measure === null) {
-      setDescriptionFits(true);
-      return;
-    }
-    let room = width;
-    for (const part of Array.from(line.children)) {
-      if (part.hasAttribute("data-description") || part.hasAttribute("data-description-dot")) continue;
-      room -= part.getBoundingClientRect().width;
-    }
-    setDescriptionFits(room >= measure(` · ${lineText.slice(0, DESCRIPTION_MIN_CHARACTERS)}`));
+    // Set only when it changes: a state set to what it already is can
+    // still draw the row once more.
+    if (fits !== descriptionFits) setDescriptionFits(fits);
   });
   const descriptionShown = !hasLeading || descriptionFits;
   const descriptionText = (
@@ -540,8 +564,8 @@ export function ToolRow({
           </span>
         )}
         <div className="ml-3 min-w-0 flex-1">
-          <div ref={setNameLine} className="flex min-w-0 items-baseline">
-            <RowName name={name} shown={namePath?.name} lineWidth={nameLineWidth} />
+          <div className="flex min-w-0 items-baseline">
+            <RowName name={name} shown={namePath?.name} />
             {source !== undefined ? (
               <span className={showSource ? "ml-1.5 shrink-0 text-small text-muted" : "sr-only"}>{source}</span>
             ) : null}
@@ -549,7 +573,11 @@ export function ToolRow({
           <div ref={descriptionLine} className="mt-0.5 flex min-w-0 items-center text-small text-muted">
             {leading.map((part, index) => (
               <Fragment key={part.key}>
-                {index > 0 ? dot : null}
+                {index > 0 ? (
+                  <span aria-hidden="true" data-line-dot="" className="shrink-0 whitespace-pre">
+                    {" · "}
+                  </span>
+                ) : null}
                 {part.node}
               </Fragment>
             ))}

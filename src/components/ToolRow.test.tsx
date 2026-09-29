@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { Profiler, type MouseEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -7,7 +7,7 @@ import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction,
 import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
-import { ListWidthProvider } from "./VirtualList";
+import { ListWidthProvider, VirtualList } from "./VirtualList";
 import { RovingRowProvider } from "./rovingRows";
 import type { ArtifactKey } from "../lib/types";
 import { readFileSync } from "node:fs";
@@ -927,6 +927,134 @@ describe("ToolRow", () => {
     expect(row.querySelector('[data-testid="own-avatar"]')).not.toBeNull();
     // No source's letter or colour beside it.
     expect(row.querySelector('[class*="bg-source-"]')).toBeNull();
+  });
+});
+
+describe("ToolRow as a list mounts it", () => {
+  // Long enough to be cut in its middle (`MIDDLE_CUT_FROM`).
+  const LONG = "@modelcontextprotocol/server-filesystem";
+  /** A row with every column: the status word, an update's versions, its button and its ⋯. */
+  const fullRow = (
+    <ToolRow
+      adapterId="brew"
+      sourceLabel="Homebrew"
+      name="claude-code"
+      description="Anthropic's coding assistant"
+      status={<StatusChip label="Updates itself" />}
+      version="2.1.282 → 2.1.290"
+      newVersion="2.1.290"
+      action={<RowAction onClick={() => {}}>Update</RowAction>}
+      menu={<Menu label="More actions for claude-code" items={[{ id: "details", label: "Details", onSelect: () => {} }]} />}
+      onOpen={() => {}}
+      openLabel="Details: claude-code"
+    />
+  );
+
+  it("draws once as it mounts, in a list of any width, setting nothing from its own box", () => {
+    expect(LONG.length).toBeGreaterThan(MIDDLE_CUT_FROM);
+    // A scroll mounts a dozen rows at a time: a row that drew itself again
+    // for what it measured of itself drew them all two and three times.
+    for (const width of [752, ROW_FIT_WIDTHS.compact, 592, 451, 332, 291, null]) {
+      for (const row of [
+        fullRow,
+        <ToolRow key="long" adapterId="npm" sourceLabel="npm" name={LONG} description="MCP server" version="2025.8.21" />,
+      ]) {
+        const commits: string[] = [];
+        const { unmount } = renderWithProviders(
+          <ListWidthProvider value={width}>
+            <Profiler id="row" onRender={(_id, phase) => commits.push(phase)}>
+              {row}
+            </Profiler>
+          </ListWidthProvider>,
+        );
+        expect({ width, commits }).toEqual({ width, commits: ["mount"] });
+        unmount();
+      }
+    }
+  });
+
+  it("reads nothing of the layout where nothing can crowd its text: a name that is never cut, a description with nothing before it", () => {
+    const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    try {
+      const { unmount } = renderWithProviders(
+        <ListWidthProvider value={752}>
+          {fullRow}
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" version="1.8.2" />
+        </ListWidthProvider>,
+      );
+      expect(box).not.toHaveBeenCalled();
+      unmount();
+
+      // A name that may be cut in its middle is measured: its line, and
+      // nothing else on the row.
+      renderWithProviders(<ToolRow adapterId="npm" sourceLabel="npm" name={LONG} description="MCP server" />);
+      expect(box).toHaveBeenCalled();
+      for (const element of box.mock.contexts as HTMLElement[]) {
+        expect(element.querySelector(":scope > [data-cut-middle]")).not.toBeNull();
+      }
+    } finally {
+      box.mockRestore();
+    }
+  });
+
+  it("observes no box of its own: a list is measured once, however many rows it has", () => {
+    // Every observer made, and what each watches.
+    const made: Element[][] = [];
+    const Observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly targets: Element[] = [];
+      constructor() {
+        made.push(this.targets);
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    // The virtualizer measures its box and its slots through offsetHeight,
+    // which jsdom has as 0: a box 600 high, and slots 52.
+    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute("data-index") === null ? 600 : 52;
+    });
+    try {
+      // Rows drawn outside a list (the Unknown page's): no observer at all.
+      const bare = renderWithProviders(
+        <ListWidthProvider value={451}>
+          {fullRow}
+          <ToolRow adapterId="npm" sourceLabel="npm" name={LONG} description="MCP server" />
+        </ListWidthProvider>,
+      );
+      expect(made).toHaveLength(0);
+      bare.unmount();
+
+      const observedFor = (count: number) => {
+        made.length = 0;
+        const items = Array.from({ length: count }, (_, index) => (index % 2 === 0 ? `${LONG}-${index}` : `tool-${index}`));
+        const { container, unmount } = renderWithProviders(
+          <VirtualList
+            items={items}
+            itemKey={(item) => item}
+            estimateSize={() => 52}
+            renderItem={(item) => <ToolRow adapterId="npm" sourceLabel="npm" name={item} description="A tool" />}
+          />,
+        );
+        expect(container.querySelectorAll("[data-tool-row]")).toHaveLength(count);
+        const targets = made.flat();
+        unmount();
+        return { observers: made.length, inRows: targets.filter((target) => target.closest("[data-tool-row]") !== null) };
+      };
+      const few = observedFor(2);
+      const more = observedFor(8);
+      // As many observers for eight rows as for two -- the list's own and
+      // the virtualizer's -- and none of them watches anything in a row.
+      expect(more.observers).toBe(few.observers);
+      expect(few.inRows).toEqual([]);
+      expect(more.inRows).toEqual([]);
+    } finally {
+      height.mockRestore();
+      globalThis.ResizeObserver = Observer;
+    }
   });
 });
 
