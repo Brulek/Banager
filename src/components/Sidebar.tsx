@@ -331,6 +331,7 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
   return (
     <nav
       aria-label={t("nav.label")}
+      data-sidebar=""
       className="flex w-52 shrink-0 flex-col border-r border-separator bg-sidebar text-foreground"
     >
       {/* The window's title bar is an overlay (src-tauri/tauri.conf.json),

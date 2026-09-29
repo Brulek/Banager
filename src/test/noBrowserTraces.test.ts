@@ -63,6 +63,14 @@ describe("the page", () => {
     expect(rule("body")).toMatchObject({ "text-wrap": "pretty" });
   });
 
+  it("draws the preview's dark sidebar only under an attribute the preview alone sets", () => {
+    // `?sidebar=dark` (docs/ui-preview.md): a comparison for the author,
+    // never something the app itself can switch to.
+    expect(CSS).toContain(':root[data-sidebar-preview="dark"] [data-sidebar] {');
+    const setters = sources().filter((file) => readFileSync(file, "utf-8").includes("sidebarPreview"));
+    expect(setters.map((file) => path.relative(ROOT, file))).toEqual(["src/dev/mockTauri.ts"]);
+  });
+
   it("lets no image or link be dragged out of the window", () => {
     expect(rule("img, a")).toEqual({ "-webkit-user-drag": "none" });
   });

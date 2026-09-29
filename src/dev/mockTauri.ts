@@ -41,9 +41,15 @@ if (scenario.page !== null) {
   useUiStore.setState({ page: scenario.page });
 }
 
+// `?sidebar=dark`: index.css draws the sidebar dark under this attribute,
+// which nothing outside the preview sets.
+if (scenario.sidebar === "dark") {
+  document.documentElement.dataset.sidebarPreview = "dark";
+}
+
 console.info(
   `[${MOCK_MARKER}] Browser preview with a mock backend (docs/ui-preview.md): ` +
-    `state=${scenario.state} outcome=${scenario.outcome} scan=${scenario.scan}`,
+    `state=${scenario.state} outcome=${scenario.outcome} scan=${scenario.scan} sidebar=${scenario.sidebar}`,
 );
 for (const problem of problems) {
   console.warn(`[${MOCK_MARKER}] ${problem}`);

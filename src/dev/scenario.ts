@@ -58,6 +58,15 @@ export type ScenarioOutcome = (typeof SCENARIO_OUTCOMES)[number];
 export const SCENARIO_SCANS = ["found", "stopped", "empty", "error"] as const;
 export type ScenarioScan = (typeof SCENARIO_SCANS)[number];
 
+/**
+ * `?sidebar=`: the sidebar as the app draws it (`system`, following the
+ * appearance), or dark whatever the appearance -- the redesign's earlier
+ * CleanMyMac-like choice, to set beside the system one (the polish-3
+ * spec, R0).
+ */
+export const SCENARIO_SIDEBARS = ["system", "dark"] as const;
+export type ScenarioSidebar = (typeof SCENARIO_SIDEBARS)[number];
+
 const PAGES: readonly Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /** `?lang=`: the Settings language the preview starts with. */
@@ -77,6 +86,7 @@ export interface Scenario {
   page: Page | null;
   outcome: ScenarioOutcome;
   scan: ScenarioScan;
+  sidebar: ScenarioSidebar;
 }
 
 export const DEFAULT_SCENARIO: Scenario = {
@@ -86,6 +96,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   page: null,
   outcome: "succeeded",
   scan: "found",
+  sidebar: "system",
 };
 
 function pick<T extends string>(
@@ -132,6 +143,7 @@ export function parseScenario(search: string): { scenario: Scenario; problems: s
       page: page === "" ? null : page,
       outcome: pick(params, "outcome", SCENARIO_OUTCOMES, DEFAULT_SCENARIO.outcome, problems),
       scan: pick(params, "scan", SCENARIO_SCANS, DEFAULT_SCENARIO.scan, problems),
+      sidebar: pick(params, "sidebar", SCENARIO_SIDEBARS, DEFAULT_SCENARIO.sidebar, problems),
     },
     problems,
   };

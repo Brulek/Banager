@@ -230,6 +230,20 @@
   }
 }
 
+/* The browser preview only (`?sidebar=dark`, src/dev/mockTauri.ts): the
+   sidebar in dark whatever the appearance, to set beside the system one
+   (the polish-3 spec, R0). Nothing in the app sets this attribute. */
+:root[data-sidebar-preview="dark"] [data-sidebar] {
+  color-scheme: dark;
+  --color-sidebar: #282828;
+  --color-sidebar-active: rgb(255 255 255 / 0.1);
+  --color-foreground: rgb(255 255 255 / 0.847);
+  --color-muted: rgb(255 255 255 / 0.549);
+  --color-tertiary: rgb(255 255 255 / 0.247);
+  --color-separator: rgb(255 255 255 / 0.098);
+  --color-focus: rgb(26 169 255 / 0.5);
+}
+
 /* The accent the user picked in System Settings, where the web view knows
    it (WebKit does; the headless previews keep the default blue). */
 @supports (color: AccentColor) {
