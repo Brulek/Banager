@@ -75,8 +75,8 @@ function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex min-h-0 flex-1 flex-col">
           {/* Outside `SnapshotStatus`, so the title and Check again stay
-              put whatever the page below shows -- "Loading…", a failed
-              first check, an empty Mac. */}
+              put whatever the page below shows -- the first check under
+              way, a failed first check, an empty Mac. */}
           <PageHeader title={t(PAGE_LABEL_KEYS[page])} actions={headerActions(page)} />
           {/* The page's own box. The Installed and Updates pages size
               their lists to its height (`h-full`) and scroll inside them;
@@ -93,8 +93,9 @@ function App() {
             ) : page === "unknown" ? (
               <UnknownPage />
             ) : page === "overview" ? (
-              // The Overview says "Checking…" itself while the first check
-              // runs; every other state is the snapshot's, as on any page.
+              // The Overview shows the first check itself while it runs
+              // (`FirstCheck`, which SnapshotStatus shows for the other
+              // two); every other state is the snapshot's, as on any page.
               <SnapshotStatus showsFirstCheck>
                 <OverviewPage />
               </SnapshotStatus>

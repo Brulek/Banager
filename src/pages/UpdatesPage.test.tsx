@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { UpdatesPage } from "./UpdatesPage";
 import { artifactKeyId, useUiStore } from "../store/ui";
@@ -422,6 +422,23 @@ afterEach(() => {
 });
 
 describe("UpdatesPage", () => {
+  it("shows the first check's ring and why it takes a while until the backend has answered, not Loading…", async () => {
+    // At launch `get_snapshot` has not answered yet: the first check is
+    // under way, as the Overview says in the same words.
+    const answer = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) =>
+      cmd === "get_snapshot" ? new Promise(() => {}) : answer!(cmd, args),
+    );
+    const { findByRole, getByText, queryByText, container } = renderWithProviders(<UpdatesPage />);
+
+    expect(await findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
+    expect(
+      getByText("The first check looks up every tool's newest version online, and sometimes takes a minute or two."),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("checking");
+    expect(queryByText("Loading…")).not.toBeInTheDocument();
+  });
+
   it("shows each update's version change in its version column, in tabular numerals, with technical details off", async () => {
     // The redesign's rule for a row: what it is, which version, what can
     // be done (docs/superpowers/2026-09-27-ui-redesign.md, 原则 1). The

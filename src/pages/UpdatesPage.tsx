@@ -24,6 +24,7 @@ import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
 import { VirtualList } from "../components/VirtualList";
+import { FirstCheck } from "../components/StatusRing";
 import {
   holdsRow,
   isRetryable,
@@ -609,7 +610,9 @@ export function UpdatesPage() {
   };
 
   if (isLoading) {
-    return <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>;
+    // Before `get_snapshot` answers, the first check is under way too:
+    // the same view `SnapshotStatus` shows once it has.
+    return <FirstCheck />;
   }
   if (!snapshot || !settings) {
     return null;

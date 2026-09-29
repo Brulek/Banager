@@ -159,11 +159,16 @@ function renderOverview(options?: RenderOptions) {
 }
 
 describe("OverviewPage", () => {
-  it("says Checking… while the first check runs, with nothing to press", async () => {
+  it("says Checking… while the first check runs, and why it takes a while, with nothing to press", async () => {
     served = startupSnapshot;
-    const { findByRole, queryByRole, queryByText, container } = renderOverview();
+    const { findByRole, getByText, queryByRole, queryByText, container } = renderOverview();
 
     expect(await findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
+    // A turning ring alone, for as long as Homebrew's list update and
+    // every online lookup took, looked like a window that had frozen.
+    expect(
+      getByText("The first check looks up every tool's newest version online, and sometimes takes a minute or two."),
+    ).toBeInTheDocument();
     // The ring turns while it waits, and says no number.
     expect(ringOf(container).getAttribute("data-ring")).toBe("checking");
     expect(ringOf(container).textContent).toBe("");

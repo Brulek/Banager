@@ -5,13 +5,15 @@ import { isStartupSnapshot } from "../lib/events";
 import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { EmptyState, type EmptyStateDetail } from "./EmptyState";
+import { FirstCheck } from "./StatusRing";
 
 export interface SnapshotStatusProps {
   children: ReactNode;
   /**
-   * The page says "Checking…" itself while the first check runs -- the
-   * Overview's headline -- so `children` are rendered then in place of
-   * "Loading…". Every other branch below applies to it as to any page.
+   * The page shows the first check itself while it runs -- the Overview,
+   * which shows `FirstCheck` from before `get_snapshot` answers until its
+   * settings are in too -- so `children` are rendered then in its place.
+   * Every other branch below applies to it as to any page.
    */
   showsFirstCheck?: boolean;
 }
@@ -84,13 +86,12 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // The startup snapshot: Task 10's useStartupRefresh has not resolved
     // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
     // why its three fields, and only they, mean that). Judging it here
-    // would flash "Canager found nothing it can manage" at every launch. A
-    // page that says "Checking…" itself is shown instead of "Loading…".
-    return showsFirstCheck ? (
-      <>{children}</>
-    ) : (
-      <p className="p-4 text-sm text-[var(--color-muted)]">{t("common.loading")}</p>
-    );
+    // would flash "Canager found nothing it can manage" at every launch.
+    // The first check's ring and why it takes a while (`FirstCheck`) are
+    // shown instead, by the page itself where it draws them. The Updates
+    // and Installed pages said a small grey "Loading…" in a corner here,
+    // for as long as the first check took.
+    return showsFirstCheck ? <>{children}</> : <FirstCheck />;
   }
 
   if (snapshot.detect === "Missing") {

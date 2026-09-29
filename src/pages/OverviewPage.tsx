@@ -12,7 +12,8 @@ import { useUiStore } from "../store/ui";
 import { holdsRow, isUnderway, useUpdateOperationFor } from "../components/UpdateProgress";
 import { SourceAvatar } from "../components/SourceAvatar";
 import { SourceNotices } from "../components/SourceNotices";
-import { CheckIcon, DashIcon, UnknownIcon } from "../components/icons";
+import { FirstCheck, StatusRing } from "../components/StatusRing";
+import { UnknownIcon } from "../components/icons";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -82,86 +83,6 @@ function nothingToUpdateLine(
   ));
 }
 
-/** What the ring shows: the headline's verdict, or that the first check is still running. */
-type RingState = UpdatesSummary | { kind: "checking" };
-
-// The ring's circle in its 160-unit box: 10 units of stroke, and the
-// length of the whole way round, which the spinning arc is a quarter of.
-const RING_RADIUS = 72;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-/**
- * The large round mark over the headline (CleanMyMac's one big thing to
- * look at): the accent colour round the number of updates, with the word
- * for them under it; a calm green round a check when everything is up to
- * date; a grey ring with a dash when there is nothing to update but that
- * is not the same as up to date; a faint ring with a quarter of it
- * turning while the first check runs, or while the updates it offered are
- * being installed -- only without "reduce motion".
- * Decorative: the headline under it says the same in words, so it is
- * hidden from screen readers. `data-ring` names its state.
- */
-function StatusRing({ state }: { state: RingState }) {
-  const { t } = useTranslation();
-  const ring = (className: string) => (
-    <circle cx="80" cy="80" r={RING_RADIUS} fill="none" strokeWidth="10" className={className} />
-  );
-  return (
-    <div
-      data-ring={state.kind}
-      aria-hidden="true"
-      className="relative flex h-40 w-40 shrink-0 items-center justify-center"
-    >
-      <svg viewBox="0 0 160 160" className="absolute inset-0 h-full w-full">
-        {state.kind === "updates" ? (
-          <>
-            <circle cx="80" cy="80" r={RING_RADIUS - 5} className="fill-accent/10" />
-            {ring("stroke-accent")}
-          </>
-        ) : state.kind === "upToDate" ? (
-          <>
-            <circle cx="80" cy="80" r={RING_RADIUS - 5} className="fill-success/10" />
-            {ring("stroke-success")}
-          </>
-        ) : (
-          ring("stroke-hover")
-        )}
-      </svg>
-      {state.kind === "checking" || state.kind === "updating" ? (
-        <svg
-          viewBox="0 0 160 160"
-          className="absolute inset-0 h-full w-full motion-safe:animate-spin motion-safe:[animation-duration:1.6s]"
-        >
-          <circle
-            cx="80"
-            cy="80"
-            r={RING_RADIUS}
-            fill="none"
-            strokeWidth="10"
-            strokeLinecap="round"
-            strokeDasharray={`${RING_LENGTH / 4} ${RING_LENGTH}`}
-            className="stroke-accent/70"
-          />
-        </svg>
-      ) : null}
-      {state.kind === "updates" ? (
-        <span className="relative flex flex-col items-center">
-          <span className="text-[44px] font-semibold leading-none tabular-nums text-foreground">
-            {state.actionable.length}
-          </span>
-          <span className="mt-2 text-small text-muted">
-            {t("overview.updatesUnit", { count: state.actionable.length })}
-          </span>
-        </span>
-      ) : state.kind === "upToDate" ? (
-        <CheckIcon size={60} className="relative text-success" />
-      ) : state.kind === "nothingToUpdate" ? (
-        <DashIcon size={52} className="relative text-muted" />
-      ) : null}
-    </div>
-  );
-}
-
 const TILE =
   "flex w-full items-center gap-3 rounded-row p-2.5 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent";
 
@@ -177,8 +98,9 @@ const TILE =
  * where a source was not checked in full -- with a line under it saying what there is instead
  * (`nothingToUpdateLine`) and, when the Updates page lists any of it, a
  * quieter Review updates that opens it. Before the first check has
- * answered, "Checking…" -- the startup placeholder is not an answer
- * (`isStartupSnapshot`).
+ * answered, "Checking…" and why it takes a while (`FirstCheck`, which the
+ * Updates and Installed pages show too) -- the startup placeholder is not
+ * an answer (`isStartupSnapshot`).
  *
  * Below it, quietly, two panels. "Your tools": a tile for each source
  * with something installed and how much, which opens the Installed page on
@@ -206,14 +128,7 @@ export function OverviewPage() {
   const attentionHeadingId = useId();
 
   if (!snapshot || !settings || isStartupSnapshot(snapshot)) {
-    return (
-      <div className="flex min-h-full flex-col items-center px-6 pb-8">
-        <section className="flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
-          <StatusRing state={{ kind: "checking" }} />
-          <h2 className="text-headline text-muted">{t("common.checking")}</h2>
-        </section>
-      </div>
-    );
+    return <FirstCheck />;
   }
 
   const labelOf = (instance: ManagerInstance): string => {

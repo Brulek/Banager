@@ -147,8 +147,9 @@ Paths are under a generic home folder, `/Users/you`.
 ## What it does
 
 - A refresh takes about a second; the first one runs at startup, as in the
-  app, so the page header and the Overview say "Checking…" (the other
-  pages "Loading…") for a moment. Check again in the header runs one at
+  app, so for a moment the page header says "Checking…", and so do the
+  Overview, Updates and Installed pages, under the turning ring and over
+  why the first check takes a while. Check again in the header runs one at
   any time.
 - Update and Uninstall show the preview the real adapter would build
   (an uninstall's sentence under the tool about what goes and what stays,

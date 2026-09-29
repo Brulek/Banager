@@ -69,7 +69,7 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
   });
 
-  it("shows loading, not the no-sources state, before the first refresh has completed", async () => {
+  it("shows the first check's ring and why it takes a while, not the no-sources state, before the first refresh has completed", async () => {
     // Session boots with Snapshot::empty(): generation 0, detect Missing,
     // refreshed_at null. Only a completed refresh ever sets refreshed_at —
     // including a refresh that finds Homebrew genuinely missing.
@@ -77,14 +77,45 @@ describe("SnapshotStatus", () => {
       baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
     );
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <SnapshotStatus>
         <p>installed list</p>
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    // The Overview's own first-check view, on the Updates and Installed
+    // pages too: a bare "Loading…" in a corner, for as long as the first
+    // check took, could not be told from a window that had frozen.
+    expect(await screen.findByRole("heading", { level: 2, name: "Checking…" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
+      ),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-ring]")?.getAttribute("data-ring")).toBe("checking");
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+    expect(screen.queryByText("installed list")).not.toBeInTheDocument();
     expect(screen.queryByText("Canager found nothing it can manage")).not.toBeInTheDocument();
+  });
+
+  it("says in Chinese why the first check takes a while", async () => {
+    vi.mocked(invoke).mockResolvedValue(
+      baseSnapshot({ generation: 0, detect: "Missing", refreshed_at: null }),
+    );
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(
+        <SnapshotStatus>
+          <p>installed list</p>
+        </SnapshotStatus>,
+      );
+
+      expect(await screen.findByRole("heading", { level: 2, name: "正在检查…" })).toBeInTheDocument();
+      expect(screen.getByText("第一次检查要联网查每个工具的新版本，有时要一两分钟。")).toBeInTheDocument();
+      expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("shows the stale-data banner, and no separate incomplete-check one, when a source failed", async () => {

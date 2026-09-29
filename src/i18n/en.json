@@ -27,6 +27,7 @@
     "listSeparator": ", ",
     "listAnd": "{{list}} and {{last}}",
     "checking": "Checking…",
+    "firstCheckDetail": "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     "details": "Details",
     "detailsLabel": "Details: {{title}}",
     "copyCommand": "Copy command",

@@ -24,6 +24,7 @@
     "listSeparator": "、",
     "listAnd": "{{list}} 和 {{last}}",
     "checking": "正在检查…",
+    "firstCheckDetail": "第一次检查要联网查每个工具的新版本，有时要一两分钟。",
     "details": "详情",
     "detailsLabel": "详情：{{title}}",
     "copyCommand": "拷贝命令",
