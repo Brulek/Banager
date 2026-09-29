@@ -211,8 +211,25 @@ export function DashIcon(props: IconProps) {
 }
 
 /**
- * Something is happening: a quarter of a circle that turns, over a faint
- * whole one. Turns only for someone who has not asked for less motion.
+ * Each spoke of the spinner, clockwise from twelve o'clock, and how faint
+ * it is: the one at the top in the full colour, then an eighth fainter for
+ * each spoke behind it, anticlockwise -- so the one just after the top, at
+ * half past one, is the faintest, and the next to light up.
+ */
+const SPINNER_SPOKES = Array.from({ length: 8 }, (_, index) => ({
+  angle: index * 45,
+  opacity: 1 - ((8 - index) % 8) / 8,
+}));
+
+/**
+ * Something is happening: macOS's spinning indicator, not a web page's
+ * ring with a gap -- eight short spokes with round ends around the centre,
+ * fading round the circle, as measured in native-controls (at 16: 2 wide,
+ * from 3 to 7.5 out). It turns an eighth at a time (index.css), the lit
+ * spoke stepping to the next, as the Mac's does. `currentColor`,
+ * the top spoke in the caller's colour -- the muted grey, as the Mac draws
+ * its own -- the others fainter still. For someone who has asked for less
+ * motion it stands still, and still reads as the one it is.
  */
 export function SpinnerIcon({ size = 18, className }: IconProps) {
   return (
@@ -221,13 +238,15 @@ export function SpinnerIcon({ size = 18, className }: IconProps) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      strokeWidth={2.25}
+      stroke="currentColor"
+      strokeWidth={3}
       strokeLinecap="round"
       aria-hidden="true"
-      className={`motion-safe:animate-spin ${className ?? ""}`}
+      className={`motion-safe:animate-spinner ${className ?? ""}`}
     >
-      <circle cx="12" cy="12" r="8.5" stroke="currentColor" opacity={0.25} />
-      <path d="M12 3.5A8.5 8.5 0 0 1 20.5 12" stroke="currentColor" />
+      {SPINNER_SPOKES.map(({ angle, opacity }) => (
+        <line key={angle} x1="12" y1="2.25" x2="12" y2="6" opacity={opacity} transform={`rotate(${angle} 12 12)`} />
+      ))}
     </svg>
   );
 }

@@ -91,6 +91,18 @@ describe("the page", () => {
     expect(ringing.map((file) => path.relative(ROOT, file))).toEqual([]);
     expect(CSS).not.toMatch(/:focus\b(?!-)/);
   });
+
+  it("turns a spinner an eighth at a time, as the Mac's does, never smoothly round, and not at all for less motion", () => {
+    expect(CSS).toContain("--animate-spinner: spinner 0.8s steps(8) infinite;");
+    expect(CSS).toContain("@keyframes spinner { to { transform: rotate(360deg); } }");
+    // Tailwind's own `animate-spin` is the smooth turn of a web page's.
+    const spinning = sources().filter((file) => /animate-spin(?!ner)/.test(readFileSync(file, "utf-8")));
+    expect(spinning.map((file) => path.relative(ROOT, file))).toEqual([]);
+    // Only ever behind `motion-safe:`.
+    const uses = sources().flatMap((file) => readFileSync(file, "utf-8").match(/[\w:-]*animate-spinner/g) ?? []);
+    expect(uses.length).toBeGreaterThan(0);
+    expect(uses.filter((use) => use !== "motion-safe:animate-spinner")).toEqual([]);
+  });
 });
 
 describe("hover and focus", () => {

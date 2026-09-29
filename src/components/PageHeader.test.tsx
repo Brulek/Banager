@@ -206,7 +206,7 @@ describe("PageHeader", () => {
     expect(button.textContent).toBe("");
     expect(button.className).toBe(ICON_BUTTON);
     expect(button.querySelector("svg")).toHaveAttribute("width", "16");
-    expect(button.querySelector(".motion-safe\\:animate-spin")).toBeNull();
+    expect(button.querySelector(".motion-safe\\:animate-spinner")).toBeNull();
     fireEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);
 
@@ -220,7 +220,7 @@ describe("PageHeader", () => {
     // switched-off button's.
     const spinner = busy.querySelector("svg") as SVGElement;
     expect(spinner).toHaveAttribute("width", "16");
-    expect(spinner.getAttribute("class")).toContain("motion-safe:animate-spin");
+    expect(spinner.getAttribute("class")).toContain("motion-safe:animate-spinner");
     expect(spinner.getAttribute("class")).toContain("text-muted");
   });
 
@@ -340,7 +340,7 @@ describe("PageHeader", () => {
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
     await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
-    expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-spin");
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain("motion-safe:animate-spinner");
     expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checking…");
     // A second click has nothing to press.
     fireEvent.click(button);
@@ -354,7 +354,7 @@ describe("PageHeader", () => {
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(newer);
     expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checked just now");
-    expect(button.querySelector("svg")?.getAttribute("class") ?? "").not.toContain("animate-spin");
+    expect(button.querySelector("svg")?.getAttribute("class") ?? "").not.toContain("animate-spinner");
   });
 
   it("is off while a refresh it did not start is running", async () => {

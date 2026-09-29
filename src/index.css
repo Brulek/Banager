@@ -146,6 +146,15 @@
       opacity: 0;
     }
   }
+  /* The spinner (`SpinnerIcon`) turns as the Mac's does: in eight steps
+     of an eighth of a turn, each spoke to where the next one was, a turn
+     in 0.8s -- not smoothly round, as a web page's does. */
+  --animate-spinner: spinner 0.8s steps(8) infinite;
+  @keyframes spinner {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
 
 :root {

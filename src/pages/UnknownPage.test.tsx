@@ -485,7 +485,7 @@ describe("UnknownPage", () => {
 
       const button = getByRole("button", { name: "Scan Again" });
       await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
-      expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-spin");
+      expect(button.querySelector("svg")?.getAttribute("class")).toContain("motion-safe:animate-spinner");
       expect(button).toHaveAttribute("title", "Scan Again · Scanning…");
 
       await act(async () => {

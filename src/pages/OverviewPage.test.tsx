@@ -195,7 +195,7 @@ describe("OverviewPage", () => {
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("busy");
     const spinner = symbolOf(container).querySelector("svg");
     expect(spinner).toHaveAttribute("width", "32");
-    expect(spinner?.getAttribute("class")).toContain("animate-spin");
+    expect(spinner?.getAttribute("class")).toContain("motion-safe:animate-spinner");
     // A spinner alone, for as long as Homebrew's list update and every
     // online lookup took, looked like a window that had frozen.
     expect(heading.nextElementSibling?.textContent).toBe(
@@ -835,7 +835,7 @@ describe("OverviewPage", () => {
       await waitFor(() => expect(headline.nextElementSibling?.textContent).toBe("Checking…"));
       expect(headline).toHaveTextContent("1 tool can be updated");
       expect(symbolOf(container).getAttribute("data-symbol")).toBe("updates");
-      expect(container.querySelector(".animate-spin, [class*='animate-spin']")).toBeNull();
+      expect(container.querySelector("[class*='animate-spinner']")).toBeNull();
       expect(within(statusRowOf(container)).getByRole("button", { name: "Review Updates" })).toBeInTheDocument();
     } finally {
       await act(async () => {
