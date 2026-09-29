@@ -18,7 +18,7 @@ import type {
   UpdateBlocked,
   UpdateCandidate,
 } from "./types";
-import { canWrite, failedSourceAdapters, isAvailable } from "./sources";
+import { canWrite, isAvailable } from "./sources";
 import { artifactKeyId } from "../store/ui";
 
 /**
@@ -314,14 +314,12 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   what the Overview says under its headline, in the
  *   Updates page's own numbers: `cantUpdateHere`, the updates under its
  *   "Can't update here (N)" -- every one it lists but those an update is
- *   installing or has just installed -- `hidden`, the updates it leaves
- *   out because the user hid them (`hidingRule`; a skip or a never-remind
- *   that hides no update this check found is not counted), and
- *   `checksUnfinished`, the sources whose check failed this round, each
- *   once, as the "Some checks didn't finish" banner names them
- *   (`failedSourceAdapters`): two Homebrews that both failed are the one
- *   Homebrew it names. A source not checked in full says so in the
- *   Overview's group of problems, one row for it, and is not counted here.
+ *   installing or has just installed -- and `hidden`, the updates it
+ *   leaves out because the user hid them (`hidingRule`; a skip or a
+ *   never-remind that hides no update this check found is not counted).
+ *   A source not checked in full, and a check that did not finish
+ *   (`unfinishedChecksNotice`), say so in the Overview's group of
+ *   problems, a row each, and are not counted here: said once.
  * - `updating`: none left to start, and some are being installed right
  *   now (`underway`: queued, running, being cancelled or read back) --
  *   `count` of them, in the words the Updates page's header uses for them.
@@ -338,7 +336,6 @@ export type UpdatesSummary =
       everyChecked: boolean;
       cantUpdateHere: number;
       hidden: number;
-      checksUnfinished: number;
     };
 
 export function updatesSummary(
@@ -360,7 +357,6 @@ export function updatesSummary(
     everyChecked,
     cantUpdateHere: listed - actionable.length,
     hidden: snapshot.updates.length - listed,
-    checksUnfinished: failedSourceAdapters(snapshot.errors, snapshot.instances).length,
   };
 }
 

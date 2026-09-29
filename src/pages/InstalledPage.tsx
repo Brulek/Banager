@@ -16,6 +16,7 @@ import {
   uninstallHoldKey,
   UPDATE_BLOCKED_KEYS,
   sourceWarningOf,
+  unfinishedChecksNotice,
 } from "../lib/sources";
 import {
   hidingRule,
@@ -315,15 +316,20 @@ const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
  * words of its first warning -- 「uv没有响应」 over 「无法列出它安装的内
  * 容。请稍后重新检查。」, the notice's sentence less what its title
  * has just said (`EMPTY_PAGE_DESCRIPTION_KEYS`) -- or, for a source that
- * answered, that nothing is installed with it; and Check again, the
- * header's, which shows what it has once it answers or has something. In
- * the list's place, so the source's notice is not said a second time over
- * it.
+ * answered but whose check did not finish this round, 「部分检查未完成」
+ * over 「pipx这次未检查完。」 (`unfinishedChecksNotice`): nothing listed
+ * may be only what it did not get to; for one that answered in full, that
+ * nothing is installed with it; and Check again, the header's, which
+ * shows what it has once it answers or has something. In the list's
+ * place, so the source's notice is not said a second time over it.
  */
 function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: string }) {
   const { t } = useTranslation();
+  const { data: snapshot } = useSnapshot();
   const { checkAgain, checking } = useCheckAgain();
-  const warning = sourceWarningOf(instance, label, 0);
+  const warning =
+    sourceWarningOf(instance, label, 0) ??
+    unfinishedChecksNotice(t, snapshot?.errors ?? [], snapshot?.instances ?? [], [instance]);
   return (
     <EmptyState
       symbol={warning === null ? "info" : "warning"}
@@ -670,9 +676,25 @@ export function InstalledPage() {
   // it answered" over rows it has, "can't show what it has installed" over
   // none -- and a search that hides its rows does not make it have none.
   // Then a source with rows here whose version Canager has not been
-  // tested with. Two lines or more fold into one (`SourceNotices`).
+  // tested with. Two lines or more fold into one (`SourceNotices`). First
+  // of all, the checks of the sources in view that did not finish this
+  // round (`unfinishedChecksNotice`): a line like the others, once a band
+  // of its own over the page.
+  const unfinished = useMemo(
+    () =>
+      snapshot
+        ? unfinishedChecksNotice(
+            t,
+            snapshot.errors,
+            snapshot.instances,
+            activeFilter === null ? undefined : instancesInView,
+          )
+        : null,
+    [t, snapshot, activeFilter, instancesInView],
+  );
   const notices = useMemo(
     () => [
+      ...(unfinished === null ? [] : [unfinished]),
       ...instancesInView.flatMap((instance) =>
         sourceNoticesFor(instance, labelOf(instance), countByInstance.get(instance.id) ?? 0),
       ),
@@ -688,7 +710,7 @@ export function InstalledPage() {
           }),
         ),
     ],
-    [instancesInView, labelOf, countByInstance],
+    [unfinished, instancesInView, labelOf, countByInstance],
   );
   const noticeFold = useNoticeFold(notices.length);
   // The notices are the list's first line while it has rows to be the

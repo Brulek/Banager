@@ -3266,6 +3266,60 @@ describe("UpdatesPage", () => {
       ).toHaveTextContent("Open Ollama to see what it has and check for updates.");
     });
 
+    it("says a check that did not finish as the list's first line, like a source's notice, and folds it with the others", async () => {
+      // It was a band of its own over the list's header, the web's way:
+      // 「部分检查未完成」 and the sentence beside it, and no button.
+      errors = [
+        { instance_id: "pipx:/Users/you/.local/pipx", message: "pipx list --json timed out after 60 s" },
+        { instance_id: "cargo:/Users/brulek/.cargo", message: "could not read .crates2.json" },
+      ];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { container, getByRole, queryByText } = renderPage();
+
+      const notice = await screen.findByText("Some checks didn't finish");
+      // The list's first row, under its header, on the rows' grid.
+      expect(slotOf(notice)).toBe(0);
+      const header = getByRole("checkbox", { name: SELECT_ALL });
+      expect(header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const line = notice.closest("[data-notice-line]") as HTMLElement;
+      expect(line.className.split(" ")).toContain("h-8");
+      expect((line.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toEqual(
+        expect.arrayContaining(["ml-7", "w-8"]),
+      );
+      expect(line.querySelector("[data-notice-symbol] svg")?.getAttribute("class")).toContain("text-warning");
+      // Its sentence behind its ⓘ, not beside it.
+      expect(queryByText("pipx and Cargo didn't finish checking this time.")).toBeNull();
+      const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
+      fireEvent.click(details);
+      expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        "pipx and Cargo didn't finish checking this time.",
+      );
+      // The toolbar's Check Again, small and grey, as a silent source's line has.
+      const again = within(line).getByRole("button", { name: "Check Again" });
+      expect(again.className).toContain(BUTTON.small.grey);
+      mockInvoke.mockClear();
+      fireEvent.click(again);
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+      // With Ollama's, one line: the rest behind 「还有N个问题」.
+      expect(queryByText("Ollama isn't running")).toBeNull();
+      fireEvent.click(getByRole("button", { name: "1 more issue" }));
+      expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
+      // Said once, in the line: no band over the page.
+      expect(within(container).getAllByText("Some checks didn't finish")).toEqual([notice]);
+    });
+
+    it("does not say a silent source's check did not finish: its own line says it did not answer", async () => {
+      // `refresh` carries a silent source's errors forward while an
+      // operation holds it.
+      errors = [{ instance_id: "ollama:http://127.0.0.1:11434", message: "connection refused" }];
+      instances = [...snapshot.instances, stoppedOllama];
+      const { queryByText, queryByRole } = renderPage();
+
+      await screen.findByText("Ollama isn't running");
+      expect(queryByText("Some checks didn't finish")).toBeNull();
+      expect(queryByRole("button", { name: /more issue/ })).toBeNull();
+    });
+
     it("folds two lines into one, the warning first, and keeps them unfolded while the page changes under them, until their number does", async () => {
       const brewUpdating = {
         ...snapshot.instances[0],

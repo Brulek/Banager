@@ -425,7 +425,8 @@ describe("OverviewPage", () => {
           errors: [{ instance_id: brew.id, message: "brew outdated exited with code 1" }],
         });
       },
-      "1 check didn't finish",
+      // "Needs attention" says it, as the lists' first line does.
+      null,
       false,
       NOT_CHECKED,
     ],
@@ -437,7 +438,7 @@ describe("OverviewPage", () => {
           errors: [{ instance_id: "npm", message: "internal error detecting this source" }],
         });
       },
-      "1 check didn't finish",
+      null,
       false,
       NOT_CHECKED,
     ],
@@ -457,9 +458,6 @@ describe("OverviewPage", () => {
       </>,
     );
 
-    // Waited for rather than found once: over a snapshot with errors the
-    // page is drawn again under the "some checks didn't finish" banner,
-    // and the heading found first is not the one that stays.
     await waitFor(() => expect(getByRole("heading", { level: 2, name: title })).toBeInTheDocument());
     expect(queryByRole("heading", { name: "Everything is up to date" })).not.toBeInTheDocument();
     // Not the green check: a check in a circle, in outline and the muted
@@ -506,28 +504,41 @@ describe("OverviewPage", () => {
     }
   });
 
-  it("counts the checks that did not finish as the banner names them: two Homebrews are one", async () => {
-    // An Apple-silicon Mac with Homebrew in /opt/homebrew and /usr/local,
-    // offline, nothing listed: the banner named Homebrew once, and the
-    // line under the headline said "2 checks didn't finish".
+  it("says the checks that did not finish once, as the problems group's first row, with Check Again", async () => {
+    // It was a band over the page -- 「部分检查未完成」, Homebrew's name --
+    // and a count under the headline, "2 checks didn't finish", for an
+    // Apple-silicon Mac with Homebrew in /opt/homebrew and /usr/local,
+    // offline: the same fact twice, and a count of neither. Now it is the
+    // row the lists' first line is, naming Homebrew once, and the line
+    // under the headline says when the check was.
     const intel = instance("brew:/usr/local", "brew");
     served = snapshotWith({
-      instances: [brew, intel, pip],
+      instances: [brew, intel, pip, stoppedOllama],
       stale: true,
       errors: [
         { instance_id: brew.id, message: "brew update failed" },
         { instance_id: intel.id, message: "brew update failed" },
       ],
     });
-    const { findByText, getByRole } = renderOverview();
+    const { findByRole, getByRole, queryByText, container } = renderOverview();
 
-    expect(
-      await findByText("Homebrew didn't finish checking this time."),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(getByRole("heading", { level: 2, name: NOT_CHECKED })).toBeInTheDocument());
-    expect(getByRole("heading", { level: 2, name: NOT_CHECKED }).nextElementSibling?.textContent).toBe(
-      "1 check didn't finish",
-    );
+    const list = await findByRole("list", { name: "Needs attention" });
+    const rows = within(list).getAllByRole("listitem");
+    // First, before the sources' own warnings.
+    expect(within(rows[0]).getByText("Some checks didn't finish")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Homebrew didn't finish checking this time.")).toBeInTheDocument();
+    expect(rows[0].querySelector("svg")?.getAttribute("class")).toContain("text-warning");
+    expect(within(rows[1]).getByText("Ollama isn't running")).toBeInTheDocument();
+    // Said once: no band over the page, no count under the headline.
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(queryByText(/^\d+ checks? didn't finish$/)).toBeNull();
+    expect(within(container).getAllByText("Some checks didn't finish")).toHaveLength(1);
+    expect(getByRole("heading", { level: 2, name: NOT_CHECKED }).nextElementSibling?.textContent).toMatch(/^Checked /);
+    // Its button checks again, as the toolbar's does.
+    const again = within(rows[0]).getByRole("button", { name: "Check Again" });
+    expect(again.className).toBe(BUTTON.regular.grey);
+    fireEvent.click(again);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
   });
 
   it("says under Nothing to update what the Updates page has instead, in its numbers, and Review updates opens it", async () => {

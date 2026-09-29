@@ -82,7 +82,6 @@
     "nothingToUpdateChecked": "已检查的来源中没有可更新的工具",
     "hiddenCount_other": "{{count}}个已隐藏",
     "cantUpdateHereCount_other": "{{count}}个无法在这里更新",
-    "checksUnfinished_other": "{{count}}项检查未完成",
     "listSeparator": "，",
     "attentionLabel": "需要查看",
     "moreNotes_other": "另有{{count}}条提示",
@@ -397,6 +396,10 @@
       "title": "找不到{{source}}的程序文件",
       "description": "{{source}}的“{{command}}”已无法运行。要继续使用，请重新安装{{source}}，如果文件在废纸篓中，也可以拖回原处后重新检查；不再需要的话，可在“已安装”中卸载。"
     },
+    "checksUnfinished": {
+      "title": "部分检查未完成",
+      "description_other": "{{sources}}这次未检查完。"
+    },
     "more_other": "还有{{count}}个问题",
     "showFewer": "收起"
   },
@@ -641,10 +644,6 @@
     "noSources": {
       "title": "没有找到可管理的工具",
       "description": "建议先安装Homebrew。"
-    },
-    "refreshFailed": {
-      "title": "部分检查未完成",
-      "description_other": "{{sources}}这次未检查完。"
     },
     "nothingInstalled": {
       "title": "没有找到已安装的工具",

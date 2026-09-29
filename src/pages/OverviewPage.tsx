@@ -10,6 +10,7 @@ import {
   openOllamaErrorDetail,
   openOllamaErrorMessage,
   sourceNoticesFor,
+  unfinishedChecksNotice,
 } from "../lib/sources";
 import type { SourceNoticeSpec } from "../lib/sources";
 import { updatesSummary } from "../lib/updateState";
@@ -60,9 +61,9 @@ function symbolOf(summary: UpdatesSummary): StatusSymbolKind {
 /**
  * The line under "Nothing to update": what there is instead, in the
  * Updates page's own numbers (`updatesSummary`) -- the updates the user
- * hid, the ones under its "Can't update here", the checks that did not
- * finish -- or null when there is none of that. A source not checked in
- * full says so in the problems group under the status instead.
+ * hid, the ones under its "Can't update here" -- or null when there is
+ * none of that. A source not checked in full, and a check that did not
+ * finish, say so in the problems group under the status instead.
  *
  * The Updates page lists no hidden update, and Settings lists them all,
  * under 「已跳过的版本」 and 「不再提醒的工具」: their count is the way
@@ -84,9 +85,6 @@ function nothingToUpdateLine(
   }
   if (summary.cantUpdateHere > 0) {
     parts.push(t("overview.cantUpdateHereCount", { count: summary.cantUpdateHere }));
-  }
-  if (summary.checksUnfinished > 0) {
-    parts.push(t("overview.checksUnfinished", { count: summary.checksUnfinished }));
   }
   if (parts.length === 0) return null;
   return parts.map((part, index) => (
@@ -330,7 +328,8 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * not running, not answering, a list it could not download, another
  * program that runs instead), with its own button (`ProblemRow`) -- the
  * warnings first, the notes folded into one row after them
- * (`ProblemsGroup`). What a source lets Canager do at all,
+ * (`ProblemsGroup`). The checks that did not finish this round are its
+ * first row (`unfinishedChecksNotice`), as they are the lists' first line. What a source lets Canager do at all,
  * pip being read-only, is not news here; both lists say it on each of its
  * rows. The sources themselves are in the sidebar.
  */
@@ -375,13 +374,19 @@ export function OverviewPage() {
     (candidate) => isUnderway(operationFor(candidate)),
   );
 
-  // Each source's first warning, or else its first notice: a warning must
-  // not fold away with the notes (`ProblemsGroup`) behind one of its own.
-  const problems: SourceNoticeSpec[] = snapshot.instances.flatMap((instance) => {
-    const notices = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
-    const notice = notices.find((each) => each.variant === "warning") ?? notices[0];
-    return notice === undefined ? [] : [notice];
-  });
+  // First, the checks that did not finish this round, as the lists' first
+  // line says them (`unfinishedChecksNotice`); then each source's first
+  // warning, or else its first notice: a warning must not fold away with
+  // the notes (`ProblemsGroup`) behind one of its own.
+  const unfinished = unfinishedChecksNotice(t, snapshot.errors, snapshot.instances);
+  const problems: SourceNoticeSpec[] = [
+    ...(unfinished === null ? [] : [unfinished]),
+    ...snapshot.instances.flatMap((instance) => {
+      const notices = sourceNoticesFor(instance, labelOf(instance), installedByInstance.get(instance.id) ?? 0);
+      const notice = notices.find((each) => each.variant === "warning") ?? notices[0];
+      return notice === undefined ? [] : [notice];
+    }),
+  ];
 
   // A check that failed says so until one works, but not while the next
   // one runs.

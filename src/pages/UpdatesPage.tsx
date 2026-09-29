@@ -10,6 +10,7 @@ import {
   settingsSaveSentence,
   sourceNoticesFor,
   toolDescription,
+  unfinishedChecksNotice,
   UPDATE_BLOCKED_KEYS,
 } from "../lib/sources";
 import { warningMessage } from "../lib/warnings";
@@ -491,16 +492,24 @@ export function UpdatesPage() {
   // Iterates `snapshot.instances`, which is every source any candidate can
   // come from: `refresh` builds `updates` only from instances it also puts
   // in `instances` (crates/canager-core/src/session/refresh.rs).
+  //
+  // First, the checks that did not finish this round, if any
+  // (`unfinishedChecksNotice`): a line like the others, once a band of
+  // its own over the page.
   const notices = useMemo(() => {
     const rowsByInstance = new Map<string, number>();
     for (const update of visibleUpdates) {
       const id = update.key.instance_id;
       rowsByInstance.set(id, (rowsByInstance.get(id) ?? 0) + 1);
     }
-    return (snapshot?.instances ?? []).flatMap((instance) =>
-      sourceNoticesFor(instance, sourceLabelFor(instance.id), rowsByInstance.get(instance.id) ?? 0),
-    );
-  }, [snapshot, visibleUpdates, sourceLabelFor]);
+    const unfinished = snapshot ? unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) : null;
+    return [
+      ...(unfinished === null ? [] : [unfinished]),
+      ...(snapshot?.instances ?? []).flatMap((instance) =>
+        sourceNoticesFor(instance, sourceLabelFor(instance.id), rowsByInstance.get(instance.id) ?? 0),
+      ),
+    ];
+  }, [snapshot, visibleUpdates, sourceLabelFor, t]);
   // Two lines or more fold into one (`SourceNotices`).
   const noticeFold = useNoticeFold(notices.length);
 

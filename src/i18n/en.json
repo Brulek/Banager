@@ -94,8 +94,6 @@
     "hiddenCount_other": "{{count}} hidden",
     "cantUpdateHereCount_one": "{{count}} can't be updated here",
     "cantUpdateHereCount_other": "{{count}} can't be updated here",
-    "checksUnfinished_one": "{{count}} check didn't finish",
-    "checksUnfinished_other": "{{count}} checks didn't finish",
     "listSeparator": ", ",
     "attentionLabel": "Needs attention",
     "moreNotes_one": "{{count}} more note",
@@ -435,6 +433,11 @@
       "title": "{{source}}'s program files are missing",
       "description": "{{source}}'s {{command}} can't run any more. Reinstall {{source}} to keep using it, put its files back from the Trash and check again if they're there, or uninstall it in Installed if you no longer need it."
     },
+    "checksUnfinished": {
+      "title": "Some checks didn't finish",
+      "description_one": "{{sources}} didn't finish checking this time.",
+      "description_other": "{{sources}} didn't finish checking this time."
+    },
     "more_one": "{{count}} more issue",
     "more_other": "{{count}} more issues",
     "showFewer": "Show Fewer"
@@ -696,11 +699,6 @@
     "noSources": {
       "title": "No tools to manage",
       "description": "Install Homebrew first."
-    },
-    "refreshFailed": {
-      "title": "Some checks didn't finish",
-      "description_one": "{{sources}} didn't finish checking this time.",
-      "description_other": "{{sources}} didn't finish checking this time."
     },
     "nothingInstalled": {
       "title": "No installed tools found",

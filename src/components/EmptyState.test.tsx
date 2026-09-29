@@ -43,23 +43,6 @@ describe("EmptyState", () => {
     expect(screen.getByText("Canager works with Homebrew, npm, pipx, uv, pip, Cargo and Ollama.")).toBeInTheDocument();
   });
 
-  it("renders as a status banner when variant is 'banner': a 16 orange ⚠︎, the title, the sentence quieter", () => {
-    renderWithProviders(
-      <EmptyState
-        title="Some checks didn't finish"
-        description="1 check didn't finish, so Canager couldn't refresh everything."
-        variant="banner"
-      />,
-    );
-
-    const banner = screen.getByRole("status");
-    expect(banner.querySelector("svg")).toHaveAttribute("width", "16");
-    expect(banner.querySelector("svg")?.getAttribute("class")).toContain("text-warning");
-    expect(screen.getByText("1 check didn't finish, so Canager couldn't refresh everything.")).toHaveClass("text-muted");
-    // A line over the page, not a card: no fill of its own.
-    expect(banner.className).not.toMatch(/bg-/);
-  });
-
   it("is centred in the list's area: a 36 symbol, 24 to the title, 8 to its sentence, 16 to its one button", () => {
     renderWithProviders(
       <EmptyState

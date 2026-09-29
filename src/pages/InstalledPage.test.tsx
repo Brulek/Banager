@@ -1400,10 +1400,13 @@ describe("InstalledPage", () => {
         expect(chipsOf(rowOf(name)), name).toEqual(["Can't uninstall now"]);
         expect(await drawerChips(name), name).toEqual(["Can't uninstall now"]);
       }
-      // The two that did not answer say so in their own line, the second
-      // folded behind the first (`SourceNotices`).
+      // Cargo's check that did not finish is the list's first line; the
+      // two that did not answer say so in their own lines, folded behind
+      // it (`SourceNotices`).
+      expect(screen.getByText("Some checks didn't finish")).toBeInTheDocument();
+      expect(screen.queryByText("pipx isn't responding")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
       expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });
 
@@ -2063,6 +2066,43 @@ describe("InstalledPage", () => {
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
       expect(rowNames()).toEqual([]);
       expect(useUiStore.getState().installedFilter).toBe(npm.id);
+    });
+
+    it("says a source whose check did not finish may not be empty, and names it alone in the lines over its rows", async () => {
+      // npm lists nothing, and its check timed out: nothing listed is only
+      // what the check did not get to, not "Nothing installed with npm".
+      const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
+      const pipx: ManagerInstance = { ...brew, id: "pipx:/Users/you/.local/pipx", adapter_id: "pipx" };
+      served = {
+        ...snapshot,
+        instances: [brew, npm, pipx],
+        stale: true,
+        errors: [
+          { instance_id: npm.id, message: "npm ls timed out" },
+          { instance_id: brew.id, message: "brew outdated exited 1" },
+        ],
+      };
+      useUiStore.getState().openInstalled(npm.id);
+      const { findByText, getByText, getByRole, queryByText, unmount } = renderInstalled();
+
+      expect(await findByText("Some checks didn't finish")).toBeInTheDocument();
+      expect(getByText("npm didn't finish checking this time.")).toBeInTheDocument();
+      expect(queryByText("Nothing installed with npm")).toBeNull();
+      expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
+      unmount();
+
+      // On Homebrew, which lists its rows: the list's first line names
+      // Homebrew and no other.
+      useUiStore.getState().openInstalled(brew.id);
+      renderInstalled();
+      const title = await screen.findByText("Some checks didn't finish");
+      const line = title.closest("[data-notice-line]") as HTMLElement;
+      const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
+      fireEvent.click(details);
+      expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+        /^Homebrew didn't finish checking this time\.$/,
+      );
+      expect(within(line).getByRole("button", { name: "Check Again" })).toBeEnabled();
     });
 
     it("drops the filter, and shows everything, only once its source is gone from this Mac", async () => {

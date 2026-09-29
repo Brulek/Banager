@@ -32,12 +32,14 @@ import {
   UNINSTALL_BLOCKED_KEYS,
   uninstallBlockedCopy,
   uninstallHoldKey,
+  unfinishedChecksNotice,
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { DescribedTool } from "./sources";
 import type { ArtifactKey, InstanceNote, ManagerInstance, SourceError } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
+import i18n from "../i18n";
 
 /** A stub `t`: returns the key with its interpolations inlined -- same
  *  convention as warnings.test.ts's `fakeT`, enough to prove the right key
@@ -1054,7 +1056,8 @@ describe("openOllamaErrorMessage", () => {
 });
 
 describe("failedSourceNames and namesInSentence", () => {
-  // The stale banner's words: which sources did not finish, by name.
+  // What 「部分检查未完成」 says behind its ⓘ: which sources did not
+  // finish, by name.
   const t = (key: string, options?: Record<string, string>): string => {
     const english: Record<string, string> = {
       "adapters.brew": "Homebrew",
@@ -1102,7 +1105,7 @@ describe("failedSourceAdapters", () => {
   it("puts one source down once even when inventory and check-updates both failed for it", () => {
     // The exact shape session/refresh.rs produces for one broken Homebrew:
     // one SourceError from the inventory fetch, one from check_updates,
-    // same instance_id. The banner says "sources", not "calls".
+    // same instance_id. The notice names sources, not calls.
     const errors = [
       err("brew:/opt/homebrew", "brew list failed"),
       err("brew:/opt/homebrew", "brew outdated failed"),
@@ -1110,7 +1113,7 @@ describe("failedSourceAdapters", () => {
     expect(failedSourceAdapters(errors, [instance()])).toEqual(["brew"]);
   });
 
-  it("puts two instances of one source down as that one source, as the banner names it", () => {
+  it("puts two instances of one source down as that one source, as the notice names it", () => {
     // An Apple-silicon Mac with a second Homebrew in /usr/local, offline:
     // the banner said "Homebrew didn't finish this check" over "2 checks
     // didn't finish".
@@ -1139,7 +1142,7 @@ describe("failedSourceAdapters", () => {
     expect(failedSourceAdapters(errors, [instance()])).toEqual(["cargo", "brew"]);
   });
 
-  it("is the list the banner's names come from, one name each", () => {
+  it("is the list the notice's names come from, one name each", () => {
     const errors = [
       err("brew:/opt/homebrew"),
       err("brew:/usr/local"),
@@ -1150,13 +1153,109 @@ describe("failedSourceAdapters", () => {
     expect(failedSourceNames(fakeT, errors, [instance()])).toEqual(
       adapters.map((adapterId) => fakeT(ADAPTER_LABEL_KEYS[adapterId])),
     );
-    // No two sources share a name in either language, so the banner names
-    // as many sources as the Overview counts.
+    // No two sources share a name in either language, so the notice names
+    // each source once.
     for (const locale of [en, zhCN]) {
       const names = Object.values(locale.adapters);
       expect(new Set(names).size).toBe(names.length);
       expect(Object.keys(locale.adapters).sort()).toEqual(Object.keys(ADAPTER_LABEL_KEYS).sort());
     }
+  });
+});
+
+describe("unfinishedChecksNotice", () => {
+  const enT = i18n.getFixedT("en");
+  const zhT = i18n.getFixedT("zh-CN");
+  const say = (t: typeof enT, notice: ReturnType<typeof unfinishedChecksNotice>) =>
+    notice === null ? null : [t(notice.titleKey, notice.values), t(notice.descriptionKey, notice.values)];
+
+  it("is nothing when every check finished", () => {
+    expect(unfinishedChecksNotice(enT, [], [instance()])).toBeNull();
+  });
+
+  it("is one warning with Check again, the sources behind its ⓘ, each named once", () => {
+    // Homebrew's inventory and update check both failed: one source. A
+    // detection that failed names its adapter; so does an instance the
+    // snapshot no longer lists.
+    const errors: SourceError[] = [
+      { instance_id: "brew:/opt/homebrew", message: "brew list failed" },
+      { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
+      { instance_id: "npm", message: "internal error detecting this source" },
+      { instance_id: "uv:/Users/you/.local/share/uv/tools", message: "uv tool list exited 2" },
+    ];
+    const notice = unfinishedChecksNotice(enT, errors, [instance()]);
+    expect(notice).toMatchObject({
+      id: "checks-unfinished",
+      variant: "warning",
+      // The toolbar's own words for the same check, as a silent source's notice has.
+      action: { id: "checkAgain", labelKey: "header.checkAgain" },
+    });
+    expect(say(enT, notice)).toEqual([
+      "Some checks didn't finish",
+      "Homebrew, npm and uv didn't finish checking this time.",
+    ]);
+    // Never 更新 for a check: it is this app's word for installing a newer version.
+    expect(say(zhT, unfinishedChecksNotice(zhT, errors, [instance()]))).toEqual([
+      "部分检查未完成",
+      "Homebrew、npm和uv这次未检查完。",
+    ]);
+    // Two Homebrews that both failed are the one Homebrew it names.
+    const intel = instance({ id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" });
+    expect(
+      say(
+        enT,
+        unfinishedChecksNotice(
+          enT,
+          [
+            { instance_id: "brew:/opt/homebrew", message: "brew update failed" },
+            { instance_id: intel.id, message: "brew update failed" },
+          ],
+          [instance(), intel],
+        ),
+      ),
+    ).toEqual(["Some checks didn't finish", "Homebrew didn't finish checking this time."]);
+  });
+
+  it("leaves out a source that did not answer: its own notice says so", () => {
+    // `refresh` carries a silent source's errors forward while an
+    // operation holds it; its "isn't responding" line already says the
+    // check did not reach it.
+    const silent = instance({ status: { unavailable: "NotResponding", notes: [] } });
+    const stopped = instance({
+      id: "ollama:http://127.0.0.1:11434",
+      adapter_id: "ollama",
+      status: { unavailable: "NotRunning", notes: [] },
+    });
+    const pipx = instance({ id: "pipx:/Users/you/.local/pipx", adapter_id: "pipx" });
+    const errors: SourceError[] = [
+      { instance_id: silent.id, message: "brew list timed out" },
+      { instance_id: stopped.id, message: "connection refused" },
+    ];
+    expect(unfinishedChecksNotice(enT, errors, [silent, stopped, pipx])).toBeNull();
+    expect(
+      say(enT, unfinishedChecksNotice(enT, [...errors, { instance_id: pipx.id, message: "timed out" }], [silent, stopped, pipx])),
+    ).toEqual(["Some checks didn't finish", "pipx didn't finish checking this time."]);
+  });
+
+  it("names only the sources in view, and a failed detection by its adapter", () => {
+    const pipx = instance({ id: "pipx:/Users/you/.local/pipx", adapter_id: "pipx" });
+    const errors: SourceError[] = [
+      { instance_id: pipx.id, message: "pipx list timed out" },
+      { instance_id: "brew", message: "internal error detecting this source" },
+    ];
+    // The Installed page on Homebrew: its detection failed, pipx is not in view.
+    expect(say(enT, unfinishedChecksNotice(enT, errors, [instance(), pipx], [instance()]))).toEqual([
+      "Some checks didn't finish",
+      "Homebrew didn't finish checking this time.",
+    ]);
+    // On pipx: pipx alone.
+    expect(say(enT, unfinishedChecksNotice(enT, errors, [instance(), pipx], [pipx]))).toEqual([
+      "Some checks didn't finish",
+      "pipx didn't finish checking this time.",
+    ]);
+    // On a source whose checks all finished: nothing.
+    const cargo = instance({ id: "cargo:/Users/you/.cargo", adapter_id: "cargo" });
+    expect(unfinishedChecksNotice(enT, errors, [instance(), pipx, cargo], [cargo])).toBeNull();
   });
 });
 

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
-import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
+import { hasSourceNotice, unfinishedChecksNotice } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import { EmptyState, type EmptyStateDetail } from "./EmptyState";
@@ -83,8 +83,8 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // beats a full-page error. A Mac with no package manager at all
     // refreshes successfully and commits nothing new, so it sits at
     // generation 0 with a stamped timestamp; a Mac that has committed real
-    // data and then fails a refresh keeps showing that data, with the
-    // stale banner below over it. Generation 0 is the one case where a
+    // data and then fails a refresh keeps showing that data, the toolbar
+    // saying the check could not finish. Generation 0 is the one case where a
     // failed refresh leaves nothing at all to show.
     return (
       <EmptyState
@@ -120,70 +120,24 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     );
   }
 
-  if (snapshot.stale) {
-    // The only "something went wrong" banner there is. There used to be a
-    // second one above, for `refreshed_at === null && errors.length > 0`:
-    // "no check has ever finished, and this one didn't either". It is
-    // unreachable now that `refresh()` stamps `refreshed_at` whenever it
-    // ran (spec §2.4-1) -- only `Snapshot::empty()` carries a null one, and
-    // it carries no errors either -- so it and its copy are gone rather
-    // than left to rot.
-    //
-    // `stale` alone, with no `errors.length > 0` beside it: `refresh()`
-    // sets `stale` to exactly `!errors.is_empty()`, so the second test was
-    // identity, and the banner below therefore always has a source to
-    // name. A source that
-    // is merely unavailable is not stale and gets no banner -- it says so
-    // itself, in its own words, through its own `SourceNotice` on this
-    // page and on the Updates page.
-    //
-    // It names the sources whose check did not finish (`failedSourceNames`)
-    // -- "2 checks didn't finish" said neither which nor what that meant --
-    // and says only that their check did not finish this time, nothing
-    // about their rows: those may be last round's, or, on the first check
-    // since Canager opened, none. It has no button: the header's Check again, right
-    // above it, runs the same check (`useCheckAgain`), and says so when
-    // that check fails.
-    //
-    // The banner variant is meant to "sit above still-visible content"
-    // without hiding any of it, but `children` (e.g. InstalledPage) sizes
-    // itself with `h-full` — 100% of the nearest ancestor with a definite
-    // height, which is the page's box under the header in App.tsx, not this
-    // banner's sibling slot. Stacked as plain siblings in that box, the
-    // banner's own height plus `children`'s 100%-of-the-box height would
-    // overflow it, forcing an extra scroll to reach content that would
-    // otherwise be fully visible. Constraining both to a local `h-full` flex
-    // column — banner sized to its own content, `children` wrapped in the
-    // remaining `flex-1 min-h-0` space with its own scroll — keeps the
-    // total height exactly at the box's height, so nothing overflows.
-    const failed = failedSourceNames(t, snapshot.errors, snapshot.instances);
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <EmptyState
-          variant="banner"
-          title={t("emptyStates.refreshFailed.title")}
-          description={t("emptyStates.refreshFailed.description", {
-            count: failed.length,
-            sources: namesInSentence(t, failed),
-          })}
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-      </div>
-    );
-  }
-
   // Nothing installed *and* nothing any source wants to say. This branch
   // replaces `children` outright, so the second half is load-bearing: the
   // pages show a source's notice line even with nothing of it installed --
   // an Ollama that is installed but not running being the case it was
   // written for. Judging only the global artifact count hid exactly that:
   // on a Mac whose only source is a stopped Ollama, the user saw "Nothing
-  // installed yet" and the "Open Ollama" button was unreachable.
-  // `hasSourceNotice` lives in lib/sources.ts so this gate and the pages it
-  // gates cannot disagree about which sources have something to show.
+  // installed yet" and the "Open Ollama" button was unreachable. Nor a
+  // check that did not finish: nothing listed may be only what it did not
+  // get to, and the pages say so in their notice lines
+  // (`unfinishedChecksNotice`). A check that did not finish is no longer
+  // a band over the page from here: it is one of those lines, as a
+  // source's own notice is. `hasSourceNotice` and `unfinishedChecksNotice`
+  // live in lib/sources.ts so this gate and the pages it gates cannot
+  // disagree about what there is to show.
   if (
     snapshot.artifacts.length === 0 &&
-    !snapshot.instances.some((instance) => hasSourceNotice(instance))
+    !snapshot.instances.some((instance) => hasSourceNotice(instance)) &&
+    unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) === null
   ) {
     return (
       <EmptyState

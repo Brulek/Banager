@@ -119,106 +119,50 @@ describe("SnapshotStatus", () => {
     }
   });
 
-  it("shows the stale-data banner, and no separate incomplete-check one, when a source failed", async () => {
-    // There used to be a second banner here for `refreshed_at === null &&
-    // errors.length > 0` -- "no check has ever finished, and this one
-    // didn't either". `refresh()` now stamps `refreshed_at` whenever it
-    // ran (spec §2.4-1), so a snapshot with errors always has one and that
-    // branch could never fire again; it and its copy are gone. A refresh
-    // that failed for a source says so once, here.
+  it("draws no band over the page when a source's check did not finish: the pages' notice lines say it", async () => {
+    // It was a band of its own over the page, 「部分检查未完成」 and the
+    // sources' names, the web's way. Now it is one of the list's notice
+    // lines, as a source's own notice is (`unfinishedChecksNotice`), and
+    // the page shows through as it is.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
         generation: 412,
         refreshed_at: 1700000500,
         stale: true,
         errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
-      }),
-    );
-
-    renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
-    );
-
-    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
-    expect(screen.getByText("installed list")).toBeInTheDocument();
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-  });
-
-  it("names one broken source once, not twice, when its inventory and update check both failed", async () => {
-    // session/refresh.rs pushes one SourceError from the inventory fetch
-    // and a second from check_updates for the very same instance -- that
-    // is two failed *calls* against one failed *source*. The banner names
-    // sources, each once.
-    vi.mocked(invoke).mockResolvedValue(
-      baseSnapshot({
-        generation: 412,
-        refreshed_at: 1700000500,
-        stale: true,
-        errors: [
-          { instance_id: "brew:/opt/homebrew", message: "brew list failed" },
-          { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
-        ],
-      }),
-    );
-
-    renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
-    );
-
-    expect(
-      await screen.findByText("Homebrew didn't finish checking this time."),
-    ).toBeInTheDocument();
-  });
-
-  it("names every source whose check did not finish, never with 更新 for a refresh, in Chinese", async () => {
-    // 「2 项没完成，相关内容没有更新。」 said neither which two, and 更新 is
-    // this app's word for installing a newer version: it read as "these
-    // have no updates". An error against a bare adapter id -- its detect
-    // failed -- is named by that adapter.
-    vi.mocked(invoke).mockResolvedValue(
-      baseSnapshot({
-        generation: 412,
-        refreshed_at: 1700000500,
-        stale: true,
-        instances: [
+        artifacts: [
           {
-            id: "brew:/opt/homebrew",
-            adapter_id: "brew",
-            exe_path: "/opt/homebrew/bin/brew",
-            prefix: "/opt/homebrew",
-            scope: "User",
-            version: "7.0.3",
-            status: { unavailable: null, notes: [] },
-            unverified_version: null,
-            read_only_reason: null,
+            key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+            display_name: "jq",
+            version: "1.7",
+            reason: "Requested",
+            description: null,
+            homepage: null,
+            size_bytes: null,
+            installed_at: null,
+            path: null,
+            auto_updates: false,
+            uninstall_blocked: null,
           },
         ],
-        errors: [
-          { instance_id: "brew:/opt/homebrew", message: "brew outdated failed" },
-          { instance_id: "npm", message: "internal error detecting this source" },
-          { instance_id: "uv:/Users/you/.local/share/uv/tools", message: "uv tool list exited 2" },
-        ],
       }),
     );
-    await i18n.changeLanguage("zh-CN");
-    try {
-      renderWithProviders(
+
+    const { container } = renderWithProviders(
+      <>
+        <SnapshotProbe />
         <SnapshotStatus>
           <p>installed list</p>
-        </SnapshotStatus>,
-      );
+        </SnapshotStatus>
+      </>,
+    );
 
-      expect(await screen.findByText("部分检查未完成")).toBeInTheDocument();
-      expect(screen.getByText("Homebrew、npm和uv这次未检查完。")).toBeInTheDocument();
-      // The header's Check again, right above it, runs the same check.
-      expect(screen.queryByRole("button")).toBeNull();
-    } finally {
-      await i18n.changeLanguage("en");
-    }
+    await screen.findByText("snapshot loaded");
+    expect(screen.getByText("installed list")).toBeInTheDocument();
+    expect(screen.queryByText("Some checks didn't finish")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    // The page as it is, in no box of this component's.
+    expect(screen.getByText("installed list").parentElement).toBe(container);
   });
 
   it("lets a page that says Checking… itself show through while the first refresh runs", async () => {
@@ -314,8 +258,7 @@ describe("SnapshotStatus", () => {
       </SnapshotStatus>,
     );
 
-    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
-    expect(screen.getByText("installed list")).toBeInTheDocument();
+    expect(await screen.findByText("installed list")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load installed tools")).not.toBeInTheDocument();
   });
 
@@ -356,25 +299,43 @@ describe("SnapshotStatus", () => {
     expect(await screen.findByText(/brew: command not found/)).toBeInTheDocument();
   });
 
-  it("shows a stale banner above the existing data when the last refresh failed, with no button of its own", async () => {
+  it("renders children, not the nothing-installed state, when nothing is listed because a check did not finish", async () => {
+    // A Mac whose only source is pipx, whose list timed out on the first
+    // check since Canager opened: nothing listed is only what the check
+    // did not get to, and the page's notice line says so, with its Check
+    // again. "No installed tools found" in its place would be the lie.
     vi.mocked(invoke).mockResolvedValue(
       baseSnapshot({
         stale: true,
-        errors: [{ instance_id: "brew:/opt/homebrew", message: "timed out" }],
+        instances: [
+          {
+            id: "pipx:/Users/you/.local/pipx",
+            adapter_id: "pipx",
+            exe_path: "/opt/homebrew/bin/pipx",
+            prefix: "/Users/you/.local/pipx",
+            scope: "User",
+            version: "1.7.1",
+            unverified_version: null,
+            read_only_reason: null,
+            status: { unavailable: null, notes: [] },
+          },
+        ],
+        errors: [{ instance_id: "pipx:/Users/you/.local/pipx", message: "pipx list --json timed out after 60 s" }],
       }),
     );
 
     renderWithProviders(
-      <SnapshotStatus>
-        <p>installed list</p>
-      </SnapshotStatus>,
+      <>
+        <SnapshotProbe />
+        <SnapshotStatus>
+          <p>installed list</p>
+        </SnapshotStatus>
+      </>,
     );
 
-    expect(await screen.findByText("Some checks didn't finish")).toBeInTheDocument();
+    await screen.findByText("snapshot loaded");
     expect(screen.getByText("installed list")).toBeInTheDocument();
-    // Its Try again ran the check the header's Check again, right above
-    // it, runs: two names for one button.
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText("No installed tools found")).toBeNull();
   });
 
   it("calls the load failure's button what the header calls the same check", async () => {

@@ -274,8 +274,8 @@ export interface SourceNoticeSpec {
   variant: "info" | "warning";
   titleKey: string;
   descriptionKey: string;
-  /** Interpolation values, already in the user's language. */
-  values?: Record<string, string>;
+  /** Interpolation values, already in the user's language; a `count` picks the plural. */
+  values?: Record<string, string | number>;
   /** What the notice offers to do about itself, if anything. */
   action?: SourceNoticeAction;
 }
@@ -1405,17 +1405,15 @@ export function settingsSaveSentence(
 
 /**
  * The sources a refresh failed for, by adapter id, each once, in the order
- * `errors` first names them: the one list both the stale banner's names
- * (`failedSourceNames`) and the Overview's "N checks didn't finish"
- * (`updatesSummary`) come from, one check a source, so the two cannot
- * disagree about how many did not finish.
+ * `errors` first names them: the names 「部分检查未完成」 gives behind its ⓘ
+ * (`failedSourceNames`, `unfinishedChecksNotice`), one a source.
  *
  * `Snapshot.errors` is not that list: `refresh()` (`session/refresh.rs`)
  * can push more than one `SourceError` for the same instance in one round
  * -- inventory and check-updates fail independently, and each failure
  * gets its own entry -- and two instances of one adapter, a Homebrew in
  * /opt/homebrew and another in /usr/local, are one source to the person
- * reading the banner, named once. An error goes to its instance's
+ * reading the notice, named once. An error goes to its instance's
  * adapter, or -- for an instance the snapshot no longer lists, or an
  * error against a bare adapter id -- to the adapter its id names
  * (`adapterIdOf`). A bare adapter id is what `refresh()` blames when an
@@ -1437,8 +1435,8 @@ export function failedSourceAdapters(errors: SourceError[], instances: ManagerIn
 
 /**
  * The sources a refresh failed for (`failedSourceAdapters`), by name, in
- * the user's language: what the stale banner says did not finish, in
- * place of a count that did not say which. Each adapter has a name of its
+ * the user's language: what 「部分检查未完成」 says did not finish
+ * (`unfinishedChecksNotice`), in place of a count that did not say which. Each adapter has a name of its
  * own in both languages, so no name comes twice.
  */
 export function failedSourceNames(
@@ -1459,4 +1457,53 @@ export function namesInSentence(t: Translate, names: string[]): string {
     list: names.slice(0, -1).join(t("common.listSeparator")),
     last: names[names.length - 1],
   });
+}
+
+/**
+ * The one notice for this round's checks that did not finish -- a
+ * `SourceError` each (`Snapshot.errors`; `Snapshot.stale` is exactly
+ * that there are any) -- or null when every one finished: 「部分检查未完成」,
+ * a warning, the sources named behind its ⓘ (「pipx和Cargo这次未检查完。」,
+ * `failedSourceNames`), and Check again, as a silent source's notice
+ * offers. It used to be a band of its own over the page, the web's way;
+ * it is one of the list's notice lines now, folding with the others
+ * (spec §3.8), and a row of the Overview's problems.
+ *
+ * Not the sources' own notices (`sourceNoticesFor`), which are about one
+ * instance: an error can name a source the snapshot no longer lists, or
+ * a bare adapter id when its detection failed (`failedSourceAdapters`).
+ * But a source that did not answer at all -- not running, not responding,
+ * refusing to run as root -- already says so in its own notice, with its
+ * own button, and naming it here too would say it twice: its errors are
+ * left out. `refresh()` carries none for such a source unless an
+ * operation held it (crates/canager-core/src/session/refresh.rs).
+ *
+ * `inView`: the sources a page shows -- the Installed page on one source
+ * -- whose errors alone it names: an error against an instance in view,
+ * or one naming no listed instance but an adapter in view (its detection
+ * failed). Every source when left out.
+ */
+export function unfinishedChecksNotice(
+  t: Translate,
+  errors: SourceError[],
+  instances: ManagerInstance[],
+  inView?: readonly ManagerInstance[],
+): SourceNoticeSpec | null {
+  const byId = new Map(instances.map((instance) => [instance.id, instance]));
+  const adaptersInView = inView === undefined ? null : new Set(inView.map((instance) => instance.adapter_id));
+  const unsaid = errors.filter((error) => {
+    const instance = byId.get(error.instance_id);
+    if (instance === undefined) return adaptersInView === null || adaptersInView.has(adapterIdOf(error.instance_id));
+    return isAvailable(instance) && (inView === undefined || inView.some((each) => each.id === instance.id));
+  });
+  const names = failedSourceNames(t, unsaid, instances);
+  if (names.length === 0) return null;
+  return {
+    id: "checks-unfinished",
+    variant: "warning",
+    titleKey: "sourceNotice.checksUnfinished.title",
+    descriptionKey: "sourceNotice.checksUnfinished.description",
+    values: { count: names.length, sources: namesInSentence(t, names) },
+    action: { id: "checkAgain", labelKey: "header.checkAgain" },
+  };
 }

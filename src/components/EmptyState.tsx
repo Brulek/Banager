@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Popover } from "./ui/Popover";
 import { DETAILS_TRIGGER_CLASS } from "./SourceNotice";
 import { BUTTON } from "./ui/controls";
-import { CheckCircleIcon, InfoIcon, WarningFilledIcon, WarningIcon } from "./icons";
+import { CheckCircleIcon, InfoIcon, WarningIcon } from "./icons";
 
 export interface EmptyStateAction {
   label: string;
@@ -27,7 +27,6 @@ export interface EmptyStateProps {
   /** More than the one line, behind a "Details" button after it. */
   detail?: EmptyStateDetail;
   action?: EmptyStateAction;
-  variant?: "empty" | "banner";
   /**
    * Over an empty list, the symbol: a ✓ in a circle where there is
    * nothing to do, a ⚠︎ where something went wrong (a source that did not
@@ -45,17 +44,12 @@ export interface EmptyStateProps {
  * that one sentence, 15/20 regular, no wider than 360; both in the
  * secondary grey, as the native view sets them. 16 under it, at most one
  * button, regular and grey.
- *
- * `banner`: the one line over a page whose last check did not finish for
- * some sources -- a 16 orange ⚠︎, the title, and the sentence quieter --
- * with the page's own content still under it.
  */
 export function EmptyState({
   title,
   description,
   detail,
   action,
-  variant = "empty",
   symbol = "info",
 }: EmptyStateProps) {
   const details = detail ? (
@@ -66,19 +60,6 @@ export function EmptyState({
       </Popover>
     </>
   ) : null;
-
-  if (variant === "banner") {
-    return (
-      <div role="status" className="flex min-h-8 items-center gap-2 border-b border-separator px-5 py-2">
-        <WarningFilledIcon size={16} className="shrink-0 text-warning" />
-        <p className="min-w-0 text-body text-foreground">
-          {title}
-          {description ? <span className="ml-2 text-muted">{description}</span> : null}
-          {details}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div data-empty-state="" className="flex h-full flex-1 flex-col items-center justify-center px-5 py-10 text-center">

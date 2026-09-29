@@ -363,7 +363,6 @@ describe("updatesSummary", () => {
       everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
-      checksUnfinished: 0,
     });
   });
 
@@ -381,7 +380,6 @@ describe("updatesSummary", () => {
       everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
-      checksUnfinished: 0,
     });
     const pinned = candidate({ blocked: "Pinned" });
     expect(updatesSummary({ instances: [brew], updates: [pinned], errors: [] }, hiding())).toEqual({
@@ -389,7 +387,6 @@ describe("updatesSummary", () => {
       everyChecked: true,
       cantUpdateHere: 1,
       hidden: 0,
-      checksUnfinished: 0,
     });
     const glib = candidate();
     expect(
@@ -397,10 +394,10 @@ describe("updatesSummary", () => {
         { instances: [brew], updates: [glib], errors: [] },
         hiding({ ignored_updates: [glib.key] }),
       ),
-    ).toEqual({ kind: "nothingToUpdate", everyChecked: true, cantUpdateHere: 0, hidden: 1, checksUnfinished: 0 });
+    ).toEqual({ kind: "nothingToUpdate", everyChecked: true, cantUpdateHere: 0, hidden: 1 });
   });
 
-  it("counts, with nothing to install, what the Updates page lists, what the user hid and the checks that failed", () => {
+  it("counts, with nothing to install, what the Updates page lists and what the user hid, whatever checks failed", () => {
     const readOnly: ManagerInstance = { ...brew, id: "pip:/usr/bin/python3", read_only_reason: "ByDesign" };
     const jq = candidate({ key: { instance_id: brew.id, kind: "Formula", name: "jq" }, blocked: "Pinned" });
     const urllib3 = candidate({ key: { instance_id: readOnly.id, kind: "Package", name: "urllib3" } });
@@ -430,8 +427,6 @@ describe("updatesSummary", () => {
       // under "Can't update here".
       cantUpdateHere: 3,
       hidden: 2,
-      // Two sources, as the "Some checks didn't finish" banner counts them.
-      checksUnfinished: 2,
     });
     expect(notHidden(snapshot.updates, settings)).toEqual([jq, urllib3, wget]);
   });
@@ -444,7 +439,6 @@ describe("updatesSummary", () => {
       everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
-      checksUnfinished: 0,
     });
   });
 
@@ -455,7 +449,6 @@ describe("updatesSummary", () => {
       everyChecked: false,
       cantUpdateHere: 0,
       hidden: 0,
-      checksUnfinished: 1,
     });
     // What can be installed still comes first: a failed check elsewhere
     // does not take the count away.
@@ -463,24 +456,6 @@ describe("updatesSummary", () => {
     expect(
       updatesSummary({ instances: [brew], updates: [glib], errors: [failed] }, hiding()),
     ).toEqual({ kind: "updates", actionable: [glib] });
-  });
-
-  it("counts two Homebrews whose checks both failed as the one Homebrew the banner names", () => {
-    // An Apple-silicon Mac with Homebrew in /opt/homebrew and /usr/local,
-    // offline: the banner said "Homebrew didn't finish this check", and
-    // the line under the headline "2 checks didn't finish".
-    const intel: ManagerInstance = { ...brew, id: "brew:/usr/local", prefix: "/usr/local", exe_path: "/usr/local/bin/brew" };
-    const errors = [
-      { instance_id: brew.id, message: "brew update failed" },
-      { instance_id: intel.id, message: "brew update failed" },
-    ];
-    expect(updatesSummary({ instances: [brew, intel], updates: [], errors }, hiding())).toEqual({
-      kind: "nothingToUpdate",
-      everyChecked: false,
-      cantUpdateHere: 0,
-      hidden: 0,
-      checksUnfinished: 1,
-    });
   });
 });
 
