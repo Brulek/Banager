@@ -1490,7 +1490,7 @@ describe("UninstallDialog", () => {
     const alert = await screen.findByRole("alert");
     await waitFor(() =>
       expect(alert).toHaveTextContent(
-        "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names, with every file in it, when it uninstalls its last tool and that folder holds no other folder. It does this only when no other uv tool is left. Canager uninstalls no uv tool while UV_TOOL_DIR is set, and didn't uninstall or change anything.",
+        "UV_TOOL_DIR is set, so Canager didn't uninstall or change anything.",
       ),
     );
     expect(alert.querySelector("code")).toBeNull();

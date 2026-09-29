@@ -828,11 +828,10 @@ neither folder while one that is not `.tmp…` is left there
 So every inventory reads `UV_TOOL_DIR` from Canager's environment, which
 every uv command inherits (`tool_dir_fn` in `UvAdapter`), and while it is
 set and not empty no uv tool offers Uninstall: each row says why, and
-that uv does this only when no other uv tool is left, and does not send
-anyone to run the same `uv tool uninstall` in Terminal, where it does the
-same (`UninstallBlocked::UvToolDirSet`); `Session::issue_plan` refuses the
-uninstall, and `UvAdapter::plan` reads the variable again and refuses it
-too. Install and upgrade plan as before.
+does not send anyone to run the same `uv tool uninstall` in Terminal,
+where it does the same (`UninstallBlocked::UvToolDirSet`);
+`Session::issue_plan` refuses the uninstall, and `UvAdapter::plan` reads
+the variable again and refuses it too. Install and upgrade plan as before.
 
 ## pip (read-only)
 

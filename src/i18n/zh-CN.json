@@ -127,8 +127,8 @@
       },
       "UvToolDirSet": {
         "badge": "这里不能卸载",
-        "description": "设置了 UV_TOOL_DIR 时，uv 卸载最后一个工具后，会连带删除 UV_TOOL_DIR 所指文件夹的上一层文件夹和其中所有文件，只要那一层里没有别的文件夹。只有在没有别的 uv 工具时，uv 才会这样做。因此这时 Canager 不卸载任何 uv 工具。",
-        "refused": "设置了 UV_TOOL_DIR 时，uv 卸载最后一个工具后，会连带删除 UV_TOOL_DIR 所指文件夹的上一层文件夹和其中所有文件，只要那一层里没有别的文件夹。只有在没有别的 uv 工具时，uv 才会这样做。因此这时 Canager 不卸载任何 uv 工具：没有卸载，也没有改动。"
+        "description": "设置了 UV_TOOL_DIR 时，uv 卸载最后一个工具会连带删掉 UV_TOOL_DIR 的上一层文件夹和其中所有文件，只要那一层里没有别的文件夹。这时 Canager 不卸载任何 uv 工具。",
+        "refused": "设置了 UV_TOOL_DIR，所以没有卸载，也没有改动。"
       }
     }
   },

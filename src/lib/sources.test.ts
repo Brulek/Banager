@@ -1306,18 +1306,21 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     }
     expect(en.installed.blocked.UvToolDirSet.refused).toContain("didn't uninstall or change anything");
     expect(zhCN.installed.blocked.UvToolDirSet.refused).toContain("没有卸载，也没有改动");
+    // uv's rule, said once: uv checks the tools folder for another tool's
+    // folder first (`crates/uv/src/commands/tool/uninstall.rs:40-52`), so
+    // "its last tool" is the whole condition. Then that Canager uninstalls
+    // none. The refusal says what happened in one sentence, as the other
+    // reasons' refusals do.
+    expect(en.installed.blocked.UvToolDirSet.description).toContain("when uv uninstalls its last tool");
+    expect(en.installed.blocked.UvToolDirSet.description).toContain("and everything in it");
+    expect(en.installed.blocked.UvToolDirSet.description).toContain("Canager uninstalls no uv tool while it's set.");
+    expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("uv 卸载最后一个工具");
+    expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("和其中所有文件");
+    expect(zhCN.installed.blocked.UvToolDirSet.description).toContain("Canager 不卸载任何 uv 工具");
     for (const copy of [en.installed.blocked.UvToolDirSet.description, en.installed.blocked.UvToolDirSet.refused]) {
-      expect(copy).toContain("with every file in it");
-      // uv checks the tools folder for another tool's folder first
-      // (`crates/uv/src/commands/tool/uninstall.rs:40-52`).
-      expect(copy).toContain("It does this only when no other uv tool is left.");
-      expect(copy).toContain("Canager uninstalls no uv tool while UV_TOOL_DIR is set");
       expect(copy).not.toContain("uninstalling the last uv tool");
     }
     for (const copy of [zhCN.installed.blocked.UvToolDirSet.description, zhCN.installed.blocked.UvToolDirSet.refused]) {
-      expect(copy).toContain("和其中所有文件");
-      expect(copy).toContain("只有在没有别的 uv 工具时，uv 才会这样做。");
-      expect(copy).toContain("Canager 不卸载任何 uv 工具");
       expect(copy).not.toContain("卸载最后一个 uv 工具");
     }
   });
