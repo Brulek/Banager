@@ -287,8 +287,8 @@ describe("UnknownPage", () => {
       expect(getByText("程序")).toBeInTheDocument();
       expect(getByText("链接")).toBeInTheDocument();
       expect(getByText("失效的链接")).toBeInTheDocument();
-      expect(getByText("另有 4 个程序认得出来历，不在这里列出。")).toBeInTheDocument();
-      expect(getByText("Canager 认不出这些程序的来历。这里只列出，不运行也不删除。")).toBeInTheDocument();
+      expect(getByText("另有4个程序已确定来源，未在这里列出。")).toBeInTheDocument();
+      expect(getByText("无法确定以下程序是用什么安装的。")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -340,7 +340,7 @@ describe("UnknownPage", () => {
     try {
       scan = { ...baseScan, entries: [], stopped: { FileLimit: { max_entries: 2000 } } };
       const { findByText } = renderWithProviders(<UnknownPage />);
-      expect(await findByText("查过的部分没有来源不明的程序")).toBeInTheDocument();
+      expect(await findByText("已检查的位置中没有来源不明的程序")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -438,7 +438,7 @@ describe("UnknownPage", () => {
             <UnknownPage />
           </>,
         );
-        expect(await findByText("上次扫描：刚刚")).toBeInTheDocument();
+        expect(await findByText("上次扫描：刚才")).toBeInTheDocument();
         expect(getByRole("button", { name: "重新扫描" })).toBeInTheDocument();
       } finally {
         await i18n.changeLanguage("en");
@@ -589,14 +589,14 @@ describe("a row's ⋯ menu", () => {
     try {
       const { findByText } = renderWithProviders(<UnknownPage />);
       const helper = rowOf(await findByText("helper-cli"));
-      fireEvent.click(within(helper).getByRole("button", { name: "helper-cli 的更多操作" }));
+      fireEvent.click(within(helper).getByRole("button", { name: "“helper-cli”的更多操作" }));
       const menu = screen.getByRole("menu");
       expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
         "在访达中显示",
         "拷贝路径",
       ]);
       expect(within(menu).getByRole("menuitem", { name: "在访达中显示" })).toHaveAccessibleDescription(
-        "显示这个链接指向的文件。",
+        "显示此链接指向的文件。",
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -687,7 +687,7 @@ describe("Copy path", () => {
     try {
       const { findByText } = renderWithProviders(<UnknownPage />);
       const tool = rowOf(await findByText("standalone-tool"));
-      fireEvent.click(within(tool).getByRole("button", { name: "standalone-tool 的更多操作" }));
+      fireEvent.click(within(tool).getByRole("button", { name: "“standalone-tool”的更多操作" }));
       fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "拷贝路径" }));
       await waitFor(() => expect(notice()).toHaveTextContent(new RegExp(`^${zhCN.common.copied}$`)));
     } finally {
@@ -760,8 +760,8 @@ describe("the app a link points into", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, getByText } = renderWithProviders(<UnknownPage />);
-      expect(within(rowOf(await findByText("helper-cli"))).getByText("指向 Helper.app")).toBeInTheDocument();
-      expect(within(rowOf(getByText("old-script"))).getByText("指向 Removed.app")).toBeInTheDocument();
+      expect(within(rowOf(await findByText("helper-cli"))).getByText("指向Helper.app")).toBeInTheDocument();
+      expect(within(rowOf(getByText("old-script"))).getByText("指向Removed.app")).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

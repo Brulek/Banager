@@ -963,15 +963,15 @@ export function planErrorMessage(t: Translate, raw: string, sourceLabel: string)
 
 /**
  * What `planErrorMessage`'s sentence leaves for its ⓘ, or null when it has
- * nothing more to say: that Canager's own refusal (`refused`) is a problem
- * in Canager and not on this Mac, and which of its checks a path-list
- * uninstall's `not_what_instructions_expect` covers. The sentence stands
- * alone without it.
+ * nothing more to say: which of its checks a path-list uninstall's
+ * `not_what_instructions_expect` covers. The sentence stands alone
+ * without it. Canager's own refusal (`refused`) has nothing more: its
+ * sentence already says the error is an internal one, and whose fault it
+ * is was reassurance, not a next step (the polish-3 copy rules, 规则 3).
  */
 export function planErrorDetail(t: Translate, raw: string): string | null {
   const p = parseErrorPayload(raw);
   if (p === null) return null;
-  if (p.kind === "refused") return t("common.canagerFaultDetail");
   if (parseUninstallUnsafe(raw)?.reason === "not_what_instructions_expect") {
     return t("planRefused.uninstallUnsafe.notWhatInstructionsExpectDetail");
   }

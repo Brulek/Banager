@@ -513,7 +513,7 @@ describe("OverviewPage", () => {
       served = snapshotWith({ instances: [{ ...brew, status: { unavailable: null, notes: [note] } }] });
       const { findByRole, queryByRole } = renderOverview();
 
-      const headline = await findByRole("heading", { level: 2, name: "已检查的来源里没有可更新的工具" });
+      const headline = await findByRole("heading", { level: 2, name: "已检查的来源中没有可更新的工具" });
       expect(headline.nextElementSibling).toBeNull();
       expect(queryByRole("heading", { level: 2, name: "没有要更新的工具" })).not.toBeInTheDocument();
     } finally {
@@ -535,10 +535,10 @@ describe("OverviewPage", () => {
       const { findByRole } = renderOverview();
 
       const headline = await findByRole("heading", { level: 2, name: "没有要更新的工具" });
-      expect(headline.nextElementSibling?.textContent).toBe("2 个已隐藏，1 个不能在这里更新");
+      expect(headline.nextElementSibling?.textContent).toBe("2个已隐藏，1个无法在这里更新");
       expect(await findByRole("button", { name: "查看更新" })).toBeInTheDocument();
       expect(within(headline.nextElementSibling as HTMLElement).getByRole("button")).toHaveAccessibleName(
-        "2 个已隐藏",
+        "2个已隐藏",
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -748,9 +748,9 @@ describe("OverviewPage", () => {
       served = snapshotWith({ updates: [candidate(formula("glib")), candidate(formula("wget"))] });
       const { findByRole, container } = renderOverview();
 
-      expect(await findByRole("heading", { level: 2, name: "有 2 个工具可更新" })).toBeInTheDocument();
+      expect(await findByRole("heading", { level: 2, name: "2个工具可以更新" })).toBeInTheDocument();
       expect(ringOf(container).textContent).toBe("2个可更新");
-      expect(await findByRole("heading", { level: 2, name: "你的工具" })).toBeInTheDocument();
+      expect(await findByRole("heading", { level: 2, name: "来源" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }

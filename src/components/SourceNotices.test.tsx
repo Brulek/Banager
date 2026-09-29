@@ -229,7 +229,7 @@ describe("SourceNotices, folded", () => {
     try {
       renderWithProviders(<Folded notices={[brewUpdating, uvSilent, claudeUntested]} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "还有 2 条" }));
+      fireEvent.click(screen.getByRole("button", { name: "还有2条" }));
       expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

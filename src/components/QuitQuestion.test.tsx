@@ -456,17 +456,17 @@ describe("the question before a quit", () => {
       operations = [rustup(1, "Running"), op(2, "wget", "Running")];
       const { rust } = await mounted();
 
-      const dialog = await asked(rust, "还有 2 个操作没完成");
+      const dialog = await asked(rust, "还有2个操作未完成");
 
       // Quitting stops wget's update, and not rustup's.
       expect(within(dialog).getByText("现在退出会中断其余操作，正在处理的工具有只完成一半的风险。")).toBeInTheDocument();
-      expect(within(dialog).getByText("rustup 的更新已经开始，不能取消，请等它完成再退出。")).toBeInTheDocument();
+      expect(within(dialog).getByText("“rustup”的更新已开始，无法取消。请等它完成后再退出。")).toBeInTheDocument();
       expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-        "仍然退出",
-        "继续等待",
+        "退出",
+        "取消",
       ]);
       await waitFor(() =>
-        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "继续等待" })),
+        expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "取消" })),
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -491,7 +491,7 @@ describe("the question before a quit", () => {
       operations = running;
       const { rust } = await mounted();
 
-      const dialog = await asked(rust, `还有 ${running.length} 个操作没完成`);
+      const dialog = await asked(rust, `还有${running.length}个操作未完成`);
 
       expect(within(dialog).getByText(line)).toBeInTheDocument();
     } finally {

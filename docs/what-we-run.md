@@ -209,9 +209,9 @@ way. So on a Mac, while an operation is not done —
 queued, running, being cancelled or checking its result — every way of
 quitting (Quit Canager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:
-*N operations haven't finished* (「还有 N 个操作没完成」), with *Keep
-waiting* (「继续等待」, which has the focus, and which Escape does) and
-*Quit anyway* (「仍然退出」), and it names an operation that has started
+*N operations haven't finished* (「还有N个操作未完成」), with *Keep
+waiting* (「取消」, which has the focus, and which Escape does) and
+*Quit anyway* (「退出」), and it names an operation that has started
 and cannot be cancelled, such as rustup's self update. Every one of those
 quits ends in AppKit's `terminate:`, which asks the application
 delegate's `applicationShouldTerminate:`; Canager adds that method to the
@@ -325,7 +325,7 @@ pins, answers yes on a Mac without asking macOS, so there the switch
 always turns on, and whether a notification shows is up to System
 Settings → Notifications → Canager. Were the answer no, the switch would
 turn back off with "Allow Canager in System Settings → Notifications."
-(「在系统设置 → 通知里允许 Canager」) under it.
+(「请在“系统设置”>“通知”中允许Canager发送通知。」) under it.
 
 Each time the window receives a check's result — every daily check's
 included, which Rust announces to it even when nothing changed

@@ -2,7 +2,7 @@
   "app": {
     "name": "Canager",
     "operationBarRegion": "操作状态",
-    "failed": "Canager 内部出错，窗口没法显示这一页。",
+    "failed": "无法显示此页面。",
     "reload": "重新载入"
   },
   "nav": {
@@ -13,65 +13,64 @@
     "unknown": "来源不明",
     "settings": "设置",
     "count": {
-      "updates_other": "{{count}} 个可更新",
-      "installed_other": "已安装 {{count}} 个",
-      "unknown_other": "找到 {{count}} 个"
+      "updates_other": "{{count}}个可更新",
+      "installed_other": "已安装{{count}}个",
+      "unknown_other": "找到{{count}}个"
     }
   },
   "common": {
-    "loading": "加载中…",
+    "loading": "正在载入…",
     "cancel": "取消",
     "close": "关闭",
     "viewLog": "查看日志",
     "listSeparator": "、",
-    "listAnd": "{{list}} 和 {{last}}",
+    "listAnd": "{{list}}和{{last}}",
     "checking": "正在检查…",
-    "firstCheckDetail": "第一次检查要联网查每个工具的新版本，有时要一两分钟。",
+    "firstCheckDetail": "首次检查需要联网查询每个工具的新版本，有时要一两分钟。",
     "details": "详情",
     "detailsLabel": "详情：{{title}}",
     "copyCommand": "拷贝命令",
     "copied": "已拷贝",
-    "copyFailed": "没能拷贝",
-    "moreActions": "{{name}} 的更多操作",
-    "canagerFaultDetail": "问题出在 Canager，不在你的 Mac。"
+    "copyFailed": "无法拷贝",
+    "moreActions": "“{{name}}”的更多操作"
   },
   "header": {
-    "checkedJustNow": "上次检查：刚刚",
-    "checkedMinutesAgo_other": "上次检查：{{count}} 分钟前",
-    "checkedHoursAgo_other": "上次检查：{{count}} 小时前",
-    "checkedDaysAgo_other": "上次检查：{{count}} 天前",
-    "checkFailed": "没能检查",
+    "checkedJustNow": "上次检查：刚才",
+    "checkedMinutesAgo_other": "上次检查：{{count}}分钟前",
+    "checkedHoursAgo_other": "上次检查：{{count}}小时前",
+    "checkedDaysAgo_other": "上次检查：{{count}}天前",
+    "checkFailed": "无法完成检查",
     "checkAgain": "重新检查"
   },
   "toolRow": {
     "fallback": {
-      "homebrewPackage": "Homebrew 软件包",
-      "homebrewApp": "用 Homebrew 安装的 App",
-      "npmPackage": "npm 软件包",
-      "pythonPackage": "Python 软件包",
-      "pipxTool": "用 pipx 安装的 Python 工具",
-      "uvTool": "用 uv 安装的 Python 工具",
-      "cargoProgram": "用 Cargo 安装的程序",
-      "ollamaModel": "Ollama 模型",
-      "other": "用 {{source}} 安装"
+      "homebrewPackage": "Homebrew软件包",
+      "homebrewApp": "用Homebrew安装的App",
+      "npmPackage": "npm软件包",
+      "pythonPackage": "Python软件包",
+      "pipxTool": "用pipx安装的Python工具",
+      "uvTool": "用uv安装的Python工具",
+      "cargoProgram": "用Cargo安装的程序",
+      "ollamaModel": "Ollama模型",
+      "other": "用{{source}}安装"
     }
   },
   "overview": {
-    "updatesAvailable_other": "有 {{count}} 个工具可更新",
+    "updatesAvailable_other": "{{count}}个工具可以更新",
     "updatesUnit_other": "个可更新",
     "reviewUpdates": "查看更新",
     "upToDate": "所有工具都是最新的",
     "nothingToUpdate": "没有要更新的工具",
-    "updating_other": "正在更新 {{count}} 个工具",
+    "updating_other": "正在更新{{count}}个工具",
     "seeProgress": "查看进度",
-    "nothingToUpdateChecked": "已检查的来源里没有可更新的工具",
-    "hiddenCount_other": "{{count}} 个已隐藏",
-    "cantUpdateHereCount_other": "{{count}} 个不能在这里更新",
-    "checksUnfinished_other": "{{count}} 项检查没完成",
+    "nothingToUpdateChecked": "已检查的来源中没有可更新的工具",
+    "hiddenCount_other": "{{count}}个已隐藏",
+    "cantUpdateHereCount_other": "{{count}}个无法在这里更新",
+    "checksUnfinished_other": "{{count}}项检查未完成",
     "listSeparator": "，",
-    "yourTools": "你的工具",
-    "itemCount_other": "{{count}} 个",
-    "attentionLabel": "需要留意"
+    "yourTools": "来源",
+    "itemCount_other": "{{count}}个",
+    "attentionLabel": "提示"
   },
   "adapters": {
     "brew": "Homebrew",
@@ -95,83 +94,82 @@
     "sortByName": "名称",
     "sortBySource": "来源",
     "noMatches": "没有找到“{{query}}”",
-    "uninstall": "卸载",
+    "uninstall": "卸载…",
     "uninstallQueued": "排队中",
     "uninstalling": "正在卸载…",
     "uninstallHold": {
       "label": "暂时不能卸载",
-      "IndexUpdating": "Homebrew 正在更新软件清单，完成后再卸载。"
+      "IndexUpdating": "Homebrew正在更新软件清单，完成后才能卸载。"
     },
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
     "updateIgnored": "不再提醒",
-    "updateSkipped": "已跳过 {{version}}",
+    "updateSkipped": "已跳过{{version}}",
     "updateSkippedNewBuild": "已跳过新版本",
-    "showDependencies_other": "另有 {{count}} 个被其它软件带来的组件",
-    "hideDependencies_other": "收起 {{count}} 个组件",
-    "unverifiedVersion": "{{source}} {{version}} 版未经测试",
-    "unverifiedVersionDetail": "Canager 还没在这个版本上测试过。",
+    "showDependencies_other": "另有{{count}}个随其他软件安装的组件",
+    "hideDependencies_other": "收起{{count}}个组件",
+    "unverifiedVersion": "{{source}} {{version}}版未经测试",
+    "unverifiedVersionDetail": "尚未用{{source}} {{version}}测试过。",
     "version": "版本",
     "newVersion": "新版本",
     "location": "位置",
     "blocked": {
       "Pinned": {
-        "description": "它在 {{source}} 里固定了版本。要卸载，先在终端运行 {{command}}。",
-        "refused": "它在 {{source}} 里固定了版本，所以没有卸载，也没有改动。先在终端运行 {{command}} 解除固定。"
+        "description": "它在{{source}}中固定了版本。要卸载，请先在终端运行{{command}}。",
+        "refused": "无法卸载，因为它在{{source}}中固定了版本。请先在终端运行{{command}}解除固定。"
       },
       "NoSafeMethod": {
         "badge": "需手动卸载",
-        "description": "{{source}} 没有卸载命令，Canager 也还不能安全地移除它的文件。请按 {{source}} 官方文档卸载。",
-        "refused": "Canager 还不能卸载 {{source}}，没有改动。",
+        "description": "{{source}}没有卸载命令，目前也无法在这里安全地移除它的文件。请按照{{source}}的官方文档卸载。",
+        "refused": "目前无法在这里卸载{{source}}。",
         "standalone-rustup": {
-          "description": "这台 Mac 上的 Rust 不全在 ~/.cargo 和 ~/.rustup 里，Canager 只卸载这两个位置的 Rust。请按 rustup 官方文档运行 rustup self uninstall。",
-          "refused": "Rust 不全在 ~/.cargo 和 ~/.rustup 里，所以没有卸载，也没有改动。"
+          "description": "这台Mac上的Rust不全在~/.cargo和~/.rustup中，而这里只卸载这两个位置的Rust。请按照rustup的官方文档运行“rustup self uninstall”。",
+          "refused": "无法卸载，因为Rust不全在~/.cargo和~/.rustup中。"
         }
       },
       "UvToolDirSet": {
-        "badge": "这里不能卸载",
-        "description": "设置了 UV_TOOL_DIR 时，uv 卸载最后一个工具会连带删掉 UV_TOOL_DIR 的上一层文件夹和其中所有文件，只要那一层里没有别的文件夹。这时 Canager 不卸载任何 uv 工具。",
-        "refused": "设置了 UV_TOOL_DIR，所以没有卸载，也没有改动。"
+        "badge": "无法在此卸载",
+        "description": "设置了UV_TOOL_DIR时，uv卸载最后一个工具会连带删除UV_TOOL_DIR的上一层文件夹及其中的所有文件，只要那一层中没有其他文件夹。因此这时无法在这里卸载任何uv工具。",
+        "refused": "无法卸载，因为设置了UV_TOOL_DIR。"
       }
     }
   },
   "updates": {
     "upToDate": "所有工具都是最新的",
-    "allHidden": "没有要处理的更新，其余的已隐藏。",
-    "noneCheckable": "已检查的来源里没有可更新的工具",
-    "count_other": "{{count}} 个可更新",
-    "noneActionable": "这里没有可更新的",
-    "alsoCount_other": "另有 {{count}} 个可更新",
-    "cantUpdateHere": "不能在这里更新的（{{number}}）",
+    "allHidden": "没有要处理的更新，其余更新已隐藏。",
+    "noneCheckable": "已检查的来源中没有可更新的工具",
+    "count_other": "{{count}}个可更新",
+    "noneActionable": "这里没有可更新的工具",
+    "alsoCount_other": "另有{{count}}个可更新",
+    "cantUpdateHere": "另有{{number}}个无法在这里更新",
     "selectAll": "全选",
-    "selectAllLabel": "全选能在这里更新的项",
+    "selectAllLabel": "全选可在这里更新的项目",
     "invertSelection": "反选",
-    "invertSelectionLabel": "反选能在这里更新的项",
+    "invertSelectionLabel": "反选可在这里更新的项目",
     "updateSelected": "更新所选",
     "updateSelectedCount": "更新所选（{{number}}）",
     "updateAll": "全部更新",
     "update": "更新",
     "retry": "重试",
-    "selectRow": "选择要更新的 {{name}}",
-    "skipVersion": "跳过这个版本",
+    "selectRow": "选择要更新的“{{name}}”",
+    "skipVersion": "跳过此版本",
     "skipVersionHint": "下个版本发布时再提醒你。",
     "neverRemind": "不再提醒",
-    "neverRemindHint": "以后不再提醒这个工具的任何更新，可在设置里撤销。",
-    "saveChoiceFailed": "没能保存这个选择：{{message}}",
+    "neverRemindHint": "以后不再提醒此工具的任何更新。可以在“设置”中撤销。",
+    "saveChoiceFailed": "无法保存此选择：{{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "有新版本",
-    "newBuild": "这个模型有新版本",
-    "selfUpdating": "平时自动更新",
-    "selfUpdatingDetail": "它平时会自己更新，也可以现在更新。",
+    "newBuild": "此模型有新版本",
+    "selfUpdating": "会自行更新",
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
-    "cannotCheckShort": "查不到它的最新版本。",
-    "cannotCheckSummary_other": "这里有 {{count}} 个工具没能检查更新。想看原因，请在「设置」里打开「{{setting}}」。",
+    "cannotCheckShort": "无法查到它的最新版本。",
+    "cannotCheckSummary_other": "{{count}}个工具无法检查更新。打开“{{setting}}”可查看原因。",
     "sourceUnavailable": "暂时不能更新",
     "unavailableDetail": {
-      "NotRunning": "{{source}} 没有运行。打开它，再点「重新检查」。",
-      "NotResponding": "{{source}} 没有响应，稍后点「重新检查」再试。",
-      "RefusesAsRoot": "Canager 以管理员身份打开时，{{source}} 不能用。退出后双击重新打开。"
+      "NotRunning": "{{source}}没有运行。请打开它，然后点按“重新检查”。",
+      "NotResponding": "{{source}}没有响应。请稍后点按“重新检查”。",
+      "RefusesAsRoot": "以管理员身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
     },
     "runInTerminal": "在终端运行：{{command}}",
     "progress": {
@@ -179,50 +177,50 @@
       "running": "正在更新…",
       "cancelling": "正在取消…",
       "succeeded": "已更新",
-      "failed": "更新失败",
+      "failed": "未能更新",
       "cancelled": "已取消",
-      "check": "需要留意",
+      "check": "结果不符",
       "viewLogLabel": "查看日志：{{name}}"
     },
     "justUpdated": {
       "title": "刚更新的",
       "clear": "清除",
-      "clearLabel": "清除刚更新的列表"
+      "clearLabel": "清除“刚更新的”列表"
     },
-    "confirmTitleNamed": "更新 {{name}}？",
-    "confirmTitle_other": "更新 {{count}} 个工具？",
+    "confirmTitleNamed": "要更新“{{name}}”吗？",
+    "confirmTitle_other": "要更新{{count}}个工具吗？",
     "preparing": "正在准备…",
-    "warningsTitle": "请注意",
-    "notesSummary_other": "有 {{count}} 条需要留意",
-    "moreTools_other": "还有 {{count}} 个",
+    "warningsTitle": "说明",
+    "notesSummary_other": "{{count}}条说明",
+    "moreTools_other": "还有{{count}}个",
     "fewerTools": "收起",
     "started": "已开始",
-    "planFailed": "没能准备这次更新：{{message}}",
-    "submitFailed": "没能开始更新：{{message}}",
+    "planFailed": "无法准备此次更新：{{message}}",
+    "submitFailed": "无法开始更新：{{message}}",
     "blocked": {
       "Pinned": {
         "badge": "已固定",
-        "detail": "它在 {{source}} 里固定了版本。要更新，先在终端运行 {{command}}。",
-        "refused": "它在 {{source}} 里被固定了，所以没有更新，也没有改动。"
+        "detail": "它在{{source}}中固定了版本。要更新，请先在终端运行{{command}}。",
+        "refused": "无法更新，因为它在{{source}}中被固定了。"
       },
       "SelfUpdatesOnly": {
-        "badge": "只能自己更新",
-        "detail": "它会自己更新：打开它一次就会检查新版本。",
-        "refused": "{{source}} 会自己更新，所以 Canager 没有去更新它。什么都没有改动。"
+        "badge": "只能自行更新",
+        "detail": "它会自行更新，无法在这里更新。打开它一次就会检查新版本。",
+        "refused": "{{source}}会自行更新，无法在这里更新。"
       }
     }
   },
   "commandPreview": {
     "show_other": "查看命令",
     "trashLabel": "移到废纸篓",
-    "needsPassword": "部分 App 在这一步会要求输入 Mac 密码。"
+    "needsPassword": "部分App在这一步会要求输入Mac密码。"
   },
   "warnings": {
-    "dependentsUnknown": "没能查到哪些软件还要用它，卸载前请自己确认。",
-    "wouldBreak_other": "还有 {{count}} 个工具要用它：{{names}}。",
-    "compilesLocally": "需要在这台 Mac 上编译，会花一些时间。",
-    "nonRegistrySource": "它不是从 crates.io 安装的。",
-    "thirdPartyRegistry": "这个模型从 {{host}} 下载，不是 Ollama 官方库。信任它再继续。",
+    "dependentsUnknown": "无法确定还有哪些软件要用它。卸载前请自行确认。",
+    "wouldBreak_other": "还有{{count}}个工具要用它：{{names}}。",
+    "compilesLocally": "需要在这台Mac上编译，会花一些时间。",
+    "nonRegistrySource": "它不是从crates.io安装的。",
+    "thirdPartyRegistry": "此模型来自{{host}}，不是Ollama官方模型库。",
     "willTrash": {
       "Launcher": "命令本身：{{path}}",
       "Program": "程序文件：{{path}}",
@@ -230,174 +228,174 @@
       "Backups": "更新留下的旧副本：{{path}}"
     },
     "willKeep": {
-      "Settings": "你的设置：{{path}}",
+      "Settings": "设置：{{path}}",
       "SettingsAndHistory": "设置、登录和历史记录：{{path}}",
       "ToolState": "对话和历史记录：{{path}}",
-      "ToolStateDetail": "保留整个文件夹，包括里面的程序文件。",
+      "ToolStateDetail": "保留整个文件夹，包括其中的程序文件。",
       "ShellConfigLines": "终端配置文件：{{path}}",
-      "ShellConfigLinesDetail": "Canager 不改这个文件，安装器加过的行留着也无害。",
+      "ShellConfigLinesDetail": "不会修改此文件。安装器添加的行留着也无害。",
       "OutsideHome": "会失效的链接：{{path}}",
-      "OutsideHomeDetail": "它在个人文件夹之外，Canager 不动它。卸载后可以自己删掉。",
+      "OutsideHomeDetail": "它在个人文件夹之外，因此保留不动。卸载后可以自行删除。",
       "NotOurs": "无法确认归属：{{path}}",
-      "NotOursDetail": "Canager 确认不了它属于这个工具，所以不动它。",
+      "NotOursDetail": "无法确认它属于此工具，因此保留不动。",
       "InstallerCache": "安装器暂存文件夹：{{path}}",
-      "InstallerCacheDetail": "它在多个工具共用的 ~/.cache 里，Canager 不动它，可以自己删。"
+      "InstallerCacheDetail": "它在多个工具共用的~/.cache中，因此保留不动。可以自行删除。"
     },
-    "alreadyGone": "已不在：{{path}}",
-    "removesToolchains": "永久删除 {{path}}：工具链 {{names}} 和 rustup 下载的所有内容。",
-    "removesToolchainsUnlisted": "永久删除 {{path}}：所有工具链和 rustup 下载的内容。",
-    "removesToolchainsDetail": "不进废纸篓。重装 Rust 之前，需要 Rust 的项目无法编译。",
-    "deletesCargoHome": "永久删除 {{path}} 和里面的所有文件，包括 Cargo 的缓存、设置和登录信息。不进废纸篓。",
-    "removesCargoInstalled_other": "也会永久删除 Cargo 里的 {{count}} 个程序：{{names}}。",
-    "removesCargoInstalledDetail": "用 cargo install 装的，重装 Rust 后可以再装回来。",
-    "homebrewRustupLosesToolchains": "Homebrew 装的 rustup 共用这些文件夹，它的工具链也会删除。",
-    "editsShellConfig": "rustup 会从终端配置文件里删掉它加的那一行。",
-    "leavesShellConfigLine": "{{path}} 里会留下加载 Cargo 的一行，读这个文件的终端每次启动都会报错。",
-    "leavesShellConfigLineDetail": "删掉那一行即可。",
-    "leavesShellConfigLineMaybe": "{{path}} 里有一行提到 Cargo，rustup 不会删它。",
-    "leavesShellConfigLineMaybeDetail": "卸载后检查这一行，终端启动报错就删掉它。",
-    "homebrewAutoremoves": "Homebrew 还会删除只作为依赖装上、现已没有软件需要的其他软件包。",
-    "homebrewAutoremovesDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_AUTOREMOVE=1，但你的 brew.env 把它设成了 Homebrew 当作未设置的值，比如 0 或 false，以 brew.env 为准。",
-    "homebrewPeriodicCleanup": "安装或更新后，Homebrew 会删除这个软件及一起更新的软件的旧版本，和残留的旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
-    "homebrewPeriodicCleanupDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_INSTALL_CLEANUP=1，但你的 brew.env 把它设成了空值，以 brew.env 为准。",
-    "homebrewCleanupAutoremoves": "Homebrew 的定期清理还会删除只作为依赖装上、现已没有软件需要的其他软件包。",
-    "homebrewCleanupAutoremovesDetail": "Canager 运行 Homebrew 时设了 HOMEBREW_NO_INSTALL_CLEANUP=1 和 HOMEBREW_NO_AUTOREMOVE=1，但你的 brew.env 把前者设成了空值，把后者设成了 Homebrew 当作未设置的值，比如 0 或 false，以 brew.env 为准。",
+    "alreadyGone": "已不存在：{{path}}",
+    "removesToolchains": "永久删除{{path}}：工具链{{names}}和rustup下载的所有内容。",
+    "removesToolchainsUnlisted": "永久删除{{path}}：所有工具链和rustup下载的内容。",
+    "removesToolchainsDetail": "不会移到废纸篓。重装Rust之前，需要Rust的项目无法编译。",
+    "deletesCargoHome": "永久删除{{path}}及其中的所有文件，包括Cargo的缓存、设置和登录信息。不会移到废纸篓。",
+    "removesCargoInstalled_other": "还会永久删除Cargo中的{{count}}个程序：{{names}}。",
+    "removesCargoInstalledDetail": "它们是用“cargo install”安装的，重装Rust后可以再装回来。",
+    "homebrewRustupLosesToolchains": "Homebrew安装的rustup共用这些文件夹，它的工具链也会被删除。",
+    "editsShellConfig": "rustup会从终端配置文件中删除它添加的那一行。",
+    "leavesShellConfigLine": "{{path}}中会留下加载Cargo的一行，读取此文件的终端每次启动都会报错。",
+    "leavesShellConfigLineDetail": "删除那一行即可。",
+    "leavesShellConfigLineMaybe": "{{path}}中有一行提到Cargo，rustup不会删除它。",
+    "leavesShellConfigLineMaybeDetail": "卸载后请检查这一行；如果终端启动时报错，就删除它。",
+    "homebrewAutoremoves": "Homebrew还会删除只作为依赖安装、现已没有软件需要的其他软件包。",
+    "homebrewAutoremovesDetail": "运行Homebrew时设置了HOMEBREW_NO_AUTOREMOVE=1，但brew.env把它设成了Homebrew视为未设置的值，比如0或false，以brew.env为准。",
+    "homebrewPeriodicCleanup": "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
+    "homebrewPeriodicCleanupDetail": "运行Homebrew时设置了HOMEBREW_NO_INSTALL_CLEANUP=1，但brew.env把它设成了空值，以brew.env为准。",
+    "homebrewCleanupAutoremoves": "Homebrew的定期清理还会删除只作为依赖安装、现已没有软件需要的其他软件包。",
+    "homebrewCleanupAutoremovesDetail": "运行Homebrew时设置了HOMEBREW_NO_INSTALL_CLEANUP=1和HOMEBREW_NO_AUTOREMOVE=1，但brew.env把前者设成了空值，把后者设成了Homebrew视为未设置的值，比如0或false，以brew.env为准。",
     "uninstallScope": {
-      "HomebrewFormulaOnly": "只删除 Homebrew 装的这一版 {{name}} 和指向它的链接；别处的配置和数据不删。",
-      "HomebrewFormula": "删除 Homebrew 装的这一版 {{name}} 和指向它的链接；别处的配置和数据不删。",
-      "HomebrewCaskPlain": "删除 Homebrew 为 {{name}} 装的文件；它的设置和数据不动。",
-      "HomebrewCaskSteps": "删除 Homebrew 为 {{name}} 放置的文件，并执行它记下的卸载步骤；其他文件不删。",
-      "HomebrewCaskStepsAutoremoves": "删除 Homebrew 为 {{name}} 放置的文件，并执行它记下的卸载步骤；{{name}} 的其他文件不删。",
-      "HomebrewCaskStepsUnseen": "删除 Homebrew 为 {{name}} 放置的文件，并执行它记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
-      "HomebrewCaskStepsOnly": "执行 Homebrew 为 {{name}} 记下的卸载步骤；安装器装的其他文件不删。",
-      "HomebrewCaskStepsOnlyUnseen": "执行 Homebrew 为 {{name}} 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
-      "HomebrewCask": "没能从 Homebrew 的记录里读出卸载 {{name}} 会删除什么。",
-      "Npm": "删除 npm 全局目录里的 {{name}} 文件夹和命令，不运行它的代码；它在别处的设置和数据不删。",
-      "Pipx": "删除 pipx 为 {{name}} 单独建的 Python 环境和指向它的命令；它在环境以外的设置和数据不删。",
-      "Uv": "删除 uv 为 {{name}} 单独建的 Python 环境和它记下的命令；它在环境以外的设置和数据不删。",
-      "Cargo": "删除 cargo 为 {{name}} 装的程序文件；下载缓存、Cargo 的设置和这个程序自己的设置都不动。",
-      "Ollama": "删除模型 {{name}}；其他模型还在用的数据会保留，Ollama 本身和其他模型不动。"
+      "HomebrewFormulaOnly": "只删除Homebrew安装的这一版“{{name}}”和指向它的链接；别处的配置和数据不删除。",
+      "HomebrewFormula": "删除Homebrew安装的这一版“{{name}}”和指向它的链接；别处的配置和数据不删除。",
+      "HomebrewCaskPlain": "删除Homebrew为“{{name}}”安装的文件；它的设置和数据保留不动。",
+      "HomebrewCaskSteps": "删除Homebrew为“{{name}}”放置的文件，并执行它记下的卸载步骤；其他文件不删除。",
+      "HomebrewCaskStepsAutoremoves": "删除Homebrew为“{{name}}”放置的文件，并执行它记下的卸载步骤；“{{name}}”的其他文件不删除。",
+      "HomebrewCaskStepsUnseen": "删除Homebrew为“{{name}}”放置的文件，并执行它记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
+      "HomebrewCaskStepsOnly": "执行Homebrew为“{{name}}”记下的卸载步骤；安装器安装的其他文件不删除。",
+      "HomebrewCaskStepsOnlyUnseen": "执行Homebrew为“{{name}}”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
+      "HomebrewCask": "无法从Homebrew的记录中读出卸载“{{name}}”会删除什么。",
+      "Npm": "删除npm全局目录中的“{{name}}”文件夹和命令，不运行它的代码；它在别处的设置和数据不删除。",
+      "Pipx": "删除pipx为“{{name}}”单独建立的Python环境和指向该环境的命令；它在环境以外的设置和数据不删除。",
+      "Uv": "删除uv为“{{name}}”单独建立的Python环境和uv记下的命令；它在环境以外的设置和数据不删除。",
+      "Cargo": "删除cargo为“{{name}}”安装的程序文件；下载缓存、Cargo的设置和此程序自己的设置都保留不动。",
+      "Ollama": "删除模型“{{name}}”；其他模型还在用的数据会保留，Ollama本身和其他模型保留不动。"
     },
     "caskStep": {
       "Deletes_other": "还会永久删除：{{items}}。",
-      "DeletesUnnamed": "还会永久删除 Homebrew 执行卸载步骤时才找到的文件。",
-      "DeletesLinks_other": "还会永久删除下列路径，但只删其中指向的路径含有“{{link}}”的链接：{{items}}。",
-      "DeletesFilesContaining_other": "还会永久删除下列路径，但只删其中内容含有“{{content}}”的文件：{{items}}。",
-      "DeletesLinksToFilesContaining_other": "还会永久删除下列路径，但只删其中指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的链接：{{items}}。",
-      "DeletesUnnamedLinks": "还会永久删除 Homebrew 执行卸载步骤时才找到的链接，但只删指向的路径含有“{{link}}”的。",
-      "DeletesUnnamedFilesContaining": "还会永久删除 Homebrew 执行卸载步骤时才找到的文件，但只删内容含有“{{content}}”的。",
-      "DeletesUnnamedLinksToFilesContaining": "还会永久删除 Homebrew 执行卸载步骤时才找到的链接，但只删指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的。",
+      "DeletesUnnamed": "还会永久删除Homebrew执行卸载步骤时才找到的文件。",
+      "DeletesLinks_other": "还会永久删除下列路径，但只删除其中指向的路径含有“{{link}}”的链接：{{items}}。",
+      "DeletesFilesContaining_other": "还会永久删除下列路径，但只删除其中内容含有“{{content}}”的文件：{{items}}。",
+      "DeletesLinksToFilesContaining_other": "还会永久删除下列路径，但只删除其中指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的链接：{{items}}。",
+      "DeletesUnnamedLinks": "还会永久删除Homebrew执行卸载步骤时才找到的链接，但只删除指向的路径含有“{{link}}”的。",
+      "DeletesUnnamedFilesContaining": "还会永久删除Homebrew执行卸载步骤时才找到的文件，但只删除内容含有“{{content}}”的。",
+      "DeletesUnnamedLinksToFilesContaining": "还会永久删除Homebrew执行卸载步骤时才找到的链接，但只删除指向的路径含有“{{link}}”、所指文件的内容又含有“{{content}}”的。",
       "Trashes_other": "还会移到废纸篓：{{items}}。",
-      "RemovesPackages_other": "还会删除下列安装包装的全部文件，不论别的 App 是否在用：{{items}}。",
+      "RemovesPackages_other": "还会删除下列安装包安装的全部文件，不论其他App是否在用：{{items}}。",
       "RunsScript_other": "还会运行：{{items}}。",
-      "RunsOwnSteps": "卸载前后还会执行 Homebrew 为它记下的其他步骤。",
-      "RemovesServices_other": "还会停止并删除 {{count}} 个后台服务。",
+      "RunsOwnSteps": "卸载前后还会执行Homebrew为它记下的其他步骤。",
+      "RemovesServices_other": "还会停止并删除{{count}}个后台服务。",
       "RemovesServicesMatching": "还会停止并删除后台服务，包括名称符合某个规则、正在运行的全部服务。",
       "RemovesKexts_other": "还会停用并删除内核扩展：{{items}}。",
-      "DeletesCertificates_other": "还会删除钥匙串里名称含有下列任一文字的所有证书：{{items}}。",
+      "DeletesCertificates_other": "还会删除钥匙串中名称含有下列任一文字的所有证书：{{items}}。",
       "RemovesLoginItems_other": "还会删除登录项：{{items}}。",
-      "QuitsApps_other": "还会退出 {{count}} 个正在运行的 App。",
-      "QuitsAppsMatching": "还会退出正在运行的相关 App，包括名称符合某个规则的全部 App。",
-      "QuitsNamedApps_other": "还会退出正在运行的 {{items}}。",
-      "systemNames_other": "macOS 里的名称：{{items}}"
+      "QuitsApps_other": "还会退出{{count}}个正在运行的App。",
+      "QuitsAppsMatching": "还会退出正在运行的相关App，包括名称符合某个规则的全部App。",
+      "QuitsNamedApps_other": "还会退出正在运行的{{items}}。",
+      "systemNames_other": "在macOS中的名称：{{items}}"
     }
   },
   "standalone": {
     "summary": {
-      "standalone-claude": "Anthropic 的 AI 编程助手",
-      "standalone-rustup": "安装和更新 Rust 的工具",
-      "standalone-agy": "Google 的 AI 编程助手",
-      "standalone-grok": "xAI 的 AI 编程助手"
+      "standalone-claude": "Anthropic的AI编程助手",
+      "standalone-rustup": "安装和更新Rust的工具",
+      "standalone-agy": "Google的AI编程助手",
+      "standalone-grok": "xAI的AI编程助手"
     }
   },
   "sourceNotice": {
     "pipReadOnly": {
-      "description": "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。"
+      "description": "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。"
     },
     "prefixNotWritable": {
-      "description": "npm 把它们装在你的账户改不了的文件夹里，所以只能查看。用 Homebrew 装 Node 后，再用它装的 npm 包就能在这里管理。"
+      "description": "npm把它们安装在当前账户无法修改的文件夹中，因此只能查看。用Homebrew安装Node后，再用它安装的npm包就能在这里管理。"
     },
     "unreachable": {
-      "title": "{{source}} 没有响应",
-      "description": "{{source}} 没有响应，所以看不到它装了什么。稍后点「重新检查」再试。",
-      "descriptionWithRows": "这里列出的是 {{source}} 上次响应时的内容，之后的变化不会显示。稍后点「重新检查」再试。"
+      "title": "{{source}}没有响应",
+      "description": "{{source}}没有响应，无法列出它安装的内容。请稍后点按“重新检查”。",
+      "descriptionWithRows": "这里列出的是{{source}}上次响应时的内容，之后的变化不会显示。请稍后点按“重新检查”。"
     },
     "refusesAsRoot": {
-      "title": "Canager 以管理员身份打开时，{{source}} 不能用",
-      "description": "Canager 以管理员身份打开时，{{source}} 不能用。退出后双击重新打开。"
+      "title": "{{source}}无法以管理员身份运行",
+      "description": "以管理员身份运行此App时，{{source}}无法使用。请退出，然后连按两次重新打开。"
     },
     "notRunning": {
-      "title": "{{source}} 没有运行",
-      "description": "打开 {{source}} 后，才能列出它装的内容和更新。"
+      "title": "{{source}}没有运行",
+      "description": "打开{{source}}后，才能列出它安装的内容和更新。"
     },
-    "openOllama": "打开 Ollama",
+    "openOllama": "打开Ollama",
     "openOllamaFailed": {
-      "notInstalled": "「应用程序」里没有 Ollama App。请从 ollama.com 下载安装，再点「打开 Ollama」。",
-      "notInstalledDetail": "用 Homebrew 装的 ollama 命令不包含这个 App。",
-      "launchFailed": "macOS 没能打开 Ollama。请到「应用程序」里手动打开，还打不开就从 ollama.com 重装。"
+      "notInstalled": "“应用程序”中没有Ollama App。请从ollama.com下载并安装，然后点按“打开Ollama”。",
+      "notInstalledDetail": "用Homebrew安装的ollama命令不包含此App。",
+      "launchFailed": "macOS无法打开Ollama。请在“应用程序”中手动打开；如果仍然无法打开，请从ollama.com重新安装。"
     },
     "indexMayBeStale": {
-      "title": "Homebrew 软件清单没更新成功",
-      "description": "这次的更新结果以旧清单为准。检查网络后点「重新检查」。"
+      "title": "无法更新Homebrew软件清单",
+      "description": "这次的更新结果以旧清单为准。请检查网络连接，然后点按“重新检查”。"
     },
     "indexUpdating": {
-      "title": "Homebrew 正在更新软件清单",
-      "description": "「更新」页显示的是上次的结果。清单更新完会自动重新检查。"
+      "title": "Homebrew正在更新软件清单",
+      "description": "“更新”页显示的是上次的结果。清单更新完成后会自动重新检查。"
     },
     "notOnPath": {
-      "title": "{{source}} 已安装，但在终端输入 {{command}} 打不开它",
-      "description": "终端查找 {{command}} 的位置里，没有一处通向它。先新开一个终端窗口试试，不行就按它的安装说明操作。"
+      "title": "{{source}}已安装，但在终端输入“{{command}}”打不开它",
+      "description": "终端查找“{{command}}”的位置中，没有一处通向它。请先新开一个终端窗口试试；如果仍然不行，请按照它的安装说明操作。"
     },
     "shadowedByHomebrew": {
-      "title": "输入 {{command}} 先运行的是 Homebrew 里的同名程序",
-      "description": "Canager 看不出它是不是 {{source}}。可以到「已安装」的 Homebrew 下查看。"
+      "title": "输入“{{command}}”会先运行Homebrew中的同名程序",
+      "description": "无法确认它是否就是{{source}}。可在“已安装”的Homebrew中查看。"
     },
     "shadowedByNpm": {
-      "title": "输入 {{command}} 先运行的是 npm 里的同名程序",
-      "description": "Canager 看不出它是不是 {{source}}。可以到「已安装」的 npm 下查看。"
+      "title": "输入“{{command}}”会先运行npm中的同名程序",
+      "description": "无法确认它是否就是{{source}}。可在“已安装”的npm中查看。"
     },
     "shadowedByOther": {
-      "title": "输入 {{command}} 先运行的是另一个同名程序",
-      "description": "Canager 认不出那个程序。它若在「来源不明」页里，可以在那里看到位置。"
+      "title": "输入“{{command}}”会先运行另一个同名程序",
+      "description": "无法识别那个程序。如果它在“来源不明”中，可以在那里看到它的位置。"
     },
     "launcherOnly": {
-      "title": "{{source}} 的程序文件不见了",
-      "description": "{{source}} 的 {{command}} 已经无法运行，点「卸载」可以清理掉。想继续用，就重新安装 {{source}}；文件在废纸篓里的话，拖回原处后点「重新检查」。"
+      "title": "{{source}}的程序文件不见了",
+      "description": "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处，然后点按“重新检查”。"
     },
-    "more_other": "还有 {{count}} 条",
+    "more_other": "还有{{count}}条",
     "showFewer": "收起"
   },
   "planRefused": {
-    "sourceGone": "找不到管理它的工具了，没有开始。请点「重新检查」。",
-    "expired": "确认窗口已超过 10 分钟，没有执行。请重新打开再确认。",
-    "unknown": "这个确认已失效。请关闭后重新开始。",
-    "invalidName": "“{{name}}”不能交给 {{source}}，已停下，没有改动。",
-    "programMissing": "找不到 {{program}}，没有改动。请点「重新检查」。",
-    "spawnFailed": "{{source}} 没能启动，没有改动。系统提示：{{detail}}",
-    "outputTooLarge": "{{source}} 返回的内容太多，已停下，没有改动。",
-    "indexUpdating": "Homebrew 正在更新软件清单，现在查不准依赖。没有改动，过一两分钟再试。",
-    "refused": "Canager 内部出错，已停下，没有改动。",
+    "sourceGone": "无法开始，因为找不到管理它的工具。请点按“重新检查”。",
+    "expired": "确认窗口已打开超过10分钟，因此未执行。请重新打开并确认。",
+    "unknown": "此确认已失效。请关闭后重新开始。",
+    "invalidName": "无法用{{source}}处理“{{name}}”。",
+    "programMissing": "找不到{{program}}。请点按“重新检查”。",
+    "spawnFailed": "{{source}}无法启动。系统提示：{{detail}}",
+    "outputTooLarge": "{{source}}返回的内容过多，无法继续。",
+    "indexUpdating": "Homebrew正在更新软件清单，现在无法准确检查依赖。请过一两分钟再试。",
+    "refused": "发生内部错误，无法继续。",
     "uninstallUnsafe": {
-      "outsideHome": "{{path}} 所在的文件夹通向个人文件夹以外，Canager 不移动它，没有改动。",
-      "sharedFolder": "{{path}} 在多个 App 共用的文件夹里，Canager 不移动它，没有改动。",
-      "missing": "{{path}} 已不在，已停下，没有改动。",
-      "notOwnedByYou": "{{path}} 属于另一个用户，Canager 不移动它，没有改动。",
-      "notWhatInstructionsExpect": "{{path}} 和预期的不一样，Canager 不移动它，没有改动。",
-      "notWhatInstructionsExpectDetail": "它或它所在的文件夹链接到了别处，或者类型不对、读不到。",
-      "overlapsKept": "Canager 无法确认移走文件时不碰到要保留的 {{path}}，所以没有卸载，也没有改动。"
+      "outsideHome": "无法移动{{path}}，因为它所在的文件夹通向个人文件夹以外。",
+      "sharedFolder": "无法移动{{path}}，因为它在多个App共用的文件夹中。",
+      "missing": "无法继续，因为{{path}}已不存在。",
+      "notOwnedByYou": "无法移动{{path}}，因为它属于另一个用户。",
+      "notWhatInstructionsExpect": "无法移动{{path}}，因为它和预期的不一样。",
+      "notWhatInstructionsExpectDetail": "它或它所在的文件夹链接到了别处，或者类型不对、无法读取。",
+      "overlapsKept": "无法卸载，因为不能确认移走文件时不会碰到要保留的{{path}}。"
     }
   },
   "operations": {
-    "current": "{{kind}} {{name}}：{{status}}",
-    "title": "{{kind}} {{name}}",
-    "noCancelHint": "开始后不能取消，完成前请别关 Canager 或 Mac。",
-    "noCancelHintDetail": "等窗口底部显示结果，再退出 Canager 或关机。",
+    "current": "{{kind}}{{name}}：{{status}}",
+    "title": "{{kind}}{{name}}",
+    "noCancelHint": "开始后无法取消。完成前请勿退出Canager或关机。",
+    "noCancelHintDetail": "等窗口底部显示结果后，再退出或关机。",
     "logDrawerTitle": "操作日志",
     "batch": {
-      "running": "正在处理 {{total}} 个中的第 {{current}} 个",
-      "allSucceeded_other": "{{count}} 个都已成功",
-      "needsAttention_other": "{{total}} 个中有 {{count}} 个需要留意",
-      "finished": "{{succeeded}} 个已成功，{{cancelled}} 个已取消",
+      "running": "正在处理第{{current}}个，共{{total}}个",
+      "allSucceeded_other": "{{count}}个都已成功",
+      "needsAttention_other": "{{total}}个中有{{count}}个需要查看",
+      "finished": "{{succeeded}}个已成功，{{cancelled}}个已取消",
       "cancelAll": "全部取消",
       "cancelRest": "取消其余"
     },
@@ -407,13 +405,13 @@
       "Upgrade": "取消更新"
     },
     "logNote": {
-      "waitingForBrewUpdate": "Homebrew 正在更新软件清单，完成后开始，最多等 {{minutes}} 分钟。现在取消不会有任何改动。",
-      "readFailedStdout": "读不到后续输出了：{{error}}",
-      "readFailedStderr": "读不到后续错误信息了：{{error}}",
-      "movedToTrash": "{{path}} 已移到废纸篓：{{trashedTo}}",
-      "trashFailed": "{{path}} 没能移到废纸篓，卸载已停止：{{error}}",
-      "outOfTime": "超过 {{seconds}} 秒，已在移动 {{path}} 之前停下。已移走的在废纸篓里，再卸载一次可移走其余的。",
-      "backAfterUninstall": "最后检查时发现 {{path}}，Canager 没有动它。"
+      "waitingForBrewUpdate": "Homebrew正在更新软件清单，完成后开始，最多等待{{minutes}}分钟。现在取消不会有任何改动。",
+      "readFailedStdout": "无法读取后续输出：{{error}}",
+      "readFailedStderr": "无法读取后续错误信息：{{error}}",
+      "movedToTrash": "{{path}}已移到废纸篓：{{trashedTo}}",
+      "trashFailed": "未能将{{path}}移到废纸篓，卸载已停止：{{error}}",
+      "outOfTime": "超过{{seconds}}秒，已在移动{{path}}之前停止。已移走的在废纸篓中，再卸载一次可移走其余的。",
+      "backAfterUninstall": "最后检查时发现{{path}}，未移动它。"
     },
     "kind": {
       "Install": "安装",
@@ -422,44 +420,44 @@
     },
     "status": {
       "Queued": "排队中",
-      "Running": "进行中",
-      "CancelRequested": "正在取消",
-      "Cancelling": "正在取消",
-      "Verifying": "正在核对结果",
-      "waitingForBrewUpdate": "等 Homebrew 更新软件清单"
+      "Running": "正在处理…",
+      "CancelRequested": "正在取消…",
+      "Cancelling": "正在取消…",
+      "Verifying": "正在核对结果…",
+      "waitingForBrewUpdate": "正在等待Homebrew更新软件清单…"
     },
     "outcome": {
       "Succeeded": "已成功",
       "Cancelled": "已取消",
       "Unconfirmed": "结果未确认",
-      "UnconfirmedDetail": "请看列表，确认有没有变化。",
+      "UnconfirmedDetail": "请查看列表，确认是否有变化。",
       "NeedsAttention": {
-        "NotInstalledAfterInstall": "显示装好了，但没找到它",
-        "StillInstalledAfterUninstall": "显示卸载了，但它还在",
-        "GoneAfterUpgrade": "更新显示成功，但它不见了",
-        "UnchangedAfterUpgrade": "更新显示成功，但版本没变",
-        "UnchangedAfterUpgradeDetail": "可以在操作日志里看它输出了什么。",
-        "BackAfterUninstall": "移完后，原处又出现了文件",
-        "BackAfterUninstallDetail": "先退出这个工具。列表里还有它就再卸载一次，否则把日志里列出的文件自己移到废纸篓。"
+        "NotInstalledAfterInstall": "显示已安装，但找不到它",
+        "StillInstalledAfterUninstall": "显示已卸载，但它仍然存在",
+        "GoneAfterUpgrade": "显示已更新，但它不见了",
+        "UnchangedAfterUpgrade": "显示已更新，但版本没有变化",
+        "UnchangedAfterUpgradeDetail": "可以在操作日志中查看它输出了什么。",
+        "BackAfterUninstall": "移走后，原处又出现了文件",
+        "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。"
       },
-      "Failed": "失败：{{summary}}",
-      "FailedSilent": "失败，程序没有给出原因",
-      "FailedSilentDetail": "可以在操作日志里看它的输出。",
+      "Failed": "未能完成：{{summary}}",
+      "FailedSilent": "未能完成，程序没有给出原因",
+      "FailedSilentDetail": "可以在操作日志中查看它的输出。",
       "CanagerFailed": {
-        "Panicked": "失败：Canager 内部出错",
-        "PanickedDetail": "请看列表，确认有没有变化。",
-        "ProgramMissing": "失败：找不到 {{program}}，没有改动",
-        "SpawnFailed": "失败：程序没能启动，没有改动。系统提示：{{detail}}",
-        "HomebrewStillUpdating": "失败：Homebrew 更新软件清单超过 {{minutes}} 分钟，没有开始",
-        "HomebrewStillUpdatingDetail": "没有改动。检查网络，过一会儿再试。",
-        "PathChanged": "已停下：{{path}} 在确认窗口打开后变了",
-        "PathChangedDetail": "如有已移到废纸篓的，日志里都列着。请重新打开确认窗口。",
-        "Internal": "失败：Canager 内部出错，没有改动"
+        "Panicked": "未能完成：发生内部错误",
+        "PanickedDetail": "请查看列表，确认是否有变化。",
+        "ProgramMissing": "未能开始：找不到{{program}}，没有改动",
+        "SpawnFailed": "未能开始：程序无法启动，没有改动。系统提示：{{detail}}",
+        "HomebrewStillUpdating": "未能开始：Homebrew更新软件清单超过了{{minutes}}分钟",
+        "HomebrewStillUpdatingDetail": "没有改动。请检查网络连接，稍后再试。",
+        "PathChanged": "已停止：确认窗口打开后，{{path}}发生了变化",
+        "PathChangedDetail": "如有已移到废纸篓的项目，日志中都已列出。请重新打开确认窗口。",
+        "Internal": "未能完成：发生内部错误，没有改动"
       }
     }
   },
   "quit": {
-    "title_other": "还有 {{count}} 个操作没完成",
+    "title_other": "还有{{count}}个操作未完成",
     "body": {
       "stops_other": "现在退出会中断操作。",
       "Upgrade_other": "现在退出会中断操作，正在更新的工具有只更新一半的风险。",
@@ -470,27 +468,27 @@
       "othersHalfDone_other": "现在退出会中断其余操作，正在处理的工具有只完成一半的风险。"
     },
     "noCancel": {
-      "Install": "{{name}} 的安装已经开始，不能取消，请等它完成再退出。",
-      "Uninstall": "{{name}} 的卸载已经开始，不能取消，请等它完成再退出。",
-      "Upgrade": "{{name}} 的更新已经开始，不能取消，请等它完成再退出。"
+      "Install": "“{{name}}”的安装已开始，无法取消。请等它完成后再退出。",
+      "Uninstall": "“{{name}}”的卸载已开始，无法取消。请等它完成后再退出。",
+      "Upgrade": "“{{name}}”的更新已开始，无法取消。请等它完成后再退出。"
     },
-    "keepWaiting": "继续等待",
-    "quitAnyway": "仍然退出"
+    "keepWaiting": "取消",
+    "quitAnyway": "退出"
   },
   "uninstall": {
-    "title": "卸载 {{name}}？",
+    "title": "要卸载“{{name}}”吗？",
     "checking": "正在检查影响…",
-    "planError": "没能检查影响：{{message}}",
-    "submitError": "没能开始卸载：{{message}}",
-    "reissued": "刚才没有开始，已重新检查。",
-    "reissuedConfirmAgain": "刚才没有开始，已重新检查。请再确认一次。",
-    "warningsTitle": "请注意",
-    "keepListTitle": "保留不动",
+    "planError": "无法检查影响：{{message}}",
+    "submitError": "无法开始卸载：{{message}}",
+    "reissued": "刚才未能开始，已重新检查。",
+    "reissuedConfirmAgain": "刚才未能开始，已重新检查。请再确认一次。",
+    "warningsTitle": "说明",
+    "keepListTitle": "保留",
     "affectedTitle": "这些软件还要用它",
     "confirm": "卸载",
     "confirmPermanent": "永久卸载",
-    "affectedBlocksConfirm": "先卸载上面这些，才能卸载 {{name}}。",
-    "trashPreview_other": "这 {{count}} 项会移到废纸篓，可以从那里拖回来。"
+    "affectedBlocksConfirm": "要卸载“{{name}}”，请先卸载上面这些软件。",
+    "trashPreview_other": "这{{count}}项会移到废纸篓，可以从那里拖回来。"
   },
   "settings": {
     "groups": {
@@ -504,17 +502,17 @@
       "description": "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。"
     },
     "includeSelfUpdating": {
-      "label": "显示会自动更新的 App",
-      "description": "Homebrew 装的 Chrome 这类会自己更新的 App，也列进「更新」。"
+      "label": "显示会自行更新的App",
+      "description": "Homebrew安装的Chrome等会自行更新的App也会列在“更新”中。"
     },
     "autoCheck": {
       "label": "每天自动检查",
-      "description": "Canager 开着时每天检查一次，查到的更新都不安装。退出后不检查。"
+      "description": "Canager运行时每天检查一次更新，查到的更新不会自动安装。"
     },
     "notifyUpdates": {
       "label": "有可更新时通知我",
-      "needsAutoCheck": "先打开上面的「{{setting}}」。",
-      "refused": "在系统设置 → 通知里允许 Canager"
+      "needsAutoCheck": "请先打开上方的“{{setting}}”。",
+      "refused": "请在“系统设置”>“通知”中允许Canager发送通知。"
     },
     "language": {
       "label": "语言",
@@ -527,14 +525,14 @@
       "empty": "没有跳过的版本",
       "newBuild": "新版本",
       "unskip": "取消跳过",
-      "unskipAriaLabel": "取消跳过 {{name}} 的 {{version}}",
-      "unskipNewBuildAriaLabel": "取消跳过 {{name}} 的新版本"
+      "unskipAriaLabel": "取消跳过“{{name}}”的{{version}}",
+      "unskipNewBuildAriaLabel": "取消跳过“{{name}}”的新版本"
     },
     "ignoredUpdates": {
       "title": "不再提醒的工具",
       "empty": "没有不再提醒的工具",
       "unignore": "恢复提醒",
-      "unignoreAriaLabel": "恢复 {{name}} 的更新提醒"
+      "unignoreAriaLabel": "恢复“{{name}}”的更新提醒"
     },
     "iconCredits": {
       "label": "图标来源",
@@ -542,15 +540,15 @@
       "open": "查看",
       "openAriaLabel": "查看图标来源",
       "title": "图标来源",
-      "owners": "每个标志都归其所有者，这里只用它来认出是哪个工具。",
-      "simpleIcons": "Canager 内置的标志大多来自 Simple Icons，它以 CC0 发布。",
+      "owners": "每个标志都归其所有者所有，这里只用来识别工具。",
+      "simpleIcons": "Canager内置的标志大多来自Simple Icons，它以CC0发布。",
       "ownLicense": "以下标志另有自己的许可：",
       "entry": "{{title}} — {{license}}",
       "license": "许可",
       "source": "出处",
-      "avatars": "内置标志中不来自 Simple Icons 的，都是各项目 GitHub 组织的头像。"
+      "avatars": "内置标志中不来自Simple Icons的，都是各项目GitHub组织的头像。"
     },
-    "saveError": "没能保存：{{message}}。已改回原来的设置。"
+    "saveError": "无法保存：{{message}}。已恢复原来的设置。"
   },
   "settingsSaveFailed": {
     "permissionDenied": "没有权限写入设置文件夹",
@@ -559,55 +557,55 @@
     "other": "{{detail}}"
   },
   "unknown": {
-    "intro": "Canager 认不出这些程序的来历。这里只列出，不运行也不删除。",
+    "intro": "无法确定以下程序是用什么安装的。",
     "lookedIn": "查找位置：{{folders}}",
-    "attributed_other": "另有 {{count}} 个程序认得出来历，不在这里列出。",
+    "attributed_other": "另有{{count}}个程序已确定来源，未在这里列出。",
     "stopped": {
-      "FileLimit": "查到 {{count}} 项就停了，还有没查的。",
-      "TimeLimit": "查了 {{seconds}} 秒就停了，还有没查的。"
+      "FileLimit": "查找了{{count}}项后停止，其余的未检查。",
+      "TimeLimit": "查找了{{seconds}}秒后停止，其余的未检查。"
     },
     "kind": {
       "File": "程序",
       "Symlink": "链接",
       "BrokenSymlink": "失效的链接"
     },
-    "brokenLink": "指向的 {{target}} 已不存在",
-    "linksTo": "指向 {{path}}",
-    "partOfApp": "{{app}} 的一部分",
+    "brokenLink": "指向的{{target}}已不存在",
+    "linksTo": "指向{{path}}",
+    "partOfApp": "{{app}}的一部分",
     "adminOwned": "属于系统或其他账户",
-    "pointsInto": "指向 {{app}}",
+    "pointsInto": "指向{{app}}",
     "showInFinder": "在访达中显示",
-    "showsLinkTarget": "显示这个链接指向的文件。",
-    "targetGone": "这个链接指向的文件已不存在。",
-    "showInFinderFailed": "没能在访达中显示",
+    "showsLinkTarget": "显示此链接指向的文件。",
+    "targetGone": "此链接指向的文件已不存在。",
+    "showInFinderFailed": "无法在访达中显示",
     "copyPath": "拷贝路径",
     "scanAgain": "重新扫描",
     "scanning": "正在扫描…",
-    "scannedJustNow": "上次扫描：刚刚",
-    "scannedMinutesAgo_other": "上次扫描：{{count}} 分钟前",
-    "scannedHoursAgo_other": "上次扫描：{{count}} 小时前",
-    "scannedDaysAgo_other": "上次扫描：{{count}} 天前",
-    "scanFailed": "没能扫描：{{message}}",
+    "scannedJustNow": "上次扫描：刚才",
+    "scannedMinutesAgo_other": "上次扫描：{{count}}分钟前",
+    "scannedHoursAgo_other": "上次扫描：{{count}}小时前",
+    "scannedDaysAgo_other": "上次扫描：{{count}}天前",
+    "scanFailed": "无法扫描：{{message}}",
     "empty": "没有来源不明的程序",
-    "emptyChecked": "查过的部分没有来源不明的程序"
+    "emptyChecked": "已检查的位置中没有来源不明的程序"
   },
   "emptyStates": {
     "loadFailed": {
-      "title": "没能读取已安装的工具",
+      "title": "无法读取已安装的工具",
       "description": "原因：{{message}}"
     },
     "noSources": {
       "title": "没有找到可管理的工具",
-      "description": "建议先装 Homebrew。"
+      "description": "建议先安装Homebrew。"
     },
     "refreshFailed": {
-      "title": "部分检查没完成",
-      "description_other": "{{sources}} 这次没检查完。"
+      "title": "部分检查未完成",
+      "description_other": "{{sources}}这次未检查完。"
     },
     "nothingInstalled": {
       "title": "没有找到已安装的工具",
-      "description": "用 Homebrew、npm 等装的工具会出现在这里。"
+      "description": "用Homebrew、npm等安装的工具会显示在这里。"
     },
-    "supportedList": "支持 Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及装在默认位置的 Claude Code、Antigravity CLI、Grok Build 和 rustup。"
+    "supportedList": "支持Homebrew、npm、pipx、uv、pip、Cargo、Ollama，以及安装在默认位置的Claude Code、Antigravity CLI、Grok Build和rustup。"
   }
 }

@@ -94,9 +94,9 @@ describe("LogDrawer", () => {
       await findByText("==> Pouring jq");
       const lines = Array.from(getByRole("log").querySelectorAll("p"));
       expect(lines.map((p) => p.textContent)).toEqual([
-        "Homebrew 正在更新软件清单，完成后开始，最多等 10 分钟。现在取消不会有任何改动。",
+        "Homebrew正在更新软件清单，完成后开始，最多等待10分钟。现在取消不会有任何改动。",
         "==> Pouring jq",
-        "读不到后续错误信息了：Input/output error (os error 5)",
+        "无法读取后续错误信息：Input/output error (os error 5)",
       ]);
       // A sentence in the window's own type, not the tool's.
       expect(lines[0].className).toContain("font-sans");
@@ -272,7 +272,7 @@ describe("LogDrawer", () => {
   it("words Canager's own failure in the user's language, quoting only the path", async () => {
     // This used to arrive as `Failed` with Rust's English in its summary
     // ("runner: program not found: /opt/homebrew/bin/brew"), printed inside
-    // the translated "失败：" frame.
+    // the translated "失败：" frame (now 「未能开始：」).
     operations = [
       {
         ...runningOp,
@@ -283,8 +283,8 @@ describe("LogDrawer", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText, queryByText, findByRole } = renderWithProviders(<LogDrawer />);
-      await findByRole("dialog", { name: "安装 jq" });
-      await findByText("失败：找不到 /opt/homebrew/bin/brew，没有改动");
+      await findByRole("dialog", { name: "安装jq" });
+      await findByText("未能开始：找不到/opt/homebrew/bin/brew，没有改动");
       expect(queryByText(/program not found/)).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

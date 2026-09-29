@@ -79,7 +79,7 @@ describe("outcomeKey", () => {
     expect(outcomeKey(gone)).toBe("NeedsAttention.GoneAfterUpgrade");
     expect(outcomeArgs(gone)).toEqual({});
     expect(en.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe("Update reported success, but it's gone");
-    expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe("更新显示成功，但它不见了");
+    expect(zhCN.operations.outcome.NeedsAttention.GoneAfterUpgrade).toBe("显示已更新，但它不见了");
     for (const sentence of Object.values(zhCN.operations.outcome.NeedsAttention)) {
       expect(sentence).not.toContain("需要留意");
     }
@@ -103,7 +103,7 @@ describe("outcomeKey", () => {
     expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe(
       "Reported removed, but it's still there",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe("显示卸载了，但它还在");
+    expect(zhCN.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).toBe("显示已卸载，但它仍然存在");
     expect(en.operations.outcome.NeedsAttention.StillInstalledAfterUninstall).not.toMatch(
       /command/i,
     );
@@ -138,10 +138,13 @@ describe("outcomeKey", () => {
     }
     // What a crash says instead, in the drawer: look at the list.
     expect(en.operations.outcome.CanagerFailed.PanickedDetail).toBe("Check the list to see whether anything changed.");
-    expect(zhCN.operations.outcome.CanagerFailed.PanickedDetail).toBe("请看列表，确认有没有变化。");
-    // The guard itself: it does catch the claim the refusals make.
-    expect(en.planRefused.refused).toMatch(claimsNothingChanged);
-    expect(zhCN.planRefused.refused).toMatch(claimsNothingChanged);
+    expect(zhCN.operations.outcome.CanagerFailed.PanickedDetail).toBe("请查看列表，确认是否有变化。");
+    // The guard itself: it does catch the claim an operation that never
+    // got to run makes. (The refusals no longer make it: they stop before
+    // anything starts, and the polish-3 copy rules keep 「没有改动」 for an
+    // operation that had started.)
+    expect(en.operations.outcome.CanagerFailed.Internal).toMatch(claimsNothingChanged);
+    expect(zhCN.operations.outcome.CanagerFailed.Internal).toMatch(claimsNothingChanged);
   });
 
   it("says an update that changed nothing changed nothing, and points to the log", () => {
@@ -156,13 +159,13 @@ describe("outcomeKey", () => {
     expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe(
       "Update reported success, but the version didn't change",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe("更新显示成功，但版本没变");
+    expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgrade).toBe("显示已更新，但版本没有变化");
     expect(outcomeDetailKey(unchanged)).toBe("operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail");
     expect(en.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
       "The operation log shows what it printed.",
     );
     expect(zhCN.operations.outcome.NeedsAttention.UnchangedAfterUpgradeDetail).toBe(
-      "可以在操作日志里看它输出了什么。",
+      "可以在操作日志中查看它输出了什么。",
     );
   });
 
@@ -179,13 +182,13 @@ describe("outcomeKey", () => {
     expect(en.operations.outcome.NeedsAttention.BackAfterUninstall).toBe(
       "Files showed up again after the uninstall",
     );
-    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstall).toBe("移完后，原处又出现了文件");
+    expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstall).toBe("移走后，原处又出现了文件");
     expect(outcomeDetailKey(back)).toBe("operations.outcome.NeedsAttention.BackAfterUninstallDetail");
     expect(en.operations.outcome.NeedsAttention.BackAfterUninstallDetail).toBe(
       "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself.",
     );
     expect(zhCN.operations.outcome.NeedsAttention.BackAfterUninstallDetail).toBe(
-      "先退出这个工具。列表里还有它就再卸载一次，否则把日志里列出的文件自己移到废纸篓。",
+      "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。",
     );
     expect(en.operations.logNote.backAfterUninstall).toContain("{{path}}");
     expect(zhCN.operations.logNote.backAfterUninstall).toContain("{{path}}");
@@ -228,8 +231,6 @@ describe("outcomeKey", () => {
       ["CanagerFailed.Panicked", "operations.outcome.CanagerFailed.PanickedDetail"],
       ["CanagerFailed.HomebrewStillUpdating", "operations.outcome.CanagerFailed.HomebrewStillUpdatingDetail"],
       ["CanagerFailed.PathChanged", "operations.outcome.CanagerFailed.PathChangedDetail"],
-      // The same words as the refusal that says Canager itself went wrong.
-      ["CanagerFailed.Internal", "common.canagerFaultDetail"],
     ]);
     for (const [, detail] of withStep) {
       expect(typeof lookup(en, detail as string), detail as string).toBe("string");

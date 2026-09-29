@@ -35,8 +35,7 @@
     "copyCommand": "Copy command",
     "copied": "Copied",
     "copyFailed": "Couldn't copy",
-    "moreActions": "More actions for {{name}}",
-    "canagerFaultDetail": "The problem is in Canager, not on your Mac."
+    "moreActions": "More actions for {{name}}"
   },
   "header": {
     "checkedJustNow": "Checked just now",
@@ -179,7 +178,6 @@
     "newVersion": "New version",
     "newBuild": "This model has a new version",
     "selfUpdating": "Usually updates itself",
-    "selfUpdatingDetail": "It usually updates itself. You can also update it now.",
     "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Canager can't find its latest version.",

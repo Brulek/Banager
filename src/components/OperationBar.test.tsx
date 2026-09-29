@@ -134,7 +134,7 @@ describe("OperationBar", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByText } = renderWithProviders(<OperationBar />);
-      await findByText("更新 ffmpeg：等 Homebrew 更新软件清单");
+      await findByText("更新ffmpeg：正在等待Homebrew更新软件清单…");
     } finally {
       await i18n.changeLanguage("en");
     }

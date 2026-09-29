@@ -88,7 +88,7 @@ describe("an error in drawing the page", () => {
       );
       fireEvent.click(screen.getByRole("button", { name: "break" }));
 
-      expect(screen.getByRole("alert")).toHaveTextContent("Canager 内部出错，窗口没法显示这一页。");
+      expect(screen.getByRole("alert")).toHaveTextContent("无法显示此页面。");
       expect(screen.getByRole("button", { name: "重新载入" })).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");

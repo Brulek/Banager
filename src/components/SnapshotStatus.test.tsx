@@ -111,8 +111,9 @@ describe("SnapshotStatus", () => {
       );
 
       expect(await screen.findByRole("heading", { level: 2, name: "正在检查…" })).toBeInTheDocument();
-      expect(screen.getByText("第一次检查要联网查每个工具的新版本，有时要一两分钟。")).toBeInTheDocument();
+      expect(screen.getByText("首次检查需要联网查询每个工具的新版本，有时要一两分钟。")).toBeInTheDocument();
       expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+      expect(screen.queryByText("正在载入…")).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -211,8 +212,8 @@ describe("SnapshotStatus", () => {
         </SnapshotStatus>,
       );
 
-      expect(await screen.findByText("部分检查没完成")).toBeInTheDocument();
-      expect(screen.getByText("Homebrew、npm 和 uv 这次没检查完。")).toBeInTheDocument();
+      expect(await screen.findByText("部分检查未完成")).toBeInTheDocument();
+      expect(screen.getByText("Homebrew、npm和uv这次未检查完。")).toBeInTheDocument();
       // The header's Check again, right above it, runs the same check.
       expect(screen.queryByRole("button")).toBeNull();
     } finally {

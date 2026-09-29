@@ -667,11 +667,12 @@ describe("SettingsPage", () => {
     // Not the spec's 只检查不安装: every check's `brew update` can install
     // a package Homebrew moved between a formula and a cask
     // (docs/what-we-run.md, Homebrew), so the subtitle claims only that no
-    // update the check finds is installed.
+    // update the check finds is installed. The same holds against the
+    // polish-3 copy table's 「不会自动安装」, which claims more than that.
     expect(zhCN.settings.autoCheck.label).toBe("每天自动检查");
-    expect(zhCN.settings.autoCheck.description).toBe("Canager 开着时每天检查一次，查到的更新都不安装。退出后不检查。");
+    expect(zhCN.settings.autoCheck.description).toBe("Canager运行时每天检查一次更新，查到的更新不会自动安装。");
     expect(zhCN.settings.notifyUpdates.label).toBe("有可更新时通知我");
-    expect(zhCN.settings.notifyUpdates.refused).toBe("在系统设置 → 通知里允许 Canager");
+    expect(zhCN.settings.notifyUpdates.refused).toBe("请在“系统设置”>“通知”中允许Canager发送通知。");
   });
 
   it("marks the chosen language visibly, not only through aria-checked", async () => {
@@ -786,7 +787,7 @@ describe("SettingsPage", () => {
 
       const notify = await screen.findByRole("switch", { name: "有可更新时通知我" });
       expect(notify).toBeDisabled();
-      expect(notify).toHaveAccessibleDescription("先打开上面的「每天自动检查」。");
+      expect(notify).toHaveAccessibleDescription("请先打开上方的“每天自动检查”。");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -794,7 +795,7 @@ describe("SettingsPage", () => {
 
   it("calls the groups and the self-updating switch what the copy table has them in Chinese", () => {
     expect(zhCN.settings.groups).toEqual({ general: "通用", updates: "更新", hidden: "已隐藏的更新", about: "关于" });
-    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自动更新的 App");
+    expect(zhCN.settings.includeSelfUpdating.label).toBe("显示会自行更新的App");
     // The switch adds Homebrew's self-updating apps and nothing else, so
     // its line names Homebrew.
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");

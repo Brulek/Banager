@@ -37,7 +37,6 @@ import {
 import {
   blockedDetail,
   cannotCheckDetail,
-  detailLines,
   readOnlyDetail,
   unavailableDetail,
 } from "../components/updateDetails";
@@ -477,11 +476,7 @@ export function UpdatesPage() {
       case "actionable":
         return saysItUpdatesItself(candidate, instance)
           ? [
-              <StatusChip
-                key="updates-itself"
-                label={t("updates.selfUpdating")}
-                detail={detailLines([t("updates.selfUpdatingDetail")])}
-              />,
+              <StatusChip key="updates-itself" label={t("updates.selfUpdating")} />,
             ]
           : [];
       case "readOnly":

@@ -752,9 +752,9 @@ describe("InstalledPage", () => {
       await i18n.changeLanguage("zh-CN");
     });
     try {
-      expect(within(rowOf("iTerm2")).getByText("用 Homebrew 安装的 App")).toBeInTheDocument();
-      expect(within(rowOf("prettier")).getByText("npm 软件包")).toBeInTheDocument();
-      expect(within(rowOf("llama3.2:3b")).getByText("Ollama 模型")).toBeInTheDocument();
+      expect(within(rowOf("iTerm2")).getByText("用Homebrew安装的App")).toBeInTheDocument();
+      expect(within(rowOf("prettier")).getByText("npm软件包")).toBeInTheDocument();
+      expect(within(rowOf("llama3.2:3b")).getByText("Ollama模型")).toBeInTheDocument();
       expect(queryByText("暂无简介")).toBeNull();
     } finally {
       await act(async () => {
@@ -2048,8 +2048,8 @@ describe("InstalledPage", () => {
         expect(await within(rowOf("jq")).findByText("命令行 JSON 处理工具")).toBeInTheDocument();
         expect(within(rowOf("jq")).queryByText(JQ)).toBeNull();
         expect(within(rowOf("prettier")).getByText("代码格式化工具")).toBeInTheDocument();
-        expect(within(rowOf("corepack")).getByText("npm 软件包")).toBeInTheDocument();
-        expect(within(rowOf("Claude Code")).getByText("Anthropic 的 AI 编程助手")).toBeInTheDocument();
+        expect(within(rowOf("corepack")).getByText("npm软件包")).toBeInTheDocument();
+        expect(within(rowOf("Claude Code")).getByText("Anthropic的AI编程助手")).toBeInTheDocument();
         expect(screen.queryByText("不该出现的一行")).toBeNull();
       });
 
@@ -2108,7 +2108,7 @@ describe("InstalledPage", () => {
       await inChinese(async () => {
         expect(await within(rowOf("prettier")).findByText("代码格式化工具")).toBeInTheDocument();
         expect(within(rowOf("prettier")).queryByText(PRETTIER)).toBeNull();
-        expect(within(rowOf("corepack")).getByText("npm 软件包")).toBeInTheDocument();
+        expect(within(rowOf("corepack")).getByText("npm软件包")).toBeInTheDocument();
       });
 
       // English again: its line, at once.

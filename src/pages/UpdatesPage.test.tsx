@@ -653,7 +653,7 @@ describe("UpdatesPage", () => {
       fireEvent.click((await findAllByRole("button", { name: "更新" }))[0]);
       const dialog = await findByRole("dialog");
       await within(dialog).findByText(
-        "安装或更新后，Homebrew 会删除这个软件及一起更新的软件的旧版本，和残留的旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
+        "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
       );
     } finally {
       await i18n.changeLanguage("en");
@@ -1691,7 +1691,7 @@ describe("UpdatesPage", () => {
         operations = [operation(glibKey, { id: 7, status: "Running" })];
         const { findByText } = renderWithProviders(<UpdatesPage />);
 
-        expect(await findByText("正在更新 1 个工具，另有 2 个可更新")).toBeInTheDocument();
+        expect(await findByText("正在更新1个工具，另有2个可更新")).toBeInTheDocument();
       } finally {
         await i18n.changeLanguage("en");
       }
@@ -1708,8 +1708,8 @@ describe("UpdatesPage", () => {
     it("calls them 全部更新 and 更新所选 in Chinese, as they were asked for", () => {
       expect(zhCN.updates.updateAll).toBe("全部更新");
       expect(zhCN.updates.updateSelectedCount).toBe("更新所选（{{number}}）");
-      expect(zhCN.updates.count_other).toBe("{{count}} 个可更新");
-      expect(zhCN.updates.cantUpdateHere).toBe("不能在这里更新的（{{number}}）");
+      expect(zhCN.updates.count_other).toBe("{{count}}个可更新");
+      expect(zhCN.updates.cantUpdateHere).toBe("另有{{number}}个无法在这里更新");
     });
   });
 
@@ -1814,14 +1814,14 @@ describe("UpdatesPage", () => {
         ];
         const { findByRole } = renderWithProviders(<UpdatesPage />);
 
-        fireEvent.click(await findByRole("button", { name: "不能在这里更新的（2）" }));
+        fireEvent.click(await findByRole("button", { name: "另有2个无法在这里更新" }));
         expect(
           within(chipDetail(await findRow("glib"), "已固定")).getByText(
-            wholeSentence("它在 Homebrew 里固定了版本。要更新，先在终端运行 /opt/homebrew/bin/brew unpin glib。"),
+            wholeSentence("它在Homebrew中固定了版本。要更新，请先在终端运行/opt/homebrew/bin/brew unpin glib。"),
           ),
         ).toBeInTheDocument();
         expect(chipDetail(rowOf("urllib3"), "仅供查看")).toHaveTextContent(
-          "pip 装的内容只能在这里查看。改用 pipx 或 uv 装 Python 工具，就能在这里更新和卸载。",
+          "pip安装的内容只能在这里查看。改用pipx或uv安装Python工具，就能在这里更新和卸载。",
         );
       } finally {
         await i18n.changeLanguage("en");
@@ -2043,11 +2043,11 @@ describe("UpdatesPage", () => {
     expect(getByRole("button", { name: "More actions for onyx" })).toBeInTheDocument();
   });
 
-  it("calls them 跳过这个版本 and 不再提醒 in Chinese, and says what each does", () => {
-    expect(zhCN.updates.skipVersion).toBe("跳过这个版本");
+  it("calls them 跳过此版本 and 不再提醒 in Chinese, and says what each does", () => {
+    expect(zhCN.updates.skipVersion).toBe("跳过此版本");
     expect(zhCN.updates.skipVersionHint).toBe("下个版本发布时再提醒你。");
     expect(zhCN.updates.neverRemind).toBe("不再提醒");
-    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个工具的任何更新，可在设置里撤销。");
+    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒此工具的任何更新。可以在“设置”中撤销。");
     expect(zhCN.common.copyCommand).toBe("拷贝命令");
   });
 
@@ -3444,9 +3444,10 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
-    expect(chipDetail(claude, "Usually updates itself").textContent).toBe(
-      "It usually updates itself. You can also update it now.",
-    );
+    // A plain label: its old ⓘ only said the label over again (polish-3
+    // copy table, updates.selfUpdatingDetail).
+    expect(within(claude).getByText("Usually updates itself")).toBeInTheDocument();
+    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
     expect(within(claude).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
@@ -3474,7 +3475,7 @@ describe("UpdatesPage", () => {
       if (chips === null) throw new Error("the row has no chips' column");
       expect(await within(chips).findByText(words)).toBeInTheDocument();
       expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
-      expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+      expect(within(claude).queryByText("Usually updates itself")).toBeNull();
       expect(within(claude).getByRole("button", { name: "Retry" })).toBeInTheDocument();
 
       // Retried: the update under way stands where the button was, and
@@ -3482,7 +3483,7 @@ describe("UpdatesPage", () => {
       operations = [operation(claudeKey, { id: 10, status: "Running" }), ...operations];
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.operations }));
       expect(await within(rowOf("Claude Code")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(rowOf("Claude Code")).getByRole("button", { name: "Usually updates itself" })).toBeInTheDocument();
+      expect(within(rowOf("Claude Code")).getByText("Usually updates itself")).toBeInTheDocument();
       expect(within(rowOf("Claude Code")).queryByText(words)).toBeNull();
     },
   );
@@ -3503,13 +3504,13 @@ describe("UpdatesPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(await within(claude).findByText("Update failed")).toBeInTheDocument();
-    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
 
     // "Update failed" was about 2.1.290; 2.1.291 gets the button, and the chip, back.
     updates = [{ ...claudeUpdate, target: "2.1.291" }];
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
     await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Update failed")).toBeNull());
-    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Usually updates itself" })).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByText("Usually updates itself")).toBeInTheDocument();
     expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
   });
 
@@ -3538,7 +3539,7 @@ describe("UpdatesPage", () => {
 
     const onyx = await findRow("OnyX");
     expect(within(onyx).getByText("Verify system files structure")).toBeInTheDocument();
-    expect(within(onyx).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(onyx).queryByText("Usually updates itself")).toBeNull();
   });
 
   it("gives a standalone tool's row the summary its Installed row shows, not 'No description'", async () => {
@@ -3593,7 +3594,7 @@ describe("UpdatesPage", () => {
     const grok = await findRow("Grok Build");
     expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
-    expect(within(grok).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(grok).queryByText("Usually updates itself")).toBeNull();
     expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
   });
 
@@ -3639,9 +3640,9 @@ describe("UpdatesPage", () => {
       await i18n.changeLanguage("zh-CN");
     });
     try {
-      expect(within(rowOf("OnyX")).getByText("用 Homebrew 安装的 App")).toBeInTheDocument();
-      expect(within(rowOf("JetBrains Mono")).getByText("Homebrew 软件包")).toBeInTheDocument();
-      expect(within(rowOf("tokei")).getByText("用 Cargo 安装的程序")).toBeInTheDocument();
+      expect(within(rowOf("OnyX")).getByText("用Homebrew安装的App")).toBeInTheDocument();
+      expect(within(rowOf("JetBrains Mono")).getByText("Homebrew软件包")).toBeInTheDocument();
+      expect(within(rowOf("tokei")).getByText("用Cargo安装的程序")).toBeInTheDocument();
       expect(queryByText("暂无简介")).toBeNull();
     } finally {
       await act(async () => {
@@ -3737,7 +3738,7 @@ describe("UpdatesPage", () => {
     try {
       expect(await within(rowOf("tokei")).findByText("代码行数统计工具")).toBeInTheDocument();
       expect(within(rowOf("tokei")).queryByText("Code line counter")).toBeNull();
-      expect(within(rowOf("my-fork")).getByText("用 Cargo 安装的程序")).toBeInTheDocument();
+      expect(within(rowOf("my-fork")).getByText("用Cargo安装的程序")).toBeInTheDocument();
     } finally {
       await act(async () => {
         await i18n.changeLanguage("en");
@@ -3764,7 +3765,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const claude = await findRow("Claude Code");
     expect(chipDetail(claude, "Can't check").textContent).toBe("Canager can't find its latest version.");
-    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
 
@@ -3783,7 +3784,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const claude = await findRow("Claude Code");
-    expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+    expect(within(claude).queryByText("Usually updates itself")).toBeNull();
     expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
     expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
   });
@@ -3867,7 +3868,7 @@ describe("UpdatesPage", () => {
 
       expect(await findByText(noticeTitle)).toBeInTheDocument();
       const claude = await findRow("Claude Code");
-      expect(within(claude).queryByRole("button", { name: "Usually updates itself" })).toBeNull();
+      expect(within(claude).queryByText("Usually updates itself")).toBeNull();
       expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
       expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
@@ -3911,13 +3912,16 @@ describe("UpdatesPage", () => {
   });
 
   it("calls the two self-updating chips by what each leaves the user, in both languages", () => {
-    // 平时自动更新: a tool Canager can update too, which usually does it
-    // itself. 只能自己更新: one only it can update, so its row has no
-    // button. They once read 会自动更新 and 自动更新, and "Updates itself"
-    // both in English, which said nothing of why one row had a button.
-    expect(zhCN.updates.selfUpdating).toBe("平时自动更新");
-    expect(zhCN.updates.selfUpdatingDetail).toBe("它平时会自己更新，也可以现在更新。");
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("只能自己更新");
+    // 会自行更新: a tool Canager can update too, which does it itself.
+    // 只能自行更新: one only it can update, so its row has no button. They
+    // once read 会自动更新 and 自动更新, and "Updates itself" both in
+    // English, which said nothing of why one row had a button. (The
+    // polish-3 spec, 3.4, would call both 会自行更新; the 只能 stays, as
+    // the one word that says why a row has no button.)
+    expect(zhCN.updates.selfUpdating).toBe("会自行更新");
+    expect("selfUpdatingDetail" in zhCN.updates).toBe(false);
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("只能自行更新");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).not.toBe(zhCN.updates.selfUpdating);
     expect(en.updates.selfUpdating).toBe("Usually updates itself");
     expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Only updates itself");
   });

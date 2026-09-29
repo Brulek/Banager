@@ -107,9 +107,10 @@ export function outcomeDetailKey(outcome: Outcome): string | null {
       switch (fault) {
         case "Panicked":
           return "operations.outcome.CanagerFailed.PanickedDetail";
-        // Shared with the refusal that says the same (`planRefused.refused`).
+        // Its sentence says it is an internal error and that nothing
+        // changed; there is nothing to do next.
         case "Internal":
-          return "common.canagerFaultDetail";
+          return null;
         default: {
           const unhandled: never = fault;
           return unhandled;

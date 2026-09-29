@@ -465,7 +465,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskPlain" } },
         "Claudebar",
         "Deletes what Homebrew installed for Claudebar; its settings and data stay.",
-        "删除 Homebrew 为 Claudebar 装的文件；它的设置和数据不动。",
+        "删除Homebrew为“Claudebar”安装的文件；它的设置和数据保留不动。",
       ],
       // Placed files and recorded steps: not every file an installer put
       // down, and nothing else while Homebrew's autoremove is off...
@@ -473,7 +473,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskSteps" } },
         "Charles",
         "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; nothing else is deleted.",
-        "删除 Homebrew 为 Charles 放置的文件，并执行它记下的卸载步骤；其他文件不删。",
+        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；其他文件不删除。",
       ],
       // ...and, with a brew.env that brings the autoremove back, whose own
       // line says what else goes, only the cask's other files stay.
@@ -481,7 +481,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskStepsAutoremoves" } },
         "Charles",
         "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; Charles's other files stay.",
-        "删除 Homebrew 为 Charles 放置的文件，并执行它记下的卸载步骤；Charles 的其他文件不删。",
+        "删除Homebrew为“Charles”放置的文件，并执行它记下的卸载步骤；“Charles”的其他文件不删除。",
       ],
       // A step that runs a program or code -- Ruby around the uninstall,
       // here -- whose deletions Canager cannot see: nothing is said to stay.
@@ -489,7 +489,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskStepsUnseen" } },
         "Uninstall Flight Block",
         "Deletes the files Homebrew placed for Uninstall Flight Block and runs the uninstall steps it recorded; Canager can't see what else some of those steps delete.",
-        "删除 Homebrew 为 Uninstall Flight Block 放置的文件，并执行它记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
+        "删除Homebrew为“Uninstall Flight Block”放置的文件，并执行它记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       ],
       // A cask whose record lists nothing Homebrew put down: an installer
       // put it on the Mac, and only the recorded steps take any of it away...
@@ -497,7 +497,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
         "Little Snitch",
         "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay.",
-        "执行 Homebrew 为 Little Snitch 记下的卸载步骤；安装器装的其他文件不删。",
+        "执行Homebrew为“Little Snitch”记下的卸载步骤；安装器安装的其他文件不删除。",
       ],
       // ...unless a step runs a program -- wireshark-chmodbpf's vendor
       // uninstaller -- whose deletions Canager cannot see.
@@ -505,7 +505,7 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
         "Wireshark-ChmodBPF",
         "Runs the uninstall steps Homebrew recorded for Wireshark-ChmodBPF; Canager can't see what else some of those steps delete.",
-        "执行 Homebrew 为 Wireshark-ChmodBPF 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
+        "执行Homebrew为“Wireshark-ChmodBPF”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       ],
       // A record Canager could not read, or one that lists nothing to go
       // by -- an empty list, for one: no deletion claimed.
@@ -513,25 +513,25 @@ describe("UninstallDialog", () => {
         { UninstallScope: { what: "HomebrewCask" } },
         "Docker",
         "Canager couldn't tell from Homebrew's records what uninstalling Docker deletes.",
-        "没能从 Homebrew 的记录里读出卸载 Docker 会删除什么。",
+        "无法从Homebrew的记录中读出卸载“Docker”会删除什么。",
       ],
       [
         { UninstallScope: { what: "Npm" } },
         "typescript",
         "Deletes typescript's folder in npm's global folder and its commands; npm runs none of its code, so its settings and data outside that folder are not deleted.",
-        "删除 npm 全局目录里的 typescript 文件夹和命令，不运行它的代码；它在别处的设置和数据不删。",
+        "删除npm全局目录中的“typescript”文件夹和命令，不运行它的代码；它在别处的设置和数据不删除。",
       ],
       [
         { UninstallScope: { what: "Uv" } },
         "ruff",
         "Deletes the Python environment uv made just for ruff and the commands it recorded; its settings and data outside that environment are not deleted.",
-        "删除 uv 为 ruff 单独建的 Python 环境和它记下的命令；它在环境以外的设置和数据不删。",
+        "删除uv为“ruff”单独建立的Python环境和uv记下的命令；它在环境以外的设置和数据不删除。",
       ],
       [
         { UninstallScope: { what: "Ollama" } },
         "qwen3:8b",
         "Deletes the model qwen3:8b; data other models still use is kept, and Ollama itself and your other models stay.",
-        "删除模型 qwen3:8b；其他模型还在用的数据会保留，Ollama 本身和其他模型不动。",
+        "删除模型“qwen3:8b”；其他模型还在用的数据会保留，Ollama本身和其他模型保留不动。",
       ],
     ];
     for (const [warning, name, english, chinese] of cases) {
@@ -651,13 +651,13 @@ describe("UninstallDialog", () => {
         <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Wireshark-ChmodBPF" />,
       );
       const chinese = await screen.findByText(
-        "执行 Homebrew 为 Wireshark-ChmodBPF 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
+        "执行Homebrew为“Wireshark-ChmodBPF”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       );
       expect(chinese.closest("[data-sheet-tool]")).not.toBeNull();
-      expect(linesOf("请注意")).toEqual([
-        "还会删除下列安装包装的全部文件，不论别的 App 是否在用：org.wireshark.ChmodBPF.pkg。",
+      expect(linesOf("说明")).toEqual([
+        "还会删除下列安装包安装的全部文件，不论其他App是否在用：org.wireshark.ChmodBPF.pkg。",
         "还会运行：/usr/sbin/installer。",
-        "部分 App 在这一步会要求输入 Mac 密码。",
+        "部分App在这一步会要求输入Mac密码。",
       ]);
     } finally {
       await i18n.changeLanguage("en");
@@ -697,14 +697,14 @@ describe("UninstallDialog", () => {
       );
 
       await screen.findByRole("button", { name: "卸载" });
-      expect(linesOf("请注意")).toEqual([
-        "还会停止并删除 1 个后台服务。",
-        "还会退出正在运行的 Visual Studio Code。",
-        "部分 App 在这一步会要求输入 Mac 密码。",
+      expect(linesOf("说明")).toEqual([
+        "还会停止并删除1个后台服务。",
+        "还会退出正在运行的Visual Studio Code。",
+        "部分App在这一步会要求输入Mac密码。",
       ]);
-      fireEvent.click(screen.getByRole("button", { name: "详情：还会停止并删除 1 个后台服务。" }));
-      expect(screen.getByText("macOS 里的名称：com.microsoft.VSCode.ShipIt")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "详情：还会退出正在运行的 Visual Studio Code。" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "详情：还会停止并删除1个后台服务。" }));
+      expect(screen.getByText("在macOS中的名称：com.microsoft.VSCode.ShipIt")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "详情：还会退出正在运行的Visual Studio Code。" })).toBeNull();
       expect(JSON.stringify(zhCN.warnings.caskStep)).not.toContain("这些");
     } finally {
       await i18n.changeLanguage("en");
@@ -757,9 +757,9 @@ describe("UninstallDialog", () => {
       );
       await screen.findByRole("button", { name: "卸载" });
       const chinese = "还会停止并删除后台服务，包括名称符合某个规则、正在运行的全部服务。";
-      expect(linesOf("请注意")).toEqual([chinese, "部分 App 在这一步会要求输入 Mac 密码。"]);
+      expect(linesOf("说明")).toEqual([chinese, "部分App在这一步会要求输入Mac密码。"]);
       fireEvent.click(screen.getByRole("button", { name: `详情：${chinese}` }));
-      expect(screen.getByText(`macOS 里的名称：${services.join("、")}`)).toBeInTheDocument();
+      expect(screen.getByText(`在macOS中的名称：${services.join("、")}`)).toBeInTheDocument();
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -797,8 +797,8 @@ describe("UninstallDialog", () => {
     try {
       renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />);
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
-      expect(await screen.findByText("执行 Homebrew 为 DuckieTV 记下的卸载步骤；安装器装的其他文件不删。")).toBeInTheDocument();
-      expect(linesOf("请注意").slice(0, 2)).toEqual([
+      expect(await screen.findByText("执行Homebrew为“DuckieTV”记下的卸载步骤；安装器安装的其他文件不删除。")).toBeInTheDocument();
+      expect(linesOf("说明").slice(0, 2)).toEqual([
         "还会永久删除：/Applications/duckieTV.app、~/Library/Application Support/DuckieTV-Standalone。",
         "还会移到废纸篓：~/.nvs。",
       ]);
@@ -838,7 +838,7 @@ describe("UninstallDialog", () => {
         <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="MailTrackerBlocker" />,
       );
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
-      expect(linesOf("请注意")[0]).toBe("还会永久删除 Homebrew 执行卸载步骤时才找到的文件。");
+      expect(linesOf("说明")[0]).toBe("还会永久删除Homebrew执行卸载步骤时才找到的文件。");
     } finally {
       await i18n.changeLanguage("en");
     }
@@ -874,7 +874,7 @@ describe("UninstallDialog", () => {
         ],
         [
           "还会永久删除：/usr/local/playdate。",
-          "还会永久删除下列路径，但只删其中指向的路径含有“playdate”的链接：/usr/local/bin/arm-*。",
+          "还会永久删除下列路径，但只删除其中指向的路径含有“playdate”的链接：/usr/local/bin/arm-*。",
           "还会移到废纸篓：~/Developer/PlaydateSDK。",
         ],
       ],
@@ -897,7 +897,7 @@ describe("UninstallDialog", () => {
           "Also permanently deletes these, but only where they are links whose target contains “MacGPG2”: /usr/local/bin/gpg, /usr/local/bin/gpg2, /usr/local/bin/gpg-agent.",
         ],
         [
-          "还会永久删除下列路径，但只删其中指向的路径含有“MacGPG2”的链接：/usr/local/bin/gpg、/usr/local/bin/gpg2、/usr/local/bin/gpg-agent。",
+          "还会永久删除下列路径，但只删除其中指向的路径含有“MacGPG2”的链接：/usr/local/bin/gpg、/usr/local/bin/gpg2、/usr/local/bin/gpg-agent。",
         ],
       ],
       [
@@ -919,7 +919,7 @@ describe("UninstallDialog", () => {
           "Also permanently deletes files Homebrew finds only as it runs the uninstall steps, but only those whose contents contain “# see com.intellij.idea.SocketLock for the server side of this interface”.",
         ],
         [
-          "还会永久删除 Homebrew 执行卸载步骤时才找到的文件，但只删内容含有“# see com.intellij.idea.SocketLock for the server side of this interface”的。",
+          "还会永久删除Homebrew执行卸载步骤时才找到的文件，但只删除内容含有“# see com.intellij.idea.SocketLock for the server side of this interface”的。",
         ],
       ],
     ];
@@ -939,7 +939,7 @@ describe("UninstallDialog", () => {
           <UninstallDialog open onOpenChange={() => {}} request={cask} displayName={displayName} />,
         );
         expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
-        expect(linesOf("请注意")).toEqual(chinese);
+        expect(linesOf("说明")).toEqual(chinese);
         zh.unmount();
       } finally {
         await i18n.changeLanguage("en");
@@ -964,12 +964,12 @@ describe("UninstallDialog", () => {
       [
         ["Charles"],
         "Also deletes every certificate in the keychain whose name contains Charles.",
-        "还会删除钥匙串里名称含有下列任一文字的所有证书：Charles。",
+        "还会删除钥匙串中名称含有下列任一文字的所有证书：Charles。",
       ],
       [
         ["AutoFirma ROOT", "127.0.0.1"],
         "Also deletes every certificate in the keychain whose name contains any of these: AutoFirma ROOT, 127.0.0.1.",
-        "还会删除钥匙串里名称含有下列任一文字的所有证书：AutoFirma ROOT、127.0.0.1。",
+        "还会删除钥匙串中名称含有下列任一文字的所有证书：AutoFirma ROOT、127.0.0.1。",
       ],
     ];
     for (const [items, english, chinese] of cases) {
@@ -987,7 +987,7 @@ describe("UninstallDialog", () => {
           <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="AutoFirma" />,
         );
         await screen.findByRole("button", { name: "卸载" });
-        expect(linesOf("请注意")).toEqual([chinese]);
+        expect(linesOf("说明")).toEqual([chinese]);
         zh.unmount();
       } finally {
         await i18n.changeLanguage("en");
@@ -1546,7 +1546,7 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("says Canager's own refusal was Canager's problem, behind its ⓘ", async () => {
+  it("says Canager's own refusal in one sentence, with no ⓘ reassuring whose problem it was", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "plan_operation") throw '{"kind":"refused"}';
       return undefined;
@@ -1558,8 +1558,10 @@ describe("UninstallDialog", () => {
     const text =
       "Couldn't check what this affects: Something went wrong inside Canager, so it stopped. Nothing changed.";
     await waitFor(() => expect(alert).toHaveTextContent(text));
-    fireEvent.click(within(alert).getByRole("button", { name: `Details: ${text}` }));
-    expect(within(alert).getByText("The problem is in Canager, not on your Mac.")).toBeInTheDocument();
+    // The polish-3 copy rules (规则 3): whose fault it was is reassurance,
+    // not a next step, so the sentence has no Details behind it.
+    expect(within(alert).queryByRole("button", { name: /^Details:/ })).toBeNull();
+    expect(alert).not.toHaveTextContent("not on your Mac");
   });
 
   it("localises the same refusal when it comes back from submit, not from plan", async () => {

@@ -113,7 +113,7 @@ describe("warningKey", () => {
       "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.",
     );
     expect(zhCN.warnings.homebrewPeriodicCleanup).toBe(
-      "安装或更新后，Homebrew 会删除这个软件及一起更新的软件的旧版本，和残留的旧下载文件；定期清理到期时，所有 Homebrew 软件的旧版本和旧下载文件也会删除。",
+      "安装或更新后，Homebrew会删除此软件及一起更新的软件的旧版本，以及残留的旧下载文件；定期清理到期时，所有Homebrew软件的旧版本和旧下载文件也会被删除。",
     );
   });
 

@@ -217,7 +217,7 @@ describe("CommandPreview", () => {
     for (const sentence of [en.uninstall.trashPreview_one, en.uninstall.trashPreview_other]) {
       expect(sentence).not.toMatch(/Put Back|deleted|command/i);
     }
-    expect(zhCN.uninstall.trashPreview_other).toBe("这 {{count}} 项会移到废纸篓，可以从那里拖回来。");
+    expect(zhCN.uninstall.trashPreview_other).toBe("这{{count}}项会移到废纸篓，可以从那里拖回来。");
     expect(zhCN.uninstall.trashPreview_other).not.toMatch(/放回原处/);
     expect(zhCN.commandPreview.show_other).toBe("查看命令");
   });
