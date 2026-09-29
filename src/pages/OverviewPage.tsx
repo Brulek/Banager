@@ -261,27 +261,32 @@ function StatusRow({
 /**
  * The daily check, on or off, as Software Update shows its automatic
  * updates -- 「打开」/「关闭」, as System Settings words a switch's state --
- * a row that opens Settings, where it is changed.
+ * a row that opens Settings, where it is changed. A screen reader hears
+ * it as a button named by both, 「每天自动检查：关闭」, and what pressing
+ * it does: it is no switch.
  */
 function AutoCheckRow({ settings }: { settings: Settings }) {
   const { t } = useTranslation();
   const setPage = useUiStore((s) => s.setPage);
-  const labelId = useId();
-  const valueId = useId();
+  const hintId = useId();
+  const label = t("settings.autoCheck.label");
+  const value = settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff");
   return (
     <div className={GROUP}>
       <button
         type="button"
         onClick={() => setPage("settings")}
-        aria-labelledby={`${labelId} ${valueId}`}
+        aria-label={t("overview.autoCheckRowLabel", { label, value })}
+        aria-describedby={hintId}
         className={`${GROUP_ROW} w-full text-left`}
       >
-        <span id={labelId} className="min-w-0 truncate text-body text-foreground">
-          {t("settings.autoCheck.label")}
-        </span>
+        <span className="min-w-0 truncate text-body text-foreground">{label}</span>
         <span className="flex shrink-0 items-center gap-1 text-body text-muted">
-          <span id={valueId}>{settings.auto_check ? t("overview.autoCheckOn") : t("overview.autoCheckOff")}</span>
+          <span>{value}</span>
           <ChevronIcon size={14} className="text-tertiary" />
+        </span>
+        <span id={hintId} hidden>
+          {t("overview.autoCheckOpensSettings")}
         </span>
       </button>
     </div>

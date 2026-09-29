@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, useSnapshot, usePlanOperation, useSubmitOperation } from "../lib/queries";
 import {
@@ -247,6 +247,7 @@ export function UninstallDialog({
   // source has for it, ending, where a line says something is deleted for
   // good, with that this cannot be undone -- the one place it is said.
   const scope = lines.scope.map((line) => line.text);
+  const textId = useId();
   const text =
     !permanent
       ? scope
@@ -267,6 +268,8 @@ export function UninstallDialog({
         />
       }
       subtitle={sheetMeta(displayName, sourceLabel, version)}
+      // What goes and what stays: the alert's text, said as it opens.
+      describedBy={text.map((_, index) => `${textId}-${index}`).join(" ")}
       // Cancel first: nothing here should be one keypress from removing.
       initialFocus={cancelRef}
       returnFocusTo={returnFocusTo}
@@ -287,8 +290,10 @@ export function UninstallDialog({
         </>
       }
     >
-      {text.map((sentence) => (
-        <SheetText key={sentence}>{sentence}</SheetText>
+      {text.map((sentence, index) => (
+        <SheetText key={sentence} id={`${textId}-${index}`}>
+          {sentence}
+        </SheetText>
       ))}
 
       {planMutation.isPending ? <SheetPending text={t("uninstall.checking")} /> : null}

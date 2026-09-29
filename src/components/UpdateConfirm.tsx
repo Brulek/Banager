@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSettings, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, instanceLabels, planErrorDetail, refusalSentence } from "../lib/sources";
@@ -605,6 +605,9 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const onlyAdapter = only === null ? null : adapterFor(only.candidate.key.instance_id);
   const onlyJump = only === null ? null : versionJump(t, only.candidate);
   const onlyDigest = only?.candidate.channel === "Digest";
+  // What there is to know about the one tool, under its question: with its
+  // subtitle, what describes the dialog as it opens.
+  const aboutId = useId();
 
   return (
     <Dialog
@@ -635,6 +638,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
           ? sheetMeta(only.name, sourceLabelOf(only.candidate.key.instance_id), onlyDigest ? null : onlyJump)
           : undefined
       }
+      describedBy={only !== null ? aboutId : undefined}
       initialFocus={batch?.phase === "done" ? closeRef : updateRef}
       returnFocusTo={confirm.returnFocusTo}
       onClosed={confirm.afterClose}
@@ -663,7 +667,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       }
     >
       {only !== null ? (
-        <div data-sheet-about="" className="flex flex-col gap-2">
+        <div id={aboutId} data-sheet-about="" className="flex flex-col gap-2">
           {onlyDigest && onlyJump !== null ? <SheetText>{onlyJump}</SheetText> : null}
           {aboutTool(t, only, confirm.refusalOf(only), said[0].notes, "body")}
         </div>

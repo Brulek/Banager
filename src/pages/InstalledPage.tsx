@@ -1269,10 +1269,12 @@ export function InstalledPage() {
               <h2
                 ref={inspectorHeading}
                 id={inspectorTitleId}
-                // Focused by script only (`enterRow`), rounded as a control
-                // for the keyboard's ring round it.
+                // Focused by script only (`enterRow`), for a screen reader to
+                // start at, and with no ring, as the page's title has none: it
+                // is no control, and a ring round a name reads as a text field.
+                // The next Tab is the pane's first control, which rings.
                 tabIndex={-1}
-                className="break-words rounded-control text-section text-foreground"
+                className="break-words text-section text-foreground outline-none"
               >
                 {name}
               </h2>
@@ -1282,7 +1284,8 @@ export function InstalledPage() {
                 the way that shows. */}
             <button
               type="button"
-              aria-label={t("common.close")}
+              // Not "Close" alone: the operation bar's × is one too.
+              aria-label={t("installed.closeDetails")}
               onClick={closeInspector}
               className={`${ICON_BUTTON} -mr-2 self-start`}
             >

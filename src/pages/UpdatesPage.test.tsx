@@ -2138,6 +2138,10 @@ describe("UpdatesPage", () => {
       expect(triangle.getAttribute("width")).toBe("10");
       expect(triangle.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
       expect(triangle.getAttribute("class")).not.toContain("rotate-90");
+      // It turns, but at once with Reduce motion on.
+      expect(triangle.getAttribute("class")?.split(" ")).toEqual(
+        expect.arrayContaining(["transition-transform", "motion-reduce:transition-none"]),
+      );
 
       fireEvent.click(toggle);
       expect(triangle.getAttribute("class")).toContain("rotate-90");
@@ -3528,6 +3532,14 @@ describe("UpdatesPage", () => {
       expect(dialog).toHaveAttribute("data-dialog-width", "360");
       expect(dialog.querySelector("[data-dialog-icon]")).not.toBeNull();
       expect(dialog.querySelector("[data-sheet-tools]")).toBeNull();
+      // Described by where it comes from and the version it moves to, then
+      // what there is to know about it, as it opens.
+      const about = dialog.querySelector("[data-sheet-about]") as HTMLElement;
+      expect(dialog.getAttribute("aria-describedby")?.split(" ")).toEqual([
+        dialog.querySelector("[data-dialog-subtitle]")?.id,
+        about.id,
+      ]);
+      expect(dialog).toHaveAccessibleDescription(/^Homebrew · 2\.88\.3 → 2\.90\.0/);
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
 

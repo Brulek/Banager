@@ -60,7 +60,7 @@ export function sheetMeta(name: string, sourceLabel: string, version: string | n
  * (`--text-body-long`). Measured once drawn, before it is painted, and
  * again whenever what it says changes.
  */
-export function SheetText({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function SheetText({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [long, setLong] = useState(false);
   useLayoutEffect(() => {
@@ -75,6 +75,7 @@ export function SheetText({ children, className = "" }: { children: ReactNode; c
   return (
     <p
       ref={ref}
+      id={id}
       data-sheet-text=""
       className={`break-words text-foreground ${long ? "text-body-long" : "text-body"} ${className}`}
     >
@@ -210,8 +211,9 @@ export function useToolsInTurn(count: number, batch: number | null): number {
  * say will go. Held at the foot of the body should the body scroll.
  */
 export function SheetPending({ text }: { text: string }) {
+  // A status: a screen reader says it as the dialog opens on it.
   return (
-    <p className="sticky bottom-0 mt-3 flex items-center gap-2 bg-surface text-body text-muted">
+    <p role="status" className="sticky bottom-0 mt-3 flex items-center gap-2 bg-surface text-body text-muted">
       <SpinnerIcon size={16} className="shrink-0" />
       {text}
     </p>

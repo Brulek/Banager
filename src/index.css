@@ -221,24 +221,42 @@
   }
 }
 
-/* Increase contrast (System Settings > Accessibility > Display): the
-   secondary text darkens to 70%. */
-@media (prefers-contrast: more) {
-  :root {
-    --color-muted: rgb(0 0 0 / 0.7);
-  }
-}
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root {
-    --color-muted: rgb(255 255 255 / 0.7);
-  }
-}
-
 /* The accent the user picked in System Settings, where the web view knows
    it (WebKit does; the headless previews keep the default blue). */
 @supports (color: AccentColor) {
   :root {
     --color-accent: AccentColor;
+  }
+}
+
+/* Increase contrast (System Settings > Accessibility > Display): the
+   secondary text darkens to 70%, and the keyboard's focus ring is drawn
+   solid rather than at half strength. In the light appearance the accent
+   a filled button and the focused list's selection are drawn in darkens
+   too -- the default blue to #0060DF, the user's own by 15% -- so their
+   white words read at 5.5:1 rather than 4:1; the dark appearance keeps
+   its accent. After the user's accent (above), which this darkens rather
+   than replaces; nothing here applies without the setting. */
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: rgb(0 0 0 / 0.7);
+    --color-focus: rgb(0 103 244);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: light) {
+  :root {
+    --color-accent: #0060df;
+  }
+  @supports (color: AccentColor) {
+    :root {
+      --color-accent: color-mix(in srgb, AccentColor 85%, black);
+    }
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --color-muted: rgb(255 255 255 / 0.7);
+    --color-focus: rgb(26 169 255);
   }
 }
 

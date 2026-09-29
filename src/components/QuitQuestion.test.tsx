@@ -132,6 +132,10 @@ describe("the question before a quit", () => {
     expect(
       within(dialog).getByText("Quitting now stops it, and the tool it's updating can be left half-updated."),
     ).toBeInTheDocument();
+    // Its text describes it to a screen reader as it opens.
+    expect(dialog).toHaveAccessibleDescription(
+      "Quitting now stops it, and the tool it's updating can be left half-updated.",
+    );
     // One over the other, as wide as the dialog, the default on top: as
     // NSAlert stacks answers too long to stand side by side (spec §3.6).
     expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([

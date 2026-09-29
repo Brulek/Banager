@@ -1906,7 +1906,7 @@ describe("InstalledPage", () => {
       "Homebrew is updating its software list. Uninstall once it's done.",
     );
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close Details" }));
     await waitFor(() => expect(screen.queryByRole("complementary", { name: "jq" })).toBeNull());
 
     served = { ...updating, instances: [brew, claudeInstance] };
@@ -2310,8 +2310,10 @@ describe("InstalledPage", () => {
       const inspector = await screen.findByRole("complementary", { name: "jq" });
       const heading = within(inspector).getByRole("heading", { name: "jq" });
       await waitFor(() => expect(document.activeElement).toBe(heading));
-      // Focused by script only: not a stop of its own for Tab.
+      // Focused by script only: not a stop of its own for Tab, and no ring
+      // round it, as the page's title has none.
       expect(heading).toHaveAttribute("tabindex", "-1");
+      expect(heading.className.split(" ")).toContain("outline-none");
 
       fireEvent.keyDown(heading, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
@@ -2352,14 +2354,14 @@ describe("InstalledPage", () => {
       await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
 
       inspector = await openDetails("jq");
-      const close = within(inspector).getByRole("button", { name: "Close" });
+      const close = within(inspector).getByRole("button", { name: "Close Details" });
       act(() => close.focus());
       fireEvent.keyDown(close, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
 
       inspector = await openDetails("jq");
-      fireEvent.click(within(inspector).getByRole("button", { name: "Close" }));
+      fireEvent.click(within(inspector).getByRole("button", { name: "Close Details" }));
       await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
     });
@@ -2631,7 +2633,7 @@ describe("InstalledPage", () => {
       expect(await within(glib).findByText("Couldn't prepare the update. Try again later.")).toBeInTheDocument();
       expect(within(glib).queryByText(/brew is busy/)).toBeNull();
 
-      fireEvent.click(within(glib).getByRole("button", { name: "Close" }));
+      fireEvent.click(within(glib).getByRole("button", { name: "Close Details" }));
       await waitFor(() => expect(screen.queryByRole("complementary", { name: "glib" })).toBeNull());
       const jq = await openDetails("jq");
       expect(within(jq).queryByText(/^Couldn't prepare the update/)).toBeNull();
@@ -2939,14 +2941,14 @@ describe("InstalledPage", () => {
         expect(line).toHaveAttribute("data-description");
         expect(within(drawer).queryByText(JQ)).toBeNull();
         expect(drawer.textContent).not.toContain(JQ);
-        fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
+        fireEvent.click(within(drawer).getByRole("button", { name: "关闭详情" }));
         await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
 
         // prettier's source said nothing: its line alone.
         fireEvent.click(within(rowOf("prettier")).getByRole("button", { name: "详情：prettier" }));
         const prettier = await screen.findByRole("complementary", { name: "prettier" });
         expect(within(prettier).getAllByText("代码格式化工具")).toHaveLength(1);
-        fireEvent.click(within(prettier).getByRole("button", { name: "关闭" }));
+        fireEvent.click(within(prettier).getByRole("button", { name: "关闭详情" }));
         await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
       });
 

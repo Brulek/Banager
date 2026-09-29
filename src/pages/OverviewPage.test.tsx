@@ -201,7 +201,7 @@ describe("OverviewPage", () => {
       "The first check looks up every tool's newest version online, and sometimes takes a minute or two.",
     );
     // Once the settings are in, as they are long before the first check.
-    expect(await findByRole("button", { name: "Check for updates every day Off" })).toBeInTheDocument();
+    expect(await findByRole("button", { name: "Check for updates every day: Off" })).toBeInTheDocument();
     expect(heading).toHaveTextContent("Checking…");
     // Nothing to press in the row yet, no number, no ring.
     expect(within(statusRowOf(container)).queryByRole("button")).toBeNull();
@@ -704,7 +704,10 @@ describe("OverviewPage", () => {
     useUiStore.setState({ page: "overview" });
     const { findByRole } = renderOverview();
 
-    const row = await findByRole("button", { name: "Check for updates every day On" });
+    const row = await findByRole("button", { name: "Check for updates every day: On" });
+    // A button to Settings, not a switch: what pressing it does, said.
+    expect(row).toHaveAccessibleDescription("Opens Settings");
+    expect(row).not.toHaveAttribute("role");
     // A row of its group, 36 high, the value muted with a chevron after it.
     expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "w-full"]));
     expect(within(row).getByText("On").parentElement?.className).toContain("text-muted");
@@ -720,7 +723,8 @@ describe("OverviewPage", () => {
     await i18n.changeLanguage("zh-CN");
     try {
       const { findByRole } = renderOverview();
-      expect(await findByRole("button", { name: "每天自动检查 关闭" })).toBeInTheDocument();
+      const row = await findByRole("button", { name: "每天自动检查：关闭" });
+      expect(row).toHaveAccessibleDescription("在“设置”中更改");
     } finally {
       await i18n.changeLanguage("en");
     }

@@ -215,7 +215,10 @@ function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded
       className="relative flex h-8 w-full items-center px-5 text-left text-body text-muted"
     >
       <span data-disclosure-symbol="" className={`flex shrink-0 justify-center ${NOTICE_GRID.checkbox.symbol}`}>
-        <DisclosureIcon size={10} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+        <DisclosureIcon
+          size={10}
+          className={`shrink-0 transition-transform motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`}
+        />
       </span>
       <span className={`min-w-0 truncate ${NOTICE_GRID.checkbox.gap}`}>
         {t("updates.cantUpdateHere", { number: count })}

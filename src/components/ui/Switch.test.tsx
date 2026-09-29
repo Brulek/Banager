@@ -63,6 +63,8 @@ describe("Switch", () => {
     // (src/test/darkTheme.test.ts) -- never a plain white of its own.
     expect(knobClasses).toContain("bg-switch-knob");
     expect(knobClasses).not.toContain("bg-white");
+    // It slides, but jumps with Reduce motion on.
+    expect(knobClasses).toEqual(expect.arrayContaining(["transition-transform", "motion-reduce:transition-none"]));
   });
 
   it("is the switch-off grey while off and the accent while on", () => {

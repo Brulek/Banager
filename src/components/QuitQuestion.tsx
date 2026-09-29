@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { quitAnyway, quitKeptWaiting, quitQuestionShown } from "../lib/api";
@@ -85,6 +85,7 @@ export function QuitQuestion() {
   const active = (operations ?? []).filter(isActive);
   const count = active.length;
   const body = quitBodyKey(active);
+  const bodyId = useId();
 
   // It goes, and Canager stays: Rust is told, so that its wait for word
   // from the page does not quit.
@@ -107,6 +108,8 @@ export function QuitQuestion() {
         if (!open) keepWaiting();
       }}
       title={t("quit.title", { count })}
+      // What quitting now would stop: the question's text, said as it opens.
+      describedBy={body === null ? undefined : bodyId}
       initialFocus={keepWaitingButton}
       // Two answers that read as long as a sentence side by side: one over
       // the other, as wide as the dialog, staying on top -- the default.
@@ -129,7 +132,7 @@ export function QuitQuestion() {
       }
     >
       {question !== null && <OnScreen question={question} />}
-      {body !== null && <SheetText>{t(body, { count: quitStops(active).length })}</SheetText>}
+      {body !== null && <SheetText id={bodyId}>{t(body, { count: quitStops(active).length })}</SheetText>}
       {active.filter(runsToItsEnd).map((op) => (
         <p key={op.id} className="mt-2 flex gap-1.5 text-body text-foreground">
           <WarningFilledIcon size={12} className="mt-0.5 shrink-0 text-warning" />

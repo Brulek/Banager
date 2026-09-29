@@ -119,6 +119,8 @@ describe("UninstallDialog", () => {
     // the `isPending` transition to React through a setTimeout(0) scheduler,
     // so right after render the component is still idle: wait for it.
     expect(await screen.findByText("Checking what this affects…")).toBeInTheDocument();
+    // A status, said as the dialog opens on it.
+    expect(screen.getByRole("status")).toHaveTextContent("Checking what this affects…");
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
@@ -138,7 +140,7 @@ describe("UninstallDialog", () => {
     };
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "get_snapshot") return snapshotWith([brewInstance()], [jq]);
-      if (cmd === "plan_operation") return issuedPlanFor();
+      if (cmd === "plan_operation") return issuedPlanFor({ warnings: [{ UninstallScope: { what: "HomebrewFormulaOnly" } }] });
       return undefined;
     });
 
@@ -150,6 +152,12 @@ describe("UninstallDialog", () => {
     expect(dialog).toHaveAttribute("data-dialog-width", "360");
     const subtitle = (await within(dialog).findByText("1.8.1")).closest("[data-dialog-subtitle]");
     expect(subtitle).toHaveTextContent("Homebrew · 1.8.1");
+    // Described to a screen reader as it opens by that line, then its text:
+    // what goes and what stays.
+    await within(dialog).findByText(/^Removes only /, { selector: "[data-sheet-text]" });
+    expect(dialog).toHaveAccessibleDescription(
+      "Homebrew · 1.8.1 Removes only the Homebrew version of jq and the links to it. Settings and data stored elsewhere are kept.",
+    );
     const icon = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
     expect(icon.compareDocumentPosition(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1395,7 +1403,9 @@ describe("UninstallDialog", () => {
       "Couldn't start the uninstall: This confirmation is more than 10 minutes old",
     );
     expect(screen.getByText("Checking what this affects…")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // The one status is that it is checking again: nothing yet about a
+    // fresh preview (`getByRole` finds exactly one).
+    expect(screen.getByRole("status")).toHaveTextContent(/^Checking what this affects…$/);
     await waitFor(() => expect(planCalls).toBe(2));
 
     releaseReplan();
@@ -1412,7 +1422,9 @@ describe("UninstallDialog", () => {
     // submit's own error takes its place while the next re-check runs.
     fireEvent.click(confirmButton);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't start the uninstall:");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Confirm once more/)).not.toBeInTheDocument();
+    // What status there is is the re-check under way.
+    for (const status of screen.queryAllByRole("status")) expect(status).toHaveTextContent(/^Checking what this affects…$/);
     expect(submitCalls().map(([, args]) => args)).toEqual([{ planId: "1" }, { planId: "2" }]);
   });
 

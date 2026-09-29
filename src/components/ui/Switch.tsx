@@ -46,8 +46,9 @@ export function Switch({
       disabled={disabled}
       className="relative inline-flex h-4 w-9 shrink-0 items-center rounded-full bg-switch-off disabled:opacity-50 data-[state=checked]:bg-accent"
     >
-      {/* Slides only once it is pressed, in under 200 ms (spec §2.8). */}
-      <RadixSwitch.Thumb className="block h-3 w-5 translate-x-0.5 rounded-full bg-switch-knob shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_1px_1.5px_rgb(0_0_0/0.18)] transition-transform duration-150 data-[state=checked]:translate-x-3.5" />
+      {/* Slides only once it is pressed, in under 200 ms (spec §2.8), and
+          jumps with Reduce motion on. */}
+      <RadixSwitch.Thumb className="block h-3 w-5 translate-x-0.5 rounded-full bg-switch-knob shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_1px_1.5px_rgb(0_0_0/0.18)] transition-transform duration-150 motion-reduce:transition-none data-[state=checked]:translate-x-3.5" />
     </RadixSwitch.Root>
   );
 }

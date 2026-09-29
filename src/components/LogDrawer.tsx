@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type UIEvent } from "react";
+import { useEffect, useId, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { LogNote, OpSummary } from "../lib/types";
@@ -161,6 +161,7 @@ export function LogDrawer() {
   }
 
   const parts = operation === undefined ? null : partsOf(operation);
+  const nextId = useId();
   const copyWords =
     copyStatus === "copied" ? t("common.copied") : copyStatus === "failed" ? t("common.copyFailed") : null;
 
@@ -175,6 +176,8 @@ export function LogDrawer() {
       // operation starts -- the dialog is simply the operation log.
       title={parts?.title ?? t("operations.logDrawerTitle")}
       subtitle={parts?.subtitle}
+      // What to do next, where the log says: said after its subtitle as it opens.
+      describedBy={parts?.next ? nextId : undefined}
       focusSelf
       fillBody
       footerStart={
@@ -201,7 +204,11 @@ export function LogDrawer() {
         </>
       }
     >
-      {parts?.next ? <p className="mb-3 break-words text-body text-foreground">{parts.next}</p> : null}
+      {parts?.next ? (
+        <p id={nextId} className="mb-3 break-words text-body text-foreground">
+          {parts.next}
+        </p>
+      ) : null}
       <ScrollArea
         className="min-h-0 flex-1 overflow-hidden rounded-group bg-group"
         ref={viewportRef}

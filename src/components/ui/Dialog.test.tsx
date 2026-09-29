@@ -259,6 +259,30 @@ describe("Dialog", () => {
     expect(getByRole("button", { name: "OK" })).toBeInTheDocument();
   });
 
+  it("describes itself by its subtitle, then the main text it names, and by nothing where it has neither", () => {
+    const { getByRole, rerender } = renderWithProviders(
+      <Dialog open onOpenChange={vi.fn()} title="Uninstall “jq”?" subtitle="Homebrew · 1.8.1" describedBy="about-jq">
+        <p id="about-jq">Removes jq.</p>
+        <p>Not this.</p>
+      </Dialog>,
+    );
+    expect(getByRole("dialog", { name: "Uninstall “jq”?" })).toHaveAccessibleDescription("Homebrew · 1.8.1 Removes jq.");
+
+    rerender(
+      <Dialog open onOpenChange={vi.fn()} title="Uninstall “jq”?" describedBy="about-jq">
+        <p id="about-jq">Removes jq.</p>
+      </Dialog>,
+    );
+    expect(getByRole("dialog")).toHaveAccessibleDescription("Removes jq.");
+
+    rerender(
+      <Dialog open onOpenChange={vi.fn()} title="Operation log">
+        <p>Lines.</p>
+      </Dialog>,
+    );
+    expect(getByRole("dialog")).not.toHaveAttribute("aria-describedby");
+  });
+
   it("fades its body's bottom edge while more of it is below what is in sight, and not once its end is", () => {
     const { getByRole } = renderWithProviders(
       <Dialog open onOpenChange={vi.fn()} title="Icon credits" footer={<button type="button">Done</button>}>

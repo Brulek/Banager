@@ -1,5 +1,5 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
-import { useCallback, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { focusOrFallback } from "./focus";
 import { watchMoreBelow } from "./moreBelow";
 
@@ -31,6 +31,13 @@ export interface DialogProps {
   icon?: ReactNode;
   /** Under the title, quieter: the tool's source and version (11/14 muted). */
   subtitle?: ReactNode;
+  /**
+   * The ids of what the dialog says in its body, its main text, which
+   * describes it to a screen reader after its subtitle (`aria-describedby`)
+   * as it opens: the uninstall's sentence, the quit question's. Where it
+   * has `description`, that describes it instead.
+   */
+  describedBy?: string;
   /**
    * The first thing in the body, 13 in the label colour, which also
    * describes the dialog to a screen reader: the icon credits' sentence
@@ -120,6 +127,7 @@ export function Dialog({
   width = "one",
   icon,
   subtitle,
+  describedBy,
   description,
   footer,
   footerStart,
@@ -132,6 +140,10 @@ export function Dialog({
 }: DialogProps) {
   const noted = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const subtitleId = useId();
+  const hasSubtitle = subtitle !== undefined && subtitle !== null;
+  // Its subtitle, then its main text; nothing, where it has neither.
+  const describedByIds = [hasSubtitle ? subtitleId : null, describedBy ?? null].filter((id) => id !== null).join(" ");
   useLayoutEffect(() => {
     if (open) noted.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, [open]);
@@ -149,7 +161,7 @@ export function Dialog({
         <RadixDialog.Overlay data-dialog-overlay="" className="fixed inset-0" />
         <RadixDialog.Content
           ref={contentRef}
-          {...(description === undefined ? { "aria-describedby": undefined } : {})}
+          {...(description === undefined ? { "aria-describedby": describedByIds === "" ? undefined : describedByIds } : {})}
           data-dialog-width={DIALOG_WIDTHS[width]}
           onOpenAutoFocus={(event) => {
             if (focusSelf) {
@@ -195,8 +207,8 @@ export function Dialog({
               </div>
             ) : null}
             <RadixDialog.Title className="break-words text-title text-foreground">{title}</RadixDialog.Title>
-            {subtitle !== undefined && subtitle !== null ? (
-              <p data-dialog-subtitle="" className="mt-0.5 break-words text-small text-muted">
+            {hasSubtitle ? (
+              <p id={subtitleId} data-dialog-subtitle="" className="mt-0.5 break-words text-small text-muted">
                 {subtitle}
               </p>
             ) : null}
