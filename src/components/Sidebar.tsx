@@ -84,7 +84,12 @@ function useCounts(): Partial<Record<Page, number>> {
   );
 }
 
-/** One source's row under 「来源」: its name, how much it has installed, and its first warning, if any. */
+/**
+ * One source's row under 「来源」: its name and its first warning, if any.
+ * Not how much it has installed: beside the Updates page's 「更新 10」 a
+ * number by each source read as that source's updates, and the page it
+ * opens says it in its header's subtitle (「30个工具」).
+ */
 interface SourceRow {
   id: string;
   adapterId: string;
@@ -93,7 +98,6 @@ interface SourceRow {
   /** Its kind's name, and which one it is where another of its kind is on the Mac (`instanceNames`): 「Intel」. */
   source: string;
   place: string | null;
-  count: number;
   /** The notice's title (`sourceWarningOf`), for the ⚠︎'s tooltip and a screen reader. */
   warning: string | null;
 }
@@ -118,15 +122,15 @@ function useSourceRows(): SourceRow[] {
     }
     return snapshot.instances.map((instance) => {
       const label = labels.get(instance.id) ?? instance.id;
-      const count = counts.get(instance.id) ?? 0;
-      const warning = sourceWarningOf(instance, label, count);
+      // Its rows as the page it opens draws them (`rowsOnScreen`), though
+      // only the notice's sentence turns on them, not the title said here.
+      const warning = sourceWarningOf(instance, label, counts.get(instance.id) ?? 0);
       return {
         id: instance.id,
         adapterId: instance.adapter_id,
         label,
         source: names.get(instance.id)?.source ?? label,
         place: names.get(instance.id)?.place ?? null,
-        count,
         warning: warning === null ? null : t(warning.titleKey, warning.values),
       };
     });
@@ -136,10 +140,11 @@ function useSourceRows(): SourceRow[] {
 /**
  * A row of the sidebar, as AppKit's medium sidebar draws one: 32 high and
  * inset 10 from either side of the sidebar, so its glyph's 20px box starts
- * 20 in and its words 46 in, and its count ends 20 from the sidebar's
- * edge. Nothing under the pointer; selected, the system fill behind it and
- * its words as they were. `description` is what a screen reader says after
- * its name: what the number means, and a source's warning.
+ * 20 in and its words 46 in, and what stands at its right -- a page's
+ * count, a source's ⚠︎ -- ends 20 from the sidebar's edge. Nothing under
+ * the pointer; selected, the system fill behind it and its words as they
+ * were. `description` is what a screen reader says after its name: what a
+ * page's number means, or a source's warning.
  */
 function SidebarRow({
   glyph,
@@ -147,7 +152,7 @@ function SidebarRow({
   place = null,
   active,
   count,
-  reserveCount = false,
+  reserveSlot = false,
   warning,
   description,
   descriptionId,
@@ -169,11 +174,13 @@ function SidebarRow({
   active: boolean;
   count?: number;
   /**
-   * The count's place is kept, 20 wide and its number at its right, with
-   * no number in it: a source's row, whose ⚠︎ then stands at one x down
-   * the list, whether its source has installed anything or not.
+   * The place at its right is kept, 20 wide, with nothing in it: a
+   * source's row, whose ⚠︎ stands there, at its right, where a page's
+   * count ends -- so its name has the same room on every source's row,
+   * with a ⚠︎ or without.
    */
-  reserveCount?: boolean;
+  reserveSlot?: boolean;
+  /** A source's warning: a ⚠︎ in the place at its right (`reserveSlot`). */
   warning?: string | null;
   description: string | null;
   descriptionId: string;
@@ -184,6 +191,7 @@ function SidebarRow({
   onFocus: () => void;
 }) {
   const counted = count !== undefined && count > 0;
+  const warned = warning !== undefined && warning !== null;
   return (
     <button
       type="button"
@@ -208,25 +216,28 @@ function SidebarRow({
           <span className="truncate text-small text-muted">{place.text}</span>
         </span>
       )}
-      {warning !== undefined && warning !== null ? (
-        // Before the count, filled and orange, as Mail marks an account
-        // it could not reach; the notice's title under the pointer, and
-        // to a screen reader after the name (`description`).
-        <span aria-hidden="true" title={warning} className="flex shrink-0">
-          <WarningFilledIcon size={12} className="text-warning" />
-        </span>
-      ) : null}
-      {/* A plain number, as a Mac's sidebar counts: none of them is a
-          badge. The Dock's shows the updates. At its column's right, 20
-          wide at least -- three digits -- so a number of any length ends
-          20 from the sidebar's edge. */}
-      {counted || reserveCount ? (
+      {/* At the row's right, in a column 20 wide at least -- three digits --
+          whatever is in it at its right edge, 20 from the sidebar's: a
+          page's plain number, as a Mac's sidebar counts, none of them a
+          badge (the Dock's shows the updates); or a source's ⚠︎, filled
+          and orange, where Mail puts one on an account it could not reach
+          -- the notice's title under the pointer, and to a screen reader
+          after the name (`description`). */}
+      {counted || warned || reserveSlot ? (
         <span
           aria-hidden="true"
-          data-count=""
-          className="min-w-5 shrink-0 text-right text-small tabular-nums text-muted"
+          data-trailing=""
+          className="flex min-w-5 shrink-0 justify-end"
         >
-          {counted ? count : null}
+          {warned ? (
+            <span title={warning} className="flex">
+              <WarningFilledIcon size={12} className="text-warning" />
+            </span>
+          ) : counted ? (
+            <span data-count="" className="text-small tabular-nums text-muted">
+              {count}
+            </span>
+          ) : null}
         </span>
       ) : null}
       {description !== null ? (
@@ -304,11 +315,10 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
     );
   };
 
+  // A source's row says its ⚠︎'s words to a screen reader, as the pointer
+  // shows them, and no count: none is on it to explain, and the page it
+  // opens says how many in its header's subtitle, which is read there too.
   const sourceEntry = (row: SourceRow, index: number) => {
-    const said = [
-      ...(row.count > 0 ? [t("nav.count.installed", { count: row.count })] : []),
-      ...(row.warning !== null ? [row.warning] : []),
-    ];
     return (
       <SidebarRow
         // The source's own mark, 16, in the 20px box the pages' glyphs
@@ -317,10 +327,9 @@ export function Sidebar({ page, onSelectPage, source = null, onSelectSource }: S
         label={row.source}
         place={row.place === null ? null : { text: row.place, whole: row.label }}
         active={sourceShown === row.id}
-        count={row.count}
-        reserveCount
+        reserveSlot
         warning={row.warning}
-        description={said.length > 0 ? said.join(t("common.listSeparator")) : null}
+        description={row.warning}
         descriptionId={`${idPrefix}-source-${index}`}
         onPress={() => onSelectSource?.(row.id)}
         {...roving(`source:${row.id}`)}

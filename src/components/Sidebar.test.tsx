@@ -413,7 +413,7 @@ describe("Sidebar", () => {
   });
 
   describe("「来源」", () => {
-    it("lists every source under its title, counting what each has installed and marking a warning with ⚠︎", async () => {
+    it("lists every source under its title with no count, and marks a warning with ⚠︎", async () => {
       const { findByRole, getByRole, getByText } = renderWithProviders(
         <Sidebar page="overview" onSelectPage={vi.fn()} />,
       );
@@ -426,8 +426,12 @@ describe("Sidebar", () => {
         getByRole("button", { name: "pip" }),
         getByRole("button", { name: "Ollama" }),
       ]);
-      expect(within(getByRole("button", { name: "pip" })).getByText("1")).toBeInTheDocument();
-      expect(within(getByRole("button", { name: "Ollama" })).queryByText(/^\d+$/)).toBeNull();
+      // No number by a source: beside 「更新 10」 one read as that
+      // source's updates. The page a source opens says how many it has.
+      for (const name of ["Homebrew", "pip", "Ollama"]) {
+        expect(within(getByRole("button", { name })).queryByText(/^\d+$/)).toBeNull();
+        expect(getByRole("button", { name }).querySelector("[data-count]")).toBeNull();
+      }
       // The group's title: 11 bold in the secondary colour, 14 in, in a
       // 28-high row whose words sit at its foot.
       const title = getByText("Sources");
@@ -437,16 +441,15 @@ describe("Sidebar", () => {
       expect(list).toHaveAttribute("aria-labelledby", title.id);
 
       // A source's row is a page's row: 32 high, its mark -- 16, in the
-      // pages' 20 box -- where a page's glyph is, its count plain.
+      // pages' 20 box -- where a page's glyph is.
       const homebrew = getByRole("button", { name: "Homebrew" });
       expect(homebrew.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-2.5", "gap-1.5", "text-body"]));
       const markBox = homebrew.firstElementChild as HTMLElement;
       expect(markBox.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5"]));
       expect(markBox.firstElementChild?.className).toContain("h-4 w-4");
-      expect(within(homebrew).getByText("4").className.split(" ")).toEqual(
-        expect.arrayContaining(["text-small", "text-muted", "tabular-nums"]),
-      );
-      expect(homebrew).toHaveAccessibleDescription("4 installed");
+      // Nothing more to say to a screen reader than its name: no count is
+      // on the row to explain, and the page it opens says how many.
+      expect(homebrew).not.toHaveAttribute("aria-describedby");
       expect(within(homebrew).queryByTitle(/./)).toBeNull();
 
       // Not running: no count, and a filled orange ⚠︎ at 12 with the
@@ -458,7 +461,7 @@ describe("Sidebar", () => {
       expect(stopped).toHaveAccessibleDescription("Ollama isn't running");
     });
 
-    it("puts the ⚠︎ before the count, and none for news that is no problem", async () => {
+    it("puts a source's ⚠︎ where a page's count ends, and none for news that is no problem", async () => {
       served = {
         ...snapshot,
         instances: [
@@ -471,8 +474,11 @@ describe("Sidebar", () => {
 
       const homebrew = getByRole("button", { name: "Homebrew" });
       const warning = within(homebrew).getByTitle("Homebrew isn't responding");
-      expect(warning.compareDocumentPosition(within(homebrew).getByText("4")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(homebrew).toHaveAccessibleDescription("4 installed, Homebrew isn't responding");
+      // In the place at the row's right, where the Installed row's number is.
+      expect(warning.parentElement).toBe(homebrew.querySelector("[data-trailing]"));
+      expect(getByRole("button", { name: "Installed" }).querySelector("[data-trailing] [data-count]")).not.toBeNull();
+      // Its words alone, with no count before them.
+      expect(homebrew).toHaveAccessibleDescription("Homebrew isn't responding");
       // Which copy runs when its name is typed is information, not a warning.
       expect(within(getByRole("button", { name: "pip" })).queryByTitle(/./)).toBeNull();
     });
@@ -492,7 +498,7 @@ describe("Sidebar", () => {
         getByRole("button", { name: "Homebrew (Intel)" }),
         getByRole("button", { name: "pip" }),
       ]);
-      expect(getByRole("button", { name: "Homebrew (Intel)" })).toHaveAccessibleDescription("1 installed");
+      expect(getByRole("button", { name: "Homebrew (Intel)" })).not.toHaveAttribute("aria-describedby");
       // In sight: the name, and under it which one it is, 11 in the
       // secondary colour, on a line of its own that the sidebar's width
       // holds whole -- the row 40 high for it -- and the whole name under
@@ -526,7 +532,7 @@ describe("Sidebar", () => {
       expect(homebrew).not.toHaveAttribute("title");
     });
 
-    it("keeps every source row's count 20 wide at its right, so a ⚠︎ stands at one x with a count or without", async () => {
+    it("keeps a place 20 wide at every source row's right, its ⚠︎ in it, so each name has the same room with a ⚠︎ or without", async () => {
       served = {
         ...snapshot,
         instances: [{ ...brew, status: { unavailable: "NotResponding", notes: [] } }, pip, ollama],
@@ -534,29 +540,31 @@ describe("Sidebar", () => {
       const { findByRole, getByRole } = renderWithProviders(<Sidebar page="overview" onSelectPage={vi.fn()} />);
       await findByRole("list", { name: "Sources" });
 
-      const counted = getByRole("button", { name: "Homebrew" });
-      const empty = getByRole("button", { name: "Ollama" });
-      for (const row of [counted, empty, getByRole("button", { name: "pip" })]) {
-        const slot = row.querySelector("[data-count]") as HTMLElement;
-        // The row's last thing, a column 20 wide at least, its number at
-        // its right edge -- the row's own right, 20 from the sidebar's.
+      const warned = getByRole("button", { name: "Homebrew" });
+      const plain = getByRole("button", { name: "pip" });
+      for (const row of [warned, plain, getByRole("button", { name: "Ollama" })]) {
+        const slot = row.querySelector("[data-trailing]") as HTMLElement;
+        // The row's last thing, a column 20 wide at least, what is in it at
+        // its right edge -- the row's own right, 20 from the sidebar's,
+        // where a page's count ends.
         expect(slot).not.toBeNull();
         // (Only the screen reader's hidden words may follow it.)
         const after = slot.nextElementSibling;
         expect(after === null || (after instanceof HTMLElement && after.hidden)).toBe(true);
-        expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["min-w-5", "shrink-0", "text-right"]));
+        expect(slot.className.split(" ")).toEqual(expect.arrayContaining(["min-w-5", "shrink-0", "justify-end"]));
         expect(slot).toHaveAttribute("aria-hidden", "true");
+        // No number in it.
+        expect(slot.querySelector("[data-count]")).toBeNull();
       }
-      expect(counted.querySelector("[data-count]")).toHaveTextContent("4");
-      // Nothing installed: the column kept, empty, the ⚠︎ just before it
-      // as on a row with a number.
-      expect(empty.querySelector("[data-count]")?.textContent).toBe("");
-      for (const row of [counted, empty]) {
-        const warning = row.querySelector('[title]:not(button)') as HTMLElement;
-        expect(warning.nextElementSibling).toBe(row.querySelector("[data-count]"));
-      }
-      // A page's row with nothing to count has no column.
-      expect(getByRole("button", { name: "Overview" }).querySelector("[data-count]")).toBeNull();
+      expect(warned.querySelector("[data-trailing] svg")).not.toBeNull();
+      // No warning: the place kept, empty.
+      expect(plain.querySelector("[data-trailing]")?.childElementCount).toBe(0);
+      // A page's row with nothing to count has no such place; one with a
+      // count has its number there, in the same column.
+      expect(getByRole("button", { name: "Overview" }).querySelector("[data-trailing]")).toBeNull();
+      const installed = getByRole("button", { name: "Installed" }).querySelector("[data-trailing]") as HTMLElement;
+      expect(installed.className).toBe(warned.querySelector("[data-trailing]")?.className);
+      expect(installed.querySelector("[data-count]")).not.toBeNull();
     });
 
     it("leaves 12 under the last row inside what scrolls", async () => {
@@ -700,7 +708,7 @@ describe("Sidebar", () => {
       expect(scroller.previousElementSibling).toHaveAttribute("data-tauri-drag-region");
     });
 
-    it("titles the group 来源 and counts in Chinese, with which Homebrew it is in full-width brackets", async () => {
+    it("titles the group 来源 and counts the pages in Chinese, with which Homebrew it is in full-width brackets", async () => {
       const intel = instance("brew:/usr/local", "brew", { prefix: "/usr/local" });
       served = { ...snapshot, instances: [brew, intel] };
       await act(async () => {
@@ -712,7 +720,9 @@ describe("Sidebar", () => {
         );
         await findByRole("list", { name: "来源" });
         expect(getByText("来源")).toBeInTheDocument();
-        expect(getByRole("button", { name: "Homebrew（Apple芯片）" })).toHaveAccessibleDescription("已安装4个");
+        // The pages' counts, not the sources'.
+        expect(getByRole("button", { name: "已安装" })).toHaveAccessibleDescription(/^已安装\d+个$/);
+        expect(getByRole("button", { name: "Homebrew（Apple芯片）" })).not.toHaveAttribute("aria-describedby");
         expect(getByRole("button", { name: "Homebrew（Intel）" })).not.toHaveAttribute("aria-describedby");
       } finally {
         await act(async () => {
