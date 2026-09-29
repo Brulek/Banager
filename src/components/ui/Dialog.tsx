@@ -1,6 +1,7 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { focusOrFallback } from "./focus";
+import { watchMoreBelow } from "./moreBelow";
 
 /**
  * How wide a dialog is (spec §3.6, §3.10): 360 for a question about one
@@ -89,7 +90,9 @@ export interface DialogProps {
  * buttons 16 below, on the right and 8 apart, with no line or band of
  * their own. Its body scrolls between the question and the buttons,
  * which stay put, and it grows downwards as what it has to say arrives,
- * to the window's height less 96.
+ * to the window's height less 96; while more of it is below what is in
+ * sight, its bottom edge fades out (`watchMoreBelow`, index.css), so it
+ * does not look cut off.
  *
  * A Radix modal dialog: the page under it is out of reach but not dimmed
  * -- a Mac's alert and sheet darken nothing; the dialog's shadow and edge
@@ -131,6 +134,12 @@ export function Dialog({
     if (open) noted.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, [open]);
   const hasFooter = footer !== undefined && footer !== null;
+  // A body that scrolls says when more of it is below (`watchMoreBelow`);
+  // one that fills itself (`fillBody`) scrolls what is inside it instead.
+  const attachBody = useCallback(
+    (body: HTMLDivElement | null) => (body === null || fillBody ? undefined : watchMoreBelow(body)),
+    [fillBody],
+  );
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
@@ -191,6 +200,7 @@ export function Dialog({
             ) : null}
           </div>
           <div
+            ref={attachBody}
             data-dialog-body=""
             className={`min-h-0 flex-1 px-5 pt-2 ${fillBody ? "flex flex-col" : "overflow-y-auto"} ${
               hasFooter ? "" : "pb-5"

@@ -10,6 +10,7 @@ import zhCN from "../i18n/zh-CN.json";
 import { loadToolIcons, type ToolIconPack } from "../lib/toolIcons";
 import type { ArtifactKey, InstalledArtifact, Settings, Snapshot } from "../lib/types";
 import { BUTTON } from "../components/ui/controls";
+import { creditSource } from "../components/IconCreditsDrawer";
 
 const jqKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" };
 const glibKey: ArtifactKey = { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "glib" };
@@ -1065,30 +1066,48 @@ describe("SettingsPage's icon credits", () => {
     ).toBeInTheDocument();
     const list = within(drawer).getByRole("list", { name: "These have a license of their own:" });
     const items = within(list).getAllByRole("listitem");
-    // By title, each with its license's text and where Simple Icons took
-    // it from; npm's logo, under Simple Icons' CC0, is not listed.
-    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual([
-      "Git — CC-BY-3.0",
-      "Rust — CC-BY-SA-4.0",
-    ]);
+    // By title, each with its license's name and the site Simple Icons
+    // took it from -- never a whole address, which breaks mid-word at this
+    // width -- each address whole in its tooltip; npm's logo, under Simple
+    // Icons' CC0, is not listed.
+    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual(["Git", "Rust"]);
     const facts = (item: HTMLElement) => [
       within(item).getAllByRole("term").map((term) => term.textContent),
       within(item).getAllByRole("definition").map((definition) => definition.textContent),
+      within(item).getAllByRole("definition").map((definition) => definition.getAttribute("title")),
     ];
     expect(facts(items[0])).toEqual([
       ["License", "Source"],
+      ["CC-BY-3.0", "git-scm.com"],
       ["https://spdx.org/licenses/CC-BY-3.0", "https://git-scm.com/community/logos"],
     ]);
     expect(facts(items[1])).toEqual([
       ["License", "Source"],
+      ["CC-BY-SA-4.0", "rust-lang.org"],
       ["https://spdx.org/licenses/CC-BY-SA-4.0", "https://www.rust-lang.org"],
     ]);
+    // Nothing that breaks a word in two to fit.
+    for (const definition of within(list).getAllByRole("definition")) {
+      expect(definition.className).not.toContain("break-all");
+    }
     expect(within(drawer).queryByText(/npm/)).toBeNull();
     expect(
       within(drawer).getByText(
         "Built-in logos that do not come from Simple Icons are the avatars of the projects' GitHub organizations.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("names a logo's source by its site, and on GitHub by its organization too", () => {
+    expect(creditSource("https://github.com/dotnet/brand/blob/c7d0f51b8ec5/logo/dotnet-logo.svg")).toBe("github.com/dotnet");
+    expect(creditSource("https://simpleicons.org/?q=git")).toBe("simpleicons.org");
+    expect(creditSource("https://partnermarketinghub.withgoogle.com/brands/android/visual-identity/logo-lock-ups")).toBe(
+      "partnermarketinghub.withgoogle.com",
+    );
+    expect(creditSource("https://www.apache.org/foundation/press/kit")).toBe("apache.org");
+    expect(creditSource("https://github.com")).toBe("github.com");
+    // Not an address: as it is.
+    expect(creditSource("the Rust Foundation")).toBe("the Rust Foundation");
   });
 
   it("lists nothing under a license of its own for a pack with none, and says the rest", async () => {

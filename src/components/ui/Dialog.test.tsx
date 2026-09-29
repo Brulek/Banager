@@ -259,6 +259,37 @@ describe("Dialog", () => {
     expect(getByRole("button", { name: "OK" })).toBeInTheDocument();
   });
 
+  it("fades its body's bottom edge while more of it is below what is in sight, and not once its end is", () => {
+    const { getByRole } = renderWithProviders(
+      <Dialog open onOpenChange={vi.fn()} title="Icon credits" footer={<button type="button">Done</button>}>
+        <p>A long list</p>
+      </Dialog>,
+    );
+    const body = getByRole("dialog").querySelector("[data-dialog-body]") as HTMLElement;
+    // Laid out 300 high, holding 900: more below.
+    let scrollTop = 0;
+    Object.defineProperty(body, "clientHeight", { configurable: true, get: () => 300 });
+    Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => 900 });
+    Object.defineProperty(body, "scrollTop", { configurable: true, get: () => scrollTop });
+    fireEvent.scroll(body);
+    expect(body).toHaveAttribute("data-more-below");
+    scrollTop = 400;
+    fireEvent.scroll(body);
+    expect(body).toHaveAttribute("data-more-below");
+    // Scrolled to its end: nothing left to fade.
+    scrollTop = 600;
+    fireEvent.scroll(body);
+    expect(body).not.toHaveAttribute("data-more-below");
+
+    // index.css: the fade, over the bottom 24.
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../index.css"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ");
+    expect(css).toContain(
+      "[data-dialog-body][data-more-below] { mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); }",
+    );
+  });
+
   it("does not render when closed", () => {
     const { queryByRole } = renderWithProviders(
       <Dialog open={false} onOpenChange={vi.fn()} title="Confirm">

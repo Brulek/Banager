@@ -301,6 +301,17 @@ a {
   -webkit-user-drag: none;
 }
 
+/*
+ * A dialog's body while more of it is below what is in sight
+ * (`data-more-below`, src/components/ui/moreBelow.ts): its bottom 24 fade
+ * out, as the edge of a Mac's scroll view does, so the last line in sight
+ * reads as cut by the edge rather than as the end of what it says. The end
+ * in sight, nothing fades.
+ */
+[data-dialog-body][data-more-below] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+
 /* Scrolling past the top or the bottom does not pull the whole window's
    contents after it, as it would a web page's; the lists inside scroll
    in their own boxes as before (`overscroll-behavior` is not handed

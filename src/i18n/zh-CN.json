@@ -567,7 +567,6 @@
       "owners": "各标志归其权利人所有，仅用于识别工具。",
       "simpleIcons": "Canager内置的标志大多来自Simple Icons，它以CC0发布。",
       "ownLicense": "以下标志另有自己的许可：",
-      "entry": "{{title}} — {{license}}",
       "license": "许可",
       "source": "出处",
       "avatars": "内置标志中不来自Simple Icons的，都是各项目GitHub组织的头像。"
