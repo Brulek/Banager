@@ -641,8 +641,11 @@ pub enum Warning {
     /// no check before its lines with one -- each name once.
     /// Produced by `BrewAdapter::plan` for a cask `Uninstall` whose recorded
     /// uninstall is not plain (`cask_receipt::classify`), beside
-    /// `UninstallScope { what: HomebrewCaskSteps }` or `HomebrewCaskStepsOnly`;
-    /// read by `warningKey` and `warningArgs` in src/lib/warnings.ts.
+    /// `UninstallScope { what: HomebrewCaskSteps }` or another of the
+    /// sentences for a cask with steps (`HomebrewCaskStepsAutoremoves`,
+    /// `HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnly`,
+    /// `HomebrewCaskStepsOnlyUnseen`); read by `warningKey` and
+    /// `warningArgs` in src/lib/warnings.ts.
     CaskUninstallStep {
         step: CaskStep,
         items: Vec<String>,
@@ -693,19 +696,21 @@ pub enum UninstallScope {
     HomebrewCaskPlain,
     /// `brew uninstall --cask` whose recorded uninstall deletes what
     /// Homebrew put down and linked and takes extra steps, each kind of
-    /// which the plan names in a `Warning::CaskUninstallStep`, with
-    /// Homebrew's autoremove off. The sentence says Homebrew deletes the
-    /// files it placed for the cask -- what it moved into place, linked or
-    /// generated, and its own copy and records in the Caskroom
-    /// (`Cask::Installer#uninstall`, `cask/installer.rb:622-640`, `:642-659`,
-    /// `:814-835`, `:1049-1061`) -- and not every file the cask's installer
-    /// put down: a `pkg` or an installer beside them is not in the record
-    /// (`cask/cask.rb:709-732`). It runs the recorded steps, and nothing
-    /// else is deleted: `zap` runs only with `--zap`, which Canager never
-    /// passes, and the autoremove is off (`cmd/uninstall.rb:89-136`). When
-    /// the current definition names an old token the cask still has another
-    /// installation under, Homebrew first uninstalls that one -- all but
-    /// what it shares with this one -- and deletes its Caskroom folder
+    /// which the plan names in a `Warning::CaskUninstallStep` that says what
+    /// it does -- none a step whose deletions Canager cannot see, which
+    /// makes it `HomebrewCaskStepsUnseen` -- with Homebrew's autoremove off.
+    /// The sentence says Homebrew deletes the files it placed for the cask
+    /// -- what it moved into place, linked or generated, and its own copy
+    /// and records in the Caskroom (`Cask::Installer#uninstall`,
+    /// `cask/installer.rb:622-640`, `:642-659`, `:814-835`, `:1049-1061`) --
+    /// and not every file the cask's installer put down: a `pkg` or an
+    /// installer beside them is not in the record (`cask/cask.rb:709-732`).
+    /// It runs the recorded steps, and nothing else is deleted: `zap` runs
+    /// only with `--zap`, which Canager never passes, and the autoremove is
+    /// off (`cmd/uninstall.rb:89-136`). When the current definition names
+    /// an old token the cask still has another installation under,
+    /// Homebrew first uninstalls that one -- all but what it shares with
+    /// this one -- and deletes its Caskroom folder
     /// (`Cask::Migrator.migrate_if_needed` from `cask/installer.rb:988`,
     /// `cask/migrator.rb:24-66`, `:85-119`): again files Homebrew placed for
     /// the cask and steps it recorded for it.
@@ -715,14 +720,36 @@ pub enum UninstallScope {
     /// of "nothing else is deleted", beside `Warning::HomebrewAutoremoves`,
     /// which says what else goes.
     HomebrewCaskStepsAutoremoves,
+    /// `HomebrewCaskSteps` for a record with at least one step whose
+    /// deletions Canager cannot see (`cask_receipt::runs_unseen`): a program
+    /// the cask names (`early_script:`, `script:`, an uninstall step of type
+    /// `run`; `CaskStep::RunsScript`), or Ruby around the uninstall or an
+    /// uninstall step Canager does not name (`CaskStep::RunsOwnSteps`).
+    /// Canager knows the step is there, and names the program, but not what
+    /// it deletes: a vendor's uninstaller may take the app's settings and
+    /// data with it. So the sentence says Homebrew deletes the files it
+    /// placed for the cask and runs the uninstall steps it recorded, and
+    /// that Canager cannot see what else some of those steps delete -- never
+    /// that anything stays. It claims nothing about other files, so it
+    /// holds with Homebrew's autoremove on as well, beside
+    /// `Warning::HomebrewAutoremoves`.
+    HomebrewCaskStepsUnseen,
     /// `brew uninstall --cask` whose record lists nothing Homebrew put down
     /// or linked -- a cask installed with a `pkg` or an installer, neither
     /// of which the record lists (`cask/cask.rb:709-732`) -- but takes extra
     /// steps, each kind of which the plan names in a
-    /// `Warning::CaskUninstallStep`: nothing else deletes any of what the
-    /// installer put down (little-snitch@4's only step removes its
-    /// background services).
+    /// `Warning::CaskUninstallStep` that says what it does, none a step
+    /// whose deletions Canager cannot see (`HomebrewCaskStepsOnlyUnseen`):
+    /// nothing else deletes any of what the installer put down
+    /// (little-snitch@4's only step removes its background services).
     HomebrewCaskStepsOnly,
+    /// `HomebrewCaskStepsOnly` for a record with at least one step whose
+    /// deletions Canager cannot see, as for `HomebrewCaskStepsUnseen`
+    /// (wireshark-chmodbpf's `early_script:` runs its vendor's uninstaller
+    /// package). The sentence says Homebrew runs the uninstall steps it
+    /// recorded, and that Canager cannot see what else some of those steps
+    /// delete -- never that the other files the installer put down stay.
+    HomebrewCaskStepsOnlyUnseen,
     /// `brew uninstall --cask` whose recorded uninstall Canager could not
     /// read (`cask_receipt::read_recorded`): no Caskroom folder, no saved
     /// caskfile, one saved in a form it does not read, a record Homebrew
@@ -795,11 +822,15 @@ pub enum CaskStep {
     RemovesPackages,
     /// `early_script:` and `script:`, and an uninstall step of type `run`
     /// whose program the record names: a program the cask names is run.
+    /// What it deletes Canager cannot see, so the sentence beside it is
+    /// `UninstallScope::HomebrewCaskStepsUnseen` or
+    /// `HomebrewCaskStepsOnlyUnseen`.
     RunsScript,
     /// An `uninstall_preflight`/`uninstall_postflight` block of Ruby, or an
     /// uninstall step Canager does not name (anything but the ones that set
     /// ownership or permissions or end a process, which stay plain, and the
-    /// ones the other kinds name). Names nothing.
+    /// ones the other kinds name). Names nothing; what it deletes Canager
+    /// cannot see, as for `RunsScript`.
     RunsOwnSteps,
     /// `launchctl:`: each service is removed with `launchctl remove` and
     /// its plist deleted from the LaunchAgents and LaunchDaemons folders.
@@ -1724,7 +1755,9 @@ mod tests {
             UninstallScope::HomebrewCaskPlain,
             UninstallScope::HomebrewCaskSteps,
             UninstallScope::HomebrewCaskStepsAutoremoves,
+            UninstallScope::HomebrewCaskStepsUnseen,
             UninstallScope::HomebrewCaskStepsOnly,
+            UninstallScope::HomebrewCaskStepsOnlyUnseen,
             UninstallScope::HomebrewCask,
             UninstallScope::Npm,
             UninstallScope::Pipx,

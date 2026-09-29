@@ -425,10 +425,12 @@ impl BrewAdapter {
     /// `autoremoves` is whether the `brew.env` files take Homebrew's
     /// autoremove back (`brew_env_warnings`): a formula's sentence says
     /// "only", and that of a cask with steps beside what Homebrew placed
-    /// "nothing else is deleted", when they do not. A cask's comes from what
-    /// Homebrew recorded when it installed the cask (`cask_receipt`), the
-    /// home folder read from Canager's environment, as Homebrew's is
-    /// (`env_var_fn`).
+    /// "nothing else is deleted", when they do not -- unless a step runs a
+    /// program or code whose deletions Canager cannot see
+    /// (`cask_receipt::runs_unseen`), when a cask's sentence says so and
+    /// nothing of what stays. A cask's comes from what Homebrew recorded
+    /// when it installed the cask (`cask_receipt`), the home folder read
+    /// from Canager's environment, as Homebrew's is (`env_var_fn`).
     fn uninstall_scope(
         &self,
         inst: &ManagerInstance,
@@ -455,10 +457,18 @@ impl BrewAdapter {
         let (what, steps) = match classified {
             Classified::Plain => (UninstallScope::HomebrewCaskPlain, Vec::new()),
             Classified::Unknown => (UninstallScope::HomebrewCask, Vec::new()),
+            // A program or code Canager cannot see into: no sentence says
+            // what stays, with the autoremove on or off.
+            Classified::Steps(steps) if cask_receipt::runs_unseen(&steps) => {
+                (UninstallScope::HomebrewCaskStepsUnseen, steps)
+            }
             Classified::Steps(steps) if autoremoves => {
                 (UninstallScope::HomebrewCaskStepsAutoremoves, steps)
             }
             Classified::Steps(steps) => (UninstallScope::HomebrewCaskSteps, steps),
+            Classified::OnlySteps(steps) if cask_receipt::runs_unseen(&steps) => {
+                (UninstallScope::HomebrewCaskStepsOnlyUnseen, steps)
+            }
             Classified::OnlySteps(steps) => (UninstallScope::HomebrewCaskStepsOnly, steps),
         };
         // Looked for only when there is an app to quit and a line to say it.
@@ -3819,6 +3829,113 @@ mod plan_execute_tests {
                 what: UninstallScope::HomebrewCask
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn test_a_cask_uninstall_that_runs_a_script_or_code_says_nothing_of_what_stays() {
+        // A `script:`, an `early_script:` or Ruby around the uninstall:
+        // Canager knows the step is there, and names the program, but not
+        // what it deletes -- a vendor's uninstaller may take settings and
+        // data -- so the sentence says that, not that the rest stays, and
+        // the step's own line still names what runs.
+        const GPT4ALL_RECEIPT: &str =
+            include_str!("../../../../../adapters/fixtures/brew/7.0.6/receipts/gpt4all.json");
+        const CHMODBPF_RECEIPT: &str = include_str!(
+            "../../../../../adapters/fixtures/brew/7.0.6/receipts/wireshark-chmodbpf.json"
+        );
+        const FLIGHT_BLOCK_RECEIPT: &str = include_str!(
+            "../../../../../adapters/fixtures/brew/7.0.6/receipts/uninstall-flight-block.json"
+        );
+        let prefix = CaskroomPrefix::new(
+            "unseen",
+            &[
+                ("gpt4all", GPT4ALL_RECEIPT),
+                ("wireshark-chmodbpf", CHMODBPF_RECEIPT),
+                ("uninstall-flight-block", FLIGHT_BLOCK_RECEIPT),
+            ],
+        );
+        // Homebrew saves a cask with Ruby blocks as `.rb` (`save_caskfile`,
+        // `cask/installer.rb:594-607`), which is read through the receipt.
+        let casks = prefix
+            .0
+            .join("Caskroom/uninstall-flight-block/.metadata/1.0/20260928000000.000/Casks");
+        std::fs::remove_file(casks.join("uninstall-flight-block.json")).unwrap();
+        std::fs::write(
+            casks.join("uninstall-flight-block.rb"),
+            "cask \"uninstall-flight-block\" do\nend\n",
+        )
+        .unwrap();
+        let runner = Arc::new(MockRunner::new());
+        let inst = ManagerInstance {
+            prefix: prefix.0.clone(),
+            ..test_instance()
+        };
+        let scope = |what| Warning::UninstallScope { what };
+        let step = |step, items: &[&str]| Warning::CaskUninstallStep {
+            step,
+            items: items.iter().map(|item| item.to_string()).collect(),
+            only_if: None,
+        };
+        // `script:`: gpt4all installs with a `pkg`, and its maintenance tool
+        // is what uninstalls it.
+        let gpt4all = vec![
+            scope(UninstallScope::HomebrewCaskStepsOnlyUnseen),
+            step(
+                CaskStep::Deletes,
+                &["~/Library/Application Support/nomic.ai/GPT4All"],
+            ),
+            step(
+                CaskStep::RunsScript,
+                &["/Applications/gpt4all/maintenancetool.app/Contents/MacOS/maintenancetool"],
+            ),
+        ];
+        // `early_script:`: the vendor's uninstaller package, run by
+        // `installer`.
+        let chmodbpf = vec![
+            scope(UninstallScope::HomebrewCaskStepsOnlyUnseen),
+            step(CaskStep::RemovesPackages, &["org.wireshark.ChmodBPF.pkg"]),
+            step(CaskStep::RunsScript, &["/usr/sbin/installer"]),
+        ];
+        // An `uninstall_preflight` block beside the app Homebrew placed.
+        let flight_block = vec![
+            scope(UninstallScope::HomebrewCaskStepsUnseen),
+            step(CaskStep::RunsOwnSteps, &[]),
+        ];
+
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home);
+        for (token, expected) in [
+            ("gpt4all", &gpt4all),
+            ("wireshark-chmodbpf", &chmodbpf),
+            ("uninstall-flight-block", &flight_block),
+        ] {
+            let plan = cask_uninstall(&runner, &adapter, &inst, token).await;
+            assert_eq!(&plan.warnings, expected, "{token}");
+        }
+
+        // With a brew.env that brings the autoremove back, the same
+        // sentences, which claim nothing about other files, and the
+        // autoremove's own line last.
+        let adapter = BrewAdapter::new(runner.clone())
+            .with_recorded_uninstall_fn(cask_receipt::read_recorded)
+            .with_env_var_fn(someones_home)
+            .with_brew_env_fn(system_brew_env_autoremoves);
+        for (token, expected) in [
+            ("gpt4all", gpt4all),
+            ("wireshark-chmodbpf", chmodbpf),
+            ("uninstall-flight-block", flight_block),
+        ] {
+            let plan = cask_uninstall(&runner, &adapter, &inst, token).await;
+            assert_eq!(
+                plan.warnings,
+                expected
+                    .into_iter()
+                    .chain([Warning::HomebrewAutoremoves])
+                    .collect::<Vec<_>>(),
+                "{token}"
+            );
+        }
     }
 
     #[tokio::test]

@@ -98,6 +98,7 @@ above have:
 | `gpt4all.json` | `gpt4all` 3.10.0 | `script` (a path), `delete` in `~/Library` |
 | `adobe-air.json` | `adobe-air` 51.3.3.1 | `script` (a hash with a relative `executable`), `rmdir` |
 | `adobe-creative-cloud.json` | `adobe-creative-cloud` 6.10.0.252.41 | `early_script`, `launchctl`, `quit`, `signal`, `script`, `delete`, `rmdir` |
+| `wireshark-chmodbpf.json` | `wireshark-chmodbpf` 4.6.9 | `early_script` alone (a hash: `/usr/sbin/installer` runs the vendor's uninstaller package), `pkgutil`; its `pkg` has no uninstall phase and is dropped |
 | `gutenprint.json` | `gutenprint` 5.3.3 | `script` (a list of hashes), `pkgutil`, `delete` (globs) |
 | `airscroll.json` | `airscroll` 1.3.3 | `login_item` |
 | `airparrot.json` | `airparrot` 3.1.8 | `quit`, `kext` |

@@ -483,13 +483,29 @@ describe("UninstallDialog", () => {
         "Deletes the files Homebrew placed for Charles and runs the uninstall steps it recorded; Charles's other files stay.",
         "删除 Homebrew 为 Charles 放置的文件，并执行它记下的卸载步骤；Charles 的其他文件不删。",
       ],
+      // A step that runs a program or code -- Ruby around the uninstall,
+      // here -- whose deletions Canager cannot see: nothing is said to stay.
+      [
+        { UninstallScope: { what: "HomebrewCaskStepsUnseen" } },
+        "Uninstall Flight Block",
+        "Deletes the files Homebrew placed for Uninstall Flight Block and runs the uninstall steps it recorded; Canager can't see what else some of those steps delete.",
+        "删除 Homebrew 为 Uninstall Flight Block 放置的文件，并执行它记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
+      ],
       // A cask whose record lists nothing Homebrew put down: an installer
-      // put it on the Mac, and only the recorded steps take any of it away.
+      // put it on the Mac, and only the recorded steps take any of it away...
       [
         { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
         "Little Snitch",
         "Runs the uninstall steps Homebrew recorded for Little Snitch; other files its installer put on this Mac stay.",
         "执行 Homebrew 为 Little Snitch 记下的卸载步骤；安装器装的其他文件不删。",
+      ],
+      // ...unless a step runs a program -- wireshark-chmodbpf's vendor
+      // uninstaller -- whose deletions Canager cannot see.
+      [
+        { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
+        "Wireshark-ChmodBPF",
+        "Runs the uninstall steps Homebrew recorded for Wireshark-ChmodBPF; Canager can't see what else some of those steps delete.",
+        "执行 Homebrew 为 Wireshark-ChmodBPF 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
       ],
       // A record Canager could not read, or one that lists nothing to go
       // by -- an empty list, for one: no deletion claimed.
@@ -552,8 +568,9 @@ describe("UninstallDialog", () => {
         },
         needs_password: true,
         warnings: [
-          // Word installs with a `pkg`, which its record leaves out.
-          { UninstallScope: { what: "HomebrewCaskStepsOnly" } },
+          // Word installs with a `pkg`, which its record leaves out; beside
+          // a step Canager cannot see into, nothing is said to stay.
+          { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
           {
             CaskUninstallStep: {
               step: "RemovesPackages",
@@ -572,7 +589,7 @@ describe("UninstallDialog", () => {
     );
 
     const sentence = await screen.findByText(
-      "Runs the uninstall steps Homebrew recorded for Microsoft Word; other files its installer put on this Mac stay.",
+      "Runs the uninstall steps Homebrew recorded for Microsoft Word; Canager can't see what else some of those steps delete.",
     );
     expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
     expect(linesOf("Before you continue")).toEqual([
@@ -595,6 +612,56 @@ describe("UninstallDialog", () => {
     }
     // Nothing it lists is deleted for good in so many words.
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeEnabled();
+  });
+
+  it("says nothing stays beside a cask step that runs a program, and still names the program under Before you continue, in either language", async () => {
+    // wireshark-chmodbpf's record (a fixture of cask_receipt.rs): its
+    // `early_script:` runs the vendor's uninstaller package with
+    // `installer`, whose deletions Canager cannot see, then `pkgutil:`.
+    const cask: OpRequest = { ...request, artifact_kind: "Cask", name: "wireshark-chmodbpf" };
+    vi.mocked(invoke).mockResolvedValue(
+      issuedPlanFor({
+        request: cask,
+        needs_password: true,
+        warnings: [
+          { UninstallScope: { what: "HomebrewCaskStepsOnlyUnseen" } },
+          { CaskUninstallStep: { step: "RemovesPackages", items: ["org.wireshark.ChmodBPF.pkg"] } },
+          { CaskUninstallStep: { step: "RunsScript", items: ["/usr/sbin/installer"] } },
+        ],
+      }),
+    );
+
+    const en = renderWithProviders(
+      <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Wireshark-ChmodBPF" />,
+    );
+    const sentence = await screen.findByText(
+      "Runs the uninstall steps Homebrew recorded for Wireshark-ChmodBPF; Canager can't see what else some of those steps delete.",
+    );
+    expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
+    expect(linesOf("Before you continue")).toEqual([
+      "Also deletes every file the installer package org.wireshark.ChmodBPF.pkg put on this Mac, whether or not other apps use them.",
+      "Also runs /usr/sbin/installer.",
+      "Some apps ask for your Mac password at this step.",
+    ]);
+    en.unmount();
+
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderWithProviders(
+        <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="Wireshark-ChmodBPF" />,
+      );
+      const chinese = await screen.findByText(
+        "执行 Homebrew 为 Wireshark-ChmodBPF 记下的卸载步骤；其中有些步骤还会删除什么，Canager 看不到。",
+      );
+      expect(chinese.closest("[data-sheet-tool]")).not.toBeNull();
+      expect(linesOf("请注意")).toEqual([
+        "还会删除下列安装包装的全部文件，不论别的 App 是否在用：org.wireshark.ChmodBPF.pkg。",
+        "还会运行：/usr/sbin/installer。",
+        "部分 App 在这一步会要求输入 Mac 密码。",
+      ]);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("names the app a cask quits, and counts its background service, in Chinese with no 这些", async () => {

@@ -105,9 +105,12 @@ export type KeptWhat =
  * `HomebrewCaskPlain`, `HomebrewCaskSteps` (with a `CaskUninstallStep` per
  * kind of extra step; `HomebrewCaskStepsAutoremoves` when a brew.env file
  * brought autoremove back), `HomebrewCaskStepsOnly` (the same, for a cask whose
- * record lists nothing Homebrew put down: a `pkg` or installer cask) or
- * `HomebrewCask` (its record could not be read, or lists nothing to go by:
- * the sentence claims no deletion).
+ * record lists nothing Homebrew put down: a `pkg` or installer cask),
+ * `HomebrewCaskStepsUnseen` and `HomebrewCaskStepsOnlyUnseen` (the same two,
+ * when a step runs a program or code whose deletions Canager cannot see: the
+ * sentence says so, and nothing of what stays) or `HomebrewCask` (its record
+ * could not be read, or lists nothing to go by: the sentence claims no
+ * deletion).
  * Read through `UNINSTALL_SCOPE_KEYS` in src/lib/warnings.ts, a `Record`
  * over this union, so a variant added here without copy fails `tsc`.
  */
@@ -117,7 +120,9 @@ export type UninstallScope =
   | "HomebrewCaskPlain"
   | "HomebrewCaskSteps"
   | "HomebrewCaskStepsAutoremoves"
+  | "HomebrewCaskStepsUnseen"
   | "HomebrewCaskStepsOnly"
+  | "HomebrewCaskStepsOnlyUnseen"
   | "HomebrewCask"
   | "Npm"
   | "Pipx"

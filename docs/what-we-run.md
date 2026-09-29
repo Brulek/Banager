@@ -490,7 +490,20 @@ holds nothing Homebrew put down but does hold a step — a cask installed
 with a `pkg` or an installer, such as `little-snitch@4`, whose one step
 removes its background services — the sentence says Homebrew runs the
 uninstall steps it recorded and that the other files its installer put on
-the Mac stay. Either way, "Before you continue" lists one line per kind,
+the Mac stay. Neither of these two sentences is said when a step's
+deletions are ones Canager cannot see: a program the cask names
+(`early_script:`, `script:`, an uninstall step of type `run` —
+`wireshark-chmodbpf`'s `early_script:` runs its vendor's uninstaller
+package), Ruby that runs before or after the uninstall, or an uninstall
+step Canager does not name (`move`, `copy` and `write` among them can
+replace what is at their target, `install_steps.rb:1001-1215`). The record
+says such a step is there, never what it deletes, so the sentence says
+Homebrew deletes the files it placed for the cask, when it placed any, and
+runs the uninstall steps it recorded, and that Canager can't see what else
+some of those steps delete — nothing about what stays, whether the
+autoremove is on or off (`UninstallScope::HomebrewCaskStepsUnseen`,
+`HomebrewCaskStepsOnlyUnseen`); the step's own line below still names the
+program. Either way, "Before you continue" lists one line per kind,
 with what the record names, the home folder spelled `~`: paths deleted for good
 (`delete:`, an `artifact` placed in the home folder, and each path an
 uninstall step of type `remove` spells out — from `/` or `~`, or under the

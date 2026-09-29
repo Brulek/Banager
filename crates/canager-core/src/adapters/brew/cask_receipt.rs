@@ -212,6 +212,22 @@ pub(crate) enum Classified {
     Unknown,
 }
 
+/// The kinds of step whose deletions Canager cannot see: a program the
+/// cask names (`early_script:`, `script:`, a `run` uninstall step), Ruby
+/// around the uninstall, and an uninstall step Canager does not name --
+/// `move`, `copy` and `write` among them, which can replace what is at
+/// their target (`Runner#run_install_step`, `install_steps.rb:1001-1215` in
+/// Homebrew 7.0.6-70). The record says such a step is there, never what it
+/// deletes.
+const UNSEEN_STEPS: [CaskStep; 2] = [CaskStep::RunsScript, CaskStep::RunsOwnSteps];
+
+/// Whether any of `steps` is of a kind whose deletions Canager cannot see
+/// (`UNSEEN_STEPS`): then no sentence beside them may say what stays
+/// (`UninstallScope::HomebrewCaskStepsUnseen`, `HomebrewCaskStepsOnlyUnseen`).
+pub(crate) fn runs_unseen(steps: &[StepLine]) -> bool {
+    steps.iter().any(|(step, _, _)| UNSEEN_STEPS.contains(step))
+}
+
 /// Stanzas whose uninstall deletes what Homebrew itself put down or linked
 /// for the cask, by their artifact classes in Homebrew 7.0.6-70
 /// (`cask/dsl.rb:39-72`, `cask/artifact/*.rb`): the moved kinds, moved back
@@ -984,7 +1000,7 @@ mod tests {
 
     #[test]
     fn each_kind_of_extra_step_is_named_with_what_the_receipt_names_for_it() {
-        let cases: [((&str, &str), Classified); 13] = [
+        let cases: [((&str, &str), Classified); 14] = [
             (
                 receipt!("microsoft-word"),
                 only_steps(&[
@@ -1088,6 +1104,15 @@ mod tests {
                         RunsScript,
                         &["/opt/homebrew/Caskroom/gutenprint/5.3.3/uninstall-gutenprint.command"],
                     ),
+                ]),
+            ),
+            // `early_script` alone, as a hash: `installer` runs the vendor's
+            // uninstaller package before the `pkgutil` step.
+            (
+                receipt!("wireshark-chmodbpf"),
+                only_steps(&[
+                    (RemovesPackages, &["org.wireshark.ChmodBPF.pkg"]),
+                    (RunsScript, &["/usr/sbin/installer"]),
                 ]),
             ),
             (
@@ -1223,6 +1248,61 @@ mod tests {
             classify(&flagged, Some(Path::new(HOME))),
             steps(&[(RunsOwnSteps, &[])])
         );
+    }
+
+    #[test]
+    fn a_program_or_code_the_record_only_names_is_a_step_canager_cannot_see_into() {
+        // The steps of a record, which the fixture must have.
+        let steps_of = |name: &str, json: &str| match classified(json) {
+            Classified::Steps(steps) | Classified::OnlySteps(steps) => steps,
+            other => panic!("{name}: {other:?}"),
+        };
+        // `script:` (gpt4all's maintenance tool, adobe-air's installer,
+        // gutenprint's uninstall script), `early_script:` alone
+        // (wireshark-chmodbpf's uninstaller package) and with `script:`
+        // (adobe-creative-cloud), a `run` step (openzfs), Ruby around the
+        // uninstall (uninstall-flight-block), and steps Canager does not
+        // name (miniconda's `move`, betwixt's certificate by a file's hash):
+        // the record says each is there, not what it deletes.
+        for (name, json) in [
+            receipt!("gpt4all"),
+            receipt!("adobe-air"),
+            receipt!("gutenprint"),
+            receipt!("wireshark-chmodbpf"),
+            receipt!("adobe-creative-cloud"),
+            receipt!("openzfs"),
+            receipt!("uninstall-flight-block"),
+            receipt!("miniconda"),
+            receipt!("betwixt"),
+        ] {
+            assert!(runs_unseen(&steps_of(name, json)), "{name}");
+        }
+        // Every other kind of step says what it takes.
+        for (name, json) in [
+            receipt!("microsoft-word"),
+            receipt!("duckietv"),
+            receipt!("nvs"),
+            receipt!("airscroll"),
+            receipt!("airparrot"),
+            receipt!("charles"),
+            receipt!("appvolume"),
+            receipt!("autofirma"),
+            receipt!("little-snitch@4"),
+            receipt!("twelite-stage"),
+            receipt!("pycharm-edu"),
+            receipt!("playdate-simulator"),
+        ] {
+            assert!(!runs_unseen(&steps_of(name, json)), "{name}");
+        }
+        // The receipt's flag for Ruby blocks alone is one.
+        let flagged = Recorded {
+            artifacts: vec![serde_json::json!({ "app": ["Some.app"] })],
+            flight_blocks: true,
+        };
+        match classify(&flagged, Some(Path::new(HOME))) {
+            Classified::Steps(steps) => assert!(runs_unseen(&steps)),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
