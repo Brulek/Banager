@@ -91,7 +91,8 @@ export function HeaderAction({ label, tooltip, onPress, busy }: HeaderActionProp
  * src/lib/events.ts), so it says whether the last check got anywhere. A
  * check that failed leaves the snapshot as it was, and the time would go
  * on naming the one before it as if nothing had been tried. The pages
- * with a subtitle say so there as well (`usePageSubtitle` in src/App.tsx).
+ * with a subtitle say so there as well (`usePageSubtitle` in src/App.tsx),
+ * and the Overview in its status row (`OverviewPage`).
  */
 export function CheckAgain() {
   const { t } = useTranslation();

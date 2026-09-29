@@ -29,8 +29,8 @@ const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
 /**
  * `badge`, 14px: the source's mark on the corner of a tool's own icon or
  * logo (`ToolAvatar`). `xs`, 16px: a source's mark inside a chip, such as
- * the Installed page's filters. `sm`, 24px: a tile's or a list's small
- * mark. `md`, 32px: a tool's row (`ToolRow`) and the Overview's tiles.
+ * the Installed page's filters. `sm`, 24px: a list's small mark. `md`,
+ * 32px: a tool's row (`ToolRow`).
  * The square and its corners, whatever is drawn on it. Whole class names,
  * for Tailwind.
  */

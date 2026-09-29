@@ -87,7 +87,7 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     // yet, so this is still Snapshot::empty() (`isStartupSnapshot` says
     // why its three fields, and only they, mean that). Judging it here
     // would flash "Canager found nothing it can manage" at every launch.
-    // The first check's ring and why it takes a while (`FirstCheck`) are
+    // The first check's spinner and why it takes a while (`FirstCheck`) are
     // shown instead, by the page itself where it draws them. The Updates
     // and Installed pages said a small grey "Loading…" in a corner here,
     // for as long as the first check took.

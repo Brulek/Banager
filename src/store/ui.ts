@@ -26,10 +26,10 @@ export interface UiState {
   setInstalledFilter(instanceId: string | null): void;
   installedSort: InstalledSort;
   setInstalledSort(sort: InstalledSort): void;
-  // Opens the Installed page showing one source's tools -- an Overview
-  // tile's -- or, with null, all of them: the sidebar's entry, whose count
-  // is of everything installed. Either way the search starts empty, so the
-  // list is the one the tile or the count promised, not an old search's.
+  // Opens the Installed page showing one source's tools or, with null,
+  // all of them: the sidebar's entry, whose count is of everything
+  // installed. Either way the search starts empty, so the list is the one
+  // the source or the count promised, not an old search's.
   openInstalled(instanceId: string | null): void;
   // The menu bar's Search (⌘F, src/lib/menu.ts): the Installed page, whose
   // search box takes the focus as soon as it is on screen -- at once, or
@@ -41,9 +41,10 @@ export interface UiState {
   searchFocusRequested: boolean;
   searchInstalled(): void;
   searchFocused(): void;
-  // The Overview's 「2 个已隐藏」: the Settings page, which brings its
-  // 「已隐藏的更新」 into view and puts the focus on its heading as soon as
-  // it is on screen -- at once, or once its settings have loaded -- and
+  // The Overview's 「2个已隐藏」: the Settings page, which brings its two
+  // groups of hidden updates, 「已跳过的版本」 and 「不再提醒的工具」, into
+  // view and puts the focus on the first one's title as soon as it is on
+  // screen -- at once, or once its settings have loaded -- and
   // says so (`hiddenUpdatesShown`). Going to any page by any other way
   // drops it, as it drops a search not yet focused.
   hiddenUpdatesRequested: boolean;

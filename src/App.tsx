@@ -51,10 +51,9 @@ function headerActions(page: Page): ReactNode {
  * alert, 「无法完成检查」 once one has failed (`startupRefreshError`, which
  * every refresh sets or clears), in place of a count the check could not
  * bring up to date. The Unknown page says 「正在扫描…」 while it scans.
- * The Overview has a headline of its own and Settings nothing to count:
- * no subtitle (spec §3.2); there, Check again's tooltip says how the last
- * check went. A `switch` with no default, so a page added to `Page`
- * without an answer here fails `tsc`.
+ * The Overview has a status row of its own, which says all of that, and
+ * Settings nothing to count: no subtitle (spec §3.2). A `switch` with no
+ * default, so a page added to `Page` without an answer here fails `tsc`.
  */
 function usePageSubtitle(page: Page): PageSubtitle | null {
   const { t } = useTranslation();
@@ -140,8 +139,8 @@ function App() {
     <div className="flex h-screen bg-[var(--color-content)] text-[var(--color-foreground)]">
       <UpdateWatchers />
       {/* The sidebar's Installed opens the page on everything installed,
-          which is what its count counts; an Overview tile opens it on one
-          source (`openInstalled`). */}
+          which is what its count counts; `openInstalled` with a source's
+          id opens it on that source alone. */}
       <Sidebar page={page} onSelectPage={(p) => (p === "installed" ? openInstalled(null) : setPage(p))} />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex min-h-0 flex-1 flex-col">

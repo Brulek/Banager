@@ -321,7 +321,7 @@ export function leftOutOfUpdateCheck(artifact: InstalledArtifact, includeSelfUpd
  *   once, as the "Some checks didn't finish" banner names them
  *   (`failedSourceAdapters`): two Homebrews that both failed are the one
  *   Homebrew it names. A source not checked in full says so in the
- *   Overview's "Needs attention", and is not counted here.
+ *   Overview's group of problems, one row for it, and is not counted here.
  * - `updating`: none left to start, and some are being installed right
  *   now (`underway`: queued, running, being cancelled or read back) --
  *   `count` of them, in the words the Updates page's header uses for them.
