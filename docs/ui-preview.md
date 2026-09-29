@@ -151,7 +151,7 @@ Paths are under a generic home folder, `/Users/you`.
 ## What it does
 
 - A refresh takes about a second; the first one runs at startup, as in the
-  app, so for a moment the page header says "Checking…", and so do the
+  app, so for a moment the toolbar says "Checking…", and so do the
   Overview, Updates and Installed pages, under a spinner and over why the
   first check takes a while. Check Again in the toolbar runs one at
   any time.
@@ -197,7 +197,7 @@ value falls back to the default and logs a warning in the console.
 | | `uptodate` | Every source answered and nothing needs updating. |
 | | `hidden` | The only updates are the skipped and never-remind-me ones. |
 | | `stale` | The last refresh could not finish for two sources. |
-| | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program. The Updates and Installed pages fold them into one line, the first warning, with "N more" at its end to show them all. |
+| | `notices` | Every source notice with a look of its own: Homebrew still downloading its catalogue (its operations wait for it first, and its uninstall previews are refused), npm read-only with an unverified version, Ollama not running (Open Ollama starts it), another `claude` first on the PATH, Grok Build's launcher left without its program, and a second Homebrew, the Intel one in `/usr/local`, that does not answer (so the sidebar names the two "Apple silicon" and "Intel"). The Updates and Installed pages fold them into one line, the first warning, with "N more issues" at its end to show them all. |
 | | `offline` | No registry answered: Homebrew's catalogue could not be downloaded, and every other lookup is "could not check". |
 | | `many` | About 800 things installed, as on a Mac that has used Homebrew for a while: the Mac above, every source answering, and 741 more real tools (`src/dev/mockManyNames.ts`) -- 580 Homebrew formulae, 40 of them libraries it installed for the others; 70 casks, 25 of them apps; 40 npm packages, 13 pipx and 12 uv tools, 20 crates and 6 Ollama models -- each one the logo pack and the description tables have. About one in seven has an update: 121 rows on the Updates page have one Canager can install. Each tool's version, install day and update come from a seeded stream of its own, so every run shows the same list. In English, those formulae and casks read "Homebrew package" or "App installed with Homebrew": the preview has no Homebrew catalogue to take their descriptions from. |
 | `lang` | `system` (default), `en`, `zh-CN` | Settings' language at startup. |
