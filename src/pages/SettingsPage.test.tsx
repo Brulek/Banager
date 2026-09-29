@@ -422,9 +422,9 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("switch", { name: "Show technical details" })).toHaveAccessibleDescription(
       "Show error messages, file locations and commands from the tools themselves, with commands expanded in confirmations.",
     );
-    expect(zhCN.settings.showTechnicalDetails.description).toBe(
-      "显示工具自己的报错、文件位置和要运行的命令，确认时直接展开命令。",
-    );
+    // 「原始错误信息」, not the colloquial 「工具自己的报错」; 「在确认窗口中」
+    // says where the command is expanded, which 「确认时」 left unclear.
+    expect(zhCN.settings.showTechnicalDetails.description).toBe("显示原始错误信息和文件位置，并在确认窗口中展开命令。");
     expect(zhCN.settings.showTechnicalDetails.description).not.toMatch(/版本号/);
   });
 
@@ -729,6 +729,8 @@ describe("SettingsPage", () => {
 
   it("says whose the logos are in the icon credits in few words, in Chinese as the review asked", () => {
     expect(zhCN.settings.iconCredits.owners).toBe("各标志归其权利人所有，仅用于识别工具。");
+    // Not 「另有自己的许可」, which read as a translation.
+    expect(zhCN.settings.iconCredits.ownLicense).toBe("以下标志采用其他许可协议：");
   });
 
   it("offers the language as a popup button: the chosen one's name, then ⌃⌄ in a grey capsule, no border", async () => {
