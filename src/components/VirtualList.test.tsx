@@ -420,6 +420,39 @@ describe("VirtualList's selection helpers", () => {
     expect(moved).not.toHaveBeenCalled();
   });
 
+  it("puts the focus on its first row, passing over what is not a row, scrolled into sight", async () => {
+    // jsdom scrolls nothing: a scroll to a row moves the box as a browser would.
+    const scrollBox = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+      Object.defineProperty(this, "scrollTop", { configurable: true, value: top });
+      fireEvent.scroll(this);
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollBox });
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(TOOLS.length * ROW);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(VIEWPORT);
+    const handle = createRef<VirtualListHandle>();
+    const { container, getByLabelText, queryByLabelText } = render(
+      <VirtualList
+        items={TOOLS}
+        itemKey={keyOf}
+        estimateSize={estimate}
+        renderItem={(item) => (item === "tool-0" ? <h2>{item}</h2> : <KeyRow item={item} />)}
+        keyboardRows={(item) => item !== "tool-0"}
+        handleRef={handle}
+      />,
+    );
+    const box = container.firstElementChild as HTMLElement;
+    scrollTo(box, 60 * ROW);
+    expect(queryByLabelText("tool-1", { selector: "[data-row-focus]" })).toBeNull();
+    act(() => handle.current?.focusFirst());
+    // tool-0 is a heading: the first row is tool-1, drawn again to be focused.
+    await waitFor(() => expect(document.activeElement).toBe(getByLabelText("tool-1", { selector: "[data-row-focus]" })));
+    expect(document.activeElement).toHaveAttribute("tabindex", "0");
+  });
+
   it("puts the focus back on a row by its key, and makes it the one in the Tab order", async () => {
     const handle = createRef<VirtualListHandle>();
     const { getByLabelText } = render(

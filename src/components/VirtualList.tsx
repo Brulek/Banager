@@ -202,6 +202,12 @@ export interface VirtualListHandle {
    * -- as Escape hands it back from the inspector to its row.
    */
   focusKey(key: string): void;
+  /**
+   * Puts the focus on the list's first row (`keyboardRows`), scrolled into
+   * sight: where it goes once Update all has started what it had, and the
+   * button pressed has nothing left to start.
+   */
+  focusFirst(): void;
 }
 
 /** What each slot showed, by its key. */
@@ -351,13 +357,18 @@ export function VirtualList<T>({
     },
     [items, itemKey, virtualizer],
   );
+  const focusFirst = useCallback(() => {
+    if (keyboardRows === undefined) return;
+    const first = items.find(keyboardRows);
+    if (first !== undefined) focusKey(itemKey(first));
+  }, [items, itemKey, keyboardRows, focusKey]);
   useLayoutEffect(() => {
     if (handleRef === undefined) return;
-    handleRef.current = { focusKey };
+    handleRef.current = { focusKey, focusFirst };
     return () => {
       if (handleRef.current?.focusKey === focusKey) handleRef.current = null;
     };
-  }, [handleRef, focusKey]);
+  }, [handleRef, focusKey, focusFirst]);
 
   // Where the anchor started when the list was last laid out; a new list
   // of items that moves it moves the scroll position by as much.

@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { dragsWindow } from "../test/dragRegion";
 import { CheckAgain, HeaderAction, PageHeader } from "./PageHeader";
-import { ICON_BUTTON } from "./ui/controls";
+import { ICON_BUTTON, ICON_BUTTON_BUSY } from "./ui/controls";
 import i18n from "../i18n";
 import { refreshIntoCache } from "../lib/events";
 import { queryKeys } from "../lib/queries";
@@ -172,13 +172,41 @@ describe("PageHeader", () => {
 
     rerender(<HeaderAction label="Scan Again" tooltip="Scan Again" onPress={onPress} busy />);
     const busy = getByRole("button", { name: "Scan Again" });
-    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute("aria-disabled", "true");
+    // As a disabled one looks: no fill under the pointer or pressed.
+    expect(busy.className).toBe(ICON_BUTTON_BUSY);
+    expect(busy.className).not.toMatch(/hover:|active:/);
     // A 16px spinner in the same box, in the muted grey rather than a
     // switched-off button's.
     const spinner = busy.querySelector("svg") as SVGElement;
     expect(spinner).toHaveAttribute("width", "16");
     expect(spinner.getAttribute("class")).toContain("motion-safe:animate-spin");
     expect(spinner.getAttribute("class")).toContain("text-muted");
+  });
+
+  it("keeps the focus while it runs, and takes no press meanwhile, rather than dropping the focus to the window", () => {
+    const onPress = vi.fn();
+    const { getByRole, rerender } = renderWithProviders(
+      <HeaderAction label="Check Again" tooltip="Check Again" onPress={onPress} busy={false} />,
+    );
+    const button = getByRole("button", { name: "Check Again" });
+    button.focus();
+    fireEvent.click(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    rerender(<HeaderAction label="Check Again" tooltip="Check Again" onPress={onPress} busy />);
+    // Not `disabled`, which would leave the focus on the body.
+    expect(button).not.toBeDisabled();
+    expect(document.activeElement).toBe(button);
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: "Enter" });
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    rerender(<HeaderAction label="Check Again" tooltip="Check Again" onPress={onPress} busy={false} />);
+    expect(document.activeElement).toBe(button);
+    expect(button).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(button);
+    expect(onPress).toHaveBeenCalledTimes(2);
   });
 
   it("says how long ago the last check finished in Check again's tooltip, with its shortcut, and moves on every minute", async () => {
@@ -266,12 +294,12 @@ describe("PageHeader", () => {
     const { getByRole, queryClient } = renderWithProviders(<PageHeader title="Updates" />);
     const button = getByRole("button", { name: "Check Again" });
     await waitFor(() => expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checked 10 min ago"));
-    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("aria-disabled");
 
     fireEvent.click(button);
 
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
-    await waitFor(() => expect(button).toBeDisabled());
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
     expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-spin");
     expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checking…");
     // A second click has nothing to press.
@@ -283,7 +311,7 @@ describe("PageHeader", () => {
       reply.resolve(newer);
     });
 
-    await waitFor(() => expect(button).toBeEnabled());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     expect(queryClient.getQueryData(queryKeys.snapshot)).toEqual(newer);
     expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checked just now");
     expect(button.querySelector("svg")?.getAttribute("class") ?? "").not.toContain("animate-spin");
@@ -303,14 +331,14 @@ describe("PageHeader", () => {
       run = refreshIntoCache(queryClient, "test");
     });
 
-    await waitFor(() => expect(button).toBeDisabled());
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
     expect(tooltipOf(button)).toBe("Check Again (⌘R) · Checking…");
 
     await act(async () => {
       reply.resolve(snapshotCheckedAt(CHECKED_AT + 60, 5));
       await run;
     });
-    await waitFor(() => expect(button).toBeEnabled());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
   });
 
   it("says the check failed in Check again's tooltip when the refresh does, until one works", async () => {
@@ -322,7 +350,7 @@ describe("PageHeader", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(tooltipOf(button)).toBe("Check Again (⌘R) · Couldn't check"));
-    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("aria-disabled");
 
     refreshReply = () => Promise.resolve(snapshotCheckedAt(Math.floor(Date.now() / 1000), 5));
     fireEvent.click(button);

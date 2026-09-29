@@ -431,6 +431,17 @@ export function InstalledPage() {
   // would start over at the sidebar.
   const inspectorUpdate = useRef<HTMLButtonElement>(null);
   const refocusAfterUndo = useRef(false);
+  // The inspector's heading, the tool's name: where Enter on a row puts the
+  // focus (`enterRow`), once the inspector shows that row, and where it
+  // goes once the inspector's Update or Uninstall has started what it
+  // offered and gives way to its progress.
+  const inspectorHeading = useRef<HTMLHeadingElement>(null);
+  const focusInspectorOnce = useRef(false);
+  useEffect(() => {
+    if (!focusInspectorOnce.current) return;
+    focusInspectorOnce.current = false;
+    inspectorHeading.current?.focus();
+  });
   // The tool whose 取消跳过 or 恢复提醒 could not be saved, and why, in the
   // backend's words (worded where it is said, `settingsSaveSentence`):
   // said in its inspector, and only there, until it is pressed again.
@@ -803,6 +814,27 @@ export function InstalledPage() {
     const id = artifactKeyId(artifact.key);
     setSelection(id === selectedId ? null : { id, filter: activeFilter });
   };
+  // Enter on a row: the inspector shows it -- opened on it, if it was not
+  // -- and the focus goes to its heading, from where Tab reaches its
+  // controls rather than every control of the list first.
+  const enterRow = (artifact: InstalledArtifact) => {
+    const id = artifactKeyId(artifact.key);
+    if (id === selectedId && inspectorHeading.current !== null) {
+      inspectorHeading.current.focus();
+      return;
+    }
+    focusInspectorOnce.current = true;
+    setSelection({ id, filter: activeFilter });
+  };
+  // Where the focus goes once an Uninstall pressed at `opener` has started:
+  // the button stays, off, as 「正在卸载…」, and a button that is off takes
+  // no focus -- so to its row, or to the inspector's heading.
+  const afterUninstall = (opener: HTMLElement | null): HTMLElement | null => {
+    if (opener === null) return null;
+    const row = opener.closest<HTMLElement>("[data-row-focus]");
+    if (row !== null) return row;
+    return opener.closest("[data-inspector]") !== null ? inspectorHeading.current : opener;
+  };
   // Escape: the inspector closes, and the focus goes back to its row,
   // wherever it was -- on the row, or in the inspector.
   const closeInspector = () => {
@@ -1095,6 +1127,7 @@ export function InstalledPage() {
         menu={<Menu label={t("common.moreActions", { name })} items={menuItems(artifact, instance)} />}
         onOpen={() => pressRow(artifact)}
         openLabel={t("common.detailsLabel", { title: name })}
+        onEnter={() => enterRow(artifact)}
         selected={artifactKeyId(artifact.key) === selectedId}
       />
     );
@@ -1233,7 +1266,14 @@ export function InstalledPage() {
           <div className="flex items-start gap-3">
             <ToolAvatar adapterId={instance.adapter_id} sourceLabel={label} iconKey={artifact.key} size="lg" />
             <div className="min-w-0 flex-1 self-center">
-              <h2 id={inspectorTitleId} className="break-words text-section text-foreground">
+              <h2
+                ref={inspectorHeading}
+                id={inspectorTitleId}
+                // Focused by script only (`enterRow`), rounded as a control
+                // for the keyboard's ring round it.
+                tabIndex={-1}
+                className="break-words rounded-control text-section text-foreground"
+              >
                 {name}
               </h2>
               {label === name ? null : <p className="mt-0.5 break-words text-small text-muted">{label}</p>}
@@ -1282,7 +1322,9 @@ export function InstalledPage() {
                 <button
                   ref={inspectorUpdate}
                   type="button"
-                  onClick={(event) => void confirm.openConfirm([listed], event.currentTarget)}
+                  onClick={(event) =>
+                    void confirm.openConfirm([listed], event.currentTarget, () => inspectorHeading.current?.focus())
+                  }
                   disabled={confirm.dialogOpen}
                   className={BUTTON.regular.default}
                 >
@@ -1423,6 +1465,7 @@ export function InstalledPage() {
           returnFocusTo={uninstallOpener}
           onSubmitted={(opId) => {
             startedUninstall.current = opId;
+            uninstallOpener.current = afterUninstall(uninstallOpener.current);
             setUninstallTarget(null);
           }}
           onClosed={() => {

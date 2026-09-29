@@ -313,7 +313,7 @@ describe("App", () => {
 
     const scanAgain = getByRole("button", { name: "Scan Again" });
     await waitFor(() => expect(scanAgain).toHaveAttribute("title", "Scan Again · Scanned just now"));
-    expect(scanAgain).toBeEnabled();
+    expect(scanAgain).not.toHaveAttribute("aria-disabled");
   });
 
   it("gives each page's toolbar its subtitle: what the page lists, or none on the Overview and Settings", async () => {
@@ -481,7 +481,7 @@ describe("App", () => {
     expect(within(getByRole("banner")).getByRole("button", { name: "Check Again" })).toBeInTheDocument();
   });
 
-  it("hands the focus from an uninstall's confirmation to its log, and back to the row's Uninstall when the log closes", async () => {
+  it("hands the focus from an uninstall's confirmation to its log, and back to the row when the log closes", async () => {
     // The log drawer gives the focus back to what had it as it opened.
     // The Installed page opens it only once the confirmation has closed and
     // given the focus back to the row's Uninstall, so that is where the
@@ -529,7 +529,9 @@ describe("App", () => {
     await waitFor(() => expect(document.activeElement).toBe(log));
     fireEvent.keyDown(log, { key: "Escape" });
 
-    await waitFor(() => expect(document.activeElement).toBe(uninstall));
+    // Its row, not its Uninstall, which says 「正在卸载…」 now, off, and would
+    // hand the focus on to the window's body.
+    await waitFor(() => expect(document.activeElement).toBe(row));
   });
 
   it("opens Settings at the hidden updates from the Overview's count of them, the focus on their first title", async () => {
@@ -800,14 +802,14 @@ describe("the menu bar's items that act in the page", () => {
     await findByText("Everything is up to date");
     const toolbar = getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
     const checkAgain = within(toolbar).getByRole("button", { name: "Check Again" });
-    await waitFor(() => expect(checkAgain).toBeEnabled());
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
     expect(refreshes()).toBe(1);
 
     menu.choose("checkAgain");
 
     await waitFor(() => expect(refreshes()).toBe(2));
     // The header says so, as for its own button.
-    expect(checkAgain).toBeDisabled();
+    expect(checkAgain).toHaveAttribute("aria-disabled", "true");
     expect(checkAgain).toHaveAttribute("title", "Check Again (⌘R) · Checking…");
 
     // Chosen again while it runs: no second check, now or after it.
@@ -816,7 +818,7 @@ describe("the menu bar's items that act in the page", () => {
     expect(waiting).toHaveLength(1);
     waiting[0](snapshot);
 
-    await waitFor(() => expect(checkAgain).toBeEnabled());
+    await waitFor(() => expect(checkAgain).not.toHaveAttribute("aria-disabled"));
     expect(refreshes()).toBe(2);
   });
 
@@ -915,6 +917,6 @@ describe("the menu bar's items that act in the page", () => {
     await waitFor(() => expect(document.activeElement).toBe(box));
     // The startup check, which nothing here waited on, finishes too.
     answers.get("refresh")?.(snapshot);
-    await waitFor(() => expect(getByRole("button", { name: "Check Again" })).toBeEnabled());
+    await waitFor(() => expect(getByRole("button", { name: "Check Again" })).not.toHaveAttribute("aria-disabled"));
   });
 });

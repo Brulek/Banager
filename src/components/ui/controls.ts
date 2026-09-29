@@ -64,6 +64,17 @@ export const ICON_BUTTON =
   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-muted enabled:hover:bg-fill-subtle enabled:active:bg-fill disabled:text-tertiary [&>svg]:size-4";
 
 /**
+ * `ICON_BUTTON` while what it starts is running and it takes no press:
+ * said with `aria-disabled` rather than `disabled`, so that the focus
+ * stays on it -- a disabled button drops the focus to the window's body,
+ * from where the next Tab starts over at the sidebar. It looks as a
+ * disabled `ICON_BUTTON` does: no fill under the pointer or pressed, and
+ * the tertiary grey (a spinner in it says its own colour).
+ */
+export const ICON_BUTTON_BUSY =
+  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-tertiary [&>svg]:size-4";
+
+/**
  * `ICON_BUTTON` for a 28 status bar: 20 by 20, the same glyph at 16 and
  * the same fills -- the operation bar's close ×.
  */

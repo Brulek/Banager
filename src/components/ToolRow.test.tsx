@@ -989,6 +989,21 @@ describe("ToolRow", () => {
       expect(onOpen).toHaveBeenCalledTimes(1);
     });
 
+    it("does what the page says on Enter, where it says: the Installed page's details", () => {
+      const onOpen = vi.fn();
+      const onEnter = vi.fn();
+      const { container } = renderWithProviders(
+        <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON processor" onOpen={onOpen} openLabel="Details: jq" onEnter={onEnter} />
+        </RovingRowProvider>,
+      );
+      const row = container.querySelector("[data-tool-row]") as HTMLElement;
+      expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
+      expect(onEnter).toHaveBeenCalledTimes(1);
+      // Not what pressing the row does, which closes a row already open.
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
     it("keeps its button in the Tab order in a list without arrow keys", () => {
       const { getByRole } = renderWithProviders(selectedRow(false));
       expect(getByRole("button", { name: "Details: jq" })).not.toHaveAttribute("tabindex");

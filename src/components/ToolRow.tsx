@@ -146,6 +146,13 @@ export interface ToolRowContentProps {
   /** That button's accessible name: 「详情：jq」/"Details: jq". */
   openLabel?: string;
   /**
+   * What Enter on the row itself does, in a list whose rows take the
+   * focus: the Installed page shows the row's details and puts the focus
+   * in them -- the inspector is otherwise every control of the list away
+   * by Tab. Left out, Enter does nothing.
+   */
+  onEnter?: () => void;
+  /**
    * The row is the one selected -- the Installed page's, whose inspector
    * shows it (spec R11): filled as a Mac list fills its selection, the
    * accent with white words while the list has the focus, the grey
@@ -335,7 +342,8 @@ function rowName(name: string, statusText: string | undefined, change: ReactNode
  * In a list whose rows ↑ and ↓ move between (`VirtualList`'s
  * `keyboardRows`), the row itself takes the focus: Space ticks its
  * checkbox -- or, on a row with none that opens, does what pressing it
- * does -- and Enter does nothing: it opens nothing and starts nothing.
+ * does -- and Enter starts nothing: it does what `onEnter` says, where the
+ * page says (the Installed page's details), and else nothing.
  * Such a row is a group named for a screen reader as it is scanned:
  * the tool's name, its status word and the change of version an update
  * brings, where it has them -- "git, 2.55.0 → 2.55.1", "gh, Skipped
@@ -365,6 +373,7 @@ export function ToolRow({
   menu,
   onOpen,
   openLabel,
+  onEnter,
   selected = false,
 }: ToolRowProps) {
   // What fits, from the list's width, measured once for the whole list
@@ -403,6 +412,7 @@ export function ToolRow({
       else if (selectable === undefined) onOpen?.();
     } else if (event.key === "Enter") {
       event.preventDefault();
+      onEnter?.();
     }
   };
 

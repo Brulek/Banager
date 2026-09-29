@@ -3797,7 +3797,9 @@ describe("UpdatesPage", () => {
       expect(await findAllByRole("button", { name: ROW_UPDATE })).toContain(rowUpdate);
     });
 
-    it("gives the focus back to Update all once the updates it confirmed have started", async () => {
+    it("puts the focus on the list's first row once the updates Update all confirmed have started", async () => {
+      // Update all has nothing left to start and turns off: the focus goes
+      // to the list, not with the button to the window's body.
       const { getByRole, findByRole, queryByRole, findByText } = renderPage();
 
       await findByText("2 updates available");
@@ -3808,7 +3810,35 @@ describe("UpdatesPage", () => {
 
       await waitFor(() => expect(submittedPlanIds()).toHaveLength(2));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("glib")));
+    });
+
+    it("gives the focus back to Update all when its confirmation is cancelled", async () => {
+      const { getByRole, findByRole, queryByRole, findByText } = renderPage();
+
+      await findByText("2 updates available");
+      const updateAll = getByRole("button", { name: "Update All" });
+      fireEvent.click(updateAll);
+      const dialog = await findByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(updateAll));
+    });
+
+    it("puts the focus on a row once the update its own Update confirmed has started, as the button gives way to its progress", async () => {
+      const { findByRole, queryByRole } = renderPage();
+
+      const onyx = await findRow("onyx");
+      fireEvent.click(within(onyx).getByRole("button", { name: "Update onyx" }));
+      const dialog = await findByRole("dialog");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => expect(submittedPlanIds()).toHaveLength(1));
+      await waitFor(() => expect(queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("onyx")));
+      expect(document.activeElement).not.toBe(document.body);
     });
 
     it("puts the focus on Close when a batch did not all start, and back on Update all after it", async () => {

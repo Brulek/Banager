@@ -364,7 +364,8 @@ describe("SourceNotices' Check again", () => {
 
     // Pressed itself, it runs the one check, the header's off with it.
     fireEvent.click(notice);
-    await waitFor(() => expect(header).toBeDisabled());
+    // The header's keeps the focus while it runs: off as `aria-disabled` says.
+    await waitFor(() => expect(header).toHaveAttribute("aria-disabled", "true"));
     expect(notice).toBeDisabled();
     await act(async () => {
       finish(snapshotAt(6));

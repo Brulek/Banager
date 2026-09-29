@@ -107,8 +107,10 @@ export interface DialogProps {
  * layout effect, which runs ahead of Radix's own -- but only when the
  * focus went with the sheet. When something else took it meanwhile, such
  * as the log an uninstall opens, it stays there. When the opener is gone
- * or off by then, such as a row's Update that gave way to its progress,
- * it goes to the page's title (`focusOrFallback`).
+ * or off by then, it goes to the page's title (`focusOrFallback`) -- and
+ * `onClosed` may put it somewhere better from there: the update
+ * confirmation puts it on the row whose Update gave way to its progress,
+ * or on the list after Update all (`useUpdateConfirm`'s `onStarted`).
  */
 export function Dialog({
   open,

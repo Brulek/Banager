@@ -36,6 +36,7 @@ const item = (of: UpdateCandidate, over: Partial<BatchItem> = {}): BatchItem => 
 
 const confirmOf = (batch: Batch): UpdateConfirm => ({
   openConfirm: vi.fn(),
+  afterClose: vi.fn(),
   returnFocusTo: { current: null },
   dialogOpen: true,
   pageErrors: [],

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { elapsedSince } from "../lib/format";
@@ -25,7 +25,7 @@ import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { NOTICE_GRID } from "../components/SourceNotice";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
-import { VirtualList } from "../components/VirtualList";
+import { VirtualList, type VirtualListHandle } from "../components/VirtualList";
 import { ToolbarItems } from "../components/Toolbar";
 import { useRovingRow } from "../components/rovingRows";
 import { FirstCheck } from "../components/StatusRing";
@@ -354,6 +354,13 @@ export function UpdatesPage() {
   // Installed page's detail (`useUpdateConfirm`).
   const confirm = useUpdateConfirm({ nameOf, compare: compareRows, sourceLabelFor });
   const { openConfirm, dialogOpen, pageErrors } = confirm;
+  // Where the focus goes once what was confirmed has started (`openConfirm`'s
+  // `onStarted`): a row's own Update to its row, whose button gives way to
+  // its progress; Update all and Update selected to the list's first row,
+  // as the button turns off or into Update all -- never the window's body.
+  const listHandle = useRef<VirtualListHandle | null>(null);
+  const focusRow = (candidate: UpdateCandidate) => () => listHandle.current?.focusKey(artifactKeyId(candidate.key));
+  const focusList = () => listHandle.current?.focusFirst();
 
   const stateOf = (candidate: UpdateCandidate): UpdateState =>
     updateStateOf(candidate, instancesById.get(candidate.key.instance_id));
@@ -817,7 +824,7 @@ export function UpdatesPage() {
         outcome
       ) : actionable ? (
         <RowAction
-          onClick={(event) => void openConfirm([candidate], event.currentTarget)}
+          onClick={(event) => void openConfirm([candidate], event.currentTarget, focusRow(candidate))}
           disabled={dialogOpen}
           ariaLabel={retry ? t("updates.retryLabel", { name }) : t("updates.updateLabel", { name })}
         >
@@ -914,7 +921,7 @@ export function UpdatesPage() {
           <button
             type="button"
             disabled={dialogOpen}
-            onClick={(event) => void openConfirm(selectedVisible, event.currentTarget)}
+            onClick={(event) => void openConfirm(selectedVisible, event.currentTarget, focusList)}
             className={BUTTON.regular.default}
           >
             {t("updates.updateSelectedCount", { number: selectedCount })}
@@ -925,7 +932,7 @@ export function UpdatesPage() {
             disabled={startableCount === 0 || dialogOpen}
             onClick={(event) => {
               selectUpdates(startableUpdates.map((u) => u.key));
-              void openConfirm(startableUpdates, event.currentTarget);
+              void openConfirm(startableUpdates, event.currentTarget, focusList);
             }}
             className={BUTTON.regular.default}
           >
@@ -989,6 +996,7 @@ export function UpdatesPage() {
         estimateSize={estimateSize}
         reusable={reusable}
         keyboardRows={keyboardRow}
+        handleRef={listHandle}
         hairlineBefore={hairlineBefore}
         statusColumn={statusColumn}
         renderItem={(item) =>

@@ -4,7 +4,7 @@ import { useCheckAgain, useSnapshot } from "../lib/queries";
 import { elapsedSince, type Elapsed } from "../lib/format";
 import { useUiStore } from "../store/ui";
 import { RefreshIcon, SpinnerIcon } from "./icons";
-import { ICON_BUTTON } from "./ui/controls";
+import { ICON_BUTTON, ICON_BUTTON_BUSY } from "./ui/controls";
 
 /** Whatever `useTranslation()`'s `t` needs here; the same convention as `Translate` in src/lib/sources.ts. */
 type Translate = (key: string, options?: Record<string, string | number>) => string;
@@ -59,7 +59,11 @@ export interface HeaderActionProps {
    */
   tooltip: string;
   onPress: () => void;
-  /** It is running now, whoever started it: the button is off meanwhile, a spinner in its place. */
+  /**
+   * It is running now, whoever started it: the button is off meanwhile, a
+   * spinner in its place -- off as `aria-disabled` says it, a press
+   * ignored, and the focus kept on it (`ICON_BUTTON_BUSY`).
+   */
   busy: boolean;
 }
 
@@ -72,7 +76,14 @@ export interface HeaderActionProps {
  */
 export function HeaderAction({ label, tooltip, onPress, busy }: HeaderActionProps) {
   return (
-    <button type="button" aria-label={label} title={tooltip} onClick={onPress} disabled={busy} className={ICON_BUTTON}>
+    <button
+      type="button"
+      aria-label={label}
+      title={tooltip}
+      aria-disabled={busy ? true : undefined}
+      onClick={busy ? undefined : onPress}
+      className={busy ? ICON_BUTTON_BUSY : ICON_BUTTON}
+    >
       {/* The muted grey, not the tertiary of a button that is off: it is
           working, not unavailable. */}
       {busy ? <SpinnerIcon size={16} className="text-muted" /> : <RefreshIcon size={16} />}

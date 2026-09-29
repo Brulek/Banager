@@ -484,7 +484,7 @@ describe("UnknownPage", () => {
       );
 
       const button = getByRole("button", { name: "Scan Again" });
-      await waitFor(() => expect(button).toBeDisabled());
+      await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
       expect(button.querySelector("svg")?.getAttribute("class")).toContain("animate-spin");
       expect(button).toHaveAttribute("title", "Scan Again · Scanning…");
 
@@ -492,7 +492,7 @@ describe("UnknownPage", () => {
         releaseScan();
       });
       await waitFor(() => expect(button).toHaveAttribute("title", "Scan Again · Scanned just now"));
-      expect(button).toBeEnabled();
+      expect(button).not.toHaveAttribute("aria-disabled");
       // Its own shortcut is none: ⌘R is Check again's.
       expect(button.getAttribute("title")).not.toContain("⌘");
 
@@ -505,7 +505,7 @@ describe("UnknownPage", () => {
     it("says nothing before a scan has answered, and nothing about one that failed, whose reason the page says", async () => {
       const alone = renderWithProviders(<ScanAgain />);
       // Nothing asked for a scan: no time, and the button ready.
-      expect(alone.getByRole("button", { name: "Scan Again" })).toBeEnabled();
+      expect(alone.getByRole("button", { name: "Scan Again" })).not.toHaveAttribute("aria-disabled");
       expect(alone.getByRole("button", { name: "Scan Again" })).toHaveAttribute("title", "Scan Again");
       expect(scanCalls()).toBe(0);
       alone.unmount();
@@ -519,7 +519,7 @@ describe("UnknownPage", () => {
       );
       expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan. Try scanning again later.");
       const button = failed.getByRole("button", { name: "Scan Again" });
-      await waitFor(() => expect(button).toBeEnabled());
+      await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
       expect(button).toHaveAttribute("title", "Scan Again");
     });
 

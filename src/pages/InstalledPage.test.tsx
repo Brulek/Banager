@@ -668,13 +668,15 @@ describe("InstalledPage", () => {
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "submit_operation")).toHaveLength(0);
   });
 
-  it("opens the log once an uninstall has started and the focus is back on the row's Uninstall", async () => {
+  it("opens the log once an uninstall has started and the focus is back on its row", async () => {
     // The log drawer gives the focus back to what had it as it opened: so
     // it opens after the sheet has handed the focus back, and closing it
-    // lands on the row's Uninstall, where the user began.
+    // lands on the row where the user began -- not its Uninstall, off
+    // from now on as 「正在卸载…」, which would drop the focus to the body.
     renderInstalled();
 
-    const uninstall = within(await findRow("jq")).getByRole("button", { name: ROW_UNINSTALL });
+    const row = await findRow("jq");
+    const uninstall = within(row).getByRole("button", { name: ROW_UNINSTALL });
     fireEvent.click(uninstall);
     const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
     const confirm = within(dialog).getByRole("button", { name: "Uninstall" });
@@ -684,7 +686,7 @@ describe("InstalledPage", () => {
     await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
     expect(useUiStore.getState().focusedOpId).toBe(7);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(uninstall);
+    expect(document.activeElement).toBe(row);
   });
 
   it("disables the dialog's confirm button when the plan reports dependents", async () => {
@@ -2284,6 +2286,42 @@ describe("InstalledPage", () => {
       expect(description.getAttribute("title")).toBeNull();
     });
 
+    it("opens on Enter from a row and puts the focus on its heading, and Escape hands it back to the row", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      renderInstalled();
+
+      const jq = await findRow("jq");
+      jq.focus();
+      expect(fireEvent.keyDown(jq, { key: "Enter" })).toBe(false);
+      const inspector = await screen.findByRole("complementary", { name: "jq" });
+      const heading = within(inspector).getByRole("heading", { name: "jq" });
+      await waitFor(() => expect(document.activeElement).toBe(heading));
+      // Focused by script only: not a stop of its own for Tab.
+      expect(heading).toHaveAttribute("tabindex", "-1");
+
+      fireEvent.keyDown(heading, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(rowOf("jq")));
+    });
+
+    it("keeps the inspector open on Enter from its own row, only putting the focus in it, and shows another row's on that row's Enter", async () => {
+      served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
+      renderInstalled();
+
+      await openDetails("jq");
+      const jq = rowOf("jq");
+      jq.focus();
+      fireEvent.keyDown(jq, { key: "Enter" });
+      const inspector = screen.getByRole("complementary", { name: "jq" });
+      expect(document.activeElement).toBe(within(inspector).getByRole("heading", { name: "jq" }));
+
+      const wget = rowOf("wget");
+      wget.focus();
+      fireEvent.keyDown(wget, { key: "Enter" });
+      const other = await screen.findByRole("complementary", { name: "wget" });
+      await waitFor(() => expect(document.activeElement).toBe(within(other).getByRole("heading", { name: "wget" })));
+    });
+
     it("closes with Escape, from the row or from inside it, and with its close button, the focus back on the row", async () => {
       served = { ...snapshot, artifacts: [snapshot.artifacts[0], formula("wget")] };
       renderInstalled();
@@ -2678,10 +2716,11 @@ describe("InstalledPage", () => {
       await waitFor(() => expect(useUiStore.getState().drawerOpen).toBe(true));
       expect(useUiStore.getState().focusedOpId).toBe(7);
       // No dialog to get out of the log's way: the inspector stays until
-      // its tool is gone, and the focus is back on the button that asked,
-      // which the log gives it back to when it closes.
+      // its tool is gone, and the focus is on its heading -- not on the
+      // button that asked, off from now on as 「正在卸载…」 -- which the log
+      // gives it back to when it closes.
       expect(screen.getByRole("complementary", { name: "jq" })).toBe(drawer);
-      await waitFor(() => expect(document.activeElement).toBe(uninstall));
+      await waitFor(() => expect(document.activeElement).toBe(within(drawer).getByRole("heading", { name: "jq" })));
     });
 
     it("gives the focus back to its own Uninstall and Update when their confirmations are dismissed", async () => {

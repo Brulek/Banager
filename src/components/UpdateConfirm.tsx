@@ -121,8 +121,16 @@ export interface UpdateConfirm {
    * Passed rather than read when the sheet opens, because by then the
    * button is disabled (`dialogOpen`), and a click in WebKit does not
    * focus a button at all.
+   *
+   * `onStarted` is where the focus goes instead once the sheet has closed
+   * on a batch that all started: the button pressed is on its way out --
+   * a row's Update gives way to its progress, Update all turns off with
+   * nothing left to start -- and the focus would fall to the window's
+   * body with it. The page puts it on the row, or on the list.
    */
-  openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null): Promise<void>;
+  openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null, onStarted?: VoidFunction): Promise<void>;
+  /** For the dialog to call once it has closed (`Dialog`'s `onClosed`): `onStarted`, where the batch all started. */
+  afterClose(): void;
   /** What the confirmation gives the focus back to (`openConfirm`'s `opener`). */
   returnFocusTo: RefObject<HTMLElement | null>;
   /**
@@ -169,6 +177,11 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
   const batchIdRef = useRef(0);
   // What opened the newest batch (`openConfirm`'s `opener`).
   const openerRef = useRef<HTMLElement | null>(null);
+  // Where the focus goes once the newest batch has all started
+  // (`openConfirm`'s `onStarted`), and -- set once it has -- what is left
+  // for `afterClose` to do.
+  const onStartedRef = useRef<VoidFunction | null>(null);
+  const afterCloseRef = useRef<VoidFunction | null>(null);
 
   function isCurrent(id: number): boolean {
     return batchIdRef.current === id;
@@ -183,7 +196,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     }
   }
 
-  async function openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null) {
+  async function openConfirm(chosen: UpdateCandidate[], opener?: HTMLElement | null, onStarted?: VoidFunction) {
     // A new id retires whatever batch was still planning (`close` retires
     // one too). Planning has no side effect beyond issuing PlanIds that
     // expire on their own, so the newest batch wins and an older one's
@@ -193,6 +206,8 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     batchIdRef.current = id;
     openerRef.current =
       opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    onStartedRef.current = onStarted ?? null;
+    afterCloseRef.current = null;
     // In the list's own order, so the confirmation reads as the rows did.
     const candidates = [...chosen].sort(compare);
     const blank = (c: UpdateCandidate): BatchItem => ({
@@ -276,7 +291,14 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
     const anyFailed = items.some((item) => item.planError !== null || item.submitError !== null);
     // Only a clean sweep closes the dialog; otherwise it stays open and
     // says, per item, what started and what did not, and why.
+    if (!anyFailed) afterCloseRef.current = onStartedRef.current;
     setBatch(anyFailed ? { id, phase: "done", items } : null);
+  }
+
+  function afterClose() {
+    const then = afterCloseRef.current;
+    afterCloseRef.current = null;
+    then?.();
   }
 
   function close() {
@@ -325,6 +347,7 @@ export function useUpdateConfirm({ nameOf, compare, sourceLabelFor }: UpdateConf
 
   return {
     openConfirm,
+    afterClose,
     returnFocusTo: openerRef,
     dialogOpen,
     pageErrors,
@@ -614,6 +637,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       }
       initialFocus={batch?.phase === "done" ? closeRef : updateRef}
       returnFocusTo={confirm.returnFocusTo}
+      onClosed={confirm.afterClose}
       footer={
         batch?.phase === "done" ? (
           // What did and did not start, said: the one thing left is to close it.
