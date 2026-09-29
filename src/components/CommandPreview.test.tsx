@@ -219,6 +219,6 @@ describe("CommandPreview", () => {
     }
     expect(zhCN.uninstall.trashPreview_other).toBe("这 {{count}} 项会移到废纸篓，可以从那里拖回来。");
     expect(zhCN.uninstall.trashPreview_other).not.toMatch(/放回原处/);
-    expect(zhCN.commandPreview.show_other).toBe("查看将执行的命令");
+    expect(zhCN.commandPreview.show_other).toBe("查看命令");
   });
 });

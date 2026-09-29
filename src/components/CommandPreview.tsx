@@ -48,7 +48,7 @@ function trashText(t: TFunction, action: Extract<PlanAction, { TrashPaths: unkno
  * What a confirmation's plans will do, exactly, one click away.
  *
  * For a `Command`: the variables it is given and its argv
- * (`commandText`), behind a disclosure -- 「查看将执行的命令」/
+ * (`commandText`), behind a disclosure -- 「查看命令」/
  * "Show the command", a button that says whether it is open
  * (`aria-expanded`) -- and open from the start while Settings' "Show
  * technical details" is on. One token per `displayToken`, since a plain

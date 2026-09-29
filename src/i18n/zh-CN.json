@@ -210,7 +210,7 @@
     }
   },
   "commandPreview": {
-    "show_other": "查看将执行的命令",
+    "show_other": "查看命令",
     "trashLabel": "移到废纸篓",
     "needsPassword": "部分 App 在这一步会要求输入 Mac 密码。"
   },

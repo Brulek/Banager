@@ -611,7 +611,7 @@ describe("InstalledPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
-    expect(chipDetail(claude, "Manual uninstall")).toHaveTextContent(
+    expect(chipDetail(claude, "Uninstall by hand")).toHaveTextContent(
       "Claude Code has no uninstall command, and Canager can't yet remove its files safely. Follow Claude Code's official documentation to uninstall it.",
     );
     expect(container.querySelector("code")).toBeNull();
@@ -670,7 +670,7 @@ describe("InstalledPage", () => {
 
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
-    expect(chipsOf(claude)).toContain("Manual uninstall");
+    expect(chipsOf(claude)).toContain("Uninstall by hand");
     expect(within(rowOf("jq")).getByText("Homebrew package")).toBeInTheDocument();
     expect(queryByText(/No description/)).toBeNull();
     // Only the Homebrew artifact may offer Uninstall.
@@ -689,7 +689,7 @@ describe("InstalledPage", () => {
     const claude = await findRow("Claude Code");
     expect(within(claude).getByText("Anthropic's AI coding assistant")).toBeInTheDocument();
     expect(getAllByRole("button", { name: "Uninstall" })).toHaveLength(1);
-    expect(queryByText("Manual uninstall")).toBeNull();
+    expect(queryByText("Uninstall by hand")).toBeNull();
   });
 
   it("says what each row's source says it is when the source gave none, in both languages", async () => {
