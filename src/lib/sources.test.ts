@@ -174,7 +174,7 @@ describe("sourceNoticesFor", () => {
     expect(
       sourceNoticesFor(instance({ status: { unavailable: "NotResponding", notes: [] } }), "x")[0]
         .descriptionKey,
-    ).toBe("sourceNotice.unreachable.description");
+    ).toBe("sourceNotice.unreachable.detail");
   });
 
   it("warns that a stale index makes up-to-date unreliable, with the header's Check again", () => {
