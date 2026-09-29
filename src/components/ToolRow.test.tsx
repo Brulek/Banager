@@ -325,6 +325,13 @@ describe("ToolRow", () => {
     fireEvent.click(getByRole("button", { name: "Uninstall" }));
     expect(onUninstall).toHaveBeenCalledTimes(1);
     expect(onOpen).toHaveBeenCalledTimes(1);
+
+    // The avatar sits over the row's button, for its tooltip, and opens
+    // the row all the same, the focus on the row's button.
+    open.blur();
+    fireEvent.click(getByRole("button", { name: "Details: jq" }).parentElement?.querySelector('[title="Homebrew"]') as HTMLElement);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(open);
   });
 
   describe("in a narrow window (R9)", () => {
