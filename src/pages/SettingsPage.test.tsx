@@ -139,7 +139,7 @@ describe("SettingsPage", () => {
     const remindButton = await screen.findByRole("button", { name: "Remind me again about jq" });
     fireEvent.click(remindButton);
 
-    await waitFor(() => expect(screen.getByText("No reminders turned off")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No tools with reminders off")).toBeInTheDocument());
     // The optimistic draft shows the empty list before the save resolves, so
     // the line above alone cannot tell a correct payload from a wrong one.
     expect(lastSaved().ignored_updates).toEqual([]);
@@ -160,7 +160,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
-    const never = screen.getByRole("region", { name: "Never remind me about" });
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
     // A skip names the version it hides; that version is what the entry is.
     expect(within(skipped).getByText("glib")).toBeInTheDocument();
     expect(within(skipped).getByText("2.90.0")).toBeInTheDocument();
@@ -184,9 +184,9 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
-    const never = screen.getByRole("region", { name: "Never remind me about" });
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
     expect(within(skipped).getByText("No skipped versions")).toBeInTheDocument();
-    expect(within(never).getByText("No reminders turned off")).toBeInTheDocument();
+    expect(within(never).getByText("No tools with reminders off")).toBeInTheDocument();
   });
 
   it("removes one skipped version and saves the shorter list, leaving every other entry alone", async () => {
@@ -318,7 +318,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
 
     const skipped = await screen.findByRole("region", { name: "Skipped versions" });
-    const never = screen.getByRole("region", { name: "Never remind me about" });
+    const never = screen.getByRole("region", { name: "Tools with reminders off" });
     const lines = (list: HTMLElement) =>
       within(list)
         .getAllByRole("listitem")
@@ -376,9 +376,9 @@ describe("SettingsPage", () => {
     expect(zhCN.settings.showTechnicalDetails.description).not.toMatch(/版本号/);
   });
 
-  it("calls the two lists 已跳过的版本 and 不再提醒的软件 in Chinese, as they were asked for", () => {
+  it("calls the two lists 已跳过的版本 and 不再提醒的工具 in Chinese", () => {
     expect(zhCN.settings.skippedVersions.title).toBe("已跳过的版本");
-    expect(zhCN.settings.ignoredUpdates.title).toBe("不再提醒的软件");
+    expect(zhCN.settings.ignoredUpdates.title).toBe("不再提醒的工具");
   });
 
   it("round-trips the include-self-updating toggle through set_settings and re-checks for updates", async () => {
@@ -767,7 +767,7 @@ describe("SettingsPage", () => {
       "Also list Homebrew apps that update themselves, like Chrome, under Updates.",
     );
     expect(within(hidden).getByRole("region", { name: "Skipped versions" })).toBeInTheDocument();
-    expect(within(hidden).getByRole("region", { name: "Never remind me about" })).toBeInTheDocument();
+    expect(within(hidden).getByRole("region", { name: "Tools with reminders off" })).toBeInTheDocument();
     // The groups' titles in the section style; nothing else is on the switches' cards.
     for (const name of ["General", "Updates", "Hidden updates"]) {
       expect(screen.getByRole("heading", { level: 2, name }).className).toContain("text-section");
@@ -799,7 +799,7 @@ describe("SettingsPage", () => {
     // its line names Homebrew.
     expect(zhCN.settings.includeSelfUpdating.description).toContain("Homebrew");
     expect(zhCN.settings.skippedVersions.empty).toBe("没有跳过的版本");
-    expect(zhCN.settings.ignoredUpdates.empty).toBe("没有设为不再提醒的软件");
+    expect(zhCN.settings.ignoredUpdates.empty).toBe("没有不再提醒的工具");
   });
 
   it("puts a skipped version back with its own undo, from its card, and leaves the other list alone", async () => {

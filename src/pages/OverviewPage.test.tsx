@@ -397,7 +397,7 @@ describe("OverviewPage", () => {
             [
               "No updates in the sources Canager could check",
               "Nothing to update here",
-              "No pending updates — you've skipped the rest or asked not to be reminded about them.",
+              "No updates to handle. The rest are hidden.",
             ].includes(element.textContent ?? ""),
         ),
       ).toBeInTheDocument(),

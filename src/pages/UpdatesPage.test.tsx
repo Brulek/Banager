@@ -1827,7 +1827,7 @@ describe("UpdatesPage", () => {
   it("hides the row when Never remind me is chosen from its menu, and saves its package, not a version", async () => {
     const { queryByText } = renderWithProviders(<UpdatesPage />);
 
-    chooseFromMenu(await findRow("glib"), "Never remind me about this software");
+    chooseFromMenu(await findRow("glib"), "Stop reminding me");
 
     await waitFor(() => expect(queryByText("glib")).not.toBeInTheDocument());
     expect(savedSettings().ignored_updates).toEqual([glibKey]);
@@ -1915,7 +1915,7 @@ describe("UpdatesPage", () => {
     await showCantUpdate();
     const myForkMenu = openMenu(await findRow("my-fork"));
     expect(
-      within(myForkMenu).getByRole("menuitem", { name: "Never remind me about this software" }),
+      within(myForkMenu).getByRole("menuitem", { name: "Stop reminding me" }),
     ).toBeInTheDocument();
     expect(within(myForkMenu).queryByRole("menuitem", { name: "Skip this version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -1955,7 +1955,7 @@ describe("UpdatesPage", () => {
     expect(within(chromium).getByRole("button", { name: "Update" })).toBeInTheDocument();
     const menu = openMenu(chromium);
     expect(
-      within(menu).getByRole("menuitem", { name: "Never remind me about this software" }),
+      within(menu).getByRole("menuitem", { name: "Stop reminding me" }),
     ).toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: "Skip this version" })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -1995,7 +1995,7 @@ describe("UpdatesPage", () => {
     chooseFromMenu(await findRow("qwen3:8b"), "Skip this version");
 
     await findByText(
-      "No pending updates — you've skipped the rest or asked not to be reminded about them.",
+      "No updates to handle. The rest are hidden.",
     );
     expect(savedSettings().skipped_versions).toEqual([{ key: qwenKey, version: digest }]);
     expect(container.textContent).not.toMatch(/sha256|5642e974/);
@@ -2009,9 +2009,9 @@ describe("UpdatesPage", () => {
       "You'll be reminded again when its next version is out.",
     );
     expect(
-      within(menu).getByRole("menuitem", { name: "Never remind me about this software" }),
+      within(menu).getByRole("menuitem", { name: "Stop reminding me" }),
     ).toHaveAccessibleDescription(
-      "You won't be reminded about any update of this again. You can undo this in Settings.",
+      "You won't be reminded about any update to this tool. Undo it in Settings.",
     );
   });
 
@@ -2029,8 +2029,8 @@ describe("UpdatesPage", () => {
   it("calls them 跳过这个版本 and 不再提醒 in Chinese, and says what each does", () => {
     expect(zhCN.updates.skipVersion).toBe("跳过这个版本");
     expect(zhCN.updates.skipVersionHint).toBe("你会在它出下一个版本时再看到提醒。");
-    expect(zhCN.updates.neverRemind).toBe("不再提醒这个软件");
-    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个软件的任何更新，可在设置里撤销。");
+    expect(zhCN.updates.neverRemind).toBe("不再提醒");
+    expect(zhCN.updates.neverRemindHint).toBe("以后不再提醒这个工具的任何更新，可在设置里撤销。");
     expect(zhCN.common.copyCommand).toBe("拷贝命令");
   });
 
@@ -2046,7 +2046,7 @@ describe("UpdatesPage", () => {
     // would drop the earlier one.
     const menu = openMenu(rowOf("onyx"));
     const skip = within(menu).getByRole("menuitem", { name: "Skip this version" });
-    const never = within(menu).getByRole("menuitem", { name: "Never remind me about this software" });
+    const never = within(menu).getByRole("menuitem", { name: "Stop reminding me" });
     expect(skip).toHaveAttribute("aria-disabled", "true");
     expect(never).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(skip);
@@ -2064,7 +2064,7 @@ describe("UpdatesPage", () => {
       ),
     );
     expect(
-      within(after).getByRole("menuitem", { name: "Never remind me about this software" }),
+      within(after).getByRole("menuitem", { name: "Stop reminding me" }),
     ).not.toHaveAttribute("aria-disabled");
     expect(calls("set_settings")).toHaveLength(1);
   });
@@ -2609,7 +2609,7 @@ describe("UpdatesPage", () => {
     const { findByText, queryByText } = renderWithProviders(<UpdatesPage />);
 
     await findByText(
-      "No pending updates — you've skipped the rest or asked not to be reminded about them.",
+      "No updates to handle. The rest are hidden.",
     );
     expect(queryByText("Everything is up to date")).not.toBeInTheDocument();
   });

@@ -877,7 +877,7 @@ describe("InstalledPage", () => {
       );
       fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
       expect(chipDetail(rowOf("ignored"), "Reminders off")).toHaveTextContent(
-        "You won't be reminded about any update of this again. You can undo this in Settings.",
+        "You won't be reminded about any update to this tool. Undo it in Settings.",
       );
     });
 

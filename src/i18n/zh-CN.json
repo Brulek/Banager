@@ -134,7 +134,7 @@
   },
   "updates": {
     "upToDate": "所有内容都已是最新",
-    "allHidden": "没有待处理的更新，其余的都已跳过或设为不再提醒。",
+    "allHidden": "没有要处理的更新，其余的已隐藏。",
     "noneCheckable": "已检查的来源里没有可更新的内容",
     "count_other": "{{count}} 个可更新",
     "noneActionable": "这里没有可更新的",
@@ -152,8 +152,8 @@
     "selectRow": "选择要更新的 {{name}}",
     "skipVersion": "跳过这个版本",
     "skipVersionHint": "你会在它出下一个版本时再看到提醒。",
-    "neverRemind": "不再提醒这个软件",
-    "neverRemindHint": "以后不再提醒这个软件的任何更新，可在设置里撤销。",
+    "neverRemind": "不再提醒",
+    "neverRemindHint": "以后不再提醒这个工具的任何更新，可在设置里撤销。",
     "saveChoiceFailed": "没能保存这个选择：{{message}}",
     "versionChange": "{{current}} → {{target}}",
     "newVersion": "有新版本",
@@ -509,8 +509,8 @@
       "unskipNewBuildAriaLabel": "取消跳过 {{name}} 的新版本"
     },
     "ignoredUpdates": {
-      "title": "不再提醒的软件",
-      "empty": "没有设为不再提醒的软件",
+      "title": "不再提醒的工具",
+      "empty": "没有不再提醒的工具",
       "unignore": "恢复提醒",
       "unignoreAriaLabel": "恢复 {{name}} 的更新提醒"
     },
