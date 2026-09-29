@@ -179,11 +179,15 @@ export function DisclosureIcon({ size = 10, className }: IconProps) {
   );
 }
 
-/** The row's other actions: three dots in a row. */
+/**
+ * The row's other actions: three dots in a row, each 2.5 across at 16
+ * (3.75 of 24) with about 2 between them -- big enough to be seen as the way to
+ * a menu, as the ellipsis symbol's are.
+ */
 export function MoreIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M6 12h.01M12 12h.01M18 12h.01" strokeWidth={2.75} />
+      <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3.75} />
     </Icon>
   );
 }

@@ -204,7 +204,7 @@ function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded
       data-row-focus=""
       tabIndex={roving?.tabIndex}
       onFocus={roving?.onFocus}
-      className="flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted -outline-offset-3"
+      className="relative flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted"
     >
       <DisclosureIcon size={10} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
       {t("updates.cantUpdateHere", { number: count })}

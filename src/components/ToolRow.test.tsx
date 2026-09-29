@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
 import { MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow } from "./ToolRow";
 import { StatusChip } from "./StatusChip";
+import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
 import { ListWidthProvider } from "./VirtualList";
 import { RovingRowProvider } from "./rovingRows";
@@ -434,9 +435,9 @@ describe("ToolRow", () => {
     );
     const row = container.querySelector("[data-tool-row]") as HTMLElement;
     const trigger = getByRole("button", { name: "More actions for glib" });
-    // The ⋯ is always there, quiet: tertiary at rest, muted under the
-    // pointer or the focus, never a fill.
-    expect(atRest(trigger.className)).toEqual(expect.arrayContaining(["text-tertiary", "h-6", "w-6"]));
+    // The ⋯ is always there, quiet: its own rest grey (3:1), muted under
+    // the pointer or the focus, never a fill.
+    expect(atRest(trigger.className)).toEqual(expect.arrayContaining(["text-glyph-rest", "h-6", "w-6"]));
     expect(trigger.className).toMatch(/group-hover\/row:text-muted/);
     expect(trigger.className).toMatch(/group-focus-within\/row:text-muted/);
     expect(trigger.className).not.toMatch(/\bbg-/);
@@ -497,8 +498,10 @@ describe("ToolRow", () => {
     const row = container.querySelector("[data-tool-row]") as HTMLElement;
     expect(row).toHaveAttribute("tabindex", "0");
     expect(row).toHaveAttribute("data-row-focus");
-    // Its focus ring just inside it, where the list's edge cannot clip it.
-    expect(row.className).toContain("-outline-offset-3");
+    // Its focus ring is index.css's inset one (below), not an outline
+    // round its box: no outline class of its own.
+    expect(row.className).not.toMatch(/outline/);
+    expect(row.className.split(" ")).toContain("relative");
 
     row.focus();
     expect(onFocus).toHaveBeenCalled();
@@ -563,12 +566,31 @@ describe("ToolRow", () => {
       // Every word on it white -- but a panel's opened from it, which
       // keeps the window's colours.
       expect(css).toContain(
-        "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: #fff; }",
+        "[data-list]:focus-within [data-tool-row][data-selected] :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) { color: #fff; }",
       );
       expect(css).toContain(
         "[data-tool-row][data-selected] [data-row-separator], [data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] { display: none; }",
       );
       expect(css).not.toMatch(/:has\([^)]*:has\(/);
+    });
+
+    it("keeps its own buttons seen on the selection: 14% black on the grey, 22% white with white words on the accent", () => {
+      const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf-8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\s+/g, " ");
+      // A grey button's fill is the fill token: the selection sets its own.
+      expect(BUTTON.regular.grey.split(" ")).toEqual(expect.arrayContaining(["bg-fill", "enabled:active:bg-fill-pressed"]));
+      expect(css).toContain(
+        "[data-tool-row][data-selected] { --color-fill: rgb(0 0 0 / 0.14); --color-fill-pressed: rgb(0 0 0 / 0.22); }",
+      );
+      expect(css).toContain(
+        "[data-list]:focus-within [data-tool-row][data-selected] { --color-fill: rgb(255 255 255 / 0.22); --color-fill-pressed: rgb(255 255 255 / 0.32); }",
+      );
+      // Its words are white with the rest of the row's (`.text-foreground`);
+      // one that is off, half white.
+      expect(css).toContain(
+        "[data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) { color: rgb(255 255 255 / 0.5); }",
+      );
     });
 
     it("in a list with arrow keys, leaves Tab to the row and opens it with Space, having no checkbox", () => {
@@ -613,6 +635,29 @@ describe("ToolRow", () => {
       </div>,
     );
     expect((container.querySelector("[data-list-slot]") as HTMLElement).firstElementChild).toHaveAttribute("data-tool-row");
+  });
+
+  it("rings the keyboard's focus inset and rounded, as the selection is, never square round the row", () => {
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.css"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ");
+    // No outline round the line's box, which lies flush with the window's edges.
+    expect(css).toContain("[data-row-focus]:focus-visible, [data-row-open]:focus-visible { outline: none; }");
+    // The ring: 10 in from either side, 2 from the top and bottom, corners
+    // of 8, 3 wide in the focus colour, over the row's words and out of
+    // the pointer's way; none round a selected row.
+    expect(css).toContain(
+      "[data-row-focus]:not([data-selected]):focus-visible::after, [data-tool-row]:not([data-selected]):has(> [data-row-open]:focus-visible)::after { content: \"\"; position: absolute; inset: 2px 10px; z-index: 20; border-radius: 8px; box-shadow: inset 0 0 0 3px var(--color-focus); pointer-events: none; }",
+    );
+    // The row is what the ring is placed in, and its open button a direct child.
+    const { container } = renderWithProviders(
+      <ToolRow adapterId="brew" sourceLabel="Homebrew" name="jq" description="JSON" onOpen={vi.fn()} openLabel="Details: jq" />,
+    );
+    const row = container.querySelector("[data-tool-row]") as HTMLElement;
+    expect(row.className.split(" ")).toContain("relative");
+    const open = row.querySelector("[data-row-open]") as HTMLElement;
+    expect(open.parentElement).toBe(row);
+    expect(open.className).not.toMatch(/outline/);
   });
 
   it("takes no part in a list without arrow keys: not focusable itself", () => {

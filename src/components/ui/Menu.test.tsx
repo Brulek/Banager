@@ -5,6 +5,9 @@ import { renderWithProviders } from "../../test/setup";
 import { createRef } from "react";
 import { act } from "@testing-library/react";
 import { Menu, RowMenuContext, type MenuItem, type OpenMenuAt } from "./Menu";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function items(overrides: Partial<Record<string, Partial<MenuItem>>> = {}): MenuItem[] {
   return [
@@ -195,11 +198,42 @@ describe("Menu", () => {
     expect(document.activeElement).toBe(elsewhere);
   });
 
-  it("is always there on a row, and quiet: 24 wide, the tertiary grey, no fill", () => {
+  it("is always there on a row, and quiet but seen: 24 wide, a grey of its own at rest, no fill", () => {
     const { button } = renderMenu();
-    expect(button.className.split(" ")).toEqual(expect.arrayContaining(["h-6", "w-6", "text-tertiary"]));
+    const classes = button.className.split(" ");
+    // Not the tertiary grey (1.9:1 on white): it is the one way to Skip
+    // this version and Don't remind me.
+    expect(classes).toEqual(expect.arrayContaining(["h-6", "w-6", "text-glyph-rest"]));
+    expect(classes).not.toContain("text-tertiary");
     expect(button.className).not.toMatch(/(^|\s)(hover:)?bg-/);
-    expect(button.className).toContain("aria-expanded:text-muted");
+    // The muted grey under the pointer, with the focus, on a selected row and while open.
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "group-hover/row:text-muted",
+        "group-focus-within/row:text-muted",
+        "group-data-[selected]/row:text-muted",
+        "aria-expanded:text-muted",
+      ]),
+    );
+  });
+
+  it("draws its three dots 2.5 across at 16", () => {
+    const { button } = renderMenu();
+    const glyph = button.querySelector("svg") as SVGElement;
+    expect(glyph.getAttribute("width")).toBe("16");
+    // A dot is a round-capped stroke of no length: as wide as the stroke,
+    // 3.75 of the glyph's 24 units -- 2.5 at 16.
+    const dots = glyph.querySelector("path") as SVGPathElement;
+    expect(Number(dots.getAttribute("stroke-width")) * (16 / 24)).toBeCloseTo(2.5);
+    expect(dots.getAttribute("d")?.match(/h\.01/g)).toHaveLength(3);
+  });
+
+  it("has a rest colour of 3:1, the black's 42% and the white's 45%", () => {
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../index.css"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ");
+    expect(css).toContain("--color-glyph-rest: rgb(0 0 0 / 0.42);");
+    expect(css).toContain("--color-glyph-rest: rgb(255 255 255 / 0.45);");
   });
 
   it("opens at a point for its row, and turns up and leftwards where the window has no room", () => {

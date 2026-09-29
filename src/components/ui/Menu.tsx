@@ -49,12 +49,15 @@ export const RowMenuContext = createContext<RefObject<OpenMenuAt | null> | null>
 
 /**
  * The ⋯ button's look on a row (spec R4): always there, so a row's other
- * actions are never a surprise, but quiet -- the tertiary grey at rest,
- * the muted grey while the row is under the pointer or holds the focus,
- * or the menu is open -- and never a fill. 24 wide, the glyph at 16.
+ * actions are never a surprise, but quiet -- a grey of its own at rest
+ * (`glyph-rest`, 3:1: the only way to Skip this version or Don't remind
+ * me, it must be seen, where the tertiary grey's 1.9:1 hid it), the muted
+ * grey while the row is under the pointer, holds the focus or is
+ * selected, or the menu is open -- and never a fill. 24 wide, the glyph
+ * at 16; white on a selection in the accent (index.css).
  */
 const ROW_TRIGGER =
-  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-tertiary group-hover/row:text-muted group-focus-within/row:text-muted aria-expanded:text-muted [&>svg]:size-4";
+  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-glyph-rest group-hover/row:text-muted group-focus-within/row:text-muted group-data-[selected]/row:text-muted aria-expanded:text-muted [&>svg]:size-4";
 
 /** Where a menu opened at a point sits: from the ⋯ button's box, as `left`/`top` offsets. */
 interface PointPlacement {

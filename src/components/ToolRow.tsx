@@ -208,8 +208,9 @@ function RowName({ name }: { name: string }) {
  * checkbox, avatar, status, action and menu, which each stay their own
  * control. It takes the focus when pressed -- WebKit leaves a clicked
  * button unfocused -- so whatever it opens can hand the focus back to it.
- * Its focus ring (index.css's, for the keyboard) is drawn just inside the
- * row, where the list's own edge cannot clip it.
+ * Its focus ring, and the row's own (index.css's, for the keyboard), is
+ * drawn inset as the selection is, 10 in and rounded, never square round
+ * the row's box.
  *
  * In a list whose rows ↑ and ↓ move between (`VirtualList`'s
  * `keyboardRows`), the row itself takes the focus: Space ticks its
@@ -306,7 +307,7 @@ export function ToolRow({
         onKeyDown={roving === null ? undefined : onKeyDown}
         onContextMenu={onContextMenu}
         data-selected={selected ? "" : undefined}
-        className="group/row relative isolate flex h-13 items-center px-5 -outline-offset-3"
+        className="group/row relative isolate flex h-13 items-center px-5"
       >
         {selected ? (
           // The selection's fill, 10 in from either side with a control's
@@ -330,7 +331,7 @@ export function ToolRow({
             // what Tab and ↑ ↓ reach; this is for the pointer.
             tabIndex={roving === null ? undefined : -1}
             onClick={open}
-            className="absolute inset-0 -outline-offset-3"
+            className="absolute inset-0"
           />
         ) : null}
         {selectable !== undefined ? (

@@ -68,6 +68,10 @@
   --color-muted: rgb(0 0 0 / 0.58);
   --color-muted-foreground: var(--color-muted);
   --color-tertiary: rgb(0 0 0 / 0.259);
+  /* A row's ⋯ at rest: quieter than the muted grey, which it turns to
+     under the pointer, but at 3:1 on white -- it is the one way to Skip
+     this version and Don't remind me, which the tertiary's 1.9:1 hid. */
+  --color-glyph-rest: rgb(0 0 0 / 0.42);
 
   /* Lines and fills: separatorColor; a grey button's fill and a pressed
      one; the quietest fill, a search field's. `border` and `hover` are the
@@ -171,6 +175,7 @@
     --color-foreground: rgb(255 255 255 / 0.847);
     --color-muted: rgb(255 255 255 / 0.549);
     --color-tertiary: rgb(255 255 255 / 0.247);
+    --color-glyph-rest: rgb(255 255 255 / 0.45);
     --color-separator: rgb(255 255 255 / 0.098);
     --color-fill: rgb(255 255 255 / 0.078);
     --color-fill-pressed: rgb(255 255 255 / 0.16);
@@ -329,7 +334,7 @@ body {
  * list's selection is drawn. The words of a panel opened from the row
  * (a status word's ⓘ, the ⋯ menu) keep their own colours. No hairline
  * under the selection, nor over it (the row before's), and no focus ring
- * round it: the fill is where the focus is.
+ * round it (below): the fill is where the focus is.
  */
 [data-row-selection] {
   background-color: var(--color-row-selected);
@@ -338,14 +343,52 @@ body {
   background-color: var(--color-accent);
 }
 [data-list]:focus-within [data-tool-row][data-selected]
-  :is(.text-foreground, .text-muted, .text-tertiary):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) {
+  :is(.text-foreground, .text-muted, .text-tertiary, .text-glyph-rest):not([data-popup-open] > :not(button), [data-popup-open] > :not(button) *) {
   color: #fff;
+}
+/*
+ * The row's own buttons on its selection: a grey button's fill of 7.8%
+ * black is lost on the grey selection and on the accent alike, so it is
+ * darker on the one (14% black) and white on the other (22%, the words
+ * white), as a control on a Mac list's selection is drawn. One that is
+ * off keeps its words at half white there, not the full white of the
+ * words around it.
+ */
+[data-tool-row][data-selected] {
+  --color-fill: rgb(0 0 0 / 0.14);
+  --color-fill-pressed: rgb(0 0 0 / 0.22);
+}
+[data-list]:focus-within [data-tool-row][data-selected] {
+  --color-fill: rgb(255 255 255 / 0.22);
+  --color-fill-pressed: rgb(255 255 255 / 0.32);
+}
+[data-list]:focus-within [data-tool-row][data-selected] button:disabled:is(.text-foreground) {
+  color: rgb(255 255 255 / 0.5);
 }
 [data-tool-row][data-selected] [data-row-separator],
 [data-list-slot]:has(+ [data-list-slot] [data-tool-row][data-selected]) [data-row-separator] {
   display: none;
 }
-[data-tool-row][data-selected]:focus-visible,
-[data-tool-row][data-selected] > [data-row-open]:focus-visible {
+/*
+ * A list line's keyboard focus (a row, a disclosure line: `data-row-focus`,
+ * or a row's own button that opens it): not the square ring round the
+ * line's box, flush with the window's edges as a web page's would be, but
+ * the ring drawn inset as the selection is -- 10 in from either side, 2
+ * from the top and the bottom, with corners of 8 -- in the focus colour,
+ * 3 wide. Drawn over the line (its own layer) and never in the way of the
+ * pointer. None round a selected row, whose fill is where the focus is.
+ */
+[data-row-focus]:focus-visible,
+[data-row-open]:focus-visible {
   outline: none;
+}
+[data-row-focus]:not([data-selected]):focus-visible::after,
+[data-tool-row]:not([data-selected]):has(> [data-row-open]:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 2px 10px;
+  z-index: 20;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 3px var(--color-focus);
+  pointer-events: none;
 }
