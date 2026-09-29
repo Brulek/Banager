@@ -135,7 +135,7 @@ Paths are under a generic home folder, `/Users/you`.
   are last time's. **pip**: read-only, 5 packages, one update listed.
   **Cargo**: one crate from crates.io with an update that compiles
   locally, one installed from git that can never be checked. **Ollama**:
-  two models, one with a newer build from a third-party registry.
+  two models, one with a new version from a third-party registry.
 - **Tools with their own installer**: Claude Code (updates itself, and has
   an update), rustup (an update that cannot be cancelled once it starts),
   Antigravity CLI (a newer version it can only install itself) and Grok

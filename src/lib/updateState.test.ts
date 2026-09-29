@@ -113,7 +113,7 @@ describe("canSkipVersion", () => {
         }),
       ),
     ).toBe(true);
-    // An Ollama model's newer build is offered by its registry manifest's
+    // An Ollama model's new version is offered by its registry manifest's
     // config digest, one per build.
     expect(
       canSkipVersion(

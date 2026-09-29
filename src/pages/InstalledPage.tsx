@@ -72,7 +72,7 @@ interface RowChip {
   id: string;
   label: string;
   detail?: ReactNode;
-  /** What the drawer says under the chip when the row's ⓘ says nothing: a model's newer build. */
+  /** What the drawer says under the chip when the row's ⓘ says nothing: a model's new version. */
   drawerDetail?: ReactNode;
   tone: "neutral" | "accent" | "upToDate";
 }

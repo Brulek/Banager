@@ -362,7 +362,7 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
 
   /**
    * The version jump for the confirmation, or null when there is no honest
-   * one to show: a `Digest` candidate says a newer build of the model is
+   * one to show: a `Digest` candidate says a new version of the model is
    * available, never two digests -- they are from different hash spaces
    * (crates/canager-core/src/adapters/ollama/mod.rs) -- and nothing,
    * rather than a dangling arrow, when a source could name only one side.

@@ -1975,7 +1975,7 @@ describe("UpdatesPage", () => {
     expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
   });
 
-  it("skips an Ollama model's newer build by its digest without ever printing the digest", async () => {
+  it("skips an Ollama model's new version by its digest without ever printing the digest", async () => {
     settings.show_technical_details = true;
     instances = [...snapshot.instances, { ...stoppedOllama, status: { unavailable: null, notes: [] } }];
     const digest = "sha256:9f1c0b6d2e4a7c5b3d1f8a6e4c2b0d9f7e5c3a1b8d6f4e2c0a9b7d5f3e1c8a6b";
