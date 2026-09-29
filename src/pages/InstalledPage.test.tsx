@@ -1683,6 +1683,42 @@ describe("InstalledPage", () => {
       expect(useUiStore.getState().installedFilter).toBe(OLLAMA);
     });
 
+    it("says under a silent source's name only what its title does not", async () => {
+      // A Homebrew left in /usr/local by an Intel Mac, not answering: the
+      // title names it and says it is not responding; the sentence under
+      // it goes on from there, not 「Homebrew（Intel）没有响应」 twice.
+      const intel: ManagerInstance = {
+        ...brew,
+        id: "brew:/usr/local",
+        exe_path: "/usr/local/bin/brew",
+        prefix: "/usr/local",
+        status: { unavailable: "NotResponding", notes: [] },
+      };
+      served = { ...snapshot, instances: [brew, intel] };
+      useUiStore.getState().openInstalled(intel.id);
+      const { findByText, getByRole } = renderInstalled();
+
+      const title = await findByText("Homebrew (Intel) isn't responding");
+      const sentence = screen.getByText("What it has installed can't be shown. Click Check Again later.");
+      expect(sentence).not.toHaveTextContent(/isn't responding|didn't respond/);
+      expect(title.compareDocumentPosition(sentence) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
+      expect(rowNames()).toEqual([]);
+
+      await act(async () => {
+        await i18n.changeLanguage("zh-CN");
+      });
+      try {
+        expect(await findByText("Homebrew（Intel）没有响应")).toBeInTheDocument();
+        const zh = screen.getByText("无法列出它安装的内容。请稍后点按“重新检查”。");
+        expect(zh).not.toHaveTextContent("没有响应");
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage("en");
+        });
+      }
+    });
+
     it("says a source that answered has nothing installed with it", async () => {
       const npm: ManagerInstance = { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm" };
       served = { ...snapshot, instances: [brew, npm] };

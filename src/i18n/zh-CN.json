@@ -147,7 +147,8 @@
     },
     "sourceEmpty": {
       "title": "没有用{{source}}安装的工具",
-      "description": "用{{source}}安装的工具会显示在这里。"
+      "description": "用{{source}}安装的工具会显示在这里。",
+      "unreachable": "无法列出它安装的内容。请稍后点按“重新检查”。"
     },
     "installedOn": "安装日期",
     "size": "大小"

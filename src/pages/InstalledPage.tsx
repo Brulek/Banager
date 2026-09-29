@@ -287,12 +287,23 @@ function FactsGroup({ facts }: { facts: InspectorFact[] }) {
 }
 
 /**
+ * Where a warning's own sentence opens by saying its title again --
+ * 「uv没有响应，无法列出…」 under 「uv没有响应」 -- the sentence the empty
+ * page says under that title instead: only what the title does not.
+ */
+const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
+  "sourceNotice.unreachable.description": "installed.sourceEmpty.unreachable",
+};
+
+/**
  * The page on one source that has nothing to list (spec R8): why, in the
- * words of its first warning -- 「uv没有响应」 over 「uv没有响应，无法列出
- * 它安装的内容。」 -- or, for a source that answered, that nothing is
- * installed with it; and Check again, the header's, which shows what it
- * has once it answers or has something. In the list's place, so the
- * source's notice is not said a second time over it.
+ * words of its first warning -- 「uv没有响应」 over 「无法列出它安装的内
+ * 容。请稍后点按“重新检查”。」, the notice's sentence less what its title
+ * has just said (`EMPTY_PAGE_DESCRIPTION_KEYS`) -- or, for a source that
+ * answered, that nothing is installed with it; and Check again, the
+ * header's, which shows what it has once it answers or has something. In
+ * the list's place, so the source's notice is not said a second time over
+ * it.
  */
 function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: string }) {
   const { t } = useTranslation();
@@ -307,7 +318,7 @@ function SourceEmpty({ instance, label }: { instance: ManagerInstance; label: st
       description={
         warning === null
           ? t("installed.sourceEmpty.description", { source: label })
-          : t(warning.descriptionKey, warning.values)
+          : t(EMPTY_PAGE_DESCRIPTION_KEYS[warning.descriptionKey] ?? warning.descriptionKey, warning.values)
       }
       action={{ label: t("header.checkAgain"), onClick: checkAgain, disabled: checking }}
     />

@@ -162,7 +162,8 @@
     },
     "sourceEmpty": {
       "title": "Nothing installed with {{source}}",
-      "description": "Tools you install with {{source}} show up here."
+      "description": "Tools you install with {{source}} show up here.",
+      "unreachable": "What it has installed can't be shown. Click Check Again later."
     },
     "installedOn": "Date Installed",
     "size": "Size"
