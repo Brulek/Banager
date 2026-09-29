@@ -1408,7 +1408,7 @@ describe("UpdatesPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
     // The dead id is not retried on its own, and the dialog stays open so
     // the failure can be read rather than blinking away.
@@ -1505,7 +1505,7 @@ describe("UpdatesPage", () => {
     // glib started, onyx did not, and the dialog says which is which.
     await within(dialog).findByText("Started");
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
+      "Couldn't start the update: This confirmation is more than 10 minutes old, so nothing ran. Open it again and confirm.",
     );
     expect(submittedPlanIds()).toEqual([{ planId: "1" }, { planId: "2" }]);
     // A started item leaves the selection at once; the failed one stays.

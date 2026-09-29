@@ -58,7 +58,7 @@ describe("SnapshotStatus", () => {
     // installer is looked for only where its installer puts it, so one
     // somewhere else is not found although it is there.
     expect(await screen.findByText("Canager found nothing it can manage")).toBeInTheDocument();
-    expect(screen.getByText("Homebrew is a good place to start.")).toBeInTheDocument();
+    expect(screen.getByText("Install Homebrew first.")).toBeInTheDocument();
     expect(screen.queryByText(/None of them are set up|yet/)).not.toBeInTheDocument();
     // What Canager works with, and where it looks, behind Details.
     const details = screen.getByRole("button", { name: "Details: Canager found nothing it can manage" });

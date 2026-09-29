@@ -4,7 +4,7 @@
     "operationBarRegion": "Operation status"
   },
   "nav": {
-    "label": "Sections",
+    "label": "Navigation",
     "overview": "Overview",
     "updates": "Updates",
     "installed": "Installed",
@@ -216,7 +216,7 @@
     "fewerTools": "Show fewer",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
-    "submitFailed": "Could not start the update: {{message}}",
+    "submitFailed": "Couldn't start the update: {{message}}",
     "blocked": {
       "Pinned": {
         "badge": "Pinned",
@@ -622,7 +622,7 @@
     },
     "noSources": {
       "title": "Canager found nothing it can manage",
-      "description": "Homebrew is a good place to start."
+      "description": "Install Homebrew first."
     },
     "refreshFailed": {
       "title": "Some checks didn't finish",

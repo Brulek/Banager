@@ -334,7 +334,7 @@ describe("Sidebar", () => {
       <Sidebar page="overview" onSelectPage={vi.fn()} />,
     );
 
-    const firstRow = getByRole("navigation", { name: "Sections" }).firstElementChild as HTMLElement;
+    const firstRow = getByRole("navigation", { name: "Navigation" }).firstElementChild as HTMLElement;
     // Nothing under the lights: no text, no control.
     expect(firstRow.childElementCount).toBe(0);
     expect(firstRow.textContent).toBe("");
