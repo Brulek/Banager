@@ -1,6 +1,6 @@
 //! Quitting while an operation is under way. Closing the window only hides
 //! it (window.rs), and whatever runs carries on. Quitting through the
-//! question below -- 「仍然退出」, or a question the page never showed --
+//! question below -- 「退出」, or a question the page never showed --
 //! first cancels every operation that can be cancelled, as the operation
 //! bar's 「全部取消」 does (`Session::cancel`): one still queued never
 //! starts, and a running command is stopped partway, which can leave the
@@ -16,7 +16,7 @@
 //! answers yes and Canager quits as it always has. While one is not, the
 //! quit is called off, the window comes back, and the page asks
 //! (src/components/QuitQuestion.tsx): 「还有 N 个操作没完成」, with
-//! 「继续等待」, which leaves Canager running, and 「仍然退出」, which quits
+//! 「取消」, which leaves Canager running, and 「退出」, which quits
 //! (`quit_anyway`).
 //!
 //! A quit is called off only while the page is there to ask: one that
@@ -27,7 +27,7 @@
 //! can also go without a word: reloaded, or its web content crashed. So
 //! once asked, the page has `SHOW_WITHIN`, 2 seconds, to say that the
 //! question is on screen (`quit_question_shown`); without that, Canager
-//! quits, as it does on 「仍然退出」 (`quit_unless_shown`). 「继续等待」, or
+//! quits, as it does on 「退出」 (`quit_unless_shown`). 「取消」, or
 //! Escape, says so too (`quit_kept_waiting`), which stops that wait from
 //! quitting should the first word not have got through; and a quit
 //! repeated while the question is pending asks it again without a second
@@ -48,7 +48,7 @@
 //! Logging out, restarting or shutting down: the method answers at once,
 //! so macOS is never kept waiting on Canager. While an operation is under
 //! way the answer is no, which calls the logout off, and the window asks
-//! as it does for ⌘Q; after 「仍然退出」 Canager quits, and the logout has
+//! as it does for ⌘Q; after 「退出」 Canager quits, and the logout has
 //! to be started again. Holding the logout until the user answers would
 //! take AppKit's `NSTerminateLater`, then `replyToApplicationShouldTerminate:`,
 //! which tauri does not offer: until the reply, AppKit runs the main run
@@ -111,7 +111,7 @@ pub enum OnQuit {
 /// What a request to quit does, with `unfinished` operations not `Done`:
 /// it asks while at least one is not and the page listens for the
 /// question (`page_asks`), and quits otherwise -- and always once the user
-/// has chosen 「仍然退出」 (`confirmed`).
+/// has chosen 「退出」 (`confirmed`).
 pub fn on_quit(unfinished: usize, page_asks: bool, confirmed: bool) -> OnQuit {
     if unfinished > 0 && page_asks && !confirmed {
         OnQuit::Ask
@@ -134,7 +134,7 @@ pub enum OnceAsked {
 /// What becomes of a quit the page was asked about, `SHOW_WITHIN` after
 /// asking: it waits for the user once the page has said the question is
 /// on screen (`shown`), and there is nothing left to do once the user has
-/// answered 「仍然退出」 (`confirmed`), which quits already; with neither,
+/// answered 「退出」 (`confirmed`), which quits already; with neither,
 /// Canager quits.
 pub fn once_asked(shown: bool, confirmed: bool) -> OnceAsked {
     if shown || confirmed {
@@ -228,8 +228,8 @@ pub struct Question {
 }
 
 /// Whether a quit asks first -- whether the page listens for the question,
-/// and whether the user has already answered 「仍然退出」 -- and which
-/// questions are settled: on screen, or answered 「继续等待」. Managed on
+/// and whether the user has already answered 「退出」 -- and which
+/// questions are settled: on screen, or answered 「取消」. Managed on
 /// the builder in `run()`; in memory only, for this run.
 #[derive(Debug, Default)]
 pub struct QuitGuard {
@@ -240,7 +240,7 @@ pub struct QuitGuard {
     /// The newest question's number, counting from 1; 0 before the first.
     asked: AtomicU64,
     /// The newest question the page has said is on screen, or the user
-    /// has answered 「继续等待」 to; 0 before any. A question newer than
+    /// has answered 「取消」 to; 0 before any. A question newer than
     /// this is pending: its fallback still runs.
     settled: AtomicU64,
 }
@@ -253,7 +253,7 @@ impl QuitGuard {
         self.page_asks.store(asks, Ordering::SeqCst);
     }
 
-    /// The user answered 「仍然退出」: every quit from now on quits.
+    /// The user answered 「退出」: every quit from now on quits.
     pub fn confirm(&self) {
         self.confirmed.store(true, Ordering::SeqCst);
     }
@@ -307,7 +307,7 @@ impl QuitGuard {
         self.settle(question);
     }
 
-    /// The user answered question `question` 「继续等待」 -- or the sheet
+    /// The user answered question `question` 「取消」 -- or the sheet
     /// went by itself, everything having finished: its fallback, should it
     /// still run, does not quit, whether or not the page's word that the
     /// question was on screen got through. A number that no question has
@@ -397,7 +397,7 @@ async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -
     guard.once_asked(question) == OnceAsked::Quit
 }
 
-/// Canager quits: 「仍然退出」 (`quit_anyway`), and a question the page never
+/// Canager quits: 「退出」 (`quit_anyway`), and a question the page never
 /// showed (`quit_unless_shown`). A quit that comes while this runs is called
 /// off, and this goes on (`QuitGuard::stop`). First every operation that can
 /// be cancelled is, as
@@ -454,7 +454,7 @@ pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
     guard.shown(question);
 }
 
-/// The user answered question `question` 「继续等待」 (or Escape), or the
+/// The user answered question `question` 「取消」 (or Escape), or the
 /// sheet went by itself, everything having finished: Canager does not quit
 /// for want of word from the page (`QuitGuard::kept_waiting`) -- which
 /// matters when that word, `quit_question_shown`, did not get through.
@@ -463,7 +463,7 @@ pub fn quit_kept_waiting(guard: State<'_, QuitGuard>, question: u64) {
     guard.kept_waiting(question);
 }
 
-/// 「仍然退出」: Canager cancels what can be cancelled, waits for it to stop,
+/// 「退出」: Canager cancels what can be cancelled, waits for it to stop,
 /// and quits (`quit_now`); the answer comes only if Canager is still there
 /// to give it. Also the page's answer when a quit it was asked about finds
 /// nothing left to wait for.
@@ -827,7 +827,7 @@ mod tests {
             OnQuit::Quit,
             "no page listens for the question: a quit nobody asks about would never happen"
         );
-        assert_eq!(on_quit(1, true, true), OnQuit::Quit, "「仍然退出」");
+        assert_eq!(on_quit(1, true, true), OnQuit::Quit, "「退出」");
         assert_eq!(on_quit(0, false, true), OnQuit::Quit);
     }
 
@@ -870,13 +870,13 @@ mod tests {
         assert_eq!(
             guard.decide(2),
             OnQuit::Ask,
-            "「继续等待」 changes nothing here"
+            "「取消」 changes nothing here"
         );
         guard.confirm();
         assert_eq!(
             guard.decide(2),
             OnQuit::Quit,
-            "「仍然退出」, and every quit after it"
+            "「退出」, and every quit after it"
         );
     }
 
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(
             once_asked(false, true),
             OnceAsked::Wait,
-            "「仍然退出」 was chosen, and Canager quits already"
+            "「退出」 was chosen, and Canager quits already"
         );
         assert_eq!(once_asked(true, true), OnceAsked::Wait);
     }
@@ -994,7 +994,7 @@ mod tests {
         assert_eq!(
             guard.once_asked(fifth),
             OnceAsked::Wait,
-            "「仍然退出」: Canager quits already"
+            "「退出」: Canager quits already"
         );
     }
 
@@ -1038,7 +1038,7 @@ mod tests {
         assert!(wait_for_the_page(&guard, next, within).await);
     }
 
-    /// 「继续等待」 while the page's word that the question is on screen has
+    /// 「取消」 while the page's word that the question is on screen has
     /// not got through: Canager does not quit.
     #[tokio::test]
     async fn test_keep_waiting_stops_the_wait_from_quitting_without_word_that_it_was_shown() {

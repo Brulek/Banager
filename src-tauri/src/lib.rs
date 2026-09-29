@@ -106,7 +106,7 @@ pub fn run() {
         // set as one is handed off, cleared as the window comes back.
         .manage(window::NotificationPending::default())
         // Whether a quit asks first (quit.rs): while the page listens for
-        // the question, until the user answers 「仍然退出」; and which
+        // the question, until the user answers 「退出」; and which
         // questions the page has said are on screen.
         .manage(quit::QuitGuard::default())
         // Its items that act in the page bring the window back and tell it;

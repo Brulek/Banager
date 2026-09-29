@@ -153,7 +153,7 @@ Paths are under a generic home folder, `/Users/you`.
 - A refresh takes about a second; the first one runs at startup, as in the
   app, so for a moment the page header says "Checking…", and so do the
   Overview, Updates and Installed pages, under the turning ring and over
-  why the first check takes a while. Check again in the header runs one at
+  why the first check takes a while. Check Again in the toolbar runs one at
   any time.
 - Update and Uninstall show the preview the real adapter would build
   (an uninstall's sentence under the tool about what goes and what stays,
@@ -222,12 +222,12 @@ and the split memo in `useStartableUpdates`.
 | Scrolling the Installed list to its end (6000 px/s): longest task, longest frame | 28 ms, 33 ms | 9 ms, 17 ms |
 | The same with the CPU slowed 4×: tasks over 50 ms, frames drawn | 48, 224 | 0, 390 |
 | Scrolling the Updates list: longest task | 13 ms | 5 ms |
-| Update all, submitting 121 plans: main thread busy (4× slower CPU) | 0.48 s (2.61 s) | 0.43 s (2.43 s) |
+| Update All, submitting 121 plans: main thread busy (4× slower CPU) | 0.48 s (2.61 s) | 0.43 s (2.43 s) |
 
 Every interaction took under 100 ms before and after, and about the
 same: opening Installed from the sidebar 56 ms, each key of a search
 for "py" 32 and 24 ms, a source filter 24 ms, Select all 24–32 ms,
-Update all's sheet 24 ms (ready 0.43 s later, 0.4 s of it the mock's
+Update All's sheet 24 ms (ready 0.43 s later, 0.4 s of it the mock's
 planning). What changed is scrolling, which drew the whole page again
 at every step. With the CPU slowed 4×, opening Installed takes 150 ms
 and a key or a filter 64–72 ms, most of it React's development checks:
