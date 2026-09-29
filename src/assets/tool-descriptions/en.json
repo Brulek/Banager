@@ -501,7 +501,7 @@
   "pypi:black": "Code formatter",
   "pypi:bpytop": "Resource monitor for CPU, memory, disks, network, processes",
   "pypi:briefcase": "Converts a Python project into a standalone native app",
-  "pypi:build": "Python build frontend",
+  "pypi:build": "Builds Python projects into installable packages",
   "pypi:bump-my-version": "Version bumper for Python projects",
   "pypi:bumpversion": "Version bumper for software",
   "pypi:calibre": "Probability calibration and evaluation for machine learning",
