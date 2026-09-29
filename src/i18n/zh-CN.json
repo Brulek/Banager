@@ -163,7 +163,7 @@
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "查不到它的最新版本。",
-    "cannotCheckSummary_other": "这里有 {{count}} 项没能检查更新。想看原因，在“设置”里打开“{{setting}}”。",
+    "cannotCheckSummary_other": "这里有 {{count}} 个工具没能检查更新。想看原因，请在「设置」里打开「{{setting}}」。",
     "sourceUnavailable": "暂时不能更新",
     "unavailableDetail": {
       "NotRunning": "{{source}} 没有运行。打开它，再点「重新检查」。",
