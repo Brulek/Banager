@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useCheckAgain, useSnapshot } from "../lib/queries";
+import { useCheckAgain, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { failedSourceNames, hasSourceNotice, namesInSentence } from "../lib/sources";
 import { useUiStore } from "../store/ui";
@@ -27,19 +27,23 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
   const { checkAgain, checking, error: checkError } = useCheckAgain();
   const startupRefreshError = useUiStore((s) => s.startupRefreshError);
   const snapshot = snapshotQuery.data;
+  const { data: settings } = useSettings();
+  const technical = settings?.show_technical_details ?? false;
 
   // What Canager works with, and where it looks, behind "Details" on the
   // two states that found nothing. "Not found", never "not installed": a
   // tool with its own installer is looked for in its default location
   // only, so one somewhere else is not found although it is there.
   // Why loading failed: in a person's words where the message says
-  // (`failureCause`, spec R10), else the message itself -- there is
-  // nothing else on the page to go by.
+  // (`failureCause`, spec R10); else the message itself with "Show
+  // technical details" on, as every other raw error is, and without it
+  // what to do next.
   const whyFailed = (message: string): string => {
     const cause = failureCause(message);
-    return cause !== null
-      ? t(FAILURE_CAUSE_KEYS[cause].line)
-      : t("emptyStates.loadFailed.description", { message });
+    if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].line);
+    return technical
+      ? t("emptyStates.loadFailed.description", { message })
+      : t("emptyStates.loadFailed.nextStep");
   };
 
   const supportedList = (title: string): EmptyStateDetail => ({

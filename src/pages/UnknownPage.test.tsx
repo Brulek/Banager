@@ -517,7 +517,7 @@ describe("UnknownPage", () => {
           <UnknownPage />
         </>,
       );
-      expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan: boom");
+      expect(await failed.findByRole("alert")).toHaveTextContent("Couldn't scan. Try scanning again later.");
       const button = failed.getByRole("button", { name: "Scan Again" });
       await waitFor(() => expect(button).toBeEnabled());
       expect(button).toHaveAttribute("title", "Scan Again");
@@ -560,10 +560,15 @@ describe("UnknownPage", () => {
     await waitFor(() => expect(scanCalls()).toBe(2));
   });
 
-  it("shows the backend's reason when the scan fails", async () => {
+  it("says a scan failed and what to do, and the scan's own words only with technical details on", async () => {
     scanFailure = "boom";
-    const { findByRole } = renderWithProviders(<UnknownPage />);
+    const plain = renderWithProviders(<UnknownPage />);
+    expect(await plain.findByRole("alert")).toHaveTextContent("Couldn't scan. Try scanning again later.");
+    expect(plain.queryByText(/boom/)).toBeNull();
+    plain.unmount();
 
+    settings = { ...settings, show_technical_details: true };
+    const { findByRole } = renderWithProviders(<UnknownPage />);
     const alert = await findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't scan: boom");
   });

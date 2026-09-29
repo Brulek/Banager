@@ -339,7 +339,11 @@ export function UnknownPage() {
       </div>
       {scan.isError ? (
         <p role="alert" className="px-5 pb-2 text-body text-danger-text">
-          {t("unknown.scanFailed", { message: scan.error.message })}
+          {/* The scan's own words only with "Show technical details" on, as
+              every other raw error; without it, what to do. */}
+          {settings?.show_technical_details
+            ? t("unknown.scanFailed", { message: scan.error.message })
+            : t("unknown.scanFailedPlain")}
         </p>
       ) : null}
       {result === undefined ? (

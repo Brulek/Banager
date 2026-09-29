@@ -610,13 +610,15 @@
     "scannedHoursAgo_other": "上次扫描：{{count}}小时前",
     "scannedDaysAgo_other": "上次扫描：{{count}}天前",
     "scanFailed": "无法扫描：{{message}}",
+    "scanFailedPlain": "无法扫描。请稍后重新扫描。",
     "empty": "没有来源不明的程序",
     "emptyChecked": "已检查的位置中没有来源不明的程序"
   },
   "emptyStates": {
     "loadFailed": {
       "title": "无法读取已安装的工具",
-      "description": "原因：{{message}}"
+      "description": "原因：{{message}}",
+      "nextStep": "请重新检查。如果仍然不行，请退出并重新打开Canager。"
     },
     "noSources": {
       "title": "没有找到可管理的工具",

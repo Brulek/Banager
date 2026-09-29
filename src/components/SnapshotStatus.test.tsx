@@ -268,7 +268,10 @@ describe("SnapshotStatus", () => {
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
+    // What to do, not the backend's words: those are for "Show technical
+    // details", as every raw error is.
+    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(screen.queryByText(/brew: command not found/)).toBeNull();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 
@@ -316,20 +319,41 @@ describe("SnapshotStatus", () => {
     expect(screen.queryByText("Couldn't load installed tools")).not.toBeInTheDocument();
   });
 
-  it("shows the backend's error verbatim when the snapshot itself cannot be loaded", async () => {
+  it("says what to do when the snapshot itself cannot be loaded, and the backend's words only with technical details on", async () => {
     // get_snapshot rejects with a bare string (Task 10's call() turns it
     // into an Error); without this branch the page would be blank.
     vi.mocked(invoke).mockRejectedValue("brew: command not found" as never);
 
-    renderWithProviders(
+    const plain = renderWithProviders(
       <SnapshotStatus>
         <p>installed list</p>
       </SnapshotStatus>,
     );
 
     expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
-    expect(screen.getByText(/brew: command not found/)).toBeInTheDocument();
+    expect(screen.getByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(screen.queryByText(/brew: command not found/)).toBeNull();
     expect(screen.queryByText("installed list")).not.toBeInTheDocument();
+    plain.unmount();
+
+    vi.mocked(invoke).mockImplementation(((cmd: string) =>
+      cmd === "get_settings"
+        ? Promise.resolve({
+            language: "System",
+            show_technical_details: true,
+            ignored_updates: [],
+            skipped_versions: [],
+            include_self_updating: false,
+            auto_check: false,
+            notify_updates: false,
+          })
+        : Promise.reject("brew: command not found")) as never);
+    renderWithProviders(
+      <SnapshotStatus>
+        <p>installed list</p>
+      </SnapshotStatus>,
+    );
+    expect(await screen.findByText(/brew: command not found/)).toBeInTheDocument();
   });
 
   it("shows a stale banner above the existing data when the last refresh failed, with no button of its own", async () => {
@@ -406,8 +430,9 @@ describe("SnapshotStatus", () => {
       fail("the session is gone");
     });
 
-    // It failed again: its words, and the button back on.
-    expect(await screen.findByText(/the session is gone/)).toBeInTheDocument();
+    // It failed again: what to do, and the button back on.
+    expect(await screen.findByText("Check again. If that doesn't help, quit and reopen Canager.")).toBeInTheDocument();
+    expect(screen.queryByText(/the session is gone/)).toBeNull();
     expect(screen.getByRole("button", { name: "Check Again" })).toBeEnabled();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "refresh")).toHaveLength(1);
   });

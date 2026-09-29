@@ -665,13 +665,15 @@
     "scannedDaysAgo_one": "Scanned {{count}} day ago",
     "scannedDaysAgo_other": "Scanned {{count}} days ago",
     "scanFailed": "Couldn't scan: {{message}}",
+    "scanFailedPlain": "Couldn't scan. Try scanning again later.",
     "empty": "No programs of unknown origin",
     "emptyChecked": "No programs of unknown origin in the places checked"
   },
   "emptyStates": {
     "loadFailed": {
       "title": "Couldn't load installed tools",
-      "description": "Reason: {{message}}"
+      "description": "Reason: {{message}}",
+      "nextStep": "Check again. If that doesn't help, quit and reopen Canager."
     },
     "noSources": {
       "title": "No tools to manage",

@@ -112,12 +112,13 @@ describe("the polish-3 copy rules, in Chinese", () => {
 
   it("names Canager only where it is the one doing the work, the one to quit, or the name itself", () => {
     // The app's name, what the daily check does, where to allow its
-    // notifications, not to quit it mid-operation, and whose built-in
-    // logos these are. Everywhere else the sentence has no subject, or
+    // notifications, not to quit it mid-operation, to reopen it when it
+    // can't load, and whose built-in logos these are. Everywhere else the sentence has no subject, or
     // says 无法…, the way macOS's own strings do.
     const allowed = [
       "app.name",
       "operations.noCancelHint",
+      "emptyStates.loadFailed.nextStep",
       "settings.autoCheck.description",
       "settings.notifyUpdates.refused",
       "settings.iconCredits.simpleIcons",
