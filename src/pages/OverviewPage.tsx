@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
 import { elapsedSince } from "../lib/format";
+import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import {
   ADAPTER_LABEL_KEYS,
   openOllamaErrorDetail,
@@ -317,7 +318,18 @@ export function OverviewPage() {
   const lastChecked = refreshedAt === null ? null : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now));
   let line: ReactNode = null;
   if (failed) {
-    line = t("emptyStates.loadFailed.description", { message: checkFailure });
+    // Why, in a person's words, where the message says (spec R10): 「网络
+    // 连接失败，请检查网络连接后重试。」, 「Homebrew正在更新软件清单，请稍后
+    // 再试。」. Otherwise its own words only with technical details on --
+    // they name commands and are often English -- and else only when to
+    // try again.
+    const cause = failureCause(checkFailure);
+    line =
+      cause !== null
+        ? t(FAILURE_CAUSE_KEYS[cause].line)
+        : settings.show_technical_details
+          ? t("emptyStates.loadFailed.description", { message: checkFailure })
+          : t("overview.checkFailedTryLater");
   } else if (checking) {
     line = t("common.checking");
   } else if (summary.kind === "nothingToUpdate") {

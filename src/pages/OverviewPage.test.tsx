@@ -801,7 +801,8 @@ describe("OverviewPage", () => {
     // in the middle of the 48 slot, and its reason under it.
     expect(title.className).toContain("text-foreground");
     expect(title.className).not.toContain("text-danger");
-    expect(title.nextElementSibling?.textContent).toBe("Reason: brew update timed out");
+    // In a person's words: Homebrew was updating its list, so try later.
+    expect(title.nextElementSibling?.textContent).toBe("Homebrew is updating its software list. Try again later.");
     expect(title.nextElementSibling?.className).toContain("text-muted");
     expect(symbolOf(container).getAttribute("data-symbol")).toBe("failed");
     const warning = symbolOf(container).querySelector("svg");
@@ -821,6 +822,32 @@ describe("OverviewPage", () => {
     act(() => useUiStore.setState({ startupRefreshError: null }));
     expect(await findByRole("heading", { level: 2, name: "1 tool can be updated" })).toBeInTheDocument();
     expect(queryByRole("alert")).toBeNull();
+  });
+
+  it.each([
+    [
+      "a network failure, as that and the next step",
+      "error sending request for url (https://formulae.brew.sh/api/formula.jws.json): dns error",
+      false,
+      "The connection failed. Check your internet connection, then try again.",
+    ],
+    ["a full disk, as that and the next step", "No space left on device (os error 28)", false, "The disk is full. Free up some space, then try again."],
+    ["anything else, without its own words", "command refresh failed: the backend is not responding", false, "Try again later."],
+    [
+      "anything else, in its own words with technical details on",
+      "command refresh failed: the backend is not responding",
+      true,
+      "Reason: command refresh failed: the backend is not responding",
+    ],
+  ])("says why the last check failed: %s", async (_what, message, technical, line) => {
+    settings = { ...settings, show_technical_details: technical };
+    served = snapshotWith({ updates: [candidate(formula("glib"))] });
+    useUiStore.setState({ startupRefreshError: message });
+    const { findByRole } = renderOverview();
+
+    const alert = await findByRole("alert");
+    const title = within(alert).getByRole("heading", { level: 2, name: "Couldn't check" });
+    expect(title.nextElementSibling?.textContent).toBe(line);
   });
 
   it("gives each source with a problem one row in a group of its own, with its words and its own button, as the lists do", async () => {

@@ -91,7 +91,8 @@
     "checksUnfinished_one": "{{count}} check didn't finish",
     "checksUnfinished_other": "{{count}} checks didn't finish",
     "listSeparator": ", ",
-    "attentionLabel": "Needs attention"
+    "attentionLabel": "Needs attention",
+    "checkFailedTryLater": "Try again later."
   },
   "adapters": {
     "brew": "Homebrew",
@@ -434,16 +435,21 @@
     "title": "{{kind}} {{name}}",
     "noCancelHint": "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
     "noCancelHintDetail": "Wait until the bottom of the window shows the result before you quit or shut down.",
+    "stop": "Stop",
     "logDrawerTitle": "Operation log",
     "batch": {
       "running": "Working on {{current}} of {{total}}",
       "allSucceeded_one": "{{count}} succeeded",
       "allSucceeded_other": "All {{count}} succeeded",
+      "allUpdated_one": "Updated {{count}} tool",
+      "allUpdated_other": "Updated {{count}} tools",
       "needsAttention_one": "{{count}} of {{total}} needs attention",
       "needsAttention_other": "{{count}} of {{total}} need attention",
+      "notUpdated_one": "{{count}} couldn't be updated",
+      "notUpdated_other": "{{count}} couldn't be updated",
       "finished": "{{succeeded}} succeeded, {{cancelled}} cancelled",
-      "cancelAll": "Cancel All",
-      "cancelRest": "Cancel the Rest"
+      "cancelAll": "Stop All",
+      "cancelRest": "Stop the Rest"
     },
     "cancelKind": {
       "Install": "Cancel Install",
@@ -487,6 +493,7 @@
         "BackAfterUninstallDetail": "Quit the tool first. If it's still listed, uninstall it again; otherwise move the files named in the log to the Trash yourself."
       },
       "Failed": "Couldn't finish: {{summary}}",
+      "FailedShort": "Couldn't finish",
       "FailedSilent": "Couldn't finish, and the program didn't say why",
       "FailedSilentDetail": "The operation log shows its output.",
       "CanagerFailed": {
@@ -494,6 +501,7 @@
         "PanickedDetail": "Check the list to see whether anything changed.",
         "ProgramMissing": "Couldn't start: {{program}} wasn't found. Nothing changed",
         "SpawnFailed": "Couldn't start the program. Nothing changed. macOS said: {{detail}}",
+        "SpawnFailedShort": "Couldn't start the program. Nothing changed",
         "HomebrewStillUpdating": "Couldn't start: Homebrew was still updating its software list after {{minutes}} minutes",
         "HomebrewStillUpdatingDetail": "Nothing changed. Check your connection and try again later.",
         "PathChanged": "Stopped: {{path}} changed after the confirmation opened",

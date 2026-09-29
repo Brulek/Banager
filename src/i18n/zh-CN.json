@@ -78,7 +78,8 @@
     "cantUpdateHereCount_other": "{{count}}个无法在这里更新",
     "checksUnfinished_other": "{{count}}项检查未完成",
     "listSeparator": "，",
-    "attentionLabel": "需要查看"
+    "attentionLabel": "需要查看",
+    "checkFailedTryLater": "请稍后再试。"
   },
   "adapters": {
     "brew": "Homebrew",
@@ -397,14 +398,17 @@
     "title": "{{kind}}{{name}}",
     "noCancelHint": "开始后无法取消。完成前请勿退出Canager或关机。",
     "noCancelHintDetail": "等窗口底部显示结果后，再退出或关机。",
+    "stop": "停止",
     "logDrawerTitle": "操作日志",
     "batch": {
       "running": "正在处理第{{current}}个，共{{total}}个",
       "allSucceeded_other": "{{count}}个都已成功",
+      "allUpdated_other": "已更新{{count}}个工具",
       "needsAttention_other": "{{total}}个中有{{count}}个需要查看",
+      "notUpdated_other": "{{count}}个未能更新",
       "finished": "{{succeeded}}个已成功，{{cancelled}}个已取消",
-      "cancelAll": "全部取消",
-      "cancelRest": "取消其余"
+      "cancelAll": "全部停止",
+      "cancelRest": "停止其余"
     },
     "cancelKind": {
       "Install": "取消安装",
@@ -448,6 +452,7 @@
         "BackAfterUninstallDetail": "请先退出此工具。如果列表中仍有它，请再卸载一次；否则请将日志中列出的文件手动移到废纸篓。"
       },
       "Failed": "未能完成：{{summary}}",
+      "FailedShort": "未能完成",
       "FailedSilent": "未能完成，程序没有给出原因",
       "FailedSilentDetail": "可以在操作日志中查看它的输出。",
       "CanagerFailed": {
@@ -455,6 +460,7 @@
         "PanickedDetail": "请查看列表，确认是否有变化。",
         "ProgramMissing": "未能开始：找不到{{program}}，没有改动",
         "SpawnFailed": "未能开始：程序无法启动，没有改动。系统提示：{{detail}}",
+        "SpawnFailedShort": "未能开始：程序无法启动，没有改动",
         "HomebrewStillUpdating": "未能开始：Homebrew更新软件清单超过了{{minutes}}分钟",
         "HomebrewStillUpdatingDetail": "没有改动。请检查网络连接，稍后再试。",
         "PathChanged": "已停止：确认窗口打开后，{{path}}发生了变化",

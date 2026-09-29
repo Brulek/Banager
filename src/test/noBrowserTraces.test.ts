@@ -120,7 +120,8 @@ describe("hover and focus", () => {
 
   it("lights up nothing under the pointer but a toolbar's icon button and a menu's items", () => {
     // Rows, the sidebar, links and push buttons stay as they are; the
-    // icon button (`ICON_BUTTON`) takes the quietest fill.
+    // icon buttons (`ICON_BUTTON`, and `SMALL_ICON_BUTTON` for the
+    // operation bar) take the quietest fill.
     const fills = holding(/hover:bg-/g);
     expect(Object.values(fills).reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(4);
     expect(Object.keys(fills)).toEqual(["src/components/ui/controls.ts"]);

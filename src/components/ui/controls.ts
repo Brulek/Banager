@@ -64,6 +64,13 @@ export const ICON_BUTTON =
   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control text-muted enabled:hover:bg-fill-subtle enabled:active:bg-fill disabled:text-tertiary [&>svg]:size-4";
 
 /**
+ * `ICON_BUTTON` for a 28 status bar: 20 by 20, the same glyph at 16 and
+ * the same fills -- the operation bar's close ×.
+ */
+export const SMALL_ICON_BUTTON =
+  "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-control text-muted enabled:hover:bg-fill-subtle enabled:active:bg-fill disabled:text-tertiary [&>svg]:size-4";
+
+/**
  * Words in a line that do something -- a notice's Details, the Overview's
  * 「2个已隐藏」: the accent as text (linkColor), the regular weight, and
  * the size of the line they are in. No underline, under the pointer or

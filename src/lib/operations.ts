@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSnapshot } from "./queries";
+import { FAILURE_CAUSE_KEYS, outcomeCause } from "./failureCause";
 import { outcomeArgs, outcomeKey } from "./format";
 import { artifactKeyId, useUiStore, type LogLine } from "../store/ui";
 import type { OpKind, OpStatus, OpSummary, Outcome } from "./types";
@@ -144,6 +145,33 @@ export type OutcomeTone = "success" | "cancelled" | "attention" | "failure";
 export function outcomeSentence(t: Translate, outcome: Outcome | null): string {
   const shown: Outcome = outcome ?? "Unconfirmed";
   return t(`operations.outcome.${outcomeKey(shown)}`, outcomeArgs(shown));
+}
+
+/**
+ * How an operation ended, in the operation bar's few words, for a person
+ * (spec §3.10, R10): where it failed for a reason the tool's own words
+ * give (`outcomeCause`), that reason -- 「网络连接失败」 -- and otherwise,
+ * with "Show technical details" off, nothing another program wrote: a
+ * failure is 「未能完成」, and a program that would not start says so
+ * without macOS's own words for why. Those, and the tool's, are in the
+ * log, and here too with the setting on (`outcomeSentence`).
+ */
+export function outcomeWords(t: Translate, outcome: Outcome | null, technical: boolean): string {
+  if (outcome !== null && typeof outcome !== "string") {
+    const cause = outcomeCause(outcome);
+    if ("Failed" in outcome) {
+      if (technical) return outcomeSentence(t, outcome);
+      if (cause !== null) return t(FAILURE_CAUSE_KEYS[cause].word);
+      return outcome.Failed.summary.trim() ? t("operations.outcome.FailedShort") : outcomeSentence(t, outcome);
+    }
+    if ("CanagerFailed" in outcome && !technical) {
+      const fault = outcome.CanagerFailed;
+      if (typeof fault !== "string" && "SpawnFailed" in fault) {
+        return t("operations.outcome.CanagerFailed.SpawnFailedShort");
+      }
+    }
+  }
+  return outcomeSentence(t, outcome);
 }
 
 export function outcomeTone(outcome: Outcome | null): OutcomeTone {

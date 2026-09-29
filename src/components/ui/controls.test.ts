@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUTTON, ICON_BUTTON, LINK, type ButtonKind, type ButtonSize } from "./controls";
+import { BUTTON, ICON_BUTTON, LINK, SMALL_ICON_BUTTON, type ButtonKind, type ButtonSize } from "./controls";
 
 /** A class list's classes. */
 function classes(className: string): string[] {
@@ -85,6 +85,17 @@ describe("ICON_BUTTON", () => {
   it("takes the quietest fill under the pointer, and the grey button's while pressed", () => {
     expect(classes(ICON_BUTTON)).toEqual(
       expect.arrayContaining(["enabled:hover:bg-fill-subtle", "enabled:active:bg-fill", "disabled:text-tertiary"]),
+    );
+  });
+});
+
+describe("SMALL_ICON_BUTTON", () => {
+  it("is ICON_BUTTON at 20 by 20 for a status bar, the same glyph, colour and fills", () => {
+    const rest = atRest(SMALL_ICON_BUTTON);
+    expect(rest).toEqual(expect.arrayContaining(["h-5", "w-5", "rounded-control", "text-muted"]));
+    expect(rest.filter((name) => name.startsWith("bg-"))).toEqual([]);
+    expect(classes(SMALL_ICON_BUTTON)).toEqual(
+      expect.arrayContaining(["[&>svg]:size-4", "enabled:hover:bg-fill-subtle", "enabled:active:bg-fill"]),
     );
   });
 });
