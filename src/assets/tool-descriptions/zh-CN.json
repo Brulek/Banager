@@ -897,7 +897,7 @@
   "brew:pngpaste": "将 PNG 粘贴到文件",
   "brew:pngquant": "PNG 图像优化工具",
   "brew:pnpm": "节省磁盘空间的包管理工具",
-  "brew:pocketbase": "只需一个文件的开源项目后台服务",
+  "brew:pocketbase": "只需一个文件的开源后台服务",
   "brew:podman": "OCI 容器与 Pod 管理工具",
   "brew:podman-compose": "基于 Podman 的 docker-compose 替代品",
   "brew:podman-tui": "Podman 终端用户界面",
