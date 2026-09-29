@@ -97,7 +97,7 @@
     "uninstalling": "正在卸载…",
     "uninstallHold": {
       "label": "暂时不能卸载",
-      "IndexUpdating": "Homebrew 正在更新软件清单，等它更新完再卸载。"
+      "IndexUpdating": "Homebrew 正在更新软件清单，完成后再卸载。"
     },
     "upToDate": "已是最新",
     "updateAvailable": "可更新",
@@ -339,7 +339,7 @@
     },
     "indexUpdating": {
       "title": "Homebrew 正在更新软件清单",
-      "description": "更新列表显示的是上次的结果。更新完会自动重新检查。"
+      "description": "「更新」页显示的是上次的结果。清单更新完会自动重新检查。"
     },
     "notOnPath": {
       "title": "{{source}} 已安装，但在终端输入 {{command}} 打不开它",

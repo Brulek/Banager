@@ -377,7 +377,7 @@
     },
     "indexUpdating": {
       "title": "Homebrew is updating its software list",
-      "description": "The update list shows the last results. Canager checks again by itself when it's done."
+      "description": "The Updates page shows the previous check's results. Canager checks again by itself when the list finishes updating."
     },
     "notOnPath": {
       "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
