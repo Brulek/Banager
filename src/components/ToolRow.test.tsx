@@ -577,7 +577,7 @@ describe("ToolRow", () => {
       expect(plain.container.textContent).not.toContain("1.8.2");
     });
 
-    it("beside the inspector in the narrowest window, keeps the button and the ⋯, and gives the description's line to the description alone", () => {
+    it("beside the inspector in the narrowest window, keeps the button, the ⋯ and the status word, and gives up only the versions", () => {
       const { container, getByText, getByRole } = renderWithProviders(
         <ListWidthProvider value={332}>
           <ToolRow
@@ -597,21 +597,51 @@ describe("ToolRow", () => {
       const button = getByRole("button", { name: "Uninstall…" });
       expect(button.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["min-w-20", "shrink-0"]));
       expect(getByRole("button", { name: "More actions for claude-code" })).toBeInTheDocument();
-      // The status word and the versions have gone before it, from the
-      // line and their columns alike: the inspector says them.
+      // The versions have gone before it, from the line and their column
+      // alike: the inspector says them. The status word stays, at the
+      // start of the description's line (「状态词 · 描述」), whole: the
+      // description gives way to it.
       const blurb = getByText("Anthropic's coding assistant");
-      expect(blurb.parentElement?.textContent).toBe("Anthropic's coding assistant");
-      expect(blurb.parentElement?.querySelector("[data-line-dot]")).toBeNull();
-      expect(container.querySelector("[data-status]")).toBeNull();
+      const status = getByText("Updates itself").closest("[data-status]") as HTMLElement;
+      expect(status.parentElement).toBe(blurb.parentElement);
+      expect(status.className).toContain("shrink-0");
+      expect(blurb.parentElement?.textContent).toBe("Updates itself · Anthropic's coding assistant");
+      expect(blurb.parentElement?.querySelectorAll("[data-line-dot]")).toHaveLength(1);
+      expect(container.querySelectorAll("[data-status]")).toHaveLength(1);
       expect(container.querySelector("[data-status-column]")).toBeNull();
       expect(container.querySelector("[data-version]")).toBeNull();
-      expect(container.textContent).not.toContain("Updates itself");
       expect(container.textContent).not.toContain("2.1.290");
       expect(blurb.className).toContain("truncate");
       expect(blurb.className).not.toContain("sr-only");
     });
 
-    it("in a list too narrow for the button, gives it up as well and keeps the ⋯", () => {
+    it("beside the inspector in the narrowest window, drops a description the status word leaves too little room, and keeps the word", () => {
+      // The description's line 110 wide, as it is at 800 in English; the
+      // status word 90 of it, a dot and each character 7 (`textMeasurer`,
+      // mocked): 「 · Anthropi」 needs 77, and 20 is left.
+      const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        const width =
+          this.querySelector(":scope > [data-description]") !== null
+            ? 110
+            : this.hasAttribute("data-status")
+              ? 90
+              : this.hasAttribute("data-line-dot")
+                ? (this.textContent?.length ?? 0) * 7
+                : 0;
+        return new DOMRect(0, 0, width, 16);
+      });
+      try {
+        const { getByText } = renderWithProviders(row(332));
+        const blurb = getByText("Anthropic's coding assistant");
+        expect(blurb.className).toBe("sr-only");
+        expect(getByText("Updates itself").closest("[data-status]")?.parentElement).toBe(blurb.parentElement);
+        expect(blurb.parentElement?.querySelector("[data-line-dot]")).toBeNull();
+      } finally {
+        box.mockRestore();
+      }
+    });
+
+    it("in a list too narrow for the button, gives it up as well and keeps the ⋯ and the status word", () => {
       const { container, getByText, getByRole, queryByRole } = renderWithProviders(
         <ListWidthProvider value={291}>
           <ToolRow
@@ -630,9 +660,9 @@ describe("ToolRow", () => {
       expect(queryByRole("button", { name: "Update" })).toBeNull();
       expect(getByRole("button", { name: "More actions for claude-code" })).toBeInTheDocument();
       const blurb = getByText("Anthropic's coding assistant");
-      expect(blurb.parentElement?.textContent).toBe("Anthropic's coding assistant");
+      expect(blurb.parentElement?.textContent).toBe("Updates itself · Anthropic's coding assistant");
       expect(container.querySelector("[data-version]")).toBeNull();
-      expect(container.querySelector("[data-status]")).toBeNull();
+      expect(container.querySelectorAll("[data-status]")).toHaveLength(1);
       expect(container.querySelector("[data-status-column]")).toBeNull();
     });
 

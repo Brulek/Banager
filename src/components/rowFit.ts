@@ -14,14 +14,16 @@
  * narrowed -- the version column goes as well, and an update's versions
  * move to that line after the status word: the inspector says the
  * selected row's version, and the others' are one click away; `slim` --
- * the inspector's list in the narrowest window -- the status word and the
- * versions leave that line too, which is the description's alone: both
- * are in the inspector, and what goes next would be the row's button;
- * `tiny` -- a list too narrow for the avatar, a name's first few
- * characters, the button and the ⋯, which no window this app opens has --
- * the row's button goes as well, and only the ⋯ stays at its end: what
- * the button did is in the inspector. Past that, the description is cut
- * short -- never the name -- and, left room for no more than a few
+ * the inspector's list in the narrowest window -- the versions leave that
+ * line too, and it says the status word and the description alone: a
+ * version is one click away in the inspector, but a word such as
+ * 「不再提醒」 is what the list is scanned for, and a window made
+ * narrower must not hide it; `tiny` -- a list too narrow for the avatar,
+ * a name's first few characters, the button and the ⋯, which no window
+ * this app opens has -- the row's button goes as well, and only the ⋯
+ * stays at its end: what the button did is in the inspector. The status
+ * word stays at every width. Past that, the description is cut short --
+ * never the name, nor the word -- and, left room for no more than a few
  * characters after the words before it, dropped from the line
  * (`ToolRow`'s `DESCRIPTION_MIN_CHARACTERS`).
  */

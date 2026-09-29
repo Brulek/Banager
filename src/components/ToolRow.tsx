@@ -379,12 +379,13 @@ export function ToolRow({
   // its own installer, its own source: its name would only come twice.
   const source = sourceLabel !== undefined && sourceLabel !== name ? sourceLabel : undefined;
   const hasStatus = status !== undefined && status !== null;
-  // The status word's column, or -- narrower -- its place at the start of
-  // the description's line; narrower still (`slim`, `tiny`), neither: the
-  // inspector says it. No column in a list with no word on any row.
+  // The status word's column, or -- narrower, however narrow -- its place
+  // at the start of the description's line, which gives way to it: the
+  // word is what a row is scanned for, and never dropped for want of
+  // room. No column in a list with no word on any row.
   const wide = fit === "full" || fit === "compact";
   const statusColumn = wide && (listHasStatus || hasStatus);
-  const statusInline = (fit === "narrow" || fit === "minimal") && hasStatus;
+  const statusInline = !wide && hasStatus;
   const hasUpdate = newVersion !== undefined && version !== undefined && version !== null;
   // Where the version column has gone (`minimal`): an update's versions on
   // the description's line, and nothing for a row with no update; past
