@@ -186,10 +186,24 @@ cancelled; an upgrade stopped partway is never settled either way
 `run_operation`).
 
 **Quitting while an operation is under way.** Closing the window leaves
-Canager and its operations running (`src-tauri/src/window.rs`); quitting
-ends them: one still queued never runs, and a command under way loses
-Canager partway, which can leave the tool it was updating or
-uninstalling half done. So on a Mac, while an operation is not done —
+Canager and its operations running (`src-tauri/src/window.rs`). Quitting
+after the question below — *Quit anyway*, or a question the window never
+showed — first cancels every operation that can be cancelled, as the
+operation bar's *Cancel all* does: one still queued never runs, and a
+running command gets SIGTERM, then SIGKILL 5 seconds later for whatever
+of it is left, which can leave the tool it was updating or uninstalling
+half done. Canager quits once those commands have stopped, 7 seconds
+after *Quit anyway* at the most (`quit_now` in `src-tauri/src/quit.rs`).
+A running operation that cannot be cancelled — rustup's self update or
+self uninstall — is not stopped: Canager sends it no signal, and it runs
+in a process group of its own, so its command runs on without Canager.
+Its output went to pipes only Canager read, which close as Canager
+exits; a write to them after that fails with a broken pipe (EPIPE, or
+SIGPIPE, which ends a program that does not ignore it). The question
+names such an operation and says to wait for it to finish; its line
+about what quitting stops leaves it out. A quit that asks nothing (below)
+cancels nothing, and every command still running then runs on the same
+way. So on a Mac, while an operation is not done —
 queued, running, being cancelled or checking its result — every way of
 quitting (Quit Canager, ⌘Q; Quit in the Dock icon's menu; logging out,
 restarting or shutting down) first brings the window back and asks:

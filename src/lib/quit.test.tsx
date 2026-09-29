@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback } from "@tauri-apps/api/event";
 import { fakeMenuBar } from "../test/menuBar";
 import { QUIT_REQUESTED_EVENT } from "./api";
-import { commandUnderWay, quitBodyKey, useQuitRequests } from "./quit";
+import { commandUnderWay, quitBodyKey, quitStops, useQuitRequests } from "./quit";
 import type { OpKind, OpStatus, OpSummary } from "./types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -57,6 +57,19 @@ describe("what the question says under its title", () => {
     expect(
       quitBodyKey([op(1, "Upgrade", "Running"), op(2, "Upgrade", "Running"), op(3, "Uninstall", "Queued")]),
     ).toBe("quit.body.Upgrade");
+  });
+
+  it("says it of the others beside one that nothing can stop, and nothing with only such ones", () => {
+    const rustup = (id: number, status: OpSummary["status"]) => ({
+      ...op(id, "Upgrade", status),
+      cancel_policy: "NoCancel" as const,
+    });
+    expect(quitBodyKey([rustup(1, "Running")])).toBeNull();
+    expect(quitBodyKey([rustup(1, "Running"), op(2, "Upgrade", "Queued")])).toBe("quit.body.othersStop");
+    expect(quitBodyKey([rustup(1, "Running"), op(2, "Uninstall", "Running")])).toBe("quit.body.othersHalfDone");
+    expect(quitStops([rustup(1, "Running"), op(2, "Upgrade", "Queued")]).map((each) => each.id)).toEqual([2]);
+    // Queued, rustup's update has started nothing, and quitting stops it.
+    expect(quitBodyKey([rustup(1, "Queued")])).toBe("quit.body.stops");
   });
 
   it("says it in words for any kind when more than one kind is under way", () => {

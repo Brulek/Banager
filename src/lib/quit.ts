@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef } from "react";
 import { askBeforeQuit, onQuitRequested } from "./api";
+import { runsToItsEnd } from "./operations";
 import type { OpKind, OpSummary } from "./types";
 
 /**
@@ -36,15 +37,30 @@ const HALF_DONE_KEYS: Record<OpKind, string> = {
 };
 
 /**
- * The question's line under its title, about `active`, the operations not
- * done, whose number is its `count`: that quitting now stops them -- and,
- * only while a command is under way (`commandUnderWay`), that the tool it
- * works on can be left half done: in the words of its kind when every
- * command under way is of one kind (updated, uninstalled), and in words
- * for any kind when they are of more than one.
+ * The operations of `active` that quitting stops: all but one that has
+ * started and that nothing can stop (`runsToItsEnd`), which runs on
+ * without Canager (src-tauri/src/quit.rs, `quit_now`). Their number is the
+ * `count` of `quitBodyKey`'s line.
  */
-export function quitBodyKey(active: OpSummary[]): string {
-  const kinds = new Set(active.filter(commandUnderWay).map((op) => op.kind));
+export function quitStops(active: OpSummary[]): OpSummary[] {
+  return active.filter((op) => !runsToItsEnd(op));
+}
+
+/**
+ * The question's line under its title, about `active`, the operations not
+ * done: that quitting now stops the ones it stops (`quitStops`) -- and,
+ * only while one of their commands is under way (`commandUnderWay`), that
+ * the tool it works on can be left half done: in the words of its kind
+ * when every command under way is of one kind (updated, uninstalled), and
+ * in words for any kind when they are of more than one. Beside one that
+ * nothing can stop, which has a line of its own, it says "the others";
+ * with nothing but such ones, there is no line.
+ */
+export function quitBodyKey(active: OpSummary[]): string | null {
+  const stops = quitStops(active);
+  if (stops.length === 0) return null;
+  const kinds = new Set(stops.filter(commandUnderWay).map((op) => op.kind));
+  if (stops.length < active.length) return kinds.size === 0 ? "quit.body.othersStop" : "quit.body.othersHalfDone";
   if (kinds.size === 0) return "quit.body.stops";
   if (kinds.size > 1) return "quit.body.mixed";
   const [kind] = kinds;

@@ -329,6 +329,9 @@ describe("the question before a quit", () => {
         "rustup's update has started and can't be cancelled. Wait for it to finish before you quit.",
       ),
     ).toBeInTheDocument();
+    // Quitting stops the queued one, and not rustup's update.
+    expect(within(dialog).getByText("Quitting now stops the other one.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Quitting now stops it/)).toBeNull();
 
     // Queued, it can still be cancelled: nothing is said of it.
     await listNow(queryClient, [rustup(3, "Queued"), op(2, "wget", "Running")]);
@@ -364,6 +367,8 @@ describe("the question before a quit", () => {
     operations = [rustup(1, "Running")];
     const { rust } = await mounted();
     const dialog = await asked(rust, "1 operation hasn't finished");
+    // Quitting does not stop it: no line says it does.
+    expect(within(dialog).queryByText(/Quitting now stops/)).toBeNull();
 
     expect(
       await within(dialog).findByText(
@@ -405,7 +410,8 @@ describe("the question before a quit", () => {
 
       const dialog = await asked(rust, "还有 2 个操作没完成");
 
-      expect(within(dialog).getByText("现在退出会中断操作，正在更新的工具有只更新一半的风险。")).toBeInTheDocument();
+      // Quitting stops wget's update, and not rustup's.
+      expect(within(dialog).getByText("现在退出会中断其余操作，正在处理的工具有只完成一半的风险。")).toBeInTheDocument();
       expect(within(dialog).getByText("rustup 的更新已经开始，不能取消，请等它完成再退出。")).toBeInTheDocument();
       expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
         "仍然退出",

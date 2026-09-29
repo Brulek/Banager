@@ -394,7 +394,7 @@ const POST_KILL_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 /// a window someone is watching. Five seconds, plus at most
 /// `POST_KILL_WAIT`, keeps a Cancel on the most stubborn command inside
 /// ten seconds.
-const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often the stop grace period checks whether anything is left in the
 /// group. There is no event for "a process group became empty": the

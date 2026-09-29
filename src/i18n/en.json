@@ -511,7 +511,11 @@
       "Uninstall_other": "Quitting now stops them, and a tool that's being uninstalled can be left half-removed.",
       "Install_one": "Quitting now stops it, and the tool it's installing can be left half-installed.",
       "Install_other": "Quitting now stops them, and a tool that's being installed can be left half-installed.",
-      "mixed_other": "Quitting now stops them, and the tools they're working on can be left half-done."
+      "mixed_other": "Quitting now stops them, and the tools they're working on can be left half-done.",
+      "othersStop_one": "Quitting now stops the other one.",
+      "othersStop_other": "Quitting now stops the others.",
+      "othersHalfDone_one": "Quitting now stops the other one, and the tool it's working on can be left half-done.",
+      "othersHalfDone_other": "Quitting now stops the others, and the tools they're working on can be left half-done."
     },
     "noCancel": {
       "Install": "{{name}}'s install has started and can't be cancelled. Wait for it to finish before you quit.",

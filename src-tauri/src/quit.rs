@@ -1,10 +1,14 @@
 //! Quitting while an operation is under way. Closing the window only hides
-//! it (window.rs), and whatever runs carries on; quitting ends Canager and
-//! what it is doing with it: an operation still queued never starts, and
-//! one whose command is running loses Canager partway, so the tool it was
-//! updating or uninstalling can be left half done -- what the update and
-//! uninstall confirmations warn of for rustup, which cannot be cancelled
-//! (`operations.noCancelHint`).
+//! it (window.rs), and whatever runs carries on. Quitting through the
+//! question below -- 「仍然退出」, or a question the page never showed --
+//! first cancels every operation that can be cancelled, as the operation
+//! bar's 「全部取消」 does (`Session::cancel`): one still queued never
+//! starts, and a running command is stopped partway, which can leave the
+//! tool it was updating or uninstalling half done. Canager waits for those
+//! commands to stop, `STOP_WITHIN` at the most, then quits (`quit_now`).
+//! A running operation that cannot be cancelled -- rustup's self update or
+//! self uninstall (`operations.noCancelHint`) -- is not stopped: its command
+//! runs on without Canager (`quit_now` says what becomes of it).
 //!
 //! So on a Mac every way of quitting -- Quit Canager (⌘Q) in the menu bar,
 //! Quit in the Dock icon's menu, logging out, restarting or shutting down
@@ -54,7 +58,7 @@
 
 use crate::state::AppState;
 use crate::window;
-use canager_core::model::OpStatus;
+use canager_core::model::{CancelPolicy, OpStatus};
 use canager_core::ops::OpSummary;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -74,6 +78,18 @@ pub const QUIT_REQUESTED_EVENT: &str = "quit://requested";
 /// crashed, or it could not draw the sheet -- and Canager quits
 /// (`quit_unless_shown`) rather than be left unable to.
 pub const SHOW_WITHIN: Duration = Duration::from_secs(2);
+
+/// How long a quit waits, once it has cancelled what can be cancelled, for
+/// those commands to stop (`waits_for`) before Canager quits all the same.
+/// Longer than the runner's grace after SIGTERM (`STOP_GRACE`, 5 seconds),
+/// at the end of which it SIGKILLs whatever of a command is left: so every
+/// command a quit cancels has had that SIGKILL sent by the time Canager
+/// quits. A command that honours SIGTERM ends in milliseconds, and Canager
+/// quits as soon as every one has.
+pub const STOP_WITHIN: Duration = Duration::from_secs(7);
+
+/// How often a quit that waits for commands to stop looks at them again.
+const STOP_POLL: Duration = Duration::from_millis(20);
 
 /// What a request to quit does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +146,65 @@ pub fn unfinished(operations: &[OpSummary]) -> usize {
         .iter()
         .filter(|op| op.status != OpStatus::Done)
         .count()
+}
+
+/// Whether a quit cancels `op`, as 「全部取消」 does (`Session::cancel`):
+/// every one queued, and every one running that can be cancelled. A
+/// running `NoCancel` one -- rustup's self update or self uninstall --
+/// `Session::cancel` refuses, so it is not asked.
+pub fn cancels(op: &OpSummary) -> bool {
+    match op.status {
+        OpStatus::Queued => true,
+        OpStatus::Running => op.cancel_policy != CancelPolicy::NoCancel,
+        OpStatus::CancelRequested | OpStatus::Cancelling | OpStatus::Verifying | OpStatus::Done => {
+            false
+        }
+    }
+}
+
+/// Whether a quit waits for `op` before Canager quits: while it may still
+/// start a command (queued), or its command is still being stopped (a
+/// cancel requested, or running and cancellable). `Cancelling`, `Verifying`
+/// and `Done` come once its command has ended (`run_operation`); a running
+/// `NoCancel` one does not end on Canager's account, and is not waited for.
+pub fn waits_for(op: &OpSummary) -> bool {
+    match op.status {
+        OpStatus::Queued | OpStatus::CancelRequested => true,
+        OpStatus::Running => op.cancel_policy != CancelPolicy::NoCancel,
+        OpStatus::Cancelling | OpStatus::Verifying | OpStatus::Done => false,
+    }
+}
+
+/// A quit's order: cancel every operation it `cancels`, wait until none is
+/// left that it `waits_for` -- `within` at the most -- then `quit`. It
+/// cancels again each time it looks, so one queued in the meantime does not
+/// start either. `quit_now` runs it on the session; the tests, on lists of
+/// their own.
+async fn stop_then_quit(
+    operations: impl Fn() -> Vec<OpSummary>,
+    cancel: impl Fn(u64),
+    within: Duration,
+    quit: impl FnOnce(),
+) {
+    let deadline = tokio::time::Instant::now() + within;
+    loop {
+        for op in operations().iter().filter(|op| cancels(op)) {
+            cancel(op.id);
+        }
+        let left = operations().iter().filter(|op| waits_for(op)).count();
+        if left == 0 {
+            break;
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            eprintln!(
+                "[canager] {left} operation(s) had not stopped within {within:?} of quitting; Canager quits"
+            );
+            break;
+        }
+        tokio::time::sleep_until(deadline.min(now + STOP_POLL)).await;
+    }
+    quit();
 }
 
 /// Whether a quit asks first -- whether the page listens for the question,
@@ -234,41 +309,60 @@ pub fn should_quit<R: Runtime>(app: &AppHandle<R>) -> bool {
 fn quit_unless_shown<R: Runtime>(app: &AppHandle<R>, question: u64) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let guard = app.state::<QuitGuard>();
-        wait_for_the_page(&guard, question, SHOW_WITHIN, || {
+        let quits = wait_for_the_page(&app.state::<QuitGuard>(), question, SHOW_WITHIN).await;
+        if quits {
             eprintln!(
                 "[canager] the window did not show the question within {SHOW_WITHIN:?}, so Canager quits"
             );
-            quit_now(&app);
-        })
-        .await;
+            quit_now(&app).await;
+        }
     });
 }
 
-/// Waits `within`, then `quit`s unless the page has said by then that
-/// question `question` is on screen (`QuitGuard::once_asked`).
-/// `quit_unless_shown`'s wait, which the tests run with a wait of their
-/// own and a `quit` that only notes it was called.
-async fn wait_for_the_page(
-    guard: &QuitGuard,
-    question: u64,
-    within: Duration,
-    quit: impl FnOnce(),
-) {
+/// Waits `within`, then answers whether Canager quits: yes unless the page
+/// has said by then that question `question` is on screen
+/// (`QuitGuard::once_asked`). `quit_unless_shown`'s wait, which the tests
+/// run with a wait of their own.
+async fn wait_for_the_page(guard: &QuitGuard, question: u64, within: Duration) -> bool {
     tokio::time::sleep(within).await;
-    if guard.once_asked(question) == OnceAsked::Quit {
-        quit();
-    }
+    guard.once_asked(question) == OnceAsked::Quit
 }
 
-/// Canager quits now, whatever is under way, through tauri's own
-/// `AppHandle::exit`, which asks AppKit nothing and ends in
+/// Canager quits: 「仍然退出」 (`quit_anyway`), and a question the page never
+/// showed (`quit_unless_shown`). A quit that comes while this runs quits too
+/// (`confirm`). First every operation that can be cancelled is, as
+/// 「全部取消」 does, and Canager waits for those commands to stop,
+/// `STOP_WITHIN` at the most (`stop_then_quit`); then it quits through
+/// tauri's own `AppHandle::exit`, which asks AppKit nothing and ends in
 /// `RunEvent::Exit` as a quit from the menu does, the window's size and
-/// place saved with it; a quit that comes before it has ended quits too
-/// (`confirm`). 「仍然退出」 (`quit_anyway`), and a question the page never
-/// showed (`quit_unless_shown`).
-fn quit_now<R: Runtime>(app: &AppHandle<R>) {
+/// place saved with it.
+///
+/// That exit is tao's `process::exit`: nothing still running in Canager
+/// gets to clean up, and the runner's `GroupedChild`, which SIGKILLs its
+/// command's process group when dropped, is never dropped. So a command
+/// still running then -- one that cannot be cancelled, or one that outlived
+/// `STOP_WITHIN` -- is sent no signal by Canager, and runs in a process
+/// group of its own (`process_group(0)`), which nothing sent to Canager
+/// reaches: it runs on without Canager. Its output went to pipes that only
+/// Canager read, and their reading ends close as Canager exits, so a write
+/// to its standard output or error after that fails with a broken pipe
+/// (EPIPE, or SIGPIPE, which ends a program that does not ignore it).
+async fn quit_now<R: Runtime>(app: &AppHandle<R>) {
     app.state::<QuitGuard>().confirm();
+    if let Some(state) = app.try_state::<AppState>() {
+        let session = &state.session;
+        stop_then_quit(
+            || session.operations(),
+            |id| {
+                // Refused only for a running `NoCancel` one, which `cancels`
+                // does not pick, or one that has just ended: nothing to do.
+                let _ = session.cancel(id);
+            },
+            STOP_WITHIN,
+            || (),
+        )
+        .await;
+    }
     app.exit(0);
 }
 
@@ -290,12 +384,13 @@ pub fn quit_question_shown(guard: State<'_, QuitGuard>, question: u64) {
     guard.shown(question);
 }
 
-/// 「仍然退出」: Canager quits now, whatever is under way (`quit_now`).
-/// Also the page's answer when a quit it was asked about finds nothing
-/// left to wait for.
+/// 「仍然退出」: Canager cancels what can be cancelled, waits for it to stop,
+/// and quits (`quit_now`); the answer comes only if Canager is still there
+/// to give it. Also the page's answer when a quit it was asked about finds
+/// nothing left to wait for.
 #[tauri::command]
-pub fn quit_anyway(app: AppHandle) {
-    quit_now(&app);
+pub async fn quit_anyway(app: AppHandle) {
+    quit_now(&app).await;
 }
 
 /// What the method added to AppKit's delegate asks at every quit
@@ -419,9 +514,13 @@ fn add_should_terminate(class: &objc2::runtime::AnyClass) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use canager_core::model::{ArtifactKind, CancelPolicy, OpKind};
+    use canager_core::model::{ArtifactKind, OpKind};
 
     fn op(id: u64, status: OpStatus) -> OpSummary {
+        op_with(id, status, CancelPolicy::KillThenReconcile)
+    }
+
+    fn op_with(id: u64, status: OpStatus, cancel_policy: CancelPolicy) -> OpSummary {
         OpSummary {
             id,
             kind: OpKind::Upgrade,
@@ -431,8 +530,194 @@ mod tests {
             status,
             outcome: None,
             argv_preview: Vec::new(),
-            cancel_policy: CancelPolicy::KillThenReconcile,
+            cancel_policy,
         }
+    }
+
+    #[test]
+    fn test_a_quit_cancels_what_is_queued_or_running_and_can_be_cancelled() {
+        use CancelPolicy::{KillThenReconcile as Kill, NoCancel};
+        let cancels_it = |status, policy| cancels(&op_with(1, status, policy));
+        assert!(cancels_it(OpStatus::Queued, Kill));
+        assert!(
+            cancels_it(OpStatus::Queued, NoCancel),
+            "queued, it has started nothing"
+        );
+        assert!(cancels_it(OpStatus::Running, Kill));
+        assert!(
+            !cancels_it(OpStatus::Running, NoCancel),
+            "rustup's self update, once started"
+        );
+        for status in [
+            OpStatus::CancelRequested,
+            OpStatus::Cancelling,
+            OpStatus::Verifying,
+            OpStatus::Done,
+        ] {
+            assert!(!cancels_it(status, Kill), "{status:?}");
+        }
+    }
+
+    #[test]
+    fn test_a_quit_waits_for_what_may_still_start_or_is_still_being_stopped() {
+        use CancelPolicy::{KillThenReconcile as Kill, NoCancel};
+        let waits = |status, policy| waits_for(&op_with(1, status, policy));
+        assert!(waits(OpStatus::Queued, Kill));
+        assert!(waits(OpStatus::CancelRequested, Kill));
+        assert!(
+            waits(OpStatus::CancelRequested, NoCancel),
+            "cancelled queued"
+        );
+        assert!(waits(OpStatus::Running, Kill));
+        assert!(
+            !waits(OpStatus::Running, NoCancel),
+            "it does not end on Canager's account"
+        );
+        for status in [OpStatus::Cancelling, OpStatus::Verifying, OpStatus::Done] {
+            assert!(!waits(status, Kill), "{status:?}: its command has ended");
+        }
+    }
+
+    #[test]
+    fn test_a_quit_waits_longer_than_the_runner_takes_to_sigkill_a_command() {
+        assert!(STOP_WITHIN > canager_core::runner::real::STOP_GRACE);
+    }
+
+    /// A fake session for `stop_then_quit`: its operations, a cancel that
+    /// marks one `CancelRequested` as `Session::cancel` does, and what was
+    /// done in which order.
+    struct Fake {
+        ops: std::cell::RefCell<Vec<OpSummary>>,
+        done: std::cell::RefCell<Vec<String>>,
+    }
+
+    impl Fake {
+        fn new(ops: Vec<OpSummary>) -> Self {
+            Fake {
+                ops: std::cell::RefCell::new(ops),
+                done: std::cell::RefCell::new(Vec::new()),
+            }
+        }
+        fn list(&self) -> Vec<OpSummary> {
+            self.ops.borrow().clone()
+        }
+        fn cancel(&self, id: u64) {
+            self.done.borrow_mut().push(format!("cancel {id}"));
+            for op in self.ops.borrow_mut().iter_mut() {
+                if op.id == id {
+                    op.status = OpStatus::CancelRequested;
+                }
+            }
+        }
+        fn set(&self, id: u64, status: OpStatus) {
+            for op in self.ops.borrow_mut().iter_mut() {
+                if op.id == id {
+                    op.status = status;
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_a_quit_cancels_first_waits_for_the_commands_to_stop_then_quits() {
+        use CancelPolicy::NoCancel;
+        let fake = Fake::new(vec![
+            op(1, OpStatus::Running),
+            op(2, OpStatus::Queued),
+            op_with(3, OpStatus::Running, NoCancel),
+            op(4, OpStatus::Done),
+        ]);
+        let started = std::time::Instant::now();
+        let mut quitting = std::pin::pin!(stop_then_quit(
+            || fake.list(),
+            |id| fake.cancel(id),
+            Duration::from_secs(10),
+            || fake.done.borrow_mut().push("quit".to_string()),
+        ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(60), quitting.as_mut())
+                .await
+                .is_err(),
+            "it waits while the cancelled commands have not stopped"
+        );
+        assert_eq!(*fake.done.borrow(), ["cancel 1", "cancel 2"]);
+        // The runner stops 1; 2 ends without starting.
+        fake.set(1, OpStatus::Verifying);
+        fake.set(2, OpStatus::Done);
+        quitting.await;
+        assert_eq!(
+            *fake.done.borrow(),
+            ["cancel 1", "cancel 2", "quit"],
+            "rustup's self update (3) is neither cancelled nor waited for"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn test_a_quit_with_nothing_to_stop_quits_at_once() {
+        let fake = Fake::new(vec![
+            op(1, OpStatus::Done),
+            op(2, OpStatus::Verifying),
+            op_with(3, OpStatus::Running, CancelPolicy::NoCancel),
+        ]);
+        let quit = std::cell::Cell::new(false);
+        tokio::time::timeout(
+            Duration::from_millis(500),
+            stop_then_quit(
+                || fake.list(),
+                |id| fake.cancel(id),
+                Duration::from_secs(10),
+                || quit.set(true),
+            ),
+        )
+        .await
+        .expect("no wait");
+        assert!(quit.get());
+        assert!(fake.done.borrow().is_empty(), "nothing cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_a_quit_quits_once_the_wait_is_over_though_a_command_has_not_stopped() {
+        let fake = Fake::new(vec![op(1, OpStatus::Running)]);
+        let within = Duration::from_millis(50);
+        let started = std::time::Instant::now();
+        let quit = std::cell::Cell::new(false);
+        stop_then_quit(
+            || fake.list(),
+            |id| fake.cancel(id),
+            within,
+            || quit.set(true),
+        )
+        .await;
+        assert!(quit.get());
+        assert!(started.elapsed() >= within, "not before the wait was over");
+        assert_eq!(*fake.done.borrow(), ["cancel 1"]);
+    }
+
+    #[tokio::test]
+    async fn test_a_quit_cancels_one_queued_while_it_waits() {
+        let fake = Fake::new(vec![op(1, OpStatus::Running)]);
+        let mut quitting = std::pin::pin!(stop_then_quit(
+            || fake.list(),
+            |id| fake.cancel(id),
+            Duration::from_secs(10),
+            || fake.done.borrow_mut().push("quit".to_string()),
+        ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(40), quitting.as_mut())
+                .await
+                .is_err()
+        );
+        fake.ops.borrow_mut().push(op(2, OpStatus::Queued));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(40), quitting.as_mut())
+                .await
+                .is_err()
+        );
+        fake.set(1, OpStatus::Done);
+        fake.set(2, OpStatus::Done);
+        quitting.await;
+        assert_eq!(*fake.done.borrow(), ["cancel 1", "cancel 2", "quit"]);
     }
 
     #[test]
@@ -588,12 +873,10 @@ mod tests {
         let guard = QuitGuard::default();
         guard.page_asks(true);
         let question = guard.ask();
-        let quit = std::cell::Cell::new(false);
         let mut waiting = std::pin::pin!(wait_for_the_page(
             &guard,
             question,
             Duration::from_millis(20),
-            || quit.set(true)
         ));
         assert!(
             tokio::time::timeout(Duration::ZERO, waiting.as_mut())
@@ -602,8 +885,7 @@ mod tests {
             "Canager waits"
         );
         guard.shown(question);
-        waiting.await;
-        assert!(!quit.get());
+        assert!(!waiting.await, "Canager does not quit");
     }
 
     /// `quit_unless_shown`'s wait, with no word from the page: Canager
@@ -615,17 +897,13 @@ mod tests {
         let question = guard.ask();
         let within = Duration::from_millis(20);
         let started = std::time::Instant::now();
-        let quit = std::cell::Cell::new(false);
-        wait_for_the_page(&guard, question, within, || quit.set(true)).await;
-        assert!(quit.get());
+        assert!(wait_for_the_page(&guard, question, within).await);
         assert!(started.elapsed() >= within, "not before the wait was over");
 
         // An earlier question on screen does not stand for a later quit's.
         guard.shown(question);
         let next = guard.ask();
-        let quit = std::cell::Cell::new(false);
-        wait_for_the_page(&guard, next, within, || quit.set(true)).await;
-        assert!(quit.get());
+        assert!(wait_for_the_page(&guard, next, within).await);
     }
 
     #[test]

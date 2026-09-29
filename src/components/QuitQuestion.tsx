@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { quitAnyway, quitQuestionShown } from "../lib/api";
 import { freshOperations, queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
-import { QUIT_NO_CANCEL_KEYS, quitBodyKey, useQuitRequests } from "../lib/quit";
+import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, useQuitRequests } from "../lib/quit";
 import type { OpSummary } from "../lib/types";
 import { WarningIcon } from "./icons";
 import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
@@ -16,10 +16,11 @@ import { Dialog, SHEET_BUTTON } from "./ui/Dialog";
  * 「还有 2 个操作没完成」, a line on what quitting now does -- it stops them,
  * and, while a command is under way, the tool it works on can be left half
  * done (`quitBodyKey`) -- a line for each one that has started and that
- * nothing can stop, such as rustup's self update, and two buttons:
- * 「仍然退出」, which quits (`quitAnyway`), and 「继续等待」, which leaves
- * Canager running, has the focus as the sheet opens, and is what Escape
- * does.
+ * nothing can stop, such as rustup's self update, which quitting does not
+ * stop, and two buttons: 「仍然退出」, which cancels what can be cancelled,
+ * waits for it to stop and quits (`quitAnyway`; the buttons stay held
+ * meanwhile), and 「继续等待」, which leaves Canager running, has the focus
+ * as the sheet opens, and is what Escape does.
  *
  * It goes by the operations as the backend lists them when Rust asks
  * (`freshOperations`): with none left undone by then, Canager quits
@@ -76,6 +77,7 @@ export function QuitQuestion() {
 
   const active = (operations ?? []).filter(isActive);
   const count = active.length;
+  const body = quitBodyKey(active);
 
   // Everything finished while it asked: it goes, and Canager stays -- and
   // it does not come back by itself when something starts later.
@@ -109,7 +111,9 @@ export function QuitQuestion() {
       }
     >
       {question !== null && <OnScreen question={question} />}
-      <p className="break-words text-body text-foreground">{t(quitBodyKey(active), { count })}</p>
+      {body !== null && (
+        <p className="break-words text-body text-foreground">{t(body, { count: quitStops(active).length })}</p>
+      )}
       {active.filter(runsToItsEnd).map((op) => (
         <p key={op.id} className="mt-3 flex gap-2 text-body text-foreground">
           <WarningIcon size={16} className="mt-px shrink-0 text-warning" />
