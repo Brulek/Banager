@@ -380,7 +380,7 @@
     },
     "launcherOnly": {
       "title": "找不到{{source}}的程序文件",
-      "description": "{{source}}的“{{command}}”已无法运行，点按“卸载”可以清理掉。要继续使用，请重新安装{{source}}；如果文件在废纸篓中，请拖回原处后重新检查。"
+      "description": "{{source}}的“{{command}}”已无法运行。要继续使用，请重新安装{{source}}，如果文件在废纸篓中，也可以拖回原处后重新检查；不再需要的话，可在“已安装”中卸载。"
     },
     "more_other": "还有{{count}}个问题",
     "showFewer": "收起"

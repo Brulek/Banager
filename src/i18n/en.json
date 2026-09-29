@@ -418,7 +418,7 @@
     },
     "launcherOnly": {
       "title": "{{source}}'s program files are missing",
-      "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and check again."
+      "description": "{{source}}'s {{command}} can't run any more. To keep using {{source}}, reinstall it, or drag its files back from the Trash if they're there and check again; if you no longer need it, uninstall it on the Installed page."
     },
     "more_one": "{{count}} more issue",
     "more_other": "{{count}} more issues",
