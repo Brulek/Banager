@@ -9,6 +9,7 @@ import { QUIT_REQUESTED_EVENT } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
 import i18n from "../i18n";
 import { QuitQuestion } from "./QuitQuestion";
+import { BUTTON } from "./ui/controls";
 import type { OpStatus, OpSummary, Snapshot } from "../lib/types";
 
 const mockInvoke = vi.mocked(invoke);
@@ -131,12 +132,18 @@ describe("the question before a quit", () => {
     expect(
       within(dialog).getByText("Quitting now stops it, and the tool it's updating can be left half-updated."),
     ).toBeInTheDocument();
-    // The quiet one first, then the one it asks for, as every sheet has them.
+    // One over the other, as wide as the dialog, the default on top: as
+    // NSAlert stacks answers too long to stand side by side (spec §3.6).
     expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Quit",
       "Cancel",
+      "Quit",
     ]);
+    const footer = dialog.querySelector("[data-dialog-footer]") as HTMLElement;
+    expect(footer.className).toMatch(/\bflex-col\b/);
+    expect(footer.className).toMatch(/\[&>button\]:w-full/);
     const keepWaiting = within(dialog).getByRole("button", { name: "Cancel" });
+    expect(keepWaiting.className).toBe(BUTTON.large.default);
+    expect(within(dialog).getByRole("button", { name: "Quit" }).className).toBe(BUTTON.large.grey);
     await waitFor(() => expect(document.activeElement).toBe(keepWaiting));
     expect(sent("quit_anyway")).toBe(0);
   });
@@ -462,8 +469,8 @@ describe("the question before a quit", () => {
       expect(within(dialog).getByText("现在退出会中断其余操作，正在处理的工具有只完成一半的风险。")).toBeInTheDocument();
       expect(within(dialog).getByText("“rustup”的更新已开始，无法取消。请等它完成后再退出。")).toBeInTheDocument();
       expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
-        "退出",
         "取消",
+        "退出",
       ]);
       await waitFor(() =>
         expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "取消" })),

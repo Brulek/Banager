@@ -114,7 +114,7 @@ describe("UninstallDialog", () => {
     expect(screen.getByRole("button", { name: "Uninstall" })).toBeDisabled();
   });
 
-  it("asks the question as its title and names the tool under it, with its source and the version it has", async () => {
+  it("asks the question as its title, under the tool's 48 icon, with its source and the version it has under it", async () => {
     const jq: InstalledArtifact = {
       key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
       display_name: "jq",
@@ -137,13 +137,19 @@ describe("UninstallDialog", () => {
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
     const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
-    const tool = await within(dialog).findByText("1.8.1");
-    const item = tool.closest("[data-sheet-tool]");
-    expect(item).not.toBeNull();
-    expect(within(item as HTMLElement).getByText("jq")).toBeInTheDocument();
-    expect(within(item as HTMLElement).getByText("Homebrew")).toBeInTheDocument();
-    // The avatar a row has: the source's initial.
-    expect(within(item as HTMLElement).getByText("H")).toHaveAttribute("aria-hidden", "true");
+    // An alert's layout (spec §3.6): one tool, 420 wide; its icon over the
+    // question, and where it comes from and the version it has under it.
+    expect(dialog).toHaveAttribute("data-dialog-width", "420");
+    const subtitle = (await within(dialog).findByText("1.8.1")).closest("[data-dialog-subtitle]");
+    expect(subtitle).toHaveTextContent("Homebrew · 1.8.1");
+    const icon = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
+    expect(icon.compareDocumentPosition(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // The avatar a row has, at 48: the source's initial.
+    const initial = within(icon).getByText("H");
+    expect(initial).toHaveAttribute("aria-hidden", "true");
+    expect(initial.className).toMatch(/\bh-12 w-12\b/);
   });
 
   it("shows an app's own icon beside its name, as its row does, once the icon arrives", async () => {
@@ -161,7 +167,7 @@ describe("UninstallDialog", () => {
     );
 
     const dialog = await screen.findByRole("dialog", { name: "Uninstall “iTerm2”?" });
-    const item = within(dialog).getByText("iTerm2", { selector: "p" }).closest("[data-sheet-tool]") as HTMLElement;
+    const item = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
     await waitFor(() => expect(item.querySelector("img[data-app-icon]")).toHaveAttribute("src", icon));
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("artifact_icon", {
       key: { instance_id: "brew:/opt/homebrew", kind: "Cask", name: "iterm2" },
@@ -198,6 +204,10 @@ describe("UninstallDialog", () => {
 
     expect(await screen.findByText("Some apps ask for your Mac password at this step.")).toBeInTheDocument();
     expect(linesOf("Notes")).toEqual(["Some apps ask for your Mac password at this step."]);
+    // A line of its own under the text, with no 「请注意」 heading over it,
+    // and no ⚠︎: a password is not a caution.
+    expect(within(group("Notes")).queryByRole("heading")).toBeNull();
+    expect(within(group("Notes")).getByRole("listitem")).not.toHaveAttribute("data-caution");
 
     unmount();
     vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ needs_password: false }));
@@ -231,6 +241,26 @@ describe("UninstallDialog", () => {
     // hover) and drops out of the tab order (no keyboard/VoiceOver focus).
     expect(confirmButton).not.toHaveAttribute("title");
     expect(screen.getByText("Uninstall these first to remove jq.")).toBeInTheDocument();
+  });
+
+  it("marks a caution with a ⚠︎ before its words, in the label colour at 11, and nothing else", async () => {
+    vi.mocked(invoke).mockResolvedValue(issuedPlanFor({ warnings: ["DependentsUnknown"], needs_password: true }));
+
+    renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
+
+    await screen.findByRole("region", { name: "Notes" });
+    const [caution, password] = within(group("Notes")).getAllByRole("listitem");
+    expect(caution).toHaveAttribute("data-caution");
+    expect(caution.querySelector("svg")).toHaveClass("text-warning");
+    expect(password).not.toHaveAttribute("data-caution");
+    expect(password.querySelector("svg")).toBeNull();
+    for (const line of [caution, password]) {
+      expect(line).toHaveClass("text-foreground", "text-small");
+      expect(line.className).not.toMatch(/text-muted/);
+    }
+    // No warning sign by the question, and none over the notes.
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Uninstall “jq”?" }).querySelector("svg")).toBeNull();
   });
 
   it("names what still needs it once, not again as a warning", async () => {
@@ -440,7 +470,7 @@ describe("UninstallDialog", () => {
     }
   });
 
-  it("says under the tool, not behind an ⓘ, what the uninstall removes and what it leaves", async () => {
+  it("says as its text, under the question and not behind an ⓘ, what the uninstall removes and what it leaves", async () => {
     // `Warning::UninstallScope`: one sentence per source, true for the
     // exact command the plan runs (crates/canager-core/src/model.rs).
     vi.mocked(invoke).mockResolvedValue(
@@ -452,10 +482,13 @@ describe("UninstallDialog", () => {
     const sentence = await screen.findByText(
       "Deletes only this installed version of jq and the links to it; config and data kept elsewhere are not deleted.",
     );
-    // In the tool's own item, under its name.
-    const item = sentence.closest("[data-sheet-tool]");
-    expect(item).not.toBeNull();
-    expect(within(item as HTMLElement).getByText("jq")).toBeInTheDocument();
+    // The alert's own text, in the label colour, under the question that
+    // names the tool.
+    expect(sentence).toHaveAttribute("data-sheet-text");
+    expect(sentence.className).toMatch(/\btext-foreground\b/);
+    expect(screen.getByRole("dialog", { name: "Uninstall “jq”?" })).toContainElement(sentence);
+    // Nothing is deleted for good: no "can't undo".
+    expect(screen.queryByText(/can't undo/)).toBeNull();
     // Not a note: with nothing else to say there is no "Before you
     // continue", and nothing is behind an ⓘ.
     expect(screen.queryByRole("region", { name: "Notes" })).toBeNull();
@@ -543,7 +576,7 @@ describe("UninstallDialog", () => {
       const en = renderWithProviders(
         <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
       );
-      expect((await screen.findByText(english)).closest("[data-sheet-tool]")).not.toBeNull();
+      expect((await screen.findByText(english)).closest("[data-sheet-text]")).not.toBeNull();
       en.unmount();
 
       await i18n.changeLanguage("zh-CN");
@@ -551,7 +584,7 @@ describe("UninstallDialog", () => {
         const zh = renderWithProviders(
           <UninstallDialog open onOpenChange={() => {}} request={request} displayName={name} />,
         );
-        expect((await screen.findByText(chinese)).closest("[data-sheet-tool]")).not.toBeNull();
+        expect((await screen.findByText(chinese)).closest("[data-sheet-text]")).not.toBeNull();
         zh.unmount();
       } finally {
         await i18n.changeLanguage("en");
@@ -595,7 +628,7 @@ describe("UninstallDialog", () => {
     const sentence = await screen.findByText(
       "Runs the uninstall steps Homebrew recorded for Microsoft Word; what else some of those steps delete can't be seen in advance.",
     );
-    expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
+    expect(sentence.closest("[data-sheet-text]")).not.toBeNull();
     expect(linesOf("Notes")).toEqual([
       "Also deletes every file these installer packages put on this Mac, whether or not other apps use them: com.microsoft.package.Microsoft_Word.app, com.microsoft.pkg.licensing.",
       "Also stops and removes a background service.",
@@ -641,7 +674,7 @@ describe("UninstallDialog", () => {
     const sentence = await screen.findByText(
       "Runs the uninstall steps Homebrew recorded for Wireshark-ChmodBPF; what else some of those steps delete can't be seen in advance.",
     );
-    expect(sentence.closest("[data-sheet-tool]")).not.toBeNull();
+    expect(sentence.closest("[data-sheet-text]")).not.toBeNull();
     expect(linesOf("Notes")).toEqual([
       "Also deletes every file the installer package org.wireshark.ChmodBPF.pkg put on this Mac, whether or not other apps use them.",
       "Also runs /usr/sbin/installer.",
@@ -657,7 +690,7 @@ describe("UninstallDialog", () => {
       const chinese = await screen.findByText(
         "执行Homebrew为“Wireshark-ChmodBPF”记下的卸载步骤；其中部分步骤还会删除什么，无法事先得知。",
       );
-      expect(chinese.closest("[data-sheet-tool]")).not.toBeNull();
+      expect(chinese.closest("[data-sheet-text]")).not.toBeNull();
       expect(linesOf("说明")).toEqual([
         "还会删除下列安装包安装的全部文件，不论其他App是否在用：org.wireshark.ChmodBPF.pkg。",
         "还会运行：/usr/sbin/installer。",
@@ -791,6 +824,13 @@ describe("UninstallDialog", () => {
       <UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />,
     );
     expect(await screen.findByRole("button", { name: "Uninstall Permanently" })).toBeEnabled();
+    // The text ends saying so, as an alert about an action that can't be
+    // undone does (spec §3.6, 4.1-7).
+    expect(
+      screen.getByText(
+        "Runs the uninstall steps Homebrew recorded for DuckieTV; other files its installer put on this Mac stay. You can't undo this action.",
+      ),
+    ).toHaveAttribute("data-sheet-text");
     expect(linesOf("Notes").slice(0, 2)).toEqual([
       "Also permanently deletes these: /Applications/duckieTV.app, ~/Library/Application Support/DuckieTV-Standalone.",
       "Also moves ~/.nvs to the Trash.",
@@ -801,7 +841,9 @@ describe("UninstallDialog", () => {
     try {
       renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={cask} displayName="DuckieTV" />);
       expect(await screen.findByRole("button", { name: "永久卸载" })).toBeEnabled();
-      expect(await screen.findByText("执行Homebrew为“DuckieTV”记下的卸载步骤；安装器安装的其他文件不删除。")).toBeInTheDocument();
+      expect(
+        await screen.findByText("执行Homebrew为“DuckieTV”记下的卸载步骤；安装器安装的其他文件不删除。此操作无法撤销。"),
+      ).toHaveAttribute("data-sheet-text");
       expect(linesOf("说明").slice(0, 2)).toEqual([
         "还会永久删除：/Applications/duckieTV.app、~/Library/Application Support/DuckieTV-Standalone。",
         "还会移到废纸篓：~/.nvs。",

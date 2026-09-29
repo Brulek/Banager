@@ -11,10 +11,10 @@ const NO_KEY: ArtifactKey = { instance_id: "", kind: "Formula", name: "" };
 /**
  * An app icon's size, as `SourceAvatar`'s of the same name: `md`, 32px, a
  * row's and a sheet line's; `sm`, 24px, a quiet line's, such as the
- * Updates page's "Just updated"; `lg`, 48px, the Installed page's
- * inspector's. Rounded as an app icon is at that
- * size; the icon's own shape and margin do the rest. Whole class names,
- * for Tailwind.
+ * Updates page's "Just updated"; `lg`, 48px, over a dialog's question
+ * about one tool, as NSAlert puts an app's icon, and atop the Installed
+ * page's inspector. Rounded as an app icon is at that size; the icon's
+ * own shape and margin do the rest. Whole class names, for Tailwind.
  */
 const ICON_CLASSES = {
   sm: "h-6 w-6 rounded-[5px]",
@@ -52,7 +52,7 @@ export interface ToolAvatarProps {
  * 3. its source's logo, from the pack;
  * 4. its source's coloured initial.
  *
- * The first two wear the source's mark, 14px, on their corner: at the
+ * The first two wear the source's mark, 14px (16 on a dialog's 48), on their corner: at the
  * window's default 800px a row's source chip gives way to the name, and
  * the avatar is left to say where the tool comes from. The last two are
  * the source's own avatar, and wear none; nor does a tool whose logo is
@@ -90,15 +90,19 @@ export function ToolAvatar({ adapterId, sourceLabel, iconKey, size = "md" }: Too
 }
 
 /**
- * How far over the avatar's corner its badge sits: 2px on a row's 32px and the inspector's 48px;
+ * How far over the avatar's corner its badge sits: 2px on a row's 32px;
  * 4px on a quiet line's 24px, where it would otherwise hide a good part of
- * the logo. Whole class names, for Tailwind.
+ * the logo, and on a 48px one, a dialog's or the inspector's. Whole class
+ * names, for Tailwind.
  */
 const BADGE_OFFSET_CLASSES = {
   sm: "-bottom-1 -right-1",
   md: "-bottom-0.5 -right-0.5",
-  lg: "-bottom-0.5 -right-0.5",
+  lg: "-bottom-1 -right-1",
 } as const;
+
+/** The badge's own size: 14px, or 16px on a dialog's 48px icon. */
+const BADGE_SIZES = { sm: "badge", md: "badge", lg: "xs" } as const;
 
 interface WithSourceBadgeProps {
   adapterId: string;
@@ -122,7 +126,7 @@ function WithSourceBadge({ adapterId, sourceLabel, size, children }: WithSourceB
         data-source-badge=""
         className={`absolute flex rounded-[4px] ring-[1.5px] ring-surface ${BADGE_OFFSET_CLASSES[size]}`}
       >
-        <SourceAvatar adapterId={adapterId} label={sourceLabel} size="badge" />
+        <SourceAvatar adapterId={adapterId} label={sourceLabel} size={BADGE_SIZES[size]} />
       </span>
     </span>
   );

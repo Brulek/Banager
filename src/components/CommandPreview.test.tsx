@@ -47,6 +47,21 @@ describe("CommandPreview", () => {
     expect(document.getElementById(disclosure.getAttribute("aria-controls") ?? "")).toContainElement(command);
   });
 
+  it("is a disclosure row: a 10 triangle and 13 muted words, the triangle turned down while open", async () => {
+    renderWithProviders(<CommandPreview plans={[{ id: "1", action: brewUpgrade }]} />);
+
+    const disclosure = screen.getByRole("button", { name: "Show Command" });
+    expect(disclosure).toHaveClass("text-body", "text-muted");
+    // Not a link: no accent.
+    expect(disclosure.className).not.toMatch(/accent/);
+    const triangle = disclosure.querySelector("svg") as SVGElement;
+    expect(triangle).toHaveAttribute("width", "10");
+    expect(triangle.getAttribute("class")).not.toMatch(/rotate-90/);
+
+    await userEvent.setup().click(disclosure);
+    expect(triangle.getAttribute("class")).toMatch(/rotate-90/);
+  });
+
   it("opens and closes from the keyboard", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CommandPreview plans={[{ id: "1", action: brewUpgrade }]} />);

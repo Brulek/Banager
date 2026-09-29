@@ -625,8 +625,8 @@ describe("UpdatesPage", () => {
 
     const notices = within(dialog).getAllByText("Some apps ask for your Mac password at this step.");
     expect(notices).toHaveLength(1);
-    expect(notices[0].closest("div")?.textContent).toContain("onyx");
-    expect(notices[0].closest("div")?.textContent).not.toContain("glib");
+    // Under onyx's own row of the list, and no other's.
+    expect(notices[0].closest("[data-sheet-tool]")?.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
   });
 
   it("shows a warning carried on the plan, such as cargo's compile-locally notice", async () => {
@@ -3113,7 +3113,9 @@ describe("UpdatesPage", () => {
     fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
     const dialog = await findByRole("dialog");
 
-    expect(await within(dialog).findByText("2.88.3 → 2.90.0")).toBeInTheDocument();
+    // Under the question, with where it comes from.
+    const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
+    expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew · 2.88.3 → 2.90.0");
   });
 
   describe("the confirmation sheet", () => {
@@ -3122,6 +3124,10 @@ describe("UpdatesPage", () => {
 
       fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
       let dialog = await findByRole("dialog", { name: "Update “glib”?" });
+      // One tool: an alert, 420 wide, its 48 icon over the question.
+      expect(dialog).toHaveAttribute("data-dialog-width", "420");
+      expect(dialog.querySelector("[data-dialog-icon]")).not.toBeNull();
+      expect(dialog.querySelector("[data-sheet-tools]")).toBeNull();
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
 
@@ -3130,14 +3136,17 @@ describe("UpdatesPage", () => {
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       dialog = await findByRole("dialog", { name: "Update 2 tools?" });
-      const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
-      expect(tools.map((tool) => within(tool).getAllByText(/./, { selector: "p" })[0].textContent)).toEqual([
-        "glib",
-        "onyx",
-      ]);
-      // The row's own avatar, its source under its name, the version it moves to.
-      expect(within(tools[0]).getByText("H")).toHaveAttribute("aria-hidden", "true");
-      expect(within(tools[0]).getByText("Homebrew")).toBeInTheDocument();
+      // Several: 480 wide, no icon, the tools in a grouped list.
+      expect(dialog).toHaveAttribute("data-dialog-width", "480");
+      expect(dialog.querySelector("[data-dialog-icon]")).toBeNull();
+      const tools = [...dialog.querySelectorAll("[data-sheet-tools] > [data-sheet-tool]")] as HTMLElement[];
+      expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
+      // The row's own avatar, at 24; its source for a screen reader; the
+      // version it moves to, on the right.
+      const initial = within(tools[0]).getByText("H");
+      expect(initial).toHaveAttribute("aria-hidden", "true");
+      expect(initial.className).toMatch(/\bh-6 w-6\b/);
+      expect(within(tools[0]).getByText("Homebrew")).toHaveClass("sr-only");
       expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
     });
@@ -3173,7 +3182,7 @@ describe("UpdatesPage", () => {
       expectLogos(row);
 
       fireEvent.click(within(row).getByRole("button", { name: "Update" }));
-      expectLogos((await findByRole("dialog", { name: "Update “glib”?" })).querySelector("[data-sheet-tool]"));
+      expectLogos((await findByRole("dialog", { name: "Update “glib”?" })).querySelector("[data-dialog-icon]"));
     });
 
     it("keeps the commands one press away while Show technical details is off", async () => {
@@ -3209,7 +3218,7 @@ describe("UpdatesPage", () => {
       );
     });
 
-    it("keeps each tool's notes under its name, under Before you continue", async () => {
+    it("keeps each tool's notes under its own row, in the label colour at 11, a caution marked", async () => {
       needsPassword.add("onyx");
       noCancel.add("glib");
       planWarnings.glib = ["CompilesLocally"];
@@ -3220,41 +3229,59 @@ describe("UpdatesPage", () => {
       fireEvent.click(checkboxes[1]);
       fireEvent.click(getByRole("button", { name: /^Update Selected/ }));
       const dialog = await findByRole("dialog");
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
 
-      const notes = within(dialog).getByRole("region", { name: "Notes" });
-      const groups = [...notes.querySelectorAll("ul")].map((list) => ({
-        tool: list.previousElementSibling?.textContent,
-        lines: [...list.querySelectorAll("li")].map((item) => item.textContent?.trim()),
+      const tools = [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => ({
+        tool: tool.querySelector("[data-sheet-name]")?.textContent,
+        lines: [...tool.querySelectorAll("li")].map((item) => ({
+          text: item.textContent?.trim(),
+          caution: item.hasAttribute("data-caution"),
+        })),
       }));
-      expect(groups).toEqual([
+      expect(tools).toEqual([
         {
           tool: "glib",
           lines: [
-            "This compiles on your Mac and takes a while.",
-            "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+            { text: "This compiles on your Mac and takes a while.", caution: false },
+            {
+              text: "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
+              caution: true,
+            },
           ],
         },
-        { tool: "onyx", lines: ["Some apps ask for your Mac password at this step."] },
+        { tool: "onyx", lines: [{ text: "Some apps ask for your Mac password at this step.", caution: false }] },
       ]);
+      // Text to read, not a caption: the label colour, at 11.
+      for (const line of dialog.querySelectorAll("[data-sheet-tool] li")) {
+        expect(line.className).toMatch(/\btext-foreground\b/);
+        expect(line.className).toMatch(/\btext-small\b/);
+      }
+      // A caution's ⚠︎, before its words.
+      const caution = dialog.querySelector("[data-sheet-tool] li[data-caution]") as HTMLElement;
+      expect(caution.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+      expect(caution.firstElementChild).toHaveClass("text-warning");
+      // No 「请注意」 block, and no count of the notes beside Update.
+      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: /notes?$/ })).toBeNull();
     });
 
-    it("puts Before you continue above the tools, with how many notes beside Update, which takes the focus to them", async () => {
+    it("lists the tools with notes first, so that the first note is in sight without scrolling", async () => {
+      // onyx comes after glib on the page; its note puts it first.
       needsPassword.add("onyx");
-      planWarnings.glib = ["CompilesLocally"];
       const { findByRole, findByText, getByRole } = renderPage();
 
       await findByText("2 can be updated");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
+      const names = () =>
+        [...dialog.querySelectorAll("[data-sheet-tool]")].map((tool) => tool.querySelector("[data-sheet-name]")?.textContent);
 
-      const notes = await within(dialog).findByRole("region", { name: "Notes" });
-      const firstTool = dialog.querySelector("[data-sheet-tool]");
-      expect(firstTool).toBeInstanceOf(HTMLElement);
-      expect(notes.compareDocumentPosition(firstTool as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-      const summary = within(dialog).getByRole("button", { name: "2 notes" });
-      fireEvent.click(summary);
-      expect(document.activeElement).toBe(notes);
+      // (Before the plans are back, the list's own order: see "while its
+      // plans are on their way" below.)
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Update" })).toBeEnabled());
+      expect(names()).toEqual(["onyx", "glib"]);
+      const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
+      expect(within(first).getByText("Some apps ask for your Mac password at this step.")).toBeInTheDocument();
     });
 
     it("says nothing about notes beside Update when there are none", async () => {
@@ -3269,29 +3296,26 @@ describe("UpdatesPage", () => {
       expect(within(dialog).queryByRole("button", { name: /to note$/ })).toBeNull();
     });
 
-    it("lists the first five tools of a long batch, and the rest one press away", async () => {
+    it("lists every tool of a long batch in a grouped list that scrolls inside past 320", async () => {
       updates = Array.from({ length: 10 }, (_, i) => brewCandidate(`tool-${i}`));
       const { findByRole, findByText, getByRole } = renderPage();
 
       await findByText("10 can be updated");
       fireEvent.click(getByRole("button", { name: "Update All" }));
       const dialog = await findByRole("dialog", { name: "Update 10 tools?" });
-      const toolNames = () =>
-        [...dialog.querySelectorAll("[data-sheet-tool]")].map(
-          (tool) => within(tool as HTMLElement).getAllByText(/./, { selector: "p" })[0].textContent,
-        );
 
-      expect(toolNames()).toEqual(["tool-0", "tool-1", "tool-2", "tool-3", "tool-4"]);
-      const more = within(dialog).getByRole("button", { name: "5 more" });
-      expect(more).toHaveAttribute("aria-expanded", "false");
-
-      fireEvent.click(more);
-      expect(toolNames()).toHaveLength(10);
-      const fewer = within(dialog).getByRole("button", { name: "Show Fewer" });
-      expect(fewer).toHaveAttribute("aria-expanded", "true");
-
-      fireEvent.click(fewer);
-      expect(toolNames()).toHaveLength(5);
+      const list = dialog.querySelector("[data-sheet-tools]") as HTMLElement;
+      expect([...list.querySelectorAll("[data-sheet-name]")].map((name) => name.textContent)).toEqual(
+        Array.from({ length: 10 }, (_, i) => `tool-${i}`),
+      );
+      // The group's fill and corners, no taller than 320, scrolling inside
+      // -- and reachable by the keyboard to scroll it.
+      for (const look of ["bg-group", "rounded-group", "max-h-80", "overflow-y-auto"]) {
+        expect(list).toHaveClass(look);
+      }
+      expect(list).toHaveAttribute("tabindex", "0");
+      // Nothing folded behind a press.
+      expect(within(dialog).queryByRole("button", { name: /more$/ })).toBeNull();
     });
 
     it("lists every tool of a long batch when one of them was refused, with its why", async () => {
@@ -3406,16 +3430,13 @@ describe("UpdatesPage", () => {
       const dialog = await findByRole("dialog", { name: "Update 2 tools?" });
       expect(plannedNames().sort()).toEqual(["glib", "onyx"]);
       const tools = [...dialog.querySelectorAll("[data-sheet-tool]")] as HTMLElement[];
-      expect(tools.map((tool) => within(tool).getAllByText(/./, { selector: "p" })[0].textContent)).toEqual([
-        "glib",
-        "onyx",
-      ]);
+      expect(tools.map((tool) => tool.querySelector("[data-sheet-name]")?.textContent)).toEqual(["glib", "onyx"]);
       expect(within(tools[0]).getByText("H")).toHaveAttribute("aria-hidden", "true");
       expect(within(tools[0]).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
       expect(within(tools[1]).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
       // Preparing, where the notes and the commands will go, and Update off.
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
-      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step.")).toBeNull();
       expect(within(dialog).queryByRole("button", { name: /^Show Command/ })).toBeNull();
       const update = within(dialog).getByRole("button", { name: "Update" });
       expect(update).toBeDisabled();
@@ -3425,15 +3446,16 @@ describe("UpdatesPage", () => {
       await release("glib");
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
       expect(update).toBeDisabled();
-      expect(within(dialog).queryByRole("region", { name: "Notes" })).toBeNull();
+      expect(within(dialog).queryByText("Some apps ask for your Mac password at this step.")).toBeNull();
 
       // Every plan back: the notes and the commands, and Update on.
       await release("onyx");
       await waitFor(() => expect(update).toBeEnabled());
       expect(within(dialog).queryByText("Preparing…")).toBeNull();
-      expect(within(dialog).getByRole("region", { name: "Notes" })).toHaveTextContent(
-        "Some apps ask for your Mac password at this step.",
-      );
+      // onyx's note, under onyx, which it brings to the top of the list.
+      const first = dialog.querySelector("[data-sheet-tool]") as HTMLElement;
+      expect(first.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
+      expect(first).toHaveTextContent("Some apps ask for your Mac password at this step.");
       showCommands(dialog);
       expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
       expect(within(dialog).getByText("/opt/homebrew/bin/brew upgrade --cask onyx")).toBeInTheDocument();
@@ -4096,8 +4118,10 @@ describe("UpdatesPage", () => {
       "This can't be cancelled once it starts. Don't quit Canager or shut down your Mac until it finishes.",
     );
     expect(hints).toHaveLength(1);
-    expect(hints[0].closest("div")?.textContent).toContain("onyx");
-    expect(hints[0].closest("div")?.textContent).not.toContain("glib");
+    const row = hints[0].closest("[data-sheet-tool]");
+    expect(row?.querySelector("[data-sheet-name]")).toHaveTextContent("onyx");
+    // A caution: marked ⚠︎ before its words.
+    expect(hints[0].closest("li")).toHaveAttribute("data-caution");
   });
 
   describe("the keyboard (R11)", () => {

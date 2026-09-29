@@ -165,7 +165,6 @@ describe("the polish-3 copy rules, in English", () => {
       "updates.retry",
       "updates.skipVersion",
       "updates.neverRemind",
-      "updates.fewerTools",
       "updates.justUpdated.clear",
       "updates.showReasons",
       "commandPreview.show_one",

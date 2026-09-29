@@ -4,8 +4,8 @@ import type { TFunction } from "i18next";
 import { displayToken } from "../lib/format";
 import { useSettings } from "../lib/queries";
 import type { PlanAction } from "../lib/types";
-import { ChevronIcon } from "./icons";
-import { LINK } from "./ui/controls";
+import { SMALL_WRAPPING } from "./ui/group";
+import { DisclosureIcon } from "./icons";
 
 /** One plan a confirmation is about, for its preview. */
 export interface PlanPreview {
@@ -80,7 +80,7 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
       commands.push({ id: plan.id, name: plan.name, text: commandText(action) });
     } else if ("TrashPaths" in action) {
       trash.push(
-        <p key={plan.id} className="text-small text-muted">
+        <p key={plan.id} className={`text-muted ${SMALL_WRAPPING}`}>
           {trashText(t, action)}
         </p>,
       );
@@ -94,25 +94,27 @@ export function CommandPreview({ plans }: CommandPreviewProps) {
     <>
       {trash}
       {commands.length > 0 ? (
-        <div className="mt-5">
+        <div className="mt-3">
+          {/* A disclosure row, as a Mac list's (spec §3.6): a 10 triangle,
+              turned down while open, and the words in 13 muted. */}
           <button
             type="button"
             aria-expanded={open}
             aria-controls={open ? panelId : undefined}
             onClick={() => setChosen(!open)}
-            className={`-ml-1 inline-flex items-center gap-1 px-1 py-0.5 text-small ${LINK}`}
+            className="-ml-1 flex h-7 items-center gap-1.5 rounded-control px-1 text-body text-muted"
           >
-            <ChevronIcon size={14} className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+            <DisclosureIcon size={10} className={`shrink-0 ${open ? "rotate-90" : ""}`} />
             {t("commandPreview.show", { count: commands.length })}
           </button>
           {open ? (
-            <div id={panelId} className="mt-2 flex flex-col gap-2.5">
+            <div id={panelId} className="mt-1 flex flex-col gap-2">
               {commands.map((command) => (
                 <div key={command.id}>
                   {command.name !== undefined ? (
-                    <p className="mb-1 text-small font-medium text-muted">{command.name}</p>
+                    <p className="mb-1 text-small text-muted">{command.name}</p>
                   ) : null}
-                  <code className="block select-text whitespace-pre-wrap break-words rounded-button bg-[var(--color-hover)] px-3 py-2 font-mono text-small text-foreground">
+                  <code className="block select-text whitespace-pre-wrap break-words rounded-control bg-group px-2.5 py-2 font-mono text-small text-foreground">
                     {command.text}
                   </code>
                 </div>

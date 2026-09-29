@@ -190,6 +190,17 @@
   }
 }
 
+/* A dialog is lighter than the window in the dark (#282828 over #1E1E1E),
+   so a group inside one -- a list of tools, a log, a command -- is lighter
+   again, as a sheet's grouped form is, rather than the window's #252525,
+   which would sink into it. */
+@media (prefers-color-scheme: dark) {
+  [data-dialog-width] {
+    --color-group: #323232;
+    --color-group-separator: #3d3d3d;
+  }
+}
+
 /* Increase contrast (System Settings > Accessibility > Display): the
    secondary text darkens to 70%. */
 @media (prefers-contrast: more) {

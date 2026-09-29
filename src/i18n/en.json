@@ -219,12 +219,6 @@
     "confirmTitle_one": "Update {{count}} tool?",
     "confirmTitle_other": "Update {{count}} tools?",
     "preparing": "Preparing…",
-    "warningsTitle": "Notes",
-    "notesSummary_one": "{{count}} note",
-    "notesSummary_other": "{{count}} notes",
-    "moreTools_one": "{{count}} more",
-    "moreTools_other": "{{count}} more",
-    "fewerTools": "Show Fewer",
     "started": "Started",
     "planFailed": "Couldn't prepare the update: {{message}}",
     "submitFailed": "Couldn't start the update: {{message}}",
@@ -547,7 +541,9 @@
     "confirmPermanent": "Uninstall Permanently",
     "affectedBlocksConfirm": "Uninstall these first to remove {{name}}.",
     "trashPreview_one": "This item goes to the Trash, where you can drag it back out.",
-    "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out."
+    "trashPreview_other": "These {{count}} items go to the Trash, where you can drag them back out.",
+    "cannotUndo": "You can't undo this action.",
+    "endsCannotUndo": "{{sentence}} You can't undo this action."
   },
   "settings": {
     "groups": {

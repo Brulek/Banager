@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deletesForGood,
+  isCaution,
   warningArgs,
   warningDetailKey,
   warningGroup,
@@ -607,6 +608,7 @@ describe("warningDetailKey", () => {
       text: 'warnings.caskStep.QuitsApps({"count":2,"items":"com.microsoft.VSCode、com.microsoft.VSCode.helper"})',
       detail:
         'warnings.caskStep.systemNames({"count":2,"items":"com.microsoft.VSCode、com.microsoft.VSCode.helper"})',
+      caution: true,
     });
     // An app Canager found is named on the line itself, with nothing behind it.
     expect(warningDetailKey({ CaskUninstallStep: { step: "QuitsNamedApps", items: ["Visual Studio Code"] } })).toBeNull();
@@ -624,6 +626,7 @@ describe("warningDetailKey", () => {
     expect(warningLine(chineseT, { CaskUninstallStep: { step: "RemovesServices", items: pattern } })).toEqual({
       text: 'warnings.caskStep.RemovesServicesMatching({"count":2,"items":"com.adobe.ccxprocess、com.adobe.CCXProcess.*"})',
       detail: 'warnings.caskStep.systemNames({"count":2,"items":"com.adobe.ccxprocess、com.adobe.CCXProcess.*"})',
+      caution: true,
     });
   });
 
@@ -785,6 +788,37 @@ describe("deletesForGood", () => {
   });
 });
 
+describe("isCaution", () => {
+  it("marks what a person should weigh first, and not what only says how it goes", () => {
+    const cautions: Warning[] = [
+      "DependentsUnknown",
+      "HomebrewRustupLosesToolchains",
+      "HomebrewAutoremoves",
+      "HomebrewPeriodicCleanup",
+      "HomebrewCleanupAutoremoves",
+      { WouldBreak: { names: ["wget"] } },
+      { ThirdPartyRegistry: { host: "modelscope.cn" } },
+      { RemovesToolchains: { path: "~/.rustup", names: ["stable"] } },
+      { DeletesCargoHome: { path: "~/.cargo" } },
+      { RemovesCargoInstalled: { names: ["tokei"] } },
+      { LeavesShellConfigLine: { path: "~/.zshrc", certain: true } },
+      { CaskUninstallStep: { step: "Deletes", items: ["~/Library/Foo"] } },
+      { Message: "something this build has no words for" },
+    ];
+    const plain: Warning[] = [
+      "CompilesLocally",
+      "NonRegistrySource",
+      "EditsShellConfig",
+      { WillTrash: { path: "~/.local/bin/claude", what: "Launcher" } },
+      { WillKeep: { path: "~/.claude.json", what: "Settings" } },
+      { AlreadyGone: { path: "~/.grok/downloads" } },
+      { UninstallScope: { what: "HomebrewFormula" } },
+    ];
+    expect(cautions.filter((warning) => !isCaution(warning))).toEqual([]);
+    expect(plain.filter(isCaution)).toEqual([]);
+  });
+});
+
 describe("warningLines", () => {
   it("renders every warning in order, in its group, with its why where it has one", () => {
     const lines = warningLines(fakeT, [
@@ -798,20 +832,21 @@ describe("warningLines", () => {
     expect(lines).toEqual({
       scope: [],
       trash: [
-        { text: 'warnings.willTrash.Program({"path":"~/.local/share/claude"})', detail: null },
-        { text: 'warnings.alreadyGone({"path":"~/.grok/downloads"})', detail: null },
+        { text: 'warnings.willTrash.Program({"path":"~/.local/share/claude"})', detail: null, caution: false },
+        { text: 'warnings.alreadyGone({"path":"~/.grok/downloads"})', detail: null, caution: false },
       ],
       keep: [
         {
           text: 'warnings.willKeep.ShellConfigLines({"path":"~/.zshrc"})',
           // Its why, handed the line's own values, which it may say.
           detail: 'warnings.willKeep.ShellConfigLinesDetail({"path":"~/.zshrc"})',
+          caution: false,
         },
-        { text: 'warnings.willKeep.Settings({"path":"~/.claude.json"})', detail: null },
+        { text: 'warnings.willKeep.Settings({"path":"~/.claude.json"})', detail: null, caution: false },
       ],
       note: [
-        { text: "warnings.dependentsUnknown", detail: null },
-        { text: "boom", detail: null },
+        { text: "warnings.dependentsUnknown", detail: null, caution: true },
+        { text: "boom", detail: null, caution: true },
       ],
     });
   });
@@ -821,7 +856,7 @@ describe("warningLines", () => {
     // `brew uses`; the confirmation shows `affected` as its own list.
     const warnings: Warning[] = ["DependentsUnknown", { WouldBreak: { names: ["wget"] } }];
     expect(warningLines(fakeT, warnings, ["wget"]).note).toEqual([
-      { text: "warnings.dependentsUnknown", detail: null },
+      { text: "warnings.dependentsUnknown", detail: null, caution: true },
     ]);
     // Without that list, it is the only place the names are said.
     expect(warningLines(fakeT, warnings).note.map((line) => line.text)).toEqual([
@@ -838,7 +873,7 @@ describe("warningLines", () => {
     ];
     const lines = warningLines(fakeT, warnings, [], "Microsoft Word");
     expect(lines.scope).toEqual([
-      { text: 'warnings.uninstallScope.HomebrewCaskSteps({"name":"Microsoft Word"})', detail: null },
+      { text: 'warnings.uninstallScope.HomebrewCaskSteps({"name":"Microsoft Word"})', detail: null, caution: false },
     ]);
     expect(lines.note.map((line) => line.text)).toEqual([
       'warnings.caskStep.RemovesPackages({"count":1,"items":"com.microsoft.pkg.licensing"})',

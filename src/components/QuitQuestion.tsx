@@ -6,7 +6,8 @@ import { freshOperations, queryKeys, useOperations } from "../lib/queries";
 import { isActive, runsToItsEnd, useOperationName } from "../lib/operations";
 import { QUIT_NO_CANCEL_KEYS, quitBodyKey, quitStops, tellRustTwice, useQuitRequests } from "../lib/quit";
 import type { OpSummary } from "../lib/types";
-import { WarningIcon } from "./icons";
+import { SheetText } from "./SheetParts";
+import { WarningFilledIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
 
@@ -14,14 +15,15 @@ import { BUTTON } from "./ui/controls";
  * The question a quit asks while an operation is under way
  * (src-tauri/src/quit.rs): Rust has called the quit off and brought the
  * window back, and this asks, in the app's sheet (`Dialog`):
- * 「还有 2 个操作没完成」, a line on what quitting now does -- it stops them,
+ * 「还有2个操作未完成」, a line on what quitting now does -- it stops them,
  * and, while a command is under way, the tool it works on can be left half
  * done (`quitBodyKey`) -- a line for each one that has started and that
  * nothing can stop, such as rustup's self update, which quitting does not
- * stop, and two buttons: 「仍然退出」, which cancels what can be cancelled,
- * waits for it to stop and quits (`quitAnyway`; the buttons stay held
- * meanwhile), and 「继续等待」, which leaves Canager running, has the focus
- * as the sheet opens, and is what Escape does.
+ * stop, and two buttons, one over the other: on top, the default
+ * 「取消」, which leaves Canager running, has the focus as the sheet opens,
+ * and is what Escape does; under it 「退出」, which cancels what can be
+ * cancelled, waits for it to stop and quits (`quitAnyway`; the buttons
+ * stay held meanwhile).
  *
  * It goes by the operations as the backend lists them when Rust asks
  * (`freshOperations`): with none left undone by then, Canager quits
@@ -33,7 +35,7 @@ import { BUTTON } from "./ui/controls";
  * question it answers (`quitQuestionShown`): Rust waits 2 seconds for
  * that, then quits, since a page that never showed the question is not
  * there for the user to answer. When it goes without quitting --
- * 「继续等待」, Escape, or everything having finished -- it tells Rust that
+ * 「取消」, Escape, or everything having finished -- it tells Rust that
  * too (`quitKeptWaiting`), which stops that wait from quitting should the
  * first word not have got through. Each word is sent once more should it
  * fail (`tellRustTwice`).
@@ -106,11 +108,11 @@ export function QuitQuestion() {
       }}
       title={t("quit.title", { count })}
       initialFocus={keepWaitingButton}
+      // Two answers that read as long as a sentence side by side: one over
+      // the other, as wide as the dialog, staying on top -- the default.
+      stackedFooter
       footer={
         <>
-          <button type="button" disabled={quitting} onClick={quit} className={BUTTON.large.grey}>
-            {t("quit.quitAnyway")}
-          </button>
           <button
             ref={keepWaitingButton}
             type="button"
@@ -120,16 +122,17 @@ export function QuitQuestion() {
           >
             {t("quit.keepWaiting")}
           </button>
+          <button type="button" disabled={quitting} onClick={quit} className={BUTTON.large.grey}>
+            {t("quit.quitAnyway")}
+          </button>
         </>
       }
     >
       {question !== null && <OnScreen question={question} />}
-      {body !== null && (
-        <p className="break-words text-body text-foreground">{t(body, { count: quitStops(active).length })}</p>
-      )}
+      {body !== null && <SheetText>{t(body, { count: quitStops(active).length })}</SheetText>}
       {active.filter(runsToItsEnd).map((op) => (
-        <p key={op.id} className="mt-3 flex gap-2 text-body text-foreground">
-          <WarningIcon size={16} className="mt-px shrink-0 text-warning" />
+        <p key={op.id} className="mt-2 flex gap-1.5 text-body text-foreground">
+          <WarningFilledIcon size={12} className="mt-0.5 shrink-0 text-warning" />
           <span className="min-w-0 break-words">{t(QUIT_NO_CANCEL_KEYS[op.kind], { name: nameOf(op) })}</span>
         </p>
       ))}
@@ -144,7 +147,7 @@ export function QuitQuestion() {
  * again for each question that comes while it is up. Sent once more should
  * it fail; should that fail too, Canager quits 2 seconds after asking, as
  * it does with nobody here to answer, unless the user has answered
- * 「继续等待」 by then (`quitKeptWaiting`).
+ * 「取消」 by then (`quitKeptWaiting`).
  */
 function OnScreen({ question }: { question: number }) {
   useEffect(() => {

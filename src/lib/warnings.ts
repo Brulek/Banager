@@ -507,10 +507,67 @@ export function deletesForGood(warning: Warning): boolean {
   return false;
 }
 
-/** One line of a confirmation: its sentence, and its longer why for an ⓘ, if it has one. */
+/**
+ * Whether a warning's line is a caution -- something a person may not
+ * expect and should weigh before going on -- which a confirmation marks
+ * with a small ⚠︎ before its words (spec R6): what else goes or stops
+ * working, what is deleted for good, a source Canager cannot vouch for, a
+ * dependency it could not check, a cask's extra steps, and anything this
+ * build has no words for. Not one that only says how it goes: that it
+ * compiles, where it came from, which line rustup takes out, what moves to
+ * the Trash or stays, and what the uninstall covers.
+ *
+ * Every variant is named, so one added to `Warning` fails `tsc` here; at
+ * run time, a variant this build does not know is a caution.
+ */
+export function isCaution(warning: Warning): boolean {
+  if (typeof warning === "string") {
+    switch (warning) {
+      case "DependentsUnknown":
+      case "HomebrewRustupLosesToolchains":
+      case "HomebrewAutoremoves":
+      case "HomebrewPeriodicCleanup":
+      case "HomebrewCleanupAutoremoves":
+        return true;
+      case "CompilesLocally":
+      case "NonRegistrySource":
+      case "EditsShellConfig":
+        return false;
+      default: {
+        const unhandled: never = warning;
+        void unhandled;
+        return true;
+      }
+    }
+  }
+  if ("WillTrash" in warning || "WillKeep" in warning || "AlreadyGone" in warning || "UninstallScope" in warning) {
+    return false;
+  }
+  if (
+    "WouldBreak" in warning ||
+    "ThirdPartyRegistry" in warning ||
+    "RemovesToolchains" in warning ||
+    "DeletesCargoHome" in warning ||
+    "RemovesCargoInstalled" in warning ||
+    "LeavesShellConfigLine" in warning ||
+    "CaskUninstallStep" in warning ||
+    "Message" in warning
+  ) {
+    return true;
+  }
+  const unhandled: never = warning;
+  void unhandled;
+  return true;
+}
+
+/**
+ * One line of a confirmation: its sentence, its longer why for an ⓘ if it
+ * has one, and whether it is a caution (`isCaution`), marked ⚠︎.
+ */
 export interface WarningLine {
   text: string;
   detail: string | null;
+  caution: boolean;
 }
 
 /** `warning`'s line, or null only for what `warningText` gives none. */
@@ -522,6 +579,7 @@ export function warningLine(t: Translate, warning: Warning, subject?: string): W
   return {
     text,
     detail: detailKey === null ? null : t(detailKey, warningArgs(warning, t("common.listSeparator"))),
+    caution: isCaution(warning),
   };
 }
 

@@ -31,9 +31,10 @@ const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
  * logo (`ToolAvatar`). `xs`, 16px: a source's mark on a line of text,
  * such as its row in the sidebar or its heading on the Installed page.
  * `sm`, 24px: a list's small mark. `md`, 32px: a tool's row (`ToolRow`).
- * `lg`, 48px: the top of the Installed page's inspector.
- * The square and its corners, whatever is drawn on it. Whole class names,
- * for Tailwind.
+ * `lg`, 48px: the icon over a dialog's question about one tool, where
+ * NSAlert puts an app's, and the top of the Installed page's inspector.
+ * The square and its corners (22% of its side), whatever is drawn on it.
+ * Whole class names, for Tailwind.
  */
 const SIZE_CLASSES = {
   badge: "h-3.5 w-3.5 rounded-[3px]",
@@ -65,7 +66,7 @@ const GLYPH_CLASSES: Record<SourceAvatarSize, string> = {
   xs: "h-2.5 w-2.5",
   sm: "h-3.5 w-3.5",
   md: "h-[18px] w-[18px]",
-  lg: "h-7 w-7",
+  lg: "h-[27px] w-[27px]",
 };
 
 /**

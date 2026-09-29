@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { usePlanOperation, useSnapshot, useSubmitOperation } from "../lib/queries";
 import { adapterIdOf, adapterLabel, planErrorDetail, planErrorMessage } from "../lib/sources";
@@ -6,18 +6,19 @@ import { warningLines, type WarningLine } from "../lib/warnings";
 import { artifactKeyId, useUiStore } from "../store/ui";
 import type { ArtifactKey, IssuedPlan, OpRequest, UpdateCandidate } from "../lib/types";
 import { CommandPreview } from "./CommandPreview";
-import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
-import { CheckIcon, ChevronIcon, WarningIcon } from "./icons";
+import {
+  Refusal,
+  SheetIcon,
+  SheetLines,
+  SheetPending,
+  SheetText,
+  SheetTool,
+  SheetToolList,
+  sheetMeta,
+} from "./SheetParts";
+import { CheckIcon } from "./icons";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
-
-/**
- * How many tools a long confirmation lists before 「还有 N 个」, so that
- * Update all over ten tools is not a sheet of list with the commands far
- * below it. Folded only past one more than this, so the fold never hides
- * a single tool behind a line as tall as it.
- */
-const FOLDED_TOOLS = 5;
 
 function toRequest(candidate: UpdateCandidate): OpRequest {
   return {
@@ -316,33 +317,32 @@ export interface UpdateConfirmDialogProps {
 }
 
 /**
- * The confirmation `useUpdateConfirm` drives, as a sheet: 「更新 3 个工具？」
- * -- 「更新 ffmpeg？」 for one -- the tools with their avatars and the
- * version each moves to, what to know before going on, then Cancel and
- * Update. Once submitted, what started and what did not, under each tool.
+ * The confirmation `useUpdateConfirm` drives, as a dialog in the manner of
+ * a macOS alert (spec §3.6, R6): 「要更新10个工具吗？」 -- 「要更新“git”吗？」
+ * for one -- then Cancel and Update, Update the default button.
+ *
+ * About one tool, it is an alert's layout: the tool's 48 icon over the
+ * question, its source and the version it moves to under it, and what
+ * there is to know before going on under that, a line each. About several,
+ * the tools are a grouped list -- 24 icons, names, the version each moves
+ * to -- as high as 320 and scrolling inside past that, with each tool's
+ * notes under its own name: its warnings, that it cannot be stopped once
+ * it starts, that it may ask for the Mac's password. A batch can mix a
+ * rustup self update with Homebrew upgrades, and Casks with formulae, so
+ * each note stays with the tool it is true of. The tools with something
+ * to say come first -- a refusal before a note -- so that the first of it
+ * is in sight without scrolling; the rest keep the list's order. A
+ * caution has a ⚠︎ before its words; a line's longer why is behind its ⓘ.
+ * The commands are one click away (`CommandPreview`), each under its
+ * tool's name, open from the start with technical details on.
  *
  * It is up the moment Update is pressed, with the tools and versions the
  * rows had and 「正在准备…」 where the notes will go -- the uninstall
- * sheet's 「正在检查影响…」, in the same look (`SheetPending`) -- and
- * Update off, with the sheet itself holding the focus, until every plan
+ * dialog's 「正在检查影响…」, in the same look (`SheetPending`) -- and
+ * Update off, with the dialog itself holding the focus, until every plan
  * is back. Then the notes and the commands, Update on, and the focus on
- * it, unless the user has put it somewhere else meanwhile.
- *
- * The notes are grouped under 「请注意」, a tool's own under its name where
- * the sheet lists several: its warnings, that it cannot be stopped once it
- * starts, that it may ask for the Mac's password. A batch can mix a rustup
- * self update with Homebrew upgrades, and Casks with formulae, so each
- * note stays with the tool it is true of. A line's longer why is behind
- * its ⓘ. The commands are one click away (`CommandPreview`), each under
- * its tool's name, open from the start with technical details on.
- *
- * Until it is submitted, 「请注意」 comes first, above the tools: Update all
- * over ten tools filled the sheet with its list, and the notes were below
- * the fold, under an Update that had the focus. Beside Cancel and Update,
- * 「有 4 条需要留意」 says how many there are, and takes the focus -- and
- * the sheet's scroll -- to them. A list longer than six shows its first
- * five and the rest one press away, unless a tool in it has a refusal to
- * show. Once it is done, what did not start comes first instead.
+ * it, unless the user has put it somewhere else meanwhile. Once
+ * submitted, what started and what did not, under each tool.
  */
 export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const { t } = useTranslation();
@@ -350,15 +350,12 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
   const { batch, dialogOpen, submitting } = confirm;
   const updateRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const notesRef = useRef<HTMLElement>(null);
-  const toolsId = useId();
-  // The batch whose whole list the user unfolded: a new batch starts folded.
-  const [unfoldedBatch, setUnfoldedBatch] = useState<number | null>(null);
   const items = batch?.items ?? [];
   const issued = items.filter(
     (item): item is BatchItem & { issued: IssuedPlan } => item.issued !== null,
   );
-  // More than one tool on the sheet: each note and command says whose it is.
+  // More than one tool on the dialog: a list, and each note and command
+  // says whose it is.
   const several = items.length > 1;
 
   /**
@@ -402,7 +399,8 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
     }
   }, [phase]);
 
-  const notesOf = (item: BatchItem & { issued: IssuedPlan }): WarningLine[] => {
+  const notesOf = (item: BatchItem): WarningLine[] => {
+    if (item.issued === null) return [];
     const { plan } = item.issued;
     const lines = warningLines(t, plan.warnings);
     return [
@@ -412,17 +410,13 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       // Once Running, `OperationBar` offers no Cancel for a NoCancel
       // operation (`OperationManager::cancel`, crates/canager-core/src/ops).
       ...(plan.cancel_policy === "NoCancel"
-        ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail") }]
+        ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]
         : []),
       // The brew adapter marks every Cask, though not every app then asks
       // (the copy table's T3). Spec §6: a password is never a surprise.
-      ...(plan.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null }] : []),
+      ...(plan.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null, caution: false }] : []),
     ];
   };
-  const noted = issued
-    .map((item) => ({ item, notes: notesOf(item) }))
-    .filter(({ notes }) => notes.length > 0);
-  const noteCount = noted.reduce((count, { notes }) => count + notes.length, 0);
 
   // While it prepares, it asks about everything chosen; then about what
   // can be confirmed of it.
@@ -432,36 +426,45 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
       ? t("updates.confirmTitleNamed", { name: asked[0].name })
       : t("updates.confirmTitle", { count: asked.length });
 
-  // The first `FOLDED_TOOLS` tools, and the rest one press away -- never
-  // while one of them has a refusal to show, which every tool then shows.
-  const foldable =
-    items.length > FOLDED_TOOLS + 1 &&
-    items.every((item) => item.planError === null && item.submitError === null);
-  const unfolded = batch !== null && unfoldedBatch === batch.id;
-  const shownItems = foldable && !unfolded ? items.slice(0, FOLDED_TOOLS) : items;
-  // What there is to know before Update, first; what did not start, once done.
-  const notesFirst = phase !== "done";
+  // What there is to say about each tool, under its name: its notes, what
+  // became of it once submitted, and why not.
+  const said = items.map((item) => ({ item, notes: notesOf(item) }));
+  // The tools with a refusal first, then those with notes, then the rest,
+  // each in the list's order (`Array.prototype.sort` is stable).
+  const rank = ({ item, notes }: { item: BatchItem; notes: WarningLine[] }) =>
+    item.planError !== null || item.submitError !== null ? 0 : notes.length > 0 ? 1 : 2;
+  const ordered = several ? [...said].sort((a, b) => rank(a) - rank(b)) : said;
+  // A name the list has from two sources says which is which (spec R3).
+  const names = items.map((item) => item.name);
+  const twice = new Set(names.filter((name, index) => names.indexOf(name) !== index));
 
-  const notesSection =
-    noted.length > 0 ? (
-      <SheetSection
-        ref={notesRef}
-        first={notesFirst}
-        title={t("updates.warningsTitle")}
-        icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
-      >
-        <div className="flex flex-col gap-3">
-          {noted.map(({ item, notes: lines }) => (
-            // A `<div>` per tool, holding its name and its notes and no
-            // other tool's.
-            <div key={artifactKeyId(item.candidate.key)}>
-              {several ? <p className="mb-1 text-body font-medium text-foreground">{item.name}</p> : null}
-              <SheetLines lines={lines} />
-            </div>
-          ))}
-        </div>
-      </SheetSection>
-    ) : null;
+  /** What a tool's row -- or the dialog, for one tool -- says under its name. */
+  const aboutTool = (item: BatchItem, notes: WarningLine[], size: "body" | "small") => {
+    const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
+    const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
+    return (
+      <>
+        {item.planError !== null ? (
+          <Refusal text={planFailed} detail={item.planErrorDetail} detailTitle={planFailed} size={size} />
+        ) : null}
+        {item.submitError !== null ? (
+          <Refusal text={submitFailed} detail={item.submitErrorDetail} detailTitle={submitFailed} size={size} />
+        ) : null}
+        {item.submittedOpId !== null ? (
+          <p className="flex items-center gap-1 text-small text-foreground">
+            <CheckIcon size={12} className="shrink-0 text-success" />
+            {t("updates.started")}
+          </p>
+        ) : null}
+        {notes.length > 0 ? <SheetLines lines={notes} /> : null}
+      </>
+    );
+  };
+
+  const only = items.length === 1 ? items[0] : null;
+  const onlyAdapter = only === null ? null : adapterFor(only.candidate.key.instance_id);
+  const onlyJump = only === null ? null : versionJump(only.candidate);
+  const onlyDigest = only?.candidate.channel === "Digest";
 
   return (
     <Dialog
@@ -475,27 +478,33 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         if (!open && !submitting) confirm.close();
       }}
       title={title}
+      width={several ? "several" : "one"}
+      icon={
+        only !== null && onlyAdapter !== null ? (
+          <SheetIcon
+            adapterId={onlyAdapter}
+            sourceLabel={adapterLabel(t, onlyAdapter)}
+            iconKey={only.candidate.key}
+          />
+        ) : undefined
+      }
+      // One tool: where it comes from and the version it moves to, under
+      // the question. A model's "new version" is a sentence: the text.
+      subtitle={
+        only !== null && onlyAdapter !== null
+          ? sheetMeta(only.name, adapterLabel(t, onlyAdapter), onlyDigest ? null : onlyJump)
+          : undefined
+      }
       initialFocus={batch?.phase === "done" ? closeRef : updateRef}
       returnFocusTo={confirm.returnFocusTo}
       footer={
         batch?.phase === "done" ? (
-          <button ref={closeRef} type="button" onClick={confirm.close} className={BUTTON.large.grey}>
+          // What did and did not start, said: the one thing left is to close it.
+          <button ref={closeRef} type="button" onClick={confirm.close} className={BUTTON.large.default}>
             {t("common.close")}
           </button>
         ) : (
           <>
-            {noteCount > 0 ? (
-              // How many notes there are, where the eye is when Update is
-              // pressed; it takes the focus, and the scroll, to them.
-              <button
-                type="button"
-                onClick={() => notesRef.current?.focus()}
-                className="mr-auto inline-flex min-w-0 items-center gap-1.5 rounded-sm text-small font-medium text-foreground"
-              >
-                <WarningIcon size={14} className="shrink-0 text-warning" />
-                {t("updates.notesSummary", { count: noteCount })}
-              </button>
-            ) : null}
             <button type="button" onClick={confirm.close} disabled={submitting} className={BUTTON.large.grey}>
               {t("common.cancel")}
             </button>
@@ -512,71 +521,38 @@ export function UpdateConfirmDialog({ confirm }: UpdateConfirmDialogProps) {
         )
       }
     >
-      {notesFirst ? notesSection : null}
-
-      <ul id={toolsId} className={notesFirst && notesSection !== null ? "mt-5 flex flex-col" : "flex flex-col"}>
-        {shownItems.map((item) => {
-          const { key } = item.candidate;
-          const jump = versionJump(item.candidate);
-          const digest = item.candidate.channel === "Digest";
-          const planFailed = t("updates.planFailed", { message: item.planError ?? "" });
-          const submitFailed = t("updates.submitFailed", { message: item.submitError ?? "" });
-          const adapterId = adapterFor(key.instance_id);
-          return (
-            <SheetTool
-              key={artifactKeyId(key)}
-              adapterId={adapterId}
-              sourceLabel={adapterLabel(t, adapterId)}
-              iconKey={key}
-              name={item.name}
-              // A model's "new version" is a sentence, not a number: under the name.
-              aside={digest ? null : jump}
-            >
-              {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
-              {item.planError !== null ? (
-                <Refusal
-                  text={planFailed}
-                  detail={item.planErrorDetail}
-                  detailTitle={planFailed}
-                  className="mt-1"
-                />
-              ) : null}
-              {item.submittedOpId !== null ? (
-                <p className="mt-1 flex items-center gap-1 text-small font-medium text-success">
-                  <CheckIcon size={13} className="shrink-0" />
-                  {t("updates.started")}
-                </p>
-              ) : null}
-              {item.submitError !== null ? (
-                <Refusal
-                  text={submitFailed}
-                  detail={item.submitErrorDetail}
-                  detailTitle={submitFailed}
-                  className="mt-1"
-                />
-              ) : null}
-            </SheetTool>
-          );
-        })}
-      </ul>
-      {foldable ? (
-        <button
-          type="button"
-          aria-expanded={unfolded}
-          aria-controls={toolsId}
-          onClick={() => setUnfoldedBatch(unfolded ? null : (batch?.id ?? null))}
-          className="mt-1 flex items-center gap-1.5 rounded-control py-1 text-body text-muted"
-        >
-          <ChevronIcon size={14} className={`shrink-0 transition-transform ${unfolded ? "rotate-90" : ""}`} />
-          {unfolded
-            ? t("updates.fewerTools")
-            : t("updates.moreTools", { count: items.length - FOLDED_TOOLS })}
-        </button>
-      ) : null}
+      {only !== null ? (
+        <div data-sheet-about="" className="flex flex-col gap-2">
+          {onlyDigest && onlyJump !== null ? <SheetText>{onlyJump}</SheetText> : null}
+          {aboutTool(only, said[0].notes, "body")}
+        </div>
+      ) : (
+        <SheetToolList>
+          {ordered.map(({ item, notes }) => {
+            const { key } = item.candidate;
+            const jump = versionJump(item.candidate);
+            const digest = item.candidate.channel === "Digest";
+            const adapterId = adapterFor(key.instance_id);
+            return (
+              <SheetTool
+                key={artifactKeyId(key)}
+                adapterId={adapterId}
+                sourceLabel={adapterLabel(t, adapterId)}
+                showSource={twice.has(item.name)}
+                iconKey={key}
+                name={item.name}
+                // A model's "new version" is a sentence, not a number: under the name.
+                aside={digest ? null : jump}
+              >
+                {digest && jump !== null ? <p className="text-small text-muted">{jump}</p> : null}
+                {aboutTool(item, notes, "small")}
+              </SheetTool>
+            );
+          })}
+        </SheetToolList>
+      )}
 
       {phase === "planning" ? <SheetPending text={t("updates.preparing")} /> : null}
-
-      {notesFirst ? null : notesSection}
 
       <CommandPreview
         plans={issued.map((item) => ({

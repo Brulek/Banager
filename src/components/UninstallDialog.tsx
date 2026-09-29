@@ -13,11 +13,11 @@ import {
 import type { OpRequest } from "../lib/types";
 import { deletesForGood, warningLines, type WarningLine } from "../lib/warnings";
 import { CommandPreview } from "./CommandPreview";
-import { SheetLines, SheetPending, Refusal, SheetSection, SheetTool } from "./SheetParts";
-import { WarningIcon } from "./icons";
+import { Refusal, SheetIcon, SheetLines, SheetPending, SheetSection, SheetText, sheetMeta } from "./SheetParts";
 import { COMMAND_SLOT, withCommand } from "./withCommand";
 import { Dialog } from "./ui/Dialog";
 import { BUTTON } from "./ui/controls";
+import { SMALL_WRAPPING } from "./ui/group";
 
 export interface UninstallDialogProps {
   open: boolean;
@@ -32,28 +32,30 @@ export interface UninstallDialogProps {
 }
 
 /**
- * The uninstall confirmation, as a sheet: 「卸载 Claude Code？」, the tool
- * with its avatar and, under it, the one sentence its source's uninstall
- * has about what goes and what stays (`Warning.UninstallScope`), what the
- * uninstall does in three groups, then Cancel and Uninstall as the
- * default button -- the accent, not red: the user chose it (HIG) --
- * 「永久卸载」 where a line says the uninstall deletes something for good
+ * The uninstall confirmation, as a macOS alert (spec §3.6): the tool's 48
+ * icon, 「要卸载“Claude Code”吗？」, its source and version under that,
+ * then as its text the one sentence its source's uninstall has about what
+ * goes and what stays (`Warning.UninstallScope`) -- ending 「此操作无法撤销。」
+ * where a line says the uninstall deletes something for good
  * (`deletesForGood`): rustup's own, and a cask whose recorded uninstall
- * deletes paths.
+ * deletes paths -- and Cancel and Uninstall as the default button, the
+ * accent, not red: the user chose it (HIG). 「永久卸载」 on the button too,
+ * where the text says so.
  *
  * It plans the operation itself, so everything that would change is on
- * screen before anything can be submitted (spec §6), in the copy table's
- * three groups (C4): 「移到废纸篓」, what a path-list uninstall moves --
- * with what it found already gone -- and the one sentence it has in place
- * of a command; 「保留不动」, what it leaves where it is; and 「请注意」,
- * everything else: what still needs the package, rustup deleting folders
+ * screen before anything can be submitted (spec §6). Under the text, what
+ * to know before going on, a line each, a caution marked ⚠︎, with no
+ * heading (spec R6): what still needs the package, rustup deleting folders
  * for good, a dependency check that did not finish, that it cannot be
- * stopped once it starts, a password. A line's longer why is behind its
- * ⓘ. The command itself is one click away (`CommandPreview`), open from
- * the start with technical details on.
+ * stopped once it starts, a password. Then the copy table's two named
+ * groups (C4): 「移到废纸篓」, what a path-list uninstall moves -- with
+ * what it found already gone -- and the one sentence it has in place of a
+ * command; and 「保留」, what it leaves where it is. A line's longer why is
+ * behind its ⓘ. The command itself is one click away (`CommandPreview`),
+ * open from the start with technical details on.
  *
  * Uninstall stays disabled while the plan says something still needs the
- * package -- with why, and what to do about it, in the sheet's body next
+ * package -- with why, and what to do about it, in the dialog's body next
  * to the list of what needs it, not in a `title` on the disabled button.
  */
 export function UninstallDialog({
@@ -145,9 +147,9 @@ export function UninstallDialog({
   const notes: WarningLine[] = [
     ...lines.note,
     ...(plan?.cancel_policy === "NoCancel"
-      ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail") }]
+      ? [{ text: t("operations.noCancelHint"), detail: t("operations.noCancelHintDetail"), caution: true }]
       : []),
-    ...(plan?.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null }] : []),
+    ...(plan?.needs_password ? [{ text: t("commandPreview.needsPassword"), detail: null, caution: false }] : []),
   ];
 
   // Two refusals are shown as sentences of their own rather than inside
@@ -229,11 +231,30 @@ export function UninstallDialog({
     });
   }
 
+  // What goes and what stays, as the alert's text: the sentence the plan's
+  // source has for it, ending, where a line says something is deleted for
+  // good, with that this cannot be undone -- the one place it is said.
+  const scope = lines.scope.map((line) => line.text);
+  const text =
+    !permanent
+      ? scope
+      : scope.length === 0
+        ? [t("uninstall.cannotUndo")]
+        : [...scope.slice(0, -1), t("uninstall.endsCannotUndo", { sentence: scope[scope.length - 1] })];
+
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title={t("uninstall.title", { name: displayName })}
+      icon={
+        <SheetIcon
+          adapterId={adapterId}
+          sourceLabel={sourceLabel}
+          iconKey={{ instance_id: request.instance_id, kind: request.artifact_kind, name: request.name }}
+        />
+      }
+      subtitle={sheetMeta(displayName, sourceLabel, version)}
       // Cancel first: nothing here should be one keypress from removing.
       initialFocus={cancelRef}
       returnFocusTo={returnFocusTo}
@@ -254,38 +275,24 @@ export function UninstallDialog({
         </>
       }
     >
-      <ul>
-        <SheetTool
-          adapterId={adapterId}
-          sourceLabel={sourceLabel}
-          iconKey={{ instance_id: request.instance_id, kind: request.artifact_kind, name: request.name }}
-          name={displayName}
-          aside={version}
-        >
-          {/* What goes and what stays, directly under the tool rather than
-              behind an ⓘ: the sentence the plan's source has for it. */}
-          {lines.scope.map((line) => (
-            <p key={line.text} className="mt-1 break-words text-body text-foreground">
-              {line.text}
-            </p>
-          ))}
-        </SheetTool>
-      </ul>
+      {text.map((sentence) => (
+        <SheetText key={sentence}>{sentence}</SheetText>
+      ))}
 
       {planMutation.isPending ? <SheetPending text={t("uninstall.checking")} /> : null}
 
       {planMutation.isError ? (
-        <div className="mt-4">{refusal(planMutation.error.message, "uninstall.planError")}</div>
+        <div className="mt-3">{refusal(planMutation.error.message, "uninstall.planError")}</div>
       ) : null}
 
       {submitMutation.isError ? (
-        <div className="mt-4">{refusal(submitMutation.error.message, "uninstall.submitError")}</div>
+        <div className="mt-3">{refusal(submitMutation.error.message, "uninstall.submitError")}</div>
       ) : null}
 
       {reissued && plan ? (
         // `status`, not `alert`: nothing is wrong with the fresh preview,
         // the user only needs to know the last confirm did not start it.
-        <p role="status" className="mt-4 text-body text-muted">
+        <p role="status" className="mt-3 text-body text-muted">
           {/* No "confirm once more" when the fresh preview lists affected
               packages: that disables Uninstall below, and the body says why. */}
           {hasAffected ? t("uninstall.reissued") : t("uninstall.reissuedConfirmAgain")}
@@ -294,37 +301,17 @@ export function UninstallDialog({
 
       {plan && issued ? (
         <>
-          {lines.trash.length > 0 || trashPlan ? (
-            <SheetSection title={t("commandPreview.trashLabel")}>
-              <SheetLines lines={lines.trash} />
-              {trashPlan ? (
-                <div className="mt-2">
-                  <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />
-                </div>
-              ) : null}
-            </SheetSection>
-          ) : null}
-
-          {lines.keep.length > 0 ? (
-            <SheetSection title={t("uninstall.keepListTitle")}>
-              <SheetLines lines={lines.keep} />
-            </SheetSection>
-          ) : null}
-
+          {/* What to know before going on, first, under the text and with
+              no heading of its own (spec §3.6): what still needs the
+              package, then a line each for the rest, a caution marked. */}
           {hasAffected || notes.length > 0 ? (
-            <SheetSection
-              title={t("uninstall.warningsTitle")}
-              icon={<WarningIcon size={14} className="shrink-0 text-warning" />}
-            >
+            <SheetSection title={t("uninstall.warningsTitle")} titleHidden>
               {hasAffected ? (
-                <div className={notes.length > 0 ? "mb-3" : undefined}>
-                  <p className="text-body font-medium text-foreground">{t("uninstall.affectedTitle")}</p>
-                  <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                <div className={notes.length > 0 ? "mb-2" : undefined}>
+                  <h3 className="text-small font-bold text-muted">{t("uninstall.affectedTitle")}</h3>
+                  <ul className="mt-1 flex flex-col gap-1">
                     {affected.map((name) => (
-                      <li
-                        key={name}
-                        className="rounded-full bg-[var(--color-hover)] px-2 py-0.5 text-small font-medium text-foreground"
-                      >
+                      <li key={name} className={`text-foreground ${SMALL_WRAPPING}`}>
                         {name}
                       </li>
                     ))}
@@ -336,12 +323,29 @@ export function UninstallDialog({
                       keyboard/VoiceOver user ever reached that tooltip.
                       This line is plain text in the flow, reachable by
                       everyone who reached the list above it. */}
-                  <p className="mt-1.5 text-body text-danger">
+                  <p className="mt-2 text-body text-danger-text">
                     {t("uninstall.affectedBlocksConfirm", { name: displayName })}
                   </p>
                 </div>
               ) : null}
               <SheetLines lines={notes} />
+            </SheetSection>
+          ) : null}
+
+          {lines.trash.length > 0 || trashPlan ? (
+            <SheetSection title={t("commandPreview.trashLabel")}>
+              <SheetLines lines={lines.trash} />
+              {trashPlan ? (
+                <div className="mt-1">
+                  <CommandPreview plans={[{ id: issued.id, action: plan.action }]} />
+                </div>
+              ) : null}
+            </SheetSection>
+          ) : null}
+
+          {lines.keep.length > 0 ? (
+            <SheetSection title={t("uninstall.keepListTitle")}>
+              <SheetLines lines={lines.keep} />
             </SheetSection>
           ) : null}
 

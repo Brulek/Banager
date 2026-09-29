@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../test/setup";
 import { InfoDetail } from "../InfoDetail";
 import { PageHeader } from "../PageHeader";
-import { Dialog } from "./Dialog";
+import { DIALOG_WIDTHS, Dialog } from "./Dialog";
+import { BUTTON } from "./controls";
 import { Menu } from "./Menu";
 
 /**
@@ -81,7 +85,139 @@ function Log() {
   );
 }
 
+/** Every shipping `.tsx` under src/, for the scans below. */
+function componentSources(): Array<[string, string]> {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((entry) => {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) return entry === "dev" || entry === "test" ? [] : walk(full);
+      return /\.tsx$/.test(full) && !/\.test\.tsx$/.test(full) ? [full] : [];
+    });
+  return walk(root).map((file) => [path.relative(root, file), readFileSync(file, "utf8")]);
+}
+
 describe("Dialog", () => {
+  it.each([
+    ["one", 420],
+    ["several", 480],
+    ["log", 560],
+  ] as const)("is %s wide: %ipx, and never wider than the window less 16 either side", (width, px) => {
+    renderWithProviders(
+      <Dialog open onOpenChange={vi.fn()} title="Confirm" width={width}>
+        <p>Body content</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(DIALOG_WIDTHS[width]).toBe(px);
+    expect(dialog).toHaveAttribute("data-dialog-width", String(px));
+    // jsdom writes the calc() its own way round.
+    expect(dialog.style.width).toMatch(new RegExp(`^min\\(${px}px, (?:calc\\(100vw - 32px\\)|-32px \\+ 100vw)\\)$`));
+  });
+
+  it("is 420 wide unless told otherwise", () => {
+    renderWithProviders(
+      <Dialog open onOpenChange={vi.fn()} title="Confirm">
+        <p>Body content</p>
+      </Dialog>,
+    );
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-dialog-width", "420");
+  });
+
+  it("looks like a macOS alert: no edge, corners of 10, the dialog's shadow, 52 from the top, 20 in", () => {
+    renderWithProviders(
+      <Dialog
+        open
+        onOpenChange={vi.fn()}
+        title="Uninstall “jq”?"
+        icon={<span data-testid="icon" />}
+        subtitle="Homebrew · 1.8.1"
+        footer={<button type="button">OK</button>}
+      >
+        <p>Body content</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    for (const look of ["rounded-group", "shadow-dialog", "top-[52px]", "bg-surface"]) expect(dialog).toHaveClass(look);
+    expect(dialog.className).not.toMatch(/\bborder\b|shadow-2xl/);
+    // The icon, 12 over the question; the question in 13 bold; the line
+    // under it quieter.
+    const icon = dialog.querySelector("[data-dialog-icon]") as HTMLElement;
+    expect(icon).toContainElement(screen.getByTestId("icon"));
+    expect(icon).toHaveClass("mb-3");
+    const title = screen.getByRole("heading", { name: "Uninstall “jq”?" });
+    expect(title).toHaveClass("text-title");
+    expect(icon.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("Homebrew · 1.8.1")).toHaveClass("text-small", "text-muted");
+    expect(title.parentElement).toHaveClass("px-5", "pt-5");
+  });
+
+  it("puts its buttons on the right, 8 apart and 20 below, with no line or band of their own", () => {
+    renderWithProviders(
+      <Dialog
+        open
+        onOpenChange={vi.fn()}
+        title="Confirm"
+        footerStart={<button type="button">Copy</button>}
+        footer={
+          <>
+            <button type="button">Cancel</button>
+            <button type="button">OK</button>
+          </>
+        }
+      >
+        <p>Body content</p>
+      </Dialog>,
+    );
+    const footer = screen.getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
+    expect(footer).toHaveClass("justify-end", "gap-2", "p-5");
+    expect(footer.className).not.toMatch(/border|bg-/);
+    // What goes at the other end, on the left.
+    expect(within(footer).getByRole("button", { name: "Copy" }).parentElement).toHaveClass("mr-auto");
+    expect(within(footer).getAllByRole("button").map((button) => button.textContent)).toEqual(["Copy", "Cancel", "OK"]);
+  });
+
+  it("stacks its buttons as wide as itself, in the order given, when asked to", () => {
+    renderWithProviders(
+      <Dialog
+        open
+        onOpenChange={vi.fn()}
+        title="Confirm"
+        stackedFooter
+        footer={
+          <>
+            <button type="button">Stay</button>
+            <button type="button">Quit</button>
+          </>
+        }
+      >
+        <p>Body content</p>
+      </Dialog>,
+    );
+    const footer = screen.getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
+    expect(footer).toHaveClass("flex-col", "items-stretch", "[&>button]:w-full");
+    expect(within(footer).getAllByRole("button").map((button) => button.textContent)).toEqual(["Stay", "Quit"]);
+  });
+
+  it("takes the focus itself as it opens when told to, rather than a control's", async () => {
+    renderWithProviders(
+      <Dialog open onOpenChange={vi.fn()} title="Log" focusSelf footer={<button type="button">Done</button>}>
+        <p>Body content</p>
+      </Dialog>,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("dialog")));
+  });
+
+  it("is never red: no button anywhere in the app is drawn in the danger colours", () => {
+    // HIG (Alerts): an action the user chose, removing something included,
+    // is not tinted as a warning -- so no dialog's button, nor any other.
+    for (const kinds of Object.values(BUTTON)) {
+      for (const className of Object.values(kinds)) expect(className).not.toMatch(/danger|red/);
+    }
+    const red = componentSources().filter(([, source]) => /\bbg-(?:danger|red)\b|\bbg-\[var\(--color-danger/.test(source));
+    expect(red.map(([file]) => file)).toEqual([]);
+  });
+
   it("renders the title, children and footer when open", () => {
     const { getByRole, getByText } = renderWithProviders(
       <Dialog

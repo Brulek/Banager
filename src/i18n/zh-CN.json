@@ -200,10 +200,6 @@
     "confirmTitleNamed": "要更新“{{name}}”吗？",
     "confirmTitle_other": "要更新{{count}}个工具吗？",
     "preparing": "正在准备…",
-    "warningsTitle": "说明",
-    "notesSummary_other": "{{count}}条说明",
-    "moreTools_other": "还有{{count}}个",
-    "fewerTools": "收起",
     "started": "已开始",
     "planFailed": "无法准备此次更新：{{message}}",
     "submitFailed": "无法开始更新：{{message}}",
@@ -498,7 +494,9 @@
     "confirm": "卸载",
     "confirmPermanent": "永久卸载",
     "affectedBlocksConfirm": "要卸载“{{name}}”，请先卸载上面这些软件。",
-    "trashPreview_other": "这{{count}}项会移到废纸篓，可以从那里拖回来。"
+    "trashPreview_other": "这{{count}}项会移到废纸篓，可以从那里拖回来。",
+    "cannotUndo": "此操作无法撤销。",
+    "endsCannotUndo": "{{sentence}}此操作无法撤销。"
   },
   "settings": {
     "groups": {
