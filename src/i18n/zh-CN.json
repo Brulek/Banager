@@ -593,14 +593,14 @@
     "kind": {
       "BrokenSymlink": "找不到原文件"
     },
-    "brokenLink": "指向的{{target}}已不存在",
+    "brokenLink": "找不到指向的{{target}}",
     "linksTo": "指向{{path}}",
     "partOfApp": "{{app}}的一部分",
     "adminOwned": "属于系统或其他账户",
     "pointsInto": "指向{{app}}",
     "showInFinder": "在访达中显示",
     "showsLinkTarget": "显示此链接指向的文件。",
-    "targetGone": "此链接指向的文件已不存在。",
+    "targetGone": "找不到此链接指向的文件。",
     "showInFinderFailed": "无法在访达中显示",
     "copyPath": "拷贝路径",
     "scanAgain": "重新扫描",

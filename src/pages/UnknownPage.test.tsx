@@ -187,12 +187,12 @@ describe("UnknownPage", () => {
     const script = rowOf(await findByText("old-script"));
     // One line a row, by default: the explanations are behind the word.
     expect(
-      queryByText("Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone"),
+      queryByText("Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which can't be found"),
     ).toBeNull();
     fireEvent.click(within(script).getByRole("button", { name: "Original missing" }));
     expect(
       within(script).getByText(
-        "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
+        "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which can't be found",
       ),
     ).toBeInTheDocument();
     expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
@@ -313,7 +313,7 @@ describe("UnknownPage", () => {
     const script = rowOf(getByText("old-script"));
     fireEvent.click(within(script).getByRole("button", { name: "Original missing" }));
     for (const line of [
-      "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
+      "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which can't be found",
       "Part of Removed",
     ]) {
       expect(within(script).getByText(line)).toHaveClass("select-text");
@@ -631,7 +631,7 @@ describe("a row's ⋯ menu", () => {
     const menu = openMenu(rowOf(await findByText("old-script")));
     const item = within(menu).getByRole("menuitem", { name: "Show in Finder" });
     expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveAccessibleDescription("The file this link points to is gone.");
+    expect(item).toHaveAccessibleDescription("The file this link points to can't be found.");
     fireEvent.click(item);
     expect(mockReveal).not.toHaveBeenCalled();
     expect(within(menu).getByRole("menuitem", { name: "Copy Path" })).not.toHaveAttribute("aria-disabled");

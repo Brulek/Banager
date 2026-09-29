@@ -645,14 +645,14 @@
     "kind": {
       "BrokenSymlink": "Original missing"
     },
-    "brokenLink": "Points to {{target}}, which is gone",
+    "brokenLink": "Points to {{target}}, which can't be found",
     "linksTo": "Links to {{path}}",
     "partOfApp": "Part of {{app}}",
     "adminOwned": "Owned by the system or another account",
     "pointsInto": "Points into {{app}}",
     "showInFinder": "Show in Finder",
     "showsLinkTarget": "Shows the file this link points to.",
-    "targetGone": "The file this link points to is gone.",
+    "targetGone": "The file this link points to can't be found.",
     "showInFinderFailed": "Couldn't show it in Finder",
     "copyPath": "Copy Path",
     "scanAgain": "Scan Again",
