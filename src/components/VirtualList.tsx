@@ -383,7 +383,11 @@ export function VirtualList<T>({
       ) : (
         <ListWidthProvider value={width}>
           <StatusColumnProvider value={statusColumn}>
-            <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {/* A list to a screen reader, each slot an item of it that says
+                where it stands in the whole list (`aria-posinset` of
+                `aria-setsize`): only the slots in sight are in the page, and
+                a count of those would be the wrong one. */}
+            <div role="list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
               {virtualizer.getVirtualItems().map((virtualRow) => {
                 const item = items[virtualRow.index];
                 const key = String(virtualRow.key);
@@ -395,6 +399,9 @@ export function VirtualList<T>({
                   // back through `measureElement` instead.
                   <div
                     key={virtualRow.key}
+                    role="listitem"
+                    aria-setsize={items.length}
+                    aria-posinset={virtualRow.index + 1}
                     data-index={virtualRow.index}
                     data-key={key}
                     data-list-slot=""

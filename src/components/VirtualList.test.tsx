@@ -56,6 +56,26 @@ describe("VirtualList", () => {
     );
   });
 
+  it("is a list to a screen reader, each slot saying where it stands in the whole of it", () => {
+    const { getByRole, getByText } = render(
+      <VirtualList items={TOOLS} itemKey={keyOf} estimateSize={estimate} renderItem={(item) => <p>{item}</p>} />,
+    );
+    const list = getByRole("list");
+    const items = Array.from(list.children) as HTMLElement[];
+    // Only the slots in sight are drawn, each an item of the list.
+    expect(items).toHaveLength(11);
+    for (const [index, item] of items.entries()) {
+      expect(item).toHaveAttribute("role", "listitem");
+      expect(item).toHaveAttribute("aria-setsize", "100");
+      expect(item).toHaveAttribute("aria-posinset", String(index + 1));
+    }
+    // Scrolled far down, a slot still counts from the list's start.
+    scrollTo(list.parentElement as HTMLElement, 50 * ROW);
+    const slot = getByText("tool-55").closest("[data-list-slot]");
+    expect(slot).toHaveAttribute("aria-posinset", "56");
+    expect(slot).toHaveAttribute("aria-setsize", "100");
+  });
+
   it("draws every slot afresh from a new renderItem, and from new items", () => {
     const first = vi.fn((item: string) => <p>{item}</p>);
     const { rerender, getByText } = render(

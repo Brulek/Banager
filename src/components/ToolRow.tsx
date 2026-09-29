@@ -16,6 +16,13 @@ export interface RowActionProps {
   /** Handed the event, so what it opens can hand the focus back to the button. */
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
+  /**
+   * Its accessible name: its words with the tool's name in them, the
+   * words first -- 「更新git」, "Uninstall git…" -- as every row has the
+   * same button, and a screen reader's list of buttons would otherwise be
+   * ten "Update"s.
+   */
+  ariaLabel?: string;
   children: ReactNode;
 }
 
@@ -26,9 +33,9 @@ export interface RowActionProps {
  * thing a screen asks for -- and Uninstall is not tinted red, under the
  * pointer or not, as a Mac's button for something the user chose is not.
  */
-export function RowAction({ onClick, disabled, children }: RowActionProps) {
+export function RowAction({ onClick, disabled, ariaLabel, children }: RowActionProps) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={BUTTON.regular.grey}>
+    <button type="button" aria-label={ariaLabel} onClick={onClick} disabled={disabled} className={BUTTON.regular.grey}>
       {children}
     </button>
   );
@@ -111,6 +118,12 @@ export interface ToolRowContentProps {
    * the column whatever its list says, so no word is ever lost.
    */
   status?: ReactNode;
+  /**
+   * `status`'s word as words -- 「已跳过2.102.0」, "Can't check" -- for the
+   * row's accessible name, where the row takes the focus (below): `status`
+   * is drawn, and a name is a string.
+   */
+  statusText?: string;
   /** The version column: "7.1 → 7.2", or a word where a version would mean nothing. */
   version?: ReactNode;
   /**
@@ -272,6 +285,20 @@ function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion:
 }
 
 /**
+ * A row's accessible name, where it takes the focus (`ToolRow`): the
+ * tool's name, then its status word and an update's change of version
+ * where it has them, a comma between, which a screen reader pauses at in
+ * either language. A version said as anything but words (none is, yet)
+ * is left out.
+ */
+function rowName(name: string, statusText: string | undefined, change: ReactNode): string {
+  const parts = [name];
+  if (statusText !== undefined && statusText !== "") parts.push(statusText);
+  if (typeof change === "string" && change !== "") parts.push(change);
+  return parts.join(", ");
+}
+
+/**
  * One tool on a list: the Updates and Installed pages' rows, and the
  * Unknown page's programs, with an avatar of their own -- laid out as a Mac
  * list's rows are (spec §3.3, R2; native-sui-rows-light.png,
@@ -309,9 +336,14 @@ function ToNewVersion({ version, newVersion }: { version: ReactNode; newVersion:
  * `keyboardRows`), the row itself takes the focus: Space ticks its
  * checkbox -- or, on a row with none that opens, does what pressing it
  * does -- and Enter does nothing: it opens nothing and starts nothing.
+ * Such a row is a group named for a screen reader as it is scanned:
+ * the tool's name, its status word and the change of version an update
+ * brings, where it has them -- "git, 2.55.0 → 2.55.1", "gh, Skipped
+ * 2.102.0" (`rowName`) -- its controls still reached inside it.
  *
  * `selected` fills it as a Mac list's selection (index.css), with no
- * hairline under it or over it.
+ * hairline under it or over it, and says so (`aria-current`) on the row
+ * that takes the focus.
  */
 export function ToolRow({
   adapterId,
@@ -326,6 +358,7 @@ export function ToolRow({
   descriptionNote,
   selectable,
   status,
+  statusText,
   version,
   newVersion,
   action,
@@ -481,6 +514,11 @@ export function ToolRow({
       <div
         data-tool-row=""
         data-row-focus={roving === null ? undefined : ""}
+        // Only a row that takes the focus is named: elsewhere its name and
+        // controls are read in turn, as any other text.
+        role={roving === null ? undefined : "group"}
+        aria-label={roving === null ? undefined : rowName(name, statusText, hasUpdate ? version : undefined)}
+        aria-current={selected ? "true" : undefined}
         tabIndex={roving?.tabIndex}
         onFocus={roving?.onFocus}
         onKeyDown={roving === null ? undefined : onKeyDown}

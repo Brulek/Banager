@@ -177,6 +177,33 @@ export function useUpdateCount(): number | undefined {
   return useStartableUpdates()?.length;
 }
 
+/** Whatever `useTranslation()`'s `t` needs here. */
+type Translate = (key: string) => string;
+
+/**
+ * What a row's progress says, in words (`UpdateProgress`): 「正在更新…」,
+ * 「已更新」, 「未能更新」 or why, where the tool's own words say. The row
+ * names itself with it where it stands in the status word's place.
+ */
+export function progressWord(t: Translate, progress: RowProgress): string {
+  switch (progress.kind) {
+    case "queued":
+      return t("updates.progress.queued");
+    case "running":
+      return t("updates.progress.running");
+    case "cancelling":
+      return t("updates.progress.cancelling");
+    case "succeeded":
+      return t("updates.progress.succeeded");
+    case "cancelled":
+      return t("updates.progress.cancelled");
+    case "failed":
+      return progress.cause === null ? t("updates.progress.failed") : t(FAILURE_CAUSE_KEYS[progress.cause].word);
+    case "check":
+      return t("updates.progress.check");
+  }
+}
+
 export interface UpdateProgressProps {
   progress: RowProgress;
   /** The row's name, for "View log"'s accessible name. */
@@ -213,42 +240,33 @@ export function UpdateProgress({ progress, name, onViewLog }: UpdateProgressProp
       <span id={wordId}>{word}</span>
     </button>
   );
+  const word = progressWord(t, progress);
   switch (progress.kind) {
     case "queued":
-      return <span className="whitespace-nowrap text-small text-muted">{t("updates.progress.queued")}</span>;
+      return <span className="whitespace-nowrap text-small text-muted">{word}</span>;
     case "running":
-      return (
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
-          <SpinnerIcon size={16} className="shrink-0" />
-          {t("updates.progress.running")}
-        </span>
-      );
     case "cancelling":
       return (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-muted">
           <SpinnerIcon size={16} className="shrink-0" />
-          {t("updates.progress.cancelling")}
+          {word}
         </span>
       );
     case "succeeded":
       return (
         <span className="inline-flex items-center gap-1 whitespace-nowrap text-small text-foreground">
           <CheckIcon size={12} className="shrink-0 text-success" />
-          {t("updates.progress.succeeded")}
+          {word}
         </span>
       );
     case "cancelled":
-      return <span className="whitespace-nowrap text-small text-muted">{t("updates.progress.cancelled")}</span>;
+      return <span className="whitespace-nowrap text-small text-muted">{word}</span>;
     case "failed":
-      return toLog(
-        progress.opId,
-        progress.cause === null ? t("updates.progress.failed") : t(FAILURE_CAUSE_KEYS[progress.cause].word),
-        "text-danger-text",
-      );
+      return toLog(progress.opId, word, "text-danger-text");
     case "check":
       return toLog(
         progress.opId,
-        t("updates.progress.check"),
+        word,
         "text-foreground",
         <WarningFilledIcon size={12} className="shrink-0 text-warning" />,
       );

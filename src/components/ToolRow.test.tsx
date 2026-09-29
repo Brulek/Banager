@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, getByText, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { renderWithProviders } from "../test/setup";
-import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow } from "./ToolRow";
+import { DESCRIPTION_MIN_CHARACTERS, MIDDLE_CUT_FROM, ROW_FIT_WIDTHS, RowAction, rowFitFor, ToolRow, type ToolRowContentProps } from "./ToolRow";
 import { StatusChip } from "./StatusChip";
 import { BUTTON } from "./ui/controls";
 import { Menu } from "./ui/Menu";
@@ -61,6 +61,15 @@ describe("RowAction", () => {
     fireEvent.click(uninstall);
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(pressed).toEqual([uninstall]);
+  });
+
+  it("is named with its tool's name after its words, where the page says it", () => {
+    const { getByRole } = renderWithProviders(
+      <RowAction onClick={() => {}} ariaLabel="Update git">
+        Update
+      </RowAction>,
+    );
+    expect(getByRole("button", { name: "Update git" })).toHaveTextContent("Update");
   });
 });
 
@@ -828,6 +837,62 @@ describe("ToolRow", () => {
     // Space on its own checkbox is the checkbox's, not the row's.
     fireEvent.keyDown(getByRole("checkbox"), { key: " " });
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  describe("its accessible name, where it takes the focus", () => {
+    const rovingRow = (props: Partial<ToolRowContentProps>) =>
+      renderWithProviders(
+        <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="git" description="Distributed revision control system" {...props} />
+        </RovingRowProvider>,
+      );
+
+    it("is a group named by the tool, and the change of version an update brings", () => {
+      const { getByRole } = rovingRow({ version: "2.55.0 → 2.55.1", newVersion: "2.55.1" });
+      const row = getByRole("group", { name: "git, 2.55.0 → 2.55.1" });
+      expect(row).toHaveAttribute("data-tool-row");
+      expect(row).toHaveAttribute("tabindex", "0");
+    });
+
+    it("says its status word after the name, and no version that is not a change", () => {
+      const { getByRole } = rovingRow({
+        name: "gh",
+        status: <StatusChip label="Skipped 2.102.0" />,
+        statusText: "Skipped 2.102.0",
+        version: "2.101.0",
+      });
+      expect(getByRole("group", { name: "gh, Skipped 2.102.0" })).toHaveAttribute("data-tool-row");
+    });
+
+    it("is the tool's name alone with nothing else to say", () => {
+      const { getByRole } = rovingRow({ version: "2.55.0" });
+      expect(getByRole("group", { name: "git" })).toHaveAttribute("data-tool-row");
+    });
+
+    it("is named in the window's language where its words are", () => {
+      const { getByRole } = rovingRow({ name: "gh", statusText: "已跳过2.102.0", status: <StatusChip label="已跳过2.102.0" /> });
+      expect(getByRole("group", { name: "gh, 已跳过2.102.0" })).toHaveAttribute("data-tool-row");
+    });
+
+    it("says it is the one selected on the row that takes the focus, not only on its pointer's button", () => {
+      const { container, rerender } = rovingRow({ onOpen: vi.fn(), openLabel: "Details: git", selected: true });
+      const row = container.querySelector("[data-tool-row]") as HTMLElement;
+      expect(row).toHaveAttribute("aria-current", "true");
+      rerender(
+        <RovingRowProvider value={{ tabIndex: 0, onFocus: vi.fn() }}>
+          <ToolRow adapterId="brew" sourceLabel="Homebrew" name="git" description="Distributed revision control system" onOpen={vi.fn()} openLabel="Details: git" />
+        </RovingRowProvider>,
+      );
+      expect(row).not.toHaveAttribute("aria-current");
+    });
+
+    it("is no group, and has no name of its own, in a list without arrow keys", () => {
+      const { container, queryByRole } = renderWithProviders(
+        <ToolRow adapterId="brew" sourceLabel="Homebrew" name="git" description="VCS" version="2.55.0 → 2.55.1" newVersion="2.55.1" />,
+      );
+      expect(queryByRole("group")).toBeNull();
+      expect(container.querySelector("[data-tool-row]")).not.toHaveAttribute("aria-label");
+    });
   });
 
   describe("selected (the Installed page's inspector, R11)", () => {

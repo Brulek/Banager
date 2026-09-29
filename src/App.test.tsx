@@ -518,7 +518,7 @@ describe("App", () => {
     fireEvent.click(getByRole("button", { name: "Installed" }));
 
     const row = (await findByText("jq", { selector: "[data-tool-row] p" })).closest("[data-tool-row]");
-    const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall…" });
+    const uninstall = within(row as HTMLElement).getByRole("button", { name: "Uninstall jq…" });
     fireEvent.click(uninstall);
     const sheet = await findByRole("dialog", { name: "Uninstall “jq”?" });
     const confirm = within(sheet).getByRole("button", { name: "Uninstall" });

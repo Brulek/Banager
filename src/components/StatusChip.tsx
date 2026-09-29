@@ -10,6 +10,12 @@ export interface StatusChipProps {
    * no detail is plain text.
    */
   detail?: ReactNode;
+  /**
+   * The button's accessible name, where the word alone would be the same
+   * on many rows: 「暂时不能卸载git」 for 「暂时不能卸载」, the word first.
+   * Only a word with a detail is a button.
+   */
+  ariaLabel?: string;
   /** Which edge of the word the detail lines up with (`Popover`'s `align`). */
   align?: "start" | "end";
   /**
@@ -39,7 +45,7 @@ const WORD_TONES = {
  * A row has one at most; a normal state -- up to date, an update to be
  * had -- has none (the version column says the second).
  */
-export function StatusChip({ label, detail, align = "end", tone = "neutral" }: StatusChipProps) {
+export function StatusChip({ label, detail, ariaLabel, align = "end", tone = "neutral" }: StatusChipProps) {
   const WORD = `${WORD_BASE} ${WORD_TONES[tone]}`;
   const content = (
     <>
@@ -64,6 +70,7 @@ export function StatusChip({ label, detail, align = "end", tone = "neutral" }: S
           <InfoIcon size={12} className="shrink-0" />
         </>
       }
+      triggerLabel={ariaLabel}
       triggerClassName={`${WORD} rounded-sm hover:text-foreground aria-expanded:text-foreground`}
       align={align}
     >

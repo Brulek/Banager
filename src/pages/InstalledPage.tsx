@@ -30,7 +30,7 @@ import { useCopyCommand } from "../lib/clipboard";
 import { formatBytes } from "../lib/format";
 import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
-import type { InstalledArtifact, ManagerInstance, OpRequest, UpdateCandidate } from "../lib/types";
+import type { InstalledArtifact, ManagerInstance, OpRequest, OpSummary, UpdateCandidate } from "../lib/types";
 import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
@@ -98,6 +98,8 @@ interface RowChip {
   id: string;
   label: string;
   detail?: ReactNode;
+  /** Its button's accessible name on a row, where the word is the same on many (`StatusChip`'s `ariaLabel`). */
+  ariaLabel?: string;
   tone: "neutral" | "update" | "upToDate";
   /**
    * The way back from what the word says, beside it in the inspector's
@@ -750,16 +752,30 @@ export function InstalledPage() {
     (!isAvailable(instance) || uninstallHoldKey(instance) !== null || uninstallUnderway(artifact) !== null);
   // An uninstall of this one already queued or running: its Uninstall
   // stays, disabled, and says which.
-  const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
+  const uninstallOp = (artifact: InstalledArtifact): OpSummary | undefined => {
     const id = artifactKeyId(artifact.key);
-    const op = (operations ?? []).find(
+    return (operations ?? []).find(
       (op) =>
         op.kind === "Uninstall" &&
         op.status !== "Done" &&
         artifactKeyId({ instance_id: op.instance_id, kind: op.artifact_kind, name: op.name }) === id,
     );
+  };
+  const uninstallUnderway = (artifact: InstalledArtifact): string | null => {
+    const op = uninstallOp(artifact);
     if (op === undefined) return null;
     return op.status === "Queued" ? t("installed.uninstallQueued") : t("installed.uninstalling");
+  };
+  // A row's Uninstall's accessible name: what it says, with the tool's
+  // name in it, its words first -- 「卸载git…」, 「正在卸载git…」 -- as
+  // every row has one.
+  const uninstallName = (artifact: InstalledArtifact): string => {
+    const name = artifact.display_name;
+    const op = uninstallOp(artifact);
+    if (op === undefined) return t("installed.uninstallLabel", { name });
+    return op.status === "Queued"
+      ? t("installed.uninstallQueuedLabel", { name })
+      : t("installed.uninstallingLabel", { name });
   };
 
   // `opener` is the button pressed, passed rather than read off the focus:
@@ -937,6 +953,7 @@ export function InstalledPage() {
       chips.push({
         id: "uninstall-held",
         label: t("installed.uninstallHold.label"),
+        ariaLabel: t("installed.uninstallHold.ariaLabel", { name: artifact.display_name }),
         detail: holdDetail,
         tone: "neutral",
       });
@@ -1058,7 +1075,10 @@ export function InstalledPage() {
         namePath={modelPath(artifact.key, name)}
         showSource={namedTwice.has(nameKey(name))}
         description={describe(artifact, instance, label)}
-        status={chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} />}
+        status={
+          chip === undefined ? undefined : <StatusChip label={chip.label} detail={chip.detail} ariaLabel={chip.ariaLabel} />
+        }
+        statusText={chip?.label}
         version={change?.version ?? versionOf(artifact)}
         newVersion={change?.newVersion}
         action={
@@ -1066,6 +1086,7 @@ export function InstalledPage() {
             <RowAction
               disabled={uninstallHeld(artifact, instance)}
               onClick={(event) => uninstall(artifact, event.currentTarget)}
+              ariaLabel={uninstallName(artifact)}
             >
               {uninstallUnderway(artifact) ?? t("installed.uninstall")}
             </RowAction>

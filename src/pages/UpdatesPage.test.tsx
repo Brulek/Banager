@@ -24,6 +24,14 @@ import type {
 
 const mockInvoke = vi.mocked(invoke);
 
+/**
+ * A row's own Update and Retry, named with their tool's name after their
+ * words ("Update glib"): not the toolbar's Update All or Update Selected,
+ * nor the confirmation's Update.
+ */
+const ROW_UPDATE = /^Update (?!All$|Selected )/;
+const ROW_RETRY = /^Retry /;
+
 // The pretend Mac's two models (`MODELS` in src/dev/mockData.ts, which no
 // test outside src/dev may import): one from another registry, one from
 // Ollama's own.
@@ -575,7 +583,7 @@ describe("UpdatesPage", () => {
   it("previews the command, submits nothing until Confirm, then submits the single update", async () => {
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    const updateButtons = await findAllByRole("button", { name: "Update" });
+    const updateButtons = await findAllByRole("button", { name: ROW_UPDATE });
     fireEvent.click(updateButtons[0]);
 
     const dialog = await findByRole("dialog");
@@ -649,7 +657,7 @@ describe("UpdatesPage", () => {
     planWarnings.glib = ["CompilesLocally"];
     const { findAllByRole, findByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
       "This compiles on your Mac and takes a while.",
@@ -666,7 +674,7 @@ describe("UpdatesPage", () => {
     planWarnings.glib = ["HomebrewPeriodicCleanup"];
     const { findAllByRole, findByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
     const line =
       "After installing or updating, Homebrew deletes the older versions of this software and of any it updates along with it, and stray old downloads; when its periodic clean-up is due, those of all Homebrew software.";
@@ -687,7 +695,7 @@ describe("UpdatesPage", () => {
     try {
       const { findAllByRole, findByRole } = renderPage();
 
-      fireEvent.click((await findAllByRole("button", { name: "更新" }))[0]);
+      fireEvent.click((await findAllByRole("button", { name: /^更新(?!所选)/ }))[0]);
       const dialog = await findByRole("dialog");
       await within(dialog).findByText(
         noteLine(
@@ -706,7 +714,7 @@ describe("UpdatesPage", () => {
     planWarnings.glib = ["HomebrewPeriodicCleanup", "HomebrewCleanupAutoremoves"];
     const { findAllByRole, findByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
     await within(dialog).findByText(
       noteLine(
@@ -742,7 +750,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const myFork = await findRow("my-fork");
-    expect(queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: ROW_UPDATE })).not.toBeInTheDocument();
     expect(queryByRole("checkbox", { name: ROW_CHECKBOX })).not.toBeInTheDocument();
     // Nothing to tick either in the list's header.
     expect(getByRole("checkbox", { name: "Select all items that can be updated here" })).toBeDisabled();
@@ -805,6 +813,45 @@ describe("UpdatesPage", () => {
     expect((await findRow("glib")).closest("[data-list-slot]")).toHaveAttribute("data-run-end");
   });
 
+  it("names each row for a screen reader by its tool, its word and its versions, and its Update with the tool's name", async () => {
+    updates = [{ ...snapshot.updates[0], blocked: "Pinned" }, snapshot.updates[1]];
+    renderPage();
+
+    const onyx = await findRow("onyx");
+    expect(onyx).toHaveAttribute("role", "group");
+    expect(onyx).toHaveAccessibleName("onyx, 5.0.2 → 5.1.0");
+    // The words first, then whose (label in name).
+    const update = within(onyx).getByRole("button", { name: "Update onyx" });
+    expect(update).toHaveTextContent(/^Update$/);
+    // The one that can't be updated here: its word, and no versions.
+    await showCantUpdate();
+    expect(await findRow("glib")).toHaveAccessibleName("glib, Pinned");
+    // Each an item of the list, counted from its start.
+    const slot = onyx.closest("[data-list-slot]") as HTMLElement;
+    expect(slot).toHaveAttribute("role", "listitem");
+    expect(slot.parentElement).toHaveAttribute("role", "list");
+    // onyx, the line over what can't be updated here, and glib under it.
+    expect(slot).toHaveAttribute("aria-posinset", "1");
+    expect(slot).toHaveAttribute("aria-setsize", "3");
+    expect(rowOf("glib").closest("[data-list-slot]")).toHaveAttribute("aria-posinset", "3");
+  });
+
+  it("names a row's Update and Retry with the tool's name in Chinese too", async () => {
+    operations = [operation(glibKey, { id: 9, status: "Done", outcome: "Cancelled" })];
+    // Started for the version the row offers, so the row still shows how it ended.
+    useUiStore.setState({ updateTargets: { 9: "2.90.0" } });
+    await i18n.changeLanguage("zh-CN");
+    try {
+      renderPage();
+      const glib = await findRow("glib");
+      expect(within(glib).getByRole("button", { name: "重试glib" })).toHaveTextContent(/^重试$/);
+      expect(glib).toHaveAccessibleName("glib, 已取消, 2.88.3 → 2.90.0");
+      expect(within(rowOf("onyx")).getByRole("button", { name: "更新onyx" })).toHaveTextContent(/^更新$/);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("offers no Update button and no checkbox for a pinned formula, and says how to release it", async () => {
     // `brew outdated` lists a pinned formula like any other, and `brew
     // upgrade glib` then exits 1 with "Not upgrading 1 pinned package".
@@ -815,7 +862,7 @@ describe("UpdatesPage", () => {
 
     await findRow("onyx");
     // Only onyx's.
-    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
     // Counted apart from what can be updated: "1 update available", and one under
@@ -826,7 +873,7 @@ describe("UpdatesPage", () => {
     const glib = await findRow("glib");
     // Its name, its line, its word and its ⋯: no version and no button.
     expect(within(glib).queryByText("2.88.3 → 2.90.0")).not.toBeInTheDocument();
-    expect(within(glib).queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).not.toBeInTheDocument();
     // Their columns are there all the same, empty, so its word stands in
     // the status column the rows above it have: one column down the list.
     const onyx = await findRow("onyx");
@@ -915,7 +962,7 @@ describe("UpdatesPage", () => {
 
     await showCantUpdate();
     const glib = await findRow("glib");
-    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
     const detail = chipDetail(glib, "Pinned");
     expect(
       within(detail).getByText(
@@ -995,7 +1042,7 @@ describe("UpdatesPage", () => {
     ]);
 
     // The update's confirmation, under its question.
-    fireEvent.click(within(glib).getByRole("button", { name: "Update" }));
+    fireEvent.click(within(glib).getByRole("button", { name: ROW_UPDATE }));
     const dialog = await findByRole("dialog", { name: "Update “glib”?" });
     const jump = await within(dialog).findByText("2.88.3 → 2.90.0");
     expect(jump.closest("[data-dialog-subtitle]")).toHaveTextContent("Homebrew (Intel) · 2.88.3 → 2.90.0");
@@ -1064,7 +1111,7 @@ describe("UpdatesPage", () => {
 
     await findRow("glib");
     // Only glib's.
-    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select glib for update");
     await showCantUpdate();
@@ -1123,7 +1170,7 @@ describe("UpdatesPage", () => {
     const { findByText, findAllByRole } = renderPage();
 
     // glib's button and checkbox, and only glib's.
-    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     expect(await findAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     // One update the user can act on, and one they cannot -- both said out
     // loud. Counting only the first left "0 updates available" above six
@@ -1457,7 +1504,7 @@ describe("UpdatesPage", () => {
     // pip's row keeps pip's advice, right next to it.
     const pip = chipDetail(rowOf("urllib3"), "View only");
     expect(pip).toHaveTextContent(/with pipx or uv/);
-    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
 
   it("says nothing here can be updated, rather than 0 updates, when every row is read-only", async () => {
@@ -1613,7 +1660,7 @@ describe("UpdatesPage", () => {
   it("submits nothing when the confirmation is cancelled", async () => {
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -1633,7 +1680,7 @@ describe("UpdatesPage", () => {
     submitFailures["1"] = '{"kind":"expired"}';
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     let dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -1652,7 +1699,7 @@ describe("UpdatesPage", () => {
 
     // Asking again plans again: a new id and a new preview, and still no
     // submit until the user confirms that preview.
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     dialog = await findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -1720,7 +1767,7 @@ describe("UpdatesPage", () => {
     submitFailures["1"] = "operation queue is closed";
     const plain = renderPage();
 
-    fireEvent.click((await plain.findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await plain.findAllByRole("button", { name: ROW_UPDATE }))[0]);
     let dialog = await plain.findByRole("dialog");
     showCommands(dialog);
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -1732,7 +1779,7 @@ describe("UpdatesPage", () => {
     settings = { ...settings, show_technical_details: true };
     nextPlanId = 1;
     const technical = renderPage();
-    fireEvent.click((await technical.findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await technical.findAllByRole("button", { name: ROW_UPDATE }))[0]);
     dialog = await technical.findByRole("dialog");
     await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
     fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
@@ -1753,7 +1800,7 @@ describe("UpdatesPage", () => {
     planFailures.glib = '{"kind":"not_actionable","read_only":null,"unavailable":"NotRunning"}';
     const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
 
     const alert = await findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -1821,7 +1868,7 @@ describe("UpdatesPage", () => {
     // Nothing is ticked, so the toolbar's one action is Update all, which
     // has two rows to update: the lock below is what disables it, not an
     // empty list.
-    const updateButtons = await findAllByRole("button", { name: "Update" });
+    const updateButtons = await findAllByRole("button", { name: ROW_UPDATE });
     const updateAll = getByRole("button", { name: "Update All" });
 
     // Batch 1 (glib) is still planning when it is closed and batch 2 (onyx)
@@ -2099,7 +2146,7 @@ describe("UpdatesPage", () => {
       // The row it can update: a box, a version, a button and a ⋯.
       expect(within(onyx).getByRole("checkbox")).toBeInTheDocument();
       expect(within(onyx).getByText("5.0.2 → 5.1.0")).toBeInTheDocument();
-      expect(within(onyx).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(within(onyx).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
       // The row it can't: the word and the ⋯, and nothing else to press.
       expect(within(glib).queryByRole("checkbox")).toBeNull();
       expect(within(glib).queryByText(/→/)).toBeNull();
@@ -2249,7 +2296,7 @@ describe("UpdatesPage", () => {
 
     await findRow("glib");
     await findByText("2 updates available");
-    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
   });
 
   it("leaves a skipped row out of the headline, Select all and Update selected, even one selected before", async () => {
@@ -2333,7 +2380,7 @@ describe("UpdatesPage", () => {
     renderPage();
 
     const chromium = await findRow("chromium");
-    expect(within(chromium).getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(within(chromium).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
     const menu = openMenu(chromium);
     expect(
       within(menu).getByRole("menuitem", { name: "Stop Reminding Me" }),
@@ -2353,7 +2400,7 @@ describe("UpdatesPage", () => {
 
     await findRow("chromium");
     await findByText("2 updates available");
-    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
   });
 
   it("skips an Ollama model's new version by its digest without ever printing the digest", async () => {
@@ -2561,9 +2608,9 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       expect(await within(glib).findByText(text)).toBeInTheDocument();
-      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
       // onyx's row is untouched.
-      expect(within(rowOf("onyx")).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
     });
 
     // What the header says: a row an update is installing is said in
@@ -2626,7 +2673,7 @@ describe("UpdatesPage", () => {
       const glib = await findRow("glib");
       expect(await within(glib).findByText("Updated")).toBeInTheDocument();
       expect(glib.querySelector("svg")).not.toBeNull();
-      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
     });
 
     it("gives the Update button back once the row offers a newer version than a finished update was for", async () => {
@@ -2642,7 +2689,7 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       expect(await within(rowOf("onyx")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(glib).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
       expect(within(glib).queryByText("Updated")).toBeNull();
     });
 
@@ -2655,7 +2702,7 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       expect(await within(rowOf("onyx")).findByText("Updating…")).toBeInTheDocument();
-      expect(within(glib).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
       expect(within(glib).queryByText("Updated")).toBeNull();
     });
 
@@ -2703,7 +2750,7 @@ describe("UpdatesPage", () => {
       expect(toLog).toHaveAccessibleDescription("Connection failed");
       expect(toLog.className).toContain("text-danger-text");
       expect(toLog.className).toContain("text-small");
-      expect(within(glib).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+      expect(within(glib).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
       fireEvent.click(toLog);
       expect(useUiStore.getState().focusedOpId).toBe(9);
     });
@@ -2767,13 +2814,13 @@ describe("UpdatesPage", () => {
 
         const glib = await findRow("glib");
         expect(await within(glib).findByText(text)).toBeInTheDocument();
-        const retry = within(glib).getByRole("button", { name: "Retry" });
+        const retry = within(glib).getByRole("button", { name: ROW_RETRY });
         // The look Update had: a row's regular grey button (`RowAction`).
         expect(retry.className).toBe(BUTTON.regular.grey);
-        expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+        expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
         // Still a row it can update: its checkbox stays.
         expect(within(glib).getByRole("checkbox")).toBeInTheDocument();
-        expect(within(rowOf("onyx")).queryByRole("button", { name: "Retry" })).toBeNull();
+        expect(within(rowOf("onyx")).queryByRole("button", { name: ROW_RETRY })).toBeNull();
       },
     );
 
@@ -2789,7 +2836,7 @@ describe("UpdatesPage", () => {
       const { findByRole, getByRole } = renderPage();
 
       const glib = await findRow("glib");
-      fireEvent.click(await within(glib).findByRole("button", { name: "Retry" }));
+      fireEvent.click(await within(glib).findByRole("button", { name: ROW_RETRY }));
       const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       await waitFor(() => expect(plannedNames()).toEqual(["glib"]));
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -2806,8 +2853,8 @@ describe("UpdatesPage", () => {
 
       const glib = await findRow("glib");
       expect(await within(glib).findByText("Updated")).toBeInTheDocument();
-      expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
-      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
     });
 
     it("offers no Retry on a failed row it can no longer update, only how it ended and its log", async () => {
@@ -2827,8 +2874,8 @@ describe("UpdatesPage", () => {
       const glib = await findRow("glib");
       expect(await within(glib).findByText("Couldn't update")).toBeInTheDocument();
       expect(within(glib).getByRole("button", { name: "View log: glib" })).toBeInTheDocument();
-      expect(within(glib).queryByRole("button", { name: "Retry" })).toBeNull();
-      expect(within(glib).queryByRole("button", { name: "Update" })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_RETRY })).toBeNull();
+      expect(within(glib).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
     });
 
     it("goes by the newest update of the package, and by no other kind of operation", async () => {
@@ -2842,13 +2889,13 @@ describe("UpdatesPage", () => {
 
       expect(await within(await findRow("glib")).findByText("Updating…")).toBeInTheDocument();
       expect(within(rowOf("glib")).queryByText("Cancelled")).toBeNull();
-      expect(within(rowOf("onyx")).getByRole("button", { name: "Update" })).toBeInTheDocument();
+      expect(within(rowOf("onyx")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
     });
 
     it("remembers which version an update it started was for", async () => {
       const { findAllByRole, findByRole } = renderPage();
 
-      fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
       const dialog = await findByRole("dialog");
       showCommands(dialog);
       await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib");
@@ -3288,7 +3335,7 @@ describe("UpdatesPage", () => {
         const row = rowOf(name);
         expect(within(row).getByText("Homebrew")).toBeInTheDocument();
         expect(within(row).queryByText("Ollama")).toBeNull();
-        expect(within(row).getByRole("button", { name: "Update" })).toBeInTheDocument();
+        expect(within(row).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
       }
       await showCantUpdate();
       for (const name of ["qwen3:8b", "llama3.2:3b"]) {
@@ -3415,11 +3462,11 @@ describe("UpdatesPage", () => {
     expect(await findByText("1 more can't be updated here")).toBeInTheDocument();
     await showCantUpdate();
     const row = await findRow("qwen3:8b");
-    expect(within(row).queryByRole("button", { name: "Update" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: ROW_UPDATE })).toBeNull();
     expect(within(row).queryByRole("checkbox")).toBeNull();
     // The two brew rows still have their buttons: one silent source does
     // not disarm the page.
-    expect(await findAllByRole("button", { name: "Update" })).toHaveLength(2);
+    expect(await findAllByRole("button", { name: ROW_UPDATE })).toHaveLength(2);
   });
 
   it("draws only the rows on screen when a failed lookup turns every package into a row", async () => {
@@ -3463,7 +3510,7 @@ describe("UpdatesPage", () => {
 
     const { findAllByRole, findByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
 
     // Under the question, with where it comes from.
@@ -3475,7 +3522,7 @@ describe("UpdatesPage", () => {
     it("asks about one tool by its name, and about several by how many, each with its avatar and new version", async () => {
       const { findAllByRole, findByRole, getByRole, queryByRole } = renderPage();
 
-      fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
       let dialog = await findByRole("dialog", { name: "Update “glib”?" });
       // One tool: an alert, 360 wide, its 48 icon over the question.
       expect(dialog).toHaveAttribute("data-dialog-width", "360");
@@ -3534,7 +3581,7 @@ describe("UpdatesPage", () => {
       const row = await findRow("glib");
       expectLogos(row);
 
-      fireEvent.click(within(row).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(row).getByRole("button", { name: ROW_UPDATE }));
       expectLogos((await findByRole("dialog", { name: "Update “glib”?" })).querySelector("[data-dialog-icon]"));
     });
 
@@ -3561,7 +3608,7 @@ describe("UpdatesPage", () => {
       settings.show_technical_details = true;
       const { findAllByRole, findByRole } = renderPage();
 
-      fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+      fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
       const dialog = await findByRole("dialog");
 
       expect(await within(dialog).findByText("/opt/homebrew/bin/brew upgrade --formula glib")).toBeInTheDocument();
@@ -3728,7 +3775,7 @@ describe("UpdatesPage", () => {
       // row offers its own the same way, grey.
       renderPage();
 
-      const update = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      const update = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       expect(update.className).toBe(BUTTON.regular.grey);
       expect(screen.getByRole("button", { name: "Update All" }).className).toBe(BUTTON.regular.default);
       expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
@@ -3737,7 +3784,7 @@ describe("UpdatesPage", () => {
     it("puts the focus on Update as it opens, and gives it back to the row's Update when cancelled", async () => {
       const { findAllByRole, findByRole, queryByRole } = renderPage();
 
-      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
       const dialog = await findByRole("dialog");
       await waitFor(() =>
@@ -3747,7 +3794,7 @@ describe("UpdatesPage", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(queryByRole("dialog")).toBeNull());
       await waitFor(() => expect(document.activeElement).toBe(rowUpdate));
-      expect(await findAllByRole("button", { name: "Update" })).toContain(rowUpdate);
+      expect(await findAllByRole("button", { name: ROW_UPDATE })).toContain(rowUpdate);
     });
 
     it("gives the focus back to Update all once the updates it confirmed have started", async () => {
@@ -3860,7 +3907,7 @@ describe("UpdatesPage", () => {
       holdPlans.add("glib");
       const { findByRole } = renderPage();
 
-      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
       const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("2.88.3 → 2.90.0")).toBeInTheDocument();
@@ -3882,7 +3929,7 @@ describe("UpdatesPage", () => {
       holdPlans.add("glib");
       const { findByRole } = renderPage();
 
-      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
       const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       const cancel = within(dialog).getByRole("button", { name: "Cancel" });
       cancel.focus();
@@ -3897,7 +3944,7 @@ describe("UpdatesPage", () => {
       holdPlans.add("glib");
       const { findByRole, queryByRole } = renderPage();
 
-      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
       const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -3918,7 +3965,7 @@ describe("UpdatesPage", () => {
       holdPlans.add("glib");
       const { findByRole, queryByRole } = renderPage();
 
-      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: "Update" });
+      const rowUpdate = within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE });
       fireEvent.click(rowUpdate);
       const dialog = await findByRole("dialog", { name: "Update “glib”?" });
       expect(within(dialog).getByText("Preparing…")).toBeInTheDocument();
@@ -3933,7 +3980,7 @@ describe("UpdatesPage", () => {
       planFailures.glib = "glib is pinned";
       const { findByRole, queryByRole, queryByText } = renderPage();
 
-      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
 
       expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
       expect(queryByText(/glib is pinned/)).toBeNull();
@@ -3947,7 +3994,7 @@ describe("UpdatesPage", () => {
       planFailures.glib = "glib is pinned";
       const { findByRole, findByText, queryClient } = renderPage();
 
-      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: "Update" }));
+      fireEvent.click(within(await findRow("glib")).getByRole("button", { name: ROW_UPDATE }));
       expect(await findByRole("alert")).toHaveTextContent("Couldn't prepare the update. Try again later.");
 
       act(() => queryClient.setQueryData(queryKeys.settings, { ...settings, show_technical_details: true }));
@@ -3975,7 +4022,7 @@ describe("UpdatesPage", () => {
 
     const { findAllByRole, findByRole } = renderPage();
 
-    fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
+    fireEvent.click((await findAllByRole("button", { name: ROW_UPDATE }))[0]);
     const dialog = await findByRole("dialog");
 
     expect(
@@ -4035,8 +4082,8 @@ describe("UpdatesPage", () => {
     // copy table, updates.selfUpdatingDetail).
     expect(within(claude).getByText("Also updates itself")).toBeInTheDocument();
     expect(within(claude).queryByRole("button", { name: "Also updates itself" })).toBeNull();
-    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
-    expect(within(claude).getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
+    expect(within(claude).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
   it("keeps a status column on every row while any row shown has a word, and gives its room to the names where none has", async () => {
@@ -4092,7 +4139,7 @@ describe("UpdatesPage", () => {
       expect(await within(chips).findByText(words)).toBeInTheDocument();
       expect(within(chips).queryByRole("button", { name: "View log: Claude Code" }) !== null).toBe(logged);
       expect(within(claude).queryByText("Also updates itself")).toBeNull();
-      expect(within(claude).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+      expect(within(claude).getByRole("button", { name: ROW_RETRY })).toBeInTheDocument();
 
       // Retried: the update under way stands where the button was, and
       // the chip is back.
@@ -4127,7 +4174,7 @@ describe("UpdatesPage", () => {
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.snapshot }));
     await waitFor(() => expect(within(rowOf("Claude Code")).queryByText("Couldn't update")).toBeNull());
     expect(within(rowOf("Claude Code")).getByText("Also updates itself")).toBeInTheDocument();
-    expect(within(rowOf("Claude Code")).getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(within(rowOf("Claude Code")).getByRole("button", { name: ROW_UPDATE })).toBeInTheDocument();
   });
 
   it("keeps a self-updating Homebrew cask a plain row: the chip is for tools that update themselves, not for --greedy", async () => {
@@ -4211,7 +4258,7 @@ describe("UpdatesPage", () => {
     expect(within(grok).getByText("xAI's AI coding assistant")).toBeInTheDocument();
     expect(queryByText("No description")).toBeNull();
     expect(within(grok).queryByText("Also updates itself")).toBeNull();
-    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
   });
 
   it("says what each row's source says it is when the source gave no description, in both languages", async () => {
@@ -4382,7 +4429,7 @@ describe("UpdatesPage", () => {
     const claude = await findRow("Claude Code");
     expect(chipDetail(claude, "Can't check").textContent).toBe("Couldn't find its latest version.");
     expect(within(claude).queryByText("Also updates itself")).toBeNull();
-    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
 
   it("gives no self-updating chip to a standalone row whose source did not answer: it has no button to offer", async () => {
@@ -4402,7 +4449,7 @@ describe("UpdatesPage", () => {
     const claude = await findRow("Claude Code");
     expect(within(claude).queryByText("Also updates itself")).toBeNull();
     expect(within(claude).getByRole("button", { name: "Can't update now" })).toBeInTheDocument();
-    expect(queryAllByRole("button", { name: "Update" })).toHaveLength(0);
+    expect(queryAllByRole("button", { name: ROW_UPDATE })).toHaveLength(0);
   });
 
   it("offers no Update button for a tool that updates itself, and says to open it once", async () => {
@@ -4420,7 +4467,7 @@ describe("UpdatesPage", () => {
 
     await findRow("onyx");
     // Only onyx's.
-    expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+    expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })).toHaveLength(1);
     expect(getAllByRole("checkbox", { name: ROW_CHECKBOX })[0]).toHaveAccessibleName("Select onyx for update");
     await findByText("1 update available");
@@ -4488,7 +4535,7 @@ describe("UpdatesPage", () => {
       expect(within(claude).queryByText("Also updates itself")).toBeNull();
       expect(queryByText(/usually updates itself|just run it/i)).toBeNull();
       expect(within(claude).getByText("2.1.281 → 2.1.290")).toBeInTheDocument();
-      expect(getAllByRole("button", { name: "Update" })).toHaveLength(1);
+      expect(getAllByRole("button", { name: ROW_UPDATE })).toHaveLength(1);
     },
   );
 

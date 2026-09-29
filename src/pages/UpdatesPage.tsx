@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOperations, useSnapshot, useSettings, useSaveSettings } from "../lib/queries";
 import { elapsedSince } from "../lib/format";
@@ -20,7 +19,7 @@ import { useTranslatedDescription } from "../lib/toolDescriptions";
 import { listedName, modelPath, nameKey, namesUnderSeveralSources } from "../lib/names";
 import { JustUpdated, justUpdatedOps, type JustUpdatedEntry } from "../components/JustUpdated";
 import { RowAction, ToolRow } from "../components/ToolRow";
-import { StatusChip } from "../components/StatusChip";
+import { StatusChip, type StatusChipProps } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
 import { NOTICE_GRID } from "../components/SourceNotice";
@@ -37,6 +36,7 @@ import {
   isRetryable,
   isUnderway,
   progressOf,
+  progressWord,
   UpdateProgress,
   useStartableUpdates,
   useUpdateOperationFor,
@@ -570,7 +570,8 @@ export function UpdatesPage() {
 
   /**
    * The row's status word, one per `UpdateState`, with its why behind an
-   * ⓘ -- or none, for a row that can simply be updated. A `switch` with no
+   * ⓘ -- or none, for a row that can simply be updated: what its
+   * `StatusChip` is drawn from, and its word the row's name says. A `switch` with no
    * default, so a state added to `UpdateState` without a word here fails
    * `tsc`. One word a row (spec §3.4): a read-only source's row that
    * could not be checked either says "Can't check", this check's news and
@@ -582,41 +583,33 @@ export function UpdatesPage() {
     candidate: UpdateCandidate,
     state: UpdateState,
     instance: ManagerInstance | undefined,
-  ): ReactNode | undefined => {
+  ): StatusChipProps | undefined => {
     const showTechnicalDetails = settings?.show_technical_details ?? false;
     const source = sourceLabelFor(candidate.key.instance_id);
     switch (state.kind) {
       case "actionable":
-        return saysItUpdatesItself(candidate, instance) ? <StatusChip label={t("updates.selfUpdating")} /> : undefined;
+        return saysItUpdatesItself(candidate, instance) ? { label: t("updates.selfUpdating") } : undefined;
       case "readOnly":
-        return candidate.checkable ? (
-          <StatusChip label={t("updates.readOnly")} detail={readOnlyDetail(t, instance)} />
-        ) : (
-          <StatusChip
-            label={t("updates.cannotCheck")}
-            detail={
-              <>
-                {cannotCheckDetail(t, candidate, showTechnicalDetails)}
-                <div className="mt-1.5">{readOnlyDetail(t, instance)}</div>
-              </>
-            }
-          />
-        );
+        return candidate.checkable
+          ? { label: t("updates.readOnly"), detail: readOnlyDetail(t, instance) }
+          : {
+              label: t("updates.cannotCheck"),
+              detail: (
+                <>
+                  {cannotCheckDetail(t, candidate, showTechnicalDetails)}
+                  <div className="mt-1.5">{readOnlyDetail(t, instance)}</div>
+                </>
+              ),
+            };
       case "cannotCheck":
-        return (
-          <StatusChip label={t("updates.cannotCheck")} detail={cannotCheckDetail(t, candidate, showTechnicalDetails)} />
-        );
+        return { label: t("updates.cannotCheck"), detail: cannotCheckDetail(t, candidate, showTechnicalDetails) };
       case "blocked":
-        return (
-          <StatusChip
-            label={t(UPDATE_BLOCKED_KEYS[state.reason].badge)}
-            detail={blockedDetail(t, candidate, state.reason, instance, source, showTechnicalDetails)}
-          />
-        );
+        return {
+          label: t(UPDATE_BLOCKED_KEYS[state.reason].badge),
+          detail: blockedDetail(t, candidate, state.reason, instance, source, showTechnicalDetails),
+        };
       case "sourceUnavailable":
-        return (
-          <StatusChip label={t("updates.sourceUnavailable")} detail={unavailableDetail(t, instance, source)} />
-        );
+        return { label: t("updates.sourceUnavailable"), detail: unavailableDetail(t, instance, source) };
     }
   };
 
@@ -812,7 +805,10 @@ export function UpdatesPage() {
       progress !== null ? <UpdateProgress progress={progress} name={name} onViewLog={viewLog} /> : null;
     // How it ended has the status word's column to itself: it comes back
     // once the outcome clears -- a Retry under way, a newer version offered.
-    const status = retry ? outcome : statusOf(candidate, state, instance);
+    const word = retry ? undefined : statusOf(candidate, state, instance);
+    const status = retry ? outcome : word === undefined ? undefined : <StatusChip {...word} />;
+    // The same, in words, for the row's name.
+    const statusText = retry && progress !== null ? progressWord(t, progress) : word?.label;
     const adapterId = instance?.adapter_id ?? candidate.key.instance_id.split(":")[0];
     const artifact = artifactsById.get(artifactKeyId(candidate.key));
     const column = updateVersionColumn(t, candidate);
@@ -820,7 +816,11 @@ export function UpdatesPage() {
       progress !== null && !retry ? (
         outcome
       ) : actionable ? (
-        <RowAction onClick={(event) => void openConfirm([candidate], event.currentTarget)} disabled={dialogOpen}>
+        <RowAction
+          onClick={(event) => void openConfirm([candidate], event.currentTarget)}
+          disabled={dialogOpen}
+          ariaLabel={retry ? t("updates.retryLabel", { name }) : t("updates.updateLabel", { name })}
+        >
           {retry ? t("updates.retry") : t("updates.update")}
         </RowAction>
       ) : null;
@@ -860,6 +860,7 @@ export function UpdatesPage() {
             : null
         }
         status={status ?? undefined}
+        statusText={statusText}
         // Empty under "can't be updated here", but there: its status word
         // stands in the column the rows' above stand in.
         version={updatable ? column.version : null}
