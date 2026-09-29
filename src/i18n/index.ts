@@ -1,6 +1,7 @@
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
+import { autospacePostProcessor, lacksTextAutospace } from "./autospace";
 import en from "./en.json";
 import zhCN from "./zh-CN.json";
 
@@ -14,6 +15,7 @@ i18n.on("languageChanged", (lng) => {
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
+  .use(autospacePostProcessor)
   .init({
     resources: {
       en: { translation: en },
@@ -23,6 +25,10 @@ void i18n
     supportedLngs: ["en", "zh-CN"],
     detection: { order: ["navigator"], caches: [] },
     interpolation: { escapeValue: false },
+    // The zh-CN strings put no space between Chinese and Latin; the web
+    // view draws the gap (`text-autospace` in index.css). One too old to
+    // draw it gets a narrow space typed in instead (`./autospace.ts`).
+    postProcess: lacksTextAutospace() ? [autospacePostProcessor.name] : false,
   });
 
 export default i18n;
