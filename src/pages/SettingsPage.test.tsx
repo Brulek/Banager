@@ -1049,6 +1049,8 @@ describe("SettingsPage's icon credits", () => {
     await user.click(open);
 
     const drawer = await screen.findByRole("dialog", { name: "Icon credits" });
+    // A list: as wide as a dialog about several tools, not an alert's 360.
+    expect(drawer).toHaveAttribute("data-dialog-width", "480");
     expect(drawer).toHaveAccessibleDescription(
       "Each logo belongs to its owner and is shown only to identify the tool.",
     );

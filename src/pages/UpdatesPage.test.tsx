@@ -3341,8 +3341,8 @@ describe("UpdatesPage", () => {
 
       fireEvent.click((await findAllByRole("button", { name: "Update" }))[0]);
       let dialog = await findByRole("dialog", { name: "Update “glib”?" });
-      // One tool: an alert, 420 wide, its 48 icon over the question.
-      expect(dialog).toHaveAttribute("data-dialog-width", "420");
+      // One tool: an alert, 360 wide, its 48 icon over the question.
+      expect(dialog).toHaveAttribute("data-dialog-width", "360");
       expect(dialog.querySelector("[data-dialog-icon]")).not.toBeNull();
       expect(dialog.querySelector("[data-sheet-tools]")).toBeNull();
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

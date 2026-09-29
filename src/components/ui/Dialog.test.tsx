@@ -99,7 +99,7 @@ function componentSources(): Array<[string, string]> {
 
 describe("Dialog", () => {
   it.each([
-    ["one", 420],
+    ["one", 360],
     ["several", 480],
     ["log", 560],
   ] as const)("is %s wide: %ipx, and never wider than the window less 16 either side", (width, px) => {
@@ -115,13 +115,36 @@ describe("Dialog", () => {
     expect(dialog.style.width).toMatch(new RegExp(`^min\\(${px}px, (?:calc\\(100vw - 32px\\)|-32px \\+ 100vw)\\)$`));
   });
 
-  it("is 420 wide unless told otherwise", () => {
+  it("is 360 wide unless told otherwise", () => {
     renderWithProviders(
       <Dialog open onOpenChange={vi.fn()} title="Confirm">
         <p>Body content</p>
       </Dialog>,
     );
-    expect(screen.getByRole("dialog")).toHaveAttribute("data-dialog-width", "420");
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-dialog-width", "360");
+  });
+
+  it("darkens nothing under it, as a Mac's alert and sheet do, and still keeps the page out of reach", async () => {
+    const onOpenChange = vi.fn();
+    renderWithProviders(
+      <Dialog open onOpenChange={onOpenChange} title="Confirm" footer={<button type="button">OK</button>}>
+        <p>Body content</p>
+      </Dialog>,
+    );
+    const overlay = document.querySelector("[data-dialog-overlay]") as HTMLElement;
+    expect(overlay).not.toBeNull();
+    // Over the whole window, and clear: no fill, nothing fading in.
+    expect(overlay.className.split(" ")).toEqual(["fixed", "inset-0"]);
+    expect(overlay.className).not.toMatch(/\bbg-|animate-/);
+    // No dimmer's colour left to reach for, in either appearance.
+    const css = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../index.css"), "utf8");
+    expect(css).not.toContain("--color-overlay");
+    // The dialog's own shadow and edge set it apart instead.
+    expect(screen.getByRole("dialog")).toHaveClass("shadow-dialog");
+    // Escape still closes it, and the focus stays inside it.
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it("looks like a macOS alert: no edge, corners of 10, the dialog's shadow, 52 from the top, 20 in", () => {
@@ -152,7 +175,7 @@ describe("Dialog", () => {
     expect(title.parentElement).toHaveClass("px-5", "pt-5");
   });
 
-  it("puts its buttons on the right, 8 apart and 20 below, with no line or band of their own", () => {
+  it("puts its buttons on the right, 8 apart and 16 under what it says, with no line or band of their own", () => {
     renderWithProviders(
       <Dialog
         open
@@ -170,7 +193,8 @@ describe("Dialog", () => {
       </Dialog>,
     );
     const footer = screen.getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
-    expect(footer).toHaveClass("justify-end", "gap-2", "p-5");
+    expect(footer).toHaveClass("justify-end", "gap-2", "px-5", "pt-4", "pb-5");
+    expect(footer.className).not.toMatch(/\bp-5\b|\bpt-5\b/);
     expect(footer.className).not.toMatch(/border|bg-/);
     // What goes at the other end, on the left.
     expect(within(footer).getByRole("button", { name: "Copy" }).parentElement).toHaveClass("mr-auto");
@@ -195,7 +219,7 @@ describe("Dialog", () => {
       </Dialog>,
     );
     const footer = screen.getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
-    expect(footer).toHaveClass("flex-col", "items-stretch", "[&>button]:w-full");
+    expect(footer).toHaveClass("flex-col", "items-stretch", "[&>button]:w-full", "pt-4");
     expect(within(footer).getAllByRole("button").map((button) => button.textContent)).toEqual(["Stay", "Quit"]);
   });
 

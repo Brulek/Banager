@@ -88,7 +88,6 @@
   /* A selected row while the list is not the focus of the keyboard. */
   --color-row-selected: #dcdcdc;
   --color-switch-off: rgb(0 0 0 / 0.11);
-  --color-overlay: rgb(0 0 0 / 0.2);
 
   /* controlAccentColor's default; the user's own accent below. Pressed,
      a default button darkens by 15% (`BUTTON` in
@@ -175,7 +174,6 @@
     --color-group-separator: #2f2f2f;
     --color-row-selected: #464646;
     --color-switch-off: rgb(255 255 255 / 0.16);
-    --color-overlay: rgb(0 0 0 / 0.4);
     --color-accent-text: #419cff;
     --color-selection: #3f638b;
     --color-focus: rgb(26 169 255 / 0.5);

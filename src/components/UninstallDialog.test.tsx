@@ -137,9 +137,9 @@ describe("UninstallDialog", () => {
     renderWithProviders(<UninstallDialog open onOpenChange={() => {}} request={request} displayName="jq" />);
 
     const dialog = await screen.findByRole("dialog", { name: "Uninstall “jq”?" });
-    // An alert's layout (spec §3.6): one tool, 420 wide; its icon over the
+    // An alert's layout (spec §3.6): one tool, 360 wide; its icon over the
     // question, and where it comes from and the version it has under it.
-    expect(dialog).toHaveAttribute("data-dialog-width", "420");
+    expect(dialog).toHaveAttribute("data-dialog-width", "360");
     const subtitle = (await within(dialog).findByText("1.8.1")).closest("[data-dialog-subtitle]");
     expect(subtitle).toHaveTextContent("Homebrew · 1.8.1");
     const icon = dialog.querySelector("[data-dialog-icon]") as HTMLElement;

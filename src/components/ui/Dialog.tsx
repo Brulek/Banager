@@ -3,12 +3,15 @@ import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { focusOrFallback } from "./focus";
 
 /**
- * How wide a dialog is (spec §3.6, §3.10): 420 for a question about one
- * tool -- an alert's width, with its 48 icon over the title -- 480 for one
- * about several, whose list needs the room for a version beside each name,
- * and 560 for an operation's log, whose lines are a program's own.
+ * How wide a dialog is (spec §3.6, §3.10): 360 for a question about one
+ * tool -- near an alert's own width (native-alert-light.png), so that its
+ * 48 icon, question, line and text fill it and its buttons end under
+ * them, not out in an empty corner -- 480 for one about several, whose
+ * list needs the room for a version beside each name, and for the icon
+ * credits' list, and 560 for an operation's log, whose lines are a
+ * program's own.
  */
-export const DIALOG_WIDTHS = { one: 420, several: 480, log: 560 } as const;
+export const DIALOG_WIDTHS = { one: 360, several: 480, log: 560 } as const;
 
 export type DialogWidth = keyof typeof DIALOG_WIDTHS;
 
@@ -34,9 +37,10 @@ export interface DialogProps {
    */
   description?: ReactNode;
   /**
-   * The buttons, at the foot, on the right: the grey one first, then the
-   * one it asks for, the default button -- large, both (`BUTTON.large` in
-   * ./controls.ts), and never red, removing something included.
+   * The buttons, 16 under what it says, on the right: the grey one first,
+   * then the one it asks for, the default button -- large, both
+   * (`BUTTON.large` in ./controls.ts), and never red, removing something
+   * included.
    */
   footer?: ReactNode;
   /** At the foot's other end, on the left: the log's Copy. */
@@ -82,13 +86,15 @@ export interface DialogProps {
  * the dialog's shadow, hung 52 from the top of the window -- under the
  * toolbar -- and 20 in from its edges all round. Its 48 icon where it has
  * one, 12 over its question in 13 bold; what it is about under that; its
- * buttons 20 below, on the right and 8 apart, with no line or band of
+ * buttons 16 below, on the right and 8 apart, with no line or band of
  * their own. Its body scrolls between the question and the buttons,
  * which stay put, and it grows downwards as what it has to say arrives,
  * to the window's height less 96.
  *
- * A Radix modal dialog: the page under it is dimmed and out of reach, Tab
- * stays inside it, and Escape or a click on the dimmed page closes it.
+ * A Radix modal dialog: the page under it is out of reach but not dimmed
+ * -- a Mac's alert and sheet darken nothing; the dialog's shadow and edge
+ * set it apart -- Tab stays inside it, and Escape or a click on the page
+ * around it closes it.
  * Escape closes an ⓘ open inside it first, and only that: the ⓘ closes
  * itself (`useDismiss` in ./floating.ts), and the sheet stays.
  *
@@ -128,7 +134,8 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 bg-[var(--color-overlay)] motion-safe:animate-fade-in" />
+        {/* Clear: it only keeps the pointer from the page under it. */}
+        <RadixDialog.Overlay data-dialog-overlay="" className="fixed inset-0" />
         <RadixDialog.Content
           ref={contentRef}
           {...(description === undefined ? { "aria-describedby": undefined } : {})}
@@ -147,7 +154,7 @@ export function Dialog({
               target.focus();
               // A disabled button takes no focus: the sheet has it instead
               // (Radix's content is focusable for this), rather than the
-              // button that opened it, under the dimmed page.
+              // button that opened it, on the page under it.
               if (document.activeElement !== target) contentRef.current?.focus();
             }
           }}
@@ -201,8 +208,8 @@ export function Dialog({
               data-dialog-footer=""
               className={
                 stackedFooter
-                  ? "flex shrink-0 flex-col items-stretch gap-2 p-5 [&>button]:w-full"
-                  : "flex shrink-0 items-center justify-end gap-2 p-5"
+                  ? "flex shrink-0 flex-col items-stretch gap-2 px-5 pb-5 pt-4 [&>button]:w-full"
+                  : "flex shrink-0 items-center justify-end gap-2 px-5 pb-5 pt-4"
               }
             >
               {footerStart !== undefined && footerStart !== null ? (

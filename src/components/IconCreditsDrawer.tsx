@@ -31,6 +31,9 @@ export function IconCreditsDrawer({ open, onOpenChange }: IconCreditsDrawerProps
       open={open}
       onOpenChange={onOpenChange}
       title={t("settings.iconCredits.title")}
+      // A list, as a dialog about several tools is: its sources' addresses
+      // wrap less at its width than at an alert's.
+      width="several"
       description={t("settings.iconCredits.owners")}
       initialFocus={doneRef}
       footer={
