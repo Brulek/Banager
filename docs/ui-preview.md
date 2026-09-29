@@ -51,9 +51,10 @@ it: About, Hide, Quit, Close Window, the Edit and Window menus. But the
 page never talks to Rust, so it never says which language it uses -- the
 menu bar stays in the one it was built in, which follows macOS's
 language here, this identifier having no settings of its own -- and it
-never hears Settings…, Check Again or Search, which Rust sends only to a
-page that asked it to listen: in this window those three do nothing but
-bring the window back when it is closed or minimized. Nor does the page
+never hears Settings…, the View menu's four pages (⌘1 to ⌘4), Check
+Again or Search, which Rust sends only to a page that asked it to listen:
+in this window those items do nothing but bring the window back when it
+is closed or minimized. Nor does the page
 badge Canager's icon in the Dock with its count of updates, as the app
 does: it would ask Tauri, and here it asks the stand-in in
 `src/dev/mockTauriWindow.ts`, which badges nothing. Nor does the Unknown

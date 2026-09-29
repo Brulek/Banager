@@ -31,6 +31,10 @@ export interface UiState {
   // installed. Either way the search starts empty, so the list is the one
   // the source or the count promised, not an old search's.
   openInstalled(instanceId: string | null): void;
+  // A page's row in the sidebar, and its item in the menu bar's View menu
+  // (⌘1 to ⌘4, src/lib/menu.ts): the page, and Installed on everything
+  // installed (`openInstalled(null)`), which the row's count counts.
+  openPage(p: Page): void;
   // The menu bar's Search (⌘F, src/lib/menu.ts): the Installed page, whose
   // search box takes the focus as soon as it is on screen -- at once, or
   // once the page has loaded -- and says so (`searchFocused`). From another
@@ -130,7 +134,7 @@ export function artifactKeyId(key: ArtifactKey): string {
 // they were appended in.
 let logSeq = 0;
 
-export const useUiStore = create<UiState>((set) => ({
+export const useUiStore = create<UiState>((set, get) => ({
   // The Overview: what the Mac looks like at a glance, before any list.
   page: "overview",
   setPage: (p) => set({ page: p, searchFocusRequested: false, hiddenUpdatesRequested: false, inspectRequested: null }),
@@ -149,6 +153,7 @@ export const useUiStore = create<UiState>((set) => ({
       hiddenUpdatesRequested: false,
       inspectRequested: null,
     }),
+  openPage: (p) => (p === "installed" ? get().openInstalled(null) : get().setPage(p)),
   searchFocusRequested: false,
   searchInstalled: () =>
     set((s) =>

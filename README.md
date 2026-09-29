@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1077 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1453
+> **Status: pre-release.** The core and the UI work and are covered by 1078 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1456
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -72,6 +72,12 @@ else that brings Canager to the front with the window closed or minimized — �
 does the same. The Unknown page's header has *Scan Again* in its place, with how long ago that page
 last scanned: it re-runs only that page's scan of your bin folders, against the sources' last known
 state — it does not refresh the sources. Settings' header has neither.
+
+The menu bar's View menu opens the sidebar's pages, as Finder's and Mail's open theirs: Overview
+(⌘1), Updates (⌘2), Installed (⌘3 — on everything installed, as the sidebar's Installed opens it)
+and Unknown (⌘4). Below them are Check Again (⌘R) and Search (⌘F), which opens the Installed page
+with its search box focused, and Settings… (⌘,) is in the Canager menu. With the window closed or
+minimized, each of these brings it back first.
 
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Canager running, and an operation under way carries on; its icon in the Dock brings the window back
@@ -306,8 +312,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1077 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1453 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1078 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1456 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -385,6 +391,11 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 （来源装了却没报路径的程序也会列在那一页，比如 uv 自带的 `uvx`：缺口在来源那边，页面照实说。Cargo
 每个 crate 只报一个程序——与 crate 同名的那个，没有就报记录里的第一个——所以一个 crate 装了好几个程序时，
 其余的（如 `cargo-binstall` 的 `detect-targets`）会留在那一页，直到它能把全部报出来。）
+
+菜单栏的“显示”菜单像访达和邮件的一样，能打开边栏里的各页：“概览”（⌘1）、“更新”（⌘2）、“已安装”
+（⌘3，和点边栏的“已安装”一样，显示全部已安装的工具）和“来源不明”（⌘4）。下面是“重新检查”（⌘R）和
+“搜索”（⌘F），后者打开“已安装”页，并把光标放进搜索框；“设置…”（⌘,）在“Canager”菜单里。窗口关着或最小化时，
+选这些项会先把窗口叫回来。
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Canager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。

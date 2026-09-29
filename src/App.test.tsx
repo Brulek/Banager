@@ -811,15 +811,19 @@ describe("the menu bar's items that act in the page", () => {
     return mockInvoke.mock.calls.filter(([cmd]) => cmd === "refresh").length;
   }
 
-  it("are listened for from the start: Settings…, Check Again and Search", async () => {
+  it("are listened for from the start: Settings…, the View menu's four pages, Check Again and Search", async () => {
     const menu = fakeMenuBar();
     const { findByText } = renderWithProviders(<App />);
     await findByText("Everything is up to date");
 
     expect(menu.listening().filter((event) => event.startsWith("menu://"))).toEqual([
       "menu://check-again",
+      "menu://installed",
+      "menu://overview",
       "menu://search",
       "menu://settings",
+      "menu://unknown",
+      "menu://updates",
     ]);
   });
 
@@ -832,6 +836,65 @@ describe("the menu bar's items that act in the page", () => {
 
     expect(await findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("open each page on its item in the View menu (⌘1 to ⌘4), as its row in the sidebar does", async () => {
+    const menu = fakeMenuBar();
+    const { findByText, findByRole, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    // From the Overview, where the window opens, to each of the others and back.
+    for (const [command, page] of [
+      ["unknown", "Unknown"],
+      ["installed", "Installed"],
+      ["updates", "Updates"],
+      ["overview", "Overview"],
+    ] as const) {
+      menu.choose(command);
+
+      expect(await findByRole("heading", { level: 1, name: page })).toBeInTheDocument();
+      expect(getByRole("button", { name: page })).toHaveAttribute("aria-current", "page");
+    }
+  });
+
+  it("open Installed on everything on Installed (⌘3), from one source's tools and a search, as the sidebar's Installed does", async () => {
+    // The Installed list is virtualized: the virtualizer needs a viewport
+    // and row heights, which jsdom does not lay out.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.getAttribute("data-index") === null ? 600 : 56;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+    const brew = snapshot.instances[0];
+    mockBackend({
+      ...snapshot,
+      instances: [brew, { ...brew, id: "npm:/opt/homebrew", adapter_id: "npm", exe_path: "/opt/homebrew/bin/npm" }],
+      artifacts: [
+        ...snapshot.artifacts,
+        {
+          ...snapshot.artifacts[0],
+          key: { instance_id: "npm:/opt/homebrew", kind: "Package", name: "typescript" },
+          display_name: "typescript",
+        },
+      ],
+    });
+    const menu = fakeMenuBar();
+    const { findByRole, findByText, findByLabelText, getByRole, queryByText } = renderWithProviders(<App />);
+    const sources = await findByRole("list", { name: "Sources" });
+    fireEvent.click(within(sources).getByRole("button", { name: "npm" }));
+    fireEvent.change(await findByLabelText("Search installed tools"), { target: { value: "type" } });
+    expect(await findByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(queryByText("jq", { selector: "[data-tool-row] p" })).toBeNull();
+
+    menu.choose("installed");
+
+    expect(await findByText("jq", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(queryByText("typescript", { selector: "[data-tool-row] p" })).toBeInTheDocument();
+    expect(getByRole("heading", { level: 1 })).toHaveTextContent(/^Installed$/);
+    expect(await findByLabelText("Search installed tools")).toHaveValue("");
+    expect(getByRole("button", { name: "Installed" })).toHaveAttribute("aria-current", "page");
+    expect(within(sources).getByRole("button", { name: "npm" })).not.toHaveAttribute("aria-current");
   });
 
   it("run the header's Check again on Check Again, and nothing more while a check runs", async () => {

@@ -298,6 +298,17 @@ describe("the question before a quit", () => {
 
 describe("the menu bar's events", () => {
   const mockListen = vi.mocked(listen);
+  // Every event `PageCommand::event` in src-tauri/src/menu.rs sends, sorted:
+  // spelled out, not read from MENU_EVENTS, so a name changed there alone fails.
+  const ALL_MENU_EVENTS = [
+    "menu://check-again",
+    "menu://installed",
+    "menu://overview",
+    "menu://search",
+    "menu://settings",
+    "menu://unknown",
+    "menu://updates",
+  ];
   // What is listened for, and what stopped listening, by event name.
   let handlers: Map<string, EventCallback<unknown>>;
   let stopped: string[];
@@ -314,25 +325,34 @@ describe("the menu bar's events", () => {
     });
   });
 
-  it("are the three Rust sends, one per item acting in the page, each calling back with its item", async () => {
+  it("are the seven Rust sends, one per item acting in the page, each calling back with its item", async () => {
     const chosen: MenuCommand[] = [];
     await onMenuCommand((command) => chosen.push(command));
 
     // `PageCommand::event` in src-tauri/src/menu.rs.
-    expect([...handlers.keys()].sort()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
-    for (const event of ["menu://search", "menu://settings", "menu://check-again", "menu://search"]) {
+    expect([...handlers.keys()].sort()).toEqual(ALL_MENU_EVENTS);
+    for (const event of [
+      "menu://search",
+      "menu://settings",
+      "menu://overview",
+      "menu://updates",
+      "menu://installed",
+      "menu://unknown",
+      "menu://check-again",
+      "menu://search",
+    ]) {
       handlers.get(event)?.({ event, id: 1, payload: null });
     }
-    expect(chosen).toEqual(["search", "settings", "checkAgain", "search"]);
+    expect(chosen).toEqual(["search", "settings", "overview", "updates", "installed", "unknown", "checkAgain", "search"]);
   });
 
-  it("stop being listened for, all three, through what onMenuCommand resolves to", async () => {
+  it("stop being listened for, all seven, through what onMenuCommand resolves to", async () => {
     const stop = await onMenuCommand(() => {});
     expect(stopped).toEqual([]);
 
     stop();
 
-    expect(stopped.sort()).toEqual(["menu://check-again", "menu://search", "menu://settings"]);
+    expect(stopped.sort()).toEqual(ALL_MENU_EVENTS);
   });
 
   it("are not left half listened for: when one cannot be, the others stop and the error says why", async () => {
@@ -345,7 +365,7 @@ describe("the menu bar's events", () => {
     });
 
     await expect(onMenuCommand(() => {})).rejects.toThrow("event.listen not allowed");
-    expect(stopped.sort()).toEqual(["menu://check-again", "menu://settings"]);
+    expect(stopped.sort()).toEqual(ALL_MENU_EVENTS.filter((event) => event !== "menu://search"));
   });
 });
 

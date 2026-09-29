@@ -1,9 +1,10 @@
 /**
  * The menu bar's items that act in the page (src-tauri/src/menu.rs):
- * Settings… (⌘,), Check Again (⌘R) and Search (⌘F). Each does what the
- * page's own control for it does, through the same code, so the two
- * cannot drift apart. The menu bar's other items are macOS's own and
- * never reach the page.
+ * Settings… (⌘,); the View menu's Overview, Updates, Installed and Unknown
+ * (⌘1 to ⌘4); Check Again (⌘R) and Search (⌘F). Each does what the page's
+ * own control for it does, through the same code, so the two cannot drift
+ * apart. The menu bar's other items are macOS's own and never reach the
+ * page.
  */
 import { useEffect } from "react";
 import { onMenuCommand, type MenuCommand } from "./api";
@@ -13,7 +14,9 @@ import { useUiStore } from "../store/ui";
 /**
  * Mounted once, by `App`, next to `useOperationEvents`:
  *
- * - Settings… opens Settings, as the sidebar's Settings does (`setPage`).
+ * - Settings… opens Settings, and Overview, Updates, Installed and
+ *   Unknown their pages, each as its row in the sidebar does (`openPage`):
+ *   Installed on everything installed, whatever source it was showing.
  * - Check Again is the header's Check again (`useCheckAgain`): the one
  *   refresh, and nothing while one runs.
  * - Search opens the Installed page with its search box focused
@@ -22,15 +25,19 @@ import { useUiStore } from "../store/ui";
  *   on whatever had the focus.
  */
 export function useMenuCommands(): void {
-  const setPage = useUiStore((s) => s.setPage);
+  const openPage = useUiStore((s) => s.openPage);
   const searchInstalled = useUiStore((s) => s.searchInstalled);
   const { checkAgain } = useCheckAgain();
 
-  // All three are the same functions from one render to the next, so the
+  // These are the same functions from one render to the next, so the
   // window listens once.
   useEffect(() => {
     const run: Record<MenuCommand, () => void> = {
-      settings: () => setPage("settings"),
+      settings: () => openPage("settings"),
+      overview: () => openPage("overview"),
+      updates: () => openPage("updates"),
+      installed: () => openPage("installed"),
+      unknown: () => openPage("unknown"),
       checkAgain,
       search: searchInstalled,
     };
@@ -49,13 +56,13 @@ export function useMenuCommands(): void {
         }
       })
       .catch((e: unknown) => {
-        // The three items then do nothing; the page's own controls still
-        // do all they do.
+        // The items then do nothing; the page's own controls still do all
+        // they do.
         console.error("listening to the menu bar failed", e);
       });
     return () => {
       cancelled = true;
       stop?.();
     };
-  }, [setPage, searchInstalled, checkAgain]);
+  }, [openPage, searchInstalled, checkAgain]);
 }

@@ -149,12 +149,17 @@ export function setMenuLanguage(language: MenuLanguage): Promise<void> {
 
 /**
  * The event Rust sends the window when an item of the menu bar that acts in
- * the page is chosen, by what the page does for it: Settings… (⌘,), Check
- * Again (⌘R), Search (⌘F). `PageCommand` in src-tauri/src/menu.rs sends
- * these three.
+ * the page is chosen, by what the page does for it: Settings… (⌘,); the
+ * View menu's Overview (⌘1), Updates (⌘2), Installed (⌘3) and Unknown
+ * (⌘4); Check Again (⌘R); Search (⌘F). `PageCommand` in
+ * src-tauri/src/menu.rs sends these seven.
  */
 export const MENU_EVENTS = {
   settings: "menu://settings",
+  overview: "menu://overview",
+  updates: "menu://updates",
+  installed: "menu://installed",
+  unknown: "menu://unknown",
   checkAgain: "menu://check-again",
   search: "menu://search",
 } as const;
@@ -163,7 +168,7 @@ export type MenuCommand = keyof typeof MENU_EVENTS;
 
 /**
  * Calls `onCommand` each time one of those items is chosen, and resolves to
- * what stops that once the window listens for all three. If one cannot be
+ * what stops that once the window listens for all seven. If one cannot be
  * listened for, those that could are stopped again and this rejects.
  * `useMenuCommands` is the caller.
  */

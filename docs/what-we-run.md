@@ -1725,7 +1725,8 @@ It stops after 2000 entries or 10 seconds (`ScanBudget::default`) and
 says so on the page, with the number it stopped at. It never runs, opens,
 moves or deletes anything it finds. It takes no lock and is not part of a
 refresh (`Session::scan_unknown` in
-`crates/canager-core/src/session/scan.rs`): it runs when the page opens,
+`crates/canager-core/src/session/scan.rs`): it runs when the page opens
+(from the sidebar, or Unknown, ⌘4, in the menu bar's View menu),
 again when the sources' state changes while the page is open, and when
 you press *Scan Again* — always against the sources' last known state —
 and its result is not stored.

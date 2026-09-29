@@ -68,6 +68,35 @@ describe("useUiStore", () => {
     expect(useUiStore.getState().query).toBe("");
   });
 
+  it("opens a page as its row in the sidebar does: Installed on everything, its search cleared, and any other page as it is", () => {
+    // A source's tools, searched, then the sidebar's Installed or ⌘3.
+    useUiStore.setState({ page: "updates", installedFilter: "npm:/opt/homebrew", query: "ts", installedSort: "source" });
+
+    useUiStore.getState().openPage("installed");
+    expect(useUiStore.getState()).toMatchObject({
+      page: "installed",
+      installedFilter: null,
+      query: "",
+      installedSort: "source",
+    });
+
+    // Another page leaves the Installed page's source and search as they
+    // are, as setPage does, and drops what a page was asked to show.
+    useUiStore.setState({ installedFilter: "npm:/opt/homebrew", query: "ts" });
+    for (const page of ["overview", "updates", "unknown", "settings"] as const) {
+      useUiStore.setState({ searchFocusRequested: true, hiddenUpdatesRequested: true, inspectRequested: "x" });
+      useUiStore.getState().openPage(page);
+      expect(useUiStore.getState()).toMatchObject({
+        page,
+        installedFilter: "npm:/opt/homebrew",
+        query: "ts",
+        searchFocusRequested: false,
+        hiddenUpdatesRequested: false,
+        inspectRequested: null,
+      });
+    }
+  });
+
   it("asks for the Installed page's search box from another page, opening the page as the sidebar does", () => {
     useUiStore.setState({ page: "updates", installedFilter: "npm:/opt/homebrew", query: "ts" });
 

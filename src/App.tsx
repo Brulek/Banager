@@ -169,7 +169,7 @@ function App() {
   useLanguageSync();
   useNoBrowserContextMenu();
   const page = useUiStore((s) => s.page);
-  const setPage = useUiStore((s) => s.setPage);
+  const openPage = useUiStore((s) => s.openPage);
   const openInstalled = useUiStore((s) => s.openInstalled);
   const installedFilter = useUiStore((s) => s.installedFilter);
   useOperationEvents();
@@ -189,7 +189,7 @@ function App() {
       <Sidebar
         page={page}
         source={installedFilter}
-        onSelectPage={(p) => (p === "installed" ? openInstalled(null) : setPage(p))}
+        onSelectPage={openPage}
         onSelectSource={openInstalled}
       />
       <div className="flex min-w-0 flex-1 flex-col">

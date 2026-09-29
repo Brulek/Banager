@@ -7,11 +7,12 @@
 //! menu. Where macOS provides an item's action (About and its panel,
 //! Services, Hide, Quit, Close Window, the Edit menu's, the Window
 //! menu's), the item is macOS's own (`MacItem`), shortcut and all, and
-//! Canager gives only its label. The three items that act in the page --
-//! Settings…, Check Again, Search -- bring the window back if it was
-//! closed or minimized and tell it, one event each (`PageCommand`,
-//! through `window::show_and_tell`), and the page runs the code its own
-//! controls run (src/lib/menu.ts).
+//! Canager gives only its label. The items that act in the page --
+//! Settings…; the View menu's four pages, ⌘1 to ⌘4 as in Finder's and
+//! Mail's; Check Again; Search -- bring the window back if it was closed
+//! or minimized and tell it, one event each (`PageCommand`, through
+//! `window::show_and_tell`), and the page runs the code its own controls
+//! run (src/lib/menu.ts).
 //!
 //! The page says which language: `set_menu_language`, at startup and at
 //! every change of language. Until it has, the menu bar is built in the
@@ -44,6 +45,13 @@ pub enum MenuLanguage {
 pub enum PageCommand {
     /// Settings… (⌘,): the Settings page, as the sidebar's Settings opens it.
     Settings,
+    /// Overview (⌘1), Updates (⌘2), Installed (⌘3), Unknown (⌘4): that
+    /// page, as its row in the sidebar opens it -- Installed on everything
+    /// installed, whatever source it was showing.
+    Overview,
+    Updates,
+    Installed,
+    Unknown,
     /// Check Again (⌘R): the refresh the page header's Check again runs,
     /// and nothing while one runs.
     CheckAgain,
@@ -52,8 +60,14 @@ pub enum PageCommand {
 }
 
 impl PageCommand {
-    pub const ALL: [PageCommand; 3] = [
+    /// In the menu bar's order: Settings… in the app's menu, the rest in
+    /// View.
+    pub const ALL: [PageCommand; 7] = [
         PageCommand::Settings,
+        PageCommand::Overview,
+        PageCommand::Updates,
+        PageCommand::Installed,
+        PageCommand::Unknown,
         PageCommand::CheckAgain,
         PageCommand::Search,
     ];
@@ -62,25 +76,37 @@ impl PageCommand {
     pub fn id(self) -> &'static str {
         match self {
             PageCommand::Settings => "settings",
+            PageCommand::Overview => "overview",
+            PageCommand::Updates => "updates",
+            PageCommand::Installed => "installed",
+            PageCommand::Unknown => "unknown",
             PageCommand::CheckAgain => "check-again",
             PageCommand::Search => "search",
         }
     }
 
     /// The event the window hears; src/lib/api.ts's `MENU_EVENTS` spells
-    /// the same three.
+    /// the same seven.
     pub fn event(self) -> &'static str {
         match self {
             PageCommand::Settings => "menu://settings",
+            PageCommand::Overview => "menu://overview",
+            PageCommand::Updates => "menu://updates",
+            PageCommand::Installed => "menu://installed",
+            PageCommand::Unknown => "menu://unknown",
             PageCommand::CheckAgain => "menu://check-again",
             PageCommand::Search => "menu://search",
         }
     }
 
-    /// Its shortcut, as tauri writes one: ⌘, ⌘R ⌘F on a Mac.
+    /// Its shortcut, as tauri writes one: ⌘, ⌘1 ⌘2 ⌘3 ⌘4 ⌘R ⌘F on a Mac.
     pub fn shortcut(self) -> &'static str {
         match self {
             PageCommand::Settings => "CmdOrCtrl+Comma",
+            PageCommand::Overview => "CmdOrCtrl+1",
+            PageCommand::Updates => "CmdOrCtrl+2",
+            PageCommand::Installed => "CmdOrCtrl+3",
+            PageCommand::Unknown => "CmdOrCtrl+4",
             PageCommand::CheckAgain => "CmdOrCtrl+R",
             PageCommand::Search => "CmdOrCtrl+F",
         }
@@ -145,7 +171,8 @@ pub struct TopMenu {
 /// The menu bar's words in one language. `{app}` is the app's name.
 /// Where a Mac app's menu has the item, the words are the ones macOS's own
 /// menus use in that language -- Finder's, Safari's: 拷贝, not 复制, and
-/// 显示 for View.
+/// 显示 for View. The four pages are named as the sidebar names them
+/// (`nav.*` in src/i18n/en.json and zh-CN.json), which a test checks.
 struct Words {
     about: &'static str,
     settings: &'static str,
@@ -164,6 +191,10 @@ struct Words {
     paste: &'static str,
     select_all: &'static str,
     view: &'static str,
+    overview: &'static str,
+    updates: &'static str,
+    installed: &'static str,
+    unknown: &'static str,
     /// The page header's Check again, in its menu's title case.
     check_again: &'static str,
     search: &'static str,
@@ -192,6 +223,10 @@ const ENGLISH: Words = Words {
     paste: "Paste",
     select_all: "Select All",
     view: "View",
+    overview: "Overview",
+    updates: "Updates",
+    installed: "Installed",
+    unknown: "Unknown",
     check_again: "Check Again",
     search: "Search",
     window: "Window",
@@ -219,6 +254,10 @@ const SIMPLIFIED_CHINESE: Words = Words {
     paste: "粘贴",
     select_all: "全选",
     view: "显示",
+    overview: "概览",
+    updates: "更新",
+    installed: "已安装",
+    unknown: "来源不明",
     check_again: "重新检查",
     search: "搜索",
     window: "窗口",
@@ -231,8 +270,9 @@ const SIMPLIFIED_CHINESE: Words = Words {
 /// The menu bar in `language`, laid out as a Mac app's is: About, then
 /// Settings…, Services, the three Hide items and Quit, each group apart;
 /// File, with Close Window; the Edit menu a text field needs; View with the
-/// page's two; the Window menu; and Help, which has no item of Canager's --
-/// only the search field macOS puts there.
+/// sidebar's four pages, ⌘1 to ⌘4 as Finder's and Mail's are, then the
+/// page's Check Again and Search; the Window menu; and Help, which has no
+/// item of Canager's -- only the search field macOS puts there.
 pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
     let words = match language {
         MenuLanguage::En => &ENGLISH,
@@ -281,6 +321,11 @@ pub fn menu_bar(language: MenuLanguage, app_name: &str) -> Vec<TopMenu> {
             id: "view",
             label: words.view.to_string(),
             items: vec![
+                page(PageCommand::Overview, words.overview),
+                page(PageCommand::Updates, words.updates),
+                page(PageCommand::Installed, words.installed),
+                page(PageCommand::Unknown, words.unknown),
+                Item::Separator,
                 page(PageCommand::CheckAgain, words.check_again),
                 page(PageCommand::Search, words.search),
             ],
@@ -547,7 +592,18 @@ mod tests {
                     "Edit",
                     &["Undo", "Redo", "—", "Cut", "Copy", "Paste", "Select All"],
                 ),
-                ("View", &["Check Again", "Search"]),
+                (
+                    "View",
+                    &[
+                        "Overview",
+                        "Updates",
+                        "Installed",
+                        "Unknown",
+                        "—",
+                        "Check Again",
+                        "Search",
+                    ],
+                ),
                 ("Window", &["Minimize", "Zoom", "—", "Bring All to Front"]),
                 ("Help", &[]),
             ])
@@ -581,7 +637,18 @@ mod tests {
                     "编辑",
                     &["撤销", "重做", "—", "剪切", "拷贝", "粘贴", "全选"],
                 ),
-                ("显示", &["重新检查", "搜索"]),
+                (
+                    "显示",
+                    &[
+                        "概览",
+                        "更新",
+                        "已安装",
+                        "来源不明",
+                        "—",
+                        "重新检查",
+                        "搜索"
+                    ],
+                ),
                 ("窗口", &["最小化", "缩放", "—", "前置全部窗口"]),
                 ("帮助", &[]),
             ])
@@ -609,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn test_every_item_but_the_pages_three_is_macos_own() {
+    fn test_every_item_but_the_pages_seven_is_macos_own() {
         let bar = menu_bar(MenuLanguage::En, "Canager");
         let items: Vec<&Item> = bar.iter().flat_map(|menu| &menu.items).collect();
         let pages: Vec<PageCommand> = items
@@ -674,6 +741,10 @@ mod tests {
             described,
             [
                 ("settings", "menu://settings", "CmdOrCtrl+Comma"),
+                ("overview", "menu://overview", "CmdOrCtrl+1"),
+                ("updates", "menu://updates", "CmdOrCtrl+2"),
+                ("installed", "menu://installed", "CmdOrCtrl+3"),
+                ("unknown", "menu://unknown", "CmdOrCtrl+4"),
                 ("check-again", "menu://check-again", "CmdOrCtrl+R"),
                 ("search", "menu://search", "CmdOrCtrl+F"),
             ]
@@ -690,7 +761,16 @@ mod tests {
     fn test_each_page_items_shortcut_is_one_tauri_reads_as_command_and_its_key() {
         // tauri would drop a shortcut it cannot read, and say nothing.
         use muda::accelerator::{Accelerator, Code, Modifiers};
-        let keys = [Code::Comma, Code::KeyR, Code::KeyF];
+        // One key for each item: a count apart would not compile.
+        let keys: [Code; PageCommand::ALL.len()] = [
+            Code::Comma,
+            Code::Digit1,
+            Code::Digit2,
+            Code::Digit3,
+            Code::Digit4,
+            Code::KeyR,
+            Code::KeyF,
+        ];
         for (command, key) in PageCommand::ALL.into_iter().zip(keys) {
             let read: Accelerator = command.shortcut().parse().unwrap_or_else(|e| {
                 panic!("{:?} is no shortcut tauri reads: {e}", command.shortcut())
@@ -702,6 +782,43 @@ mod tests {
                 Modifiers::CONTROL
             };
             assert_eq!(read, Accelerator::new(Some(modifier), key));
+        }
+    }
+
+    #[test]
+    fn test_the_pages_are_named_as_the_sidebar_names_them() {
+        // The sidebar's words: `nav.*` in the page's two locales. Settings…
+        // is the sidebar's Settings with the ellipsis every Mac app's
+        // Settings… has.
+        for (words, locale) in [
+            (&ENGLISH, include_str!("../../src/i18n/en.json")),
+            (
+                &SIMPLIFIED_CHINESE,
+                include_str!("../../src/i18n/zh-CN.json"),
+            ),
+        ] {
+            let locale: serde_json::Value = serde_json::from_str(locale).unwrap();
+            let nav = |key: &str| {
+                locale["nav"][key]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("no nav.{key} in the page's words"))
+                    .to_string()
+            };
+            assert_eq!(
+                [
+                    words.overview,
+                    words.updates,
+                    words.installed,
+                    words.unknown
+                ],
+                [
+                    nav("overview"),
+                    nav("updates"),
+                    nav("installed"),
+                    nav("unknown")
+                ]
+            );
+            assert_eq!(words.settings, format!("{}…", nav("settings")));
         }
     }
 
