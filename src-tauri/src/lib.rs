@@ -3,6 +3,7 @@ pub mod events;
 mod ipc;
 mod menu;
 mod notify;
+mod quit;
 // `pub` (deviation from the brief's literal `mod state;`, recorded in the
 // task report): `AppState::new` is now called for real below, but its
 // `get_settings`/`set_settings` methods are only exercised by this module's
@@ -90,6 +91,10 @@ pub fn run() {
             // a notification waits on the window brings the window back on
             // the Updates page (window.rs).
             window::observe_activation(app.handle());
+            // Every way of quitting -- ⌘Q, the Dock's Quit, a logout --
+            // asks first while an operation is not done, and the page
+            // asks the user (quit.rs). After `AppState`, which it reads.
+            quit::guard_quitting(app.handle());
             Ok(())
         })
         // Canager's own menu bar in place of tauri's default, which `setup`
@@ -100,6 +105,9 @@ pub fn run() {
         // Whether an update notification waits on the window (window.rs):
         // set as one is handed off, cleared as the window comes back.
         .manage(window::NotificationPending::default())
+        // Whether a quit asks first (quit.rs): once the page listens for
+        // the question, and until the user answers 「仍然退出」.
+        .manage(quit::QuitGuard::default())
         // Its items that act in the page bring the window back and tell it;
         // macOS carries out the rest itself.
         .on_menu_event(|app, event| menu::forward_to_page(app, event.id().as_ref()))
@@ -122,6 +130,8 @@ pub fn run() {
             menu::set_menu_language,
             notify::report_update_set,
             notify::request_notification_permission,
+            quit::ask_before_quit,
+            quit::quit_anyway,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

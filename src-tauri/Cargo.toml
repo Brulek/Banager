@@ -67,14 +67,26 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 # (`NSRunningApplication`'s `isActive`): macOS shows no banner for its
 # notifications then, so none is posted. `window::observe_activation`
 # names the notification AppKit posts as Canager comes to the front
-# (`NSApplicationDidBecomeActiveNotification`). Already in Cargo.lock at
-# this version as a dependency of tauri, with these features on, so no new
-# crate and no new feature enters the build. macOS only, as the calls are.
+# (`NSApplicationDidBecomeActiveNotification`). `quit::guard_quitting`
+# asks for AppKit's application delegate (`NSApplication`, which is an
+# `NSResponder`) and answers its `applicationShouldTerminate:` with an
+# `NSApplicationTerminateReply`. Already in Cargo.lock at this version as
+# a dependency of tauri, with these features on -- tao switches on
+# `NSResponder` -- so no new crate and no new feature enters the build.
+# macOS only, as the calls are.
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
     "NSApplication",
+    "NSResponder",
     "NSRunningApplication",
 ] }
+# `quit::guard_quitting` adds `applicationShouldTerminate:` to the class of
+# AppKit's application delegate (`objc2::ffi::class_addMethod`), and its
+# test sends that method to a class of its own. Already in Cargo.lock at
+# this version as a dependency of tauri, and canager-core already declares
+# it with `std`, so no new crate and no new feature enters the build.
+# macOS only, as the call is.
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
 # The block `window::observe_activation` hands the notification center.
 # Already in Cargo.lock at this version as a dependency of objc2-foundation,
 # with its default feature, `std`, on, so no new crate and no new feature

@@ -5,7 +5,7 @@ import { renderWithProviders } from "./test/setup";
 import { fakeMenuBar } from "./test/menuBar";
 import { watchDock } from "./test/dock";
 import App from "./App";
-import { OPEN_UPDATES_EVENT } from "./lib/api";
+import { OPEN_UPDATES_EVENT, QUIT_REQUESTED_EVENT } from "./lib/api";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { queryKeys } from "./lib/queryKeys";
 import type { InvokeArgs } from "@tauri-apps/api/core";
@@ -444,6 +444,52 @@ describe("the update notification", () => {
 
     expect(await findByRole("heading", { level: 1, name: "Updates" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Updates" })).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("quitting while an operation is under way", () => {
+  it("is asked about from the start: the window listens, and then tells Rust to ask", async () => {
+    const rust = fakeMenuBar();
+    const { findByText } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+
+    expect(rust.listening()).toContain(QUIT_REQUESTED_EVENT);
+    await waitFor(() =>
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "ask_before_quit")).toEqual([["ask_before_quit"]]),
+    );
+  });
+
+  it("asks over whichever page is open, and quits on Quit anyway", async () => {
+    const rust = fakeMenuBar();
+    const running: OpSummary = {
+      id: 1,
+      kind: "Upgrade",
+      instance_id: "brew:/opt/homebrew",
+      artifact_kind: "Formula",
+      name: "jq",
+      status: "Running",
+      outcome: null,
+      argv_preview: [],
+      cancel_policy: "KillThenReconcile",
+    };
+    const answer = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((cmd: string, args?: InvokeArgs) => {
+      if (cmd === "list_operations") return Promise.resolve([running]);
+      return answer === undefined ? Promise.resolve(undefined) : answer(cmd, args);
+    });
+    const { findByText, findByRole, getByRole } = renderWithProviders(<App />);
+    await findByText("Everything is up to date");
+    fireEvent.click(getByRole("button", { name: "Settings" }));
+    await findByRole("heading", { level: 1, name: "Settings" });
+    await waitFor(() => expect(rust.listening()).toContain(QUIT_REQUESTED_EVENT));
+
+    rust.hear(QUIT_REQUESTED_EVENT);
+
+    const dialog = await findByRole("dialog", { name: "1 operation hasn't finished" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Quit anyway" }));
+    await waitFor(() =>
+      expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "quit_anyway")).toEqual([["quit_anyway"]]),
+    );
   });
 });
 

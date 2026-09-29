@@ -5,7 +5,9 @@
 //! still hears how the operation went, checks again once it has finished
 //! and keeps the Dock icon's badge up to date. The Dock icon brings the
 //! window back as it was left. Canager quits only when asked to: Quit
-//! Canager (⌘Q), or Quit in the Dock icon's menu.
+//! Canager (⌘Q), or Quit in the Dock icon's menu -- and while an operation
+//! is under way, only once the window has asked and the user has answered
+//! 「仍然退出」 (quit.rs).
 //!
 //! The update notification (notify.rs) is the one exception to "as it was
 //! left". Canager hears no click on it, but a click brings Canager to the

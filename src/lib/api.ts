@@ -244,3 +244,44 @@ export async function onOpenUpdates(onClick: () => void): Promise<() => void> {
     throw asError(e);
   }
 }
+
+/**
+ * The event Rust sends the window when a quit waits on the page's question:
+ * `QUIT_REQUESTED_EVENT` in src-tauri/src/quit.rs, sent the way the menu
+ * bar's are, once the window is back on screen. On a Mac every way of
+ * quitting reaches it -- Quit Canager (⌘Q), the Dock's Quit, a logout --
+ * while an operation is not done, once the page has said it listens
+ * (`askBeforeQuit`).
+ */
+export const QUIT_REQUESTED_EVENT = "quit://requested";
+
+/**
+ * Calls `onQuit` each time Rust sends `QUIT_REQUESTED_EVENT`, and resolves
+ * to what stops that once the window listens. `useQuitRequests` is the
+ * caller.
+ */
+export async function onQuitRequested(onQuit: () => void): Promise<() => void> {
+  try {
+    return await listen(QUIT_REQUESTED_EVENT, () => onQuit());
+  } catch (e) {
+    throw asError(e);
+  }
+}
+
+/**
+ * Tells Rust that the page listens for `QUIT_REQUESTED_EVENT`: from now on
+ * a quit asks first while an operation is not done (`ask_before_quit` in
+ * src-tauri/src/quit.rs). Until then a quit quits at once, as it would
+ * with no page to ask. `useQuitRequests` sends it once it listens.
+ */
+export function askBeforeQuit(): Promise<void> {
+  return call<void>("ask_before_quit");
+}
+
+/**
+ * 「仍然退出」: Canager quits now, whatever is under way (`quit_anyway` in
+ * src-tauri/src/quit.rs).
+ */
+export function quitAnyway(): Promise<void> {
+  return call<void>("quit_anyway");
+}

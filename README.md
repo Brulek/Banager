@@ -9,8 +9,8 @@ Removing them needs a third. Most people never do either, and the tools quietly 
 
 Canager puts all of it in one window: what you have, what has an update, and a button for each.
 
-> **Status: pre-release.** The core and the UI work and are covered by 1056 Rust tests (plus 4 more
-> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1038
+> **Status: pre-release.** The core and the UI work and are covered by 1061 Rust tests (plus 4 more
+> that touch a real Homebrew, the real Trash or AppKit and only run with `--ignored`) and 1076
 > front-end tests, but there is no downloadable build yet — v0.1 is being prepared. Nothing here is
 > ready to rely on.
 
@@ -76,7 +76,14 @@ state — it does not refresh the sources. Settings' header has neither.
 Closing the window — its red button, or Close Window (⌘W) in the menu bar's File menu — leaves
 Canager running, and an operation under way carries on; its icon in the Dock brings the window back
 as you left it — or on the Updates page after a notification, as above — without a new check. Quit
-Canager (⌘Q) quits it.
+Canager (⌘Q) quits it. While an update or uninstall is still queued or running, though, quitting —
+⌘Q, Quit in the Dock icon's menu, or logging out, restarting or shutting down — first brings the
+window back and asks: *2 operations haven't finished*, since quitting now stops them and a tool that
+is being updated can be left half-updated, and it says so of one that has started and can't be
+cancelled, such as rustup's self update. *Keep waiting* leaves Canager running, and *Quit anyway*
+quits. Canager answers macOS at once, so a logout, restart or shutdown is called off rather than
+kept waiting, and after *Quit anyway* you start it again (`src-tauri/src/quit.rs`). Force Quit still
+quits at once.
 
 Adding a source is one Rust file implementing one trait, plus a TOML metadata file.
 
@@ -298,8 +305,8 @@ Canager 把它们放进同一个窗口：装了什么、哪个有更新、每个
 每次更新和卸载，都能在它运行之前看到确切的命令，连同 Canager 为它设的环境变量：在确认框里点「查看命令」，或者在设置里打开「显示技术细节」，
 让它一开始就展开；可能要输入 Mac 密码的，确认框也会先说。不运行命令的卸载，改为列出它要移到废纸篓的每一条路径。
 
-**目前处于发布前阶段**，核心与界面已经可用、有 1056 个 Rust 测试（另有 4 个要连着真实的
-Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1034 个前端测试，但还没有可下载的版本，v0.1 正在
+**目前处于发布前阶段**，核心与界面已经可用、有 1061 个 Rust 测试（另有 4 个要连着真实的
+Homebrew、真实的废纸篓或 AppKit 才跑，平时是跳过的）和 1076 个前端测试，但还没有可下载的版本，v0.1 正在
 准备。现在还不适合依赖它。
 
 界面默认英文，内置完整简体中文。窗口里所有标签、标题、按钮和提示框都走 i18n，两种语言由测试保证同步——
@@ -380,4 +387,8 @@ Canager 开着时还会每天做一次同样的检查，查到的更新都不安
 
 关掉窗口——点它的红色按钮，或从菜单栏选“文件”菜单里的“关闭窗口”（⌘W）——Canager 仍在运行，进行中的操作照常
 继续；点程序坞里的图标，窗口按你离开时的样子回来（发过通知后照上面说的，改为打开“更新”页），不会重新检查。
-选“退出 Canager”（⌘Q）才会退出。
+选“退出 Canager”（⌘Q）才会退出。不过，还有更新或卸载在排队或进行时，退出——⌘Q、程序坞图标菜单里的“退出”，
+或者退出登录、重新启动、关机——会先把窗口叫回来问一句「还有 2 个操作没完成」：现在退出会中断它们，正在更新的工具
+有只更新一半的风险；已经开始、不能取消的（比如 rustup 的自我更新）也会点名。选「继续等待」，Canager 接着运行；
+选「仍然退出」才退出。Canager 当场回答 macOS，所以退出登录、重新启动或关机会被取消，而不是一直等着，选了
+「仍然退出」之后要再操作一次（`src-tauri/src/quit.rs`）。强制退出仍会立刻退出。

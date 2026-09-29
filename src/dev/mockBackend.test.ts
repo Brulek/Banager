@@ -121,6 +121,14 @@ describe("the browser preview's mock backend", () => {
     await expect(backend.invoke("request_notification_permission")).resolves.toBe(true);
   });
 
+  it("takes the page's word that it asks before a quit, and quits nothing, having nothing to quit", async () => {
+    // The preview never hears the question (./mockTauriEvent.ts listens to
+    // nothing), and a page cannot quit the browser.
+    const { backend } = backendFor();
+    await expect(backend.invoke("ask_before_quit")).resolves.toBeUndefined();
+    await expect(backend.invoke("quit_anyway")).resolves.toBeUndefined();
+  });
+
   it("starts empty, like a real launch, and the first refresh commits generation 1", async () => {
     const { backend, events } = backendFor();
     const before = await answer<Snapshot>(backend.invoke("get_snapshot"));

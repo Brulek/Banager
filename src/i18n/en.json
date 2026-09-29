@@ -497,6 +497,28 @@
       }
     }
   },
+  "quit": {
+    "title_one": "{{count}} operation hasn't finished",
+    "title_other": "{{count}} operations haven't finished",
+    "body": {
+      "stops_one": "Quitting now stops it.",
+      "stops_other": "Quitting now stops them.",
+      "Upgrade_one": "Quitting now stops it, and the tool it's updating can be left half-updated.",
+      "Upgrade_other": "Quitting now stops them, and a tool that's being updated can be left half-updated.",
+      "Uninstall_one": "Quitting now stops it, and the tool it's uninstalling can be left half-removed.",
+      "Uninstall_other": "Quitting now stops them, and a tool that's being uninstalled can be left half-removed.",
+      "Install_one": "Quitting now stops it, and the tool it's installing can be left half-installed.",
+      "Install_other": "Quitting now stops them, and a tool that's being installed can be left half-installed.",
+      "mixed_other": "Quitting now stops them, and the tools they're working on can be left half-done."
+    },
+    "noCancel": {
+      "Install": "{{name}}'s install has started and can't be cancelled. Wait for it to finish before you quit.",
+      "Uninstall": "{{name}}'s uninstall has started and can't be cancelled. Wait for it to finish before you quit.",
+      "Upgrade": "{{name}}'s update has started and can't be cancelled. Wait for it to finish before you quit."
+    },
+    "keepWaiting": "Keep waiting",
+    "quitAnyway": "Quit anyway"
+  },
   "uninstall": {
     "title": "Uninstall {{name}}?",
     "checking": "Checking what this affects…",

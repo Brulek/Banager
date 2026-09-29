@@ -104,6 +104,8 @@ pub enum MacItem {
     Hide,
     HideOthers,
     ShowAll,
+    /// ⌘Q: AppKit's `terminate:`, which asks quit.rs first whether
+    /// Canager quits now, as the Dock's Quit and a logout do.
     Quit,
     /// ⌘W: AppKit's `performClose:`, what the window's red button does,
     /// which hides the window rather than closing it (window.rs).

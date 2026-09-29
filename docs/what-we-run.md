@@ -185,6 +185,27 @@ cancelled; an upgrade stopped partway is never settled either way
 (`run_plan` in `crates/canager-core/src/adapters/mod.rs`, then
 `run_operation`).
 
+**Quitting while an operation is under way.** Closing the window leaves
+Canager and its operations running (`src-tauri/src/window.rs`); quitting
+ends them: one still queued never runs, and a command under way loses
+Canager partway, which can leave the tool it was updating or
+uninstalling half done. So on a Mac, while an operation is not done —
+queued, running, being cancelled or checking its result — every way of
+quitting (Quit Canager, ⌘Q; Quit in the Dock icon's menu; logging out,
+restarting or shutting down) first brings the window back and asks:
+*N operations haven't finished* (「还有 N 个操作没完成」), with *Keep
+waiting* (「继续等待」, which has the focus, and which Escape does) and
+*Quit anyway* (「仍然退出」), and it names an operation that has started
+and cannot be cancelled, such as rustup's self update. Every one of those
+quits ends in AppKit's `terminate:`, which asks the application
+delegate's `applicationShouldTerminate:`; Canager adds that method to the
+delegate as it starts (`guard_quitting` in `src-tauri/src/quit.rs`) and
+answers it at once, so a logout, restart or shutdown is called off rather
+than kept waiting, and has to be started again after *Quit anyway*.
+Nothing asks until the window has loaded and listens for the question,
+and a refresh alone never holds a quit (`src-tauri/src/quit.rs`,
+`src/components/QuitQuestion.tsx`). Force Quit still quits at once.
+
 ## The daily check: off unless turned on
 
 Settings → Updates has a switch, "Check for updates every day"

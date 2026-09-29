@@ -42,6 +42,8 @@ export const MOCK_COMMANDS = [
   "set_menu_language",
   "report_update_set",
   "request_notification_permission",
+  "ask_before_quit",
+  "quit_anyway",
 ] as const;
 type MockCommand = (typeof MOCK_COMMANDS)[number];
 
@@ -496,6 +498,15 @@ export function createMockBackend(scenario: Scenario): MockBackend {
       // Asks nobody: the preview posts no notification, so the switch
       // turns on as it does where permission is granted.
       return true;
+    },
+    async ask_before_quit() {
+      // Nothing to ask before: the browser has no Quit of Canager's, and
+      // the one `pnpm tauri:mock` shows is Rust's, which this page never
+      // reaches, so it never hears the question (./mockTauriEvent.ts).
+    },
+    async quit_anyway() {
+      // Nothing to quit: a page cannot quit the browser, nor reach the Rust
+      // of `pnpm tauri:mock`, and the preview never asks (above).
     },
     async set_menu_language(args) {
       // No menu bar to build: the browser has none of Canager's, and the

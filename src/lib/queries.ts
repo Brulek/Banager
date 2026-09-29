@@ -3,6 +3,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -60,6 +61,18 @@ export function useSettings(): UseQueryResult<Settings> {
 
 export function useOperations(): UseQueryResult<OpSummary[]> {
   return useQuery({ queryKey: queryKeys.operations, queryFn: listOperations });
+}
+
+/**
+ * The operations as the backend lists them now, asked for afresh and
+ * written to the cache that `useOperations` reads: what the quit question
+ * goes by (`QuitQuestion`), rather than a list that an operation's event
+ * has not had refetched yet.
+ */
+export async function freshOperations(queryClient: QueryClient): Promise<OpSummary[]> {
+  const operations = await listOperations();
+  queryClient.setQueryData(queryKeys.operations, operations);
+  return operations;
 }
 
 /**

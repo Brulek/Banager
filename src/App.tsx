@@ -11,6 +11,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { OperationBar } from "./components/OperationBar";
 import { LogDrawer } from "./components/LogDrawer";
 import { SnapshotStatus } from "./components/SnapshotStatus";
+import { QuitQuestion } from "./components/QuitQuestion";
 import { useOperationEvents, useStartupRefresh } from "./lib/events";
 import { useNoBrowserContextMenu } from "./lib/contextMenu";
 import { useMenuCommands } from "./lib/menu";
@@ -110,6 +111,9 @@ function App() {
         <OperationBar />
       </div>
       <LogDrawer />
+      {/* Asks before a quit while an operation is under way, when Rust
+          says one waits on it (src-tauri/src/quit.rs); nothing until then. */}
+      <QuitQuestion />
     </div>
   );
 }

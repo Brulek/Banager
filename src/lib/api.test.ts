@@ -25,6 +25,10 @@ import {
   requestNotificationPermission,
   OPEN_UPDATES_EVENT,
   onOpenUpdates,
+  QUIT_REQUESTED_EVENT,
+  onQuitRequested,
+  askBeforeQuit,
+  quitAnyway,
 } from "./api";
 import type { ArtifactKey, IssuedPlan, OpRequest, Settings, UiEvent, UnknownScan } from "./types";
 import { watchDock } from "../test/dock";
@@ -225,6 +229,57 @@ describe("the update notification's click", () => {
   it("reports a failure to listen as an Error carrying Tauri's text", async () => {
     mockListen.mockRejectedValueOnce("event.listen not allowed");
     await expect(onOpenUpdates(() => {})).rejects.toThrow("event.listen not allowed");
+  });
+});
+
+describe("the question before a quit", () => {
+  const mockListen = vi.mocked(listen);
+
+  beforeEach(() => {
+    mockListen.mockReset();
+  });
+
+  it("is the event Rust sends, and calls back each time it comes", async () => {
+    // `QUIT_REQUESTED_EVENT` in src-tauri/src/quit.rs, whose test pins the
+    // same string.
+    expect(QUIT_REQUESTED_EVENT).toBe("quit://requested");
+    let heard: EventCallback<unknown> | undefined;
+    let stopped = false;
+    mockListen.mockImplementation(async (event, handler) => {
+      expect(event).toBe(QUIT_REQUESTED_EVENT);
+      heard = handler as EventCallback<unknown>;
+      return () => {
+        stopped = true;
+      };
+    });
+    let asked = 0;
+    const stop = await onQuitRequested(() => {
+      asked += 1;
+    });
+    heard?.({ event: QUIT_REQUESTED_EVENT, id: 1, payload: null });
+    heard?.({ event: QUIT_REQUESTED_EVENT, id: 2, payload: null });
+    expect(asked).toBe(2);
+    stop();
+    expect(stopped).toBe(true);
+  });
+
+  it("reports a failure to listen as an Error carrying Tauri's text", async () => {
+    mockListen.mockRejectedValueOnce("event.listen not allowed");
+    await expect(onQuitRequested(() => {})).rejects.toThrow("event.listen not allowed");
+  });
+
+  it("askBeforeQuit invokes ask_before_quit with no args", async () => {
+    // `ask_before_quit` in src-tauri/src/quit.rs.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await askBeforeQuit();
+    expect(mockInvoke.mock.calls).toEqual([["ask_before_quit"]]);
+  });
+
+  it("quitAnyway invokes quit_anyway with no args", async () => {
+    // `quit_anyway` in src-tauri/src/quit.rs.
+    mockInvoke.mockResolvedValueOnce(undefined as never);
+    await quitAnyway();
+    expect(mockInvoke.mock.calls).toEqual([["quit_anyway"]]);
   });
 });
 

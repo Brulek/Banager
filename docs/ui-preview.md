@@ -40,7 +40,11 @@ starts nothing by itself -- the one refresh it runs unasked follows a
 `brew update` that a refresh left running, and only the page starts a
 refresh; the config's comments say more. The first run compiles the app.
 Stop it with Ctrl-C in its terminal, or by quitting it (⌘Q): closing the
-window only hides it, as it does in the app.
+window only hides it, as it does in the app. Quitting never asks anything
+here, even while one of the preview's updates runs: that runs in the
+page's mock, not in Rust, and Rust asks before a quit only once the page
+has told it that it listens for the question (`src-tauri/src/quit.rs`),
+which this page never does.
 
 The menu bar is the app's own too, and so is everything macOS does in
 it: About, Hide, Quit, Close Window, the Edit and Window menus. But the
