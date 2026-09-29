@@ -643,7 +643,7 @@
       "TimeLimit": "Stopped after {{seconds}} seconds; the rest weren't checked."
     },
     "kind": {
-      "BrokenSymlink": "Broken link"
+      "BrokenSymlink": "Original missing"
     },
     "brokenLink": "Points to {{target}}, which is gone",
     "linksTo": "Links to {{path}}",

@@ -15,7 +15,7 @@ import type { EntryKind, ScanStop, UnknownEntry } from "../lib/types";
 
 /**
  * The status word each kind of entry has, or null: a broken link's
- * 「链接已失效」, with an orange ⚠︎ -- something is wrong with it -- and
+ * 「找不到原文件」, with an orange ⚠︎ -- something is wrong with it -- and
  * nothing for a program or a link that works, which are the normal
  * states a row does not put in words (spec §3.3, §3.4). The word stands
  * where the size and the date would, which a broken link has none of

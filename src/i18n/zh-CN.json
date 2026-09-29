@@ -591,7 +591,7 @@
       "TimeLimit": "查找了{{seconds}}秒后停止，其余的未检查。"
     },
     "kind": {
-      "BrokenSymlink": "链接已失效"
+      "BrokenSymlink": "找不到原文件"
     },
     "brokenLink": "指向的{{target}}已不存在",
     "linksTo": "指向{{path}}",

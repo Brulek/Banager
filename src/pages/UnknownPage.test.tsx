@@ -157,10 +157,10 @@ describe("UnknownPage", () => {
     expect(queryByText("Link")).toBeNull();
     expect(statusOf(tool)).toBeNull();
     // A broken link: the word, muted, after a filled orange ⚠︎.
-    const word = within(script).getByRole("button", { name: "Broken link" });
+    const word = within(script).getByRole("button", { name: "Original missing" });
     expect(word.className).toContain("text-muted");
     expect(word.querySelector("svg")?.getAttribute("class")).toContain("text-warning");
-    expect(within(helper).queryByText("Broken link")).toBeNull();
+    expect(within(helper).queryByText("Original missing")).toBeNull();
     // The path is the row's line under its name, home abbreviated as Rust
     // sent it.
     expect(within(tool).getByText("~/.opencode/bin/standalone-tool")).toBeInTheDocument();
@@ -189,7 +189,7 @@ describe("UnknownPage", () => {
     expect(
       queryByText("Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone"),
     ).toBeNull();
-    fireEvent.click(within(script).getByRole("button", { name: "Broken link" }));
+    fireEvent.click(within(script).getByRole("button", { name: "Original missing" }));
     expect(
       within(script).getByText(
         "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
@@ -236,7 +236,7 @@ describe("UnknownPage", () => {
     const slot = row.parentElement as HTMLElement;
     expect(slot).toHaveAttribute("data-list-slot");
     expect(slot.className).toContain("relative");
-    fireEvent.click(within(row).getByRole("button", { name: "Broken link" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Original missing" }));
     expect(slot.querySelector("[data-popup-open]")).not.toBeNull();
   });
 
@@ -275,7 +275,7 @@ describe("UnknownPage", () => {
     // A broken link has no size and no date: its word stands in their
     // place, as wide as the two columns, at their right.
     const broken = sizeAndDateOf(rowOf(getByText("old-script")));
-    expect(broken.textContent).toBe("Broken link");
+    expect(broken.textContent).toBe("Original missing");
     expect(broken.querySelector("[data-size]")).toBeNull();
     const place = broken.querySelector("[data-status]") as HTMLElement;
     expect(place.className.split(" ")).toEqual(expect.arrayContaining(["flex", "w-48", "justify-end"]));
@@ -311,7 +311,7 @@ describe("UnknownPage", () => {
 
     // Behind a broken link's ⓘ, what it pointed at and whose part it was.
     const script = rowOf(getByText("old-script"));
-    fireEvent.click(within(script).getByRole("button", { name: "Broken link" }));
+    fireEvent.click(within(script).getByRole("button", { name: "Original missing" }));
     for (const line of [
       "Points to /Applications/Removed.app/Contents/Resources/scripts/index.js, which is gone",
       "Part of Removed",
@@ -338,6 +338,17 @@ describe("UnknownPage", () => {
     expect(lookedIn.compareDocumentPosition(recognized) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("calls a broken link by what it has lost, the file it pointed to, in six characters or fewer", () => {
+    // The scan calls a link broken when it cannot be followed to a file
+    // (`canonicalize` fails in scan/mod.rs's `examine`): what the user
+    // needs is that the file behind it is not there, which 「链接已失效」
+    // left to be worked out. 「找不到」, not 「已不存在」: a link whose
+    // target sits where it cannot be read, or that loops, is one too.
+    expect(zhCN.unknown.kind.BrokenSymlink).toBe("找不到原文件");
+    expect([...zhCN.unknown.kind.BrokenSymlink].length).toBeLessThanOrEqual(6);
+    expect(i18n.getFixedT("en")("unknown.kind.BrokenSymlink")).toBe("Original missing");
+  });
+
   it("says so in Chinese, the folders run together with 、", async () => {
     await i18n.changeLanguage("zh-CN");
     try {
@@ -345,7 +356,7 @@ describe("UnknownPage", () => {
       expect(await findByText("查找位置：~/.local/bin、/usr/local/bin")).toBeInTheDocument();
       expect(queryByText("程序")).toBeNull();
       expect(queryByText("链接")).toBeNull();
-      expect(getByText("链接已失效")).toBeInTheDocument();
+      expect(getByText("找不到原文件")).toBeInTheDocument();
       expect(getByText("另有4个程序已确定来源，未在这里列出。")).toBeInTheDocument();
       expect(getByText("无法确定以下程序的安装来源。")).toBeInTheDocument();
     } finally {
@@ -655,7 +666,7 @@ describe("a row's ⋯ menu", () => {
     expect(queryByRole("menu")).toBeNull();
     expect(button).toHaveFocus();
     await user.tab();
-    expect(getByRole("button", { name: "Broken link" })).toHaveFocus();
+    expect(getByRole("button", { name: "Original missing" })).toHaveFocus();
     await user.tab();
     expect(getByRole("button", { name: "More actions for old-script" })).toHaveFocus();
   });
@@ -791,7 +802,7 @@ describe("in a narrow window (R9)", () => {
     const { findByText, queryByText, container } = renderWithProviders(<UnknownPage />);
 
     const script = rowOf(await findByText("old-script"));
-    const word = within(script).getByRole("button", { name: "Broken link" });
+    const word = within(script).getByRole("button", { name: "Original missing" });
     const path = within(script).getByText("~/.local/bin/old-script");
     // Not on the path's line: in the column at the row's right.
     expect(word.closest("[data-version]")).not.toBeNull();
