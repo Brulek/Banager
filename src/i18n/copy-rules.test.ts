@@ -32,6 +32,38 @@ describe("the copy rules, over every string in both languages", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps every word a row's status column shows to six Chinese characters at most", () => {
+    // A row says its state in one word (spec §3.4): the Updates and
+    // Installed pages' status words (`StatusChip`), a model's skipped
+    // version, and the Unknown page's kinds. A version or a name in a
+    // placeholder does not count.
+    const statusKeys = entries(zhCN)
+      .map(([key]) => key)
+      .filter(
+        (key) =>
+          /^updates\.blocked\.\w+\.badge$/.test(key) ||
+          /^installed\.blocked\.\w+\.badge$/.test(key) ||
+          /^unknown\.kind\.\w+$/.test(key) ||
+          [
+            "updates.readOnly",
+            "updates.cannotCheck",
+            "updates.selfUpdating",
+            "updates.sourceUnavailable",
+            "installed.updateIgnored",
+            "installed.updateSkipped",
+            "installed.updateSkippedNewBuild",
+            "installed.uninstallHold.label",
+          ].includes(key),
+      );
+    expect(statusKeys.length).toBeGreaterThanOrEqual(13);
+    const strings = new Map(entries(zhCN));
+    const tooLong = statusKeys.filter((key) => {
+      const text = (strings.get(key) ?? "").replace(/\{\{\w+\}\}/g, "");
+      return (text.match(/\p{Script=Han}/gu) ?? []).length > 6;
+    });
+    expect(tooLong).toEqual([]);
+  });
+
   it("keeps brackets for a count or a shortcut and nothing else", () => {
     // 「更新所选（3）」 is a count, and 「重新检查（⌘R）」 names the keys
     // that do it, as the toolbar's tooltip says them; 「程序（链接）」 and
