@@ -377,7 +377,7 @@
     },
     "notOnPath": {
       "title": "{{source}}已安装，但在终端输入“{{command}}”打不开它",
-      "description": "终端查找“{{command}}”的位置中，没有一处通向它。请先新开一个终端窗口试试；如果仍然不行，请按照它的安装说明操作。"
+      "description": "终端查找命令的位置里没有它。请新开一个终端窗口再试；如果仍然不行，请按照它的安装说明操作。"
     },
     "shadowedByHomebrew": {
       "title": "输入“{{command}}”会先运行Homebrew中的同名程序",

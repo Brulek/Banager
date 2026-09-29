@@ -362,8 +362,8 @@ describe("sourceNoticesFor", () => {
       "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
     );
     expect(zhCN.sourceNotice.notOnPath.title).toBe("{{source}}已安装，但在终端输入“{{command}}”打不开它");
-    expect(en.sourceNotice.notOnPath.description).toContain("Open a new Terminal window first");
-    expect(zhCN.sourceNotice.notOnPath.description).toContain("先新开一个终端窗口试试");
+    expect(en.sourceNotice.notOnPath.description).toContain("Open a new Terminal window and try again;");
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("请新开一个终端窗口再试；");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.notOnPath.title).not.toMatch(/nothing|什么也/);
     }
@@ -374,20 +374,23 @@ describe("sourceNoticesFor", () => {
     // `command` on PATH resolves to this copy -- also when the launcher's
     // folder is on PATH but the file it links to has no executable bit
     // (route.rs, test_shadow_note_says_not_on_path_when_the_launcher_is_on_path_but_its_target_is_not_executable).
-    // So the detail says that none of the places Terminal looks leads to
-    // this copy -- "it", the one the title says is installed -- and not
-    // that its folder is missing from them (step-B review finding B-5) --
-    // nor "probably", "most likely" or PATH.
+    // So the detail says that this copy -- "it", the one the title says
+    // is installed -- is not in the places Terminal looks for commands,
+    // which a launcher there that cannot run does not change (the
+    // program it links to is elsewhere, and Terminal runs nothing by it):
+    // not that its folder is missing from them (step-B review finding
+    // B-5), not that the command can't be found (another program with
+    // its name may well be found, and run, first), nor "probably", "most
+    // likely" or PATH.
     expect(en.sourceNotice.notOnPath.description).toContain(
-      "None of the places Terminal looks in for {{command}} leads to it.",
+      "It isn't in any of the places Terminal looks for commands.",
     );
-    expect(zhCN.sourceNotice.notOnPath.description).toContain(
-      "终端查找“{{command}}”的位置中，没有一处通向它。",
-    );
+    expect(zhCN.sourceNotice.notOnPath.description).toContain("终端查找命令的位置里没有它。");
     for (const locale of [en, zhCN]) {
       expect(locale.sourceNotice.notOnPath.description).not.toMatch(
         /folder|PATH|probably|likely|文件夹|多半|可能/,
       );
+      expect(locale.sourceNotice.notOnPath.description).not.toMatch(/找不到|not found|can't find|couldn't find/i);
     }
   });
 

@@ -414,7 +414,7 @@
     },
     "notOnPath": {
       "title": "{{source}} is installed, but typing {{command}} in Terminal doesn't run it",
-      "description": "None of the places Terminal looks in for {{command}} leads to it. Open a new Terminal window first; if that doesn't help, follow its install guide."
+      "description": "It isn't in any of the places Terminal looks for commands. Open a new Terminal window and try again; if it still doesn't work, follow its installation instructions."
     },
     "shadowedByHomebrew": {
       "title": "Typing {{command}} runs a same-named program from Homebrew first",
