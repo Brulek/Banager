@@ -642,7 +642,7 @@ describe("InstalledPage", () => {
     expect(screen.queryByText("Typing claude runs a same-named program from npm first")).toBeNull();
     expect(screen.queryByText("Claude Code 2.1.290 not tested")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "2 More Issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 more issues" }));
 
     const fewer = screen.getByRole("button", { name: "Show Fewer" });
     const lines = document.getElementById(fewer.getAttribute("aria-controls") ?? "");
@@ -1130,7 +1130,7 @@ describe("InstalledPage", () => {
       // The two that did not answer say so in their own line, the second
       // folded behind the first (`SourceNotices`).
       expect(screen.getByText("pipx isn't responding")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "1 More Issue" }));
+      fireEvent.click(screen.getByRole("button", { name: "1 more issue" }));
       expect(screen.getByText("Ollama isn't running")).toBeInTheDocument();
     });
 

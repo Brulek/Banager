@@ -3,19 +3,17 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useOpenOllamaApp } from "../lib/queries";
 import { openOllamaErrorDetail, openOllamaErrorMessage, type SourceNoticeSpec } from "../lib/sources";
-import { DETAILS_TRIGGER_CLASS, SourceNotice, SourceNoticeLine } from "./SourceNotice";
+import { NOTICE_GRID, SourceNotice, SourceNoticeLine, type NoticeGrid } from "./SourceNotice";
 import { DisclosureIcon } from "./icons";
-import { Popover } from "./ui/Popover";
+import { InfoDetail } from "./InfoDetail";
 
 /**
  * The look of the fold's own buttons, 「还有N个问题」 and 「收起」: a
- * disclosure, not a link. Words in the muted colour and a 10pt disclosure
- * triangle -- pointing right while the lines are folded, turned down once
- * they show, as the lists' other disclosures do -- where each line's
- * "Details" has the accent, so the two never read as one more link of the
- * same kind side by side.
+ * disclosure, not a link and not a push button. Words in the muted colour
+ * and a 10pt disclosure triangle -- pointing right while the lines are
+ * folded, turned down once they show, as the lists' other disclosures do.
  */
-const FOLD_TOGGLE_CLASS = "inline-flex shrink-0 items-center gap-1 rounded-sm text-body text-muted";
+const FOLD_TOGGLE_CLASS = "inline-flex shrink-0 items-center rounded-sm text-body text-muted";
 
 /** The fold's triangle: ▸ while the lines are folded, ▾ once they show. */
 function FoldTriangle({ expanded }: { expanded: boolean }) {
@@ -51,14 +49,22 @@ export function useNoticeFold(count: number): NoticeFold {
 export interface SourceNoticesProps {
   notices: SourceNoticeSpec[];
   /**
-   * `line`: one compact line each -- icon, title, a "Details" popover
-   * with the description, and the button -- for the top of a list.
+   * `line`: one compact line each -- icon, title, an ⓘ with the
+   * description in its popover, and the button -- for the top of a list.
    * `block`: the title with the description under it, where there is room
-   * to explain -- a tool's detail drawer.
+   * to explain -- a tool's inspector.
    */
   layout?: "line" | "block";
   /** For `line`: the page's fold (`useNoticeFold`). Without it, every line shows. */
   fold?: NoticeFold;
+  /** For `line`: the list's columns the lines line up with (`NoticeGrid`); the avatar's by default. */
+  grid?: NoticeGrid;
+  /**
+   * For `line`: a hairline under the last line, as under a row -- where the
+   * lines are a list's first row, over its tools. Off over a sentence that
+   * says the list is empty.
+   */
+  separator?: boolean;
 }
 
 /**
@@ -81,9 +87,9 @@ export interface SourceNoticesProps {
  * every line in its order, and 「收起」 after the last folds them again.
  * The focus goes with the button, to the one that now says the other
  * thing: the one pressed is gone from where it was. Each line keeps its
- * "Details" and its own button, folded or not.
+ * ⓘ and its own button, folded or not.
  */
-export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesProps) {
+export function SourceNotices({ notices, layout = "line", fold, grid = "avatar", separator = true }: SourceNoticesProps) {
   const { t } = useTranslation();
   const openOllamaApp = useOpenOllamaApp();
   // The header's Check again, and off when that one is: pressed while a
@@ -102,7 +108,7 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
   }, [expanded]);
 
   // Why Open Ollama did nothing, and, when the sentence leaves one for
-  // it, its "Details". Without this a rejected Open Ollama rendered
+  // it, its ⓘ. Without this a rejected Open Ollama rendered
   // nothing at all -- the same silence the backend used to produce by
   // never reading `open`'s exit status.
   let openOllamaError: ReactNode = undefined;
@@ -114,14 +120,8 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
         message
       ) : (
         <>
-          {message}{" "}
-          <Popover
-            trigger={t("common.details")}
-            triggerLabel={t("common.detailsLabel", { title: message })}
-            triggerClassName={DETAILS_TRIGGER_CLASS}
-          >
-            {detail}
-          </Popover>
+          {message}
+          <InfoDetail label={t("common.detailsLabel", { title: message })}>{detail}</InfoDetail>
         </>
       );
   }
@@ -144,17 +144,38 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
       <SourceNoticeLine
         key={notice.id}
         {...props}
-        detailsLabel={t("common.details")}
         detailsAriaLabel={t("common.detailsLabel", { title })}
         trailing={trailing}
+        grid={grid}
       />
     ) : (
       <SourceNotice key={notice.id} {...props} />
     );
   };
 
-  if (layout !== "line" || fold === undefined || notices.length < 2) {
+  if (layout !== "line") {
     return <>{notices.map((notice) => noticeView(notice))}</>;
+  }
+  const columns = NOTICE_GRID[grid];
+  // The lines, over a hairline from where their words start to the
+  // container's right edge -- 20 from the list's, as a row's -- which
+  // index.css hides where a row's would be hidden: under a list's last
+  // slot, and over anything but a row.
+  const lines = (content: ReactNode) => (
+    <div className="relative flex flex-col">
+      {content}
+      {separator ? (
+        <span
+          aria-hidden="true"
+          data-row-separator=""
+          className={`pointer-events-none absolute bottom-0 right-0 h-px bg-separator ${columns.hairline}`}
+        />
+      ) : null}
+    </div>
+  );
+
+  if (fold === undefined || notices.length < 2) {
+    return lines(notices.map((notice) => noticeView(notice)));
   }
 
   const { setExpanded } = fold;
@@ -165,35 +186,36 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
 
   if (!expanded) {
     const shown = notices.find((notice) => notice.variant === "warning") ?? notices[0];
-    return (
+    return lines(
       <div id={linesId} className="flex flex-col">
         {noticeView(
           shown,
-          // Set apart from the line's own "Details" and button by more
-          // than the gap between those two: it is not one of them.
+          // Set apart from the line's ⓘ and button by more than the gap
+          // between those two: it is not one of them.
           <button
             ref={toggleRef}
             type="button"
             aria-expanded={false}
             aria-controls={linesId}
             onClick={() => toggle(true)}
-            className={`${FOLD_TOGGLE_CLASS} ml-3`}
+            className={`${FOLD_TOGGLE_CLASS} ml-3 gap-1`}
           >
             {t("sourceNotice.more", { count: notices.length - 1 })}
             <FoldTriangle expanded={false} />
           </button>,
         )}
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return lines(
     <>
       <div id={linesId} className="flex flex-col">
         {notices.map((notice) => noticeView(notice))}
       </div>
-      {/* Its own line under the last, as high as a notice's: the
-          triangle in the icons' column, the words under the titles. */}
+      {/* Its own line under the last, as high as a notice's and on the
+          same grid: the triangle centred in the icons' column, the words
+          where the titles start. */}
       <div className="flex h-8 items-center">
         <button
           ref={toggleRef}
@@ -201,14 +223,14 @@ export function SourceNotices({ notices, layout = "line", fold }: SourceNoticesP
           aria-expanded={true}
           aria-controls={linesId}
           onClick={() => toggle(false)}
-          className={`${FOLD_TOGGLE_CLASS} gap-2`}
+          className={FOLD_TOGGLE_CLASS}
         >
-          <span className="flex w-4 shrink-0 justify-center">
+          <span data-notice-symbol="" className={`flex shrink-0 justify-center ${columns.symbol}`}>
             <FoldTriangle expanded={true} />
           </span>
-          {t("sourceNotice.showFewer")}
+          <span className={columns.gap}>{t("sourceNotice.showFewer")}</span>
         </button>
       </div>
-    </>
+    </>,
   );
 }

@@ -1,15 +1,40 @@
 import type { ReactNode } from "react";
 import { InfoIcon, WarningFilledIcon } from "./icons";
-import { Popover } from "./ui/Popover";
+import { InfoDetail } from "./InfoDetail";
 import { BUTTON, LINK } from "./ui/controls";
 
 /**
- * The look of a "Details" button beside a sentence: a notice's, or its
- * error's -- a link (`LINK`), in the size of the line it is in. Not of the
- * fold's 「还有 N 条」 and 「收起」, which have a look of their own, a
- * disclosure's (`SourceNotices`).
+ * The look of a "Details" button beside a sentence -- the Overview's
+ * failed check, an empty list's reason: a link (`LINK`), in the size of
+ * the line it is in. Not a notice line's, which has a muted ⓘ in its
+ * place (`SourceNoticeLine`), so a stack of notices is not a stack of
+ * blue links.
  */
 export const DETAILS_TRIGGER_CLASS = `shrink-0 ${LINK}`;
+
+/**
+ * Which list's columns a notice line lines up with (`SourceNoticeLine`):
+ * `checkbox`, a list whose rows start with a checkbox -- the Updates
+ * page's -- its symbol centred on the checkboxes' column and its words
+ * where the rows' names start, past the avatars' column; `avatar`, a list
+ * whose rows start with the avatar -- the Installed and Unknown pages' --
+ * its symbol centred on the avatars' column and its words where the
+ * names start.
+ */
+export type NoticeGrid = "checkbox" | "avatar";
+
+/**
+ * A grid's classes, from the line's left edge -- 20 in, where the rows'
+ * content starts: the symbol's column (the checkbox's 16, or the avatar's
+ * 32); the gap from it to the words (12 + 32 + 12 past a checkbox's
+ * column, 12 past an avatar's), and the same room as a padding for a line
+ * that has no symbol of its own; and a hairline starting where the words
+ * do (16 + 56 = 72, or 32 + 12 = 44), as a row's does.
+ */
+export const NOTICE_GRID: Record<NoticeGrid, { symbol: string; gap: string; inset: string; hairline: string }> = {
+  checkbox: { symbol: "w-4", gap: "ml-14", inset: "pl-18", hairline: "left-18" },
+  avatar: { symbol: "w-8", gap: "ml-3", inset: "pl-11", hairline: "left-11" },
+};
 
 export type SourceNoticeVariant = "info" | "warning";
 
@@ -94,26 +119,32 @@ export function SourceNotice({ variant, title, description, action, error }: Sou
 }
 
 export interface SourceNoticeLineProps extends SourceNoticeProps {
-  /** The words on the button that shows `description`: 「详情」/"Details". */
-  detailsLabel: string;
-  /** That button's accessible name, which says which notice it belongs to. */
+  /**
+   * Not shown: the line's ⓘ has no words. Kept for the callers that still
+   * pass the words "Details" once showed.
+   */
+  detailsLabel?: string;
+  /** The ⓘ's accessible name, which says which notice it explains: 「详情：…」/"Details: …". */
   detailsAriaLabel: string;
   /**
-   * Last in the line, after the notice's own button: 「还有 N 条」 on the
+   * Last in the line, after the notice's own button: 「还有N个问题」 on the
    * one line a page's notices fold into (`SourceNotices`).
    */
   trailing?: ReactNode;
+  /** The list's columns it lines up with (`NoticeGrid`); the avatar's by default. */
+  grid?: NoticeGrid;
 }
 
 /**
  * The same notice as one line of a list, 32 high (spec §3.8; the
- * disclosed rows in cork-outdated.png): the icon, the short title, and
- * "Details" -- a link that shows the description under it -- then the
- * notice's own button, if it has one (Open Ollama, Check again), small and
- * grey, which stays in the line rather than behind the popover. The Updates
- * page makes the line its list's first row; the Installed page puts it
- * over its list. A failed press says so under the line. The line's edges
- * are its container's: the lists put it 20 in, where their rows start.
+ * disclosed rows in cork-outdated.png), in one kind of control: the icon
+ * in the column the rows start with, the short title where their names
+ * start, a muted ⓘ that shows the description in a popover -- no accent
+ * link -- then the notice's own button, if it has one (Open Ollama, Check
+ * again), small and grey, which stays in the line rather than behind the
+ * popover. The pages make the line their list's first row. A failed press
+ * says so under the title. The line's edges are its container's: the lists
+ * put it 20 in, where their rows start.
  */
 export function SourceNoticeLine({
   variant,
@@ -121,38 +152,41 @@ export function SourceNoticeLine({
   description,
   action,
   error,
-  detailsLabel,
   detailsAriaLabel,
   trailing,
+  grid = "avatar",
 }: SourceNoticeLineProps) {
+  const columns = NOTICE_GRID[grid];
   return (
     <div className="flex flex-col">
-      <div data-notice-line="" className="flex h-8 min-w-0 items-center gap-2 text-body">
-        <NoticeIcon variant={variant} />
-        <span title={title} className="min-w-0 truncate text-foreground">
+      <div data-notice-line="" className="flex h-8 min-w-0 items-center text-body">
+        <span data-notice-symbol="" className={`flex shrink-0 justify-center ${columns.symbol}`}>
+          <NoticeIcon variant={variant} />
+        </span>
+        <span title={title} className={`min-w-0 truncate text-foreground ${columns.gap}`}>
           {title}
         </span>
         {description ? (
-          <Popover trigger={detailsLabel} triggerLabel={detailsAriaLabel} triggerClassName={DETAILS_TRIGGER_CLASS}>
-            {description}
-          </Popover>
+          // Its 20 box holds the 12 ⓘ 4 from the title, as a status word's.
+          <span className="flex shrink-0">
+            <InfoDetail label={detailsAriaLabel}>{description}</InfoDetail>
+          </span>
         ) : null}
         {action ? (
           <button
             type="button"
             onClick={action.onClick}
             disabled={action.disabled}
-            className={`shrink-0 ${ACTION_CLASS}`}
+            className={`ml-2 shrink-0 ${ACTION_CLASS}`}
           >
             {action.label}
           </button>
         ) : null}
         {trailing}
       </div>
-      {/* A <div>: the error's own "Details" panel is one. */}
-      {/* Under the title, past the icon. */}
+      {/* A <div>: the error's own ⓘ panel is one. Under the title. */}
       {error ? (
-        <div role="alert" className="pb-1 pl-6 text-small text-danger-text">
+        <div role="alert" className={`pb-1 text-small text-danger-text ${columns.inset}`}>
           {error}
         </div>
       ) : null}

@@ -410,8 +410,8 @@
       "title": "{{source}}'s program files are missing",
       "description": "{{source}}'s {{command}} can't run any more; Uninstall cleans it up. To keep using {{source}}, reinstall it, or drag its files back from the Trash and click Check Again."
     },
-    "more_one": "{{count}} More Issue",
-    "more_other": "{{count}} More Issues",
+    "more_one": "{{count}} more issue",
+    "more_other": "{{count}} more issues",
     "showFewer": "Show Fewer"
   },
   "planRefused": {

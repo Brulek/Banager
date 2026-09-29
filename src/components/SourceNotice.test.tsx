@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../test/setup";
-import { SourceNotice, SourceNoticeLine } from "./SourceNotice";
+import { NOTICE_GRID, SourceNotice, SourceNoticeLine } from "./SourceNotice";
 import { BUTTON } from "./ui/controls";
 
 describe("SourceNotice", () => {
@@ -25,7 +25,7 @@ describe("SourceNotice", () => {
 });
 
 describe("SourceNotice's look (spec §3.8)", () => {
-  it("draws a warning's line 32 high: a 16pt filled orange ⚠︎, the title, Details as a link, and a small grey button", () => {
+  it("draws a warning's line 32 high in one kind of control: a 16pt filled orange ⚠︎, the title, a muted ⓘ, and one small grey button", () => {
     const { container, getByRole, getByText } = renderWithProviders(
       <SourceNoticeLine
         variant="warning"
@@ -38,26 +38,70 @@ describe("SourceNotice's look (spec §3.8)", () => {
     );
     const line = container.querySelector("[data-notice-line]") as HTMLElement;
     expect(line).toHaveClass("h-8", "items-center", "text-body");
-    const icon = line.firstElementChild as SVGElement;
+    const icon = line.querySelector("[data-notice-symbol] > svg") as SVGElement;
     expect(icon.getAttribute("width")).toBe("16");
     expect(icon.getAttribute("class")).toContain("text-warning");
     // Filled, with the mark cut out in white: not an outline.
     expect(icon.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
     expect(getByText("Ollama isn't running")).toHaveClass("text-foreground", "truncate");
+    // The description behind a muted ⓘ, named for its notice -- no words,
+    // no accent: not a link.
     const details = getByRole("button", { name: "Details: Ollama isn't running" });
-    expect(details).toHaveClass("text-accent-text");
-    expect(details.className).not.toMatch(/underline|bg-/);
+    expect(details.textContent).toBe("");
+    expect(details.querySelector("svg")?.getAttribute("width")).toBe("12");
+    expect(details).toHaveClass("text-muted");
+    expect(container.innerHTML).not.toContain("text-accent-text");
+    expect(details.className).not.toMatch(/underline|\bbg-/);
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Open Ollama to see what it has.",
+    );
+    // One push button, after the ⓘ.
+    const buttons = [...line.querySelectorAll("button")];
+    expect(buttons.map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+      "Details: Ollama isn't running",
+      "Open Ollama",
+    ]);
     expect(getByRole("button", { name: "Open Ollama" }).className).toContain(BUTTON.small.grey);
+    expect(line.querySelectorAll('[class*="bg-fill"]')).toHaveLength(1);
   });
 
   it("marks information with a 16pt muted ⓘ, not a warning's orange", () => {
     const { container } = renderWithProviders(
-      <SourceNoticeLine variant="info" title="npm 12.1.0 not tested" detailsLabel="Details" detailsAriaLabel="Details" />,
+      <SourceNoticeLine variant="info" title="npm 12.1.0 not tested" detailsAriaLabel="Details" />,
     );
-    const icon = container.querySelector("[data-notice-line] > svg") as SVGElement;
+    const icon = container.querySelector("[data-notice-line] [data-notice-symbol] > svg") as SVGElement;
     expect(icon.getAttribute("width")).toBe("16");
     expect(icon.getAttribute("class")).toContain("text-muted");
     expect(container.innerHTML).not.toContain("text-warning");
+  });
+
+  it("lines up with its list's columns: the symbol centred on the checkboxes' or the avatars', the title where the names start", () => {
+    // The Updates page: rows start with a 16 checkbox, 12, a 32 avatar, 12,
+    // the name -- 72 past the line's left edge.
+    const updates = renderWithProviders(
+      <SourceNoticeLine variant="warning" title="uv isn't responding" detailsAriaLabel="Details" grid="checkbox" />,
+    );
+    const symbol = updates.container.querySelector("[data-notice-symbol]") as HTMLElement;
+    expect(symbol.className.split(" ")).toEqual(expect.arrayContaining(["w-4", "justify-center", "shrink-0"]));
+    expect(updates.getByText("uv isn't responding").className.split(" ")).toContain("ml-14");
+    expect(NOTICE_GRID.checkbox).toEqual({ symbol: "w-4", gap: "ml-14", inset: "pl-18", hairline: "left-18" });
+    updates.unmount();
+
+    // The Installed and Unknown pages: a 32 avatar, 12, the name -- 44 in.
+    const installed = renderWithProviders(
+      <SourceNoticeLine
+        variant="warning"
+        title="uv isn't responding"
+        detailsAriaLabel="Details"
+        error="Couldn't open Ollama."
+      />,
+    );
+    expect((installed.container.querySelector("[data-notice-symbol]") as HTMLElement).className.split(" ")).toContain("w-8");
+    expect(installed.getByText("uv isn't responding").className.split(" ")).toContain("ml-3");
+    // A failed press is said under the title.
+    expect(installed.getByRole("alert").className.split(" ")).toContain("pl-11");
+    expect(NOTICE_GRID.avatar).toEqual({ symbol: "w-8", gap: "ml-3", inset: "pl-11", hairline: "left-11" });
   });
 
   it("draws a whole notice with no fill and no corners, its description quieter on the line under the title", () => {

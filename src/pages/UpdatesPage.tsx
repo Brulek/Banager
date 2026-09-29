@@ -23,6 +23,7 @@ import { RowAction, ToolRow } from "../components/ToolRow";
 import { StatusChip } from "../components/StatusChip";
 import { Menu, type MenuItem } from "../components/ui/Menu";
 import { SourceNotices, useNoticeFold } from "../components/SourceNotices";
+import { NOTICE_GRID } from "../components/SourceNotice";
 import { UpdateConfirmDialog, useUpdateConfirm } from "../components/UpdateConfirm";
 import { Refusal } from "../components/SheetParts";
 import { VirtualList } from "../components/VirtualList";
@@ -190,8 +191,10 @@ function keyboardRow(item: ListItem): boolean {
 
 /**
  * The line that discloses the rows that can't be updated here, 32 high:
- * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png).
- * One of the rows ↑ and ↓ move between, Space or Enter opening it.
+ * a 10pt triangle and the words, muted (spec §3.3; cork-outdated-zh.png),
+ * on the rows' grid, as the notices over them are: the triangle centred in
+ * the checkboxes' column, the words where the names start. One of the rows
+ * ↑ and ↓ move between, Space or Enter opening it.
  */
 function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
@@ -204,10 +207,14 @@ function CantUpdateHere({ count, expanded, onToggle }: { count: number; expanded
       data-row-focus=""
       tabIndex={roving?.tabIndex}
       onFocus={roving?.onFocus}
-      className="relative flex h-8 w-full items-center gap-1.5 px-5 text-left text-body text-muted"
+      className="relative flex h-8 w-full items-center px-5 text-left text-body text-muted"
     >
-      <DisclosureIcon size={10} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
-      {t("updates.cantUpdateHere", { number: count })}
+      <span data-disclosure-symbol="" className={`flex shrink-0 justify-center ${NOTICE_GRID.checkbox.symbol}`}>
+        <DisclosureIcon size={10} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+      </span>
+      <span className={`min-w-0 truncate ${NOTICE_GRID.checkbox.gap}`}>
+        {t("updates.cantUpdateHere", { number: count })}
+      </span>
     </button>
   );
 }
@@ -704,7 +711,7 @@ export function UpdatesPage() {
   const noticeLines =
     notices.length > 0 ? (
       <div className="flex flex-col px-5 pb-3">
-        <SourceNotices notices={notices} layout="line" fold={noticeFold} />
+        <SourceNotices notices={notices} layout="line" fold={noticeFold} grid="checkbox" separator={false} />
       </div>
     ) : null;
 
@@ -964,8 +971,10 @@ export function UpdatesPage() {
         keyboardRows={keyboardRow}
         renderItem={(item) =>
           item.type === "notices" ? (
+            // On the rows' grid: the ⚠︎ in the checkboxes' column, the
+            // words where the names start.
             <div className="px-5">
-              <SourceNotices notices={notices} layout="line" fold={noticeFold} />
+              <SourceNotices notices={notices} layout="line" fold={noticeFold} grid="checkbox" />
             </div>
           ) : item.type === "justUpdated" ? (
             // Drawn anew each time the list is (`reusable`): it reads the clock.
@@ -983,17 +992,20 @@ export function UpdatesPage() {
             // Why these rows could not be checked is the tool's own words,
             // hidden while "Show technical details" is off: a button that
             // turns it on, rather than a sentence that says where it is.
-            <div className="flex min-h-8 items-center gap-2 px-5 text-small text-muted">
-              <p className="min-w-0">{t("updates.cannotCheckSummary", { count: item.count })}</p>
-              <button
-                type="button"
-                disabled={saveSettings.isPending}
-                title={t("updates.showReasonsHint", { setting: t("settings.showTechnicalDetails.label") })}
-                onClick={() => saveSettings.mutate({ ...settings, show_technical_details: true })}
-                className={BUTTON.small.grey}
-              >
-                {t("updates.showReasons")}
-              </button>
+            // Where the rows' names start, over the rows it is about.
+            <div className="px-5">
+              <div className={`flex min-h-8 items-center gap-2 text-small text-muted ${NOTICE_GRID.checkbox.inset}`}>
+                <p className="min-w-0">{t("updates.cannotCheckSummary", { count: item.count })}</p>
+                <button
+                  type="button"
+                  disabled={saveSettings.isPending}
+                  title={t("updates.showReasonsHint", { setting: t("settings.showTechnicalDetails.label") })}
+                  onClick={() => saveSettings.mutate({ ...settings, show_technical_details: true })}
+                  className={BUTTON.small.grey}
+                >
+                  {t("updates.showReasons")}
+                </button>
+              </div>
             </div>
           ) : (
             updateRow(item.candidate, item.updatable)

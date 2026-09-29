@@ -173,8 +173,6 @@ describe("the polish-3 copy rules, in English", () => {
       "commandPreview.show_one",
       "commandPreview.show_other",
       "sourceNotice.openOllama",
-      "sourceNotice.more_one",
-      "sourceNotice.more_other",
       "sourceNotice.showFewer",
       "operations.batch.cancelAll",
       "operations.batch.cancelRest",
@@ -210,5 +208,14 @@ describe("the polish-3 copy rules, in English", () => {
       expect(text, key).toBeTypeOf("string");
       expect(titleCase(text as string), `${key}: ${text}`).toBe(true);
     }
+  });
+
+  it("writes a disclosure's count in sentence case: it says how many more, it is not a command", () => {
+    // 「还有N个问题」 and 「另有N个无法在这里更新」 are the words of a
+    // disclosure line, as Cork's "There are 6 additional packages…".
+    const strings = new Map(entries(en));
+    expect(strings.get("sourceNotice.more_one")).toBe("{{count}} more issue");
+    expect(strings.get("sourceNotice.more_other")).toBe("{{count}} more issues");
+    expect(strings.get("updates.cantUpdateHere")).toBe("{{number}} more can't be updated here");
   });
 });
