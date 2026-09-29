@@ -4,11 +4,11 @@
  * them, so that the rows show the logos and the lines the app has for them.
  * Every name is one the logo pack lists (the `tools` of
  * src/assets/tool-icons/pack.json) and the description tables have a line
- * for (src/assets/tool-descriptions/: the Chinese one for Homebrew's, both
- * for npm's, PyPI's and Cargo's), none is one the pretend Mac already has,
- * and each list is a sample of those, written out here so that the
- * scenario stays the same when the pack is rebuilt. Dev-only data, like
- * everything in src/dev.
+ * for (the files in src/assets/tool-descriptions: the Chinese one for
+ * Homebrew's, both for npm's, PyPI's and Cargo's), none is one the pretend
+ * Mac already has, and each list is a sample of those, written out here so
+ * that the scenario stays the same when the pack is rebuilt. Dev-only data,
+ * like everything in src/dev.
  */
 
 /** Names written as one run of whitespace-separated words. */
