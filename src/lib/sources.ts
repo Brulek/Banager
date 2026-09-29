@@ -9,6 +9,7 @@ import type {
   InstanceNote,
   ManagerInstance,
   ReadOnlyReason,
+  Snapshot,
   SourceError,
   UninstallBlocked,
   Unavailable,
@@ -472,12 +473,13 @@ export function sourceNoticesFor(
  * `sourceNoticesFor(...).length > 0`, expressed that way so the two can
  * never drift.
  *
- * `SnapshotStatus` asks this: its zero-artifact empty state replaces
- * `children` outright, so without it a Mac whose only source is a stopped
- * Ollama shows "Canager found nothing installed" and the Open Ollama
- * button is unreachable. A read-only source with nothing installed has
- * nothing to show -- its notice is its rows' chip -- so it gets the empty
- * state like any other. One rule, one place.
+ * `nothingFound` asks this for `SnapshotStatus` and the Overview: the
+ * zero-artifact empty state replaces the page outright, so without it a
+ * Mac whose only source is a stopped Ollama shows "Canager found nothing
+ * installed" and the Open Ollama button is unreachable. A read-only
+ * source with nothing installed has nothing to show -- its notice is its
+ * rows' chip -- so it gets the empty state like any other. One rule, one
+ * place.
  */
 export function hasSourceNotice(instance: ManagerInstance): boolean {
   return sourceNoticesFor(instance, "").length > 0;
@@ -1506,4 +1508,53 @@ export function unfinishedChecksNotice(
     values: { count: names.length, sources: namesInSentence(t, names) },
     action: { id: "checkAgain", labelKey: "header.checkAgain" },
   };
+}
+
+/**
+ * What a finished check says when it found nothing to show (`nothingFound`):
+ * no source at all, or sources with nothing installed. Its title and its
+ * one sentence; what Canager works with, and where it looks, is
+ * `emptyStates.supportedList`, behind 「详情」 after the sentence.
+ */
+export type NothingFound = "noSources" | "nothingInstalled";
+
+export const NOTHING_FOUND_KEYS: Record<NothingFound, { title: string; description: string }> = {
+  noSources: { title: "emptyStates.noSources.title", description: "emptyStates.noSources.description" },
+  nothingInstalled: {
+    title: "emptyStates.nothingInstalled.title",
+    description: "emptyStates.nothingInstalled.description",
+  },
+};
+
+/**
+ * Whether a finished check found nothing to show, and which nothing, or
+ * null when there is something: the one rule the pages' empty states and
+ * the Overview's status row read, so they cannot disagree.
+ *
+ * - `noSources`: `detect` is Missing -- *every* source's detection came
+ *   back with no instance, not Homebrew's alone.
+ * - `nothingInstalled`: nothing installed *and* nothing to say about it.
+ *   The second half is load-bearing: a source's notice line shows even
+ *   with nothing of it installed -- an Ollama installed but not running,
+ *   whose Open Ollama would be unreachable behind "No installed tools
+ *   found" (`hasSourceNotice`) -- and so does a check that did not finish
+ *   (`unfinishedChecksNotice`), where nothing listed may be only what it
+ *   did not get to.
+ *
+ * Not the startup placeholder (`isStartupSnapshot`), which is no answer:
+ * callers ask that first.
+ */
+export function nothingFound(
+  t: Translate,
+  snapshot: Pick<Snapshot, "detect" | "artifacts" | "instances" | "errors">,
+): NothingFound | null {
+  if (snapshot.detect === "Missing") return "noSources";
+  if (
+    snapshot.artifacts.length === 0 &&
+    !snapshot.instances.some((instance) => hasSourceNotice(instance)) &&
+    unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) === null
+  ) {
+    return "nothingInstalled";
+  }
+  return null;
 }

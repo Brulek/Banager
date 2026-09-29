@@ -12,6 +12,8 @@ import {
   isAvailable,
   namesInSentence,
   notActionableMessage,
+  NOTHING_FOUND_KEYS,
+  nothingFound,
   openOllamaErrorDetail,
   openOllamaErrorMessage,
   parseNotActionable,
@@ -36,7 +38,7 @@ import {
   UPDATE_BLOCKED_KEYS,
 } from "./sources";
 import type { DescribedTool } from "./sources";
-import type { ArtifactKey, InstanceNote, ManagerInstance, SourceError } from "./types";
+import type { ArtifactKey, InstalledArtifact, InstanceNote, ManagerInstance, SourceError } from "./types";
 import en from "../i18n/en.json";
 import zhCN from "../i18n/zh-CN.json";
 import i18n from "../i18n";
@@ -227,7 +229,7 @@ describe("sourceNoticesFor", () => {
   });
 
   it("is the one rule hasSourceNotice answers from", () => {
-    // SnapshotStatus's "No installed tools found" gate and the
+    // The "No installed tools found" gate (`nothingFound`) and the
     // pages' notice lines must never disagree about which sources have something to
     // say: a Mac whose only source is a stopped Ollama would otherwise see
     // the empty state and no way to start it.
@@ -1256,6 +1258,44 @@ describe("unfinishedChecksNotice", () => {
     // On a source whose checks all finished: nothing.
     const cargo = instance({ id: "cargo:/Users/you/.cargo", adapter_id: "cargo" });
     expect(unfinishedChecksNotice(enT, errors, [instance(), pipx, cargo], [cargo])).toBeNull();
+  });
+});
+
+describe("nothingFound", () => {
+  const enT = i18n.getFixedT("en");
+  const jq: InstalledArtifact = {
+    key: { instance_id: "brew:/opt/homebrew", kind: "Formula", name: "jq" },
+    display_name: "jq",
+    version: "1.7",
+    reason: "Requested",
+    description: null,
+    homepage: null,
+    size_bytes: null,
+    installed_at: null,
+    path: null,
+    auto_updates: false,
+    uninstall_blocked: null,
+  };
+  const found = (over: Partial<Parameters<typeof nothingFound>[1]> = {}) =>
+    nothingFound(enT, { detect: "Found", instances: [instance()], artifacts: [], errors: [], ...over });
+
+  it("is no source when every source's detection found nothing, whatever else", () => {
+    expect(found({ detect: "Missing", instances: [] })).toBe("noSources");
+    expect(enT(NOTHING_FOUND_KEYS.noSources.title)).toBe("No tools to manage");
+    expect(enT(NOTHING_FOUND_KEYS.noSources.description)).toBe("Install Homebrew first.");
+  });
+
+  it("is nothing installed only when no source, and no check that did not finish, has something to say", () => {
+    expect(found()).toBe("nothingInstalled");
+    expect(enT(NOTHING_FOUND_KEYS.nothingInstalled.title)).toBe("No installed tools found");
+    // Something installed.
+    expect(found({ artifacts: [jq] })).toBeNull();
+    // A stopped Ollama, whose Open Ollama is on the page.
+    expect(found({ instances: [instance({ status: { unavailable: "NotRunning", notes: [] } })] })).toBeNull();
+    // A check that did not finish: nothing listed may be only what it did not get to.
+    expect(found({ errors: [{ instance_id: "brew:/opt/homebrew", message: "brew list timed out" }] })).toBeNull();
+    // A read-only source says so on its rows, and has none.
+    expect(found({ instances: [instance({ read_only_reason: "ByDesign" })] })).toBe("nothingInstalled");
   });
 });
 

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAgain, useSettings, useSnapshot } from "../lib/queries";
 import { isStartupSnapshot } from "../lib/events";
-import { hasSourceNotice, unfinishedChecksNotice } from "../lib/sources";
+import { NOTHING_FOUND_KEYS, nothingFound } from "../lib/sources";
 import { useUiStore } from "../store/ui";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import { EmptyState, type EmptyStateDetail } from "./EmptyState";
@@ -17,9 +17,16 @@ export interface SnapshotStatusProps {
    * Every other branch below applies to it as to any page.
    */
   showsFirstCheck?: boolean;
+  /**
+   * The page says itself that the check found nothing to show
+   * (`nothingFound`) -- the Overview, in its status row, where every other
+   * state of it is said (spec R1) -- so `children` are rendered then, not
+   * the empty state a list's area gets.
+   */
+  showsNothingFound?: boolean;
 }
 
-export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotStatusProps) {
+export function SnapshotStatus({ children, showsFirstCheck = false, showsNothingFound = false }: SnapshotStatusProps) {
   const { t } = useTranslation();
   const snapshotQuery = useSnapshot();
   // Both load-failed states' button is the header's Check again, and off
@@ -107,43 +114,20 @@ export function SnapshotStatus({ children, showsFirstCheck = false }: SnapshotSt
     return showsFirstCheck ? <>{children}</> : <FirstCheck />;
   }
 
-  if (snapshot.detect === "Missing") {
-    // `detect` is Missing only when *every* adapter's detect() came back
-    // with no instances -- every source, not Homebrew alone, which is what
-    // the old `noHomebrew` copy claimed.
+  // Found nothing: no source at all -- *every* adapter's detect() came
+  // back with no instances, not Homebrew's alone, which is what the old
+  // `noHomebrew` copy claimed -- or nothing installed and nothing any
+  // source, or a check that did not finish, wants to say (`nothingFound`,
+  // which says why that second half is load-bearing). In the list's
+  // place; the Overview says it in its status row instead.
+  const found = nothingFound(t, snapshot);
+  if (found !== null && !showsNothingFound) {
+    const title = t(NOTHING_FOUND_KEYS[found].title);
     return (
       <EmptyState
-        title={t("emptyStates.noSources.title")}
-        description={t("emptyStates.noSources.description")}
-        detail={supportedList(t("emptyStates.noSources.title"))}
-      />
-    );
-  }
-
-  // Nothing installed *and* nothing any source wants to say. This branch
-  // replaces `children` outright, so the second half is load-bearing: the
-  // pages show a source's notice line even with nothing of it installed --
-  // an Ollama that is installed but not running being the case it was
-  // written for. Judging only the global artifact count hid exactly that:
-  // on a Mac whose only source is a stopped Ollama, the user saw "Nothing
-  // installed yet" and the "Open Ollama" button was unreachable. Nor a
-  // check that did not finish: nothing listed may be only what it did not
-  // get to, and the pages say so in their notice lines
-  // (`unfinishedChecksNotice`). A check that did not finish is no longer
-  // a band over the page from here: it is one of those lines, as a
-  // source's own notice is. `hasSourceNotice` and `unfinishedChecksNotice`
-  // live in lib/sources.ts so this gate and the pages it gates cannot
-  // disagree about what there is to show.
-  if (
-    snapshot.artifacts.length === 0 &&
-    !snapshot.instances.some((instance) => hasSourceNotice(instance)) &&
-    unfinishedChecksNotice(t, snapshot.errors, snapshot.instances) === null
-  ) {
-    return (
-      <EmptyState
-        title={t("emptyStates.nothingInstalled.title")}
-        description={t("emptyStates.nothingInstalled.description")}
-        detail={supportedList(t("emptyStates.nothingInstalled.title"))}
+        title={title}
+        description={t(NOTHING_FOUND_KEYS[found].description)}
+        detail={supportedList(title)}
       />
     );
   }

@@ -217,8 +217,10 @@ function App() {
               ) : page === "overview" ? (
                 // The Overview shows the first check itself while it runs
                 // (`FirstCheck`, which SnapshotStatus shows for the other
-                // two); every other state is the snapshot's, as on any page.
-                <SnapshotStatus showsFirstCheck>
+                // two), and a check that found nothing, in the status row
+                // it says every state in; the rest is the snapshot's, as on
+                // any page.
+                <SnapshotStatus showsFirstCheck showsNothingFound>
                   <OverviewPage />
                 </SnapshotStatus>
               ) : (

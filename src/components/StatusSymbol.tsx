@@ -16,10 +16,13 @@ import { SpinnerIcon } from "./icons";
  *   look of something disabled; the words beside it say what it is.
  * - `failed`: the last check did not finish -- a white "!" in an orange
  *   triangle, 32, in the middle of the slot: said, not shouted.
+ * - `info`: the check found nothing to manage -- no source, or nothing
+ *   installed -- an "i" in a circle, drawn as `quiet`'s check is: in
+ *   outline, in the muted colour, as macOS marks an empty state.
  * - `busy`: the first check, or updates installing -- the 32 spinner in
  *   the middle of the slot, so the words beside it do not move.
  */
-export type StatusSymbolKind = "updates" | "upToDate" | "quiet" | "failed" | "busy";
+export type StatusSymbolKind = "updates" | "upToDate" | "quiet" | "info" | "failed" | "busy";
 
 /**
  * A glyph in a 24-unit square, `box` the part of it drawn: the whole
@@ -92,7 +95,11 @@ export function StatusSymbol({ kind }: { kind: StatusSymbolKind }) {
         <Glyph size={48} box={DISC_BOX} className="text-muted">
           <g fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="9.375" />
-            <path d="M7.75 12.25L10.75 15.25L16.25 9.25" />
+            {kind === "info" ? (
+              <path d="M12 10.75v5.5M12 7.75h.01" strokeWidth={1.5} />
+            ) : (
+              <path d="M7.75 12.25L10.75 15.25L16.25 9.25" />
+            )}
           </g>
         </Glyph>
       )}

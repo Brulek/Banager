@@ -167,9 +167,10 @@ function clockJustAfterTheCheck() {
   vi.setSystemTime((1790586000 + 30) * 1000);
 }
 
+/** As App.tsx renders it. */
 function renderOverview(options?: RenderOptions) {
   return renderWithProviders(
-    <SnapshotStatus showsFirstCheck>
+    <SnapshotStatus showsFirstCheck showsNothingFound>
       <OverviewPage />
     </SnapshotStatus>,
     options,
@@ -211,6 +212,76 @@ describe("OverviewPage", () => {
     // placeholder is not an answer.
     expect(queryByText("Loading…")).not.toBeInTheDocument();
     expect(queryByText("No tools to manage")).not.toBeInTheDocument();
+  });
+
+  // A check that found nothing to show: in the status row, as every other
+  // state, not a view of its own in the middle of the page.
+  const nothingFoundStates: Array<[string, Partial<Snapshot>, string, string]> = [
+    [
+      "nothing installed",
+      { instances: [brew], artifacts: [] },
+      "No installed tools found",
+      "Tools you install with Homebrew, npm and the like show up here.",
+    ],
+    ["no source at all", { detect: "Missing", instances: [], artifacts: [] }, "No tools to manage", "Install Homebrew first."],
+  ];
+
+  it.each(nothingFoundStates)("says %s in the status row, with Details and a grey Check Again, over the daily check", async (_name, over, title, sentence) => {
+    served = snapshotWith(over);
+    const { findByRole, getByRole, container } = renderOverview();
+
+    const heading = await findByRole("heading", { level: 2, name: title });
+    expect(statusRowOf(container)).toContainElement(heading);
+    expect(heading.className).toContain("text-title");
+    // Not the list's empty state, centred in the page.
+    expect(container.querySelector("[data-empty-state]")).toBeNull();
+    const column = container.firstElementChild as HTMLElement;
+    expect(column.className).toContain("w-[min(560px,calc(100%-40px))]");
+    // A 48 ⓘ in a circle, in outline and the muted colour, as the quiet check is.
+    expect(symbolOf(container).getAttribute("data-symbol")).toBe("info");
+    const symbol = symbolOf(container).querySelector("svg");
+    expect(symbol).toHaveAttribute("width", "48");
+    expect(symbol?.getAttribute("class")).toContain("text-muted");
+    expect(symbol?.querySelector('[fill="currentColor"]')).toBeNull();
+    expect(symbol?.querySelector('g[stroke="currentColor"] circle')).not.toBeNull();
+    // Its sentence under it, 11 muted, and Details, a link, on what
+    // Canager works with and where it looks.
+    const line = heading.nextElementSibling as HTMLElement;
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted"]));
+    expect(line).toHaveTextContent(sentence);
+    const details = within(line).getByRole("button", { name: `Details: ${title}` });
+    expect(details).toHaveTextContent("Details");
+    expect(details.className).toContain("text-accent-text");
+    fireEvent.click(details);
+    expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
+      "Supports Homebrew, npm, pipx, uv, pip, Cargo and Ollama, and Claude Code, Antigravity CLI, Grok Build and rustup in their default locations.",
+    );
+    // On the right, the row's one button: a grey Check Again.
+    const [button, ...more] = within(statusRowOf(container)).getAllByRole("button").filter(
+      (element) => element.closest("h2, [data-status-line]") === null,
+    );
+    expect(more).toEqual([]);
+    expect(button).toHaveAccessibleName("Check Again");
+    expect(button.className).toBe(BUTTON.regular.grey);
+    // The daily check under it, as in every other state.
+    expect(getByRole("button", { name: "Check for updates every day: Off" })).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh"));
+  });
+
+  it("says in Chinese that nothing was found, in the status row", async () => {
+    served = snapshotWith({ instances: [brew], artifacts: [] });
+    await i18n.changeLanguage("zh-CN");
+    try {
+      const { findByRole, container } = renderOverview();
+      const heading = await findByRole("heading", { level: 2, name: "没有找到已安装的工具" });
+      const line = heading.nextElementSibling as HTMLElement;
+      expect(line).toHaveTextContent("用Homebrew、npm等安装的工具会显示在这里。");
+      expect(within(line).getByRole("button", { name: "详情：没有找到已安装的工具" })).toHaveTextContent("详情");
+      expect(within(statusRowOf(container)).getByRole("button", { name: "重新检查" })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("counts the updates the Updates page offers, and Review updates ticks exactly those and opens it", async () => {
@@ -492,7 +563,7 @@ describe("OverviewPage", () => {
     // One button in the row, whatever the state: Review Updates where the
     // Updates page lists rows, else Check Again, both grey.
     const [button, ...more] = within(statusRowOf(container)).getAllByRole("button").filter(
-      (element) => element.closest("h2, p") === null,
+      (element) => element.closest("h2, [data-status-line]") === null,
     );
     expect(more).toEqual([]);
     expect(button.className).toContain("bg-fill");

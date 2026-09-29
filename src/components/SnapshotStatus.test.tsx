@@ -476,6 +476,36 @@ describe("SnapshotStatus", () => {
     }
   });
 
+  it("leaves a page that says it found nothing itself to say so, and judges the rest as for any page", async () => {
+    // The Overview says it in its status row, as it says every other state.
+    for (const found of [baseSnapshot({ detect: "Missing" }), baseSnapshot({ artifacts: [] })]) {
+      vi.mocked(invoke).mockResolvedValue(found);
+      const page = renderWithProviders(
+        <>
+          <SnapshotProbe />
+          <SnapshotStatus showsFirstCheck showsNothingFound>
+            <p>overview</p>
+          </SnapshotStatus>
+        </>,
+      );
+      await screen.findByText("snapshot loaded");
+      expect(screen.getByText("overview")).toBeInTheDocument();
+      expect(screen.queryByText("No tools to manage")).toBeNull();
+      expect(screen.queryByText("No installed tools found")).toBeNull();
+      page.unmount();
+    }
+
+    // A snapshot that could not be read is still this component's to say.
+    vi.mocked(invoke).mockRejectedValue("brew: command not found" as never);
+    renderWithProviders(
+      <SnapshotStatus showsFirstCheck showsNothingFound>
+        <p>overview</p>
+      </SnapshotStatus>,
+    );
+    expect(await screen.findByText("Couldn't load installed tools")).toBeInTheDocument();
+    expect(screen.queryByText("overview")).toBeNull();
+  });
+
   it("renders children, not the nothing-installed state, when a source still has a notice to show", async () => {
     // A Mac with Ollama installed but not running and nothing installed
     // anywhere else. InstalledPage renders that instance's group header and

@@ -7,6 +7,8 @@ import { elapsedSince } from "../lib/format";
 import { FAILURE_CAUSE_KEYS, failureCause } from "../lib/failureCause";
 import {
   instanceLabels,
+  NOTHING_FOUND_KEYS,
+  nothingFound,
   openOllamaErrorDetail,
   openOllamaErrorMessage,
   sourceNoticesFor,
@@ -227,7 +229,8 @@ function ProblemsGroup({ problems }: { problems: SourceNoticeSpec[] }) {
  * The status row, the first group's one row: a 48 symbol, the title in
  * 13 bold with a line under it in 11 muted, and on the right the row's one
  * button. `alert`: the title and its line are read out as they appear --
- * mounted afresh, so that a screen reader says them.
+ * mounted afresh, so that a screen reader says them. The line is a <div>:
+ * a 「详情」 in it opens a panel that is one.
  */
 function StatusRow({
   symbol,
@@ -248,7 +251,11 @@ function StatusRow({
         <StatusSymbol kind={symbol} />
         <div key={alert ? "alert" : "status"} role={alert ? "alert" : undefined} className="min-w-0 flex-1">
           <h2 className="text-title text-foreground">{title}</h2>
-          {line !== null ? <p className={`${SMALL_WRAPPING} text-muted`}>{line}</p> : null}
+          {line !== null ? (
+            <div data-status-line="" className={`${SMALL_WRAPPING} text-muted`}>
+              {line}
+            </div>
+          ) : null}
         </div>
         {button}
       </div>
@@ -308,7 +315,10 @@ function AutoCheckRow({ settings }: { settings: Settings }) {
  * with all of them selected; a grey one where that page lists only what
  * cannot be updated here; See Progress while they install; otherwise a
  * grey Check Again, as macOS's empty states offer, off while a check runs.
- * The number of updates is said once, in the title.
+ * The number of updates is said once, in the title. Where the check found
+ * nothing to show (`nothingFound`) -- no source, or nothing installed --
+ * the row says that, a muted ⓘ beside it, its sentence under it with
+ * 「详情」 on what Canager works with, and a grey Check Again.
  *
  * While a check runs, the row keeps what the last one found -- its symbol,
  * its title, its button -- and only its line says 「正在检查…」: the
@@ -391,6 +401,11 @@ export function OverviewPage() {
   // A check that failed says so until one works, but not while the next
   // one runs.
   const failed = !checking && checkFailure !== null;
+  // A check that found nothing to show -- no source, or nothing installed
+  // (`nothingFound`, the rule the lists' empty states read): said in this
+  // row, as every other state is, not in a view of its own in the middle
+  // of the page.
+  const found = nothingFound(t, snapshot);
   const lastChecked = refreshedAt === null ? null : elapsedText(t, CHECKED_KEYS, elapsedSince(refreshedAt, now));
   let line: ReactNode = null;
   if (failed) {
@@ -408,6 +423,22 @@ export function OverviewPage() {
           : t("overview.checkFailedTryLater");
   } else if (checking) {
     line = t("common.checking");
+  } else if (found !== null) {
+    // Its one sentence, and what Canager works with and where it looks
+    // behind 「详情」, a link: the page's one.
+    const title = t(NOTHING_FOUND_KEYS[found].title);
+    line = (
+      <>
+        {t(NOTHING_FOUND_KEYS[found].description)}{" "}
+        <Popover
+          trigger={t("common.details")}
+          triggerLabel={t("common.detailsLabel", { title })}
+          triggerClassName={DETAILS_TRIGGER_CLASS}
+        >
+          {t("emptyStates.supportedList")}
+        </Popover>
+      </>
+    );
   } else if (summary.kind === "nothingToUpdate") {
     line = nothingToUpdateLine(t, summary, showHiddenUpdates) ?? lastChecked;
   } else if (summary.kind !== "updating") {
@@ -423,6 +454,9 @@ export function OverviewPage() {
   if (failed) {
     // The one thing to do now: check again.
     button = checkAgainButton("default");
+  } else if (found !== null) {
+    // Nothing to review: check again, once something is installed.
+    button = checkAgainButton("grey");
   } else if (summary.kind === "updates") {
     button = (
       <button
@@ -460,8 +494,14 @@ export function OverviewPage() {
   return (
     <div className={FORM_COLUMN}>
       <StatusRow
-        symbol={failed ? "failed" : symbolOf(summary)}
-        title={failed ? t("header.checkFailed") : headlineText(t, summary)}
+        symbol={failed ? "failed" : found !== null ? "info" : symbolOf(summary)}
+        title={
+          failed
+            ? t("header.checkFailed")
+            : found !== null
+              ? t(NOTHING_FOUND_KEYS[found].title)
+              : headlineText(t, summary)
+        }
         line={line}
         button={button}
         alert={failed}
