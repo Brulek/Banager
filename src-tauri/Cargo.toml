@@ -118,6 +118,19 @@ tokio-util = { version = "0.7", features = ["rt"] }
 # `crates/canager-core/src/testing.rs`.
 canager-core = { path = "../crates/canager-core", features = ["test-support"] }
 
+# tests/tao_delegate.rs makes tao's event loop, as tauri makes it, to ask
+# whether tao's application delegate answers `applicationShouldTerminate:`
+# (`quit::add_should_terminate`). tauri's own runtime crate, whose `tao`
+# re-export is the tao tauri runs on: the version tauri depends on, already
+# in Cargo.lock, and no feature switched on, so nothing new is compiled.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+tauri-runtime-wry = { version = "2", default-features = false }
+
+# Its own `main`, on the main thread, where tao makes its event loop.
+[[test]]
+name = "tao_delegate"
+harness = false
+
 # [profile.release] lives at the workspace root (../Cargo.toml), not here --
 # Cargo only reads profiles from the workspace root; a copy in this member
 # crate's Cargo.toml is silently ignored. See the comment there for why

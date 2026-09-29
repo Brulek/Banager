@@ -413,9 +413,10 @@ static DECIDE: std::sync::Mutex<Option<Decide>> = std::sync::Mutex::new(None);
 /// on macOS 27, for `terminate:` and for the quit Apple event with and
 /// without a logout's reason, in a program of AppKit's alone, outside
 /// the tests. Called once, from `run()`'s setup, on the main thread;
-/// should the method not go in -- no delegate, or one that already has the
-/// method, which is left as it is -- quitting stays as it was, and the
-/// reason is logged.
+/// should the method not go in -- no delegate, or one whose class answers
+/// the method already, itself or through a superclass, which is left as it
+/// is (`add_should_terminate`) -- quitting stays as it was, and the reason
+/// is logged, once.
 #[cfg(target_os = "macos")]
 pub fn guard_quitting<R: Runtime>(app: &AppHandle<R>) {
     use objc2::MainThreadMarker;
@@ -475,12 +476,29 @@ unsafe extern "C-unwind" fn application_should_terminate(
 
 /// Adds `application_should_terminate` to `class` as its
 /// `applicationShouldTerminate:`. Refused, and `class` left as it is, when
-/// the class already has one of its own.
+/// the class answers `applicationShouldTerminate:` already, with a method
+/// of its own or one it inherits: `class_addMethod` refuses only the
+/// first, and would put this one in front of an inherited one, which then
+/// never runs. Whatever answers there already decides quitting, and the
+/// guard stays off (`guard_quitting` logs why). tests/tao_delegate.rs
+/// checks that tao's delegate class answers nothing there, so that a tao
+/// that starts to is looked at.
 #[cfg(target_os = "macos")]
 fn add_should_terminate(class: &objc2::runtime::AnyClass) -> Result<(), String> {
     use objc2::encode::Encode;
     use objc2::runtime::{AnyClass, Imp};
     use objc2_app_kit::NSApplicationTerminateReply;
+
+    // `class_getInstanceMethod`, which looks through the superclasses too.
+    if class
+        .instance_method(objc2::sel!(applicationShouldTerminate:))
+        .is_some()
+    {
+        return Err(format!(
+            "{:?} already answers applicationShouldTerminate:, itself or through a superclass, and that answer is left to decide",
+            class.name()
+        ));
+    }
 
     // The method's types, as the Objective-C runtime spells them: the
     // reply (an `NSUInteger`), the receiver, the selector, the sender.
@@ -951,6 +969,27 @@ mod tests {
         assert!(
             add_should_terminate(class).is_err(),
             "one already there is left as it is"
+        );
+        // A subclass inherits it: refused too, and the superclass's method
+        // is still what answers.
+        let sub_name = std::ffi::CString::new(format!(
+            "CanagerQuitGuardTestDelegateSub{}",
+            std::process::id()
+        ))
+        .unwrap();
+        let subclass = ClassBuilder::new(&sub_name, class)
+            .expect("a class of this name is not registered yet")
+            .register();
+        let refused = add_should_terminate(subclass).expect_err("inherited: left as it is");
+        assert!(refused.contains("already answers"), "{refused}");
+        let method = |of: &objc2::runtime::AnyClass| {
+            of.instance_method(objc2::sel!(applicationShouldTerminate:))
+                .map(|method| method as *const objc2::runtime::Method)
+        };
+        assert_eq!(
+            method(subclass),
+            method(class),
+            "the subclass still answers with the superclass's method"
         );
         assert_eq!(
             ask(Some(Arc::new(|| false) as Decide)),
