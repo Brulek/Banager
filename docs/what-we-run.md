@@ -818,13 +818,21 @@ the last tool, it deletes that folder, and then the folder above it, with
 every file in it, when that holds no folder but ones named `.tmp…`
 (`crates/uv/src/commands/tool/uninstall.rs:40-52`,
 `crates/uv-fs/src/lib.rs:795-815`). In uv's own layout that is uv's data
-folder; under `UV_TOOL_DIR` it is one of the user's. So every inventory
-reads `UV_TOOL_DIR` from Canager's environment, which every uv command
-inherits (`tool_dir_fn` in `UvAdapter`), and while it is set and not
-empty no uv tool offers Uninstall: each row says why and to uninstall it
-in Terminal (`UninstallBlocked::UvToolDirSet`), `Session::issue_plan`
-refuses the uninstall, and `UvAdapter::plan` reads the variable again and
-refuses it too. Install and upgrade plan as before.
+folder; under `UV_TOOL_DIR` it is one of the user's. It happens only when
+no other uv tool is left: each tool is a folder of its own in the tools
+folder (`InstalledTools::tool_dir`, `crates/uv-tool/src/lib.rs:143-144`),
+named for its package, which never starts with `.`
+(`crates/uv-normalize/src/lib.rs:46-49`), and uv deletes
+neither folder while one that is not `.tmp…` is left there
+(`uninstall.rs:40-41`, `is_temporary`, `crates/uv-fs/src/lib.rs:863-868`).
+So every inventory reads `UV_TOOL_DIR` from Canager's environment, which
+every uv command inherits (`tool_dir_fn` in `UvAdapter`), and while it is
+set and not empty no uv tool offers Uninstall: each row says why, and
+that uv does this only when no other uv tool is left, and does not send
+anyone to run the same `uv tool uninstall` in Terminal, where it does the
+same (`UninstallBlocked::UvToolDirSet`); `Session::issue_plan` refuses the
+uninstall, and `UvAdapter::plan` reads the variable again and refuses it
+too. Install and upgrade plan as before.
 
 ## pip (read-only)
 

@@ -1290,21 +1290,33 @@ describe("UNINSTALL_BLOCKED_KEYS", () => {
     expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.command(key, uv)).toBe("");
     expect(UNINSTALL_BLOCKED_KEYS.UvToolDirSet.badge).toBe("installed.blocked.UvToolDirSet.badge");
     expect(uninstallBlockedCopy("UvToolDirSet", "uv")).toBe(UNINSTALL_BLOCKED_KEYS.UvToolDirSet);
-    expect(en.installed.blocked.UvToolDirSet.badge).toBe("Uninstall in Terminal");
-    expect(zhCN.installed.blocked.UvToolDirSet.badge).toBe("需在终端卸载");
+    expect(en.installed.blocked.UvToolDirSet.badge).toBe("Can't uninstall here");
+    expect(zhCN.installed.blocked.UvToolDirSet.badge).toBe("这里不能卸载");
+    expect([...zhCN.installed.blocked.UvToolDirSet.badge].length).toBeLessThanOrEqual(6);
     for (const locale of [en, zhCN]) {
       for (const copy of [locale.installed.blocked.UvToolDirSet.description, locale.installed.blocked.UvToolDirSet.refused]) {
         expect(copy).toContain("UV_TOOL_DIR");
         expect(copy).not.toContain("{{command}}");
+        // Running the same `uv tool uninstall` in Terminal carries the same
+        // risk, so the copy sends no one there; and it states uv's rule,
+        // read in uv 0.12.17's source, without hedging.
+        expect(copy).not.toMatch(/Terminal|终端/);
+        expect(copy).not.toMatch(/\bmay\b|\bmight\b|可能/);
       }
     }
     expect(en.installed.blocked.UvToolDirSet.refused).toContain("didn't uninstall or change anything");
     expect(zhCN.installed.blocked.UvToolDirSet.refused).toContain("没有卸载，也没有改动");
     for (const copy of [en.installed.blocked.UvToolDirSet.description, en.installed.blocked.UvToolDirSet.refused]) {
+      expect(copy).toContain("with every file in it");
+      // uv checks the tools folder for another tool's folder first
+      // (`crates/uv/src/commands/tool/uninstall.rs:40-52`).
+      expect(copy).toContain("It does this only when no other uv tool is left.");
       expect(copy).toContain("Canager uninstalls no uv tool while UV_TOOL_DIR is set");
       expect(copy).not.toContain("uninstalling the last uv tool");
     }
     for (const copy of [zhCN.installed.blocked.UvToolDirSet.description, zhCN.installed.blocked.UvToolDirSet.refused]) {
+      expect(copy).toContain("和其中所有文件");
+      expect(copy).toContain("只有在没有别的 uv 工具时，uv 才会这样做。");
       expect(copy).toContain("Canager 不卸载任何 uv 工具");
       expect(copy).not.toContain("卸载最后一个 uv 工具");
     }

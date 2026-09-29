@@ -647,8 +647,8 @@ describe("InstalledPage", () => {
 
     const ruff = await findRow("ruff");
     expect(queryAllByRole("button", { name: "Uninstall" })).toHaveLength(0);
-    expect(chipDetail(ruff, "Uninstall in Terminal")).toHaveTextContent(
-      "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names, with every file in it, when it uninstalls its last tool and that folder holds no other folder. So Canager uninstalls no uv tool while UV_TOOL_DIR is set. Uninstall it in Terminal.",
+    expect(chipDetail(ruff, "Can't uninstall here")).toHaveTextContent(
+      "With UV_TOOL_DIR set, uv deletes the folder above the one UV_TOOL_DIR names, with every file in it, when it uninstalls its last tool and that folder holds no other folder. It does this only when no other uv tool is left. So Canager uninstalls no uv tool while UV_TOOL_DIR is set.",
     );
     expect(container.querySelector("code")).toBeNull();
   });

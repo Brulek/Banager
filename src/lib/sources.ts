@@ -725,10 +725,11 @@ export const UNINSTALL_BLOCKED_KEYS: Record<UninstallBlocked, UninstallBlockedCo
   },
   UvToolDirSet: {
     badge: "installed.blocked.UvToolDirSet.badge",
-    // Why, and that it is the user's to do in Terminal -- with no command
-    // set apart to copy: `uv tool uninstall` is the very command that
-    // would delete the folder above the tools folder, if run for the last
-    // tool in a Terminal that sets `UV_TOOL_DIR` too.
+    // Why, and when uv does it -- only when no other uv tool is left --
+    // with no command set apart to copy and no pointer to Terminal:
+    // `uv tool uninstall` is the very command that deletes the folder
+    // above the tools folder, run for the last tool in a Terminal that
+    // sets `UV_TOOL_DIR` too.
     description: "installed.blocked.UvToolDirSet.description",
     command: () => "",
     refused: "installed.blocked.UvToolDirSet.refused",
