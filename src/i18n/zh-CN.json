@@ -480,7 +480,7 @@
         "Internal": "未能完成：发生内部错误，没有改动"
       }
     },
-    "copyLog": "拷贝"
+    "copyLog": "拷贝日志"
   },
   "quit": {
     "title_other": "还有{{count}}个操作未完成",

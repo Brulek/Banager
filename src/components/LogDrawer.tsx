@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { LogNote, OpSummary } from "../lib/types";
 import { useUiStore } from "../store/ui";
-import { useCancelOperation, useOperations } from "../lib/queries";
+import { useCancelOperation, useOperations, useSettings } from "../lib/queries";
 import { useCopyCommand } from "../lib/clipboard";
 import { FAILURE_CAUSE_KEYS, outcomeCause } from "../lib/failureCause";
 import { outcomeDetailKey } from "../lib/format";
@@ -11,8 +11,8 @@ import {
   OP_CANCEL_KEYS,
   OP_KIND_KEYS,
   cancelState,
-  outcomeSentence,
   outcomeTone,
+  outcomeWords,
   statusKey,
   useOperationName,
 } from "../lib/operations";
@@ -64,14 +64,18 @@ function noteText(t: TFunction, note: LogNote): string {
 /**
  * One operation's log, as a dialog 560 wide (spec §3.10, R11: the log
  * answers an operation, so it stays a dialog): what it is (「更新ffmpeg」) as
- * its title, and where it stands or how it ended under that; what to do
- * next about an outcome that needs it -- the next step for a failure whose
- * cause the tool's own words give (`outcomeCause`), or the outcome's own
- * -- as its text; then everything the tool printed, in its own words, in
+ * its title, and where it stands or how it ended under that -- in the
+ * words the operation bar uses (`outcomeWords`): 「网络连接失败」 where the
+ * tool's words give the cause, 「未能完成」 where they do not, and what the
+ * tool or macOS wrote only with "Show technical details" on, since it is
+ * right below, in the log; what to do next about an outcome that needs it
+ * -- the next step for a failure whose cause the tool's own words give
+ * (`outcomeCause`), or the outcome's own -- as its text; then everything
+ * the tool printed, in its own words, in
  * a grouped container in 11/14 monospace, what it wrote to stderr in red,
  * keeping to its end while more arrives, with Canager's own notes among
  * the lines as plain sentences. That text selects, as nothing else in the
- * dialog does (`select-text`), and Copy puts all of it on the clipboard,
+ * dialog does (`select-text`), and Copy Log puts all of it on the clipboard,
  * to be pasted into a search or a report of what went wrong. While the
  * operation can still be stopped, a button beside Done stops it: the page
  * under the dialog is out of reach while it is open, the operation bar's
@@ -88,6 +92,8 @@ export function LogDrawer() {
   const focusedOpId = useUiStore((s) => s.focusedOpId);
   const logs = useUiStore((s) => s.logs);
   const { data: operations } = useOperations();
+  const { data: settings } = useSettings();
+  const technical = settings?.show_technical_details ?? false;
   const nameOf = useOperationName(operations);
   const cancelMutation = useCancelOperation();
   const { status: copyStatus, copy } = useCopyCommand();
@@ -134,7 +140,7 @@ export function LogDrawer() {
         ) : (
           <span className="inline-flex items-start gap-1">
             <OutcomeIcon tone={outcomeTone(op.outcome)} size={12} className="mt-px" />
-            <span className="min-w-0 break-words">{outcomeSentence(t, op.outcome)}</span>
+            <span className="min-w-0 break-words">{outcomeWords(t, op.outcome, technical)}</span>
           </span>
         ),
       // What to do now, in one sentence: the cause's next step where the

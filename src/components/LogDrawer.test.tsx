@@ -310,7 +310,7 @@ describe("LogDrawer", () => {
     expect(getByRole("log").querySelector("p")).not.toHaveClass("text-danger-text");
   });
 
-  it("has Copy on the left of its foot and Done, the default button, on the right", async () => {
+  it("has Copy Log on the left of its foot and Done, the default button, on the right", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     try {
@@ -324,8 +324,8 @@ describe("LogDrawer", () => {
 
       const footer = getByRole("dialog").querySelector("[data-dialog-footer]") as HTMLElement;
       const buttons = within(footer).getAllByRole("button");
-      // Copy, then Cancel Install while it can still be stopped, then Done.
-      expect(buttons.map((button) => button.textContent)).toEqual(["Copy", "Cancel Install", "Done"]);
+      // Copy Log, then Cancel Install while it can still be stopped, then Done.
+      expect(buttons.map((button) => button.textContent)).toEqual(["Copy Log", "Cancel Install", "Done"]);
       expect(buttons[0].closest(".mr-auto")).not.toBeNull();
       expect(buttons[0].className).toBe(BUTTON.large.grey);
       expect(buttons[2].className).toBe(BUTTON.large.default);
@@ -346,7 +346,7 @@ describe("LogDrawer", () => {
     }
   });
 
-  it("says the next step for a failure whose cause the tool's own words give", async () => {
+  it("says how a failure ended in the operation bar's words, its cause where the tool's words give one, and the next step under it", async () => {
     operations = [
       {
         ...runningOp,
@@ -355,11 +355,91 @@ describe("LogDrawer", () => {
         outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' } },
       },
     ];
+    const { findByText, getByRole } = renderWithProviders(<LogDrawer />);
+    act(() => {
+      useUiStore.getState().appendLog({ opId: 1, stream: "Stderr", line: 'Error: jq: Failed to download resource "jq (1.8.1)"' });
+    });
+
+    // The cause, as the row and the bar say it, then what to do.
+    const cause = await findByText("Connection failed");
+    await findByText("Check your internet connection, then try again.");
+    // The tool's own words only in the log, below: not in the header,
+    // where Show technical details is off.
+    const dialog = getByRole("dialog");
+    const log = getByRole("log");
+    for (const element of dialog.querySelectorAll("*")) {
+      if (log.contains(element) || element.contains(log)) continue;
+      expect(element.textContent).not.toContain("Failed to download");
+    }
+    expect(within(log).getByText('Error: jq: Failed to download resource "jq (1.8.1)"')).toBeInTheDocument();
+    expect(cause.textContent).not.toContain("Couldn't finish");
+  });
+
+  it("says 未能完成 of a failure whose cause it cannot tell, and 网络连接失败 of one it can, in Chinese", async () => {
+    await i18n.changeLanguage("zh-CN");
+    try {
+      operations = [
+        {
+          ...runningOp,
+          kind: "Upgrade",
+          name: "git",
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: 'Error: Failed to download resource "git (2.55.1)"' } },
+        },
+      ];
+      const network = renderWithProviders(<LogDrawer />);
+      await network.findByRole("dialog", { name: "更新git" });
+      expect(await network.findByText("网络连接失败")).toBeInTheDocument();
+      expect(network.queryByText(/^未能完成：Error/)).toBeNull();
+      expect(network.getByRole("button", { name: "拷贝日志" })).toBeInTheDocument();
+      network.unmount();
+
+      operations = [
+        {
+          ...runningOp,
+          kind: "Upgrade",
+          name: "git",
+          status: "Done",
+          outcome: { Failed: { exit_code: 1, summary: "Error: git: something went wrong" } },
+        },
+      ];
+      const unknown = renderWithProviders(<LogDrawer />);
+      expect(await unknown.findByText("未能完成")).toBeInTheDocument();
+      expect(unknown.queryByText(/something went wrong/)).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  it("gives the tool's own words in the header too with Show technical details on", async () => {
+    operations = [
+      {
+        ...runningOp,
+        kind: "Upgrade",
+        status: "Done",
+        outcome: { Failed: { exit_code: 1, summary: 'Error: jq: Failed to download resource "jq (1.8.1)"' } },
+      },
+    ];
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_operations") return Promise.resolve(operations);
+      if (cmd === "get_snapshot") return new Promise(() => {});
+      if (cmd === "get_settings") {
+        return Promise.resolve({
+          language: "en",
+          show_technical_details: true,
+          ignored_updates: [],
+          skipped_versions: [],
+          include_self_updating: false,
+          auto_check: false,
+          notify_updates: false,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
     const { findByText } = renderWithProviders(<LogDrawer />);
 
-    await findByText("Check your internet connection, then try again.");
-    // How it ended, in the tool's words, stays under the title.
     await findByText('Couldn\'t finish: Error: jq: Failed to download resource "jq (1.8.1)"');
+    await findByText("Check your internet connection, then try again.");
   });
 
   it("does not render when the drawer is closed", () => {

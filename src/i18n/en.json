@@ -523,7 +523,7 @@
         "Internal": "Couldn't finish because of an internal error. Nothing changed"
       }
     },
-    "copyLog": "Copy"
+    "copyLog": "Copy Log"
   },
   "quit": {
     "title_one": "{{count}} operation hasn't finished",
