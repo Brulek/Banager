@@ -180,7 +180,7 @@ describe("Sidebar", () => {
     expect(unknownButton).not.toHaveAttribute("aria-current");
     expect(settingsButton).not.toHaveAttribute("aria-current");
     // The Overview first, then the pages about the machine, Updates
-    // leading; Settings last, apart from them.
+    // leading; Settings fifth, in the same list, with no line above it.
     expect(getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Overview",
       "Updates",
@@ -188,6 +188,50 @@ describe("Sidebar", () => {
       "Unknown",
       "Settings",
     ]);
+    const lists = getAllByRole("list");
+    expect(lists).toHaveLength(1);
+    expect(within(lists[0]).getAllByRole("button")).toHaveLength(5);
+    expect(settingsButton.closest("li")?.parentElement).toBe(lists[0]);
+  });
+
+  it("draws each entry as a Mac sidebar's row: 32 high, its icon in the accent, nothing under the pointer", async () => {
+    const { getByRole, findByText } = renderWithProviders(<Sidebar page="installed" onSelectPage={vi.fn()} />);
+    await findByText("5");
+
+    for (const name of ["Overview", "Updates", "Installed", "Unknown", "Settings"]) {
+      const button = getByRole("button", { name });
+      // 32 high, 10 in from either side of the list's own 10 (so the icon's
+      // box starts 20 in and the words 46), in the regular weight.
+      expect(button.className.split(" ")).toEqual(expect.arrayContaining(["h-8", "px-2.5", "gap-1.5", "text-body"]));
+      expect(button.className).not.toMatch(/font-(medium|semibold|bold)|hover:/);
+      const box = button.querySelector("svg")?.parentElement as HTMLElement;
+      expect(box.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "w-5", "text-accent"]));
+      expect(button.querySelector("svg")).toHaveAttribute("width", "20");
+    }
+    expect(getByRole("list").className.split(" ")).toEqual(expect.arrayContaining(["px-2.5", "pt-2"]));
+    // Selected: the system fill, the words in their own colour.
+    const installed = getByRole("button", { name: "Installed" });
+    expect(installed.className).toContain("bg-sidebar-active");
+    expect(installed.className).not.toMatch(/text-(white|accent)/);
+  });
+
+  it("counts in plain small numbers in the secondary colour, Updates' as the others", async () => {
+    const { getByRole, findByText } = renderWithProviders(
+      <>
+        <Sidebar page="installed" onSelectPage={vi.fn()} />
+        <UpdatesPage />
+      </>,
+    );
+    await findByText("2 can be updated", { selector: "p" });
+
+    for (const [name, count] of [
+      ["Updates", "2"],
+      ["Installed", "5"],
+    ]) {
+      const number = within(getByRole("button", { name })).getByText(count);
+      expect(number.className.split(" ")).toEqual(expect.arrayContaining(["text-small", "text-muted", "tabular-nums"]));
+      expect(number.className).not.toMatch(/\bbg-|rounded/);
+    }
   });
 
   it("calls onSelectPage with the clicked page", () => {
@@ -329,23 +373,28 @@ describe("Sidebar", () => {
     });
   });
 
-  it("keeps its first row empty for the window's traffic lights, as a drag region, above the app's name", () => {
-    const { getByRole, getAllByRole, getByText } = renderWithProviders(
+  it("keeps its first row empty for the window's traffic lights, as a drag region, with the entries right under it", () => {
+    const { getByRole, getAllByRole, queryByText } = renderWithProviders(
       <Sidebar page="overview" onSelectPage={vi.fn()} />,
     );
 
-    const firstRow = getByRole("navigation", { name: "Navigation" }).firstElementChild as HTMLElement;
+    const nav = getByRole("navigation", { name: "Navigation" });
+    const firstRow = nav.firstElementChild as HTMLElement;
     // Nothing under the lights: no text, no control.
     expect(firstRow.childElementCount).toBe(0);
     expect(firstRow.textContent).toBe("");
     // 52px: the 14px lights with 19px above and below them, their centre
     // 26px from the window's top (src/test/windowChrome.test.ts).
     expect(firstRow.className).toContain("h-13");
-    expect(firstRow.nextElementSibling).toBe(getByText("Canager"));
+    // No name of the app between them and the entries, which start 8
+    // below (`pt-2`): 60 from the top.
+    expect(firstRow.nextElementSibling).toBe(getByRole("list"));
+    expect(queryByText("Canager")).toBeNull();
+    expect(nav.textContent).not.toContain("Canager");
 
     // Pressing it drags the window; nothing else in the sidebar does.
     expect(dragsWindow(firstRow)).toBe(true);
-    expect(dragsWindow(getByText("Canager"))).toBe(false);
+    expect(dragsWindow(getByRole("list"))).toBe(false);
     for (const button of getAllByRole("button")) {
       expect(dragsWindow(button)).toBe(false);
     }

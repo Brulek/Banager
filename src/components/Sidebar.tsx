@@ -20,7 +20,7 @@ export const PAGE_LABEL_KEYS: Record<Page, string> = {
   settings: "nav.settings",
 };
 
-const PAGE_ICONS: Record<Page, ComponentType<{ className?: string }>> = {
+const PAGE_ICONS: Record<Page, ComponentType<{ size?: number; className?: string }>> = {
   overview: OverviewIcon,
   updates: UpdatesIcon,
   installed: InstalledIcon,
@@ -28,8 +28,12 @@ const PAGE_ICONS: Record<Page, ComponentType<{ className?: string }>> = {
   settings: SettingsIcon,
 };
 
-/** The entries at the top, in order. Settings sits apart, at the bottom. */
-const MAIN_PAGES: Page[] = ["overview", "updates", "installed", "unknown"];
+/**
+ * The entries, in order: the Overview, the pages about the Mac, and
+ * Settings fifth, in the same group (spec §3.1) -- until it has a window
+ * of its own, opened with ⌘, as a Mac app's settings are.
+ */
+const PAGES: Page[] = ["overview", "updates", "installed", "unknown", "settings"];
 
 /**
  * What an entry's count means, as a screen reader says it after the
@@ -82,29 +86,29 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
     const described = count !== undefined && count > 0 && descriptionKey !== undefined;
     const descriptionId = `${idPrefix}-${p}-count`;
     return (
+      // A source list's row, as AppKit's medium sidebar draws one: 32 high
+      // and inset 10 from either side of the sidebar, so its icon's 20px
+      // box starts 20 in and its words 46 in, and its count ends 20 from
+      // the sidebar's edge. Nothing under the pointer; selected, the
+      // system fill behind it and its words as they were.
       <button
         type="button"
         aria-current={active ? "page" : undefined}
         aria-describedby={described ? descriptionId : undefined}
         onClick={() => onSelectPage(p)}
-        className={`flex w-full items-center gap-2.5 rounded-button px-3 py-2 text-left text-body font-medium ${
+        className={`flex h-8 w-full items-center gap-1.5 rounded-control px-2.5 text-left text-body ${
           active ? "bg-sidebar-active" : ""
         }`}
       >
-        <Icon className="shrink-0 text-accent" />
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-accent">
+          <Icon size={20} />
+        </span>
         <span className="min-w-0 flex-1 truncate">{t(PAGE_LABEL_KEYS[p])}</span>
         {described ? (
           <>
-            {/* The updates count is the one that asks for something, so
-                it is the one in the accent colour. */}
-            <span
-              aria-hidden="true"
-              className={
-                p === "updates"
-                  ? "shrink-0 rounded-full bg-accent px-1.5 text-small font-semibold tabular-nums text-accent-foreground"
-                  : "shrink-0 text-small tabular-nums text-muted"
-              }
-            >
+            {/* A plain number, as a Mac's sidebar counts: none of them
+                is a badge. The Dock's shows the updates. */}
+            <span aria-hidden="true" className="shrink-0 text-small tabular-nums text-muted">
               {count}
             </span>
             <span id={descriptionId} hidden>
@@ -127,19 +131,19 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
           with nothing in it. `trafficLightPosition` puts the 14px lights
           19px in from the left and from the top, where macOS 27 draws them
           in a window with a toolbar (src/test/windowChrome.test.ts), so
-          19px of dark shows above, below and to the left of them; their
-          centre, 26px down, is the line the page header's title and
+          19px of the sidebar shows above, below and to the left of them;
+          their centre, 26px down, is the line the page header's title and
           buttons are centred on (`PageHeader`). A drag region, as the rest
           of a title bar is: dragging it moves the window, and a
-          double-click zooms it. */}
+          double-click zooms it. No name of the app under it: the window
+          is the app's, as a Mac app's sidebar says. */}
       <div data-tauri-drag-region="" className="h-13 shrink-0" />
-      <p className="px-6 pb-5 text-small font-semibold text-muted">{t("app.name")}</p>
-      <ul className="flex flex-col gap-0.5 px-3">
-        {MAIN_PAGES.map((p) => (
+      {/* The first row 8 below the lights' row, 60 from the window's top. */}
+      <ul className="flex flex-col px-2.5 pt-2">
+        {PAGES.map((p) => (
           <li key={p}>{entry(p)}</li>
         ))}
       </ul>
-      <div className="mx-3 mt-auto border-t border-separator pt-3">{entry("settings")}</div>
     </nav>
   );
 }

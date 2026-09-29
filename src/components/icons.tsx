@@ -43,22 +43,26 @@ export function OverviewIcon(props: IconProps) {
   );
 }
 
-/** Updates: an arrow up, in a circle. */
+/** Updates: an arrow down, in a circle -- SF Symbols' arrow.down.circle, as the App Store's Updates. */
 export function UpdatesIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <circle cx="12" cy="12" r="9" />
-      <path d="M12 16.5V7.5M8.5 11L12 7.5L15.5 11" />
+      <path d="M12 7.5V16.5M8.5 13L12 16.5L15.5 13" />
     </Icon>
   );
 }
 
-/** Installed: a storage box with its lid. */
+/**
+ * Installed: a shipping box seen from above one corner, with the tape
+ * across its lid -- SF Symbols' shippingbox, drawn to the same proportions
+ * (their own artwork is licensed for Apple's platforms only).
+ */
 export function InstalledIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <rect x="3.5" y="4.5" width="17" height="4.5" rx="1.25" />
-      <path d="M5 9v8.5A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V9M10 12.5h4" />
+      <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5Z" />
+      <path d="M4 7.5L12 12L20 7.5M12 12V21M8 5.25L16 9.75" />
     </Icon>
   );
 }
@@ -82,12 +86,16 @@ export function TerminalIcon(props: IconProps) {
   );
 }
 
-/** Settings: an eight-toothed gear around its axle. */
+/**
+ * Settings: a gear of eight short, round-topped teeth around its axle --
+ * SF Symbols' gearshape, drawn to its proportions: the teeth follow the
+ * gear's circle, rather than stand off it as square blocks.
+ */
 export function SettingsIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <path d="M10.33 5.3L10.59 3.11H13.41L13.67 5.3L15.55 6.09L17.29 4.72L19.28 6.71L17.91 8.45L18.7 10.33L20.89 10.59V13.41L18.7 13.67L17.91 15.55L19.28 17.29L17.29 19.28L15.55 17.91L13.67 18.7L13.41 20.89H10.59L10.33 18.7L8.45 17.91L6.71 19.28L4.72 17.29L6.09 15.55L5.3 13.67L3.11 13.41V10.59L5.3 10.33L6.09 8.45L4.72 6.71L6.71 4.72L8.45 6.09Z" />
-      <circle cx="12" cy="12" r="2.75" />
+      <path d="M9.96 5.10L10.31 2.90A9.25 9.25 0 0 1 13.69 2.90L14.04 5.10A7.20 7.20 0 0 1 15.44 5.67L17.24 4.38A9.25 9.25 0 0 1 19.62 6.76L18.33 8.56A7.20 7.20 0 0 1 18.90 9.96L21.10 10.31A9.25 9.25 0 0 1 21.10 13.69L18.90 14.04A7.20 7.20 0 0 1 18.33 15.44L19.62 17.24A9.25 9.25 0 0 1 17.24 19.62L15.44 18.33A7.20 7.20 0 0 1 14.04 18.90L13.69 21.10A9.25 9.25 0 0 1 10.31 21.10L9.96 18.90A7.20 7.20 0 0 1 8.56 18.33L6.76 19.62A9.25 9.25 0 0 1 4.38 17.24L5.67 15.44A7.20 7.20 0 0 1 5.10 14.04L2.90 13.69A9.25 9.25 0 0 1 2.90 10.31L5.10 9.96A7.20 7.20 0 0 1 5.67 8.56L4.38 6.76A9.25 9.25 0 0 1 6.76 4.38L8.56 5.67A7.20 7.20 0 0 1 9.96 5.10Z" />
+      <circle cx="12" cy="12" r="3" />
     </Icon>
   );
 }

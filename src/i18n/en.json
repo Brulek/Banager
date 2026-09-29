@@ -1,6 +1,5 @@
 {
   "app": {
-    "name": "Canager",
     "operationBarRegion": "Operation status",
     "failed": "Couldn't show this page.",
     "reload": "Reload"

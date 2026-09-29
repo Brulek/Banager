@@ -1,6 +1,5 @@
 {
   "app": {
-    "name": "Canager",
     "operationBarRegion": "操作状态",
     "failed": "无法显示此页面。",
     "reload": "重新载入"
