@@ -43,7 +43,7 @@ describe("SourceAvatar", () => {
     expect(avatar.textContent).toBe("");
     expect(avatar.className).not.toContain("bg-source-homebrew");
     expect(avatar.className).toContain("h-8");
-    expect(avatar.className).toContain("rounded-[9px]");
+    expect(avatar.className).toContain("rounded-[7px]");
   });
 
   it("edges a glyph's square with the border colour in dark mode, and with nothing in light mode", () => {
@@ -56,7 +56,7 @@ describe("SourceAvatar", () => {
     expect(classes.filter((c) => /^(inset-ring|ring|border)/.test(c))).toEqual([]);
   });
 
-  it("draws a raster logo on white inside the border colour's hairline, so a black one shows in dark mode", () => {
+  it("draws a raster logo on white under a half-point edge, so a black one shows in dark mode", () => {
     const { container } = renderWithProviders(<SourceAvatar adapterId="standalone-grok" label="Grok Build" size="xs" />, {
       toolIcons,
     });
@@ -67,7 +67,7 @@ describe("SourceAvatar", () => {
     expect(avatar).toHaveAttribute("alt", "");
     expect(avatar).toHaveAttribute("aria-hidden", "true");
     expect(avatar.className.split(" ")).toEqual(
-      expect.arrayContaining(["bg-white", "border", "border-border", "object-contain", "h-4", "rounded-[5px]"]),
+      expect.arrayContaining(["bg-white", "outline-[0.5px]", "outline-black/12", "object-contain", "h-4", "rounded-[4px]"]),
     );
   });
 
@@ -83,6 +83,6 @@ describe("SourceAvatar", () => {
   it("falls back to grey for a source it has no colour for", () => {
     const { container } = renderWithProviders(<SourceAvatar adapterId="toString" label="mystery" />, { toolIcons });
     expect(container.firstElementChild).toHaveTextContent("M");
-    expect(container.firstElementChild?.className).toContain("bg-muted");
+    expect(container.firstElementChild?.className).toContain("bg-neutral-avatar");
   });
 });

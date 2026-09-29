@@ -87,11 +87,11 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
         aria-current={active ? "page" : undefined}
         aria-describedby={described ? descriptionId : undefined}
         onClick={() => onSelectPage(p)}
-        className={`flex w-full items-center gap-2.5 rounded-button px-3 py-2 text-left text-body font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-text ${
-          active ? "bg-sidebar-active text-white" : "text-sidebar-text hover:bg-white/5"
+        className={`flex w-full items-center gap-2.5 rounded-button px-3 py-2 text-left text-body font-medium outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+          active ? "bg-sidebar-active" : ""
         }`}
       >
-        <Icon className={active ? "shrink-0 text-white" : "shrink-0 text-sidebar-muted"} />
+        <Icon className="shrink-0 text-accent" />
         <span className="min-w-0 flex-1 truncate">{t(PAGE_LABEL_KEYS[p])}</span>
         {described ? (
           <>
@@ -102,7 +102,7 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
               className={
                 p === "updates"
                   ? "shrink-0 rounded-full bg-accent px-1.5 text-small font-semibold tabular-nums text-accent-foreground"
-                  : "shrink-0 text-small tabular-nums text-sidebar-muted"
+                  : "shrink-0 text-small tabular-nums text-muted"
               }
             >
               {count}
@@ -119,7 +119,7 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
   return (
     <nav
       aria-label={t("nav.label")}
-      className="flex w-52 shrink-0 flex-col bg-linear-to-b from-sidebar-top to-sidebar-bottom pb-3 text-sidebar-text"
+      className="flex w-52 shrink-0 flex-col border-r border-separator bg-sidebar pb-3 text-foreground"
     >
       {/* The window's title bar is an overlay (src-tauri/tauri.conf.json),
           and this is the row of it the sidebar keeps for the traffic
@@ -133,13 +133,13 @@ export function Sidebar({ page, onSelectPage }: SidebarProps) {
           of a title bar is: dragging it moves the window, and a
           double-click zooms it. */}
       <div data-tauri-drag-region="" className="h-13 shrink-0" />
-      <p className="px-6 pb-5 text-small font-semibold text-sidebar-muted">{t("app.name")}</p>
+      <p className="px-6 pb-5 text-small font-semibold text-muted">{t("app.name")}</p>
       <ul className="flex flex-col gap-0.5 px-3">
         {MAIN_PAGES.map((p) => (
           <li key={p}>{entry(p)}</li>
         ))}
       </ul>
-      <div className="mx-3 mt-auto border-t border-white/10 pt-3">{entry("settings")}</div>
+      <div className="mx-3 mt-auto border-t border-separator pt-3">{entry("settings")}</div>
     </nav>
   );
 }

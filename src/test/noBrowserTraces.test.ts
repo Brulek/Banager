@@ -52,11 +52,11 @@ describe("the page", () => {
     expect(rule("input, textarea")).toEqual({ "-webkit-user-select": "text", "user-select": "text" });
   });
 
-  it("highlights selected text in a tint of the accent", () => {
+  it("highlights selected text as a Mac does", () => {
     expect(rule("::selection")).toEqual({ "background-color": "var(--color-selection)" });
-    expect(CSS).toContain("--color-selection: color-mix(in srgb, var(--color-accent) 30%, transparent);");
-    // Dark mode's, of the lighter accent it gives text (`--color-accent-text`).
-    expect(CSS).toContain("--color-selection: color-mix(in srgb, var(--color-accent-text) 40%, transparent);");
+    // selectedTextBackgroundColor, light and dark.
+    expect(CSS).toContain("--color-selection: #b3d7ff;");
+    expect(CSS).toContain("--color-selection: #3f638b;");
   });
 
   it("lets no image or link be dragged out of the window", () => {

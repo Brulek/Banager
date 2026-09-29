@@ -138,7 +138,7 @@ function ProgramAvatar() {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-white"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] bg-neutral-avatar text-white"
     >
       <TerminalIcon size={18} />
     </span>

@@ -192,7 +192,7 @@ export function loadToolIcons(pack: ToolIconPack, rasterUrls: ReadonlyMap<string
  * avatar's initial is drawn in (`--color-source-homebrew-ink`).
  */
 export const GLYPH_INK_LIGHT = "#ffffff";
-export const GLYPH_INK_DARK = "#1b1d2a";
+export const GLYPH_INK_DARK = "#1f1f1f";
 
 /**
  * The colour a glyph is drawn in on its brand colour `hex` (`RRGGBB`, as

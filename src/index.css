@@ -1,87 +1,118 @@
 @import "tailwindcss";
 
 /*
- * Design tokens (docs/superpowers/2026-09-27-ui-redesign.md, 视觉): the
- * light values here, the dark ones under `prefers-color-scheme` below, so
- * the app follows the system as it always has.
+ * Design tokens (polish 3: .superpowers/polish3/aesthetics-spec.md in the
+ * main checkout, §2). The values are macOS's own, read off AppKit on macOS
+ * 27 -- windowBackgroundColor, labelColor, separatorColor and the rest --
+ * written out as literal colours so the headless previews and the window
+ * show the same thing. Only the accent follows the user's choice in
+ * System Settings, where the engine knows it (`AccentColor`, below).
+ * Neutrals are pure greys, R = G = B.
  *
  * `static`: Tailwind v4 emits a theme variable only when one of its own
- * utilities uses it, and the components written before the redesign read
- * these as `var(--color-…)` inside arbitrary values, which it does not
- * count. The names those components already use -- `--color-foreground`,
- * `--color-muted`, `--color-border`, `--color-accent`, `--color-hover`,
- * `--color-background` and the rest -- carry the new palette, so every
- * page picks it up without being edited.
+ * utilities uses it, and some components read these as `var(--color-…)`
+ * inside arbitrary values, which it does not count.
  */
 @theme static {
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
-    sans-serif;
+  /* The system font: SF Pro for Latin, and for Chinese whatever the system
+     falls back to (PingFang's UI cut, 13/16 as AppKit sets it). Naming
+     "PingFang SC" would pick its document cut instead, taller and wider. */
+  --font-sans: -apple-system, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Type scale: `text-title` and friends. `headline` is the Overview's one
-     big sentence. */
-  --text-headline: 28px;
-  --text-headline--line-height: 34px;
-  --text-headline--font-weight: 600;
-  --text-title: 22px;
-  --text-title--line-height: 28px;
-  --text-title--font-weight: 600;
+  /* Four sizes, as macOS's text styles: 22 (Title 1, the Overview's one
+     sentence), 15 (Title 3: an empty state's title), 13 (Body and
+     Headline) and 11 (Subheadline: a row's description, a count). */
+  --text-headline: 22px;
+  --text-headline--line-height: 26px;
+  --text-headline--font-weight: 700;
+  --text-title: 13px;
+  --text-title--line-height: 16px;
+  --text-title--font-weight: 700;
   --text-section: 15px;
   --text-section--line-height: 20px;
   --text-section--font-weight: 600;
-  /* A tool's name on its row (`ToolRow`). */
-  --text-name: 14px;
-  --text-name--line-height: 20px;
+  /* A tool's name on its row (`ToolRow`), set in 600 there. */
+  --text-name: 13px;
+  --text-name--line-height: 16px;
   --text-body: 13px;
-  --text-body--line-height: 18px;
-  --text-small: 12px;
-  --text-small--line-height: 16px;
+  --text-body--line-height: 16px;
+  /* Chinese running to three lines or more: a dialog's text, a detail. */
+  --text-body-long: 13px;
+  --text-body-long--line-height: 18px;
+  --text-small: 11px;
+  --text-small--line-height: 14px;
 
-  /* Radii: a window panel, a row, a button; a chip is `rounded-full`. */
-  --radius-panel: 14px;
-  --radius-row: 10px;
-  --radius-button: 8px;
+  /* Radii: a control (button, field, menu item, the sidebar's selection)
+     and a group (a grouped container, a menu, a popover, a dialog). The
+     older names stay as the same values until every component is moved. */
+  --radius-control: 6px;
+  --radius-group: 10px;
+  --radius-button: 6px;
+  --radius-panel: 10px;
+  --radius-row: 6px;
 
-  /* The sidebar is dark in both appearances. */
-  --color-sidebar-top: #16182d;
-  --color-sidebar-bottom: #1e2240;
-  --color-sidebar-text: #c9cce8;
-  --color-sidebar-muted: #8a8fb5;
-  --color-sidebar-active: rgb(255 255 255 / 0.1);
-
-  /* The content area, and what sits on it: a dialog, the log drawer, a
-     text field. `background` is the name the older components use for
-     `surface`. */
-  --color-content: #f6f7fb;
+  /* The window and what sits on it: a dialog, a popover, a menu. */
+  --color-content: #ffffff;
   --color-surface: #ffffff;
   --color-background: var(--color-surface);
-  --color-border: #e6e8f0;
-  --color-foreground: #1b1d2a;
-  --color-muted: #6b7089;
-  --color-muted-foreground: var(--color-muted);
-  /* A quiet fill: a neutral badge, a code block, a hovered row. */
-  --color-hover: #ebedf4;
-  --color-overlay: rgb(0 0 0 / 0.4);
+  --color-sidebar: #f0f0f0;
+  --color-sidebar-active: rgb(0 0 0 / 0.1);
 
-  --color-accent: #4f5bd5;
-  --color-accent-hover: #4752c0;
+  /* Text: labelColor, secondaryLabelColor (a little darker than AppKit's
+     .498, so an 11pt word still reads at 4.5:1 on the sidebar's grey),
+     tertiaryLabelColor (disabled text and quiet symbols, never
+     information). */
+  --color-foreground: rgb(0 0 0 / 0.847);
+  --color-muted: rgb(0 0 0 / 0.58);
+  --color-muted-foreground: var(--color-muted);
+  --color-tertiary: rgb(0 0 0 / 0.259);
+
+  /* Lines and fills: separatorColor; a grey button's fill and a pressed
+     one; the quietest fill, a search field's. `border` and `hover` are the
+     older names of `separator` and `fill`. */
+  --color-separator: rgb(0 0 0 / 0.098);
+  --color-border: var(--color-separator);
+  --color-fill: rgb(0 0 0 / 0.078);
+  --color-hover: var(--color-fill);
+  --color-fill-pressed: rgb(0 0 0 / 0.16);
+  --color-fill-subtle: rgb(0 0 0 / 0.047);
+  /* A grouped container (Settings' groups), and the lines inside it. */
+  --color-group: #f7f7f7;
+  --color-group-separator: #ebebeb;
+  /* A selected row while the list is not the focus of the keyboard. */
+  --color-row-selected: #dcdcdc;
+  --color-switch-off: rgb(0 0 0 / 0.11);
+  --color-overlay: rgb(0 0 0 / 0.2);
+
+  /* controlAccentColor's default; the user's own accent below. */
+  --color-accent: #007aff;
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, black);
   --color-accent-foreground: #ffffff;
-  /* The accent as the colour of text on the content or a surface. The
-     same as the accent in light mode; lighter in dark mode, where the
-     accent itself reads at 3:1. */
-  --color-accent-text: var(--color-accent);
-  /* Selected text's highlight (`::selection` below): a tint of the
-     accent, over which the text keeps its own colour, as selected text
-     on a Mac does. */
-  --color-selection: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  --color-success: #1fa971;
-  --color-warning: #e8a33d;
-  --color-danger: #e5484d;
+  /* The accent as the colour of text (linkColor): blue at 5.3:1 on white,
+     where the accent itself would read at 4:1. */
+  --color-accent-text: #0068da;
+  --color-selection: #b3d7ff;
+  --color-focus: rgb(0 103 244 / 0.5);
+
+  /* systemGreen for a ✓, systemOrange for a filled ⚠︎, systemRed for a
+     symbol; neither green nor orange is ever the colour of text, and red
+     text is the darker `danger-text`. */
+  --color-success: #34c759;
+  --color-warning: #ff8d28;
+  --color-danger: #ff383c;
+  --color-danger-text: #d70015;
+  /* systemGray: the square of something with no source of its own. */
+  --color-neutral-avatar: #8e8e93;
+
+  /* Floating things only: a menu or a popover, and a dialog. */
+  --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.15), 0 6px 20px rgb(0 0 0 / 0.15);
+  --shadow-dialog: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 16px 48px rgb(0 0 0 / 0.25);
 
   /* Each source's colour, for its small avatar and nowhere else, and the
      colour of the initial on it where white would not read. */
   --color-source-homebrew: #f2a93b;
-  --color-source-homebrew-ink: #1b1d2a;
+  --color-source-homebrew-ink: rgb(0 0 0 / 0.847);
   --color-source-npm: #cb3837;
   --color-source-python: #3776ab;
   --color-source-rust: #ce422b;
@@ -120,23 +151,63 @@
 
 :root {
   color-scheme: light dark;
+  /* A little space where Chinese meets Latin letters or digits, as AppKit
+     draws it (1/8 em), so the strings carry no spaces of their own. */
+  text-autospace: normal;
 }
 
 /* Unlayered, so these win over the `@layer theme` block Tailwind emits
    for the light values above. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-content: #111320;
-    --color-surface: #181b2b;
-    --color-border: #262a40;
-    --color-foreground: #e7e9f5;
-    --color-muted: #9096b3;
-    --color-hover: #22263a;
-    --color-overlay: rgb(0 0 0 / 0.6);
-    --color-accent-text: #8f97ee;
-    --color-selection: color-mix(in srgb, var(--color-accent-text) 40%, transparent);
+    --color-content: #1e1e1e;
+    --color-surface: #282828;
+    --color-sidebar: #282828;
+    --color-sidebar-active: rgb(255 255 255 / 0.1);
+    --color-foreground: rgb(255 255 255 / 0.847);
+    --color-muted: rgb(255 255 255 / 0.549);
+    --color-tertiary: rgb(255 255 255 / 0.247);
+    --color-separator: rgb(255 255 255 / 0.098);
+    --color-fill: rgb(255 255 255 / 0.078);
+    --color-fill-pressed: rgb(255 255 255 / 0.16);
+    --color-fill-subtle: rgb(255 255 255 / 0.047);
+    --color-group: #252525;
+    --color-group-separator: #2f2f2f;
+    --color-row-selected: #464646;
+    --color-switch-off: rgb(255 255 255 / 0.16);
+    --color-overlay: rgb(0 0 0 / 0.4);
+    --color-accent-text: #419cff;
+    --color-selection: #3f638b;
+    --color-focus: rgb(26 169 255 / 0.5);
+    --color-success: #30d158;
+    --color-warning: #ff9230;
+    --color-danger: #ff4245;
+    --color-danger-text: #ff6961;
+    --shadow-menu: 0 0 0 0.5px rgb(255 255 255 / 0.15), 0 6px 20px rgb(0 0 0 / 0.5);
+    --shadow-dialog: 0 0 0 0.5px rgb(255 255 255 / 0.15), 0 16px 48px rgb(0 0 0 / 0.6);
     --color-source-ollama: #e5e5e5;
-    --color-source-ollama-ink: #1b1d2a;
+    --color-source-ollama-ink: rgb(0 0 0 / 0.847);
+  }
+}
+
+/* Increase contrast (System Settings > Accessibility > Display): the
+   secondary text darkens to 70%. */
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: rgb(0 0 0 / 0.7);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --color-muted: rgb(255 255 255 / 0.7);
+  }
+}
+
+/* The accent the user picked in System Settings, where the web view knows
+   it (WebKit does; the headless previews keep the default blue). */
+@supports (color: AccentColor) {
+  :root {
+    --color-accent: AccentColor;
   }
 }
 
@@ -148,7 +219,6 @@ body {
   color: var(--color-foreground);
   background: var(--color-content);
   accent-color: var(--color-accent);
-  -webkit-font-smoothing: antialiased;
   /* Text does not select, as a Mac app's labels do not: a click or a drag
      across a row, a button or a heading highlights nothing. What a user
      copies is marked `select-text`: an operation's log, a command
@@ -169,8 +239,8 @@ textarea {
   user-select: text;
 }
 
-/* Selected text is highlighted in the accent's tint, not in the system's
-   highlight colour. */
+/* Selected text is highlighted as a Mac highlights it
+   (selectedTextBackgroundColor), the text keeping its own colour. */
 ::selection {
   background-color: var(--color-selection);
 }

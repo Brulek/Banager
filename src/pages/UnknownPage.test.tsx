@@ -160,7 +160,7 @@ describe("UnknownPage", () => {
 
     const row = rowOf(await findByText("standalone-tool"));
     const avatar = row.querySelector('[aria-hidden="true"]') as HTMLElement;
-    expect(avatar.className).toContain("bg-muted");
+    expect(avatar.className).toContain("bg-neutral-avatar");
     expect(avatar.className).toContain("h-8");
     expect(avatar.querySelector("svg")).not.toBeNull();
     expect(avatar.textContent).toBe("");

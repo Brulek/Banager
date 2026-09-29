@@ -24,7 +24,7 @@ export const SOURCE_AVATAR_CLASSES: Record<string, string> = {
 };
 
 /** A source this build has no colour for: the muted grey, never a guess. */
-const UNKNOWN_SOURCE_CLASSES = "bg-muted text-white";
+const UNKNOWN_SOURCE_CLASSES = "bg-neutral-avatar text-white";
 
 /**
  * `badge`, 14px: the source's mark on the corner of a tool's own icon or
@@ -35,10 +35,10 @@ const UNKNOWN_SOURCE_CLASSES = "bg-muted text-white";
  * for Tailwind.
  */
 const SIZE_CLASSES = {
-  badge: "h-3.5 w-3.5 rounded-[4px]",
-  xs: "h-4 w-4 rounded-[5px]",
-  sm: "h-6 w-6 rounded-[7px]",
-  md: "h-8 w-8 rounded-[9px]",
+  badge: "h-3.5 w-3.5 rounded-[3px]",
+  xs: "h-4 w-4 rounded-[4px]",
+  sm: "h-6 w-6 rounded-[5px]",
+  md: "h-8 w-8 rounded-[7px]",
 } as const;
 
 export type SourceAvatarSize = keyof typeof SIZE_CLASSES;
@@ -82,9 +82,10 @@ export interface PackLogoProps {
  * A glyph is drawn in white or near-black, whichever reads better on its
  * brand's colour (`glyphInk`), on a square of that colour, in dark mode as
  * in light; in dark mode the square has a 1px edge inside it
- * (`GLYPH_EDGE_CLASSES`). A raster fills a white square inside the border
- * colour's hairline: some are black on transparent, and would vanish on
- * dark mode's surfaces. `data-logo` says which it is. Decorative, as the
+ * (`GLYPH_EDGE_CLASSES`). A raster fills a white square with a half-point
+ * edge drawn over it, as macOS edges an app icon's white tile: some are
+ * black on transparent, and would vanish on dark mode's surfaces. In dark
+ * mode the white is dimmed a little, so it does not glare. `data-logo` says which it is. Decorative, as the
  * initial is.
  */
 export function PackLogo({ icon, size }: PackLogoProps) {
@@ -96,7 +97,7 @@ export function PackLogo({ icon, size }: PackLogoProps) {
         aria-hidden="true"
         draggable={false}
         data-logo="raster"
-        className={`${SIZE_CLASSES[size]} shrink-0 border border-border bg-white object-contain`}
+        className={`${SIZE_CLASSES[size]} shrink-0 bg-white object-contain outline-[0.5px] -outline-offset-[0.5px] outline-black/12 dark:brightness-90`}
       />
     );
   }

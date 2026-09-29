@@ -73,7 +73,7 @@ describe("ToolAvatar", () => {
     expect(logo?.querySelector("path")).toHaveAttribute("d", "M1 1h22v22H1z");
     // A row's 32px, on the corners a source's avatar has at that size.
     expect(logo?.className).toContain("h-8");
-    expect(logo?.className).toContain("rounded-[9px]");
+    expect(logo?.className).toContain("rounded-[7px]");
 
     const badge = avatar().querySelector("[data-source-badge]");
     const mark = badge?.querySelector("[data-logo]");
@@ -148,7 +148,7 @@ describe("ToolAvatar", () => {
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
-  it("draws a raster logo on a white square inside the border colour's hairline", async () => {
+  it("draws a raster logo on a white square under a half-point edge", async () => {
     const { avatar, queryClient } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: iterm });
 
     // The cask has no app icon: the pack's logo stays.
@@ -161,7 +161,7 @@ describe("ToolAvatar", () => {
     expect(logo).toHaveAttribute("src", "/assets/gh-iterm2.webp");
     expect(logo).toHaveAttribute("alt", "");
     expect(logo.className.split(" ")).toEqual(
-      expect.arrayContaining(["bg-white", "border", "border-border", "object-contain", "h-8", "rounded-[9px]"]),
+      expect.arrayContaining(["bg-white", "outline-[0.5px]", "outline-black/12", "object-contain", "h-8", "rounded-[7px]"]),
     );
     expect(avatar().querySelector("[data-source-badge] [data-logo]")).not.toBeNull();
   });
@@ -195,7 +195,7 @@ describe("ToolAvatar", () => {
     const { avatar } = renderAvatar({ adapterId: "brew", sourceLabel: "Homebrew", iconKey: jq, size: "sm" });
 
     expect(ownLogo(avatar())?.className).toContain("h-6");
-    expect(ownLogo(avatar())?.className).toContain("rounded-[7px]");
+    expect(ownLogo(avatar())?.className).toContain("rounded-[5px]");
     expect(avatar().querySelector("[data-source-badge] [data-logo]")?.className).toContain("h-3.5");
   });
 });
