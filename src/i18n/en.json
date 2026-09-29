@@ -434,8 +434,8 @@
     },
     "checksUnfinished": {
       "title": "Some checks didn't finish",
-      "description_one": "{{sources}} didn't finish checking this time.",
-      "description_other": "{{sources}} didn't finish checking this time."
+      "description_one": "{{sources}} didn't finish checking this time; some updates may not be listed yet.",
+      "description_other": "{{sources}} didn't finish checking this time; some updates may not be listed yet."
     },
     "more_one": "{{count}} more issue",
     "more_other": "{{count}} more issues",

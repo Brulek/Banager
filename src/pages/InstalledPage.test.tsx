@@ -2086,7 +2086,7 @@ describe("InstalledPage", () => {
       const { findByText, getByText, getByRole, queryByText, unmount } = renderInstalled();
 
       expect(await findByText("Some checks didn't finish")).toBeInTheDocument();
-      expect(getByText("npm didn't finish checking this time.")).toBeInTheDocument();
+      expect(getByText("npm didn't finish checking this time; some updates may not be listed yet.")).toBeInTheDocument();
       expect(queryByText("Nothing installed with npm")).toBeNull();
       expect(getByRole("button", { name: "Check Again" })).toBeEnabled();
       unmount();
@@ -2100,7 +2100,7 @@ describe("InstalledPage", () => {
       const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
       fireEvent.click(details);
       expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-        /^Homebrew didn't finish checking this time\.$/,
+        /^Homebrew didn't finish checking this time; some updates may not be listed yet\.$/,
       );
       expect(within(line).getByRole("button", { name: "Check Again" })).toBeEnabled();
     });

@@ -597,7 +597,7 @@ describe("OverviewPage", () => {
     const rows = within(list).getAllByRole("listitem");
     // First, before the sources' own warnings.
     expect(within(rows[0]).getByText("Some checks didn't finish")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("Homebrew didn't finish checking this time.")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Homebrew didn't finish checking this time; some updates may not be listed yet.")).toBeInTheDocument();
     expect(rows[0].querySelector("svg")?.getAttribute("class")).toContain("text-warning");
     expect(within(rows[1]).getByText("Ollama isn't running")).toBeInTheDocument();
     // Said once: no band over the page, no count under the headline.

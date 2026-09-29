@@ -1465,9 +1465,11 @@ export function namesInSentence(t: Translate, names: string[]): string {
  * The one notice for this round's checks that did not finish -- a
  * `SourceError` each (`Snapshot.errors`; `Snapshot.stale` is exactly
  * that there are any) -- or null when every one finished: 「部分检查未完成」,
- * a warning, the sources named behind its ⓘ (「pipx和Cargo这次未检查完。」,
- * `failedSourceNames`), and Check again, as a silent source's notice
- * offers. It used to be a band of its own over the page, the web's way;
+ * a warning, the sources named behind its ⓘ with what that may leave
+ * out (「pipx和Cargo这次未检查完，更新可能还没全部列出。」 -- "may":
+ * a failed update check keeps last round's candidates, but the error
+ * does not say which step failed; `failedSourceNames`), and Check
+ * again, as a silent source's notice offers. It used to be a band of its own over the page, the web's way;
  * it is one of the list's notice lines now, folding with the others
  * (spec §3.8), and a row of the Overview's problems.
  *

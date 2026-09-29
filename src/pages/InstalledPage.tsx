@@ -317,8 +317,9 @@ const EMPTY_PAGE_DESCRIPTION_KEYS: Record<string, string> = {
  * 容。请稍后重新检查。」, the notice's sentence less what its title
  * has just said (`EMPTY_PAGE_DESCRIPTION_KEYS`) -- or, for a source that
  * answered but whose check did not finish this round, 「部分检查未完成」
- * over 「pipx这次未检查完。」 (`unfinishedChecksNotice`): nothing listed
- * may be only what it did not get to; for one that answered in full, that
+ * over 「pipx这次未检查完，更新可能还没全部列出。」
+ * (`unfinishedChecksNotice`): nothing listed may be only what it did not
+ * get to; for one that answered in full, that
  * nothing is installed with it; and Check again, the header's, which
  * shows what it has once it answers or has something. In the list's
  * place, so the source's notice is not said a second time over it.

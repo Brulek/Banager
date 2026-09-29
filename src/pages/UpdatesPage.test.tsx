@@ -3303,11 +3303,11 @@ describe("UpdatesPage", () => {
       );
       expect(line.querySelector("[data-notice-symbol] svg")?.getAttribute("class")).toContain("text-warning");
       // Its sentence behind its ⓘ, not beside it.
-      expect(queryByText("pipx and Cargo didn't finish checking this time.")).toBeNull();
+      expect(queryByText("pipx and Cargo didn't finish checking this time; some updates may not be listed yet.")).toBeNull();
       const details = within(line).getByRole("button", { name: "Details: Some checks didn't finish" });
       fireEvent.click(details);
       expect(document.getElementById(details.getAttribute("aria-controls") ?? "")).toHaveTextContent(
-        "pipx and Cargo didn't finish checking this time.",
+        "pipx and Cargo didn't finish checking this time; some updates may not be listed yet.",
       );
       // The toolbar's Check Again, small and grey, as a silent source's line has.
       const again = within(line).getByRole("button", { name: "Check Again" });
