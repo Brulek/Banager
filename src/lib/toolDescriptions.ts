@@ -31,6 +31,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { autospace, lacksTextAutospace } from "../i18n/autospace";
 import { useToolIcons } from "./toolIconsContext";
 import type { ArtifactKey } from "./types";
 
@@ -119,7 +120,9 @@ export type TranslatedDescription = (key: ArtifactKey, adapterId: string) => str
  * English, anything but an npm, PyPI or crates.io package). Looked up
  * under the key the tool's logo is listed under (`toolIconKey`, from the
  * pack the avatars draw from): a versioned formula's name without its
- * `@<version>`, a Python package's name PEP 503-normalized.
+ * `@<version>`, a Python package's name PEP 503-normalized. A Chinese line
+ * is written with no space before or after a Latin word, as the copy is,
+ * and gets `autospace`'s narrow gaps where the web view cannot draw them.
  */
 export function useTranslatedDescription(): TranslatedDescription {
   const tables = useContext(DescriptionTablesContext);
@@ -134,8 +137,9 @@ export function useTranslatedDescription(): TranslatedDescription {
     (key: ArtifactKey, adapterId: string): string | null => {
       if (lines === null) return null;
       const toolKey = toolIconKey(key, adapterId);
-      return toolKey === null ? null : (lines.get(toolKey) ?? null);
+      const line = toolKey === null ? null : (lines.get(toolKey) ?? null);
+      return line !== null && language === "zh-CN" && lacksTextAutospace() ? autospace(line) : line;
     },
-    [lines, toolIconKey],
+    [lines, toolIconKey, language],
   );
 }

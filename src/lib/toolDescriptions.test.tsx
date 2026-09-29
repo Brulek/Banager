@@ -113,6 +113,15 @@ describe.each([
     expect(unreachable, `no tool is keyed: ${unreachable.join(", ")}`).toEqual([]);
   });
 
+  it("puts no space where Chinese meets a Latin letter or digit", () => {
+    // The window spaces them itself (`text-autospace`, or `autospace`
+    // where the web view cannot), as it does the copy's.
+    const spaced = Object.entries(lines).filter(([, line]) =>
+      /\p{Script=Han} +[A-Za-z0-9]|[A-Za-z0-9] +\p{Script=Han}/u.test(line),
+    );
+    expect(spaced.map(([toolKey]) => toolKey)).toEqual([]);
+  });
+
   it("fits in 400 KB", () => {
     // 1000-based, as Finder counts, like the logo pack's budget.
     expect(statSync(tablePath).size).toBeLessThan(400_000);
@@ -219,6 +228,23 @@ describe("useTranslatedDescription", () => {
     expect(lookup(key(BREW, "Cask", "firefox"), "brew")).toBeNull();
     expect(lookup(key(NPM, "Package", "@openai/codex"), "npm")).toBe("OpenAI 的编程助手");
     expect(lookup(key(CARGO, "Binary", "tokei"), "cargo")).toBe("代码行数统计工具");
+  });
+
+  it("spaces a Chinese line's Latin words narrowly where the web view cannot, and only in Chinese", async () => {
+    const supports = vi.spyOn(CSS, "supports").mockReturnValue(false);
+    try {
+      const own = () => lazyDescriptionTable(async () => ({ "npm:@openai/codex": "OpenAI的编程助手" }));
+      renderWithProviders(<Probe />, { toolDescriptions: { "zh-CN": own(), en: english() } });
+      await switchTo("zh-CN");
+      await waitFor(() => expect(lookup(key(NPM, "Package", "@openai/codex"), "npm")).toBe("OpenAI\u2006的编程助手"));
+
+      await switchTo("en");
+      await waitFor(() =>
+        expect(lookup(key(NPM, "Package", "@openai/codex"), "npm")).toBe("Local coding agent CLI from OpenAI"),
+      );
+    } finally {
+      supports.mockRestore();
+    }
   });
 
   it("finds a Python package under its PEP 503 name, from pip, pipx and uv alike", async () => {
