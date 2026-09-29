@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ToolRow } from "../components/ToolRow";
+import { rowFitFor, ToolRow } from "../components/ToolRow";
+import { ListWidthProvider, useElementWidth } from "../components/VirtualList";
 import { StatusChip } from "../components/StatusChip";
 import { InfoDetail } from "../components/InfoDetail";
 import { SourceNoticeLine } from "../components/SourceNotice";
@@ -236,6 +237,14 @@ export function UnknownPage() {
 
   const result = scan.data;
   const technical = settings?.show_technical_details ?? false;
+  // How wide the list is, for its rows to give way column by column as
+  // the window narrows (`ToolRow`'s `rowFitFor`, spec R9), as a
+  // virtualized list tells its own rows.
+  const [listBox, setListBox] = useState<HTMLDivElement | null>(null);
+  const listWidth = useElementWidth(listBox);
+  // Too narrow for a path, its status word and the app a link points into
+  // on one line, the app gives way: its ⓘ says it at more length.
+  const roomForNote = rowFitFor(listWidth) === "full" || rowFitFor(listWidth) === "compact";
   const stopped = result === undefined || result.stopped === null ? null : stoppedText(t, result.stopped);
 
   // A row's Copy path and Show in Finder, and a word about how the last
@@ -335,46 +344,48 @@ export function UnknownPage() {
               </p>
             </div>
           ) : (
-            <div>
-              {result.entries.map((entry) => {
-                const name = fileName(entry.path);
-                const app = linkedApp(entry);
-                const facts = factsOf(entry, t, technical);
-                const detail =
-                  facts.length === 0
-                    ? undefined
-                    : facts.map((fact) => (
-                        <span key={fact} className="block select-text break-words">
-                          {fact}
-                        </span>
-                      ));
-                const statusKey = STATUS_KEYS[entry.kind];
-                const status =
-                  statusKey !== null ? (
-                    <StatusChip label={t(statusKey)} tone="warning" detail={detail} />
-                  ) : detail !== undefined ? (
-                    <InfoDetail label={t("common.detailsLabel", { title: name })}>{detail}</InfoDetail>
-                  ) : undefined;
-                return (
-                  // A slot of its own, as a virtualized list's rows have:
-                  // a stacking context each, and the one with an open ⓘ
-                  // lifted over the rows after it (`data-list-slot` in
-                  // index.css), whose words would otherwise cover it.
-                  <div key={entry.path} data-list-slot="" className="relative z-0">
-                    <ToolRow
-                      avatar={<ProgramAvatar />}
-                      name={name}
-                      // Home abbreviated as Rust sent it (`UnknownEntry.path`).
-                      description={entry.path}
-                      selectableDescription
-                      descriptionNote={app === null ? undefined : t("unknown.pointsInto", { app })}
-                      status={status}
-                      version={<SizeAndDate entry={entry} language={i18n.language} />}
-                      menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
-                    />
-                  </div>
-                );
-              })}
+            <div ref={setListBox}>
+              <ListWidthProvider value={listWidth}>
+                {result.entries.map((entry) => {
+                  const name = fileName(entry.path);
+                  const app = linkedApp(entry);
+                  const facts = factsOf(entry, t, technical);
+                  const detail =
+                    facts.length === 0
+                      ? undefined
+                      : facts.map((fact) => (
+                          <span key={fact} className="block select-text break-words">
+                            {fact}
+                          </span>
+                        ));
+                  const statusKey = STATUS_KEYS[entry.kind];
+                  const status =
+                    statusKey !== null ? (
+                      <StatusChip label={t(statusKey)} tone="warning" detail={detail} />
+                    ) : detail !== undefined ? (
+                      <InfoDetail label={t("common.detailsLabel", { title: name })}>{detail}</InfoDetail>
+                    ) : undefined;
+                  return (
+                    // A slot of its own, as a virtualized list's rows have:
+                    // a stacking context each, and the one with an open ⓘ
+                    // lifted over the rows after it (`data-list-slot` in
+                    // index.css), whose words would otherwise cover it.
+                    <div key={entry.path} data-list-slot="" className="relative z-0">
+                      <ToolRow
+                        avatar={<ProgramAvatar />}
+                        name={name}
+                        // Home abbreviated as Rust sent it (`UnknownEntry.path`).
+                        description={entry.path}
+                        selectableDescription
+                        descriptionNote={app === null || !roomForNote ? undefined : t("unknown.pointsInto", { app })}
+                        status={status}
+                        version={<SizeAndDate entry={entry} language={i18n.language} />}
+                        menu={<Menu label={t("common.moreActions", { name })} items={menuItems(entry)} />}
+                      />
+                    </div>
+                  );
+                })}
+              </ListWidthProvider>
             </div>
           )}
           {/* Under the list, quieter: where it looked, and how many

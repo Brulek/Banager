@@ -657,7 +657,8 @@ export function InstalledPage() {
 
   // Selects a row, and the inspector shows it: its ⋯ menu's Details, and
   // ↑ ↓ (`VirtualList`'s `onKeyboardMove`).
-  const select = (artifact: InstalledArtifact) => setSelection({ id: artifactKeyId(artifact.key), filter: activeFilter });
+  const select = (artifact: InstalledArtifact) =>
+    setSelection({ id: artifactKeyId(artifact.key), filter: activeFilter });
   // Pressing a row: selects it, or -- the one selected -- closes the
   // inspector, the focus staying on the row (`ToolRow` put it there).
   const pressRow = (artifact: InstalledArtifact) => {
@@ -967,7 +968,9 @@ export function InstalledPage() {
     if (artifact.installed_at !== null) {
       facts.push({ term: t("installed.installedOn"), value: formatDate(artifact.installed_at, i18n.language) });
     }
-    if (artifact.size_bytes !== null) facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes) });
+    if (artifact.size_bytes !== null) {
+      facts.push({ term: t("installed.size"), value: formatBytes(artifact.size_bytes) });
+    }
     // Where it is, only while technical details are on, and only where the
     // source said: an app's bundle, a program's file, a tool's own folder.
     if (showTechnicalDetails && artifact.path !== null) {
@@ -1016,11 +1019,12 @@ export function InstalledPage() {
             </p>
           ) : null}
           {facts.length > 0 ? (
-            // Labels 72 wide, as a Mac's info pane lines its values up.
-            <dl className="mt-4 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 text-body">
+            // Labels 72 wide -- wider only for one that would wrap, such as
+            // "Date Installed" -- as a Mac's info pane lines its values up.
+            <dl className="mt-4 grid grid-cols-[minmax(4.5rem,auto)_1fr] gap-x-3 gap-y-1.5 text-body">
               {facts.map((fact) => (
                 <div key={fact.term} className="contents">
-                  <dt className="text-muted">{fact.term}</dt>
+                  <dt className="whitespace-nowrap text-muted">{fact.term}</dt>
                   <dd className="min-w-0 select-text break-words tabular-nums text-foreground">{fact.value}</dd>
                 </div>
               ))}

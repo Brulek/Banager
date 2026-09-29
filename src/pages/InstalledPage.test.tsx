@@ -1983,8 +1983,8 @@ describe("InstalledPage", () => {
       expect(within(inspector).getByText("Size").nextElementSibling).toHaveTextContent("1.4 MB");
       // Labels 72 wide, in the secondary colour; the values tabular.
       const grid = within(inspector).getByText("Size").parentElement?.parentElement as HTMLElement;
-      expect(grid.className).toContain("grid-cols-[4.5rem_1fr]");
-      expect(within(inspector).getByText("Size")).toHaveClass("text-muted");
+      expect(grid.className).toContain("grid-cols-[minmax(4.5rem,auto)_1fr]");
+      expect(within(inspector).getByText("Size")).toHaveClass("text-muted", "whitespace-nowrap");
       expect(within(inspector).getByText("Size").nextElementSibling).toHaveClass("tabular-nums");
 
       fireEvent.click(within(rowOf("wget")).getByRole("button", { name: "Details: wget" }));

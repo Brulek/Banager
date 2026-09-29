@@ -734,6 +734,34 @@ describe("Copy Path", () => {
   });
 });
 
+describe("in a narrow window (R9)", () => {
+  afterEach(() => {
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
+  });
+
+  it("moves a broken link's word to the start of its line, and leaves the app it pointed into to the ⓘ", async () => {
+    // The list as a window at its narrowest lays it out: 592 wide.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return { width: 592, height: 400, top: 0, left: 0, right: 592, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
+    });
+    const { findByText, queryByText } = renderWithProviders(<UnknownPage />);
+
+    const script = rowOf(await findByText("old-script"));
+    const word = within(script).getByRole("button", { name: "Broken link" });
+    const path = within(script).getByText("~/.local/bin/old-script");
+    // On the path's line, before it: the path keeps its room.
+    expect(word.closest("[data-status]")?.parentElement).toBe(path.parentElement);
+    expect(queryByText("Points into Removed.app")).toBeNull();
+    expect(queryByText("Points into Helper.app")).toBeNull();
+    // Said at more length behind the ⓘ, as before.
+    fireEvent.click(word);
+    expect(within(script).getByText("Part of Removed")).toBeInTheDocument();
+    // Its size and date keep their columns.
+    const tool = rowOf(await findByText("standalone-tool"));
+    expect(sizeAndDateOf(tool).textContent).toBe(`${formatBytes(144_300_000)}${dateOf(1_758_000_000)}`);
+  });
+});
+
 describe("the app a link points into", () => {
   it("is on the row's line under its name, after the path, and still behind the ⓘ at more length", async () => {
     const { findByText, getByText } = renderWithProviders(<UnknownPage />);
