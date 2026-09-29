@@ -135,30 +135,40 @@ export interface ToolRowContentProps {
  * between them; `minimal` -- a list the Installed page's inspector has
  * narrowed -- the version column goes as well, and an update's versions
  * move to that line after the status word: the inspector says the
- * selected row's version, and the others' are one click away; `tiny` --
- * the inspector's list in the narrowest window -- the row's button goes
- * too, the version it would bring on that line after its arrow, and only
- * the ⋯ stays at the row's end: what the button did is there and in the
- * inspector. Past that, the description is cut short -- never the name --
- * and, left room for no more than a few characters after the words before
- * it, dropped from the line (`DESCRIPTION_MIN_CHARACTERS`).
+ * selected row's version, and the others' are one click away; `slim` --
+ * the inspector's list in the narrowest window -- the status word and the
+ * versions leave that line too, which is the description's alone: both
+ * are in the inspector, and what goes next would be the row's button;
+ * `tiny` -- a list too narrow for the avatar, a name's first few
+ * characters, the button and the ⋯, which no window this app opens has --
+ * the row's button goes as well, and only the ⋯ stays at its end: what
+ * the button did is in the inspector. Past that, the description is cut
+ * short -- never the name -- and, left room for no more than a few
+ * characters after the words before it, dropped from the line
+ * (`DESCRIPTION_MIN_CHARACTERS`).
  */
-export type RowFit = "full" | "compact" | "narrow" | "minimal" | "tiny";
+export type RowFit = "full" | "compact" | "narrow" | "minimal" | "slim" | "tiny";
 
 /**
  * The widths of the list a row is drawn in -- measured, not the window's
  * -- at which its columns give way (`RowFit`): the list is 752 wide in a
  * window at its default 960, with room for everything, and 592 at its
- * narrowest, 800; beside the inspector, 452 at 960 and under 300 at 800.
+ * narrowest, 800; beside the inspector, 452 at 960 and 332 at 800 (the
+ * inspector 260 there). `slim` from 324: what a row with a button needs --
+ * 20 in, the avatar 32, 12, a name's first 96, 16, the button ("Uninstall…"
+ * 87 wide; 「卸载…」 60, in its column of 80), 16, the ⋯ 24, and 20 -- is
+ * 323 in English and 316 in Chinese, so the narrowest window's 332 keeps
+ * every row's button.
  */
-export const ROW_FIT_WIDTHS = { full: 700, compact: 640, narrow: 520, minimal: 340 } as const;
+export const ROW_FIT_WIDTHS = { full: 700, compact: 640, narrow: 520, minimal: 340, slim: 324 } as const;
 
 /** Which of a row's columns fit a list `width` wide: everything, where nothing measured it. */
 export function rowFitFor(width: number | null): RowFit {
   if (width === null || width >= ROW_FIT_WIDTHS.full) return "full";
   if (width >= ROW_FIT_WIDTHS.compact) return "compact";
   if (width >= ROW_FIT_WIDTHS.narrow) return "narrow";
-  return width >= ROW_FIT_WIDTHS.minimal ? "minimal" : "tiny";
+  if (width >= ROW_FIT_WIDTHS.minimal) return "minimal";
+  return width >= ROW_FIT_WIDTHS.slim ? "slim" : "tiny";
 }
 
 /**
@@ -346,15 +356,16 @@ export function ToolRow({
   const source = sourceLabel !== undefined && sourceLabel !== name ? sourceLabel : undefined;
   const hasStatus = status !== undefined && status !== null;
   // The status word's column, or -- narrower -- its place at the start of
-  // the description's line.
+  // the description's line; narrower still (`slim`, `tiny`), neither: the
+  // inspector says it.
   const statusColumn = fit === "full" || fit === "compact";
-  const statusInline = !statusColumn && hasStatus;
+  const statusInline = (fit === "narrow" || fit === "minimal") && hasStatus;
   const hasUpdate = newVersion !== undefined && version !== undefined && version !== null;
-  // Where the version column has gone (`minimal`, `tiny`): an update's
-  // versions on the description's line, and nothing for a row with no
-  // update.
+  // Where the version column has gone (`minimal`): an update's versions on
+  // the description's line, and nothing for a row with no update; past
+  // that, nothing either way.
   const versionColumn = version !== undefined && (statusColumn || fit === "narrow");
-  const versionInline = (fit === "minimal" || fit === "tiny") && hasUpdate;
+  const versionInline = fit === "minimal" && hasUpdate;
   const actionColumn = action !== undefined && fit !== "tiny";
   // The version an update brings, alone, after its arrow; the whole
   // change for a screen reader.
@@ -367,8 +378,7 @@ export function ToolRow({
   const shownVersion = fit !== "full" && newVersion !== undefined ? toNewVersion : version;
   // What the description's line says before the description, in order,
   // set apart from it and from each other by a dot: the status word, then
-  // an update's versions (the whole change beside the inspector, the new
-  // version alone in the narrowest list).
+  // an update's versions (beside the inspector).
   const leading: Array<{ key: string; node: ReactNode }> = [];
   if (statusInline) {
     leading.push({
@@ -389,7 +399,7 @@ export function ToolRow({
       // small, would cut its last digits for an "…".
       node: (
         <span data-version="" className="min-w-0 truncate whitespace-nowrap tabular-nums">
-          {fit === "tiny" ? toNewVersion : version}
+          {version}
         </span>
       ),
     });

@@ -389,7 +389,7 @@ describe("ToolRow", () => {
       </ListWidthProvider>
     );
 
-    it("gives way column by column as the list narrows: the version first, then the status word's column, then the button", () => {
+    it("gives way column by column as the list narrows: the version first, then the status word's column, the button last", () => {
       expect(rowFitFor(null)).toBe("full");
       expect(rowFitFor(752)).toBe("full");
       expect(rowFitFor(ROW_FIT_WIDTHS.full)).toBe("full");
@@ -402,9 +402,14 @@ describe("ToolRow", () => {
       expect(rowFitFor(ROW_FIT_WIDTHS.narrow - 1)).toBe("minimal");
       expect(rowFitFor(451)).toBe("minimal");
       expect(rowFitFor(ROW_FIT_WIDTHS.minimal)).toBe("minimal");
-      // Beside it in the narrowest window.
       expect(ROW_FIT_WIDTHS.minimal).toBe(340);
-      expect(rowFitFor(ROW_FIT_WIDTHS.minimal - 1)).toBe("tiny");
+      expect(rowFitFor(ROW_FIT_WIDTHS.minimal - 1)).toBe("slim");
+      // Beside it in the narrowest window, 800: the list 332 wide, which
+      // keeps the button (R9).
+      expect(rowFitFor(332)).toBe("slim");
+      expect(ROW_FIT_WIDTHS.slim).toBe(324);
+      expect(rowFitFor(ROW_FIT_WIDTHS.slim)).toBe("slim");
+      expect(rowFitFor(ROW_FIT_WIDTHS.slim - 1)).toBe("tiny");
       expect(rowFitFor(291)).toBe("tiny");
     });
 
@@ -494,7 +499,41 @@ describe("ToolRow", () => {
       expect(plain.container.textContent).not.toContain("1.8.2");
     });
 
-    it("in the narrowest list, gives up the button and the version columns and keeps the ⋯; an update's new version goes on the line after its arrow", () => {
+    it("beside the inspector in the narrowest window, keeps the button and the ⋯, and gives the description's line to the description alone", () => {
+      const { container, getByText, getByRole } = renderWithProviders(
+        <ListWidthProvider value={332}>
+          <ToolRow
+            adapterId="brew"
+            sourceLabel="Homebrew"
+            name="claude-code"
+            description="Anthropic's coding assistant"
+            status={<StatusChip label="Updates itself" />}
+            version="2.1.282 → 2.1.290"
+            newVersion="2.1.290"
+            action={<button type="button">Uninstall…</button>}
+            menu={<Menu label="More actions for claude-code" items={[{ id: "details", label: "Details", onSelect: vi.fn() }]} />}
+          />
+        </ListWidthProvider>,
+      );
+      // The button, in its column of at least 80, and the ⋯ after it.
+      const button = getByRole("button", { name: "Uninstall…" });
+      expect(button.parentElement?.className.split(" ")).toEqual(expect.arrayContaining(["min-w-20", "shrink-0"]));
+      expect(getByRole("button", { name: "More actions for claude-code" })).toBeInTheDocument();
+      // The status word and the versions have gone before it, from the
+      // line and their columns alike: the inspector says them.
+      const blurb = getByText("Anthropic's coding assistant");
+      expect(blurb.parentElement?.textContent).toBe("Anthropic's coding assistant");
+      expect(blurb.parentElement?.querySelector("[data-line-dot]")).toBeNull();
+      expect(container.querySelector("[data-status]")).toBeNull();
+      expect(container.querySelector("[data-status-column]")).toBeNull();
+      expect(container.querySelector("[data-version]")).toBeNull();
+      expect(container.textContent).not.toContain("Updates itself");
+      expect(container.textContent).not.toContain("2.1.290");
+      expect(blurb.className).toContain("truncate");
+      expect(blurb.className).not.toContain("sr-only");
+    });
+
+    it("in a list too narrow for the button, gives it up as well and keeps the ⋯", () => {
       const { container, getByText, getByRole, queryByRole } = renderWithProviders(
         <ListWidthProvider value={291}>
           <ToolRow
@@ -513,13 +552,9 @@ describe("ToolRow", () => {
       expect(queryByRole("button", { name: "Update" })).toBeNull();
       expect(getByRole("button", { name: "More actions for claude-code" })).toBeInTheDocument();
       const blurb = getByText("Anthropic's coding assistant");
-      const version = container.querySelector("[data-version]") as HTMLElement;
-      expect(container.querySelectorAll("[data-version]")).toHaveLength(1);
-      expect(version.parentElement).toBe(blurb.parentElement);
-      const [shown, spoken] = [...version.children] as HTMLElement[];
-      expect(shown.textContent).toBe("→ 2.1.290");
-      expect(spoken.textContent).toBe("2.1.282 → 2.1.290");
-      expect(spoken.className).toBe("sr-only");
+      expect(blurb.parentElement?.textContent).toBe("Anthropic's coding assistant");
+      expect(container.querySelector("[data-version]")).toBeNull();
+      expect(container.querySelector("[data-status]")).toBeNull();
       expect(container.querySelector("[data-status-column]")).toBeNull();
     });
 
