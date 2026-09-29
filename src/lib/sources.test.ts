@@ -1189,8 +1189,8 @@ describe("UPDATE_BLOCKED_KEYS", () => {
     // `refused` gets only the source's label.
     expect(en.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
     expect(zhCN.updates.blocked.SelfUpdatesOnly.refused).not.toContain("{{command}}");
-    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Only updates itself");
-    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("只能自行更新");
+    expect(en.updates.blocked.SelfUpdatesOnly.badge).toBe("Open to update");
+    expect(zhCN.updates.blocked.SelfUpdatesOnly.badge).toBe("打开它来更新");
   });
 });
 

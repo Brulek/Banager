@@ -178,7 +178,7 @@
     "versionTo": "→ {{target}}",
     "newVersion": "有新版本",
     "newBuild": "此模型有新版本",
-    "selfUpdating": "会自行更新",
+    "selfUpdating": "也会自行更新",
     "readOnly": "仅供查看",
     "cannotCheck": "无法检查",
     "cannotCheckShort": "无法查到它的最新版本。",
@@ -220,7 +220,7 @@
         "refused": "无法更新，因为它在{{source}}中被固定了。"
       },
       "SelfUpdatesOnly": {
-        "badge": "只能自行更新",
+        "badge": "打开它来更新",
         "detail": "它会自行更新，无法在这里更新。打开它一次就会检查新版本。",
         "refused": "{{source}}会自行更新，无法在这里更新。"
       }

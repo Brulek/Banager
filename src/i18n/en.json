@@ -197,7 +197,7 @@
     "versionTo": "→ {{target}}",
     "newVersion": "New version",
     "newBuild": "This model has a new version",
-    "selfUpdating": "Updates itself",
+    "selfUpdating": "Also updates itself",
     "readOnly": "View only",
     "cannotCheck": "Can't check",
     "cannotCheckShort": "Couldn't find its latest version.",
@@ -241,7 +241,7 @@
         "refused": "Couldn't update it because it's pinned in {{source}}."
       },
       "SelfUpdatesOnly": {
-        "badge": "Only updates itself",
+        "badge": "Open to update",
         "detail": "It updates itself and can't be updated here. Open it once and it checks for a new version.",
         "refused": "{{source}} updates itself and can't be updated here."
       }
